@@ -1,0 +1,27 @@
+{
+  "menu": [
+    {
+      "url": "backend/eventAdmin",
+      "name": "Admin Home",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "eventAdmin.show"
+
+    },
+    {
+      "url": "backend/headOffice",
+      "name": "Draws",
+      "icon": "menu-icon tf-icons ti ti-layout",
+      "slug": "headOffice.show"
+
+    }
+  ,
+    {
+      "url": "backend/convenor",
+      "name": "Convenors",
+      "icon": "menu-icon tf-icons fa-regular fa-star",
+      "slug": "convenor.show"
+
+    }
+
+  ]
+}

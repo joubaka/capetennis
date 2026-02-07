@@ -1,0 +1,44 @@
+{
+  "menu": [
+    {
+      "url": "/",
+      "name": "Home",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "home",
+      "type": "admin",
+      "menuLevel" : "all"
+    },
+    {
+      
+      "name": "Settings",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "settings.index",
+      "type": "admin",
+      "menuLevel" : "super",
+      "submenu": [
+        {
+            "url": "backend/series",
+            "name": "Series",
+            "icon": "circle",
+            "slug": ""
+        },
+        {
+          "url": "backend/league",
+          "name": "League",
+          "icon": "circle",
+          "slug": ""
+      }
+
+    ]
+
+    },
+    {
+      "url": "/backend/eventPhoto",
+      "name": "Photos",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "home",
+      "type": "admin",
+      "menuLevel" : "super"
+    }
+  ]
+}
