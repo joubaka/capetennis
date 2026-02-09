@@ -273,4 +273,21 @@ class Event extends Model
 
     return 'Draft';
   }
+
+  // app/Models/Event.php
+
+ 
+
+  public function entryCloseAt(): Carbon
+  {
+    return Carbon::parse($this->start_date)->subDays($this->deadline - 1);
+  }
+
+  public function withdrawalCloseAt(): Carbon
+  {
+    return $this->withdrawal_deadline
+      ? Carbon::parse($this->withdrawal_deadline)
+      : $this->entryCloseAt();
+  }
+
 }

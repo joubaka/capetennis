@@ -5,6 +5,7 @@ namespace App\Http\Controllers\backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\DrawFormats;
+use App\Models\CategoryEventRegistration;
 use Illuminate\Http\Request;
 
 class CategoryEventController extends Controller
@@ -35,6 +36,24 @@ class CategoryEventController extends Controller
           'allRegistrations',
           'drawFormats'
       ));
+  }
+  public function withdraw(CategoryEventRegistration $registration)
+  {
+    $user = auth()->user();
+
+    $check = $registration->canWithdraw($user);
+
+    if (!$check['ok']) {
+      return back()->withErrors($check['message']);
+    }
+
+    // For now, just mark withdrawn
+    $registration->update([
+      'status' => 'withdrawn',
+      'withdrawn_at' => now(),
+    ]);
+
+    return back()->with('success', 'Registration withdrawn.');
   }
 
 }

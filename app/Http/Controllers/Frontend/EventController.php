@@ -26,6 +26,9 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\ClothingOrder;
+use Illuminate\Support\Facades\Log;
+
+
 
 class EventController extends Controller
 {
@@ -99,8 +102,20 @@ class EventController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
+
+
+
+
   public function show($id)
   {
+    $t0 = microtime(true);
+
+    Log::debug('EVENT SHOW: start', [
+      'event_id' => $id,
+      'user_id' => Auth::id(),
+      'url' => request()->fullUrl(),
+    ]);
+
     // ---------------------------------------------------------
     // LOAD EVENT + RELATIONSHIPS
     // ---------------------------------------------------------
@@ -116,23 +131,50 @@ class EventController extends Controller
       'series',
     ])->findOrFail($id);
 
+    Log::debug('EVENT LOADED', [
+      'regions' => $event->regions->count(),
+      'categories' => $event->eventCategories->count(),
+      'draws' => $event->draws->count(),
+      'series_id' => $event->series_id,
+    ]);
+
     $regions = $event->regions;
     $user = Auth::user();
 
     // ---------------------------------------------------------
-    // DEADLINE LOGIC
+    // DEADLINE LOGIC (CORRECTED)
     // ---------------------------------------------------------
-    $days = $event->deadline - 1;
-    $dLineToClose = Carbon::parse($event->start_date)->subDays($days);
+    // Entry closes X days before start date
+    $entryCloseAt = Carbon::parse($event->start_date)
+      ->subDays($event->deadline - 1);
 
-    $signUp = (now()->lt($dLineToClose) && $event->signUp == 1)
+    // Withdrawal uses real column if present, otherwise fallback
+    $withdrawalCloseAt = $event->withdrawal_deadline
+      ? Carbon::parse($event->withdrawal_deadline)
+      : $entryCloseAt;
+
+    $signUp = (now()->lte($entryCloseAt) && $event->signUp == 1)
       ? 'open'
       : 'closed';
 
+    $canEnter = now()->lte($entryCloseAt);
+    $canWithdraw = now()->lte($withdrawalCloseAt);
+
     $sDate = $this->convertDate(Carbon::parse($event->start_date));
     $eDate = $this->convertDate(Carbon::parse($event->end_date));
-    $formatEntryLine = $this->convertDate($dLineToClose->copy()->subDay());
-    $formatWithdrawalLine = $this->convertDate($dLineToClose->copy()->subDay());
+
+    $formatEntryLine = $this->convertDate($entryCloseAt);
+    $formatWithdrawalLine = $this->convertDate($withdrawalCloseAt);
+
+    Log::debug('DEADLINES', [
+      'start_date' => $event->start_date,
+      'entry_close_at' => $entryCloseAt->toDateTimeString(),
+      'withdrawal_close' => $withdrawalCloseAt->toDateTimeString(),
+      'now' => now()->toDateTimeString(),
+      'can_enter' => $canEnter,
+      'can_withdraw' => $canWithdraw,
+      'signup' => $signUp,
+    ]);
 
     // ---------------------------------------------------------
     // STATIC TABLES (CACHED)
@@ -142,7 +184,14 @@ class EventController extends Controller
     $categories = cache()->remember('categories_all', 3600, fn() => Category::all());
     $clothingItems = cache()->remember('clothing_items', 3600, fn() => ClothingItemType::all());
 
-    // Clothing (example region – replace with config later)
+    Log::debug('CACHE COUNTS', [
+      'event_types' => $eventTypes->count(),
+      'users' => $users->count(),
+      'categories' => $categories->count(),
+      'clothing_items' => $clothingItems->count(),
+    ]);
+
+    // Clothing (example region – replace later)
     $clothings = ClothingItemType::where('region_id', 52)
       ->orderBy('ordering')
       ->get();
@@ -175,9 +224,22 @@ class EventController extends Controller
     $products = SellProduct::where('event_id', $event->id)->get();
 
     // ---------------------------------------------------------
-    // TEAM REGISTRATIONS (PAID)
+    // TEAM REGISTRATIONS (PAID) — FIXED (EVENT-SCOPED)
     // ---------------------------------------------------------
-    $teamRegs = TeamPlayer::where('pay_status', 1)->get();
+    $teamRegs = TeamPlayer::where('pay_status', 1)
+      ->whereHas('team.regions', function ($q) use ($event) {
+        $q->whereHas('events', function ($q2) use ($event) {
+          $q2->where('events.id', $event->id);
+        });
+      })
+      ->get();
+
+
+
+
+    Log::debug('TEAM REGISTRATIONS (PAID)', [
+      'count' => $teamRegs->count(),
+    ]);
 
     // ---------------------------------------------------------
     // SORT DRAWS
@@ -262,6 +324,14 @@ class EventController extends Controller
       ->all();
 
     // ---------------------------------------------------------
+    // FINAL TIMING
+    // ---------------------------------------------------------
+    Log::debug('EVENT SHOW: completed', [
+      'event_id' => $event->id,
+      'execution_ms' => round((microtime(true) - $t0) * 1000, 2),
+    ]);
+
+    // ---------------------------------------------------------
     // VIEW
     // ---------------------------------------------------------
     return view('frontend.event.show', compact(
@@ -288,7 +358,9 @@ class EventController extends Controller
       'formatEntryLine',
       'formatWithdrawalLine',
       'myClothingOrders',
-      'nomRegisteredLookup'
+      'nomRegisteredLookup',
+      'canEnter',
+      'canWithdraw'
     ));
   }
 

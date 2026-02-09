@@ -4,8 +4,8 @@
 
 @section('page-style')
 <style>
-  td.dt-toggle { cursor: pointer; text-align: center; user-select:none; }
-  tr.shown td.dt-toggle i { transform: rotate(90deg); }
+  td.dt-toggle { cursor:pointer; text-align:center; user-select:none; }
+  tr.shown td.dt-toggle i { transform:rotate(90deg); }
   td.dt-toggle i { font-size:1.1rem; color:#696cff; transition:.2s; }
 
   .child-table {
@@ -18,6 +18,10 @@
     text-transform:uppercase;
   }
   .child-table td { font-size:.8rem; }
+
+  tr.refund-row {
+    background:#fff4f4 !important;
+  }
 
   #transactionsTable td.text-end {
     font-variant-numeric: tabular-nums;
@@ -32,12 +36,14 @@
   <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h4 class="mb-0">Tournament Transactions</h4>
-      <a href="{{ route('transactions.pdf', $event) }}" class="btn btn-outline-primary">
-        Export Transactions
-      </a>
-      <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
-        <i class="ti ti-arrow-left me-1"></i>Back to Event
-      </a>
+      <div class="d-flex gap-2">
+        <a href="{{ route('transactions.pdf', $event) }}" class="btn btn-outline-primary btn-sm">
+          Export Transactions
+        </a>
+        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
+          <i class="ti ti-arrow-left me-1"></i>Back to Event
+        </a>
+      </div>
     </div>
   </div>
 
@@ -47,7 +53,7 @@
       <div class="card border-start border-primary">
         <div class="card-body">
           <small class="text-muted">Total Gross Income</small>
-          <h4>R {{ number_format($totals['gross'], 2) }}</h4>
+          <h4>R {{ number_format($totalGross, 2) }}</h4>
         </div>
       </div>
     </div>
@@ -56,7 +62,7 @@
       <div class="card border-start border-warning">
         <div class="card-body">
           <small class="text-muted">PayFast Fees</small>
-          <h4 class="text-warning">− R {{ number_format($totals['payfast_fees'], 2) }}</h4>
+          <h4 class="text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
         </div>
       </div>
     </div>
@@ -67,7 +73,7 @@
           <small class="text-muted">
             Cape Tennis Fees ({{ $totalEntries }} × R{{ $feePerEntry }})
           </small>
-          <h4 class="text-danger">− R {{ number_format($totals['site_fees'], 2) }}</h4>
+          <h4 class="text-danger">− R {{ number_format($totalCapeTennisFees, 2) }}</h4>
         </div>
       </div>
     </div>
@@ -76,7 +82,7 @@
       <div class="card border-start border-success">
         <div class="card-body">
           <small class="text-muted">Net Tournament Income</small>
-          <h4 class="text-success">R {{ number_format($totals['net'], 2) }}</h4>
+          <h4 class="text-success">R {{ number_format($netTournamentIncome, 2) }}</h4>
         </div>
       </div>
     </div>
@@ -84,18 +90,15 @@
 
   {{-- TABLE --}}
   <div class="card">
-    <div class="card-header">
-      <h5 class="mb-0">PayFast Transactions</h5>
-    </div>
-
     <div class="card-body p-0">
       <table id="transactionsTable" class="table table-striped mb-0">
         <thead class="table-light">
           <tr>
             <th style="width:40px;"></th>
             <th>Date</th>
-            <th>Reference</th>
-            <th>Payer</th>
+            <th>Type</th>
+            <th>Participant</th>
+            <th>Method</th>
             <th class="text-end">Gross</th>
             <th class="text-end">PayFast Fee</th>
             <th class="text-end">Cape Tennis Fee</th>
@@ -105,38 +108,107 @@
 
         <tbody>
         @foreach($transactions as $tx)
+
           @php
-            $items = optional($tx->order)->items ?? collect();
+            $payload = collect();
 
-            $payload = $items->map(fn($item) => [
-              'player'   => trim(($item->player->name ?? '').' '.($item->player->surname ?? '')),
-              'category' => optional($item->category_event->category)->name,
-              'price'    => number_format($item->item_price ?? 0, 2),
-            ]);
+            // PAYMENT CHILD DATA
+          // =========================
+// PAYMENT CHILD DATA
+// =========================
+if ($tx->type === 'payment' && isset($tx->order)) {
 
-            $payfastFee = abs($tx->amount_fee ?? 0);
+  $payload = collect([
+    [
+      'mode'          => 'payment_summary',
+      'pf_payment_id' => $tx->pf_payment_id ?? '—',
+      'entries'       => $tx->entryCount ?? 1,
+      'gross'         => number_format($tx->gross, 2),
+      'pf_fee'        => number_format(abs($tx->fee), 2),
+      'cape_fee'      => number_format(abs($tx->capeFee), 2),
+      'net'           => number_format($tx->net, 2),
+    ]
+  ])->merge(
+    collect($tx->order->items ?? [])->map(fn ($item) => [
+      'mode'     => 'payment_item',
+      'player'   => trim(($item->player->name ?? '') . ' ' . ($item->player->surname ?? '')),
+      'category' => optional($item->category_event->category)->name,
+      'price'    => number_format($item->item_price ?? 0, 2),
+    ])
+  );
+}
 
-            $siteFee = $isTeamEvent
-              ? $feePerEntry
-              : $items->count() * $feePerEntry;
 
-            $net = $tx->amount_gross - $payfastFee - $siteFee;
+            // REFUND CHILD DATA
+            if ($tx->type === 'refund') {
+              $payload = collect([[
+                'mode'           => 'refund',
+                'pf_payment_id'  => $tx->pf_payment_id ?? '—',
+                'paid_at'        => optional($tx->paid_at)->format('Y-m-d'),
+                'category'       => $tx->category ?? '—',
+                'gross_original' => number_format($tx->gross, 2),
+                'payfast_fee'    => number_format(abs($tx->fee), 2),
+                'cape_fee'       => number_format(abs($tx->capeFee), 2),
+                'refund_total'   => number_format(abs($tx->net), 2),
+              ]]);
+            }
           @endphp
 
-          <tr data-items='@json($payload)'>
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : '' }}"
+              @if($payload->count()) data-items='@json($payload)' @endif>
+
             <td class="dt-toggle">
-              @if($items->count())
+              @if($payload->count())
                 <i class="ti ti-chevron-right"></i>
               @endif
             </td>
-            <td>{{ $tx->created_at->format('Y-m-d') }}</td>
-            <td>{{ $tx->pf_payment_id }}</td>
-            <td>{{ optional($tx->user)->name ?? '—' }}</td>
-            <td class="text-end">R {{ number_format($tx->amount_gross, 2) }}</td>
-            <td class="text-end text-warning">− R {{ number_format($payfastFee, 2) }}</td>
-            <td class="text-end text-danger">− R {{ number_format($siteFee, 2) }}</td>
-            <td class="text-end text-success">R {{ number_format($net, 2) }}</td>
+
+            <td>{{ \Carbon\Carbon::parse($tx->created_at)->format('Y-m-d') }}</td>
+
+            <td>
+              <span class="badge {{ $tx->type === 'payment' ? 'bg-success' : 'bg-danger' }}">
+                {{ ucfirst($tx->type) }}
+              </span>
+            </td>
+
+            <td>{{ $tx->player ?? '—' }}</td>
+            <td>{{ $tx->method }}</td>
+
+            {{-- Gross --}}
+            <td class="text-end">
+              {{ $tx->type === 'refund' ? '− ' : '' }}
+              R {{ number_format($tx->gross, 2) }}
+            </td>
+
+            {{-- PayFast Fee --}}
+        <td class="text-end {{ $tx->fee >= 0 ? 'text-success' : 'text-warning' }}">
+  @if($tx->fee != 0)
+    {{ $tx->fee > 0 ? '+ ' : '− ' }}
+    R {{ number_format(abs($tx->fee), 2) }}
+  @else
+    —
+  @endif
+</td>
+
+
+            {{-- Cape Tennis Fee --}}
+      <td class="text-end {{ $tx->capeFee >= 0 ? 'text-success' : 'text-danger' }}">
+  @if($tx->capeFee != 0)
+    {{ $tx->capeFee > 0 ? '+ ' : '− ' }}
+    R {{ number_format(abs($tx->capeFee), 2) }}
+  @else
+    —
+  @endif
+</td>
+
+
+            {{-- Net --}}
+            <td class="text-end {{ $tx->net < 0 ? 'text-danger' : 'text-success' }}">
+              {{ $tx->net < 0 ? '− ' : '' }}
+              R {{ number_format(abs($tx->net), 2) }}
+            </td>
           </tr>
+
         @endforeach
         </tbody>
       </table>
@@ -148,7 +220,6 @@
 
 @section('page-script')
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
 <script>
 $(function () {
@@ -161,26 +232,83 @@ $(function () {
   function renderItems(items) {
     if (!items.length) return '';
 
-    let html = `
-      <table class="table table-sm mb-0 child-table">
-        <thead>
-          <tr>
-            ${@json($isTeamEvent) ? '<th>Category</th>' : '<th>Player</th><th>Category</th>'}
-            <th class="text-end">Item Price</th>
-          </tr>
-        </thead><tbody>`;
+    /* =========================
+       REFUND
+    ========================= */
+    if (items[0].mode === 'refund') {
+      const r = items[0];
+      return `
+        <table class="table table-sm mb-0 child-table">
+          <tbody>
+            <tr><th>PayFast ID</th><td><code>${r.pf_payment_id}</code></td></tr>
+            <tr><th>Original Payment Date</th><td>${r.paid_at}</td></tr>
+            <tr><th>Category</th><td>${r.category}</td></tr>
+            <tr><th>Gross Paid</th><td>R ${r.gross_original}</td></tr>
+            <tr><th>PayFast Fee (recovered)</th><td>R ${r.payfast_fee}</td></tr>
+            <tr><th>Cape Tennis Fee (recovered)</th><td>R ${r.cape_fee}</td></tr>
+            <tr class="fw-bold text-danger">
+              <th>Total Refund Impact</th>
+              <td>R ${r.refund_total}</td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+    }
 
-    items.forEach(i => {
-      html += `
-        <tr>
-          ${@json($isTeamEvent)
-            ? `<td>${i.category || '—'}</td>`
-            : `<td>${i.player || '—'}</td><td>${i.category || '—'}</td>`}
-          <td class="text-end">R ${i.price}</td>
-        </tr>`;
-    });
+    /* =========================
+       PAYMENT (SUMMARY + ITEMS)
+    ========================= */
+    if (items[0].mode === 'payment_summary') {
 
-    return html + '</tbody></table>';
+      const s = items[0];
+      const players = items.filter(i => i.mode === 'payment_item');
+
+      let html = `
+        <table class="table table-sm mb-0 child-table">
+          <tbody>
+            <tr><th>PayFast Reference</th><td><code>${s.pf_payment_id}</code></td></tr>
+            <tr><th>Entries</th><td>${s.entries}</td></tr>
+            <tr><th>Gross Paid</th><td>R ${s.gross}</td></tr>
+            <tr><th>PayFast Fee</th><td class="text-danger">− R ${s.pf_fee}</td></tr>
+            <tr><th>Cape Tennis Fee</th><td class="text-danger">− R ${s.cape_fee}</td></tr>
+            <tr class="fw-bold text-success">
+              <th>Net to Event</th>
+              <td>R ${s.net}</td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+
+      if (players.length) {
+        html += `
+          <table class="table table-sm mb-0 child-table mt-2">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Category</th>
+                <th class="text-end">Entry Price</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        players.forEach(p => {
+          html += `
+            <tr>
+              <td>${p.player || '—'}</td>
+              <td>${p.category || '—'}</td>
+              <td class="text-end">R ${p.price}</td>
+            </tr>
+          `;
+        });
+
+        html += `</tbody></table>`;
+      }
+
+      return html;
+    }
+
+    return '';
   }
 
   $('#transactionsTable tbody').on('click', 'td.dt-toggle', function () {
@@ -191,19 +319,11 @@ $(function () {
     if (!items.length) return;
 
     row.child.isShown()
-      ? row.child.hide()
-      : row.child(renderItems(items)).show();
-
-    tr.toggleClass('shown');
-  });
-
-  table.on('page.dt search.dt order.dt', function () {
-    table.rows('.shown').every(function () {
-      this.child.hide();
-      $(this.node()).removeClass('shown');
-    });
+      ? (row.child.hide(), tr.removeClass('shown'))
+      : (row.child(renderItems(items)).show(), tr.addClass('shown'));
   });
 
 });
 </script>
+
 @endsection

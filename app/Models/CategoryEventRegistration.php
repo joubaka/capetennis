@@ -4,66 +4,219 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class CategoryEventRegistration extends Model
 {
-    use HasFactory;
+  use HasFactory;
 
   protected $fillable = [
     'category_event_id',
     'registration_id',
+    'user_id',
+
+    // Payment
     'pf_transaction_id',
     'payment_status_id',
-    'user_id',
-  ];
-    //used
-  protected $appends = ['display_name'];   // 👈 ADD THIS
-    public function registration()
-    {
-        return $this->belongsTo(Registration::class, 'registration_id', 'id');
-    }
-    public function categoryEvent()
-    {
-        return $this->belongsTo(CategoryEvent::class, 'category_event_id', 'id');
-    }
- 
-    public function pf_transaction(){
-        return $this->belongsTo(Transaction::class,'pf_transaction_id','pf_payment_id');
-    }
- 
-   
 
-    //not used
+    // Withdrawal
+    'status',
+    'withdrawn_at',
+
+    // Refund
+    'refund_method',
+    'refund_status',
+    'refund_gross',
+    'refund_fee',
+    'refund_net',
+    'refunded_at',
+  ];
+
+  protected $appends = ['display_name', 'is_paid'];
+
+
+  // --------------------------------------------------
+  // RELATIONSHIPS
+  // --------------------------------------------------
+
+  public function registration()
+  {
+    return $this->belongsTo(Registration::class);
+  }
+
+  public function categoryEvent()
+  {
+    return $this->belongsTo(CategoryEvent::class);
+  }
+
+  public function user()
+  {
+    return $this->belongsTo(User::class);
+  }
+
   /**
-   * 👇 NEW: Players for this category_event_registration
-   * category_event_registrations.registration_id
-   *   -> player_registrations.registration_id
-   *      -> player_registrations.player_id
-   *         -> players.id
+   * Players via registration
    */
   public function players()
   {
     return $this->belongsToMany(
       Player::class,
-      'player_registrations',  // pivot table
-      'registration_id',       // foreignPivotKey on pivot (refers to this model's registration_id)
-      'player_id',             // relatedPivotKey on pivot
-      'registration_id',       // parent key on this model
-      'id'                     // related key on Player
+      'player_registrations',
+      'registration_id',
+      'player_id',
+      'registration_id',
+      'id'
     );
   }
+
+  /**
+   * PayFast transaction (single source of truth)
+   * Linked via pf_transaction_id → transactions.pf_payment_id
+   */
+  public function payfastTransaction()
+  {
+    return $this->belongsTo(
+      Transaction::class,
+      'pf_transaction_id', // local key on this model
+      'pf_payment_id'      // column on transactions table
+    )->where('transaction_type', 'Registration');
+  }
+
+  // --------------------------------------------------
+  // ACCESSORS
+  // --------------------------------------------------
+
   public function getDisplayNameAttribute()
   {
-    if ($this->players->count() === 1) {
+    $count = $this->players->count();
+
+    if ($count === 1) {
       return $this->players->first()->full_name;
     }
 
-    if ($this->players->count() === 2) {
+    if ($count === 2) {
       return $this->players[0]->full_name . ' / ' . $this->players[1]->full_name;
     }
 
     return 'TBD';
   }
+
+  // --------------------------------------------------
+  // PAYMENT STATE (SINGLE SOURCE OF TRUTH)
+  // --------------------------------------------------
+
+  /**
+   * Returns PayFast payment info for this registration.
+   * Always derived from the linked Transaction model.
+   */
+  public function paymentInfo(): array
+  {
+    $tx = $this->payfastTransaction;
+
+    if (!$tx || !$tx->order) {
+      return [];
+    }
+
+    // 🔹 How many registrations were paid in this transaction
+    $totalItems = max(
+      1,
+      $tx->order->items->count()
+    );
+
+    // 🔹 Per-registration allocation
+    $grossPerReg = (float) $tx->amount_gross / $totalItems;
+    $feePerReg = (float) $tx->amount_fee / $totalItems;
+    $netPerReg = $grossPerReg - $feePerReg;
+
+    return [
+      'transaction_id' => $tx->id,
+      'pf_payment_id' => $tx->pf_payment_id,
+
+      // ✅ PER REGISTRATION
+      'gross' => round($grossPerReg, 2),
+      'fee' => round($feePerReg, 2),
+      'net' => round($netPerReg, 2),
+
+      // meta
+      'paid_at' => $tx->created_at,
+      'payer_email' => $tx->email_address,
+      'payer_name' => trim($tx->name_first . ' ' . $tx->name_last),
+      'item_name' => $tx->item_name,
+
+      // debug / trace
+      'items_in_tx' => $totalItems,
+    ];
+  }
+
+  // --------------------------------------------------
+  // REFUND HELPERS
+  // --------------------------------------------------
+
+  public function isRefunded(): bool
+  {
+    return $this->refund_status === 'completed';
+  }
+
+  // --------------------------------------------------
+  // WITHDRAWAL RULES
+  // --------------------------------------------------
+
+  public function canWithdraw(User $user): array
+  {
+    // Ownership
+    if ($this->user_id !== $user->id) {
+      return [
+        'ok' => false,
+        'reason' => 'not_owner',
+        'refund_allowed' => false,
+        'message' => 'You do not own this registration.',
+      ];
+    }
+
+    // Already withdrawn
+    if (
+      in_array($this->status, [
+        'withdrawn',
+        'withdrawn_pending_refund',
+        'withdrawn_refunded',
+      ])
+    ) {
+      return [
+        'ok' => false,
+        'reason' => 'already_withdrawn',
+        'refund_allowed' => false,
+        'message' => 'This registration has already been withdrawn.',
+      ];
+    }
+
+    $event = $this->categoryEvent->event;
+
+    // 🔴 Deadline passed → withdraw OK, refund NOT OK
+    if (now()->gt($event->withdrawalCloseAt())) {
+      return [
+        'ok' => true,
+        'reason' => 'late_withdraw',
+        'refund_allowed' => false,
+        'message' => 'Withdrawn after deadline (no refund).',
+      ];
+    }
+
+    // Normal withdraw + refund
+    return [
+      'ok' => true,
+      'reason' => 'allowed',
+      'refund_allowed' => true,
+      'message' => 'Withdrawal allowed.',
+    ];
+  }
+  // --------------------------------------------------
+// ACCESSORS
+// --------------------------------------------------
+
+  public function getIsPaidAttribute(): bool
+  {
+    return !empty($this->pf_transaction_id)
+      || $this->payfastTransaction !== null;
+  }
+
 
 }

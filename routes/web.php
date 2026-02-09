@@ -50,6 +50,9 @@ use App\Http\Controllers\Backend\UserController;
 use App\Http\Controllers\Backend\VenueController;
 use App\Http\Controllers\Backend\WalletController;
 use App\Http\Controllers\Backend\WalletTransactionController;
+use App\Http\Controllers\Frontend\RegistrationWithdrawController;
+use App\Http\Controllers\Frontend\RegistrationRefundController;
+
 use App\Http\Controllers\Frontend\EventController;
 use App\Http\Controllers\Frontend\FrontFixtureController;
 use App\Http\Controllers\Frontend\HomeController;
@@ -128,6 +131,47 @@ Route::get('events/cancel', [EventController::class, 'cancel'])->name('event.can
 Route::get('events/ajax/userEvents/{id}', [EventController::class, 'userEventAjax'])->name('ajax.event.user');
 Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->name('ajax.series.all');
 Route::resource('events', EventController::class);
+Route::post(
+  '/registrations/{registration}/refund/process',
+  [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'process']
+)->middleware('auth')
+  ->name('registrations.refund.process');
+Route::post(
+  '/registrations/{registration}/withdraw',
+  [RegistrationWithdrawController::class, 'withdraw']
+)
+  ->middleware('auth')
+  ->name('registrations.withdraw');
+
+Route::get(
+  '/registrations/{registration}/refund/choose',
+  [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'choose']
+)->middleware('auth')
+  ->name('registrations.refund.choose');
+Route::post(
+  '/registrations/{registration}/refund/request',
+  [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'store']
+)->middleware('auth')
+  ->name('registrations.refund.request');
+// routes/web.php (admin section)
+
+Route::middleware(['auth', 'role:super-user'])
+  ->prefix('backend/refunds')
+  ->name('admin.refunds.')
+  ->group(function () {
+
+    Route::get('bank', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'index'
+    ])->name('bank.index');
+
+    Route::post('{registration}/complete', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'complete'
+    ])->name('bank.complete');
+  });
+
+
 
 Route::middleware([
   'auth:sanctum',

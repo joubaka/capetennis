@@ -194,4 +194,4 @@ $(document).on('click', '.deleteFileButton', function (e) {
     });
   });
 });
-
+</script>
