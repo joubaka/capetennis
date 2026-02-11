@@ -625,6 +625,7 @@ Route::get(
     [TeamController::class, 'replaceForm']
   )->name('backend.team.player.replace.form');
 
+
   Route::resource('team', TeamController::class);
 
   //fixtures

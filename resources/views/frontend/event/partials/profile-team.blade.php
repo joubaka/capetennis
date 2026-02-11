@@ -102,21 +102,4 @@
 
   </div>
 </div>
-<script>
-$(document).on('click', '.clothing-order', function (e) {
 
-  const isAuthenticated = {{ auth()->check() ? 'true' : 'false' }};
-
-  if (!isAuthenticated) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // redirect to login, then back here
-    const redirectUrl = encodeURIComponent(window.location.href);
-    window.location.href = "{{ route('login') }}?redirect=" + redirectUrl;
-    return false;
-  }
-
-  // authenticated → allow modal to open
-});
-</script>

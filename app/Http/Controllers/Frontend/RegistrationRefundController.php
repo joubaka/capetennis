@@ -64,18 +64,59 @@ class RegistrationRefundController extends Controller
       'method' => 'required|in:wallet,bank',
     ]);
 
-    $payment = $registration->paymentInfo();
-
     if (!$registration->is_paid) {
       return back()->withErrors('Not eligible for refund.');
     }
+
+    $payment = $registration->paymentInfo();
 
     $gross = $payment['gross'];
     $fee = round($gross * 0.10, 2);
     $net = round($gross - $fee, 2);
 
+    // -------------------------
+    // WALLET = IMMEDIATE
+    // -------------------------
+    if ($request->method === 'wallet') {
+
+      try {
+        app(WalletService::class)->credit(
+          $user->wallet,
+          (float) $net,
+          'event_registration_refund',
+          $registration->id,
+          [
+            'registration_id' => $registration->id,
+            'event_id' => $registration->categoryEvent->event_id,
+            'gross' => $gross,
+            'fee' => $fee,
+            'method' => 'wallet',
+          ]
+        );
+
+        $registration->update([
+          'refund_method' => 'wallet',
+          'refund_status' => 'completed',
+          'refund_gross' => $gross,
+          'refund_fee' => $fee,
+          'refund_net' => $net,
+          'refunded_at' => now(),
+        ]);
+
+        return redirect()
+          ->route('events.show', $registration->categoryEvent->event_id)
+          ->with('success', 'Refund credited to your wallet.');
+
+      } catch (DuplicateTransactionException $e) {
+        return back()->with('success', 'Refund already processed.');
+      }
+    }
+
+    // -------------------------
+    // BANK / PAYFAST = PENDING
+    // -------------------------
     $registration->update([
-      'refund_method' => $request->method,
+      'refund_method' => 'bank',
       'refund_status' => 'pending',
       'refund_gross' => $gross,
       'refund_fee' => $fee,
@@ -84,7 +125,7 @@ class RegistrationRefundController extends Controller
 
     return redirect()
       ->route('events.show', $registration->categoryEvent->event_id)
-      ->with('success', 'Refund option selected.');
+      ->with('success', 'Refund request submitted.');
   }
 
   /**

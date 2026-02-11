@@ -166,32 +166,62 @@
 
   </div>
 </div>
+<div class="modal fade" id="addFileModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Upload Document</h5>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"></button>
+      </div>
+
+      <form method="POST"
+            action="{{ route('file.store') }}"
+            enctype="multipart/form-data">
+
+        @csrf
+
+        <div class="modal-body">
+
+          {{-- REQUIRED BY CONTROLLER --}}
+          <input type="hidden" name="event_id" value="{{ $event->id }}">
+
+          <div class="mb-3">
+            <label class="form-label">Select file</label>
+            <input type="file"
+                   name="myFile"
+                   class="form-control"
+                   accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                   required>
+            <small class="text-muted">
+              Allowed: PDF, Word, Excel (max 5MB)
+            </small>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal">
+            Cancel
+          </button>
+          <button type="submit"
+                  class="btn btn-success">
+            Upload
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
 
 
 
-<script>
-$(document).on('click', '.deleteFileButton', function (e) {
-  e.preventDefault();
 
-  const fileId = $(this).data('id');
-  if (!fileId) return;
 
-  const url = "{{ route('file.destroy', '__ID__') }}".replace('__ID__', fileId);
-
-  Swal.fire({
-    title: 'Delete file?',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Delete'
-  }).then((result) => {
-    if (!result.isConfirmed) return;
-
-    $.post(url, {
-      _method: 'DELETE',
-      _token: $('meta[name="csrf-token"]').attr('content')
-    }).done(() => {
-      location.reload();
-    });
-  });
-});
-</script>

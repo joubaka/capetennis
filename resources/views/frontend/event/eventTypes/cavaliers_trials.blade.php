@@ -131,6 +131,11 @@ $nominations = EventNomination::all();
 
         @endAuth
         @endif
+      @php
+  $formatEntryDeadline = optional($event->entry_deadline)->format('d M Y');
+  $formatWithdrawalDeadline = optional($event->withdrawal_deadline)->format('d M Y');
+@endphp
+
         <!-- About User -->
         <div class="card mb-4">
             <div class="card-body">
@@ -138,8 +143,8 @@ $nominations = EventNomination::all();
                 <ul class="list-unstyled mb-4 mt-3">
                     <li class="d-flex align-items-center mb-3"><i class="fa-regular fa-calendar"></i><span class="fw-bold mx-2">Start Date:</span> <span class="badge bg-label-success">{{$sDate}}</span></li>
                     <li class="d-flex align-items-center mb-3"><i class="fa-regular fa-calendar"></i><span class="fw-bold mx-2">End Date:</span> <span class="badge bg-label-success">{{$eDate}}</span></li>
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-check"></i><span class="fw-bold mx-2">Entry deadline :</span> <span class="badge bg-label-warning">{{$formatDLine}}</span></li>
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-x"></i><span class="fw-bold mx-2">Withdrawal deadline :</span> <span class="badge bg-label-danger">{{$formatDLine}}</span></li>
+                    <li class="d-flex align-items-center mb-3"><i class="ti ti-check"></i><span class="fw-bold mx-2">Entry deadline :</span> <span class="badge bg-label-warning">{{ $formatEntryDeadline }}</span></li>
+                    <li class="d-flex align-items-center mb-3"><i class="ti ti-x"></i><span class="fw-bold mx-2">Withdrawal deadline :</span> <span class="badge bg-label-danger">{{ $formatWithdrawalDeadline }}</span></li>
 
 
 

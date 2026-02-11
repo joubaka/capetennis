@@ -13,7 +13,7 @@ use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\Team;
 use App\Models\TeamRegion;
-use App\Models\Venues;
+use App\Models\Venue;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -70,7 +70,7 @@ class HeadOfficeController extends Controller
 
     $data['categories'] = $categories;
     $data['event'] = $event;
-    $data['venues'] = Venues::all();
+    $data['venues'] = Venue::all();
     $data['teamDrawTypes'] = DrawType::where('type', 'team')
       ->orderBy('drawTypeName')
       ->get();

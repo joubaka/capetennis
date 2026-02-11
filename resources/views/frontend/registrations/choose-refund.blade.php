@@ -31,7 +31,49 @@
       </div>
 
       <hr>
+      <div class="accordion" id="refundPolicy">
+  <div class="accordion-item">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#refundPolicyBody">
+        Refund Policy & Fees
+      </button>
+    </h2>
 
+<hr>
+
+
+
+    <div id="refundPolicyBody"
+         class="accordion-collapse collapse show">
+      <div class="accordion-body small text-muted">
+
+        <p>
+          <strong>Refund fee:</strong>
+          A standard 10% refund fee applies to all refunds to cover payment gateway and administrative costs.
+        </p>
+
+        <p>
+          <strong>Wallet refunds</strong> are processed instantly and can be used for future entries.
+        </p>
+
+        <p>
+          <strong>Bank refunds</strong> are processed manually and may take 2-3 business days.
+        </p>
+
+        <p class="mb-0">
+          By proceeding, you confirm acceptance of this refund policy.
+        </p>
+
+      </div>
+    </div>
+
+</div>
+
+  </div>
+</div>
       {{-- WALLET REFUND --}}
       <form method="POST"
             action="{{ route('registrations.refund.request', $registration) }}"
@@ -68,6 +110,9 @@
           Bank refunds are processed manually and may take a few days.
         </small>
       </form>
+      <hr>
+
+
 
     </div>
   </div>

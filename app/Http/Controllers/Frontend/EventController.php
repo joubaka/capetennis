@@ -142,17 +142,42 @@ class EventController extends Controller
     $user = Auth::user();
 
     // ---------------------------------------------------------
-    // DEADLINE LOGIC (CORRECTED)
-    // ---------------------------------------------------------
-    // Entry closes X days before start date
-    $entryCloseAt = Carbon::parse($event->start_date)
-      ->subDays($event->deadline - 1);
+// DEADLINE LOGIC (INT DEADLINE = DAYS BEFORE START)
+// ---------------------------------------------------------
 
-    // Withdrawal uses real column if present, otherwise fallback
-    $withdrawalCloseAt = $event->withdrawal_deadline
-      ? Carbon::parse($event->withdrawal_deadline)
-      : $entryCloseAt;
+    $startDate = Carbon::parse($event->start_date)->startOfDay();
 
+    /**
+     * ENTRY DEADLINE
+     * deadline = number of days BEFORE start_date
+     * closes at end of day (23:59:59)
+     */
+    if (!empty($event->deadline) && is_numeric($event->deadline)) {
+
+      $entryCloseAt = $startDate
+        ->copy()
+        ->subDays((int) $event->deadline)
+        ->endOfDay();
+
+    } else {
+
+      // fallback: entries close on start date
+      $entryCloseAt = $startDate
+        ->copy()
+        ->endOfDay();
+    }
+
+    /**
+     * WITHDRAWAL DEADLINE
+     */
+    if (!empty($event->withdrawal_deadline)) {
+      $withdrawalCloseAt = Carbon::parse($event->withdrawal_deadline);
+    } else {
+      $withdrawalCloseAt = $entryCloseAt->copy();
+    }
+
+
+    // FLAGS
     $signUp = (now()->lte($entryCloseAt) && $event->signUp == 1)
       ? 'open'
       : 'closed';
@@ -160,20 +185,26 @@ class EventController extends Controller
     $canEnter = now()->lte($entryCloseAt);
     $canWithdraw = now()->lte($withdrawalCloseAt);
 
-    $sDate = $this->convertDate(Carbon::parse($event->start_date));
+    // FORMATTED OUTPUT
+    $sDate = $this->convertDate($startDate);
     $eDate = $this->convertDate(Carbon::parse($event->end_date));
 
     $formatEntryLine = $this->convertDate($entryCloseAt);
     $formatWithdrawalLine = $this->convertDate($withdrawalCloseAt);
 
-    Log::debug('DEADLINES', [
-      'start_date' => $event->start_date,
+    Log::debug('DEADLINES (FINAL)', [
+      'start_date' => $startDate->toDateTimeString(),
       'entry_close_at' => $entryCloseAt->toDateTimeString(),
-      'withdrawal_close' => $withdrawalCloseAt->toDateTimeString(),
+      'withdrawal_close_at' => $withdrawalCloseAt->toDateTimeString(),
       'now' => now()->toDateTimeString(),
       'can_enter' => $canEnter,
       'can_withdraw' => $canWithdraw,
       'signup' => $signUp,
+      'source' => [
+        'entry_deadline' => $event->entry_deadline,
+        'withdrawal_deadline' => $event->withdrawal_deadline,
+        'numeric_deadline' => $event->deadline,
+      ],
     ]);
 
     // ---------------------------------------------------------
@@ -184,14 +215,7 @@ class EventController extends Controller
     $categories = cache()->remember('categories_all', 3600, fn() => Category::all());
     $clothingItems = cache()->remember('clothing_items', 3600, fn() => ClothingItemType::all());
 
-    Log::debug('CACHE COUNTS', [
-      'event_types' => $eventTypes->count(),
-      'users' => $users->count(),
-      'categories' => $categories->count(),
-      'clothing_items' => $clothingItems->count(),
-    ]);
-
-    // Clothing (example region – replace later)
+    // Clothing (example region)
     $clothings = ClothingItemType::where('region_id', 52)
       ->orderBy('ordering')
       ->get();
@@ -224,7 +248,7 @@ class EventController extends Controller
     $products = SellProduct::where('event_id', $event->id)->get();
 
     // ---------------------------------------------------------
-    // TEAM REGISTRATIONS (PAID) — FIXED (EVENT-SCOPED)
+    // TEAM REGISTRATIONS (PAID)
     // ---------------------------------------------------------
     $teamRegs = TeamPlayer::where('pay_status', 1)
       ->whereHas('team.regions', function ($q) use ($event) {
@@ -233,13 +257,6 @@ class EventController extends Controller
         });
       })
       ->get();
-
-
-
-
-    Log::debug('TEAM REGISTRATIONS (PAID)', [
-      'count' => $teamRegs->count(),
-    ]);
 
     // ---------------------------------------------------------
     // SORT DRAWS
@@ -310,7 +327,7 @@ class EventController extends Controller
     }
 
     // ---------------------------------------------------------
-    // NOMINATION LOOKUP (FAST)
+    // NOMINATION LOOKUP
     // ---------------------------------------------------------
     $nomRegisteredLookup = $event->eventCategories
       ->flatMap(
@@ -323,9 +340,6 @@ class EventController extends Controller
       ->flip()
       ->all();
 
-    // ---------------------------------------------------------
-    // FINAL TIMING
-    // ---------------------------------------------------------
     Log::debug('EVENT SHOW: completed', [
       'event_id' => $event->id,
       'execution_ms' => round((microtime(true) - $t0) * 1000, 2),
@@ -363,6 +377,7 @@ class EventController extends Controller
       'canWithdraw'
     ));
   }
+
 
 
   /**

@@ -1,17 +1,12 @@
 /**
- *  Form Wizard
+ * Form Wizard (Checkout)
  */
-
 'use strict';
-
-
 
 // rateyo (jquery)
 $(function () {
   var readOnlyRating = $('.read-only-ratings');
-
-  // Star rating
-  if (readOnlyRating) {
+  if (readOnlyRating.length) {
     readOnlyRating.rateYo({
       rtl: isRtl,
       rating: 4,
@@ -21,296 +16,206 @@ $(function () {
 });
 
 (function () {
-  // Init custom option check
-  window.Helpers.initCustomOptionCheck();
 
-  // libs
-  var url = APP_URL + '/reg';
-
-  console.log(url)
-
-  // Wizard Checkout
-  // --------------------------------------------------------------------
-
+  // ===============================
+  // INIT STEPPER
+  // ===============================
   const wizardCheckout = document.querySelector('#wizard-checkout');
-  if (typeof wizardCheckout !== undefined && wizardCheckout !== null) {
-    // Wizard form
-    const wizardCheckoutForm = wizardCheckout.querySelector('#wizard-checkout-form');
-    // Wizard steps
-    const wizardCheckoutFormStep1 = wizardCheckoutForm.querySelector('#checkout-cart');
-    const wizardCheckoutFormStep2 = wizardCheckoutForm.querySelector('#checkout-address');
-    const wizardCheckoutFormStep3 = wizardCheckoutForm.querySelector('#checkout-payment');
-    const wizardCheckoutFormStep4 = wizardCheckoutForm.querySelector('#checkout-confirmation');
-    // Wizard next prev button
-    const wizardCheckoutNext = [].slice.call(wizardCheckoutForm.querySelectorAll('.btn-next'));
-    const wizardCheckoutPrev = [].slice.call(wizardCheckoutForm.querySelectorAll('.btn-prev'));
+  if (!wizardCheckout) return;
 
-    let validationStepper = new Stepper(wizardCheckout, {
-      linear: false
-    });
+  const wizardCheckoutNext = wizardCheckout.querySelectorAll('.btn-next');
 
-    // Cart
-    const FormValidation1 = FormValidation.formValidation(wizardCheckoutFormStep1, {
-      fields: {
-        // * Validate the fields here based on your requirements
-      },
+  const stepper = new Stepper(wizardCheckout, {
+    linear: false,
+    animation: true
+  });
 
-      plugins: {
-        trigger: new FormValidation.plugins.Trigger(),
-        bootstrap5: new FormValidation.plugins.Bootstrap5({
-          // Use this for enabling/changing valid/invalid class
-          // eleInvalidClass: '',
-          eleValidClass: ''
-          // rowSelector: '.col-lg-6'
-        }),
-        autoFocus: new FormValidation.plugins.AutoFocus(),
-        submitButton: new FormValidation.plugins.SubmitButton()
+  // Always allow next
+  wizardCheckoutNext.forEach(btn => {
+    btn.addEventListener('click', () => stepper.next());
+  });
+
+  // ===============================
+  // ADD PLAYER ROW (FIXED)
+  // ===============================
+  $('#addPlayer').on('click', function () {
+
+    const $firstRow = $('.playerRow').first();
+
+    // 🔥 DESTROY select2 before cloning
+    $firstRow.find('.select2player').each(function () {
+      if ($(this).data('select2')) {
+        $(this).select2('destroy');
       }
-    }).on('core.form.valid', function () {
-      // Jump to the next step when all fields in the current step are valid
-      validationStepper.next();
     });
 
-    // Address
-    const FormValidation2 = FormValidation.formValidation(wizardCheckoutFormStep2, {
-      fields: {
-        // * Validate the fields here based on your requirements
-      },
-      plugins: {
-        trigger: new FormValidation.plugins.Trigger(),
-        bootstrap5: new FormValidation.plugins.Bootstrap5({
-          // Use this for enabling/changing valid/invalid class
-          // eleInvalidClass: '',
-          eleValidClass: ''
-          // rowSelector: '.col-lg-6'
-        }),
-        autoFocus: new FormValidation.plugins.AutoFocus(),
-        submitButton: new FormValidation.plugins.SubmitButton()
+    $firstRow.find('.select2category').each(function () {
+      if ($(this).data('select2')) {
+        $(this).select2('destroy');
       }
-    }).on('core.form.valid', function () {
-      // Jump to the next step when all fields in the current step are valid
-      validationStepper.next();
     });
 
-    // Payment
-    const FormValidation3 = FormValidation.formValidation(wizardCheckoutFormStep3, {
-      fields: {
-        // * Validate the fields here based on your requirements
+    // Clone clean DOM
+    const $clone = $firstRow.clone();
+
+    // Re-init original row
+    initSelect2();
+
+    const num = $('.playerRow').length + 1;
+    $clone.find('.playerNr').text('Player ' + num);
+
+    // Reset cloned selects
+    $clone.find('select').val('0');
+
+    $clone.insertBefore('#tool-placeholder');
+
+    // Init select2 on clone
+    initSelect2();
+  });
+
+  // ===============================
+  // UPDATE CART ON CHANGE
+  // ===============================
+  $(document).on('change', '.select2Basic', function () {
+    appendPlayers($('.playerRow'));
+  });
+
+  // ===============================
+  // ADD PLAYER MODAL HANDLING
+  // ===============================
+  window.addPlayerTargetIndex = null;
+
+  $(document).on(
+    'click',
+    '.select2-results__option .btn[data-bs-target="#addPlayerModal"]',
+    function () {
+      window.addPlayerTargetIndex = $(this).data('index');
+    }
+  );
+
+  $('#createPlayerButton').on('click', function () {
+    let formData = $('.formPlayer').serialize();
+
+    $.ajax({
+      url: APP_URL + '/backend/player/store',
+      type: 'POST',
+      data: formData,
+      success: function (res) {
+        const fullName = res.name + ' ' + res.surname;
+        const index = window.addPlayerTargetIndex ?? $('.select2player').length - 1;
+
+        const $select = $('.select2player').eq(index);
+        const option = new Option(fullName, res.id, true, true);
+        $(option).attr('data-name', fullName);
+
+        $select.append(option).trigger('change');
+
+        $('#addPlayerModal').modal('hide');
+        $('.formPlayer')[0].reset();
+
+        toastr.success(fullName + ' added');
       },
-      plugins: {
-        trigger: new FormValidation.plugins.Trigger(),
-        bootstrap5: new FormValidation.plugins.Bootstrap5({
-          // Use this for enabling/changing valid/invalid class
-          // eleInvalidClass: '',
-          eleValidClass: ''
-          // rowSelector: '.col-lg-6'
-        }),
-        autoFocus: new FormValidation.plugins.AutoFocus(),
-        submitButton: new FormValidation.plugins.SubmitButton()
+      error: function () {
+        toastr.error('Failed to add player');
       }
-    }).on('core.form.valid', function () {
-      validationStepper.next();
     });
+  });
 
-    // Confirmation
-    const FormValidation4 = FormValidation.formValidation(wizardCheckoutFormStep4, {
-      fields: {
-        // * Validate the fields here based on your requirements
-      },
-      plugins: {
-        trigger: new FormValidation.plugins.Trigger(),
-        bootstrap5: new FormValidation.plugins.Bootstrap5({
-          // Use this for enabling/changing valid/invalid class
-          // eleInvalidClass: '',
-          eleValidClass: '',
-          rowSelector: '.col-md-12'
-        }),
-        autoFocus: new FormValidation.plugins.AutoFocus(),
-        submitButton: new FormValidation.plugins.SubmitButton()
+  // ===============================
+  // SELECT2 INIT (SAFE)
+  // ===============================
+  function initSelect2() {
+
+    $('.select2category').each(function () {
+      const $this = $(this);
+
+      if ($this.data('select2')) return;
+
+      if (!$this.parent().hasClass('position-relative')) {
+        $this.wrap('<div class="position-relative"></div>');
       }
-    }).on('core.form.valid', function () {
-      // You can submit the form
-      // wizardCheckoutForm.submit()
-      // or send the form data to server via an Ajax request
-      // To make the demo simple, I just placed an alert
-      alert('Submitted..!!');
-    });
 
-    wizardCheckoutNext.forEach(item => {
-      item.addEventListener('click', event => {
-        // When click the Next button, we will validate the current step
-        switch (validationStepper._currentIndex) {
-          case 0:
-            FormValidation1.validate();
-            break;
-
-          case 1:
-            FormValidation2.validate();
-            break;
-
-          case 2:
-            FormValidation3.validate();
-            break;
-
-          case 3:
-            FormValidation4.validate();
-            break;
-
-          default:
-            break;
-        }
+      $this.select2({
+        dropdownParent: $this.parent(),
+        placeholder: 'Select category'
       });
     });
 
-    wizardCheckoutPrev.forEach(item => {
-      item.addEventListener('click', event => {
-        switch (validationStepper._currentIndex) {
-          case 3:
-            validationStepper.previous();
-            break;
+    $('.select2player').each(function (index) {
+      const $this = $(this);
 
-          case 2:
-            validationStepper.previous();
-            break;
+      if ($this.data('select2')) return;
 
-          case 1:
-            validationStepper.previous();
-            break;
+      if (!$this.parent().hasClass('position-relative')) {
+        $this.wrap('<div class="position-relative"></div>');
+      }
 
-          case 0:
-
-          default:
-            break;
+      $this.select2({
+        dropdownParent: $this.parent(),
+        placeholder: 'Select player',
+        language: {
+          noResults: function () {
+            return $(
+              "<button class='btn btn-sm btn-primary' data-index='" +
+              index +
+              "' data-bs-toggle='modal' data-bs-target='#addPlayerModal'>Add Player</button>"
+            );
+          }
         }
       });
     });
   }
-  $('#addPlayer').on('click', function () {
-    var row = '';
-    var select2player = $('.select2player');
-    var select = $('.select2Basic').select2('destroy');
-    row = $('.playerRow').first().clone();
 
-    var numPlayers = ($('.numPlayers').length) + 1;
-    console.log(row.find('.select2player').first().data('select2Name', 'player' + (numPlayers.length)));
-    console.log(row.find('.select2category').last().data('select2Name', 'category' + (numPlayers.length)));
-
-
-    row.insertBefore("#tool-placeholder");
-
-
-
-    row.find('.playerNr').text(('Player ' + numPlayers));
-
-    if ($('.select2category').length) {
-      $('.select2category').each(function () {
-        var $this = $(this);
-        $this.wrap('<div class="position-relative"></div>').select2({
-          placeholder: 'Select value',
-          dropdownParent: $this.parent(),
-          searchInputPlaceholder: 'Type here to search..',
-
-
-        });
-      });
-    }
-    if ($('.select2gender').length) {
-      $('.select2gender').each(function () {
-        var $this = $(this);
-        $this.wrap('<div class="position-relative"></div>').select2({
-          placeholder: 'Select value',
-          dropdownParent: $this.parent(),
-          searchInputPlaceholder: 'Type here to search..',
-
-
-        });
-      });
-    }
-    if ($('.select2player').length) {
-      $('.select2player').each(function (key, value) {
-        var $this = $(this);
-        $this.wrap('<div class="position-relative"></div>').select2({
-          placeholder: 'Select value',
-          dropdownParent: $this.parent(),
-          searchInputPlaceholder: 'Type here to search..',
-          language: {
-            noResults: function () {
-              return $("<div class='btn btn-primary btn-sm' data-index='" + key + "' data-bs-toggle='modal' data-bs-target='#addPlayerModal'>Add New Player</div>");
-            }
-          }
-
-        });
-      });
-    }
-    $('.select2Basic').on('change', function () {
-      $('.playersReciept').empty();
-      var ul = $('#myUl');
-      var rows = $('.playerRow');
-      var listClone = $('.recieptList').clone();
-      var ul = $('#myUl').empty();
-      appendPlayers(rows, ul, listClone)
-
-
-    });
-  });
-
-  $('.select2Basic').on('change', function () {
-    $('.playersReciept').empty();
-
-    var ul = $('#myUl');
-    var rows = $('.playerRow');
-    var listClone = $('.recieptList').clone();
-    var ul = $('#myUl').empty();
-    appendPlayers(rows, ul, listClone);
-
-
-
-
-  });
-
+  initSelect2();
 
 })();
-function appendPlayers(rows, ul, listClone) {
-  $('.playersCart').empty();
-  var myname;
-  var orderTotal = 0;
 
-  rows.each(function (k, v) {
-   
-    var cart = $('.playersCart')
-    var nameValue = $(v).find('.select2Basic').first().val();
-    var catValue = $(v).find('.select2Basic').last().val();
-    var category = $(v).find('.select2Basic').last().find(":selected").data("name");
-    myname = $(v).find('.select2Basic').first().find(":selected").data("name");
-    var itemPrice = $(v).find('.select2Basic').last().find(":selected").data("price")
-    var eventPrice = $('#eventPrice').val();
-   
-    var price;
-    
-    if (itemPrice == 0) {
-      price = eventPrice;
-    } else {
-      price = itemPrice;
+// ===============================
+// BUILD CART + TOTALS
+// ===============================
+function appendPlayers(rows) {
+
+  $('.playersCart').empty();
+  $('#myUl').empty();
+
+  let total = 0;
+
+  rows.each(function () {
+
+    const $playerSelect = $(this).find('.select2player');
+    const $categorySelect = $(this).find('.select2category');
+
+    const playerId = $playerSelect.val();
+    const categoryId = $categorySelect.val();
+
+    // ⛔ Skip empty rows
+    if (!playerId || playerId === '0' || !categoryId || categoryId === '0') {
+      return;
     }
 
-    var dats = '<div>' + myname + ' - ' + category + '</div>';
-    $(cart).append(dats);
-    // ul.append(clone.find('.itemName').html(myname + ' - ' + category));
-   
-    $('#myUl').append('<li class="list-group-item p-4 recieptList">' + myname + ' - ' + category + ' @ R' + price + '</li>');
-    orderTotal += parseInt(price);
+    const playerName = $playerSelect.find(':selected').data('name');
+    const categoryName = $categorySelect.find(':selected').data('name');
 
+    const price = parseFloat(
+      $categorySelect.find(':selected').data('price') ||
+      $('#eventPrice').val()
+    );
 
+    $('.playersCart').append(
+      `<div>${playerName} – ${categoryName}</div>`
+    );
+
+    $('#myUl').append(`
+      <li class="list-group-item d-flex justify-content-between">
+        <span>${playerName} – ${categoryName}</span>
+        <strong>R${price.toFixed(2)}</strong>
+      </li>
+    `);
+
+    total += price;
   });
-  $('.orderTotal').html('R' + orderTotal);
-  console.log('ot',orderTotal);
-  $('#amount').val(orderTotal+'.00');
-  var event = $('#myevent').val();
-  
-  $('#item_name').val(event);
+
+  $('.orderTotal').text('R' + total.toFixed(2));
+  $('#amount').val(total.toFixed(2));
+  $('#item_name').val($('#myevent').val());
 }
-
-
-
-
-

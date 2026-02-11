@@ -31,11 +31,19 @@ class RegistrationWithdrawController extends Controller
     }
 
     // -------------------------
-    // WITHDRAW
+    // WITHDRAW (ALWAYS)
     // -------------------------
     $registration->update([
       'status' => 'withdrawn',
       'withdrawn_at' => now(),
+
+      // 🔒 DEFAULT FINANCIAL STATE
+      'refund_status' => 'not_refunded',
+      'refund_method' => null,
+      'refund_gross' => 0,
+      'refund_fee' => 0,
+      'refund_net' => 0,
+      'refunded_at' => null,
     ]);
 
     // -------------------------
@@ -58,4 +66,6 @@ class RegistrationWithdrawController extends Controller
       : 'Registration withdrawn (no refund – deadline passed).'
     );
   }
+
+
 }

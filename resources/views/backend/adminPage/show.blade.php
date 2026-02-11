@@ -44,26 +44,6 @@
   <script src="{{ asset('assets/vendor/libs/flatpickr/flatpickr.js') }}"></script>
 @endsection
 
-{{-- Page JS --}}
-@section('page-script')
-
-  {{-- Cache-bust JS files automatically when they change --}}
-  <script src="{{ asset('assets/js/adminShow.js') }}?v={{ @filemtime(public_path('assets/js/adminShow.js')) }}"></script>
-  <script src="{{ asset('assets/js/draw.js') }}?v={{ @filemtime(public_path('assets/js/draw.js')) }}"></script>
-  <script src="{{ asset('assets/js/app-email.js') }}?v={{ @filemtime(public_path('assets/js/app-email.js')) }}"></script>
-  <script src="{{ asset('assets/js/ui-toasts.js') }}?v={{ @filemtime(public_path('assets/js/ui-toasts.js')) }}"></script>
-  <script src="{{ asset('assets/js/extended-ui-drag-and-drop.js') }}?v={{ @filemtime(public_path('assets/js/extended-ui-drag-and-drop.js')) }}"></script>
-
-  {{-- Vendor (if you need to bust it too, same approach) --}}
-  <script src="{{ asset('assets/vendor/js/menu.js') }}?v={{ @filemtime(public_path('assets/vendor/js/menu.js')) }}"></script>
-
-  @can('admin')
-    <script>window.isAdmin = true;</script>
-  @else
-    <script>window.isAdmin = false;</script>
-  @endcan
-
-@endsection
 
 
 @section('content')
@@ -109,16 +89,33 @@
   @include('_partials._modals.modal-edit-team-category')
   @include('_partials._modals.add-category-modal')
 
-
-<script>// When clicking the Change button
-$(document).on('click', '.edit-noprofile-btn', function () {
-  $('#noProfileId').val($(this).data('id'));
-  $('#noProfileName').val($(this).data('name'));
-  $('#noProfileSurname').val($(this).data('surname'));
-
-  $('#editNoProfileModal').modal('show');
-});
-
-
-</script>
 @endsection
+@section('page-script')
+
+{{-- Cache-bust JS --}}
+<script src="{{ asset(mix('js/regions.js')) }}"></script>
+<script src="{{ asset(mix('js/players.js')) }}"></script>
+<script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
+<script src="{{ asset('assets/js/draw.js') }}?v={{ filemtime(public_path('assets/js/draw.js')) }}"></script>
+<script src="{{ asset('assets/js/app-email.js') }}?v={{ filemtime(public_path('assets/js/app-email.js')) }}"></script>
+<script src="{{ asset('assets/js/ui-toasts.js') }}?v={{ filemtime(public_path('assets/js/ui-toasts.js')) }}"></script>
+<script src="{{ asset('assets/js/extended-ui-drag-and-drop.js') }}?v={{ filemtime(public_path('assets/js/extended-ui-drag-and-drop.js')) }}"></script>
+<script src="{{ asset('assets/vendor/js/menu.js') }}?v={{ filemtime(public_path('assets/vendor/js/menu.js')) }}"></script>
+
+@can('admin')
+  <script>window.isAdmin = true;</script>
+@else
+  <script>window.isAdmin = false;</script>
+@endcan
+<script>
+window.routes = {
+    changePayStatus: "{{ route('team.change.pay.status') }}",
+    replacePlayer: "{{ route('backend.team.replace.player') }}",
+  replaceForm: "{{ route('backend.team.player.replace.form') }}",
+ addRegionToEvent: "{{ route('eventRegion.store') }}"
+};
+</script>
+
+
+@endsection
+

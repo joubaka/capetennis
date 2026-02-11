@@ -83,6 +83,7 @@
             <label class="form-label fw-bold">Subject</label>
             <input type="text" class="form-control" id="emailSubject" name="emailSubject" required>
           </div>
+          <input type="hidden" name="to" id="emailToHidden" value="">
 
           {{-- ✅ Message (Quill) --}}
           <div class="mb-3">

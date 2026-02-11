@@ -33,6 +33,7 @@ $configData = Helper::appClasses();
       @endphp
 
       {{-- main menu --}}
+
       @can('super-user')
       @if($menu->menuLevel == 'super' || $menu->menuLevel == 'all')
       <li class="menu-item {{$activeClass}}">

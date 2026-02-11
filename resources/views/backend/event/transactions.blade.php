@@ -26,6 +26,16 @@
   #transactionsTable td.text-end {
     font-variant-numeric: tabular-nums;
   }
+  #transactionsTable {
+    table-layout: fixed;
+    width: 100%;
+  }
+
+    #transactionsTable th,
+    #transactionsTable td {
+      white-space: nowrap;
+    }
+
 </style>
 @endsection
 
@@ -92,19 +102,21 @@
   <div class="card">
     <div class="card-body p-0">
       <table id="transactionsTable" class="table table-striped mb-0">
-        <thead class="table-light">
-          <tr>
-            <th style="width:40px;"></th>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Participant</th>
-            <th>Method</th>
-            <th class="text-end">Gross</th>
-            <th class="text-end">PayFast Fee</th>
-            <th class="text-end">Cape Tennis Fee</th>
-            <th class="text-end">Net to Event</th>
-          </tr>
-        </thead>
+       <thead class="table-light">
+  <tr>
+    <th style="width:32px;"></th>
+    <th style="width:90px;">Date</th>
+    <th style="width:80px;">Type</th>
+     <th style="width:180px;">Participant</th>
+    <th style="width:90px;">Method</th>
+
+    <th style="width:80px;" class="text-end">Gross</th>
+<th style="width:100px;" class="text-end">PayFast Fee</th>
+<th style="width:110px;" class="text-end">Cape Tennis Fee</th>
+<th style="width:110px;" class="text-end">Net to Event</th>
+  </tr>
+</thead>
+
 
         <tbody>
         @foreach($transactions as $tx)
@@ -225,9 +237,13 @@ if ($tx->type === 'payment' && isset($tx->order)) {
 $(function () {
 
   const table = $('#transactionsTable').DataTable({
-    order: [[1, 'desc']],
-    columnDefs: [{ orderable: false, targets: 0 }]
-  });
+  order: [[1, 'desc']],
+  columnDefs: [
+    { orderable: false, targets: 0 }
+  ],
+  autoWidth: false   // ← THIS IS THE MISSING PIECE
+});
+
 
   function renderItems(items) {
     if (!items.length) return '';

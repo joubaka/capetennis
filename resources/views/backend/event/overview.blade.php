@@ -10,11 +10,11 @@
   @include('backend.event.partials.header', ['event' => $event])
 
   @if($event->isIndividual())
-    @include('backend.event.partials.individual')
+    @include('backend.event.individual.index')
   @elseif($event->isTeam())
-    @include('backend.event.partials.team')
+    @include('backend.event.team.index')
   @elseif($event->isCamp())
-    @include('backend.event.partials.camp')
+    @include('backend.event.camp.index')
   @else
     <div class="alert alert-warning">Unknown event type</div>
   @endif

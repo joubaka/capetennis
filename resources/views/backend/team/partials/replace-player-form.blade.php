@@ -30,34 +30,4 @@
   </div>
 </form>
 
-<script>
-(function () {
 
-  const $modal  = $('#insert-player-team-modal');
-  const $select = $modal.find('.select2ReplacePlayer');
-
-  // 🔥 CRITICAL: destroy if already initialised
-  if ($select.hasClass('select2-hidden-accessible')) {
-    $select.select2('destroy');
-  }
-
-  // ✅ Clean re-init
-  $select.select2({
-    dropdownParent: $modal,
-    width: '100%',
-    placeholder: 'Search player...',
-    allowClear: true,
-    matcher: function (params, data) {
-      if (!params.term) return data;
-      if (!data.text) return null;
-
-      return data.text
-        .toLowerCase()
-        .includes(params.term.toLowerCase())
-        ? data
-        : null;
-    }
-  });
-
-})();
-</script>

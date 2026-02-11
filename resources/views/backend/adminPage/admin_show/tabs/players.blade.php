@@ -41,8 +41,16 @@
            id="players-region-{{ $region->id }}">
 
         <div class="card mt-3">
-          <div class="card-header">
+
+          {{-- ✅ REGION HEADER (BUTTON IS NOW CORRECTLY SCOPED) --}}
+          <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="m-0">Players — {{ $region->region_name }}</h5>
+
+            <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
+                    data-regionid="{{ $region->id }}"
+                    data-regionname="{{ $region->region_name }}">
+              <i class="ti ti-mail"></i> Email All Players ins Region
+            </button>
           </div>
 
           <div class="card-body">
@@ -142,8 +150,13 @@
                               </button>
 
                               <div class="dropdown-menu">
+                                <a class="dropdown-item replacePlayerBtn"
+                                   data-slotid="{{ $slot->id }}"
+                                   data-teamid="{{ $team->id }}"
+                                   data-playername="{{ $name }}">
+                                  <i class="ti ti-refresh me-1"></i> Replace Player
+                                </a>
 
-                                {{-- EMAIL PLAYER (only if profile exists) --}}
                                 @if($player)
                                   <a class="dropdown-item emailPlayer"
                                      data-playerid="{{ $player->id }}"
@@ -165,7 +178,6 @@
                                    data-pivot="{{ $slot->id }}">
                                   <i class="ti ti-cash me-1"></i> Refund to Wallet
                                 </a>
-
                               </div>
                             </div>
                           </td>
@@ -187,33 +199,42 @@
         </div>
       </div>
     @endforeach
+
   </div>
 </div>
-
-@include('_partials._modals.modal-add-send-email')
-
-<div class="modal fade" id="edit-roster-modal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered modal-scrollable">
+<div class="modal fade" id="replaceRosterModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Edit Team Roster</h5>
+        <h5 class="modal-title" id="replaceRosterModalLabel">
+          Edit Roster
+        </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
-      <div class="modal-body">
-        <div id="rosterEditor" class="min-vh-25">
-          Loading…
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">
-          Cancel
-        </button>
-        <button class="btn btn-primary" id="saveRosterBtn">
-          Save Roster
-        </button>
+      <div class="modal-body" id="replaceRosterModalBody">
+        {{-- AJAX content --}}
       </div>
     </div>
   </div>
 </div>
+
+
+
+
+
+<div class="modal fade" id="replacePlayerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Replace Player</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="replacePlayerModalBody">
+        {{-- AJAX loads here --}}
+      </div>
+    </div>
+  </div>
+</div>
+
+

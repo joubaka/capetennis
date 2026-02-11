@@ -31,7 +31,7 @@ class EventEntryController extends Controller
       ])
       ->get();
 
-    return view('backend.event.entries', compact('event', 'categoryEvents'));
+    return view('backend.event.individual.entries', compact('event', 'categoryEvents'));
   }
 
   /**

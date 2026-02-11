@@ -1,4 +1,7 @@
-import * as alpine from 'alpinejs/dist/cdn';
+import $ from 'jquery';
+window.$ = window.jQuery = $;
 
+import Alpine from 'alpinejs';
+window.Alpine = Alpine;
 
-export { alpine };
+Alpine.start();
