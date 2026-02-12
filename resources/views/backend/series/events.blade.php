@@ -7,8 +7,14 @@
 ========================= --}}
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
-<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.min.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
 @endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+@endsection
+
 
 
 
@@ -281,87 +287,12 @@
 </div>
 @endsection
 
-{{-- =========================
-   VENDOR SCRIPTS
-========================= --}}
-@section('vendor-script')
-<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-<script src="{{ asset('assets/vendor/libs/toastr/toastr.min.js') }}"></script>
-@endsection
+
 
 
 
 @section('page-script')
-<script>
-  $(document).ready(function () {
-
-    // ================= SELECT2 =================
-    $('.select2').select2({
-      width: '100%',
-      placeholder: function () {
-        return $(this).data('placeholder');
-      },
-      allowClear: true
-    });
-
-    // ================= TOASTR CONFIG =================
-    toastr.options = {
-      closeButton: true,
-      progressBar: true,
-      positionClass: 'toast-top-right',
-      timeOut: 4000,
-      showMethod: 'fadeIn',
-      hideMethod: 'fadeOut'
-    };
-
-    // ================= FLASH MESSAGES =================
-    @if(session('success'))
-      toastr.success(@json(session('success')));
-    @endif
-
-    @if(session('error'))
-      toastr.error(@json(session('error')));
-    @endif
-
-    @if($errors->any())
-      toastr.error('Please fix the highlighted errors.');
-    @endif
-
-    // ================= LOGO PREVIEW =================
-    const preview = document.getElementById('logo-preview');
-    const existingSelect = document.querySelector('select[name="logo_existing"]');
-    const uploadInput = document.querySelector('input[name="logo_upload"]');
-
-    const logoBaseUrl = "{{ asset('assets/img/logos') }}/";
-
-    if (existingSelect && preview) {
-      existingSelect.addEventListener('change', function () {
-        if (this.value) {
-          preview.src = logoBaseUrl + this.value;
-          preview.classList.remove('d-none');
-        } else {
-          preview.classList.add('d-none');
-          preview.src = '';
-        }
-      });
-    }
-
-    if (uploadInput && preview) {
-      uploadInput.addEventListener('change', function () {
-        const file = this.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          preview.src = e.target.result;
-          preview.classList.remove('d-none');
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-
-  });
-</script>
+<script src="{{ asset(mix('js/seriesEvents.js')) }}"></script>
 @endsection
 
 

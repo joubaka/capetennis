@@ -83,6 +83,7 @@
     <i class="ti ti-user-check"></i> Sign Up
   </a>
 @endif
+
 @if( $event->isIndividual())
 @foreach($userRegistrations as $registration)
   @php

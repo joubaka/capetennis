@@ -167,25 +167,168 @@ class RegisterController extends Controller
     //for individual event
   public function notify(Request $request)
   {
-    try {
-      // Process the ITN payload (NO output, NO headers inside)
-      $this->updateRegistrationFromPayfast($request->all());
+    $data = $request->all();
 
-    } catch (\Throwable $e) {
-      \Log::error('[PayFast] Notify error', [
-        'message' => $e->getMessage(),
-        'trace' => $e->getTraceAsString(),
-        'data' => $request->all(),
+    Log::info('[PayFast] ITN RECEIVED', $data);
+
+    // 1️⃣ Validate payment status
+    if (($data['payment_status'] ?? '') !== 'COMPLETE') {
+      Log::warning('[PayFast] Not COMPLETE status', [
+        'status' => $data['payment_status'] ?? null
       ]);
+      return response('IGNORED', 200);
     }
 
-    // ✅ Proper Laravel response for PayFast ITN
-    return response('OK', 200)
-      ->header('Content-Type', 'text/plain');
+    // 2️⃣ Extract order
+    $orderId = (int) ($data['custom_int5'] ?? 0);
+
+    if (!$orderId) {
+      Log::error('[PayFast] Missing order ID');
+      return response('INVALID', 200);
+    }
+
+    $order = RegistrationOrder::with('user.wallet', 'items')
+      ->lockForUpdate()
+      ->find($orderId);
+
+    if (!$order) {
+      Log::error('[PayFast] Order not found', [
+        'order_id' => $orderId
+      ]);
+      return response('INVALID', 200);
+    }
+
+    // 3️⃣ Validate amount
+    $expectedAmount = round((float) $order->payfast_amount_due, 2);
+    $receivedAmount = round((float) ($data['amount_gross'] ?? 0), 2);
+
+    if ($expectedAmount != $receivedAmount) {
+      Log::error('[PayFast] Amount mismatch', [
+        'expected' => $expectedAmount,
+        'received' => $receivedAmount,
+        'order_id' => $orderId
+      ]);
+      return response('INVALID', 200);
+    }
+
+    // 4️⃣ Prevent double processing
+    if ($order->payfast_paid) {
+      return response('OK', 200);
+    }
+
+    try {
+
+      DB::transaction(function () use ($order, $data) {
+
+        // Mark PayFast paid
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
+        $order->save();
+
+        // Debit wallet if hybrid
+        if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
+
+          app(WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'event_registration_wallet_payment',
+            $order->id,
+            ['order_id' => $order->id]
+          );
+
+          $order->wallet_debited = true;
+          $order->save();
+        }
+
+        // Attach registrations
+        foreach ($order->items as $item) {
+
+          $registration = Registration::find($item->registration_id);
+
+          if (!$registration)
+            continue;
+
+          $registration->players()->syncWithoutDetaching([
+            $item->player_id
+          ]);
+
+          $registration->categoryEvents()->syncWithoutDetaching([
+            $item->category_event_id => [
+              'payment_status_id' => 1,
+              'user_id' => $order->user_id,
+              'pf_transaction_id' => $data['pf_payment_id'] ?? null,
+            ],
+          ]);
+        }
+      });
+
+    } catch (\Throwable $e) {
+
+      Log::error('[PayFast] ITN PROCESSING FAILED', [
+        'order_id' => $orderId,
+        'message' => $e->getMessage()
+      ]);
+
+      return response('ERROR', 200);
+    }
+
+    Log::info('[PayFast] ITN SUCCESS', [
+      'order_id' => $orderId
+    ]);
+
+    return response('OK', 200);
   }
 
 
- 
+  public function applyWallet(Request $request)
+  {
+    $orderId = $request->custom_int5;
+    $walletApplied = (float) $request->wallet_applied;
+
+    $wallet = Auth::user()->wallet;
+
+    if (!$wallet || $walletApplied > $wallet->balance) {
+      return back()->withErrors('Insufficient wallet balance.');
+    }
+
+    try {
+
+      app(\App\Services\Wallet\WalletService::class)->debit(
+        $wallet,
+        $walletApplied,
+        'event_registration_partial_payment',
+        $orderId,
+        [
+          'order_id' => $orderId,
+        ]
+      );
+
+      return back()->with('success', 'Wallet applied successfully.');
+
+    } catch (\Throwable $e) {
+      return back()->withErrors('Wallet application failed.');
+    }
+  }
+
+  public function cancel(Request $request)
+  {
+    $walletApplied = $request->custom_wallet_applied ?? 0;
+    $orderId = $request->custom_int5 ?? null;
+
+    if ($walletApplied > 0) {
+
+      app(\App\Services\Wallet\WalletService::class)->credit(
+        Auth::user()->wallet,
+        $walletApplied,
+        'event_registration_wallet_reversal',
+        $orderId
+      );
+    }
+
+    return redirect()->route('events.index')
+      ->withErrors('Payment cancelled. Wallet funds restored.');
+  }
 
   public function notifyClothing(Request $request)
   {
@@ -484,30 +627,40 @@ class RegisterController extends Controller
 
   public function payNowPayfast(Request $request)
   {
-    $players = $request->player;
-    foreach ($players as $player) {
+
+  
+    // ----------------------------
+    // Validate players/categories
+    // ----------------------------
+    foreach ($request->player as $player) {
       if ($player == 0) {
-        return redirect()->back()->withErrors(['msg' => 'Please confirm that you have selected a player and category for each player!']);
+        return back()->withErrors([
+          'msg' => 'Please confirm that you have selected a player and category for each player!'
+        ]);
       }
     }
 
-    $categories = $request->category;
-    foreach ($categories as $cat) {
+    foreach ($request->category as $cat) {
       if ($cat == 0) {
-        return redirect()->back()->withErrors(['msg' => 'Please confirm that you have selected a player and category for each player!']);
+        return back()->withErrors([
+          'msg' => 'Please confirm that you have selected a player and category for each player!'
+        ]);
       }
     }
-
-    // 🟩 Create the order
+ 
+    // ----------------------------
+    // Create order
+    // ----------------------------
     $regorder = new RegistrationOrder();
+    $regorder->user_id = Auth::id();
     $regorder->save();
-    $request['custom_int5'] = $regorder->id;
 
     $totalFee = 0;
 
-    // 🟩 Loop through all players/categories
+    // Create items
     for ($i = 0; $i < count($request->player); $i++) {
-      $categoryEvent = CategoryEvent::find($request->category[$i]);
+
+      $categoryEvent = CategoryEvent::findOrFail($request->category[$i]);
 
       $registration = new Registration();
       $registration->save();
@@ -519,49 +672,59 @@ class RegisterController extends Controller
       $order->player_id = $request->player[$i];
       $order->user_id = Auth::id();
       $order->item_price = $categoryEvent->entry_fee ?? 0;
-      $totalFee += $order->item_price;
-
-      if (isset($request->parent)) {
-        $order->parent = $request->parent[$i];
-      }
-
       $order->save();
 
-      // ✅ Auto-register immediately if free
-      if ($order->item_price <= 0) {
-        $registration->players()->syncWithoutDetaching([$order->player_id]);
-        $registration->categoryEvents()->syncWithoutDetaching([
-          $order->category_event_id => [
-            'payment_status_id' => 1, // Mark as paid/confirmed
-            'user_id' => Auth::id(),
-            'pf_transaction_id' => 'FREE-' . now()->timestamp,
-          ],
-        ]);
-      }
+      $totalFee += $order->item_price;
     }
 
-    // 🟩 If total fee is 0, bypass PayFast and show success page
     if ($totalFee <= 0) {
-      return redirect()->route('frontend.registration.success', ['order' => $regorder->id])
+      return redirect()
+        ->route('frontend.registration.success', ['order' => $regorder->id])
         ->with('success', 'Your registration was successful (no payment required).');
     }
 
-    // 🟩 Otherwise, continue with PayFast setup
-    $mode = 'live';
-    $payfast = new Payfast();
+    // -----------------------------------
+    // 🔵 SAFE HYBRID LOGIC (RESERVE ONLY)
+    // -----------------------------------
 
-    if (Auth::id() == 584) {
-      if ($mode == 'test') {
-        $payfast->setMode(2);
-      } else {
-        $payfast->setMode(0);
-      }
-    } else {
-      $payfast->setMode(1);
+    $wallet = Auth::user()->wallet;
+    $walletBalance = $wallet?->balance ?? 0;
+
+    $walletApplied = min($walletBalance, $totalFee);
+    $remaining = round($totalFee - $walletApplied, 2);
+
+    // 🔐 DO NOT DEBIT HERE
+    // Just reserve
+
+    $regorder->wallet_reserved = $walletApplied;
+    $regorder->payfast_amount_due = $remaining;
+    $regorder->wallet_debited = false;
+    $regorder->payfast_paid = false;
+    $regorder->save();
+
+    // If wallet covers everything
+    if ($remaining <= 0) {
+
+      return redirect()
+        ->route('registration.hybrid.complete', $regorder->id);
     }
 
-    return view('frontend.payfast.pay_now', compact('request', 'payfast'));
+    // -----------------------------------
+    // 🔴 PayFast for remaining
+    // -----------------------------------
+
+    $payfast = new Payfast();
+    $payfast->setMode(Auth::id() == 584 ? 0 : 1);
+
+    $request['amount'] = $remaining;
+    $request['custom_int5'] = $regorder->id;
+    $request['custom_wallet_reserved'] = $walletApplied;
+
+    return view('frontend.payfast.check_out', compact('request', 'payfast'));
   }
+
+
+
   public function registrationSuccess($orderId)
   {
     $order = RegistrationOrder::with('items')->findOrFail($orderId);

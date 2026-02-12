@@ -52,7 +52,7 @@ use App\Http\Controllers\Backend\WalletController;
 use App\Http\Controllers\Backend\WalletTransactionController;
 use App\Http\Controllers\Frontend\RegistrationWithdrawController;
 use App\Http\Controllers\Frontend\RegistrationRefundController;
-
+use App\Http\Controllers\Frontend\RegistrationPaymentController;
 use App\Http\Controllers\Frontend\EventController;
 use App\Http\Controllers\Frontend\FrontFixtureController;
 use App\Http\Controllers\Frontend\HomeController;
@@ -118,6 +118,20 @@ Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast
 Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware('auth')->name('pay.order.payfast');
 Route::get('/register/success/{order}', [RegisterController::class, 'registrationSuccess'])
   ->name('frontend.registration.success');
+Route::post(
+  '/registration/hybrid/pay',
+  [RegistrationPaymentController::class, 'hybridPay']
+)->name('registration.hybrid.pay');
+
+Route::get(
+  '/registration/hybrid/complete/{orderId}',
+  [RegistrationPaymentController::class, 'hybridComplete']
+)->name('registration.hybrid.complete');
+
+Route::get(
+  '/registration/hybrid/cancel/{orderId}',
+  [RegistrationPaymentController::class, 'hybridCancel']
+)->name('registration.hybrid.cancel');
 
 Route::resource('reg', RegisterController::class);
 
@@ -154,6 +168,32 @@ Route::post(
 )->middleware('auth')
   ->name('registrations.refund.request');
 // routes/web.php (admin section)
+
+
+
+
+Route::middleware(['auth', 'role:super-user'])
+  ->prefix('admin/refunds')
+  ->group(function () {
+
+    Route::get(
+      '/bank',
+      [RegistrationRefundController::class, 'bankIndex']
+    )->name('admin.refunds.bank.index');
+
+    Route::get(
+      '/bank/{registration}',
+      [RegistrationRefundController::class, 'bankShow']
+    )->name('admin.refunds.bank.show');
+
+    Route::post(
+      '/bank/{registration}/complete',
+      [RegistrationRefundController::class, 'bankComplete']
+    )->name('admin.refunds.bank.complete');
+  });
+
+
+
 
 Route::middleware(['auth', 'role:super-user'])
   ->prefix('backend/refunds')
@@ -369,6 +409,10 @@ Route::get(
     [EventEntryController::class, 'availableRegistrations']
   )->name('admin.category.availableRegistrations');
 
+  Route::post(
+    '/category/move/{entry}',
+    [EventEntryController::class, 'movePlayer']
+  )->name('admin.category.movePlayer');
 
 
   // =========================
@@ -716,7 +760,7 @@ Route::get(
   Route::resource('headOffice', HeadOfficeController::class);
 
   //registration
-  Route::post('registration/walletPay', [RegistrationController::class, 'walletPay'])->name('registration.wallet.pay');
+
   Route::post('registration/delete', [RegistrationController::class, 'delete'])->name('registration.delete');
   Route::post('registration/addPlayerToCategory', [RegistrationController::class, 'addPlayerToCategory'])
     ->name('registration.addPlayerToCategory');

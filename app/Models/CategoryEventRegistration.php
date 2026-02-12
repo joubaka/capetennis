@@ -7,6 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class CategoryEventRegistration extends Model
 {
+
+  public const REFUND_PENDING = 'pending';
+  public const REFUND_COMPLETED = 'completed';
+
   use HasFactory;
 
   protected $fillable = [
@@ -22,16 +26,34 @@ class CategoryEventRegistration extends Model
     'status',
     'withdrawn_at',
 
-    // Refund
+    // Refund core
     'refund_method',
     'refund_status',
     'refund_gross',
     'refund_fee',
     'refund_net',
     'refunded_at',
+
+    // Bank refund details
+    'refund_account_name',
+    'refund_bank_name',
+    'refund_account_number',
+    'refund_branch_code',
+    'refund_account_type',
   ];
 
+
   protected $appends = ['display_name', 'is_paid'];
+  protected $casts = [
+    'user_id' => 'integer',
+    'refund_account_number' => 'encrypted',
+    'withdrawn_at' => 'datetime',
+    'refunded_at' => 'datetime',
+    'refund_gross' => 'float',
+    'refund_fee' => 'float',
+    'refund_net' => 'float',
+  ];
+
 
 
   // --------------------------------------------------
@@ -153,7 +175,8 @@ class CategoryEventRegistration extends Model
 
   public function isRefunded(): bool
   {
-    return $this->refund_status === 'completed';
+   
+    return $this->status === 'completed';
   }
 
   // --------------------------------------------------
@@ -164,6 +187,7 @@ class CategoryEventRegistration extends Model
   {
     // Ownership
     if ($this->user_id !== $user->id) {
+     //   if ((int) $this->user_id !== (int) $user->id) {
       return [
         'ok' => false,
         'reason' => 'not_owner',
@@ -218,5 +242,41 @@ class CategoryEventRegistration extends Model
       || $this->payfastTransaction !== null;
   }
 
+  // --------------------------------------------------
+// REFUND STATUS HELPERS
+// --------------------------------------------------
+
+  public function isRefundPending(): bool
+  {
+    return $this->status === 'pending';
+  }
+
+  public function isRefundCompleted(): bool
+  {
+   
+    return $this->status === 'completed';
+  }
+
+  public function hasRefund(): bool
+  {
+    return !empty($this->status);
+  }
+
+  public function isBankRefund(): bool
+  {
+    return $this->refund_method === 'bank';
+  }
+
+  public function isWalletRefund(): bool
+  {
+    return $this->refund_method === 'wallet';
+  }
+
+  public function canRequestRefund(): bool
+  {
+    return $this->status === 'withdrawn'
+      && $this->is_paid
+      && empty($this->refund_status);
+  }
 
 }

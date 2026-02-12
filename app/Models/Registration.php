@@ -112,4 +112,6 @@ class Registration extends Model
       'id'
     );
   }
+
+
 }

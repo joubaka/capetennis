@@ -2,14 +2,27 @@
 
 @section('title', 'Edit Event')
 
+{{-- =========================
+   VENDOR STYLES
+========================= --}}
 @section('vendor-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.min.css') }}">
 @endsection
 
+
+{{-- =========================
+   VENDOR SCRIPTS
+========================= --}}
 @section('vendor-script')
   <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
+  <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+
 @endsection
+
 
 @section('content')
 <div class="container-xl">
@@ -26,7 +39,8 @@
     @endif
   </div>
 
-  <form method="POST"
+  <form id="event-edit-form"
+        method="POST"
         action="{{ route('backend.events.update', $event) }}"
         enctype="multipart/form-data">
 
@@ -35,7 +49,7 @@
 
     <div class="row g-4">
 
-      {{-- ================= BASIC DETAILS ================= --}}
+      {{-- ================= LEFT SIDE ================= --}}
       <div class="col-xl-8">
         <div class="card mb-4">
           <div class="card-header">
@@ -44,6 +58,7 @@
 
           <div class="card-body">
 
+            {{-- Name --}}
             <div class="mb-3">
               <label class="form-label">Event Name</label>
               <input name="name"
@@ -52,6 +67,7 @@
                      required>
             </div>
 
+            {{-- Dates --}}
             <div class="row g-2 mb-3">
               <div class="col">
                 <label class="form-label">Start Date</label>
@@ -69,6 +85,7 @@
               </div>
             </div>
 
+            {{-- Event Type --}}
             <div class="mb-3">
               <label class="form-label">Event Type</label>
               <select name="eventType" class="form-select" required>
@@ -81,10 +98,9 @@
               </select>
             </div>
 
-            {{-- INFORMATION (QUILL) --}}
+            {{-- QUILL --}}
             <div class="mb-3">
               <label class="form-label">Information</label>
-
               <div id="information-editor" class="border rounded">
                 {!! old('information', $event->information) !!}
               </div>
@@ -95,6 +111,7 @@
                      value="{{ old('information', $event->information) }}">
             </div>
 
+            {{-- Venue Notes --}}
             <div class="mb-3">
               <label class="form-label">Venue Notes</label>
               <textarea name="venue_notes"
@@ -106,9 +123,10 @@
         </div>
       </div>
 
-      {{-- ================= EVENT LOGO ================= --}}
+      {{-- ================= RIGHT SIDE ================= --}}
       <div class="col-xl-4">
 
+        {{-- LOGO --}}
         <div class="card mb-4">
           <div class="card-header">
             <h5 class="mb-0">Event Logo</h5>
@@ -127,7 +145,6 @@
               <label class="form-label">Select Existing Logo</label>
               <select name="logo_existing" class="form-select">
                 <option value="">— Select existing logo —</option>
-
                 @foreach(File::files(public_path('assets/img/logos')) as $file)
                   <option value="{{ $file->getFilename() }}"
                     @selected($event->logo === $file->getFilename())>
@@ -145,14 +162,10 @@
                      accept="image/*">
             </div>
 
-            <small class="text-muted">
-              Uploading a file overrides the selected logo.
-            </small>
-
           </div>
         </div>
 
-        {{-- ================= SETTINGS ================= --}}
+        {{-- SETTINGS --}}
         <div class="card mb-4">
           <div class="card-header">
             <h5 class="mb-0">Settings</h5>
@@ -160,6 +173,7 @@
 
           <div class="card-body">
 
+            {{-- Entry Fee --}}
             <div class="mb-3">
               <label class="form-label">Entry Fee</label>
               <input type="number"
@@ -168,6 +182,7 @@
                      value="{{ old('entryFee', $event->entryFee) }}">
             </div>
 
+            {{-- Deadline --}}
             <div class="mb-3">
               <label class="form-label">Deadline (days before start)</label>
               <input type="number"
@@ -176,21 +191,16 @@
                      value="{{ old('deadline', $event->deadline) }}">
             </div>
 
-            {{-- ✅ WITHDRAWAL DEADLINE --}}
+            {{-- Withdrawal Deadline --}}
             <div class="mb-3">
               <label class="form-label">Withdrawal Deadline</label>
               <input type="datetime-local"
                      name="withdrawal_deadline"
                      class="form-control"
-                     value="{{ old(
-                       'withdrawal_deadline',
-                       optional($event->withdrawal_deadline)->format('Y-m-d\TH:i')
-                     ) }}">
-              <small class="text-muted">
-                Last date players may withdraw without penalty
-              </small>
+                     value="{{ optional($event->withdrawal_deadline)->format('Y-m-d\TH:i') }}">
             </div>
 
+            {{-- Organizer --}}
             <div class="mb-3">
               <label class="form-label">Organizer</label>
               <input type="text"
@@ -199,6 +209,7 @@
                      value="{{ old('organizer', $event->organizer) }}">
             </div>
 
+            {{-- Email --}}
             <div class="mb-3">
               <label class="form-label">Contact Email</label>
               <input type="email"
@@ -207,11 +218,13 @@
                      value="{{ old('email', $event->email) }}">
             </div>
 
+            {{-- Admins --}}
             <div class="mb-3">
               <label class="form-label">Event Admins</label>
               <select name="admins[]"
                       class="form-select select2"
-                      multiple>
+                      multiple
+                      data-placeholder="Select admins">
                 @foreach($users as $user)
                   <option value="{{ $user->id }}"
                     @selected(in_array($user->id, $adminIds))>
@@ -221,6 +234,7 @@
               </select>
             </div>
 
+            {{-- Published --}}
             <div class="form-check mb-2">
               <input class="form-check-input"
                      type="checkbox"
@@ -230,6 +244,7 @@
               <label class="form-check-label">Published</label>
             </div>
 
+            {{-- SignUp --}}
             <div class="form-check">
               <input class="form-check-input"
                      type="checkbox"
@@ -245,11 +260,12 @@
       </div>
     </div>
 
+    {{-- BUTTONS --}}
     <div class="d-flex justify-content-end mt-4 gap-2">
       <a href="{{ url()->previous() }}" class="btn btn-outline-secondary">
         Cancel
       </a>
-      <button class="btn btn-primary">
+      <button type="submit" class="btn btn-primary">
         Save Changes
       </button>
     </div>
@@ -258,72 +274,22 @@
 </div>
 @endsection
 
-
 @section('page-script')
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+window.eventConfig = {
+    logoBaseUrl: "{{ asset('assets/img/logos') }}/"
+};
 
-  // ---------------- QUILL ----------------
-  const quill = new Quill('#information-editor', {
-    theme: 'snow',
-    placeholder: 'Enter event information...',
-    modules: {
-      toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link'],
-        ['clean']
-      ]
-    }
-  });
-
-  quill.on('text-change', function () {
-    document.getElementById('information-input').value =
-      quill.root.innerHTML;
-  });
-
-  // ---------------- LOGO PREVIEW ----------------
-  const preview = document.getElementById('logo-preview');
-  const existingSelect = document.querySelector('select[name="logo_existing"]');
-  const uploadInput = document.querySelector('input[name="logo_upload"]');
-
-  // ✅ Laravel-aware base URL (works in /ct/public and production)
-  const logoBaseUrl = "{{ asset('assets/img/logos') }}/";
-
-  // Existing logo selection
-  if (existingSelect && preview) {
-    existingSelect.addEventListener('change', function () {
-      if (this.value) {
-        preview.src = logoBaseUrl + this.value;
-        preview.classList.remove('d-none');
-      } else {
-        preview.classList.add('d-none');
-        preview.src = '';
-      }
-    });
-  }
-
-  // New upload preview
-  if (uploadInput && preview) {
-    uploadInput.addEventListener('change', function () {
-      const file = this.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        preview.src = e.target.result;
-        preview.classList.remove('d-none');
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-  $('.select2').select2({
-  width: '100%',
-  allowClear: true
-});
-
-});
+if (window.toastr) {
+    toastr.options = {
+        closeButton: true,
+        progressBar: true,
+        positionClass: "toast-top-right",
+        timeOut: 2500
+    };
+}
 </script>
+
+<script src="{{ asset(mix('js/eventEdit.js')) }}"></script>
 @endsection
 

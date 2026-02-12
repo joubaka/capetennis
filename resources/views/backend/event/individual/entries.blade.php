@@ -6,11 +6,15 @@
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+
 @endsection
 
 {{-- Vendor JS --}}
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+
 @endsection
 
 @section('page-style')
@@ -311,6 +315,14 @@
             data-registration="{{ $reg->registration_id }}">
       Email
     </button>
+   <button type="button"
+    class="btn btn-outline-info move-player-btn"
+    data-entry="{{ $reg->id }}"
+    data-player="{{ $player?->name }} {{ $player?->surname }}"
+    data-from-category="{{ $categoryEvent->category?->name }}">
+    Move
+</button>
+
 
     @unless($categoryEvent->isLocked())
       <button type="button"
@@ -349,7 +361,12 @@
 
       <div class="modal-body">
         <label class="form-label fw-semibold">Registration</label>
-        <select name="registration_id" id="addPlayerRegistration" class="form-select" required>
+     <select name="registration_id"
+        id="addPlayerRegistration"
+        class="form-select select2-player"
+        style="width:100%;"
+        required>
+
           <option value="">Select player</option>
         </select>
       </div>
@@ -365,13 +382,61 @@
     </form>
   </div>
 </div>
+
+
+
+<div class="modal fade" id="movePlayerModal" tabindex="-1">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form id="movePlayerForm" class="modal-content">
+      @csrf
+      <input type="hidden" id="move_entry_id">
+
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Move Player</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="alert alert-light border mb-3">
+          <div><strong>Player:</strong> <span id="move_player_name"></span></div>
+          <div><strong>From:</strong> <span id="move_from_category"></span></div>
+          <div><strong>To:</strong> <span id="move_to_category" class="text-primary"></span></div>
+        </div>
+
+        <label class="form-label">Select New Category</label>
+        <select name="new_category_id" id="moveCategorySelect" class="form-select" required>
+          @foreach($categoryEvents as $cat)
+              <option value="{{ $cat->id }}">
+                  {{ $cat->category?->name }}
+              </option>
+          @endforeach
+        </select>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button class="btn btn-info">
+          Move
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+
 <script>
 window.routes = {
   availableRegistrations: @json(route('admin.category.availableRegistrations', ':id')),
-addPlayer: @json(route('admin.category.addPlayer', ':id')),
-
+  addPlayer: @json(route('admin.category.addPlayer', ':id')),
+  movePlayer: @json(route('admin.category.movePlayer', ':id'))
 };
 </script>
+
 
 
 @endsection
@@ -380,160 +445,191 @@ addPlayer: @json(route('admin.category.addPlayer', ':id')),
 
 @section('page-script')
 <script>
+
 console.log('📧 Entries page JS loaded');
 
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
 /* =====================
-   BOOTSTRAP MODALS
+   SAFE MODAL INIT
 ===================== */
-const sendMailModal = new bootstrap.Modal(
-  document.getElementById('sendMailModal')
-);
+const sendMailEl   = document.getElementById('sendMailModal');
+const addPlayerEl  = document.getElementById('addPlayerModal');
+const movePlayerEl = document.getElementById('movePlayerModal');
 
-const addPlayerModal = new bootstrap.Modal(
-  document.getElementById('addPlayerModal')
-);
+const sendMailModal  = sendMailEl  ? new bootstrap.Modal(sendMailEl)  : null;
+const addPlayerModal = addPlayerEl ? new bootstrap.Modal(addPlayerEl) : null;
+const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
 
 /* =====================
    QUILL INIT
 ===================== */
-const quill = new Quill('#messageEditor', {
-  theme: 'snow',
-  placeholder: 'Type your message here…'
-});
+let quill = null;
+if (document.getElementById('messageEditor')) {
+    quill = new Quill('#messageEditor', {
+        theme: 'snow',
+        placeholder: 'Type your message here…'
+    });
+}
+
+/* =====================
+   SELECT2 INIT
+===================== */
+function initPlayerSelect2() {
+    const select = $('#addPlayerRegistration');
+    if (!select.length) return;
+
+    select.select2({
+        dropdownParent: $('#addPlayerModal'),
+        placeholder: 'Search player...',
+        allowClear: true,
+        width: '100%'
+    });
+}
 
 /* =====================
    EMAIL MODAL OPEN
 ===================== */
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.email-btn');
-  if (!btn) return;
+document.addEventListener('click', function(e) {
 
-  e.preventDefault();
-  e.stopPropagation();
+    const btn = e.target.closest('.email-btn');
+    if (!btn || !sendMailModal) return;
 
-  const form = document.getElementById('sendMailForm');
-  form.reset();
-  quill.setText('');
+    e.preventDefault();
 
-  document.getElementById('mail_scope').value = btn.dataset.scope || 'event';
-  document.getElementById('mail_category').value = btn.dataset.category || '';
-  document.getElementById('mail_registration').value = btn.dataset.registration || '';
+    const form = document.getElementById('sendMailForm');
+    if (!form) return;
 
-  sendMailModal.show();
+    form.reset();
+    if (quill) quill.setText('');
+
+    document.getElementById('mail_scope').value = btn.dataset.scope || 'event';
+    document.getElementById('mail_category').value = btn.dataset.category || '';
+    document.getElementById('mail_registration').value = btn.dataset.registration || '';
+
+    sendMailModal.show();
 });
 
 /* =====================
    SEND EMAIL
 ===================== */
-document.getElementById('sendMailForm').addEventListener('submit', e => {
-  e.preventDefault();
-  
-  document.getElementById('emailMessage').value = quill.root.innerHTML;
+const mailForm = document.getElementById('sendMailForm');
+if (mailForm) {
+    mailForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-  fetch('{{ route('admin.events.email.send') }}', {
-    method: 'POST',
-    headers: {
-      'X-CSRF-TOKEN': csrf,
-      'Accept': 'application/json'
-    },
-    body: new FormData(e.target)
-  })
-  .then(r => r.json())
-  .then(res => {
-    alert(`Email sent to ${res.sent} recipients`);
-    sendMailModal.hide();
-  })
-  .catch(() => alert('Email failed'));
-});
+        if (quill) {
+            document.getElementById('emailMessage').value = quill.root.innerHTML;
+        }
+
+        fetch('{{ route('admin.events.email.send') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            },
+            body: new FormData(mailForm)
+        })
+        .then(r => r.json())
+        .then(res => {
+            alert(`Email sent to ${res.sent} recipients`);
+            sendMailModal.hide();
+        })
+        .catch(() => alert('Email failed'));
+    });
+}
 
 /* =====================
    CATEGORY LOCK / UNLOCK
 ===================== */
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.category-lock-btn');
-  if (!btn) return;
+document.addEventListener('click', function(e) {
 
-  e.preventDefault();
+    const btn = e.target.closest('.category-lock-btn');
+    if (!btn) return;
 
-  const locked = btn.dataset.locked === '1';
-  const url = locked ? btn.dataset.urlUnlock : btn.dataset.urlLock;
+    e.preventDefault();
 
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-CSRF-TOKEN': csrf,
-      'Accept': 'application/json'
-    }
-  })
-  .then(() => location.reload())
-  .catch(() => alert('Lock / unlock failed'));
+    const locked = btn.dataset.locked === '1';
+    const url = locked ? btn.dataset.urlUnlock : btn.dataset.urlLock;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(() => location.reload())
+    .catch(() => alert('Lock / unlock failed'));
 });
 
 /* =====================
    REMOVE PLAYER
 ===================== */
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.remove-player-btn');
-  if (!btn) return;
+document.addEventListener('click', function(e) {
 
-  e.preventDefault();
+    const btn = e.target.closest('.remove-player-btn');
+    if (!btn) return;
 
-  if (!confirm('Remove player from category?')) return;
+    e.preventDefault();
 
-fetch(btn.dataset.url, {
-  method: 'DELETE',
-  headers: {
-    'X-CSRF-TOKEN': csrf,
-    'Accept': 'application/json'
-  }
-})
-.then(() => location.reload())
-.catch(() => alert('Remove failed'));
+    if (!confirm('Remove player from category?')) return;
 
+    fetch(btn.dataset.url, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(() => location.reload())
+    .catch(() => alert('Remove failed'));
 });
 
 /* =====================
    ADD PLAYER MODAL
 ===================== */
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.add-player-btn');
-  if (!btn) return;
+document.addEventListener('click', function(e) {
 
-  e.preventDefault();
+    const btn = e.target.closest('.add-player-btn');
+    if (!btn || !addPlayerModal) return;
 
-  if (btn.dataset.locked === '1') {
-    alert('Category is locked');
-    return;
-  }
+    e.preventDefault();
 
-  const categoryId = btn.dataset.category;
-  document.getElementById('add_player_category_id').value = categoryId;
+    if (btn.dataset.locked === '1') {
+        alert('Category is locked');
+        return;
+    }
 
-  const select = document.getElementById('addPlayerRegistration');
-  select.innerHTML = '<option>Loading…</option>';
+    const categoryId = btn.dataset.category;
+    document.getElementById('add_player_category_id').value = categoryId;
 
-  const url = window.routes.availableRegistrations.replace(':id', categoryId);
+    const select = $('#addPlayerRegistration');
 
-  fetch(url, {
-    headers: { 'Accept': 'application/json' }
-  })
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.html('<option>Loading…</option>');
+
+    const url = window.routes.availableRegistrations.replace(':id', categoryId);
+
+    fetch(url, { headers: { 'Accept': 'application/json' } })
     .then(r => r.json())
     .then(list => {
-      select.innerHTML = list.length
-        ? ''
-        : '<option disabled>No available players</option>';
 
-      list.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name}${p.surname ? ' ' + p.surname : ''}`;
+        select.empty();
 
-        select.appendChild(opt);
-      });
+        if (!list.length) {
+            select.append('<option disabled>No available players</option>');
+        } else {
+            list.forEach(p => {
+                select.append(new Option(p.name, p.id, false, false));
+            });
+        }
 
-      addPlayerModal.show();
+        initPlayerSelect2();
+        addPlayerModal.show();
     })
     .catch(() => alert('Failed to load registrations'));
 });
@@ -541,26 +637,98 @@ document.addEventListener('click', e => {
 /* =====================
    ADD PLAYER SUBMIT
 ===================== */
-document.getElementById('addPlayerForm').addEventListener('submit', e => {
-  e.preventDefault();
+const addForm = document.getElementById('addPlayerForm');
+if (addForm) {
+    addForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-  const categoryId = document.getElementById('add_player_category_id').value;
-  const url = window.routes.addPlayer.replace(':id', categoryId);
+        const categoryId = document.getElementById('add_player_category_id').value;
+        const url = window.routes.addPlayer.replace(':id', categoryId);
 
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-CSRF-TOKEN': csrf,
-      'Accept': 'application/json'
-    },
-    body: new FormData(e.target)
-  })
-    .then(() => location.reload())
-    .catch(() => alert('Add player failed'));
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            },
+            body: new FormData(addForm)
+        })
+        .then(() => location.reload())
+        .catch(() => alert('Add player failed'));
+    });
+}
+
+/* =====================
+   MOVE PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.move-player-btn');
+    if (!btn || !movePlayerModal) return;
+
+    const entryId = btn.dataset.entry;
+    const playerName = btn.dataset.player || '';
+    const fromCategory = btn.dataset.fromCategory || '';
+
+    document.getElementById('move_entry_id').value = entryId;
+
+    const nameEl = document.getElementById('move_player_name');
+    const fromEl = document.getElementById('move_from_category');
+    const toEl   = document.getElementById('move_to_category');
+    const select = document.getElementById('moveCategorySelect');
+
+    if (nameEl) nameEl.textContent = playerName;
+    if (fromEl) fromEl.textContent = fromCategory;
+    if (toEl && select) {
+        toEl.textContent = select.options[select.selectedIndex].text;
+    }
+
+    movePlayerModal.show();
 });
+
+/* =====================
+   UPDATE DESTINATION LIVE
+===================== */
+const moveSelect = document.getElementById('moveCategorySelect');
+if (moveSelect) {
+    moveSelect.addEventListener('change', function () {
+        const toEl = document.getElementById('move_to_category');
+        if (toEl) {
+            toEl.textContent = this.options[this.selectedIndex].text;
+        }
+    });
+}
+
+/* =====================
+   MOVE PLAYER SUBMIT
+===================== */
+const moveForm = document.getElementById('movePlayerForm');
+if (moveForm) {
+    moveForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const entryId = document.getElementById('move_entry_id').value;
+        const url = window.routes.movePlayer.replace(':id', entryId);
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            },
+            body: new FormData(moveForm)
+        })
+        .then(() => location.reload())
+        .catch(() => alert('Move failed'));
+    });
+}
 
 </script>
 @endsection
+
+
+
+
 
 
 

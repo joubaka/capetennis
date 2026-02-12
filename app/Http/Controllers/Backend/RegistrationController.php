@@ -203,32 +203,7 @@ class RegistrationController extends Controller
     return $trans;
   }
 
-  public function walletPay(Request $request)
-  {
 
-    $order = RegistrationOrder::find($request->custom_int5);
-    $user = Auth::user();
-    $user = User::find($user->id);
-    //dd($order);
-    $trans = RegisterController::update_transaction($request, $order);
-    foreach ($order->items as $item) {
-
-      $registration = Registration::find($item->registration_id);
-      $registration->players()->attach($item->player_id);
-
-      $registration->categoryEvents()->attach($item->category_event_id, [
-        'payfast_id' =>  'wallet',
-        'payment_status_id' => 1,
-        'user_id' => $request['custom_int4'],
-        'pf_transaction_id' => $trans->id,
-      ]);
-    }
-
-
-    $user->withdraw($request->amount);
-    return redirect()->route('event.success', $request->custom_int3);
-    return 'walletPay';
-  }
   public function addPlayerToCategory(Request $request)
   {
     \Log::info('[ADD PLAYER TO CATEGORY PAYLOAD]', $request->all());

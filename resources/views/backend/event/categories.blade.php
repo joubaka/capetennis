@@ -7,19 +7,26 @@
 ========================= --}}
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
 <style>
   .select2-container .select2-selection--multiple {
     min-height: 38px;
     border: 1px solid #d9dee3;
   }
 
-  select.select2 {
-    display: none;
+  .fee-input {
+    max-width: 120px;
   }
-
-
 </style>
 @endsection
+
+{{-- =========================
+   VENDOR SCRIPTS
+========================= --}}
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+@endsection
+
 
 @section('content')
 <div class="container-xl">
@@ -66,20 +73,17 @@
                   class="form-select select2"
                   multiple
                   data-placeholder="Select categories…">
-
             @foreach($allCategories as $cat)
               <option value="{{ $cat->id }}">
                 {{ $cat->name }}
               </option>
             @endforeach
-
           </select>
         </div>
 
         <button class="btn btn-primary">
           <i class="ti ti-plus"></i> Add Selected
         </button>
-
       </form>
     </div>
   </div>
@@ -112,11 +116,12 @@
   {{-- CATEGORY LIST --}}
   <div class="card">
     <div class="card-body p-0">
-      <table class="table table-striped mb-0">
+      <table class="table table-striped mb-0 align-middle">
         <thead class="table-light">
           <tr>
             <th>Category</th>
             <th class="text-center">Entries</th>
+            <th class="text-center">Entry Fee Override</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -125,9 +130,28 @@
           @forelse($categoryEvents as $categoryEvent)
             <tr>
               <td>{{ $categoryEvent->category->name }}</td>
+
               <td class="text-center">
                 {{ $categoryEvent->categoryEventRegistrations->count() }}
               </td>
+
+              <td class="text-center">
+                <div class="d-flex justify-content-center align-items-center gap-2">
+                  <input type="number"
+                         class="form-control form-control-sm text-end fee-input category-fee-input"
+                         data-id="{{ $categoryEvent->id }}"
+                         step="1"
+                         min="0"
+                         value="{{ $categoryEvent->entry_fee }}"
+                         placeholder="Default">
+
+                  <button class="btn btn-sm btn-outline-primary save-fee-btn"
+                          data-id="{{ $categoryEvent->id }}">
+                    <i class="ti ti-device-floppy"></i>
+                  </button>
+                </div>
+              </td>
+
               <td class="text-end">
                 @if($categoryEvent->categoryEventRegistrations->isEmpty())
                   <button class="btn btn-sm btn-outline-danger delete-category-btn"
@@ -141,7 +165,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="3" class="text-center text-muted py-3">
+              <td colspan="4" class="text-center text-muted py-3">
                 No categories attached to this event.
               </td>
             </tr>
@@ -154,66 +178,30 @@
 </div>
 @endsection
 
+
 {{-- =========================
-   VENDOR SCRIPTS
+   PASS CONFIG TO MIX JS
 ========================= --}}
-@section('vendor-script')
-<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-@endsection
-
 @section('page-script')
+
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-
-  const attachedIds = @json($attachedCategoryIds);
-
-  console.group('Category Select2 Debug');
-  console.log('Attached IDs:', attachedIds);
-
-  const $select = $('.select2');
-  console.log('Select found:', $select.length);
-  console.log('Total options:', $select.find('option').length);
-
-  $select.select2({
-    width: '100%',
-    placeholder: function () {
-      return $(this).data('placeholder');
-    },
-    closeOnSelect: false
-  });
-
-  // FORCE selection
-  $select.val(attachedIds).trigger('change');
-  console.log('Selected after .val():', $select.val());
-
-  // Disable attached categories
-  attachedIds.forEach(id => {
-    const $opt = $select.find(`option[value="${id}"]`);
-    console.log(`Option ${id} exists:`, $opt.length);
-    $opt.prop('disabled', true);
-  });
-
-  $select.trigger('change.select2');
-
-  // Clear search after select
-  $select.on('select2:select', function () {
-    const search = $(this)
-      .data('select2')
-      .$dropdown
-      .find('.select2-search__field');
-    if (search.length) {
-      search.val('');
-      console.log('Search cleared');
-    }
-  });
-
-  // Prevent disabled options submitting
-  $select.closest('form').on('submit', function () {
-    $select.find('option:disabled').prop('selected', false);
-    console.log('Disabled options stripped before submit');
-  });
-
-  console.groupEnd();
-});
+window.categoryConfig = {
+    attachedIds: @json($attachedCategoryIds),
+    feeUpdateUrl: "{{ route('admin.events.category-fee.update', ':id') }}"
+};
 </script>
+
+<script>
+if (window.toastr) {
+    toastr.options = {
+        closeButton: true,
+        progressBar: true,
+        positionClass: "toast-top-right",
+        timeOut: 2000
+    };
+}
+</script>
+
+<script src="{{ asset(mix('js/eventCategories.js')) }}"></script>
+
 @endsection

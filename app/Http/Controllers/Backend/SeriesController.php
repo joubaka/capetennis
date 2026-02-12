@@ -30,7 +30,7 @@ class SeriesController extends Controller
 
   public function create()
   {
-    $rankingTypes = RankTypes::orderBy('type')->get();
+    $rankingTypes = RankType::orderBy('type')->get();
 
     return view('backend.series.series-create', compact('rankingTypes'));
   }
@@ -212,7 +212,7 @@ class SeriesController extends Controller
     return view('backend.series.series-settings', compact(
       'series',
       'positions',
-      'rankType'
+      'rankTypes'
     ));
   }
 

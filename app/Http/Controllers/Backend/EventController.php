@@ -158,15 +158,13 @@ class EventController extends Controller
 
   public function update(Request $request, Event $event)
   {
-    Log::info('🛠 Event settings update START', [
+    Log::info('🛠 Event update START', [
       'event_id' => $event->id,
-      'payload' => $request->all(),
       'user_id' => auth()->id(),
     ]);
 
     $data = $request->validate([
       'name' => 'required|string|max:255',
-      'status' => 'nullable|string',
       'start_date' => 'nullable|date',
       'end_date' => 'nullable|date|after_or_equal:start_date',
       'information' => 'nullable|string',
@@ -176,8 +174,6 @@ class EventController extends Controller
       'withdrawal_deadline' => 'nullable|date',
       'eventType' => 'required|integer',
       'email' => 'nullable|email',
-      'published' => 'nullable|boolean',
-      'signUp' => 'nullable|boolean',
       'organizer' => 'nullable|string|max:191',
 
       'logo_existing' => 'nullable|string',
@@ -187,12 +183,14 @@ class EventController extends Controller
       'admins.*' => 'integer|exists:users,id',
     ]);
 
-    Log::debug('📥 Validated data', $data);
+    /*
+    |--------------------------------------------------------------------------
+    | LOGO HANDLING
+    |--------------------------------------------------------------------------
+    */
 
-    // =========================
-    // LOGO HANDLING
-    // =========================
     if ($request->hasFile('logo_upload')) {
+
       $file = $request->file('logo_upload');
 
       $filename = Str::slug(
@@ -200,19 +198,24 @@ class EventController extends Controller
       ) . '.' . $file->getClientOriginalExtension();
 
       $file->move(public_path('assets/img/logos'), $filename);
+
       $event->logo = $filename;
 
       Log::info('🖼 Logo uploaded', ['logo' => $filename]);
+
     } elseif (!empty($data['logo_existing'])) {
+
       $event->logo = basename($data['logo_existing']);
     }
 
-    // =========================
-    // FIELD MAPPING (FIX)
-    // =========================
-    $updateData = [
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE FIELDS
+    |--------------------------------------------------------------------------
+    */
+
+    $event->update([
       'name' => $data['name'],
-      'status' => $data['status'] ?? $event->status,
       'start_date' => $data['start_date'] ?? null,
       'end_date' => $data['end_date'] ?? null,
       'information' => $data['information'] ?? null,
@@ -222,35 +225,27 @@ class EventController extends Controller
       'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
       'eventType' => $data['eventType'],
       'email' => $data['email'] ?? null,
+      'organizer' => $data['organizer'] ?? null,
       'published' => $request->boolean('published'),
       'signUp' => $request->boolean('signUp'),
-      'organizer' => $data['organizer'] ?? null,
-    ];
+    ]);
 
-    Log::debug('🔁 Mapped data', $updateData);
+    /*
+    |--------------------------------------------------------------------------
+    | ADMINS SYNC (ALWAYS)
+    |--------------------------------------------------------------------------
+    */
 
-    // =========================
-    // UPDATE EVENT
-    // =========================
-    $event->update($updateData);
+    $event->admins()->sync($request->input('admins', []));
 
-    // =========================
-    // ADMINS
-    // =========================
-    if ($request->has('admins')) {
-      Log::info('👥 Syncing admins', [
-        'event_id' => $event->id,
-        'admins' => $request->input('admins'),
-      ]);
-
-      $event->admins()->sync($request->input('admins', []));
-    }
-
-    Log::info('✅ Event settings update COMPLETE', [
+    Log::info('✅ Event update COMPLETE', [
       'event_id' => $event->id,
     ]);
 
-    return response()->json(['success' => true]);
+    return response()->json([
+      'success' => true,
+      'message' => 'Event updated successfully'
+    ]);
   }
 
 

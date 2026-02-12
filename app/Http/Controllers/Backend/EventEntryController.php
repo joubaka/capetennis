@@ -10,12 +10,14 @@ use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-
+use App\Models\Player;
 use Maatwebsite\Excel\Facades\Excel;
 
 use App\Mail\BulkEventMail;
 use App\Exports\EventEntriesExport;
 use App\Exports\CategoryEntriesExport;
+
+  use App\Models\PlayerRegistration;
 
 class EventEntryController extends Controller
 {
@@ -67,6 +69,10 @@ class EventEntryController extends Controller
   /**
    * Add a registration to a category.
    */
+
+
+
+
   public function addPlayer(Request $request, CategoryEvent $categoryEvent)
   {
     if ($categoryEvent->isLocked()) {
@@ -77,22 +83,37 @@ class EventEntryController extends Controller
     }
 
     $data = $request->validate([
-      'registration_id' => ['required', 'exists:registrations,id'],
+      'registration_id' => ['required', 'exists:players,id'], // player_id
     ]);
 
-    $alreadyExists = $categoryEvent->categoryEventRegistrations()
-      ->where('registration_id', $data['registration_id'])
+    $playerId = $data['registration_id'];
+
+    // 1️⃣ Prevent duplicate player in this category
+    $alreadyInCategory = $categoryEvent->categoryEventRegistrations()
+      ->whereHas('registration.players', function ($q) use ($playerId) {
+        $q->where('players.id', $playerId);
+      })
       ->exists();
 
-    if ($alreadyExists) {
+    if ($alreadyInCategory) {
       return response()->json([
         'success' => false,
         'message' => 'Player already in category',
       ], 422);
     }
 
+    // 2️⃣ Create registration
+    $registration = Registration::create([]);
+
+    // 3️⃣ Attach player to registration
+    PlayerRegistration::create([
+      'player_id' => $playerId,
+      'registration_id' => $registration->id,
+    ]);
+
+    // 4️⃣ Attach registration to category
     $entry = $categoryEvent->categoryEventRegistrations()->create([
-      'registration_id' => $data['registration_id'],
+      'registration_id' => $registration->id,
       'status' => 'active',
     ]);
 
@@ -273,26 +294,61 @@ class EventEntryController extends Controller
     ]);
   }
 
+
+
+
+
   public function availableRegistrations(CategoryEvent $categoryEvent)
   {
-    // Registrations already used in this category
-    $used = $categoryEvent->categoryEventRegistrations()
-      ->pluck('registration_id');
-
-    return $categoryEvent->event
-      ->registrations() // ← HasManyThrough → category_event_registrations
-      ->with('players')
-      ->whereNotIn(
-        'category_event_registrations.registration_id',
-        $used
-      )
+    return Player::query()
+      ->orderBy('name')
+      ->orderBy('surname')
       ->get()
-      ->map(fn($r) => [
-        'id' => $r->registration_id, // IMPORTANT
-        'name' =>
-          optional($r->players->first())->name . ' ' .
-          optional($r->players->first())->surname,
-      ]);
+      ->map(function ($player) {
+        return [
+          'id' => $player->id,   // now this is player_id
+          'name' => trim($player->name . ' ' . $player->surname),
+        ];
+      });
+  }
+
+  public function movePlayer(Request $request, $entryId)
+  {
+    $entry = \App\Models\CategoryEventRegistration::findOrFail($entryId);
+
+    $request->validate([
+      'new_category_id' => ['required', 'exists:category_events,id']
+    ]);
+
+    $newCategory = CategoryEvent::findOrFail($request->new_category_id);
+
+    if ($newCategory->isLocked()) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Target category is locked'
+      ], 403);
+    }
+
+    // Prevent duplicate in target category
+    $exists = $newCategory->categoryEventRegistrations()
+      ->where('registration_id', $entry->registration_id)
+      ->exists();
+
+    if ($exists) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Player already in that category'
+      ], 422);
+    }
+
+    // 🔥 Move by updating foreign key
+    $entry->update([
+      'category_event_id' => $newCategory->id
+    ]);
+
+    return response()->json([
+      'success' => true
+    ]);
   }
 
 
