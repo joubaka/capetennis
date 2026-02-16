@@ -100,13 +100,15 @@
                             : null;
 
                           $pivotId = $profileSlot?->id ?? $noProfile?->id;
-                          $rowType = $profile ? 'profile' : 'no-profile';
+                          $rowType = $profile ? 'profile' : 'noprofile';
                           $payStatus = $profileSlot?->pay_status ?? 0;
                         @endphp
 
                         <tr
                           class="drag-item"
                           data-playerteamid="{{ $pivotId }}"
+                          data-teamplayerid="{{ $profileSlot?->id }}"
+                          data-noprofileid="{{ $noProfile?->id }}"
                           data-type="{{ $rowType }}">
 
                           <td class="text-center drag-handle">

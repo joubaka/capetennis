@@ -79,13 +79,13 @@ $navbarDetached = ($navbarDetached ?? '');
           && auth()->user()->hasAnyRole(['super-user','admin'])
           && ($pendingBankRefundCount ?? 0) > 0)
         <li class="nav-item me-2">
-          <span class="btn btn-outline-primary btn-sm position-relative disabled">
+          <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-primary btn-sm position-relative">
             <i class="ti ti-clock"></i>
             Bank refunds
             <span class="ml-2 badge rounded-pill bg-success text-dark">
               {{ $pendingBankRefundCount }}
             </span>
-          </span>
+          </a>
         </li>
       @endif
 

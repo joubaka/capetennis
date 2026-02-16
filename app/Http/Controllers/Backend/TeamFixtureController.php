@@ -7,7 +7,8 @@ use App\Models\TeamFixture;
 use App\Models\Event;
 use App\Models\Draw;
 use App\Models\Player;
-use App\Models\Venues;
+use App\Models\Venue;
+use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use App\Models\TeamFixtureResult;
@@ -100,9 +101,9 @@ class TeamFixtureController extends Controller
 
     $events = Event::orderBy('start_date', 'desc')->get(['id', 'name', 'start_date']);
     $draws = Draw::orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
-    $venues = Venues::orderBy('name')->get(['id', 'name']);
+    $venues = Venue::orderBy('name')->get(['id', 'name']);
     $allPlayers = Player::all();
-
+ 
     return view('backend.team-fixtures.index', compact(
       'fixtures',
       'events',
@@ -114,6 +115,137 @@ class TeamFixtureController extends Controller
       'allPlayers',
       'event',
     ));
+  }
+
+  /**
+   * Admin page for fixtures per event.
+   * URL: backend/team-fixtures/admin/{event}
+   */
+  public function admin(Event $event)
+   
+  {
+    // ensure related data is available
+    $event->load(['draws', 'regions.teams']);
+
+    $draws = $event->draws()->orderBy('id')->get(['id', 'drawName']);
+    // collect teams across regions for this event (if teams are region-scoped)
+    $teams = Team::whereIn('region_id', $event->regions->pluck('id'))->orderBy('name')->get(['id', 'name']);
+    $venues = Venue::orderBy('name')->get(['id', 'name']);
+
+    // fixtures belonging to any draw of this event
+    $fixtures = TeamFixture::with(['draw', 'team1', 'team2', 'venue'])
+      ->whereIn('draw_id', $draws->pluck('id'))
+      ->orderBy('scheduled_at', 'asc')
+      ->get();
+
+    return view('backend.team-fixtures.admin', compact('event', 'draws', 'teams', 'venues', 'fixtures'));
+  }
+
+  /**
+   * Show create form for a fixture (standalone)
+   */
+  public function create()
+  {
+    $draws = Draw::orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
+    $venues = Venue::orderBy('name')->get(['id', 'name']);
+    $teams = Team::orderBy('name')->get(['id', 'name']);
+
+    return view('backend.team-fixtures.create', compact('draws', 'venues', 'teams'));
+  }
+
+  /**
+   * Store a new TeamFixture created from admin page.
+   */
+  public function store(Request $request)
+  {
+    $validated = $request->validate([
+      'draw_id' => 'required|integer|exists:draws,id',
+      'home_team_id' => 'required|integer|exists:teams,id',
+      'away_team_id' => 'required|integer|exists:teams,id|different:home_team_id',
+      'round_nr' => 'nullable',
+      'tie_nr' => 'nullable',
+      'scheduled_at' => 'nullable|date',
+      'venue_id' => 'nullable|integer|exists:venues,id',
+      'court_label' => 'nullable|string|max:50',
+      'duration_min' => 'nullable|integer|min:10|max:480',
+      'fixture_type' => 'nullable|string|max:20',
+    ]);
+
+    $fx = new TeamFixture();
+    $fx->draw_id = $validated['draw_id'];
+    // store team ids as expected by model fields (field names may vary per schema)
+    $fx->team1_ids = $validated['home_team_id'];
+    $fx->team2_ids = $validated['away_team_id'];
+    $fx->round_nr = $validated['round_nr'] ?? null;
+    $fx->tie_nr = $validated['tie_nr'] ?? null;
+    $fx->scheduled_at = $validated['scheduled_at'] ?? null;
+    $fx->venue_id = $validated['venue_id'] ?? null;
+    $fx->court_label = $validated['court_label'] ?? null;
+    $fx->duration_min = $validated['duration_min'] ?? null;
+    $fx->fixture_type = $validated['fixture_type'] ?? null;
+    $fx->scheduled = $fx->scheduled_at ? 1 : 0;
+    $fx->save();
+
+    return redirect()
+      ->route('backend.team-fixtures.admin', $fx->draw?->event?->id ?? null)
+      ->with('success', 'Fixture created successfully.');
+  }
+
+  /**
+   * Insert or update scores for a fixture via admin page (AJAX or standard POST).
+   * Endpoint: backend/team-fixtures/{team_fixture}/insert-score
+   */
+  public function insertScore(Request $request, TeamFixture $team_fixture)
+  {
+    $rules = [];
+    for ($i = 1; $i <= 3; $i++) {
+      $rules["set{$i}_home"] = 'nullable|integer|min:0';
+      $rules["set{$i}_away"] = 'nullable|integer|min:0';
+    }
+    $validated = $request->validate($rules);
+
+    foreach (range(1, 3) as $i) {
+      $home = $validated["set{$i}_home"] ?? null;
+      $away = $validated["set{$i}_away"] ?? null;
+
+      if ($home !== null || $away !== null) {
+        $winnerId = null;
+        $loserId = null;
+        if ($home > $away) {
+          $winnerId = 1;
+          $loserId = 2;
+        } elseif ($away > $home) {
+          $winnerId = 2;
+          $loserId = 1;
+        }
+
+        TeamFixtureResult::updateOrCreate(
+          ['team_fixture_id' => $team_fixture->id, 'set_nr' => $i],
+          [
+            'team1_score' => $home,
+            'team2_score' => $away,
+            'match_winner_id' => $winnerId,
+            'match_loser_id' => $loserId,
+          ]
+        );
+      } else {
+        TeamFixtureResult::where('team_fixture_id', $team_fixture->id)
+          ->where('set_nr', $i)
+          ->delete();
+      }
+    }
+
+    if ($request->ajax()) {
+      $team_fixture->load('fixtureResults');
+      return response()->json([
+        'success' => true,
+        'html' => view('backend.team-fixtures.partials.result-col', compact('team_fixture'))->render(),
+      ]);
+    }
+
+    return redirect()
+      ->route('backend.team-fixtures.admin', $team_fixture->draw?->event?->id ?? null)
+      ->with('success', 'Scores saved.');
   }
 
   public function show(TeamFixture $team_fixture)
@@ -132,7 +264,7 @@ class TeamFixtureController extends Controller
   public function edit(TeamFixture $team_fixture)
   {
     $team_fixture->loadMissing(['homeTeam', 'awayTeam', 'venue']);
-    $venues = Venues::orderBy('name')->get(['id', 'name']);
+    $venues = Venue::orderBy('name')->get(['id', 'name']);
 
     return view('backend.team-fixtures.edit', [
       'team_fixture' => $team_fixture,
@@ -357,7 +489,7 @@ class TeamFixtureController extends Controller
 
     $venues = $draw->venues;
     if ($venues->isEmpty()) {
-      $venues = \App\Models\Venues::all()->map(function ($v) {
+      $venues = \App\Models\Venue::all()->map(function ($v) {
         $v->pivot = (object) ['num_courts' => 1];
         return $v;
       });
@@ -701,7 +833,7 @@ class TeamFixtureController extends Controller
       'by_day_count' => $fixtures->groupBy(fn($fx) => \Carbon\Carbon::parse($fx->scheduled_at)->format('D'))->map->count(),
     ]);
 
-    $venue = Venues::findOrFail($venueId);
+    $venue = Venue::findOrFail($venueId);
 
     return view('frontend.fixture.byVenue', compact('event', 'venue', 'fixtures'));
   }
@@ -709,7 +841,7 @@ class TeamFixtureController extends Controller
   public function orderOfPlay($eventId, $venueId, $date)
   {
     $event = Event::findOrFail($eventId);
-    $venue = Venues::findOrFail($venueId);
+    $venue = Venue::findOrFail($venueId);
 
     $query = TeamFixture::with([
       'fixturePlayers',

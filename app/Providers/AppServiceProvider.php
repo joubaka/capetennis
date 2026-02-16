@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\View;
 use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
 use App\Models\CategoryEventRegistration;
+use App\Models\TeamPaymentOrder;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,17 +25,29 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
-    // ✅ Global admin badge: pending bank refunds
+    // ✅ Global admin badge: pending bank refunds (registrations + team refunds)
     View::composer('*', function ($view) {
 
-      if (auth()->check() && auth()->user()->hasRole('super-user')) {
+      if (auth()->check() && auth()->user()->hasAnyRole(['super-user', 'admin'])) {
 
-        $pendingBankRefundCount = CategoryEventRegistration::where('status', 'withdrawn')
+        $registrationPending = CategoryEventRegistration::where('status', 'withdrawn')
           ->where('refund_method', 'bank')
           ->where('refund_status', 'pending')
           ->count();
 
+        $teamPending = TeamPaymentOrder::where('refund_method', 'bank')
+          ->where('refund_status', 'pending')
+          ->count();
+
+        $pendingBankRefundCount = $registrationPending + $teamPending;
+
         $view->with('pendingBankRefundCount', $pendingBankRefundCount);
+
+        \Log::debug('APP SERVICE PROVIDER pendingBankRefundCount', [
+          'registrationPending' => $registrationPending,
+          'teamPending' => $teamPending,
+          'total' => $pendingBankRefundCount,
+        ]);
       }
 
     });

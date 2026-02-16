@@ -50,6 +50,19 @@
                     @if($paid)
                       <span class="btn btn-sm btn-success disabled">Registered</span>
 
+                      {{-- WITHDRAW BUTTON FOR PROFILED PLAYER OR SUPER-USER --}}
+                      @if(auth()->check() && ( $player->users->contains('id', auth()->id()) || (int)auth()->id() === 584 ))
+                        <form method="POST"
+                              action="{{ route('team.player.withdraw', [$team->id, $player->id, $event->id]) }}"
+                              class="d-inline ms-1">
+                          @csrf
+                          <button class="btn btn-sm btn-danger"
+                                  onclick="return confirm('Withdraw this player from the team event?');">
+                            Withdraw
+                          </button>
+                        </form>
+                      @endif
+
                     {{-- UNPAID + SIGNUPS OPEN --}}
                     @elseif($signupOpen)
                       <a href="{{ route('team.payment.payfast', [$team->id, $player->id, $event->id]) }}"

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
+use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -307,10 +308,70 @@ class RegistrationRefundController extends Controller
       ->latest()
       ->get();
 
+    // Team refunds (bank) — show alongside registration refunds for admins
+    $pendingTeamRefunds = TeamPaymentOrder::where('refund_method', 'bank')
+      ->where('refund_status', 'pending')
+      ->with(['user', 'team', 'player', 'event'])
+      ->latest()
+      ->get();
+
+    $completedTeamRefunds = TeamPaymentOrder::where('refund_method', 'bank')
+      ->where('refund_status', 'completed')
+      ->with(['user', 'team', 'player', 'event'])
+      ->latest()
+      ->get();
+
+    Log::debug('BANK INDEX: pending counts', [
+      'pending_registration_refunds' => $pendingRefunds->count(),
+      'pending_team_refunds' => $pendingTeamRefunds->count(),
+    ]);
+
+    // Detailed debug dump (IDs + key fields) to help trace missing rows in view
+    try {
+      Log::debug('BANK INDEX: pending team refunds data', [
+        'team_refunds' => $pendingTeamRefunds->map(function ($r) {
+          return [
+            'id' => $r->id,
+            'team_id' => $r->team_id,
+            'player_id' => $r->player_id,
+            'event_id' => $r->event_id,
+            'refund_status' => $r->refund_status,
+            'refund_net' => $r->refund_net,
+            'refund_account_name' => $r->refund_account_name,
+            'refund_bank_name' => $r->refund_bank_name,
+            'updated_at' => optional($r->updated_at)->toDateTimeString(),
+          ];
+        })->toArray()
+      ]);
+    } catch (\Throwable $e) {
+      Log::error('BANK INDEX debug dump failed', ['error' => $e->getMessage()]);
+    }
+
     return view('admin.refunds.bank-index', compact(
       'pendingRefunds',
-      'completedRefunds'
+      'completedRefunds',
+      'pendingTeamRefunds',
+      'completedTeamRefunds'
     ));
+  }
+
+  // Admin: mark a team refund complete (proxy to Backend controller logic)
+  public function bankCompleteTeam(\App\Models\TeamPaymentOrder $order)
+  {
+    if ($order->refund_method !== 'bank') {
+      return back()->withErrors('Invalid refund type.');
+    }
+
+    if ($order->refund_status !== 'pending') {
+      return back()->withErrors('Refund already processed.');
+    }
+
+    $order->update([
+      'refund_status' => 'completed',
+      'refunded_at' => now(),
+    ]);
+
+    return back()->with('success', 'Team bank refund marked as completed.');
   }
 
 

@@ -13,6 +13,12 @@
 
     <div class="card-body">
 
+      {{-- Debug: show counts so admins can see why navbar badge differs --}}
+      <div class="mb-3">
+        <span class="badge bg-info">Registration pending: {{ $pendingRefunds->count() ?? 0 }}</span>
+        <span class="badge bg-primary">Team pending: {{ $pendingTeamRefunds->count() ?? 0 }}</span>
+      </div>
+
       <table class="table table-bordered">
         <thead>
           <tr>
@@ -26,25 +32,48 @@
         </thead>
 
         <tbody>
+          {{-- Registration refunds --}}
           @forelse($pendingRefunds as $refund)
           <tr>
-            <td>{{ $refund->id }}</td>
+            <td>R-REG-{{ $refund->id }}</td>
             <td>{{ $refund->display_name }}</td>
             <td>R{{ number_format($refund->refund_net, 2) }}</td>
             <td>{{ $refund->refund_account_name }}</td>
             <td>{{ $refund->refund_bank_name }}</td>
             <td>
-              <a href="{{ route('admin.refunds.bank.show', $refund) }}"
-                 class="btn btn-sm btn-primary">
-                View
-              </a>
+              <a href="{{ route('admin.refunds.bank.show', $refund) }}" class="btn btn-sm btn-primary">View</a>
             </td>
           </tr>
           @empty
-          <tr>
-            <td colspan="6" class="text-center">No pending refunds</td>
-          </tr>
           @endforelse
+
+          {{-- Team refunds --}}
+          @if(!empty($pendingTeamRefunds) && $pendingTeamRefunds->count())
+            <tr>
+              <td colspan="6"><strong>Team Refunds</strong></td>
+            </tr>
+            @foreach($pendingTeamRefunds as $t)
+              <tr>
+                <td>R-TEAM-{{ $t->id }}</td>
+                <td>{{ optional($t->player)->name ?? 'Player #' . ($t->player_id ?? 'N/A') }}</td>
+                <td>R{{ number_format($t->refund_net, 2) }}</td>
+                <td>{{ $t->refund_account_name }}</td>
+                <td>{{ $t->refund_bank_name }}</td>
+                <td>
+                  <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
+                    @csrf
+                    <button class="btn btn-sm btn-success">Mark Paid</button>
+                  </form>
+                </td>
+              </tr>
+            @endforeach
+          @else
+            @if($pendingRefunds->isEmpty())
+              <tr>
+                <td colspan="6" class="text-center">No pending refunds</td>
+              </tr>
+            @endif
+          @endif
         </tbody>
       </table>
 
@@ -85,6 +114,32 @@
           @endforelse
         </tbody>
       </table>
+
+      {{-- Completed team refunds --}}
+      @if(!empty($completedTeamRefunds) && $completedTeamRefunds->count())
+        <hr>
+        <h6 class="mt-3">Completed Team Refunds</h6>
+        <table class="table table-bordered mt-2">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Player</th>
+              <th>Amount</th>
+              <th>Completed At</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($completedTeamRefunds as $t)
+              <tr>
+                <td>R-TEAM-{{ $t->id }}</td>
+                <td>{{ optional($t->player)->name ?? 'Player #' . ($t->player_id ?? '') }}</td>
+                <td>R{{ number_format($t->refund_net, 2) }}</td>
+                <td>{{ optional($t->refunded_at)->format('d M Y H:i') }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      @endif
 
     </div>
   </div>

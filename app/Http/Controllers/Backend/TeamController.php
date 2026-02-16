@@ -10,6 +10,7 @@ use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\Team;
+use App\Models\TeamRegion;
 use App\Models\TeamCategory;
 use App\Models\TeamPlayer;
 use App\Models\NoProfileTeamPlayer;
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-
+use App\Models\TeamPaymentOrder;
 
 class TeamController extends Controller
 {
@@ -224,21 +225,45 @@ class TeamController extends Controller
 
   public function order_player_list(Request $request)
   {
+    $teamId = (int) $request->input('team_id');
     $order = $request->input('order', []);
     $updated = collect();
 
     foreach ($order as $item) {
-      if ($item['type'] === 'profile') {
-        $tp = TeamPlayer::with('player')->find($item['id']);
+      $position = (int) ($item['position'] ?? 0);
+      if ($position < 1 || $teamId < 1) {
+        continue;
+      }
+
+      $type = $item['type'] ?? null;
+      $legacyId = $item['id'] ?? null;
+
+      $teamPlayerId = $item['team_player_id']
+        ?? ($type === 'profile' ? $legacyId : null);
+
+      $noProfileId = $item['no_profile_id']
+        ?? (in_array($type, ['noprofile', 'no-profile'], true) ? $legacyId : null);
+
+      if ($teamPlayerId) {
+        $tp = TeamPlayer::with('player')
+          ->where('id', $teamPlayerId)
+          ->where('team_id', $teamId)
+          ->first();
+
         if ($tp) {
-          $tp->update(['rank' => $item['position']]);
+          $tp->update(['rank' => $position]);
           $tp->setAttribute('type', 'profile');
           $updated->push($tp);
         }
-      } elseif ($item['type'] === 'noprofile') {
-        $np = NoProfileTeamPlayer::find($item['id']);
+      }
+
+      if ($noProfileId) {
+        $np = NoProfileTeamPlayer::where('id', $noProfileId)
+          ->where('team_id', $teamId)
+          ->first();
+
         if ($np) {
-          $np->update(['rank' => $item['position']]);
+          $np->update(['rank' => $position]);
           $np->setAttribute('type', 'noprofile');
           $updated->push($np);
         }
@@ -282,57 +307,77 @@ class TeamController extends Controller
         return $team;
     }
 
-  public function team_payment_payfast($team, $player, $event)
+
+
+  public function team_payment_payfast($teamId, $playerId, $eventId)
   {
-    $data['player'] = Player::findOrFail($player);
-    $data['team'] = Team::with('regions')->findOrFail($team);
-    $data['user'] = Auth::user();
-    $data['event'] = Event::findOrFail($event);
-    $data['category'] = ['id' => 0, 'name' => 'Team'];
-
-    $payfast = new Payfast();
-
-    // 🔹 Mode handling
-    // 0 = sandbox | 1 = live | 2 = forced test
-    if (Auth::id() == 584) {
-
-      $payfast->setMode(0); // sandbox
-    } else {
- $payfast->setMode(1); // live
-     
+    // require authenticated user
+    $user = auth()->user();
+    if (!$user) {
+        return redirect()->route('home')->withErrors('Please log in to continue.');
     }
 
-    // 🔹 Collect fees
-    $eventFee = (float) ($data['event']->entryFee ?? 0);
+    // load models (will 404 if missing)
+    $team = \App\Models\Team::findOrFail($teamId);
+    $player = \App\Models\Player::findOrFail($playerId);
+    $event = \App\Models\Event::findOrFail($eventId);
 
-    $regionFee = (
-      $data['team']->regions &&
-      (float) $data['team']->regions->region_fee > 0
-    )
-      ? (float) $data['team']->regions->region_fee
-      : 0;
+    // compute fees (adapt the regionFee computation to your schema)
+    $entryFee = (float) ($event->entryFee ?? 0);
+    $regionFee = 0;
+    if (isset($team->region_id)) {
+        $region = TeamRegion::find($team->region_id);
+        // replace below with your actual region fee logic
+        $regionFee = $region ? (float) ($region->region_fee ?? 0) : 0;
+    }
+    $total = round($entryFee + $regionFee, 2);
 
-    // 🔹 Total for PayFast
-    $total = $eventFee + $regionFee;
+    // create or load TeamPaymentOrder (unique constraint prevents duplicates)
+    $order = \App\Models\TeamPaymentOrder::firstOrCreate(
+        [
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+        ],
+        [
+            'user_id' => $user->id,
+            'total_amount' => $total,
+            'wallet_reserved' => 0,
+            'payfast_amount_due' => $total,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]
+    );
 
-    // 🔹 PayFast REQUIRED domain setters
-    $payfast->setEvent($data['event']);          // item_name + custom_int3
-    $payfast->setAmount($total);                 // amount
-    $payfast->setPayer($data['user']);           // custom_str4
-    $payfast->setPlayerInfo($data['player']);    // custom_int2
-    $payfast->setCategoryEventId($data['category']['id']);
+    // Prepare Payfast instance
+    $payfast = new \App\Classes\Payfast();
+    // use same mode logic as other controllers (user id 584 => sandbox)
+    $payfast->setMode($user->id == 584 ? 0 : 1);
 
-    // 🔥 CRITICAL FOR TEAM PAYMENTS (FIX)
-    $payfast->custom_int1 = $data['team']->id;   // team_id
-    $payfast->custom_int4 = $data['user']->id;   // user_id
+    // set core fields
+    $payfast->setEvent($event);                     // sets custom_int3, custom_str3, item_name
+    $payfast->setPlayerInfo($player);               // sets custom_int2, custom_str2
+    $payfast->setPayer($user);                      // sets custom_str4
+    $payfast->amount = number_format($total, 2, '.', ''); // amount expects formatted string
+    // For team orders we don't have RegistrationOrder type — set custom_int5 manually
+    $payfast->custom_int5 = $order->id;
+    $payfast->custom_str5 = 'TeamOrder';
 
-    // 🔹 Pass values to view
-    $data['eventFee'] = $eventFee;
-    $data['regionFee'] = $regionFee;
-    $data['total'] = $total;
-    $data['payfast'] = $payfast;
-  
-    return view('frontend.payfast.team_payment', $data);
+    // Configure urls (notify team, cancel and return)
+    // notify team ITN route
+    $payfast->setTeamNotifyUrl(route('notify.team'));
+    // cancel/return should use routes that exist in your app
+    $payfast->setCancelUrl(route('team.checkout', ['order' => $order->id]));
+    $payfast->setReturnUrl(route('event.success', ['id' => $event->id]) . '?email=' . urlencode($user->email));
+
+    // pass variables expected by the blade
+    return view('frontend.payfast.team_payment', [
+        'payfast' => $payfast,
+        'event' => $event,
+        'user' => $user,
+        'regionFee' => $regionFee,
+    ]);
   }
 
   public function changeCategory(Request $request, $id)
@@ -385,7 +430,6 @@ class TeamController extends Controller
 
     return view('backend.adminPage.partials.team_players_table', compact('team'));
   }
-
 
 
 
@@ -734,6 +778,149 @@ class TeamController extends Controller
       'teamId',
       'rank'
     ));
+  }
+  public function teamHybridComplete(int $orderId)
+  {
+    Log::info('TEAM WALLET COMPLETE START', [
+      'order_id' => $orderId,
+      'user_id' => auth()->id()
+    ]);
+
+    $user = auth()->user();
+
+    if (!$user) {
+      return redirect()->route('events.index')
+        ->withErrors('Session expired.');
+    }
+
+    $order = \App\Models\TeamPaymentOrder::lockForUpdate()
+      ->with('user.wallet')
+      ->find($orderId);
+
+    if (!$order) {
+      return redirect()->route('events.index')
+        ->withErrors('Order not found.');
+    }
+
+    if ($order->pay_status == 1) {
+      return redirect()->route('events.success', $order->event_id);
+    }
+
+    if ($order->user_id !== $user->id) {
+      abort(403);
+    }
+
+    DB::transaction(function () use ($order, $user) {
+
+      if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
+
+        Log::info('TEAM WALLET DEBIT', [
+          'order_id' => $order->id,
+          'amount' => $order->wallet_reserved
+        ]);
+
+        app(\App\Services\Wallet\WalletService::class)->debit(
+          $user->wallet,
+          (float) $order->wallet_reserved,
+          'team_registration_wallet_payment',
+          $order->id,
+          ['order_id' => $order->id]
+        );
+
+        $order->wallet_debited = true;
+      }
+
+      $order->payfast_paid = true;
+      $order->pay_status = 1;
+      $order->save();
+
+      // Mark team player paid
+      $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
+        ->where('player_id', $order->player_id)
+        ->first();
+
+      if ($teamPlayer) {
+        $teamPlayer->pay_status = 1;
+        $teamPlayer->save();
+      }
+
+      Log::info('TEAM WALLET COMPLETE SUCCESS', [
+        'order_id' => $order->id
+      ]);
+    });
+
+    return redirect()->route('events.success', $order->event_id)
+      ->with('success', 'Team payment completed using wallet.');
+  }
+  public function teamHybridReserve(Request $request)
+  {
+    $order = TeamPaymentOrder::findOrFail($request->order_id);
+
+    $order->wallet_reserved = $request->wallet_applied;
+    $order->payfast_amount_due = $request->remaining_amount;
+    $order->save();
+
+    if ($order->payfast_amount_due <= 0) {
+      return redirect()->route('team.hybrid.complete', $order->id);
+    }
+
+    return redirect()->route('team.payment.payfast', [
+      $order->team_id,
+      $order->player_id,
+      $order->event_id
+    ]);
+  }
+  public function checkout($orderId)
+  {
+    $order = \App\Models\TeamPaymentOrder::with('team', 'player', 'event', 'user')
+      ->findOrFail($orderId);
+
+    return view('frontend.payfast.check_out', [
+      'type' => 'team',
+      'orderId' => $order->id,
+      'order' => $order
+    ]);
+  }
+  public function teamHybridPay(Request $request)
+  {
+    $orderId = (int) $request->custom_int5;
+    $walletApplied = (float) $request->wallet_applied;
+    $remaining = (float) $request->remaining_amount;
+
+    $user = auth()->user();
+    $wallet = $user?->wallet;
+
+    if (!$user || !$wallet) {
+      return back()->withErrors('Wallet not found.');
+    }
+
+    $order = \App\Models\TeamPaymentOrder::findOrFail($orderId);
+
+    if ($order->pay_status == 1 || $order->payfast_paid) {
+      return back()->with('success', 'Order already paid.');
+    }
+
+    $order->wallet_reserved = round($walletApplied, 2);
+    $order->payfast_amount_due = round($remaining, 2);
+    $order->save();
+
+    if ($remaining <= 0) {
+      return redirect()->route('team.hybrid.complete', $orderId);
+    }
+
+    // Send to PayFast
+    $payfast = new \App\Classes\Payfast();
+    $payfast->setMode($user->id == 584 ? 0 : 1);
+
+    return view('frontend.payfast.pay_now', [
+      'payfast' => $payfast,
+      'amount' => $remaining,
+      'orderId' => $orderId,
+      'custom_wallet_reserved' => $walletApplied,
+      'return_url' => route('team.checkout', ['order' => $orderId, 'type' => 'team']),
+      'cancel_url' => route('team.hybrid.cancel', $orderId),
+      'notify_url' => route('notify.team'),
+    ]);
   }
 
 }

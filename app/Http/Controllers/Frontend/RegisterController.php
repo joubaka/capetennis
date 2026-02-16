@@ -169,85 +169,86 @@ class RegisterController extends Controller
   {
     $data = $request->all();
 
-    Log::info('[PayFast] ITN RECEIVED', $data);
+    Log::info('[HYBRID ITN RECEIVED]', $data);
 
-    // 1️⃣ Validate payment status
-    if (($data['payment_status'] ?? '') !== 'COMPLETE') {
-      Log::warning('[PayFast] Not COMPLETE status', [
-        'status' => $data['payment_status'] ?? null
+    // 🔐 1️⃣ Validate signature
+    if (!$this->validatePayfastSignature($data)) {
+
+      Log::error('[HYBRID ITN INVALID SIGNATURE]', [
+        'data' => $data
       ]);
-      return response('IGNORED', 200);
+
+      return response('Invalid signature', 400);
     }
 
-    // 2️⃣ Extract order
-    $orderId = (int) ($data['custom_int5'] ?? 0);
-
-    if (!$orderId) {
-      Log::error('[PayFast] Missing order ID');
-      return response('INVALID', 200);
-    }
-
-    $order = RegistrationOrder::with('user.wallet', 'items')
-      ->lockForUpdate()
-      ->find($orderId);
-
-    if (!$order) {
-      Log::error('[PayFast] Order not found', [
-        'order_id' => $orderId
-      ]);
-      return response('INVALID', 200);
-    }
-
-    // 3️⃣ Validate amount
-    $expectedAmount = round((float) $order->payfast_amount_due, 2);
-    $receivedAmount = round((float) ($data['amount_gross'] ?? 0), 2);
-
-    if ($expectedAmount != $receivedAmount) {
-      Log::error('[PayFast] Amount mismatch', [
-        'expected' => $expectedAmount,
-        'received' => $receivedAmount,
-        'order_id' => $orderId
-      ]);
-      return response('INVALID', 200);
-    }
-
-    // 4️⃣ Prevent double processing
-    if ($order->payfast_paid) {
-      return response('OK', 200);
+    // 2️⃣ Only process COMPLETE payments
+    if (($data['payment_status'] ?? null) !== 'COMPLETE') {
+      return response('Ignored', 200);
     }
 
     try {
 
-      DB::transaction(function () use ($order, $data) {
+      DB::transaction(function () use ($data) {
 
-        // Mark PayFast paid
+        $orderId = (int) ($data['custom_int5'] ?? 0);
+
+        $order = RegistrationOrder::with(['items', 'user.wallet'])
+          ->lockForUpdate()
+          ->find($orderId);
+
+        if (!$order) {
+          throw new \Exception("Order not found");
+        }
+
+        // 🔁 Prevent double processing
+        if ($order->payfast_paid === true) {
+          return;
+        }
+
+        // 🔎 Validate amount
+        $expectedAmount = (float) $order->payfast_amount_due;
+
+        $paidAmount = (float) ($data['amount_gross'] ?? 0);
+
+        if (round($paidAmount, 2) !== round($expectedAmount, 2)) {
+          throw new \Exception("Amount mismatch. Expected {$expectedAmount}, got {$paidAmount}");
+        }
+
+        // 3️⃣ Mark PayFast portion
         $order->payfast_paid = true;
         $order->pay_status = 1;
         $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
         $order->save();
 
-        // Debit wallet if hybrid
-        if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
+        // 4️⃣ Debit wallet if reserved
+        if (
+          $order->wallet_reserved > 0 &&
+          $order->wallet_debited === false
+        ) {
 
-          app(WalletService::class)->debit(
+          app(\App\Services\Wallet\WalletService::class)->debit(
             $order->user->wallet,
             (float) $order->wallet_reserved,
             'event_registration_wallet_payment',
             $order->id,
-            ['order_id' => $order->id]
+            [
+              'order_id' => $order->id,
+              'source' => 'hybrid_notify',
+            ]
           );
 
           $order->wallet_debited = true;
           $order->save();
         }
 
-        // Attach registrations
+        // 5️⃣ Mark registrations as paid
         foreach ($order->items as $item) {
 
           $registration = Registration::find($item->registration_id);
 
-          if (!$registration)
+          if (!$registration) {
             continue;
+          }
 
           $registration->players()->syncWithoutDetaching([
             $item->player_id
@@ -261,24 +262,25 @@ class RegisterController extends Controller
             ],
           ]);
         }
+
+        Log::info('[HYBRID ITN SUCCESS]', [
+          'order_id' => $orderId
+        ]);
       });
 
     } catch (\Throwable $e) {
 
-      Log::error('[PayFast] ITN PROCESSING FAILED', [
-        'order_id' => $orderId,
-        'message' => $e->getMessage()
+      Log::error('[HYBRID ITN FAILED]', [
+        'message' => $e->getMessage(),
+        'order_id' => $data['custom_int5'] ?? null,
+        'trace' => $e->getTraceAsString(),
       ]);
-
-      return response('ERROR', 200);
     }
 
-    Log::info('[PayFast] ITN SUCCESS', [
-      'order_id' => $orderId
-    ]);
-
-    return response('OK', 200);
+    return response('OK', 200)
+      ->header('Content-Type', 'text/plain');
   }
+
 
 
   public function applyWallet(Request $request)
@@ -388,16 +390,182 @@ class RegisterController extends Controller
   {
     $data = $request->all();
 
-    // 1️⃣ Create transaction (standard PayFast ITN)
-    self::update_transaction($data, null);
+    Log::info('TEAM PAYFAST ITN RECEIVED', [
+      'data' => $data
+    ]);
 
+    /*
+    |--------------------------------------------------------------------------
+    | 1️⃣ VERIFY SIGNATURE
+    |--------------------------------------------------------------------------
+    */
+    if (!\App\Helpers\PayfastHelper::verifySignature($data)) {
 
-    // 2️⃣ Apply team payment logic
-    $this->updateTeamPayment($data);
+      Log::error('TEAM PAYFAST INVALID SIGNATURE', [
+        'order_id' => $data['custom_int5'] ?? null
+      ]);
 
-    return response('OK', 200);
+      return response('Invalid signature', 400);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | 2️⃣ VALIDATE PAYMENT STATUS
+    |--------------------------------------------------------------------------
+    */
+    if (($data['payment_status'] ?? '') !== 'COMPLETE') {
+
+      Log::warning('TEAM PAYFAST NOT COMPLETE', [
+        'order_id' => $data['custom_int5'] ?? null,
+        'status' => $data['payment_status'] ?? null
+      ]);
+
+      return response('Ignored', 200);
+    }
+
+    $orderId = (int) ($data['custom_int5'] ?? 0);
+
+    if (!$orderId) {
+      Log::error('TEAM PAYFAST NO ORDER ID');
+      return response('No order ID', 400);
+    }
+
+    try {
+
+      DB::transaction(function () use ($orderId, $data) {
+
+        $order = \App\Models\TeamPaymentOrder::lockForUpdate()
+          ->with('team', 'player', 'user.wallet')
+          ->find($orderId);
+
+        if (!$order) {
+          throw new \Exception("Team order not found: {$orderId}");
+        }
+
+        if ($order->payfast_paid) {
+          Log::info('TEAM PAYFAST ALREADY PROCESSED', [
+            'order_id' => $orderId
+          ]);
+          return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 3️⃣ AMOUNT VALIDATION (SECURITY)
+        |--------------------------------------------------------------------------
+        */
+        $paidAmount = (float) ($data['amount_gross'] ?? 0);
+
+        if ($paidAmount != (float) $order->payfast_amount_due) {
+
+          Log::error('TEAM PAYFAST AMOUNT MISMATCH', [
+            'order_id' => $orderId,
+            'expected' => $order->payfast_amount_due,
+            'received' => $paidAmount
+          ]);
+
+          throw new \Exception("Amount mismatch");
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 4️⃣ DEBIT WALLET IF RESERVED (HYBRID)
+        |--------------------------------------------------------------------------
+        */
+        if (
+          $order->wallet_reserved > 0 &&
+          !$order->wallet_debited &&
+          $order->user &&
+          $order->user->wallet
+        ) {
+
+          Log::info('TEAM HYBRID DEBITING WALLET', [
+            'order_id' => $order->id,
+            'amount' => $order->wallet_reserved
+          ]);
+
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'team_registration_wallet_payment',
+            $order->id,
+            ['order_id' => $order->id]
+          );
+
+          $order->wallet_debited = true;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 5️⃣ MARK ORDER PAID
+        |--------------------------------------------------------------------------
+        */
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
+        $order->save();
+
+        Log::info('TEAM ORDER MARKED PAID', [
+          'order_id' => $orderId
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | 6️⃣ MARK TEAM PLAYER PAID
+        |--------------------------------------------------------------------------
+        */
+        $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
+          ->where('player_id', $order->player_id)
+          ->first();
+
+        if ($teamPlayer) {
+
+          $teamPlayer->pay_status = 1;
+          $teamPlayer->save();
+
+          Log::info('TEAM PLAYER MARKED PAID', [
+            'team_id' => $order->team_id,
+            'player_id' => $order->player_id
+          ]);
+        }
+
+      });
+
+    } catch (\Throwable $e) {
+
+      Log::error('TEAM PAYFAST ITN FAILED', [
+        'order_id' => $orderId,
+        'message' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+      ]);
+
+      return response('Error', 500);
+    }
+
+    return response('OK', 200)
+      ->header('Content-Type', 'text/plain');
   }
 
+
+  private function calculateTeamAmount($teamId)
+  {
+    $team = Team::with('regions', 'event')->find($teamId);
+
+    if (!$team) {
+      return 0;
+    }
+
+    $eventFee = (float) ($team->event->entryFee ?? 0);
+
+    $regionFee = (
+      $team->regions &&
+      (float) $team->regions->region_fee > 0
+    )
+      ? (float) $team->regions->region_fee
+      : 0;
+
+    return $eventFee + $regionFee;
+  }
 
   public function updateTeamPayment($data)
   {
@@ -780,4 +948,34 @@ class RegisterController extends Controller
 
         return view('frontend.payfast.pay_now', compact('request', 'payfast'));
     }
+
+  private function validatePayfastSignature(array $data): bool
+  {
+    $passphrase = config('services.payfast.passphrase'); // set in config
+
+    // 1️⃣ Remove signature
+    $receivedSignature = $data['signature'] ?? null;
+    unset($data['signature']);
+
+    // 2️⃣ Remove empty values
+    $data = array_filter($data, function ($value) {
+      return $value !== '';
+    });
+
+    // 3️⃣ Sort by key
+    ksort($data);
+
+    // 4️⃣ Build query string
+    $queryString = urldecode(http_build_query($data));
+
+    if ($passphrase) {
+      $queryString .= "&passphrase=" . urlencode($passphrase);
+    }
+
+    // 5️⃣ Generate local signature
+    $generatedSignature = md5($queryString);
+
+    return $generatedSignature === $receivedSignature;
+  }
+
 }

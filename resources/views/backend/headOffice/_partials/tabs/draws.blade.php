@@ -59,10 +59,16 @@
                         <h5>Draw Format type</h5>
                         <select name="drawType" id="smallSelect" class="form-select form-select-sm">
                             <option>Select Format</option>
-                            @foreach($drawTypes as $drawType)
-                            <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
-
-                            @endforeach
+                            <optgroup label="Team Formats">
+                                @foreach($teamDrawTypes as $drawType)
+                                <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
+                                @endforeach
+                            </optgroup>
+                            <optgroup label="Individual Formats">
+                                @foreach($individualDrawTypes as $drawType)
+                                <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
+                                @endforeach
+                            </optgroup>
                         </select>
                     </div>
                     <div class="row">
@@ -127,10 +133,16 @@
                         <h5>Draw Format type</h5>
                         <select name="drawType" id="smallSelect" class="form-select form-select-sm">
                             <option>Select Format</option>
-                            @foreach($drawTypes as $drawType)
-                            <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
-
-                            @endforeach
+                            <optgroup label="Team Formats">
+                                @foreach($teamDrawTypes as $drawType)
+                                <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
+                                @endforeach
+                            </optgroup>
+                            <optgroup label="Individual Formats">
+                                @foreach($individualDrawTypes as $drawType)
+                                <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
+                                @endforeach
+                            </optgroup>
                         </select>
                     </div>
                     <div class="row">

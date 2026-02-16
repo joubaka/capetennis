@@ -138,7 +138,17 @@
 <div class="mb-4">
   <h6 class="fw-bold mb-3">Choose Draw Type</h6>
   <div class="d-flex flex-column gap-2">
-    @foreach($drawTypes as $type)
+    <small class="text-muted fw-bold">Team Formats</small>
+    @foreach($teamDrawTypes as $type)
+      <label class="switch switch-info">
+        <input type="radio" name="draw_type_id" class="switch-input"
+               value="{{ $type->id }}" data-mixed="{{ $type->is_mixed ? '1' : '0' }}">
+        <span class="switch-toggle-slider"></span>
+        <span class="switch-label">{{ $type->drawTypeName }}</span>
+      </label>
+    @endforeach
+    <small class="text-muted fw-bold mt-2">Individual Formats</small>
+    @foreach($individualDrawTypes as $type)
       <label class="switch switch-info">
         <input type="radio" name="draw_type_id" class="switch-input"
                value="{{ $type->id }}" data-mixed="{{ $type->is_mixed ? '1' : '0' }}">

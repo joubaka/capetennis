@@ -18,10 +18,19 @@ class RegistrationPaymentController extends Controller
    */
   public function hybridPay(Request $request)
   {
+    $type = $request->type ?? 'registration';
+
+    // orderId must be read from the request before any use
     $orderId = (int) $request->custom_int5;
     $walletApplied = round((float) $request->wallet_applied, 2);
     $remaining = round((float) $request->remaining_amount, 2);
 
+    if ($type === 'team') {
+      $order = \App\Models\TeamPaymentOrder::findOrFail($orderId);
+    } else {
+      $order = RegistrationOrder::with('items')->findOrFail($orderId);
+    }
+    
     $user = auth()->user();
     $wallet = $user?->wallet;
 
@@ -32,8 +41,6 @@ class RegistrationPaymentController extends Controller
     if ($walletApplied < 0 || $remaining < 0) {
       return back()->withErrors('Invalid payment amounts.');
     }
-
-    $order = RegistrationOrder::with('items')->findOrFail($orderId);
 
     // 🔒 Ownership protection
     if ($order->user_id !== $user->id) {
@@ -94,7 +101,8 @@ class RegistrationPaymentController extends Controller
       'orderId' => $orderId,
       'custom_wallet_reserved' => $order->wallet_reserved,
       'return_url' => route('frontend.registration.success', ['order' => $orderId]),
-      'cancel_url' => route('registration.hybrid.cancel', ['custom_int5' => $orderId]),
+      // route parameter name must be match route definition (/registration/hybrid/cancel/{orderId})
+      'cancel_url' => route('registration.hybrid.cancel', ['orderId' => $orderId]),
       'notify_url' => route('notify'),
     ]);
   }

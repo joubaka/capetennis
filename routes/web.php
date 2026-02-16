@@ -133,6 +133,49 @@ Route::get(
   [RegistrationPaymentController::class, 'hybridCancel']
 )->name('registration.hybrid.cancel');
 
+Route::get(
+  '/team/checkout/{order}',
+  [TeamController::class, 'checkout']
+)->name('team.checkout')->middleware('auth');
+Route::post(
+  'team/hybrid/complete/{order}',
+  [TeamController::class, 'teamHybridComplete']
+)->name('team.hybrid.complete');
+Route::prefix('team')->group(function () {
+
+  Route::post(
+    '/hybrid/pay',
+    [\App\Http\Controllers\Frontend\RegistrationPaymentController::class, 'teamHybridPay']
+  )->name('team.hybrid.pay');
+
+  Route::post(
+    '/hybrid/complete/{order}',
+    [\App\Http\Controllers\Frontend\RegistrationPaymentController::class, 'teamHybridComplete']
+  )->name('team.hybrid.complete');
+
+  Route::get(
+    '/hybrid/cancel/{order}',
+    [\App\Http\Controllers\Frontend\RegistrationPaymentController::class, 'teamHybridCancel']
+  )->name('team.hybrid.cancel');
+
+});
+
+// Team Fixtures — Admin HQ routes
+Route::get('backend/team-fixtures/admin/{event}', [TeamFixtureController::class, 'admin'])
+  ->name('backend.team-fixtures.admin');
+
+Route::get('backend/team-fixtures/create', [TeamFixtureController::class, 'create'])
+  ->name('backend.team-fixtures.create');
+
+Route::post('backend/team-fixtures', [TeamFixtureController::class, 'store'])
+  ->name('backend.team-fixtures.store');
+
+Route::post('backend/team-fixtures/{team_fixture}/insert-score', [TeamFixtureController::class, 'insertScore'])
+  ->name('backend.team-fixtures.insertScore');
+
+
+
+
 Route::resource('reg', RegisterController::class);
 
 //event
@@ -172,7 +215,7 @@ Route::post(
 
 
 
-Route::middleware(['auth', 'role:super-user'])
+Route::middleware(['auth', 'role:super-user|admin'])
   ->prefix('admin/refunds')
   ->group(function () {
 
@@ -190,6 +233,12 @@ Route::middleware(['auth', 'role:super-user'])
       '/bank/{registration}/complete',
       [RegistrationRefundController::class, 'bankComplete']
     )->name('admin.refunds.bank.complete');
+
+    // Mark team bank refund as completed (admin)
+    Route::post(
+      '/bank/team/{order}/complete',
+      [RegistrationRefundController::class, 'bankCompleteTeam']
+    )->name('admin.refunds.bank.complete.team');
   });
 
 
@@ -209,7 +258,19 @@ Route::middleware(['auth', 'role:super-user'])
       App\Http\Controllers\Backend\BankRefundController::class,
       'complete'
     ])->name('bank.complete');
+    
+    // Mark a team refund as completed
+    Route::post('team/{order}/complete', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'completeTeam'
+    ])->name('bank.complete.team');
   });
+
+// Alternate named route used by some views: bank.complete.team
+Route::post('backend/refunds/team/{order}/complete', [
+  App\Http\Controllers\Backend\BankRefundController::class,
+  'completeTeam'
+])->middleware(['auth', 'role:super-user'])->name('bank.complete.team');
 
 
 
@@ -663,6 +724,13 @@ Route::get(
   Route::post('team/addToRegion', [TeamController::class, 'addToRegion'])->name('team.addToRegion');
   Route::post('/team/replacePlayer', [TeamController::class, 'replacePlayer'])
     ->name('backend.team.replace.player');
+  
+  // Team player refund routes
+  Route::get('/team/{team}/player/{player}/{event}/refund/choose', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'chooseRefund'])
+    ->name('team.player.refund.choose')->middleware('auth');
+
+  Route::post('/team/{team}/player/{player}/{event}/refund/request', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'storeRefund'])
+    ->name('team.player.refund.request')->middleware('auth');
 
   Route::get(
     '/team/player/replace-form',
@@ -1184,7 +1252,9 @@ Route::get('/backend/team-schedule/all/{event}', [TeamScheduleController::class,
 Route::get('/backend/team-schedule/all-data/{event}', [TeamScheduleController::class, 'dataAll'])->name('backend.team-schedule.all.data');
 Route::post('/backend/team-schedule/all-auto/{event}', [TeamScheduleController::class, 'autoAll'])->name('backend.team-schedule.all.auto');
 
-
+// backend/team-fixtures/admin/{event}
+Route::get('backend/team-fixtures/admin/{event}', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'admin'])
+  ->name('backend.team-fixtures.admin');
 
 Route::prefix('backend')->middleware('auth')->group(function () {
 
@@ -1334,7 +1404,18 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::patch('team/noprofile/update/{id}', [TeamController::class, 'updateNoProfile'])
     ->name('backend.team.noprofile.update');
+  // Team player withdraw / refund (frontend)
+  Route::post(
+    '/team/{team}/player/{player}/withdraw/{event}',
+    [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'withdraw']
+  )->middleware('auth')->name('team.player.withdraw');
 
+  // Optionally: choose refund and refund store routes if you want to mirror registrations.refund.choose/store
+  Route::get('/team/{team}/player/{player}/refund/choose/{event}', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'chooseRefund'])
+    ->middleware('auth')->name('team.player.refund.choose');
+
+  Route::post('/team/{team}/player/{player}/refund/{event}', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'storeRefund'])
+    ->middleware('auth')->name('team.player.refund.store');
   /*
   |--------------------------------------------------------------------------
   | WALLET
