@@ -1,6 +1,3 @@
-
-
-
 @php
   // Quick counts for badges (TEAM EVENTS)
   $regionCount   = $event->regions->count();
@@ -128,15 +125,53 @@
               @if ($event->eventCategories->isEmpty())
                 <div class="alert alert-primary noRegions" role="alert">No Categories added to event</div>
               @else
-                <ul class="list-group">
+                <ul class="list-group" id="category-list">
                   @foreach ($event->eventCategories as $category)
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <li class="list-group-item d-flex justify-content-between align-items-center" data-category-id="{{ $category->id }}">
                       <span>{{ $category->category->name }}</span>
-                      <span class="text-muted">#{{ $category->id }}</span>
+                      <div>
+                        <span class="text-muted me-2">#{{ $category->id }}</span>
+                        <button class="btn btn-sm btn-danger btn-remove-category"
+                                data-id="{{ $category->id }}"
+                                data-name="{{ $category->category->name }}">
+                          <i class="ti ti-trash"></i>
+                        </button>
+                      </div>
                     </li>
                   @endforeach
                 </ul>
               @endif
+            </div>
+          </div>
+
+          <!-- Add Category Modal -->
+          <div class="modal fade" id="add-category-modal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <form id="add-category-form">
+                @csrf
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Add Category</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-3">
+                      <label for="category-select" class="form-label">Select Category</label>
+                      <select id="category-select" name="category_ids[]" class="form-select" multiple required>
+                        <option value="">-- Select --</option>
+                        @foreach($allCategories as $cat)
+                          <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                        @endforeach
+                      </select>
+                      <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</small>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         </div>
@@ -189,6 +224,81 @@
     </div>
   </div>
 </div>
+
+<!-- Import No-Profile Team Modal -->
+<div class="modal fade" id="import-noprofile-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Import No-Profile Team: <span id="import-team-name"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="import-noprofile-form" enctype="multipart/form-data">
+          @csrf
+          <input type="hidden" id="import-team-id" name="team_id">
+          <input type="hidden" id="import-region-id" name="region_id">
+
+          <!-- Spinner & status (hidden initially) -->
+          <div id="import-status" class="d-flex align-items-center mb-3" style="display:none;">
+            <div id="import-spinner" class="spinner-border text-primary me-3" role="status" aria-hidden="true" style="width:1.4rem;height:1.4rem;"></div>
+            <div>
+              <div class="small">Importing… <strong id="import-timer">00:00</strong></div>
+              <div id="import-message" class="small text-muted">Uploading file and processing rows.</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="import-file" class="form-label">Select Excel File</label>
+            <input type="file" class="form-control" id="import-file" name="file" accept=".xlsx,.xls,.csv" required>
+            <small class="text-muted d-block mt-2">
+              Format: team_id, rank, name, surname, paystatus (or pass team_id via the modal)
+            </small>
+          </div>
+
+          <div class="card bg-light">
+            <div class="card-body">
+              <h6 class="card-title">File Format Example:</h6>
+              <table class="table table-sm table-borderless">
+                <thead>
+                  <tr class="text-muted">
+                    <th>team_id</th>
+                    <th>rank</th>
+                    <th>name</th>
+                    <th>surname</th>
+                    <th>paystatus</th>
+                  </tr>
+                </thead>
+                <tbody class="text-muted small">
+                  <tr>
+                    <td>{{ $event->id }}</td>
+                    <td>1</td>
+                    <td>John</td>
+                    <td>Doe</td>
+                    <td>0</td>
+                  </tr>
+                  <tr>
+                    <td>{{ $event->id }}</td>
+                    <td>2</td>
+                    <td>Jane</td>
+                    <td>Smith</td>
+                    <td>1</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="import-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="import-submit-btn">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{-- 🟠 Edit No-Profile Modal --}}
 <div class="modal fade" id="editNoProfileModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -214,6 +324,21 @@
     </div>
   </div>
 </div>
+
+<script>
+  window.deleteCategoryUrl = "{{ url('backend/event/category') }}";
+  window.eventAttachCategoryUrl = "{{ route('admin.categories.attach', $event->id) }}";
+  window.importNoProfileUrl = "{{ route('backend.team.import.no.profile') }}";
+
+  // Handle import noprofile button click
+ 
+</script>
+
+
+
+
+
+
 
 
 

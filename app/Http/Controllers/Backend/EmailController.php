@@ -105,6 +105,12 @@ class EmailController extends Controller
         'player_id' => $player->id,
         'email' => $details['email'],
       ]);
+      Log::info('[Mail] 🏁 COMPLETED REQUEST', [
+        'target_type' => $request->target_type,
+        'recipient' => $recipient,
+        'subject' => $details['subject'],
+        'mailer' => $mailer,
+      ]);
 
       return response()->json([
         'success' => true,
@@ -152,6 +158,12 @@ class EmailController extends Controller
       case 'All players in event':
         Log::debug('[Mail] Legacy: All players in event');
         $result = $this->sendToEventType($details, $mailer);
+        break;
+
+      // ✅ ADD THIS MISSING CASE
+      case 'All players in team':
+        Log::debug('[Mail] Legacy: All players in team', ['team_id' => $details['team']]);
+        $result = $this->sendToTeam($details, $mailer);
         break;
 
       case 'All players in nominations':
@@ -391,22 +403,78 @@ class EmailController extends Controller
   /** ✅ All players in region */
   public function sendToRegion(array $details, string $mailer)
   {
-    $region = TeamRegion::with('teams.players')->find($details['region']);
-    if (!$region)
-      return ['message' => 'Region not found.', 'title' => 'error'];
+    Log::info('[sendToRegion] ▶️ START', [
+      'region_id' => $details['region'] ?? null,
+      'mailer' => $mailer,
+      'subject' => $details['subject'] ?? '(no subject)',
+      'bcc_flag' => $details['bcc'] ?? false,
+    ]);
 
-    foreach ($region->teams as $team) {
-      foreach ($team->players as $player) {
+    $region = TeamRegion::with('teams.players')->find($details['region']);
+    
+    if (!$region) {
+      Log::warning('[sendToRegion] ❌ Region not found', ['region_id' => $details['region']]);
+      return ['message' => 'Region not found.', 'title' => 'error'];
+    }
+
+    Log::info('[sendToRegion] 🟢 Region loaded', [
+      'region_id' => $region->id,
+      'region_name' => $region->region_name ?? null,
+      'teams_count' => $region->teams->count(),
+    ]);
+
+    $playerCount = 0;
+    $queuedCount = 0;
+    $missingEmail = 0;
+
+    foreach ($region->teams as $teamIndex => $team) {
+      $players = $team->players ?? collect();
+      
+      Log::debug('[sendToRegion] 🔹 Processing team', [
+        'team_index' => $teamIndex + 1,
+        'team_id' => $team->id,
+        'team_name' => $team->name ?? null,
+        'players_count' => $players->count(),
+      ]);
+
+      foreach ($players as $player) {
+        $playerCount++;
+
         if (!empty($player->email)) {
+          $queuedCount++;
           $details['email'] = trim(strtolower($player->email));
+
+          Log::debug('[sendToRegion] 📧 Queuing email', [
+            'player_id' => $player->id,
+            'player_name' => "{$player->name} {$player->surname}",
+            'email' => $details['email'],
+          ]);
+
           $this->queueMail($details, $mailer);
+        } else {
+          $missingEmail++;
+          Log::warning('[sendToRegion] ⚠️ Player missing email', [
+            'player_id' => $player->id,
+            'player_name' => "{$player->name} {$player->surname}",
+          ]);
         }
       }
     }
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
-    return ['message' => 'Emails sent to all players in region.', 'title' => 'success'];
+
+    Log::info('[sendToRegion] ✅ FINISHED', [
+      'region_id' => $region->id,
+      'total_players' => $playerCount,
+      'queued' => $queuedCount,
+      'missing_email' => $missingEmail,
+    ]);
+
+    return [
+      'message' => "Emails queued for {$queuedCount} players in region (missing email: {$missingEmail})",
+      'title' => 'success'
+    ];
   }
 
   /** ✅ All players in category */
@@ -497,20 +565,43 @@ class EmailController extends Controller
   /** ✅ Helper: queue the job safely */
   protected function queueMail(array $details, string $mailer = 'smtp')
   {
-    if (!filter_var($details['email'], FILTER_VALIDATE_EMAIL)) {
-      Log::warning("Skipped invalid email: {$details['email']}");
-      return;
+    $email = trim(strtolower($details['email'] ?? ''));
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      Log::warning('[Mail] ❌ Skipped invalid email', [
+        'email' => $email,
+        'subject' => $details['subject'] ?? null,
+      ]);
+      return false;
     }
 
     $details['mailer'] = $mailer;
+    $details['email'] = $email;
 
-    dispatch(new SendEmailJob($details))->onQueue('default');
+    try {
 
-    Log::info("[Mail] Queued email", [
-      'to' => $details['email'],
-      'mailer' => $mailer,
-      'subject' => $details['subject'] ?? '(no subject)',
-    ]);
+      dispatch(new SendEmailJob($details))->onQueue('default');
+
+      Log::info('[Mail] 📬 QUEUED', [
+        'to' => $email,
+        'mailer' => $mailer,
+        'subject' => $details['subject'] ?? null,
+        'event' => $details['event'] ?? null,
+        'team' => $details['team'] ?? null,
+        'region' => $details['region'] ?? null,
+      ]);
+
+      return true;
+
+    } catch (\Throwable $e) {
+
+      Log::error('[Mail] 💥 QUEUE FAILED', [
+        'to' => $email,
+        'error' => $e->getMessage(),
+      ]);
+
+      return false;
+    }
   }
 
   /** ✅ Admin copy */

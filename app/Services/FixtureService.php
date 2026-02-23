@@ -156,14 +156,17 @@ class FixtureService
       ['region' => 'Drakenstein 2025', 'category' => 'U/13 Girls'],
     ];
 
-    // ✅ Load nested relations
-    $event->loadMissing(['regions.teams.players']);
+    // ✅ Load nested relations (INCLUDING no-profile)
+    $event->loadMissing([
+      'regions.teams.players',
+      'regions.teams.team_players_no_profile'
+    ]);
 
-    // ✅ Separate structures
     $regionMeta = [];
     $regionPlayers = [];
 
     foreach ($event->regions as $teamRegion) {
+
       $regionName = $teamRegion->region_name ?? "Region {$teamRegion->id}";
       $ordering = $teamRegion->pivot->ordering ?? 0;
 
@@ -174,13 +177,14 @@ class FixtureService
         'ordering' => $ordering,
       ];
 
-      // Players grouped by age/gender
       foreach ($teamRegion->teams as $team) {
+
         if (preg_match('/\bu[\/\s-]?(\d+)\s*(boys|girls)\b/i', $team->name, $m)) {
+
           $age = (int) $m[1];
           $gender = strtolower($m[2]);
-
           $categoryName = "U/{$age} " . ucfirst($gender);
+
           $isWithdrawn = collect($withdrawals)->contains(function ($w) use ($regionName, $categoryName) {
             return strcasecmp($w['region'], $regionName) === 0 &&
               strcasecmp($w['category'], $categoryName) === 0;
@@ -195,16 +199,71 @@ class FixtureService
             continue;
           }
 
-          foreach ($team->players as $player) {
-            $full = trim($player->full_name ?: "{$player->first_name} {$player->last_name}");
-            $regionPlayers[$regionName][$age][$gender][] = $this->normalizeKey("{$regionName} {$full}");
+          // 🔹 Profile players
+          $profilePlayers = $team->players ?? collect();
+
+          // 🔹 No profile players
+          $noProfilePlayers = $team->team_players_no_profile ?? collect();
+
+          // 🔥 Correct FULL NAME BUILDING
+          $allPlayers = $profilePlayers->map(function ($p) {
+
+            $first = trim($p->first_name ?? '');
+            $last = trim($p->last_name ?? '');
+            $full = trim(($p->full_name ?? '') ?: ($first . ' ' . $last));
+
+            if ($full === '') {
+              $full = 'Profile Player';
+            }
+
+            return [
+              'name' => $full,
+              'id' => $p->id,
+              'type' => 'profile',
+            ];
+
+          })->concat(
+
+              $noProfilePlayers->map(function ($p) {
+
+                $first = trim($p->name ?? '');
+                $last = trim($p->surname ?? '');
+                $full = trim($first . ' ' . $last);
+
+                if ($full === '') {
+                  $full = 'No Profile Player';
+                }
+
+                return [
+                  'name' => $full,
+                  'id' => $p->id,
+                  'type' => 'no_profile',
+                ];
+              })
+
+            );
+
+          foreach ($allPlayers as $player) {
+
+            $normalized = $this->normalizeKey("{$regionName} {$player['name']}");
+
+            $regionPlayers[$regionName][$age][$gender][] = $normalized;
+
+            \Log::debug('[FixtureService] Player added to region structure', [
+              'region' => $regionName,
+              'age' => $age,
+              'gender' => $gender,
+              'name' => $player['name'],
+              'key' => $normalized,
+            ]);
           }
         }
       }
     }
 
-    // ✅ Detect categories (e.g. "U/12 Boys", etc.)
+    // ✅ Detect categories
     $categories = $this->detectCategoriesFromTeams($event);
+
     if ($onlyCategories) {
       $categories = array_values(array_filter(
         $categories,
@@ -213,10 +272,12 @@ class FixtureService
     }
 
     if (empty($regionMeta) || empty($categories)) {
+
       \Log::warning('[FixtureService] ⚠️ No regions or categories found', [
         'regions' => count($regionMeta),
         'categories' => count($categories)
       ]);
+
       return [];
     }
 
@@ -226,12 +287,10 @@ class FixtureService
       'ordering' => array_column($regionMeta, 'ordering'),
     ]);
 
-    // ✅ Delegate with full structure
     return $mode === 'perTie'
       ? $this->generatePerTieFromData($categories, $regionMeta, $regionPlayers)
       : $this->generatePerTypeFromData($categories, $regionMeta, $regionPlayers);
   }
-
   public function detectCategoriesFromTeams(Event $event): array
   {
     // ✅ Withdrawn list — simplified to allow partial region matches
@@ -279,10 +338,18 @@ class FixtureService
             continue;
           }
 
-          // ✅ Collect players into the structured region player list
+          // ✅ Collect profile players into the structured region player list
           foreach ($team->players as $player) {
             $full = trim($player->full_name ?: "{$player->first_name} {$player->last_name}");
             $regionPlayers[$regionName][$age][$gender][] = $this->normalizeKey("{$regionName} {$full}");
+          }
+
+          // ✅ Collect no-profile players too (important when teams only have no-profile players)
+          if (isset($team->team_players_no_profile) && $team->team_players_no_profile->isNotEmpty()) {
+            foreach ($team->team_players_no_profile as $np) {
+              $full = trim($np->full_name ?? ($np->name . ' ' . ($np->surname ?? '')));
+              $regionPlayers[$regionName][$age][$gender][] = $this->normalizeKey("{$regionName} {$full}");
+            }
           }
 
           // ✅ Store category & gender info
@@ -631,9 +698,13 @@ class FixtureService
   private function buildPlayerIndex(Event $event): array
   {
     $index = [];
+
     foreach ($event->regions as $region) {
       $regionName = $region->region_name ?? "Region {$region->id}";
+
       foreach ($region->teams as $team) {
+
+        // PROFILE PLAYERS
         foreach ($team->players as $p) {
           $full = trim($p->full_name ?: "{$p->first_name} {$p->last_name}");
           $key = $this->normalizeKey("{$regionName} {$full}");
@@ -641,24 +712,64 @@ class FixtureService
           $index[$key] = [
             'player_id' => $p->id,
             'region_id' => $region->id,
+            'type' => 'profile',
           ];
+        }
+
+        // NO PROFILE PLAYERS (FIXED)
+        if (isset($team->team_players_no_profile) && $team->team_players_no_profile->isNotEmpty()) {
+          foreach ($team->team_players_no_profile as $np) {
+
+            $first = trim($np->name ?? '');
+            $last = trim($np->surname ?? '');
+            $full = trim($first . ' ' . $last);
+
+            if ($full === '') {
+              $full = 'No Profile Player';
+            }
+
+            $key = $this->normalizeKey("{$regionName} {$full}");
+
+            $index[$key] = [
+              'player_id' => null,
+              'no_profile_id' => $np->id,
+              'region_id' => $region->id,
+              'type' => 'no_profile',
+            ];
+          }
         }
       }
     }
+
+    \Log::debug('[FixtureService] Player index built', [
+      'total_keys' => count($index),
+      'sample' => array_slice(array_keys($index), 0, 10),
+    ]);
+
     return $index;
   }
 
- 
+  /* ==============================================================
+     MATCH PARSER
+     ============================================================== */
+
   private function parseMatchPlayers(string $match): array
   {
     [$left, $right] = array_pad(explode(' vs ', $match, 2), 2, '');
     $split = fn(string $s) => array_values(array_filter(array_map('trim', explode('+', $s))));
-    return ['home' => $split($left), 'away' => $split($right)];
+
+    return [
+      'home' => $split($left),
+      'away' => $split($right),
+    ];
   }
+
+  /* ==============================================================
+       NORMALIZER (STRICT)
+       ============================================================== */
 
   private function normalizeKey(string $key): string
   {
-    // collapse whitespace + lowercase
     return strtolower(trim(preg_replace('/\s+/', ' ', $key)));
   }
 
@@ -868,7 +979,9 @@ class FixtureService
           }
 
           // 🧩 Same tie mapping as saveFixtures()
-          $pairKey = implode('-', collect([$region1Id, $region2Id])->sort()->all());
+          $pairKey = implode('-',
+            collect([$region1Id, $region2Id])->sort()->all()
+          );
           if (!isset($tieMap[$pairKey])) {
             $tieMap[$pairKey] = $tieCounter++;
           }
@@ -909,36 +1022,75 @@ class FixtureService
     });
   }
 
+  /* ==============================================================
+     ATTACH PLAYERS TO FIXTURE (STRICT SAFE INSERT)
+     ============================================================== */
+
   private function attachPlayersRows_2col(int $fixtureId, string $match, array $playerIndex): void
   {
-    // 🧹 Always clear previous links
-    \App\Models\TeamFixturePlayer::where('team_fixture_id', $fixtureId)->delete();
+    TeamFixturePlayer::where('team_fixture_id', $fixtureId)->delete();
 
     $sides = $this->parseMatchPlayers($match);
     $home = $sides['home'] ?? [];
     $away = $sides['away'] ?? [];
 
     $pairs = min(count($home), count($away));
+
+    \Log::debug('[FixtureService] attachPlayersRows_2col()', [
+      'fixture_id' => $fixtureId,
+      'match' => $match,
+      'pairs' => $pairs,
+    ]);
+
     for ($i = 0; $i < $pairs; $i++) {
+
       $homeKey = $this->normalizeKey($home[$i] ?? '');
       $awayKey = $this->normalizeKey($away[$i] ?? '');
 
-      if (!isset($playerIndex[$homeKey]) || !isset($playerIndex[$awayKey])) {
-        \Log::warning("⚠️ Player not resolved for fixture", [
+      $homeMap = $playerIndex[$homeKey] ?? null;
+      $awayMap = $playerIndex[$awayKey] ?? null;
+
+      if (!$homeMap || !$awayMap) {
+        \Log::error('❌ Skipping fixture row – unresolved player', [
           'fixtureId' => $fixtureId,
           'homeKey' => $homeKey,
           'awayKey' => $awayKey,
+          'homeResolved' => (bool) $homeMap,
+          'awayResolved' => (bool) $awayMap,
         ]);
         continue;
       }
 
-      \App\Models\TeamFixturePlayer::create([
+      $data = [
         'team_fixture_id' => $fixtureId,
-        'team1_id' => $playerIndex[$homeKey]['player_id'],
-        'team2_id' => $playerIndex[$awayKey]['player_id'],
+        'team1_id' => null,
+        'team1_no_profile_id' => null,
+        'team2_id' => null,
+        'team2_no_profile_id' => null,
+      ];
+
+      if (!empty($homeMap['player_id'])) {
+        $data['team1_id'] = $homeMap['player_id'];
+      } else {
+        $data['team1_no_profile_id'] = $homeMap['no_profile_id'];
+      }
+
+      if (!empty($awayMap['player_id'])) {
+        $data['team2_id'] = $awayMap['player_id'];
+      } else {
+        $data['team2_no_profile_id'] = $awayMap['no_profile_id'];
+      }
+
+      TeamFixturePlayer::create($data);
+
+      \Log::debug('✅ Fixture player row inserted', [
+        'fixtureId' => $fixtureId,
+        'team1' => $data['team1_id'] ?? $data['team1_no_profile_id'],
+        'team2' => $data['team2_id'] ?? $data['team2_no_profile_id'],
       ]);
     }
   }
+
 
   public function generateFixturesForDraw(Draw $draw): array
   {
@@ -983,8 +1135,9 @@ class FixtureService
     ]);
 
     $fixtures = $this->generateEventFixtures($event, 'perType', [$categoryName]);
-    if (empty($fixtures))
-      return [];
+    if (empty($fixtures)) {
+        return [];
+    }
 
     $matches = [];
     foreach ($fixtures as $cat => $fxList) {

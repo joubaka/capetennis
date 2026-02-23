@@ -132,6 +132,20 @@
                               {{ $team->noProfile ? 'Disable NoProfile' : 'Enable NoProfile' }}
                             </a>
 
+                            {{-- ✅ IMPORT NO-PROFILE TEAM (only shown if team is no-profile) --}}
+                     
+                            @if ($team->noProfile == 1)
+                              <button type="button"
+                                      class="import-noprofile-btn btn btn-xs btn-outline-success w-100 mb-2"
+                                      data-region-id="{{ $region->id }}"
+                                      data-team-id="{{ $team->id }}"
+                                      data-team-name="{{ $team->name }}"
+                                      data-bs-toggle="modal"
+                                      data-bs-target="#import-noprofile-modal">
+                                <i class="ti ti-download me-1"></i> Import Team
+                              </button>
+                            @endif
+
                             {{-- DELETE TEAM (future AJAX-ready) --}}
                             <a href="javascript:void(0)"
                                class="text-danger small removeTeam"

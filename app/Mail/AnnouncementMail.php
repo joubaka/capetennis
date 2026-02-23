@@ -39,10 +39,10 @@ class AnnouncementMail extends Mailable implements ShouldQueue
   public function content(): Content
   {
     return new Content(
-      markdown: 'emails.create_announcement',
-      with: [
-        'data' => $this->data,
-      ]
+        markdown: 'emails.create_announcement',
+        with: [
+            'datas' => $this->data,  // Changed from 'data' to 'datas'
+        ]
     );
   }
 

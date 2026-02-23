@@ -8,8 +8,7 @@ use App\Models\Announcement;
 use App\Mail\AnnouncementMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-
-
+use Illuminate\Support\Facades\Log;
 
 class EventAnnouncementController extends Controller
 {
@@ -36,6 +35,11 @@ class EventAnnouncementController extends Controller
   ========================= */
   public function store(Request $request, Event $event)
   {
+    Log::debug('[EventAnnouncement] 🚀 store() called', [
+      'event_id' => $event->id,
+      'sendMail' => $request->sendMail,
+    ]);
+
     $data = $request->validate([
       'title' => 'required|string|max:255',
       'message' => 'required|string',
@@ -47,8 +51,15 @@ class EventAnnouncementController extends Controller
       'message' => $data['message'], // column is `message`
     ]);
 
+    Log::debug('[EventAnnouncement] 💾 Announcement saved', [
+      'id' => $announcement->id,
+    ]);
+
     if (!empty($data['sendMail'])) {
+      Log::info('[EventAnnouncement] 📧 Sending emails...');
       $this->emailAnnouncement($announcement);
+    } else {
+      Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }
 
     return response()->json([
@@ -92,28 +103,93 @@ class EventAnnouncementController extends Controller
   ========================= */
   protected function emailAnnouncement(Announcement $announcement)
   {
+    Log::debug('[EventAnnouncement] 📬 emailAnnouncement() called', [
+      'announcement_id' => $announcement->id,
+    ]);
+
     if (!$announcement->event) {
+      Log::warning('[EventAnnouncement] ❌ No event attached to announcement');
       return;
     }
 
-    $players = $announcement->event
-      ->registrations()
-      ->with('players')
-      ->get()
-      ->pluck('players')
-      ->flatten()
-      ->filter(fn($p) => !empty($p->email))
-      ->unique('email');
+    // Load required relationships
+    $event = $announcement->event->load([
+      'eventTypeModel',
+      'regions.teams.players',
+      'registrations.players',
+    ]);
 
-    foreach ($players as $player) {
-      Mail::to($player->email)->queue(
+    $emails = collect();
+
+    Log::debug('[EventAnnouncement] 📋 Event type', [
+      'event_type' => $event->eventTypeModel?->type ?? 'null',
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | TEAM EVENTS (type 3)
+    |--------------------------------------------------------------------------
+    */
+    if ($event->isTeam()) {
+
+      foreach ($event->regions as $region) {
+        foreach ($region->teams as $team) {
+          foreach ($team->players as $player) {
+            if (!empty($player->email)) {
+              $emails->push(strtolower(trim($player->email)));
+            }
+          }
+        }
+      }
+
+    }
+    /*
+    |--------------------------------------------------------------------------
+    | INDIVIDUAL EVENTS
+    |--------------------------------------------------------------------------
+    */ else {
+
+      foreach ($event->registrations as $registration) {
+        foreach ($registration->players as $player) {
+          if (!empty($player->email)) {
+            $emails->push(strtolower(trim($player->email)));
+          }
+        }
+      }
+
+    }
+
+    // Remove duplicates + empty
+    $emails = $emails->filter()->unique()->values();
+
+    Log::info('[EventAnnouncement] 📋 Emails collected', [
+      'count' => $emails->count(),
+      'sample' => $emails->take(5)->toArray(),
+    ]);
+
+    if ($emails->isEmpty()) {
+      Log::warning('[EventAnnouncement] ⚠️ No emails found for this event');
+      return;
+    }
+
+    foreach ($emails as $email) {
+
+      Log::debug('[EventAnnouncement] 📤 Queuing email', [
+        'to' => $email,
+      ]);
+
+      Mail::to($email)->queue(
         new AnnouncementMail([
-          'event' => $announcement->event->name,
+          'event' => $event->name,
           'title' => $announcement->title,
           'message' => $announcement->message,
         ])
       );
     }
+
+    Log::info('[EventAnnouncement] ✅ All emails queued', [
+      'count' => $emails->count(),
+    ]);
   }
 
 

@@ -94,6 +94,7 @@
 
 {{-- Cache-bust JS --}}
 <script src="{{ asset(mix('js/regions.js')) }}"></script>
+<script src="{{ asset(mix('js/categories.js')) }}"></script>
 <script src="{{ asset(mix('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
 <script src="{{ asset('assets/js/draw.js') }}?v={{ filemtime(public_path('assets/js/draw.js')) }}"></script>
@@ -114,7 +115,11 @@ window.routes = {
   replaceForm: "{{ route('backend.team.player.replace.form') }}",
  addRegionToEvent: "{{ route('eventRegion.store') }}"
 };
+
+  window.routes = window.routes || {};
+  window.routes.addRegionToEvent = "{{ route('eventRegion.store') }}";
 </script>
+
 
 
 @endsection

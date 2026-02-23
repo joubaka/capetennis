@@ -84,6 +84,7 @@
   </a>
 @endif
 
+
 @if( $event->isIndividual())
 @foreach($userRegistrations as $registration)
   @php
@@ -93,15 +94,12 @@
   @endphp
 
 @if($canWithdraw['ok'])
-  <form method="POST"
-        action="{{ route('registrations.withdraw', $registration) }}"
-        class="d-inline">
-    @csrf
-    <button class="btn btn-danger btn-sm m-1">
-      <i class="ti ti-x"></i>
-      Withdraw {{ $registration->display_name }}
-    </button>
-  </form>
+  <button type="button"
+          class="btn btn-danger btn-sm m-1 withDrawPlayer"
+          data-url="{{ route('registrations.withdraw', $registration) }}">
+    <i class="ti ti-x"></i>
+    Withdraw {{ $registration->display_name }}
+  </button>
 @endif
 @if($registration->status === 'withdrawn')
   <div class="mt-1">

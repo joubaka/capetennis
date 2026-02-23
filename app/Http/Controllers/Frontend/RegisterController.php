@@ -27,6 +27,8 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use stdClass;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+
 
 class RegisterController extends Controller
 {
@@ -172,7 +174,8 @@ class RegisterController extends Controller
     Log::info('[HYBRID ITN RECEIVED]', $data);
 
     // 🔐 1️⃣ Validate signature
-    if (!$this->validatePayfastSignature($data)) {
+    if (!$this->validatePayfastSignature()) {
+
 
       Log::error('[HYBRID ITN INVALID SIGNATURE]', [
         'data' => $data
@@ -385,48 +388,52 @@ class RegisterController extends Controller
         $order->save();
     }
 
-    //for team event
+
+
   public function notify_team(Request $request)
   {
     $data = $request->all();
 
-    Log::info('TEAM PAYFAST ITN RECEIVED', [
-      'data' => $data
-    ]);
+    Log::info('🟢 TEAM ITN STEP 0: RECEIVED', $data);
 
     /*
     |--------------------------------------------------------------------------
-    | 1️⃣ VERIFY SIGNATURE
+    | 1️⃣ VERIFY SIGNATURE (INLINE – NO HELPER)
     |--------------------------------------------------------------------------
     */
-    if (!\App\Helpers\PayfastHelper::verifySignature($data)) {
+    $signatureValid = $this->validatePayfastSignature($request);
 
-      Log::error('TEAM PAYFAST INVALID SIGNATURE', [
-        'order_id' => $data['custom_int5'] ?? null
-      ]);
+    Log::info('🟢 TEAM ITN STEP 1: SIGNATURE RESULT', [
+      'valid' => $signatureValid
+    ]);
 
+    if (!$signatureValid) {
+      Log::error('🔴 TEAM ITN FAILED: INVALID SIGNATURE');
       return response('Invalid signature', 400);
     }
 
     /*
     |--------------------------------------------------------------------------
-    | 2️⃣ VALIDATE PAYMENT STATUS
+    | 2️⃣ VALIDATE STATUS
     |--------------------------------------------------------------------------
     */
+    Log::info('🟢 TEAM ITN STEP 2: STATUS CHECK', [
+      'status' => $data['payment_status'] ?? null
+    ]);
+
     if (($data['payment_status'] ?? '') !== 'COMPLETE') {
-
-      Log::warning('TEAM PAYFAST NOT COMPLETE', [
-        'order_id' => $data['custom_int5'] ?? null,
-        'status' => $data['payment_status'] ?? null
-      ]);
-
+      Log::warning('🟡 TEAM ITN IGNORED: NOT COMPLETE');
       return response('Ignored', 200);
     }
 
     $orderId = (int) ($data['custom_int5'] ?? 0);
 
+    Log::info('🟢 TEAM ITN STEP 3: ORDER ID', [
+      'order_id' => $orderId
+    ]);
+
     if (!$orderId) {
-      Log::error('TEAM PAYFAST NO ORDER ID');
+      Log::error('🔴 TEAM ITN FAILED: NO ORDER ID');
       return response('No order ID', 400);
     }
 
@@ -434,42 +441,73 @@ class RegisterController extends Controller
 
       DB::transaction(function () use ($orderId, $data) {
 
+        Log::info('🟢 TEAM ITN STEP 4: BEGIN TRANSACTION');
+
         $order = \App\Models\TeamPaymentOrder::lockForUpdate()
-          ->with('team', 'player', 'user.wallet')
+          ->with('user.wallet')
           ->find($orderId);
+
+        Log::info('🟢 TEAM ITN STEP 5: ORDER FOUND', [
+          'exists' => (bool) $order
+        ]);
 
         if (!$order) {
           throw new \Exception("Team order not found: {$orderId}");
         }
 
-        if ($order->payfast_paid) {
-          Log::info('TEAM PAYFAST ALREADY PROCESSED', [
-            'order_id' => $orderId
-          ]);
+        Log::info('🟢 TEAM ITN STEP 6: ORDER STATE BEFORE UPDATE', [
+          'pay_status' => $order->pay_status,
+          'payfast_paid' => $order->payfast_paid,
+          'wallet_reserved' => $order->wallet_reserved,
+          'wallet_debited' => $order->wallet_debited,
+          'payfast_amount_due' => $order->payfast_amount_due
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | IDEMPOTENCY
+        |--------------------------------------------------------------------------
+        */
+        if ((int) $order->pay_status === 1) {
+          Log::warning('🟡 TEAM ITN ALREADY PROCESSED');
           return;
         }
 
         /*
         |--------------------------------------------------------------------------
-        | 3️⃣ AMOUNT VALIDATION (SECURITY)
+        | AMOUNT VALIDATION (STRICT)
         |--------------------------------------------------------------------------
         */
-        $paidAmount = (float) ($data['amount_gross'] ?? 0);
+        $expected = round((float) $order->payfast_amount_due, 2);
+        $received = round((float) ($data['amount_gross'] ?? 0), 2);
 
-        if ($paidAmount != (float) $order->payfast_amount_due) {
+        Log::info('🟢 TEAM ITN STEP 7: AMOUNT CHECK', [
+          'expected' => $expected,
+          'received' => $received
+        ]);
 
-          Log::error('TEAM PAYFAST AMOUNT MISMATCH', [
-            'order_id' => $orderId,
-            'expected' => $order->payfast_amount_due,
-            'received' => $paidAmount
-          ]);
-
-          throw new \Exception("Amount mismatch");
+        if ($expected !== $received) {
+          throw new \Exception("Amount mismatch. Expected {$expected}, got {$received}");
         }
 
         /*
         |--------------------------------------------------------------------------
-        | 4️⃣ DEBIT WALLET IF RESERVED (HYBRID)
+        | MARK PAYFAST PAID
+        |--------------------------------------------------------------------------
+        */
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
+
+        $order->save();
+
+        Log::info('🟢 TEAM ITN STEP 8: ORDER UPDATED', [
+          'new_pay_status' => $order->pay_status
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | WALLET DEBIT (HYBRID)
         |--------------------------------------------------------------------------
         */
         if (
@@ -479,8 +517,7 @@ class RegisterController extends Controller
           $order->user->wallet
         ) {
 
-          Log::info('TEAM HYBRID DEBITING WALLET', [
-            'order_id' => $order->id,
+          Log::info('🟢 TEAM ITN STEP 9: DEBIT WALLET', [
             'amount' => $order->wallet_reserved
           ]);
 
@@ -489,54 +526,55 @@ class RegisterController extends Controller
             (float) $order->wallet_reserved,
             'team_registration_wallet_payment',
             $order->id,
-            ['order_id' => $order->id]
+            [
+              'order_id' => $order->id,
+              'source' => 'team_hybrid_notify'
+            ]
           );
 
           $order->wallet_debited = true;
+          $order->save();
+
+          Log::info('🟢 TEAM ITN STEP 10: WALLET DEBITED');
+        } else {
+          Log::info('🟢 TEAM ITN STEP 9: NO WALLET DEBIT NEEDED');
         }
 
         /*
         |--------------------------------------------------------------------------
-        | 5️⃣ MARK ORDER PAID
-        |--------------------------------------------------------------------------
-        */
-        $order->payfast_paid = true;
-        $order->pay_status = 1;
-        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
-        $order->save();
-
-        Log::info('TEAM ORDER MARKED PAID', [
-          'order_id' => $orderId
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | 6️⃣ MARK TEAM PLAYER PAID
+        | TEAM PLAYER UPDATE
         |--------------------------------------------------------------------------
         */
         $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
           ->where('player_id', $order->player_id)
           ->first();
 
+        Log::info('🟢 TEAM ITN STEP 11: TEAM PLAYER FOUND', [
+          'exists' => (bool) $teamPlayer
+        ]);
+
         if ($teamPlayer) {
+
+          Log::info('🟢 TEAM ITN STEP 12: TEAM PLAYER BEFORE', [
+            'pay_status' => $teamPlayer->pay_status
+          ]);
 
           $teamPlayer->pay_status = 1;
           $teamPlayer->save();
 
-          Log::info('TEAM PLAYER MARKED PAID', [
-            'team_id' => $order->team_id,
-            'player_id' => $order->player_id
+          Log::info('🟢 TEAM ITN STEP 13: TEAM PLAYER UPDATED', [
+            'new_pay_status' => $teamPlayer->pay_status
           ]);
         }
 
+        Log::info('🟢 TEAM ITN STEP 14: SUCCESS');
       });
 
     } catch (\Throwable $e) {
 
-      Log::error('TEAM PAYFAST ITN FAILED', [
+      Log::error('🔴 TEAM ITN FAILED', [
         'order_id' => $orderId,
-        'message' => $e->getMessage(),
-        'trace' => $e->getTraceAsString()
+        'message' => $e->getMessage()
       ]);
 
       return response('Error', 500);
@@ -796,7 +834,7 @@ class RegisterController extends Controller
   public function payNowPayfast(Request $request)
   {
 
-  
+
     // ----------------------------
     // Validate players/categories
     // ----------------------------
@@ -887,6 +925,12 @@ class RegisterController extends Controller
     $request['amount'] = $remaining;
     $request['custom_int5'] = $regorder->id;
     $request['custom_wallet_reserved'] = $walletApplied;
+    Log::info('HYBRID CREATE ORDER', [
+      'order_id' => $regorder->id,
+      'total_fee' => $totalFee,
+      'wallet_reserved' => $walletApplied,
+      'payfast_due' => $remaining
+    ]);
 
     return view('frontend.payfast.check_out', compact('request', 'payfast'));
   }
@@ -949,33 +993,152 @@ class RegisterController extends Controller
         return view('frontend.payfast.pay_now', compact('request', 'payfast'));
     }
 
-  private function validatePayfastSignature(array $data): bool
+  /**
+   * PayFast ITN signature validation (deep debug)
+   *
+   * How to use:
+   * 1) Deploy this method
+   * 2) Trigger one PayFast ITN
+   * 3) Inspect logs for:
+   *    - [PF_SIG] RAW
+   *    - [PF_SIG] RECEIVED_SIG
+   *    - [PF_SIG] STRING_NO_SIG
+   *    - [PF_SIG] STRING_WITH_PASSPHRASE
+   *    - [PF_SIG] GENERATED_SIG
+   *    - [PF_SIG] MATCH
+   *    - [PF_SIG] FIELD_DUMP (order + values)
+   */
+  private function validatePayfastSignature(): bool
   {
-    $passphrase = config('services.payfast.passphrase'); // set in config
+    $rawPost = file_get_contents('php://input');
 
-    // 1️⃣ Remove signature
-    $receivedSignature = $data['signature'] ?? null;
-    unset($data['signature']);
+    Log::info('[PF_SIG][1] RAW', [
+      'len' => is_string($rawPost) ? strlen($rawPost) : 0,
+      'raw' => $rawPost,
+    ]);
 
-    // 2️⃣ Remove empty values
-    $data = array_filter($data, function ($value) {
-      return $value !== '';
-    });
-
-    // 3️⃣ Sort by key
-    ksort($data);
-
-    // 4️⃣ Build query string
-    $queryString = urldecode(http_build_query($data));
-
-    if ($passphrase) {
-      $queryString .= "&passphrase=" . urlencode($passphrase);
+    if (!is_string($rawPost) || trim($rawPost) === '') {
+      Log::warning('[PF_SIG] EMPTY_RAW');
+      return false;
     }
 
-    // 5️⃣ Generate local signature
-    $generatedSignature = md5($queryString);
+    // Parse raw into array (this is ONLY for extracting values, not for rebuilding signature string)
+    $parsed = [];
+    parse_str($rawPost, $parsed);
 
-    return $generatedSignature === $receivedSignature;
+    Log::info('[PF_SIG][2] PARSED_KEYS', [
+      'keys' => array_keys($parsed),
+      'merchant_id' => $parsed['merchant_id'] ?? null,
+      'pf_payment_id' => $parsed['pf_payment_id'] ?? null,
+      'payment_status' => $parsed['payment_status'] ?? null,
+    ]);
+
+    $receivedSignature = $parsed['signature'] ?? null;
+
+    Log::info('[PF_SIG][3] RECEIVED_SIG', [
+      'received' => $receivedSignature,
+    ]);
+
+    if (!$receivedSignature) {
+      Log::warning('[PF_SIG] MISSING_SIGNATURE');
+      return false;
+    }
+
+    // IMPORTANT:
+    // Build the signature base string from RAW POST EXACTLY, only removing "&signature=..."
+    // (PayFast signature depends on original order + original encoding)
+    $needle1 = '&signature=' . $receivedSignature;
+    $needle2 = 'signature=' . $receivedSignature . '&';
+    $needle3 = 'signature=' . $receivedSignature;
+
+    $stringNoSig = $rawPost;
+
+    if (str_contains($stringNoSig, $needle1)) {
+      $stringNoSig = str_replace($needle1, '', $stringNoSig);
+      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'ampersand_prefix']);
+    } elseif (str_contains($stringNoSig, $needle2)) {
+      $stringNoSig = str_replace($needle2, '', $stringNoSig);
+      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'middle_param']);
+    } elseif (str_contains($stringNoSig, $needle3)) {
+      $stringNoSig = str_replace($needle3, '', $stringNoSig);
+      $stringNoSig = rtrim($stringNoSig, '&');
+      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'end_param_or_no_amp']);
+    } else {
+      Log::warning('[PF_SIG] SIGNATURE_SUBSTRING_NOT_FOUND_IN_RAW', [
+        'expected_needles' => [$needle1, $needle2, $needle3],
+      ]);
+      // Continue anyway, but this usually means the raw payload differs from what we parsed
+    }
+
+    // Remove any trailing & caused by replacement
+    $stringNoSig = rtrim($stringNoSig, '&');
+
+    Log::info('[PF_SIG][5] STRING_NO_SIG', [
+      'string' => $stringNoSig,
+    ]);
+
+    // Decide passphrase based on merchant_id
+    $merchantId = $parsed['merchant_id'] ?? null;
+
+    $sandboxMerchant = (string) env('PAYFAST_MERCHANT_ID_SANDBOX');
+    $liveMerchant = (string) env('PAYFAST_MERCHANT_ID_LIVE');
+
+    $passphrase = null;
+    if ($merchantId !== null && (string) $merchantId === $sandboxMerchant) {
+      $passphrase = env('PAYFAST_PASSPHRASE_SANDBOX');
+      Log::info('[PF_SIG][6] MODE', ['mode' => 'sandbox', 'merchant_id' => $merchantId]);
+    } else {
+      $passphrase = env('PAYFAST_PASSPHRASE_LIVE');
+      Log::info('[PF_SIG][6] MODE', ['mode' => 'live', 'merchant_id' => $merchantId]);
+    }
+
+    Log::info('[PF_SIG][7] PASSPHRASE_PRESENT', [
+      'has_passphrase' => !empty($passphrase),
+      // do not log actual passphrase in production
+    ]);
+
+    $stringWithPassphrase = $stringNoSig;
+    if (!empty($passphrase)) {
+      $stringWithPassphrase .= '&passphrase=' . urlencode($passphrase);
+    }
+
+    Log::info('[PF_SIG][8] STRING_WITH_PASSPHRASE', [
+      'string' => $stringWithPassphrase,
+    ]);
+
+    $generatedSignature = md5($stringWithPassphrase);
+
+    Log::info('[PF_SIG][9] GENERATED_SIG', [
+      'generated' => $generatedSignature,
+      'received' => $receivedSignature,
+    ]);
+
+    $match = hash_equals($generatedSignature, $receivedSignature);
+
+    Log::info('[PF_SIG][10] MATCH', [
+      'match' => $match,
+    ]);
+
+    // Extra: dump the parsed fields in raw-order appearance (best-effort)
+    // This helps spot encoding/order problems quickly.
+    $fieldDump = [];
+    $parts = explode('&', $rawPost);
+    foreach ($parts as $p) {
+      if ($p === '')
+        continue;
+      [$k, $v] = array_pad(explode('=', $p, 2), 2, '');
+      $fieldDump[] = [
+        'k' => $k,
+        'v' => $v,
+      ];
+    }
+
+    Log::info('[PF_SIG][11] FIELD_DUMP_RAW_ORDER', [
+      'fields' => $fieldDump,
+    ]);
+
+    return $match;
   }
+
 
 }

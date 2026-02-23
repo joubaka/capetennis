@@ -70,9 +70,13 @@
             </td>
 
             <td class="text-end">
+              <a href="{{ route('admin.refunds.bank.show', $reg) }}" class="btn btn-sm btn-outline-primary me-1">
+                👁 View
+              </a>
               <form method="POST"
                     action="{{ route('admin.refunds.bank.complete', $reg) }}"
-                    onsubmit="return confirm('Mark this bank refund as paid?');">
+                    onsubmit="return confirm('Mark this bank refund as paid?');"
+                    class="d-inline">
                 @csrf
                 <button class="btn btn-sm btn-success">
                   ✔ Mark Paid

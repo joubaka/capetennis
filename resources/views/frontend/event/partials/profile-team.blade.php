@@ -1,18 +1,21 @@
 {{-- resources/views/frontend/event/partials/profile-team.blade.php --}}
 
 <div class="col-12 col-md-6">
-  <div class="card h-100">
+  <div class="card h-100 shadow-sm">
 
     {{-- HEADER --}}
-    <div class="card-header">
-      <h5 class="m-0 m-4">{{ $team->name ?? 'Team' }}</h5>
+    <div class="card-header border rounded-top">
+      <div class="d-flex align-items-center">
+        <i class="ti ti-users fs-4 text-primary me-2"></i>
+        <h5 class="m-0 fw-semibold">{{ $team->name ?? 'Team' }}</h5>
+      </div>
     </div>
 
     {{-- BODY --}}
     @if((int)($team->published ?? 0) === 1)
 
-      <div class="card-body">
-        <ul class="list-unstyled m-0 p-0">
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush m-0">
 
           {{-- LOOP THROUGH SLOTS --}}
           @forelse($team->teamPlayers as $slot)
@@ -30,70 +33,82 @@
                 : '— Empty slot —';
             @endphp
 
-            <li class="d-flex align-items-start mb-3">
-              <div class="d-flex w-100 flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+            <li class="list-group-item {{ $isDummy ? 'bg-light' : '' }}">
+              <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
 
                 {{-- LEFT: RANK + NAME --}}
                 <div class="d-flex align-items-center">
-                  <span class="badge bg-label-primary me-2">{{ $slot->rank }}</span>
-                  <span class="fs-6 {{ $isDummy ? 'text-muted fst-italic' : '' }}">
+                  <span class="badge bg-light text-muted border rounded-circle me-2" style="width: 24px; height: 24px; line-height: 16px; font-size: 0.75rem;">
+                    {{ $slot->rank }}
+                  </span>
+                  <span class="{{ $isDummy ? 'text-muted fst-italic' : 'fw-medium' }}">
                     {{ $playerName }}
                   </span>
                 </div>
 
                 {{-- RIGHT: STATUS / ACTIONS --}}
-                <div class="d-flex align-items-center mt-2 mt-sm-0">
+                <div class="d-flex align-items-center gap-1">
 
                   @if($player)
 
                     {{-- PAID --}}
                     @if($paid)
-                      <span class="btn btn-sm btn-success disabled">Registered</span>
+                      <span class="badge bg-success-subtle text-success px-2 py-1">
+                        <i class="ti ti-circle-check me-1"></i>Registered
+                      </span>
 
-                      {{-- WITHDRAW BUTTON FOR PROFILED PLAYER OR SUPER-USER --}}
-                      @if(auth()->check() && ( $player->users->contains('id', auth()->id()) || (int)auth()->id() === 584 ))
-                        <form method="POST"
-                              action="{{ route('team.player.withdraw', [$team->id, $player->id, $event->id]) }}"
-                              class="d-inline ms-1">
-                          @csrf
-                          <button class="btn btn-sm btn-danger"
-                                  onclick="return confirm('Withdraw this player from the team event?');">
-                            Withdraw
-                          </button>
-                        </form>
+                      {{-- WITHDRAW BUTTON --}}
+                      @php
+                        $canWithdraw = $event->withdrawal_deadline && now()->lt($event->withdrawal_deadline);
+                      @endphp
+                      @if($canWithdraw && auth()->check() && ($player->users->contains('id', auth()->id()) || (int)auth()->id() === 584))
+                        <button type="button"
+                                class="btn btn-xs btn-outline-danger withDrawPlayer"
+                                title="Cancel registration and withdraw from event"
+                                data-id="{{ $slot->id }}"
+                                data-team="{{ $team->id }}"
+                                data-player="{{ $player->id }}"
+                                data-event="{{ $event->id }}"
+                                data-url="{{ route('team.player.withdraw', [$team->id, $player->id, $event->id]) }}">
+                          <i class="ti ti-x"></i>
+                        </button>
                       @endif
 
                     {{-- UNPAID + SIGNUPS OPEN --}}
                     @elseif($signupOpen)
                       <a href="{{ route('team.payment.payfast', [$team->id, $player->id, $event->id]) }}"
                          class="btn btn-sm btn-warning">
-                        Register
+                        <i class="ti ti-credit-card me-1"></i>Register
                       </a>
 
                     {{-- UNPAID + SIGNUPS CLOSED --}}
                     @else
-                      <span class="text-muted fst-italic">Registration closed</span>
+                      <span class="badge bg-secondary-subtle text-secondary">
+                        <i class="ti ti-lock me-1"></i>Closed
+                      </span>
                     @endif
 
                     {{-- CLOTHING --}}
-               @if($canOrder)
-  <a href="javascript:void(0)"
-     class="btn btn-sm btn-outline-secondary ms-1 clothing-order"
-     data-playerid="{{ $player->id }}"
-     data-name="{{ $playerName }}"
-     data-team="{{ $team->id }}"
-     data-region="{{ $region->id }}"
-     data-eventid="{{ $event->id }}"
-     data-bs-toggle="modal"
-     data-bs-target="#clothing-order-modal">
-    Clothing order
-  </a>
-@endif
-
+                    @if($canOrder)
+                      <a href="javascript:void(0)"
+                         class="btn btn-xs btn-outline-secondary clothing-order"
+                         title="Order clothing"
+                         data-playerid="{{ $player->id }}"
+                         data-name="{{ $playerName }}"
+                         data-team="{{ $team->id }}"
+                         data-region="{{ $region->id }}"
+                         data-eventid="{{ $event->id }}"
+                         data-bs-toggle="modal"
+                         data-bs-target="#clothing-order-modal">
+                        <i class="ti ti-shirt"></i>
+                      </a>
+                    @endif
 
                   @else
                     {{-- EMPTY SLOT --}}
-                    <span class="text-muted fst-italic">Available</span>
+                    <span class="badge bg-light text-muted border">
+                      <i class="ti ti-user-plus me-1"></i>Available
+                    </span>
                   @endif
 
                 </div>
@@ -101,15 +116,19 @@
             </li>
 
           @empty
-            <li class="text-muted">No team slots defined.</li>
+            <li class="list-group-item text-center py-4">
+              <i class="ti ti-users-minus fs-1 text-muted d-block mb-2"></i>
+              <span class="text-muted">No team slots defined</span>
+            </li>
           @endforelse
 
         </ul>
       </div>
 
     @else
-      <div class="card-body">
-        <div class="text-danger fw-bold">Team not yet published</div>
+      <div class="card-body text-center py-4">
+        <i class="ti ti-eye-off fs-1 text-warning d-block mb-2"></i>
+        <span class="text-warning fw-medium">Team not yet published</span>
       </div>
     @endif
 

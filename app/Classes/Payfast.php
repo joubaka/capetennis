@@ -17,27 +17,29 @@ class Payfast
   public $item_name = null;
 
   /* =====================================================
-   * PAYFAST CUSTOM FIELDS (LOCKED MEANING)
+   * PAYFAST CUSTOM FIELDS
    * ===================================================== */
-  public $custom_int1 = null; // optional legacy
-  public $custom_int2 = null; // optional legacy
+  public $custom_int1 = null;
+  public $custom_int2 = null;
   public $custom_int3 = null; // event_id
   public $custom_int4 = null; // registration_id
-  public $custom_int5 = null; // registration_order_id
+  public $custom_int5 = null; // order_id
 
   public $custom_str1 = null;
   public $custom_str2 = null;
   public $custom_str3 = null;
   public $custom_str4 = null; // payer name
-  public $custom_str5 = null;
+  public $custom_str5 = null; // used for TeamOrder flag
 
   /* =====================================================
    * PAYFAST CONFIG
    * ===================================================== */
   public $payfast_url;
   public $sandbox_url;
+
   public $payfast_id;
   public $sandbox_id;
+
   public $payfast_key;
   public $sandbox_key;
 
@@ -47,8 +49,6 @@ class Payfast
   public $return_url;
 
   public $mode = 'live';
-  public $merchant_id;
-  public $merchant_key;
 
   public $url;
   public $id;
@@ -71,6 +71,7 @@ class Payfast
     $this->notify_url = 'https://www.capetennis.co.za/notify';
     $this->notify_url_team = 'https://www.capetennis.co.za/notify_team';
     $this->cancel_url = 'https://www.capetennis.co.za/cancel';
+    $this->return_url = 'https://www.capetennis.co.za';
 
     // default = live
     $this->url = $this->payfast_url;
@@ -104,33 +105,43 @@ class Payfast
   }
 
   /* =====================================================
-   * URLS
+   * SAFE URL NORMALIZER
+   * ===================================================== */
+  private function normalizeUrl(string $url): string
+  {
+    if (filter_var($url, FILTER_VALIDATE_URL)) {
+      return $url;
+    }
+
+    return rtrim(url('/'), '/') . '/' . ltrim($url, '/');
+  }
+
+  /* =====================================================
+   * URL SETTERS (SAFE)
    * ===================================================== */
   public function setNotifyUrl(string $url): void
   {
-    $this->notify_url = url('/') . '/' . ltrim($url, '/');
-  }
-
-  public function setReturnUrl(string $url): void
-  {
-    $this->return_url = url('/') . '/' . ltrim($url, '/');
-  }
-
-  public function setCancelUrl(string $url): void
-  {
-    $this->cancel_url = url('/') . '/' . ltrim($url, '/');
+    $this->notify_url = $this->normalizeUrl($url);
   }
 
   public function setTeamNotifyUrl(string $url): void
   {
-    $this->notify_url_team = url('/') . '/' . ltrim($url, '/');
+    $this->notify_url_team = $this->normalizeUrl($url);
+  }
+
+  public function setReturnUrl(string $url): void
+  {
+    $this->return_url = $this->normalizeUrl($url);
+  }
+
+  public function setCancelUrl(string $url): void
+  {
+    $this->cancel_url = $this->normalizeUrl($url);
   }
 
   /* =====================================================
-   * EXPLICIT DOMAIN SETTERS (SAFE)
+   * DOMAIN OBJECT SETTERS
    * ===================================================== */
-
-  /** Event (REQUIRED) */
   public function setEvent(Event $event): void
   {
     $this->custom_int3 = $event->id;
@@ -138,27 +149,20 @@ class Payfast
     $this->item_name = $event->name;
   }
 
-  /** Registration (REQUIRED) */
   public function setRegistration(Registration $registration): void
   {
     $this->custom_int4 = $registration->id;
   }
 
-  /** Registration Order (REQUIRED) */
   public function setOrder(RegistrationOrder $order): void
   {
     $this->custom_int5 = $order->id;
   }
 
-  /** Payer / Client (STRING ONLY) */
   public function setPayer(User $user): void
   {
     $this->custom_str4 = $user->name;
   }
-
-  /* =====================================================
-   * OPTIONAL / LEGACY HELPERS (DO NOT USE FOR FINANCE)
-   * ===================================================== */
 
   public function setPlayerInfo(?Player $player): void
   {
@@ -174,7 +178,7 @@ class Payfast
   }
 
   /* =====================================================
-   * AMOUNT / ITEM
+   * AMOUNT
    * ===================================================== */
   public function setAmount(float $amount): void
   {
@@ -187,16 +191,21 @@ class Payfast
   }
 
   /* =====================================================
-   * BUILD PAYFAST FORM (AUTO SUBMIT)
+   * BUILD FORM
    * ===================================================== */
   public function getForm(): string
   {
+    // Decide notify endpoint based on order type
+    $notifyUrl = $this->custom_str5 === 'TeamOrder'
+      ? $this->notify_url_team
+      : $this->notify_url;
+
     $fields = [
       'merchant_id' => $this->id,
       'merchant_key' => $this->key,
       'return_url' => $this->return_url,
       'cancel_url' => $this->cancel_url,
-      'notify_url' => $this->notify_url,
+      'notify_url' => $notifyUrl,
       'amount' => $this->amount,
       'item_name' => $this->item_name,
 
@@ -225,5 +234,4 @@ class Payfast
 
     return $html;
   }
-
 }

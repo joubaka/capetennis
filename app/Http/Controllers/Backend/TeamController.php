@@ -56,30 +56,44 @@ class TeamController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
-    {
-        $team = new Team();
-        $team->name = $request->team_name;
-        $team->year = $request->year;
-        $team->published = $request->published;
-        $team->region_id = $request->region_id;
-        $team->num_team_members = $request->num_players;
+  public function store(Request $request)
+  {
+    $request->validate([
+      'name' => 'required|string|max:255',
+      'year' => 'nullable|integer',
+      'region_id' => 'nullable|exists:team_regions,id',
+      'num_players' => 'nullable|integer|min:0|max:50'
+    ]);
 
-        $team->save();
-        $num_players_in_team = $request->num_players;
+    $team = new Team();
+    $team->name = $request->name;
+    $team->year = $request->year;
+    $team->published = $request->published ?? 0;
+    $team->num_team_members = $request->num_players ?? 0;
+    $team->region_id = $request->region_id; // ✅ Direct foreign key
+    $team->save();
 
-        for ($i = 0; $i < $num_players_in_team; $i++) {
-            $teamplayer = new TeamPlayer();
-            $teamplayer->team_id = $team->id;
-            $teamplayer->player_id = 1248;
-            $teamplayer->rank = ($i + 1);
-            $teamplayer->pay_status = 0;
-            $teamplayer->save();
-        }
+    // Create dummy team player slots
+    $numPlayers = $request->num_players ?? 0;
 
-        return $team; //
+    for ($i = 0; $i < $numPlayers; $i++) {
+      TeamPlayer::create([
+        'team_id' => $team->id,
+        'player_id' => 0, // Dummy placeholder
+        'rank' => $i + 1,
+        'pay_status' => 0,
+      ]);
     }
 
+    return response()->json([
+      'success' => true,
+      'id' => $team->id,
+      'name' => $team->name,
+      'published' => $team->published,
+      'num_team_members' => $team->num_team_members,
+      'region_id' => $team->region_id
+    ]);
+  }
     /**
      * Display the specified resource.
      *
@@ -370,6 +384,13 @@ class TeamController extends Controller
     // cancel/return should use routes that exist in your app
     $payfast->setCancelUrl(route('team.checkout', ['order' => $order->id]));
     $payfast->setReturnUrl(route('event.success', ['id' => $event->id]) . '?email=' . urlencode($user->email));
+    Log::info('TEAM PAYFAST INIT', [
+      'order_id' => $order->id,
+      'notify_url' => route('notify.team'),
+      'amount' => $payfast->amount,
+      'mode' => $user->id == 584 ? 'sandbox' : 'live',
+      'payfast' => $payfast
+    ]);
 
     // pass variables expected by the blade
     return view('frontend.payfast.team_payment', [
@@ -405,20 +426,36 @@ class TeamController extends Controller
   public function importNoProfile(Request $request)
   {
     $request->validate([
-      'file' => 'required|file|mimes:xlsx,xls',
+        'file' => 'required|file|mimes:xlsx,xls,csv',
+        'team_id' => 'nullable|integer|exists:teams,id',
+        'region_id' => 'nullable|integer|exists:team_regions,id',
     ]);
 
-    $import = new \App\Imports\NoProfileTeamImport();
+    $teamId = $request->input('team_id') ? (int) $request->input('team_id') : null;
+    $file = $request->file('file');
 
-    \Maatwebsite\Excel\Facades\Excel::import(
-      $import,
-      $request->file('file')
-    );
+    try {
+        // Ensure import class can be resolved
+        $import = new \App\Imports\NoProfileTeamImport($teamId);
+        \Maatwebsite\Excel\Facades\Excel::import($import, $file);
 
-    return response()->json([
-      'success' => true,
-      'team_ids' => $import->getImportedTeamIds(),
-    ]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Import finished',
+            'team_id' => $teamId,
+            'imported_count' => $import->getImportedCount(),
+            'team_ids' => $import->getImportedTeamIds(),
+        ]);
+    } catch (\Throwable $e) {
+        \Log::error('NoProfile import failed', [
+            'error' => $e->getMessage(),
+            'team_id' => $teamId,
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Import failed: ' . $e->getMessage(),
+        ], 422);
+    }
   }
 
   public function teamPlayersTable($teamId)

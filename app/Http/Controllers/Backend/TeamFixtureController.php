@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\TeamFixtureResult;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Models\NoProfileTeamPlayer;
+use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
 
 class TeamFixtureController extends Controller
 {
@@ -103,7 +106,7 @@ class TeamFixtureController extends Controller
     $draws = Draw::orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
     $allPlayers = Player::all();
- 
+
     return view('backend.team-fixtures.index', compact(
       'fixtures',
       'events',
@@ -122,7 +125,6 @@ class TeamFixtureController extends Controller
    * URL: backend/team-fixtures/admin/{event}
    */
   public function admin(Event $event)
-   
   {
     // ensure related data is available
     $event->load(['draws', 'regions.teams']);
@@ -604,6 +606,7 @@ class TeamFixtureController extends Controller
     $fixtures = $q->orderByRaw('COALESCE(NULLIF(round_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(tie_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(home_rank_nr, ""), 9999) + 0 ASC')
+      ->orderBy('scheduled_at', 'asc')
       ->get();
 
     // 🔹 Venue logic stays identical
@@ -677,8 +680,8 @@ class TeamFixtureController extends Controller
     // 🔹 Assign fixtures to slots
     foreach ($fixtures as $fx) {
       $targetVenue = $rankVenueMap[$fx->home_rank_nr] ?? null;
-      if (!$targetVenue || empty($slotQueues[$targetVenue]))
-        continue;
+      if (!$targetVenue || empty($slotQueues[$targetVenue])
+      ) continue;
 
       $index = $slotPointers[$targetVenue] ?? 0;
       if (!isset($slotQueues[$targetVenue][$index]))
@@ -774,12 +777,12 @@ class TeamFixtureController extends Controller
   {
     TeamFixture::where('draw_id', $draw->id)
       ->update([
-        'scheduled_at' => null,
-        'venue_id' => null,
-        'court_label' => null,
-        'clash_flag' => false,
-        'scheduled' => 0, // ✅ reset
-      ]);
+          'scheduled_at' => null,
+          'venue_id' => null,
+          'court_label' => null,
+          'clash_flag' => false,
+          'scheduled' => 0, // ✅ reset
+        ]);
 
     return response()->json([
       'success' => true,
@@ -791,12 +794,12 @@ class TeamFixtureController extends Controller
   {
     TeamFixture::where('draw_id', $draw->id)
       ->update([
-        'scheduled_at' => null,
-        'venue_id' => null,
-        'court_label' => null,
-        'clash_flag' => false,
-        'scheduled' => 0, // ✅ reset
-      ]);
+          'scheduled_at' => null,
+          'venue_id' => null,
+          'court_label' => null,
+          'clash_flag' => false,
+          'scheduled' => 0, // ✅ reset
+        ]);
 
     return $this->scheduleAuto($request, $draw);
   }
@@ -838,70 +841,7 @@ class TeamFixtureController extends Controller
     return view('frontend.fixture.byVenue', compact('event', 'venue', 'fixtures'));
   }
 
-  public function orderOfPlay($eventId, $venueId, $date)
-  {
-    $event = Event::findOrFail($eventId);
-    $venue = Venue::findOrFail($venueId);
 
-    $query = TeamFixture::with([
-      'fixturePlayers',
-      'team1',
-      'team2',
-      'region1Name',
-      'region2Name',
-      'draw',
-    ])->where('venue_id', $venueId);
-
-    // 🗓 Handle "all" vs specific date
-    if (strtolower($date) !== 'all') {
-      $query->whereDate('scheduled_at', $date);
-    } else {
-      // Show all fixtures for this venue between Friday–Sunday of the event
-      $start = \Carbon\Carbon::parse('Friday this week');
-      $end = $start->copy()->addDays(2); // Sunday
-      $query->whereBetween('scheduled_at', [$start->startOfDay(), $end->endOfDay()]);
-    }
-
-    $fixtures = $query
-     
-     
-      ->orderBy('scheduled_at', 'asc')
-      ->orderBy('round_nr', 'asc')
-      ->orderBy('tie_nr', 'asc')
-      ->orderBy('home_rank_nr', 'asc')
-      ->get();
-
-    // 🧭 Custom weekday sorting logic (Fri → Sat → Sun)
-    $order = ['Fri' => 1, 'Sat' => 2, 'Sun' => 3];
-
-    $fixtures = $fixtures->sortBy(function ($fx) use ($order) {
-      $day = \Carbon\Carbon::parse($fx->scheduled_at)->format('D');
-      return sprintf(
-        '%02d-%s',
-        $order[$day] ?? 99,
-        \Carbon\Carbon::parse($fx->scheduled_at)->format('Y-m-d H:i:s')
-      );
-    });
-
-    // 🧾 Log grouped result
-    \Log::info('[orderOfPlay] Sorted fixtures', [
-      'venue_id' => $venueId,
-      'event_id' => $eventId,
-      'date' => $date,
-      'total' => $fixtures->count(),
-      'by_day_count' => $fixtures->groupBy(fn($fx) => \Carbon\Carbon::parse($fx->scheduled_at)->format('D'))->map->count(),
-      'sample' => $fixtures->take(5)->map(function ($fx) {
-        return [
-          'id' => $fx->id,
-          'scheduled_at' => $fx->scheduled_at,
-          'day' => \Carbon\Carbon::parse($fx->scheduled_at)->format('D'),
-          'time' => \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i'),
-        ];
-      })->toArray(),
-    ]);
-
-    return view('frontend.fixture.orderOfPlay', compact('event', 'venue', 'fixtures', 'date'));
-  }
 
   public function recreateFixturesForDraw($drawId)
   {
@@ -929,4 +869,325 @@ class TeamFixtureController extends Controller
     }
   }
 
+  // Add these two methods inside the existing TeamFixtureController class
+
+  public function replacePlayerForm(Request $request)
+  {
+    // If an event context is provided (query param `event` or `event_id`), auto-select it
+    $eventId = $request->query('event') ?? $request->query('event_id') ?? null;
+    $event = $eventId ? Event::with('regions')->find($eventId) : null;
+
+    // Events list for dropdown (still useful if user wants to change)
+    $events = Event::orderBy('start_date', 'desc')->get(['id', 'name']);
+
+    // Prepare teams + players grouped by team if event present
+    $teams = collect();
+    if ($event) {
+        // Teams in the event's regions (same logic used elsewhere in controller)
+        $teamRegionIds = $event->regions->pluck('id')->toArray();
+        $teams = Team::whereIn('region_id', $teamRegionIds)
+            // eager load team_players -> player if relation exists, otherwise fallback
+            ->with(['team_players.player'])
+            ->orderBy('name')
+            ->get();
+    }
+
+    // No-profile players independent list for generic selection
+    $noProfiles = NoProfileTeamPlayer::orderBy('name')->get(['id', 'name', 'surname', 'team_id']);
+
+    // Registered players list used in "new" selector (can be large; you may want AJAX in future)
+    $players = Player::orderBy('name')->get(['id', 'name', 'surname']);
+
+    return view('backend.team-fixtures.replace-player', compact(
+        'events',
+        'event',
+        'teams',
+        'players',
+        'noProfiles'
+    ));
+  }
+
+  /**
+   * Create a NoProfileTeamPlayer via AJAX for quick inline additions.
+   */
+  public function createNoProfile(Request $request)
+  {
+    $data = $request->validate([
+        'team_id' => ['nullable', 'integer', Rule::exists('teams', 'id')],
+        'name' => 'required|string|max:80',
+        'surname' => 'nullable|string|max:80',
+        'rank' => 'nullable|integer',
+    ]);
+
+    $np = NoProfileTeamPlayer::create([
+        'team_id' => $data['team_id'] ?? null,
+        'name' => $data['name'],
+        'surname' => $data['surname'] ?? null,
+        'pay_status' => 0,
+        'rank' => $data['rank'] ?? null,
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'id' => $np->id,
+        'label' => trim($np->name . ' ' . $np->surname),
+        'team_id' => $np->team_id,
+        'rank' => $np->rank,
+    ]);
+  }
+
+  /**
+   * Replace a player (or no-profile entry) across remaining fixtures in an event.
+   * Accepts prefixed ids for unambiguous type selection:
+   *  - registered player: "p_{id}" (e.g. p_123)
+   *  - no-profile player: "np_{id}" (e.g. np_45)
+   *
+   * Request fields: event_id, old_id (prefixed string), new_id (prefixed string), side
+   */
+  public function replacePlayerInEvent(Request $request)
+  {
+    $data = $request->validate([
+        'event_id' => 'required|integer|exists:events,id',
+        'old_id' => 'required|string',
+        'new_id' => 'required|string',
+        'side' => 'nullable|in:home,away,both',
+    ]);
+
+    if ($data['old_id'] === $data['new_id']) {
+        if ($request->ajax()) {
+            return response()->json(['success' => false, 'message' => 'Old and new values are identical.'], 422);
+        }
+        return redirect()->back()->withErrors('Old and new values are identical.');
+    }
+
+    $side = $data['side'] ?? 'both';
+
+    // Parse prefixed ids: "p_{id}" or "np_{id}"
+    [$oldType, $oldRaw] = explode('_', $data['old_id'], 2) + [null, null];
+    [$newType, $newRaw] = explode('_', $data['new_id'], 2) + [null, null];
+
+    $oldIsPlayer = $oldType === 'p' && is_numeric($oldRaw) && Player::where('id', $oldRaw)->exists();
+    $newIsPlayer = $newType === 'p' && is_numeric($newRaw) && Player::where('id', $newRaw)->exists();
+    $oldIsNoProfile = $oldType === 'np' && is_numeric($oldRaw) && NoProfileTeamPlayer::where('id', $oldRaw)->exists();
+    $newIsNoProfile = $newType === 'np' && is_numeric($newRaw) && NoProfileTeamPlayer::where('id', $newRaw)->exists();
+
+    if (!($oldIsPlayer || $oldIsNoProfile) || !($newIsPlayer || $newIsNoProfile)) {
+        if ($request->ajax()) {
+            return response()->json(['success' => false, 'message' => 'Invalid old/new selection.'], 422);
+        }
+        return redirect()->back()->withErrors('Invalid old/new selection.');
+    }
+
+    $oldId = (int)$oldRaw;
+    $newId = (int)$newRaw;
+
+    $result = DB::transaction(function () use ($data, $side, $oldId, $newId, $oldIsPlayer, $newIsPlayer, $oldIsNoProfile, $newIsNoProfile) {
+        $fixtureIds = TeamFixture::whereHas('draw', function ($q) use ($data) {
+            $q->where('event_id', $data['event_id']);
+        })
+            ->whereDoesntHave('fixtureResults')
+            ->pluck('id');
+
+        if ($fixtureIds->isEmpty()) {
+            return [
+                'success' => true,
+                'updated_home' => 0,
+                'updated_away' => 0,
+                'fixtures_scanned' => 0,
+            ];
+        }
+
+        $updatedHome = 0;
+        $updatedAway = 0;
+
+        // Home replacements
+        if ($side === 'home' || $side === 'both') {
+            if ($oldIsPlayer && $newIsPlayer) {
+                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team1_id', $oldId)
+                    ->update(['team1_id' => $newId]);
+            } elseif ($oldIsPlayer && $newIsNoProfile) {
+                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team1_id', $oldId)
+                    ->update(['team1_no_profile_id' => $newId, 'team1_id' => null]);
+            } elseif ($oldIsNoProfile && $newIsPlayer) {
+                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team1_no_profile_id', $oldId)
+                    ->update(['team1_id' => $newId, 'team1_no_profile_id' => null]);
+            } else { // no-profile -> no-profile
+                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team1_no_profile_id', $oldId)
+                    ->update(['team1_no_profile_id' => $newId]);
+            }
+        }
+
+        // Away replacements
+        if ($side === 'away' || $side === 'both') {
+            if ($oldIsPlayer && $newIsPlayer) {
+                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team2_id', $oldId)
+                    ->update(['team2_id' => $newId]);
+            } elseif ($oldIsPlayer && $newIsNoProfile) {
+                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team2_id', $oldId)
+                    ->update(['team2_no_profile_id' => $newId, 'team2_id' => null]);
+            } elseif ($oldIsNoProfile && $newIsPlayer) {
+                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team2_no_profile_id', $oldId)
+                    ->update(['team2_id' => $newId, 'team2_no_profile_id' => null]);
+            } else {
+                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team2_no_profile_id', $oldId)
+                    ->update(['team2_no_profile_id' => $newId]);
+            }
+        }
+
+        // CSV fallback: update team1_ids/team2_ids when both are player ids
+        if ($oldIsPlayer && $newIsPlayer && (Schema::hasColumn('team_fixtures', 'team1_ids') || Schema::hasColumn('team_fixtures', 'team2_ids'))) {
+            $fixtures = TeamFixture::whereIn('id', $fixtureIds)->get();
+            foreach ($fixtures as $fx) {
+                if (Schema::hasColumn('team_fixtures', 'team1_ids') && $fx->team1_ids) {
+                    $ids = array_map('trim', explode(',', $fx->team1_ids));
+                    $ids = array_map(fn($v) => ((string)$v === (string)$oldId) ? (string)$newId : $v, $ids);
+                    $fx->team1_ids = implode(',', array_filter($ids, fn($v) => $v !== ''));
+                }
+                if (Schema::hasColumn('team_fixtures', 'team2_ids') && $fx->team2_ids) {
+                    $ids2 = array_map('trim', explode(',', $fx->team2_ids));
+                    $ids2 = array_map(fn($v) => ((string)$v === (string)$oldId) ? (string)$newId : $v, $ids2);
+                    $fx->team2_ids = implode(',', array_filter($ids2, fn($v) => $v !== ''));
+                }
+                $fx->save();
+            }
+        }
+
+        \Log::info('[replacePlayerInEvent]', [
+            'event_id' => $data['event_id'],
+            'updated_home' => $updatedHome,
+            'updated_away' => $updatedAway,
+            'fixtures_scanned' => $fixtureIds->count(),
+        ]);
+
+        return [
+            'success' => true,
+            'updated_home' => $updatedHome,
+            'updated_away' => $updatedAway,
+            'fixtures_scanned' => $fixtureIds->count(),
+        ];
+    });
+
+    // Build human-friendly labels for old/new (may be player or no-profile)
+    $oldLabel = $oldIsPlayer
+        ? (optional(Player::find($oldId))->full_name ?? "Player #{$oldId}")
+        : (optional(NoProfileTeamPlayer::find($oldId))->name ? trim(optional(NoProfileTeamPlayer::find($oldId))->name . ' ' . optional(NoProfileTeamPlayer::find($oldId))->surname) : "NP #{$oldId}");
+
+    $newLabel = $newIsPlayer
+        ? (optional(Player::find($newId))->full_name ?? "Player #{$newId}")
+        : (optional(NoProfileTeamPlayer::find($newId))->name ? trim(optional(NoProfileTeamPlayer::find($newId))->name . ' ' . optional(NoProfileTeamPlayer::find($newId))->surname) : "NP #{$newId}");
+
+    $message = sprintf(
+        'Replaced "%s" with "%s". Fixtures scanned: %d — home updated: %d, away updated: %d',
+        $oldLabel,
+        $newLabel,
+        $result['fixtures_scanned'],
+        $result['updated_home'],
+        $result['updated_away']
+    );
+
+    // Return JSON for AJAX with message and labels
+    if ($request->ajax()) {
+        return response()->json(array_merge($result, [
+            'message' => $message,
+            'old_label' => $oldLabel,
+            'new_label' => $newLabel,
+        ]));
+    }
+
+    // Non-AJAX: redirect back to caller head office page (preserve UX)
+    return redirect()->route('headOffice.show', $data['event_id'])->with('success', $message);
+  }
+
+  public function playerFixtures(Request $request): JsonResponse
+  {
+    $request->validate([
+        'event_id' => 'required|integer|exists:events,id',
+        'player' => 'required|string' // expected prefixed: p_{id} or np_{id}
+    ]);
+
+    $eventId = (int) $request->input('event_id');
+    $playerPref = $request->input('player');
+
+    // parse prefixed id
+    [$type, $raw] = explode('_', $playerPref, 2) + [null, null];
+    if (!in_array($type, ['p', 'np']) || !is_numeric($raw)) {
+        return response()->json(['success' => false, 'message' => 'Invalid player identifier'], 422);
+    }
+
+    $playerId = (int) $raw;
+    $isPlayer = $type === 'p';
+    $isNoProfile = $type === 'np';
+
+    // Query fixtures for this event where fixturePlayers reference this player (either player id or no-profile)
+    $fixtures = TeamFixture::whereHas('draw', function ($q) use ($eventId) {
+        $q->where('event_id', $eventId);
+    })->whereHas('fixturePlayers', function ($q) use ($isPlayer, $isNoProfile, $playerId) {
+        if ($isPlayer) {
+            $q->where('team1_id', $playerId)->orWhere('team2_id', $playerId);
+        } else {
+            $q->where('team1_no_profile_id', $playerId)->orWhere('team2_no_profile_id', $playerId);
+        }
+    })->with([
+        'fixturePlayers.player1',
+        'fixturePlayers.player2',
+        'fixturePlayers.noProfile1',
+        'fixturePlayers.noProfile2',
+        'venue:id,name',
+        'draw:id,drawName'
+    ])->orderBy('scheduled_at')->get();
+
+    $out = $fixtures->map(function ($fx) {
+        $homeNames = [];
+        $awayNames = [];
+        $homeRegionShort = $fx->region1Name?->short_name ?? null;
+        $awayRegionShort = $fx->region2Name?->short_name ?? null;
+
+        foreach ($fx->fixturePlayers as $fp) {
+            if ($fp->team1_id && $fp->player1) {
+                $name = $fp->player1->full_name ?? ($fp->player1->name ?? '');
+                if ($homeRegionShort) $name .= " ({$homeRegionShort})";
+                $homeNames[] = $name;
+            } elseif ($fp->team1_no_profile_id && $fp->noProfile1) {
+                $npn = trim($fp->noProfile1->name . ' ' . $fp->noProfile1->surname);
+                if ($homeRegionShort) $npn .= " ({$homeRegionShort})";
+                $homeNames[] = $npn;
+            }
+
+            if ($fp->team2_id && $fp->player2) {
+                $name = $fp->player2->full_name ?? ($fp->player2->name ?? '');
+                if ($awayRegionShort) $name .= " ({$awayRegionShort})";
+                $awayNames[] = $name;
+            } elseif ($fp->team2_no_profile_id && $fp->noProfile2) {
+                $npn = trim($fp->noProfile2->name . ' ' . $fp->noProfile2->surname);
+                if ($awayRegionShort) $npn .= " ({$awayRegionShort})";
+                $awayNames[] = $npn;
+            }
+        }
+
+        $homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
+        $awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
+
+        return [
+            'id' => $fx->id,
+            'draw' => $fx->draw?->drawName,
+            'round' => $fx->round_nr,
+            'tie' => $fx->tie_nr,
+            'home' => $homeLabel,
+            'away' => $awayLabel,
+            'scheduled' => $fx->scheduled_at ? $fx->scheduled_at->format('Y-m-d H:i') : null,
+            'venue' => $fx->venue?->name,
+            'rowHtml' => view('backend.team-fixtures.partials.replace_player_fixture_row', compact('fx'))->render(),
+        ];
+    })->values();
+
+    return response()->json(['success' => true, 'fixtures' => $out]);
+  }
 }

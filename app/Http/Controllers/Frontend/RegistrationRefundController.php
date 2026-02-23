@@ -30,9 +30,15 @@ class RegistrationRefundController extends Controller
 
     $payment = $registration->paymentInfo();
 
+    // No payment found - nothing to refund
+    if (empty($payment) || !isset($payment['gross'])) {
+      return redirect()
+        ->route('events.show', $registration->categoryEvent->event_id)
+        ->with('success', 'Registration withdrawn (no payment to refund).');
+    }
 
+    // Already refunded via PayFast (no manual refund needed)
     if (!empty($payment['pf_transaction_id'])) {
-
       return redirect()
         ->route('events.show', $registration->categoryEvent->event_id)
         ->with('success', 'Registration withdrawn (no payment to refund).');

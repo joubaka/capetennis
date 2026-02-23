@@ -30,11 +30,35 @@ class SendEmailJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
-    {
-        $email = new SendEmailTest($this->details);
-        Mail::to($this->details['email'])->send($email);
-    }
+  public function handle()
+  {
+    Log::info('[SendEmailJob] ▶️ START', [
+      'to' => $this->details['email'] ?? null,
+      'mailer' => $this->details['mailer'] ?? null,
+      'subject' => $this->details['subject'] ?? null,
+    ]);
 
-   
+    try {
+
+      Mail::mailer($this->details['mailer'])
+        ->to($this->details['email'])
+        ->send(new \App\Mail\GenericMail($this->details));
+
+      Log::info('[SendEmailJob] ✅ SENT SUCCESS', [
+        'to' => $this->details['email'],
+      ]);
+
+    } catch (\Throwable $e) {
+
+      Log::error('[SendEmailJob] ❌ SEND FAILED', [
+        'to' => $this->details['email'],
+        'error' => $e->getMessage(),
+      ]);
+
+      throw $e; // important so failed_jobs table records it
+    }
+  }
+
+
+
 }

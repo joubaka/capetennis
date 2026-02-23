@@ -317,7 +317,7 @@ $(function () {
       }
     });
   });
-
+  alert('admin show js loaded');)
   // ALERT WITH FUNCTIONAL CONFIRM & CANCEL BUTTON
   $(document).on('click', '.withdrawButton', function () {
     var player = $(this).data('player');
@@ -325,6 +325,7 @@ $(function () {
     var categoryEvent = $(this).data('categoryeventid');
     var url = APP_URL + '/backend/registration/delete';
 
+    // First dialog - Show terms of refund
     Swal.fire({
       title: 'Are you sure?',
       text: "You won't be able to revert this!",

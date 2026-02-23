@@ -1,6 +1,6 @@
 (function ($) {
   'use strict';
-  console.log('Event Show JS Loaded pages/');
+  console.log('Event Show JS Loaded pagesfffff/');
   // ---------- CONFIG ----------
   const CLOTHING_ITEMS_URL = window.routes?.getRegionClothingItems;
   const SAVE_ANNOUNCEMENT_URL = window.routes?.saveAnnouncement; // set in Blade with @json(route(...))
@@ -43,7 +43,7 @@
 
     if (!lines.length) { $wrap.addClass('d-none'); return; }
 
-    const $table = $(`
+    const $table = `
       <table class="table table-sm align-middle mb-0">
         <thead>
           <tr>
@@ -60,7 +60,7 @@
           </tr>
         </tfoot>
       </table>
-    `);
+    `;
 
     let total = 0;
     const $tbody = $table.find('tbody');
@@ -145,7 +145,7 @@
       computeSummary();
       return;
     }
-   alert()
+
     list.forEach((item, idx) => {
       const id = String(item.id);
       const name = item.item_type_name || item.name || `Item ${idx + 1}`;
@@ -190,7 +190,70 @@
     computeSummary();
   }
 
+  // ---------- WITHDRAW PLAYER ----------
+  $(document).on('click', '.withDrawPlayer', function () {
+    const $btn = $(this);
+    const withdrawUrl = $btn.data('url');
 
+    // First dialog - Show terms of refund
+    Swal.fire({
+      title: 'Terms of Refund',
+      html: `
+        <div class="text-start">
+          <p>Please review the refund terms before proceeding:</p>
+          <ul>
+            <li>Your registration fee will be refunded to your wallet.</li>
+            <li><strong>10%</strong> of the total entry fee will be deducted as an administration fee.</li>
+            <li>Refunds to bank accounts are processed within 5-7 business days.</li>
+            <li>This action cannot be undone.</li>
+          </ul>
+        </div>
+      `,
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'I Accept, Continue',
+      cancelButtonText: 'Cancel',
+      customClass: {
+        confirmButton: 'btn btn-primary me-1',
+        cancelButton: 'btn btn-label-secondary'
+      },
+      buttonsStyling: false
+    }).then(function (result) {
+      if (result.value) {
+        // Second dialog - Final confirmation
+        Swal.fire({
+          title: 'Are you sure?',
+          text: "You are about to withdraw from this event. This action cannot be undone.",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#3085d6',
+          cancelButtonColor: '#d33',
+          confirmButtonText: 'Yes, withdraw player!',
+          customClass: {
+            confirmButton: 'btn btn-primary me-1',
+            cancelButton: 'btn btn-label-secondary'
+          },
+          buttonsStyling: false
+        }).then(function (confirmResult) {
+          if (confirmResult.value) {
+            // Submit via form POST
+            const $form = $('<form>', {
+              method: 'POST',
+              action: withdrawUrl
+            }).append($('<input>', {
+              type: 'hidden',
+              name: '_token',
+              value: $('meta[name="csrf-token"]').attr('content')
+            }));
+            $('body').append($form);
+            $form.submit();
+          }
+        });
+      }
+    });
+  });
 
   // ---------- ANNOUNCEMENTS (QUILL + SAVE) ----------
   const fullToolbar = [

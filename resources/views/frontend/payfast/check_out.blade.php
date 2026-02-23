@@ -40,21 +40,18 @@
   @php
       use App\Models\RegistrationOrder;
 
-      $wallet = Auth::user()->wallet ?? null;
-      $walletBalance = (float) ($wallet->balance ?? 0);
-
       $orderId = (int) request('custom_int5');
+
       $order = $orderId
-          ? RegistrationOrder::with('items')->find($orderId)
+          ? RegistrationOrder::with('items', 'user.wallet')->find($orderId)
           : null;
 
-      $total = $order
-          ? (float) $order->items->sum('item_price')
-          : 0;
+      abort_if(!$order, 404);
 
-      $walletApplied = min($walletBalance, $total);
-      $remaining = round($total - $walletApplied, 2);
-      $walletAfter = round($walletBalance - $walletApplied, 2);
+      $total            = (float) $order->items->sum('item_price');
+      $walletReserved   = (float) $order->wallet_reserved;
+      $payfastDue       = (float) $order->payfast_amount_due;
+      $walletBalance    = (float) ($order->user->wallet->balance ?? 0);
   @endphp
 
   <div class="row">
@@ -72,83 +69,61 @@
 
         <div class="card-body">
 
-          <p><strong>Registration Total:</strong>
-            R {{ number_format($total, 2) }}</p>
+          <p>
+            <strong>Registration Total:</strong>
+            R {{ number_format($total, 2) }}
+          </p>
 
           <hr>
 
-          <p>Current Balance:
-            <strong>R {{ number_format($walletBalance, 2) }}</strong></p>
+          <p>
+            Wallet Reserved for This Order:
+            <strong class="text-success">
+              - R {{ number_format($walletReserved, 2) }}
+            </strong>
+          </p>
 
-          @if($walletBalance > 0)
+          <p>
+            Wallet Current Balance:
+            <strong>
+              R {{ number_format($walletBalance, 2) }}
+            </strong>
+          </p>
 
-            <p class="text-success">
-              Wallet Applied:
-              <strong>- R {{ number_format($walletApplied, 2) }}</strong>
-            </p>
+          <hr>
 
-            <p>
-              Balance After Payment:
-              <strong>R {{ number_format($walletAfter, 2) }}</strong>
-            </p>
+          <p>
+            Remaining to Pay via PayFast:
+            <strong class="{{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}">
+              R {{ number_format($payfastDue, 2) }}
+            </strong>
+          </p>
 
-            <hr>
+          @if($payfastDue <= 0)
 
-            <p>
-              Remaining to Pay:
-              <strong class="{{ $remaining > 0 ? 'text-danger' : 'text-success' }}">
-                R {{ number_format($remaining, 2) }}
-              </strong>
-            </p>
+            <form action="{{ route('registration.hybrid.complete', $orderId) }}"
+                  method="POST">
+              @csrf
 
-            {{-- ================= FULL WALLET ================= --}}
-            @if($remaining <= 0)
+              <button type="submit"
+                      class="btn btn-success btn-lg w-100"
+                      onclick="this.disabled=true; this.form.submit();">
+                Confirm Wallet Payment
+              </button>
+            </form>
 
-              <form action="{{ route('registration.hybrid.complete', $orderId) }}"
-                    method="POST">
-                @csrf
-
-                <button type="submit"
-                        class="btn btn-success btn-lg w-100"
-                        onclick="this.disabled=true; this.form.submit();">
-                  Confirm Wallet Payment
-                </button>
-              </form>
-
-            {{-- ================= PARTIAL WALLET ================= --}}
-            @else
-
-              <form action="{{ route('registration.hybrid.pay') }}"
-                    method="POST">
-                @csrf
-
-                <input type="hidden" name="custom_int5" value="{{ $orderId }}">
-                <input type="hidden" name="wallet_applied" value="{{ $walletApplied }}">
-                <input type="hidden" name="remaining_amount" value="{{ $remaining }}">
-
-                <button class="btn btn-success btn-lg w-100">
-                  Apply Wallet & Continue to PayFast
-                </button>
-              </form>
-
-            @endif
-
-            <small class="text-muted d-block mt-3">
-              Wallet payments avoid PayFast gateway fees.
-            </small>
-
-          @else
-            <p class="text-muted">
-              You currently have no wallet funds available.
-            </p>
           @endif
+
+          <small class="text-muted d-block mt-3">
+            Wallet portion is already reserved for this order.
+          </small>
 
         </div>
       </div>
 
     </div>
 
-    {{-- ================= PAYFAST ONLY ================= --}}
+    {{-- ================= PAYFAST SECTION ================= --}}
     <div class="col-xl-6 mb-4">
 
       <div class="card border-danger shadow-sm">
@@ -163,7 +138,9 @@
 
           <p>
             Amount to Pay via PayFast:
-            <strong>R {{ number_format($total, 2) }}</strong>
+            <strong>
+              R {{ number_format($payfastDue, 2) }}
+            </strong>
           </p>
 
           @php
@@ -172,25 +149,37 @@
             $notifyUrl = route('notify');
           @endphp
 
-          <form action="{{ $payfast->url }}" method="post">
+          @if($payfastDue > 0)
 
-            <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
-            <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
+            <form action="{{ $payfast->url }}" method="post">
 
-            <input type="hidden" name="return_url" value="{{ $returnUrl }}">
-            <input type="hidden" name="cancel_url" value="{{ $cancelUrl }}">
-            <input type="hidden" name="notify_url" value="{{ $notifyUrl }}">
+              <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
+              <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
 
-            <input type="hidden" name="amount" value="{{ $total }}">
-            <input type="hidden" name="item_name" value="Event Registration">
-            <input type="hidden" name="custom_int5" value="{{ $orderId }}">
-            <input type="hidden" name="custom_wallet_applied" value="0">
+              <input type="hidden" name="return_url" value="{{ $returnUrl }}">
+              <input type="hidden" name="cancel_url" value="{{ $cancelUrl }}">
+              <input type="hidden" name="notify_url" value="{{ $notifyUrl }}">
 
-            <button class="btn btn-danger btn-lg w-100">
-              Pay with PayFast Only
-            </button>
+              {{-- 🔐 CRITICAL FIX --}}
+              <input type="hidden" name="amount" value="{{ number_format($payfastDue, 2, '.', '') }}">
 
-          </form>
+              <input type="hidden" name="item_name" value="Event Registration">
+              <input type="hidden" name="custom_int5" value="{{ $orderId }}">
+              <input type="hidden" name="custom_wallet_reserved" value="{{ $walletReserved }}">
+
+              <button class="btn btn-danger btn-lg w-100">
+                Pay Remaining with PayFast
+              </button>
+
+            </form>
+
+          @else
+
+            <div class="alert alert-success mb-0">
+              No PayFast payment required.
+            </div>
+
+          @endif
 
         </div>
       </div>

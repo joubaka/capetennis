@@ -144,6 +144,9 @@ mix.js('resources/js/pages/playerOrder.js', 'public/js');
 mix.js('resources/js/pages/eventCategories.js', 'public/js');
 mix.js('resources/js/pages/seriesEvents.js', 'public/js');
 mix.js('resources/js/pages/eventEdit.js', 'public/js');
+mix.js('resources/js/pages/categories.js', 'public/js');
+mix.js('resources/js/pages/headOffice.js', 'public/js');
+mix.js('resources/js/pages/draw-fixtures-show.js', 'public/js');
 /*
  |--------------------------------------------------------------------------
  | Assets / Fonts / Images

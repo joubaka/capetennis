@@ -17,7 +17,9 @@ class Team extends Model
     'category_event_id',
     'noProfile',
   ];
-
+  protected $casts = [
+    'noProfile' => 'boolean',
+  ];
   // Always eager load normal + no-profile players
   protected $with = ['team_players', 'team_players_no_profile'];
 

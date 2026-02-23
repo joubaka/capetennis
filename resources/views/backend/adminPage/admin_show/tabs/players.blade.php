@@ -46,11 +46,20 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="m-0">Players — {{ $region->region_name }}</h5>
 
-            <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
-                    data-regionid="{{ $region->id }}"
-                    data-regionname="{{ $region->region_name }}">
-              <i class="ti ti-mail"></i> Email All Players ins Region
-            </button>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
+                      data-regionid="{{ $region->id }}"
+                      data-regionname="{{ $region->region_name }}">
+                <i class="ti ti-mail"></i> Email All Players
+              </button>
+
+              {{-- ✅ NEW: Email Unpaid Players in Region --}}
+              <button class="btn btn-sm btn-outline-warning emailUnpaidRegionBtn"
+                      data-regionid="{{ $region->id }}"
+                      data-regionname="{{ $region->region_name }}">
+                <i class="ti ti-alert-circle"></i> Email Unpaid Players
+              </button>
+            </div>
           </div>
 
           <div class="card-body">

@@ -1,6 +1,6 @@
 /*
  * Admin — Players / Roster JS
- * FINAL STABLE VERSION (EMAIL + ROSTER + QUILL + SELECT2)
+ * FINAL STABLE VERSION (EMAIL + ROSTER + QUILL + SELECT2 + ENHANCED TOAST)
  */
 
 (function ($, window, document) {
@@ -29,23 +29,15 @@
     console.groupEnd();
   }
 
-  // =====================================================
-  // API MAP
-  // =====================================================
   const api = {
     sendMail: APP_URL + '/backend/email/send',
     loadRoster: APP_URL + '/backend/team/roster/edit',
     saveRoster: APP_URL + '/backend/team/roster/update',
-    changePayStatus: APP_URL + '/backend/team/change/payStatus' // ✅ correct route
+    changePayStatus: APP_URL + '/backend/team/change/payStatus'
   };
+
   // =====================================================
-  // PAY STATUS — TOGGLE
-  // =====================================================
-  // =====================================================
-  // PAY STATUS — CHANGE
-  // =====================================================
-  // =====================================================
-  // PAY STATUS — CHANGE
+  // PAY STATUS
   // =====================================================
   $(document).on('click', '.changePayStatus', function (e) {
     e.preventDefault();
@@ -88,8 +80,6 @@
         logXhrFail('Change pay failed', xhr);
       });
   });
-
-
 
   // =====================================================
   // EMAIL HELPERS
@@ -166,7 +156,7 @@
     resetEmailForm();
     hideRecipientSelector();
 
-    $('#target_type').val('');
+    $('#target_type').val('team');  // ✅ FIX: Set target_type
     $('#emailToHidden').val('All players in team');
     $('#emailTeamId').val($(this).data('teamid'));
 
@@ -187,6 +177,7 @@
     const regionId = $(this).data('regionid');
     const regionName = $(this).data('regionname');
 
+    $('#target_type').val('region');  // ✅ ADD: Set target_type for explicit routing
     $('#emailToHidden').val('All players in region');
     $('#regionSelectWrapper').removeClass('d-none');
 
@@ -211,6 +202,39 @@
   });
 
   // =====================================================
+  // EMAIL — UNPAID PLAYERS IN REGION
+  // =====================================================
+  $(document).on('click', '.emailUnpaidRegionBtn', function () {
+    resetEmailForm();
+    hideRecipientSelector();
+
+    const regionId = $(this).data('regionid');
+    const regionName = $(this).data('regionname');
+
+    $('#emailToHidden').val('All Unregistered players in Region');
+    $('#regionSelectWrapper').removeClass('d-none');
+
+    const $regionSelect = $('#emailRegionSelect');
+
+    if ($regionSelect.hasClass('select2-hidden-accessible')) {
+      $regionSelect.select2('destroy');
+    }
+
+    $regionSelect
+      .html(`<option value="${regionId}" selected>${regionName}</option>`)
+      .select2({
+        width: '100%',
+        dropdownParent: $('#sendMailModal')
+      });
+
+    $('#sendMailLabel').html(
+      `<i class="ti ti-mail me-50"></i> Email Unpaid Players — ${regionName}`
+    );
+
+    bootstrap.Modal.getOrCreateInstance('#sendMailModal').show();
+  });
+
+  // =====================================================
   // SEND EMAIL
   // =====================================================
   $('#sendMailForm').on('submit', function (e) {
@@ -227,13 +251,43 @@
 
     $.post(api.sendMail, $(this).serialize())
       .done(res => {
-        toastr.success(res.message || 'Email sent');
+        let message = '';
+        let title = 'Email Queued';
+
+        if (res.count !== undefined) {
+          message = `📬 ${res.count} recipient(s)\nMailer: ${res.mailer}`;
+        }
+        else if (res.result?.message) {
+          message = `${res.result.message}\nMailer: ${res.mailer}`;
+        }
+        else {
+          message = `Email queued successfully\nMailer: ${res.mailer}`;
+        }
+
+        toastr.success(message, title, {
+          timeOut: 6000,
+          extendedTimeOut: 2000,
+          closeButton: true,
+          progressBar: true,
+          escapeHtml: false
+        });
+
         bootstrap.Modal.getInstance(
           document.getElementById('sendMailModal')
         )?.hide();
       })
       .fail(xhr => {
-        toastr.error(xhr.responseJSON?.message || 'Failed to send email');
+        const msg =
+          xhr.responseJSON?.message ||
+          xhr.responseJSON?.result?.message ||
+          'Failed to send email';
+
+        toastr.error(msg, 'Email Failed', {
+          timeOut: 8000,
+          closeButton: true,
+          progressBar: true
+        });
+
         logXhrFail('Send email failed', xhr);
       })
       .always(() => {
@@ -426,7 +480,6 @@
       team_id: teamId
     })
       .done(html => {
-
         const $modal = $('#replacePlayerModal');
         const $body = $('#replacePlayerModalBody');
 

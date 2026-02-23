@@ -180,6 +180,10 @@ class EventAdminController extends Controller
     $nettTotal = $transactions->sum('calculated_nett');
     $finalBalance = $transactions->last()?->calculated_balance ?? 0;
 
+
+    $allCategories = \App\Models\Category::orderBy('name')->get();
+
+
     return view('backend.adminPage.show', compact(
       'event',
       'transactions',
@@ -195,7 +199,8 @@ class EventAdminController extends Controller
       'capeTennisFeeTotal',
       'nettTotal',
       'finalBalance',
-      'playerInfo'
+      'playerInfo',
+        'allCategories',
     ));
   }
 
@@ -632,8 +637,7 @@ class EventAdminController extends Controller
   public function exportPlayersExcel($eventId)
   {
     $event = Event::with([
-      'regions.teams.players',
-      'regions.teams.team_players_no_profile'
+      'regions.teams.players'
     ])->findOrFail($eventId);
 
     return Excel::download(new EventPlayersExport($event), "event_players_{$event->id}.xlsx");
@@ -794,6 +798,7 @@ class EventAdminController extends Controller
       'event' => $event,
       'stats' => $stats,
       'teamData' => $teamData,
+      'venues' => \App\Models\Venue::all(), // <-- this line is required!
     ]);
   }
 

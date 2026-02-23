@@ -324,7 +324,19 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       [EventAnnouncementController::class, 'destroy']
     )->name('admin.announcements.destroy');
   });
+  /*
+ |--------------------------------------------------------------------------
+ | EVENT ADMIN
+ |--------------------------------------------------------------------------
+ */
+  Route::prefix('event')->group(function () {
 
+ 
+
+    // 🔹 NEW: create single TEAM draw via HeadOfficeController
+    Route::post('{event}/create-team-draw', [HeadOfficeController::class, 'createSingleDrawTeam'])
+      ->name('headoffice.createSingleDraw.team');
+  });
 
   Route::get(
     'team/available-players',
@@ -594,8 +606,28 @@ Route::get(
     ->name('backend.draw.venues.edit');
   Route::patch('/teams/{id}/toggle-noprofile', [TeamController::class, 'toggleNoProfile'])
     ->name('backend.teams.toggle-noprofile');
+  // Add inside your authenticated backend routes (prefix 'backend'):
 
- 
+  Route::post('backend/team-fixtures/replace-player', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'replacePlayerInEvent'])
+    ->name('backend.team-fixtures.replacePlayer')
+    ->middleware(['auth', 'role:super-user|admin']);
+  // Add this GET route (inside your backend prefix/middleware group) so admin can open the replace form.
+// Place it near other backend/team-fixtures routes.
+
+  Route::get('backend/team-fixtures/replace-player', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'replacePlayerForm'])
+    ->name('backend.team-fixtures.replacePlayerForm')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+  // Add this route inside your backend prefix/middleware group (where other backend/team-fixtures routes live)
+  Route::post('backend/team-fixtures/no-profile', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'createNoProfile'])
+    ->name('backend.team-fixtures.noProfile.create')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+  // Add this route inside your backend prefix/middleware group (near other team-fixtures routes)
+
+  Route::get('backend/team-fixtures/player-fixtures', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'playerFixtures'])
+    ->name('backend.team-fixtures.playerFixtures')
+    ->middleware(['auth']);
 
   Route::name('backend.')->middleware('auth')->group(function () {
     Route::resource('team-fixtures', \App\Http\Controllers\Backend\TeamFixtureController::class)
@@ -618,7 +650,8 @@ Route::get(
 
   });
 
-
+  Route::get('roundrobin/{draw}/admin-scores', [RoundRobinController::class, 'adminScoresPage'])
+    ->name('backend.roundrobin.admin.scores');
 
 
   //wallet
@@ -690,6 +723,11 @@ Route::get(
 
   //order
   Route::resource('order', OrderController::class);
+
+  Route::post('/event/{event}/preview-team-draw', [HeadOfficeController::class, 'previewSingleDrawTeam'])
+     ->name('headoffice.previewTeamDraw');
+
+
 
   //email
   // 📧 EmailController AJAX data routes
