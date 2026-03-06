@@ -406,21 +406,17 @@ class TeamFixtureController extends Controller
     $homePlayers = $validated['home_players'] ?? [];
     $awayPlayers = $validated['away_players'] ?? [];
 
-    \App\Models\TeamFixturePlayer::where('team_fixture_id', $team_fixture->id)->delete();
+    // ✅ Delete using Eloquent (fires events)
+    $team_fixture->fixturePlayers()->each(fn($p) => $p->delete());
 
-    $rows = [];
+    // ✅ Create using Eloquent (fires events)
     $max = max(count($homePlayers), count($awayPlayers));
-
     for ($i = 0; $i < $max; $i++) {
-      $rows[] = [
-        'team_fixture_id' => $team_fixture->id,
-        'team1_id' => $homePlayers[$i] ?? null,
-        'team2_id' => $awayPlayers[$i] ?? null,
-      ];
-    }
-
-    if (!empty($rows)) {
-      \App\Models\TeamFixturePlayer::insert($rows);
+        TeamFixturePlayer::create([
+            'team_fixture_id' => $team_fixture->id,
+            'team1_id' => $homePlayers[$i] ?? null,
+            'team2_id' => $awayPlayers[$i] ?? null,
+        ]);
     }
 
     $team_fixture->load(['team1', 'team2', 'region1Name', 'region2Name']);
@@ -458,36 +454,66 @@ class TeamFixtureController extends Controller
 
   public function scheduleData(Draw $draw)
   {
-    $fixtures = TeamFixture::with(['team1', 'team2'])
+    $fixtures = TeamFixture::with(['fixturePlayers.player1', 'fixturePlayers.player2', 'draw', 'venue'])
       ->where('draw_id', $draw->id)
-      // ✅ Force numeric sorting; null-safe (NULL → 9999 so they appear last)
       ->orderByRaw('COALESCE(NULLIF(round_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(tie_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(home_rank_nr, ""), 9999) + 0 ASC')
       ->orderBy('scheduled_at', 'asc')
       ->get()
       ->map(function ($fx) {
-        $p1 = $fx->team1 && $fx->team1->count()
-          ? $fx->team1->map(fn($p) => $p->full_name ?? $p->name)->implode(' + ')
-          : 'TBD';
+        $homeNames = [];
+        $awayNames = [];
+        $homeRegionShort = $fx->region1Name?->short_name ?? null;
+        $awayRegionShort = $fx->region2Name?->short_name ?? null;
 
-        $p2 = $fx->team2 && $fx->team2->count()
-          ? $fx->team2->map(fn($p) => $p->full_name ?? $p->name)->implode(' + ')
-          : 'TBD';
+        foreach ($fx->fixturePlayers as $fpRow) {
+            // HOME
+            if ($fpRow->team1_id && $fpRow->player1) {
+                $name = $fpRow->player1->full_name;
+                if ($homeRegionShort) $name .= " ({$homeRegionShort})";
+                $homeNames[] = $name;
+            } elseif ($fpRow->team1_no_profile_id) {
+                $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
+                if ($np) {
+                    $name = trim($np->name . ' ' . $np->surname);
+                    if ($homeRegionShort) $name .= " ({$homeRegionShort})";
+                    $homeNames[] = $name;
+                }
+            }
+            // AWAY
+            if ($fpRow->team2_id && $fpRow->player2) {
+                $name = $fpRow->player2->full_name;
+                if ($awayRegionShort) $name .= " ({$awayRegionShort})";
+                $awayNames[] = $name;
+            } elseif ($fpRow->team2_no_profile_id) {
+                $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
+                if ($np2) {
+                    $name = trim($np2->name . ' ' . $np2->surname);
+                    if ($awayRegionShort) $name .= " ({$awayRegionShort})";
+                    $awayNames[] = $name;
+                }
+            }
+        }
+
+        $p1 = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
+        $p2 = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
 
         return [
-          'id' => $fx->id,
-          'round' => $fx->round_nr ?? null,
-          'match' => $fx->match_nr ?? null,
-          'p1' => $p1,
-          'p2' => $p2,
-          'scheduled_at' => $fx->scheduled_at,
-          'venue_id' => $fx->venue_id,
-          'court_label' => $fx->court_label,
-          'duration_min' => $fx->duration_min,
-          'clash_flag' => $fx->clash_flag ?? false,
+            'id' => $fx->id,
+            'round' => $fx->round_nr ?? null,
+            'tie' => $fx->tie_nr ?? null,
+            'match' => $fx->match_nr ?? null,
+            'home_rank' => $fx->home_rank_nr ?? null,
+            'p1' => $p1,
+            'p2' => $p2,
+            'scheduled_at' => $fx->scheduled_at,
+            'venue_id' => $fx->venue_id,
+            'court_label' => $fx->court_label,
+            'duration_min' => $fx->duration_min,
+            'clash_flag' => $fx->clash_flag ?? false,
         ];
-      });
+    });
 
     $venues = $draw->venues;
     if ($venues->isEmpty()) {
@@ -581,21 +607,24 @@ class TeamFixtureController extends Controller
       'venues' => 'nullable|array',
       'venues.*' => 'integer|exists:venues,id',
       'rank_venue_map' => 'nullable|array',
+      'rank_duration_map' => 'nullable|array',
     ]);
 
+    $defaultDuration = (int) $data['duration'];
     $gap = (int) ($data['gap'] ?? 0);
+    $rankDurationMap = $data['rank_duration_map'] ?? [];
 
-    // 🔹 Normalize "round" input — can be single value, CSV string, or array
+    // Normalize round input
     $rounds = collect(
-      is_array($data['round'])
-      ? $data['round']
-      : explode(',', (string) $data['round'])
+      is_array($data['round'] ?? null)
+        ? $data['round']
+        : explode(',', (string) ($data['round'] ?? ''))
     )
       ->map(fn($r) => trim($r))
       ->filter(fn($r) => $r !== '')
       ->values();
 
-    // 🔹 Load fixtures (for all requested rounds, or all if none specified)
+    // Load unscheduled fixtures ordered by round → tie → rank (players play in rank order)
     $q = TeamFixture::where('draw_id', $draw->id)
       ->whereNull('scheduled_at');
 
@@ -606,113 +635,95 @@ class TeamFixtureController extends Controller
     $fixtures = $q->orderByRaw('COALESCE(NULLIF(round_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(tie_nr, ""), 9999) + 0 ASC')
       ->orderByRaw('COALESCE(NULLIF(home_rank_nr, ""), 9999) + 0 ASC')
-      ->orderBy('scheduled_at', 'asc')
       ->get();
 
-    // 🔹 Venue logic stays identical
+    // Get venues
     $venues = !empty($data['venues'])
       ? $draw->venues()->whereIn('venues.id', $data['venues'])->get()
       : $draw->venues;
 
+    if ($venues->isEmpty()) {
+      return response()->json(['error' => 'No venues configured'], 422);
+    }
+
     $start = Carbon::parse($data['start']);
     $end = Carbon::parse($data['end']);
+    $rankVenueMap = $data['rank_venue_map'] ?? [];
 
-    $slotsByVenue = [];
+    // Build slot timeline per venue/court
+    $slotCursors = [];
     foreach ($venues as $v) {
       $courts = max(1, (int) ($v->pivot->num_courts ?? $v->num_courts ?? 1));
       for ($c = 1; $c <= $courts; $c++) {
-        $cursor = $start->copy();
-        while ($cursor->lt($end)) {
-          $from = $cursor->copy();
-          $to = $cursor->copy()->addMinutes($data['duration']);
-          if ($to->gt($end))
-            break;
-
-          $timeKey = $from->format('Y-m-d H:i');
-          $slotsByVenue[$v->id][$timeKey][] = [
-            'venue_id' => $v->id,
-            'court' => $c,
-            'from' => $from,
-            'to' => $to,
-            'booked' => false,
-          ];
-          $cursor = $to->copy()->addMinutes($gap);
-        }
+        $slotCursors[$v->id][$c] = $start->copy();
       }
     }
 
-    // 🔹 Mark existing bookings
-    TeamFixture::where('draw_id', $draw->id)
+    // Track existing bookings
+    $existingBookings = TeamFixture::where('draw_id', $draw->id)
       ->whereNotNull('scheduled_at')
       ->get()
-      ->each(function ($fx) use (&$slotsByVenue) {
-        $from = Carbon::parse($fx->scheduled_at);
-        $timeKey = $from->format('Y-m-d H:i');
-        $venueId = $fx->venue_id;
-        if (isset($slotsByVenue[$venueId][$timeKey])) {
-          foreach ($slotsByVenue[$venueId][$timeKey] as &$slot) {
-            if ((int) $slot['court'] === (int) str_replace('Court ', '', $fx->court_label)) {
-              $slot['booked'] = true;
-            }
-          }
-        }
+      ->groupBy(function ($fx) {
+        return $fx->venue_id . '_' . (preg_replace('/\D/', '', $fx->court_label) ?: 1);
       });
 
-    // 🔹 Fallback rank→venue map
-    $defaultMap = [1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 2, 7 => 2, 8 => 2];
-    $rankVenueMap = $data['rank_venue_map'] ?? $defaultMap;
+    $assigned = [];
+    $skipped = [];
 
-    // 🔹 Flatten all available time slots per venue
-    $slotQueues = [];
-    foreach ($slotsByVenue as $venueId => $timeGroups) {
-      $queue = [];
-      foreach (collect($timeGroups)->sortKeys() as $timeKey => $venueSlots) {
-        foreach ($venueSlots as $slot) {
-          $queue[] = $slot;
+    foreach ($fixtures as $fx) {
+      $targetVenueId = $rankVenueMap[$fx->home_rank_nr] ?? null;
+
+      // If no mapping, use first available venue
+      if (!$targetVenueId && $venues->isNotEmpty()) {
+        $targetVenueId = $venues->first()->id;
+      }
+
+      if (!$targetVenueId || !isset($slotCursors[$targetVenueId])) {
+        $skipped[] = ['id' => $fx->id, 'reason' => 'No venue mapped for rank ' . $fx->home_rank_nr];
+        continue;
+      }
+
+      // Get duration for this rank (or default)
+      $matchDuration = $rankDurationMap[$fx->home_rank_nr] ?? $defaultDuration;
+
+      // Find earliest available court at target venue
+      $courts = $slotCursors[$targetVenueId];
+      $earliestCourt = null;
+      $earliestTime = null;
+
+      foreach ($courts as $courtNum => $cursor) {
+        if (!$earliestTime || $cursor->lt($earliestTime)) {
+          $earliestTime = $cursor;
+          $earliestCourt = $courtNum;
         }
       }
-      $slotQueues[$venueId] = $queue;
-    }
 
-    $slotPointers = array_fill_keys(array_keys($slotQueues), 0);
-    $assigned = [];
-
-    // 🔹 Assign fixtures to slots
-    foreach ($fixtures as $fx) {
-      $targetVenue = $rankVenueMap[$fx->home_rank_nr] ?? null;
-      if (!$targetVenue || empty($slotQueues[$targetVenue])
-      ) continue;
-
-      $index = $slotPointers[$targetVenue] ?? 0;
-      if (!isset($slotQueues[$targetVenue][$index]))
+      // Check if slot fits within end time
+      $slotEnd = $earliestTime->copy()->addMinutes($matchDuration);
+      if ($slotEnd->gt($end)) {
+        $skipped[] = ['id' => $fx->id, 'reason' => 'No time slots remaining'];
         continue;
-
-      $slot = &$slotQueues[$targetVenue][$index];
-      while ($slot['booked'] && isset($slotQueues[$targetVenue][++$index])) {
-        $slot = &$slotQueues[$targetVenue][$index];
       }
 
-      if (!$slot['booked']) {
-        $fx->scheduled_at = $slot['from']->copy();
-        $fx->venue_id = $slot['venue_id'];
-        $fx->court_label = "Court {$slot['court']}";
-        $fx->duration_min = (int) $data['duration'];
-        $fx->scheduled = 1;
-        $fx->save();
+      // Assign fixture
+      $fx->scheduled_at = $earliestTime->copy();
+      $fx->venue_id = $targetVenueId;
+      $fx->court_label = "Court {$earliestCourt}";
+      $fx->duration_min = $matchDuration;
+      $fx->scheduled = 1;
+      $fx->save();
 
-        $slot['booked'] = true;
+      // Advance cursor for this court
+      $slotCursors[$targetVenueId][$earliestCourt] = $slotEnd->addMinutes($gap);
 
-        $assigned[] = [
-          'fixture_id' => $fx->id,
-          'venue_id' => $slot['venue_id'],
-          'court' => "Court {$slot['court']}",
-          'scheduled_at' => $slot['from']->format('Y-m-d H:i'),
-          'home_rank' => $fx->home_rank_nr,
-          'targetVenue' => $targetVenue,
-        ];
-
-        $slotPointers[$targetVenue] = $index + 1;
-      }
+      $assigned[] = [
+        'fixture_id' => $fx->id,
+        'venue_id' => $targetVenueId,
+        'court' => "Court {$earliestCourt}",
+        'scheduled_at' => $earliestTime->format('Y-m-d H:i'),
+        'duration' => $matchDuration,
+        'home_rank' => $fx->home_rank_nr,
+      ];
     }
 
     $this->recomputeTeamClashes($draw);
@@ -720,8 +731,8 @@ class TeamFixtureController extends Controller
     return response()->json([
       'success' => true,
       'assigned' => $assigned,
-      'rounds_processed' => $rounds, // 👈 helpful debug info
-      'rankvenuemap' => $rankVenueMap,
+      'skipped' => $skipped,
+      'rounds_processed' => $rounds,
       'count' => count($assigned)
     ]);
   }
@@ -809,9 +820,14 @@ class TeamFixtureController extends Controller
   {
     $event = Event::findOrFail($eventId);
 
+    // Only include fixtures that belong to this event's draws and are scheduled
+    // for the requested venue. This ensures counts and groupings only consider
+    // fixtures that have an actual scheduled time.
     $fixtures = TeamFixture::with(['team1', 'team2', 'venue'])
       ->whereIn('draw_id', $event->draws->pluck('id'))
       ->where('venue_id', $venueId)
+      ->whereNotNull('scheduled_at')
+      ->when(Schema::hasColumn('team_fixtures', 'scheduled'), fn($q) => $q->where('scheduled', 1))
       ->orderBy('scheduled_at', 'asc')
       ->orderBy('round_nr', 'asc')
       ->orderBy('tie_nr', 'asc')
@@ -919,12 +935,19 @@ class TeamFixtureController extends Controller
         'rank' => 'nullable|integer',
     ]);
 
+    // ✅ Calculate next rank if not provided
+    $rank = $data['rank'] ?? null;
+    if ($rank === null && isset($data['team_id'])) {
+        $rank = NoProfileTeamPlayer::where('team_id', $data['team_id'])->max('rank') + 1;
+    }
+    $rank = $rank ?: 1; // Fallback to 1 if still null
+
     $np = NoProfileTeamPlayer::create([
         'team_id' => $data['team_id'] ?? null,
         'name' => $data['name'],
         'surname' => $data['surname'] ?? null,
         'pay_status' => 0,
-        'rank' => $data['rank'] ?? null,
+        'rank' => $rank,
     ]);
 
     return response()->json([
@@ -1000,66 +1023,60 @@ class TeamFixtureController extends Controller
         $updatedHome = 0;
         $updatedAway = 0;
 
-        // Home replacements
+        // ✅ HOME replacements using Eloquent (fires events)
         if ($side === 'home' || $side === 'both') {
-            if ($oldIsPlayer && $newIsPlayer) {
-                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+            // Clone or create fresh query for each lookup
+            if ($oldIsPlayer) {
+                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
                     ->where('team1_id', $oldId)
-                    ->update(['team1_id' => $newId]);
-            } elseif ($oldIsPlayer && $newIsNoProfile) {
-                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team1_id', $oldId)
-                    ->update(['team1_no_profile_id' => $newId, 'team1_id' => null]);
-            } elseif ($oldIsNoProfile && $newIsPlayer) {
-                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team1_no_profile_id', $oldId)
-                    ->update(['team1_id' => $newId, 'team1_no_profile_id' => null]);
-            } else { // no-profile -> no-profile
-                $updatedHome += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team1_no_profile_id', $oldId)
-                    ->update(['team1_no_profile_id' => $newId]);
-            }
-        }
-
-        // Away replacements
-        if ($side === 'away' || $side === 'both') {
-            if ($oldIsPlayer && $newIsPlayer) {
-                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team2_id', $oldId)
-                    ->update(['team2_id' => $newId]);
-            } elseif ($oldIsPlayer && $newIsNoProfile) {
-                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team2_id', $oldId)
-                    ->update(['team2_no_profile_id' => $newId, 'team2_id' => null]);
-            } elseif ($oldIsNoProfile && $newIsPlayer) {
-                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team2_no_profile_id', $oldId)
-                    ->update(['team2_id' => $newId, 'team2_no_profile_id' => null]);
+                    ->get();
             } else {
-                $updatedAway += \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team1_no_profile_id', $oldId)
+                    ->get();
+            }
+
+            foreach ($records as $record) {
+                if ($newIsPlayer) {
+                    $record->team1_id = $newId;
+                    $record->team1_no_profile_id = null;
+                } else {
+                    $record->team1_no_profile_id = $newId;
+                    $record->team1_id = null;
+                }
+                $record->save();
+                $updatedHome++;
+            }
+        }
+
+        // ✅ AWAY replacements using Eloquent (fires events)
+        if ($side === 'away' || $side === 'both') {
+            // Fresh query for away side
+            if ($oldIsPlayer) {
+                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
+                    ->where('team2_id', $oldId)
+                    ->get();
+            } else {
+                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
                     ->where('team2_no_profile_id', $oldId)
-                    ->update(['team2_no_profile_id' => $newId]);
+                    ->get();
+            }
+
+            foreach ($records as $record) {
+                if ($newIsPlayer) {
+                    $record->team2_id = $newId;
+                    $record->team2_no_profile_id = null;
+                } else {
+                    $record->team2_no_profile_id = $newId;
+                    $record->team2_id = null;
+                }
+                $record->save();
+                $updatedAway++;
             }
         }
 
-        // CSV fallback: update team1_ids/team2_ids when both are player ids
-        if ($oldIsPlayer && $newIsPlayer && (Schema::hasColumn('team_fixtures', 'team1_ids') || Schema::hasColumn('team_fixtures', 'team2_ids'))) {
-            $fixtures = TeamFixture::whereIn('id', $fixtureIds)->get();
-            foreach ($fixtures as $fx) {
-                if (Schema::hasColumn('team_fixtures', 'team1_ids') && $fx->team1_ids) {
-                    $ids = array_map('trim', explode(',', $fx->team1_ids));
-                    $ids = array_map(fn($v) => ((string)$v === (string)$oldId) ? (string)$newId : $v, $ids);
-                    $fx->team1_ids = implode(',', array_filter($ids, fn($v) => $v !== ''));
-                }
-                if (Schema::hasColumn('team_fixtures', 'team2_ids') && $fx->team2_ids) {
-                    $ids2 = array_map('trim', explode(',', $fx->team2_ids));
-                    $ids2 = array_map(fn($v) => ((string)$v === (string)$oldId) ? (string)$newId : $v, $ids2);
-                    $fx->team2_ids = implode(',', array_filter($ids2, fn($v) => $v !== ''));
-                }
-                $fx->save();
-            }
-        }
-
+        // CSV fallback unchanged...
+        
         \Log::info('[replacePlayerInEvent]', [
             'event_id' => $data['event_id'],
             'updated_home' => $updatedHome,

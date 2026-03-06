@@ -14,6 +14,20 @@
 
 @endsection
 
+@section('vendor-style')
+<style>
+  .ranking-card { border: 1px solid var(--bs-border-color); border-radius: .5rem; }
+  .ranking-card .card-header { background: linear-gradient(90deg, rgba(0,123,255,0.06), rgba(13,110,253,0.02)); }
+  .rank-pos { font-weight:700; width:64px; }
+  .medal-1 { color: #ffd700; }
+  .medal-2 { color: #c0c0c0; }
+  .medal-3 { color: #cd7f32; }
+  .player-name { font-weight:600; }
+  .points { font-weight:700; }
+  .legs-badges .badge { margin-right:.25rem; margin-bottom:.25rem; }
+</style>
+@endsection
+
 
 @section('vendor-script')
 <script src="{{asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js')}}"></script>
@@ -32,30 +46,55 @@
         <div class="card-header">
             <h5>Rankings</h5>
         </div>
-        <div class="row">
-            @foreach($series->ranking_lists as $ranking_list)
+        <div class="row g-3">
+            @foreach($categories as $category)
+            @php
+              $rows = $rankings->where('category_id', $category->id)->sortBy('rank_position')->values();
+            @endphp
+
+            @if($rows->isNotEmpty())
             <div class=" col-sm-12 col-lg-6">
-                <div class="card">
-                    <div class="card-body">
+                <div class="card ranking-card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                          <strong>{{ $category->name }}</strong>
+                          <div class="text-muted small">{{ $rows->count() }} players</div>
+                        </div>
+                        <div>
+                          <span class="badge bg-primary">{{ $series->name }} {{ $series->year ?? '' }}</span>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
 
 
 
 
-                        <h5>{{$ranking_list->category->name}} </h5>
-                        <table class="table table-responsive ">
+                  
+                        <table class="table table-striped table-hover table-sm mb-0">
                             <thead>
                                 <th>Rank</th>
-                                <th>Name</th>
-                                <th># of events</th>
-                                <th>Points</th>
+                                <th>Player</th>
+                                <th class="text-end">Points</th>
                             </thead>
                             <tbody>
-                                @foreach($ranking_list->ranking_scores as $key => $scores)
+                                @foreach($rows as $row)
                                 <tr>
-                                    <td>{{$key+1}}</td>
-                                    <td> <a class="badge bg-label-primary" href="{{route('result.details', ['id' => $scores->player->id, 'series' => $series->id])}}"> {{$scores->player->name}} {{$scores->player->surname}} @if($scores->primarySchool == 1)<span class=" badge bg-label-warning">{{$scores->primarySchool == 1 ? ' (u/13) ':''}}</span> @endif</a></td>
-                                    <td> {{$scores->num_events}}</td>
-                                    <td> {{$scores->total_points}}</td>
+                                    <td class="rank-pos">
+                                 
+                                        #{{ $row->rank_position }}
+                                    
+                                    </td>
+                                    <td>
+                                      <div class="player-name">{{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}</div>
+                                      @if(!empty($row->meta_json['legs']))
+                                        <div class="legs-badges mt-1">
+                                          @foreach($row->meta_json['legs'] as $leg)
+                                            <span class="badge bg-light text-dark">P{{ $leg['position'] ?? '-' }} (E{{ $leg['event_id'] ?? '?' }})</span>
+                                          @endforeach
+                                        </div>
+                                      @endif
+                                    </td>
+                                    <td class="text-end points">{{ $row->total_points }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>
@@ -66,6 +105,7 @@
                     </div>
                 </div>
             </div>
+            @endif
             @endforeach
         </div>
     </div>

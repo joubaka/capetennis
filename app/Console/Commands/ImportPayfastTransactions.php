@@ -94,12 +94,16 @@ class ImportPayfastTransactions extends Command
           'item_name' => $row['Description'] ?? null,
           'email_address' => $row['Email / Cell'] ?? null,
 
+          'custom_int1' => (int) ($row['Custom_int1'] ?? null), // category_event_id
+          'custom_int2' => (int) ($row['Custom_int2'] ?? null), // player_id
           'custom_int3' => (int) ($row['Custom_int3'] ?? null), // event_id
           'custom_int4' => (int) ($row['Custom_int4'] ?? null), // user_id
           'custom_int5' => (int) ($row['Custom_int5'] ?? null), // registration_order_id
 
-          'custom_str3' => $row['Custom_str3'] ?? null,
-          'custom_str4' => $row['Name'] ?? null,
+          'custom_str1' => $row['Custom_str1'] ?? null, // category name
+          'custom_str2' => $row['Custom_str2'] ?? null, // player name
+          'custom_str3' => $row['Custom_str3'] ?? null, // event name
+          'custom_str4' => $row['Name'] ?? null, // payer name
           'custom_str5' => $row['Custom_str5'] ?? null,
 
           'payment_date' => Carbon::parse($row['Date'])->toDateTimeString(),

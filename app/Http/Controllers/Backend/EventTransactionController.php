@@ -326,27 +326,32 @@ class EventTransactionController extends Controller
     }
 
     // =========================
-    // STEP 7: TOTALS
+    // STEP 7: TOTALS (FULL LEDGER - includes refunds)
     // =========================
     $netTournamentIncome = $ledger->sum('net');
 
-    $totalGross = $paymentRows->sum('gross');
-    $totalPayfastFees = $paymentRows->sum('fee');
+    // ✅ Use full ledger so refunds reduce these totals
+    $totalGross = $ledger->sum('gross');
+    $totalPayfastFees = $ledger->sum('fee');
+    $totalCapeTennisFees = $ledger->sum('capeFee');
 
+    // Entry count for display (payments only - refunds don't add entries)
     $totalEntries = $isTeamEvent
       ? $paymentRows->count()
       : $paymentRows->flatMap(fn($t) => optional($t->order)->items ?? collect())->count();
 
-    $totalCapeTennisFees = $totalEntries * $feePerEntry;
+    // Refund count for display
+    $refundCount = $refundRows->count();
 
     if ($STEP === 7) {
       dd([
         'step' => 7,
         'totals' => [
           'totalEntries' => $totalEntries,
+          'refundCount' => $refundCount,
           'totalGross' => $totalGross,
           'totalPayfastFees' => $totalPayfastFees,
-          'totalCapeTennisFees_platform' => $totalCapeTennisFees,
+          'totalCapeTennisFees' => $totalCapeTennisFees,
           'netTournamentIncome_event' => $netTournamentIncome,
         ],
         'sanity' => [
@@ -369,6 +374,7 @@ class EventTransactionController extends Controller
       'isTeamEvent' => $isTeamEvent,
 
       'totalEntries' => $totalEntries,
+      'refundCount' => $refundCount,
       'totalGross' => $totalGross,
       'totalPayfastFees' => $totalPayfastFees,
       'totalCapeTennisFees' => $totalCapeTennisFees,

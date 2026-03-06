@@ -5,15 +5,15 @@ namespace App\Http\Controllers\Frontend;
 use App\Models\Draw;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use App\Services\InterproDrawBuilder;
+use App\Services\DrawService;
 use App\Models\CategoryEvent;
 use App\Http\Controllers\Controller;
 
 class PublicRoundRobinController extends Controller
 {
-  protected InterproDrawBuilder $builder;
+  protected DrawService $builder;
 
-  public function __construct(InterproDrawBuilder $builder)
+  public function __construct(DrawService $builder)
   {
     $this->builder = $builder;
   }

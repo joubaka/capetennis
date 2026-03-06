@@ -139,20 +139,62 @@
       </div>
     </div>
 
+      {{-- DRAWS & ORDER OF PLAY --}}
+    @if(isset($eventDraws) && $eventDraws->count() > 0)
+    <div class="card mb-4">
+      <div class="card-header">
+        <small class="text-uppercase">Draws & Order of Play</small>
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+          @php
+            // Sort draws: published first, then by age category, then by name
+            $sortedDraws = $eventDraws->sortBy([
+              ['published', 'desc'],
+              [fn($d) => $d->draw_types?->ageCategory ?? $d->drawName ?? '', 'asc'],
+              ['drawName', 'asc'],
+            ]);
+          @endphp
+          @foreach($sortedDraws as $draw)
+            @if($draw->published)
+              {{-- Published: Green button --}}
+              <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+                 class="btn btn-sm btn-success">
+                <i class="ti ti-tournament me-1"></i>
+                {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+              </a>
+            @else
+              {{-- Unpublished: Outline with red badge --}}
+              <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+                 class="btn btn-sm btn-outline-secondary">
+                <i class="ti ti-tournament me-1"></i>
+                {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+                <span class="badge bg-danger ms-1">Unpublished</span>
+              </a>
+            @endif
+          @endforeach
+        </div>
+      </div>
+    </div>
+    @endif
+
     {{-- PLAYERS --}}
     <div class="card mb-4">
       <div class="card-body">
         <small class="text-uppercase">Players</small>
 
         @foreach($eventCats as $eventCategory)
+          @php
+            $activeRegistrations = $eventCategory->registrations->where('status', '!=', 'withdrawn');
+          @endphp
           <div class="border rounded p-2 mb-3">
             <span class="badge bg-label-primary mb-2">
               {{ $eventCategory->category->name }}
-              ({{ $eventCategory->registrations->count() }})
+              ({{ $activeRegistrations->count() }})
             </span>
 
             <ul class="list-group list-group-flush">
-              @foreach($eventCategory->registrations as $registration)
+              @foreach($activeRegistrations as $registration)
                 <li class="list-group-item">
                   {{ optional($registration->players->first())->name }}
                   {{ optional($registration->players->first())->surname }}
@@ -163,6 +205,8 @@
         @endforeach
       </div>
     </div>
+
+  
 
   </div>
 </div>

@@ -37,225 +37,168 @@
 
 @section('page-script')
 <script>
-  // Pass server-side data to the compiled script
   window.HeadOffice = {
-    venues: @json($venues),
+    venues: @json($allVenues),
     previewUrl: "{{ route('headoffice.previewTeamDraw', $event) }}",
     createUrl: "{{ route('headoffice.createSingleDraw.team', $event) }}",
     backendDrawVenuesStoreTemplate: @json(route('backend.draw.venues.store', ['draw' => '__ID__'])),
     backendDrawVenuesJsonTemplate: @json(route('backend.draw.venues.json', ['draw' => '__ID__'])),
   };
 
-  // Show toastr for session flash messages on page load
   $(function () {
-    @if(session('success'))
-      toastr.success(@json(session('success')), 'Success');
-    @endif
-
-    @if(session('error'))
-      toastr.error(@json(session('error')), 'Error');
-    @endif
-
-    @if(session('warning'))
-      toastr.warning(@json(session('warning')), 'Warning');
-    @endif
-
-    @if(session('info'))
-      toastr.info(@json(session('info')), 'Info');
-    @endif
+    @if(session('success')) toastr.success(@json(session('success')), 'Success'); @endif
+    @if(session('error')) toastr.error(@json(session('error')), 'Error'); @endif
+    @if(session('warning')) toastr.warning(@json(session('warning')), 'Warning'); @endif
+    @if(session('info')) toastr.info(@json(session('info')), 'Info'); @endif
   });
 </script>
 
 <script src="{{ asset(mix('js/headOffice.js')) }}"></script>
 @endsection
 
+
 @section('content')
 
-{{-- #6 — Breadcrumb navigation --}}
-<nav aria-label="breadcrumb" class="mb-3">
-  <ol class="breadcrumb">
-    <li class="breadcrumb-item">
-      <a href="{{ route('admin.events.overview', $event) }}">
-        <i class="ti ti-arrow-left me-1"></i>Event Dashboard
-      </a>
-    </li>
-    <li class="breadcrumb-item active" aria-current="page">Fixtures HQ</li>
-  </ol>
-</nav>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+  <div class="d-flex flex-column justify-content-center">
+    <h4 class="mb-1 mt-3">Fixtures HQ</h4>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb breadcrumb-style1 mb-0">
+        <li class="breadcrumb-item">
+          <a href="{{ route('admin.events.overview', $event) }}">Event Dashboard</a>
+        </li>
+        <li class="breadcrumb-item active">Fixtures HQ</li>
+      </ol>
+    </nav>
+  </div>
+  <div class="d-flex align-content-center flex-wrap gap-3 mt-3 mt-md-0">
+    <button class="btn btn-primary" id="createNewDrawBtn">
+      <i class="ti ti-plus me-1"></i> Create New Draw
+    </button>
+  </div>
+</div>
 
-<!-- Event Header -->
-<div class="card mb-4">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h3 class="mb-0">Fixtures HQ: <span class="text-primary">{{ $event->name }}</span></h3>
-    <div class="d-flex gap-2">
-      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">
-        <i class="ti ti-plus me-1"></i> Create Draw
-      </button>
-
-      {{-- Replace Player button (opens replace form scoped to current event) --}}
-      <a href="{{ route('backend.team-fixtures.replacePlayerForm', ['event' => $event->id]) }}"
-         class="btn btn-outline-warning"
-         title="Replace player in remaining fixtures for this event">
-        <i class="ti ti-user-x me-1"></i> Replace Player
-      </a>
-
-      <button id="generate-fixtures-btn"
-              data-url="{{ route('headoffice.createFixtures', $event->id) }}"
-              class="btn btn-success">
-        <i class="ti ti-bolt me-1"></i> Generate All Fixtures
-      </button>
+<div class="row mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-border-shadow-primary h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2 pb-1">
+          <div class="avatar me-2">
+            <span class="avatar-initial rounded bg-label-primary"><i class="ti ti-tournament ti-md"></i></span>
+          </div>
+          <h4 class="ms-1 mb-0">{{ $event->draws->count() }}</h4>
+        </div>
+        <p class="mb-1">Total Draws</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card card-border-shadow-info h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2 pb-1">
+          <div class="avatar me-2">
+            <span class="avatar-initial rounded bg-label-info"><i class="ti ti-map-pin ti-md"></i></span>
+          </div>
+          <h4 class="ms-1 mb-0">{{ $scheduledVenues->count() }}</h4>
+        </div>
+        <p class="mb-1">Active Venues</p>
+      </div>
     </div>
   </div>
 </div>
 
-{{-- #3 — Full-width layout (sidebar removed) --}}
-<div class="card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h5 class="mb-0">
-      <i class="ti ti-tournament me-1"></i>
-      Event Draws
-      <span class="badge bg-label-primary ms-1">{{ $event->draws->count() }}</span>
-    </h5>
-  </div>
+<div class="row">
 
-  <!-- Loading Overlay -->
-  <div id="loading-overlay"
-       class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 justify-content-center align-items-center d-none"
-       style="z-index: 2000;">
-    <div class="spinner-border text-light" role="status" style="width: 4rem; height: 4rem;">
-      <span class="visually-hidden">Generating fixtures...</span>
-    </div>
-    <span class="ms-3 text-white fw-bold fs-5">Generating fixtures... Please wait...</span>
-  </div>
+  <div class="col-xl-7 col-lg-6">
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Manage Draws</h5>
+        <small class="text-muted">Click a draw to view details</small>
+      </div>
 
-  <div class="card-body">
-    <div class="list-group">
-      @forelse($event->draws as $draw)
-        @include('backend.draw._includes.draw_tab_team')
-      @empty
-        <div class="alert alert-warning mb-0">
-          <i class="ti ti-info-circle me-1"></i>
-          No draws available yet. Click <strong>Create Draw</strong> to get started.
+      <div class="card-body pt-0">
+        <div class="list-group list-group-flush">
+          @forelse($event->draws as $draw)
+            <div class="list-group-item list-group-item-action d-flex align-items-center py-3">
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center mb-1">
+                  <h6 class="mb-0 me-2">@include('backend.draw._includes.draw_tab_team')</h6>
+                  @if($draw->is_published)
+                    <span class="badge badge-dot bg-primary" title="Published"></span>
+                  @elseif($draw->is_done)
+                    <span class="badge badge-dot bg-success" title="Completed"></span>
+                  @else
+                    <span class="badge badge-dot bg-warning" title="Draft"></span>
+                  @endif
+                </div>
+                <div class="text-muted small">
+                   <span class="me-2"><i class="ti ti-calendar-event ti-xs"></i> {{ $draw->created_at->format('d M, Y') }}</span>
+                   @if($draw->is_scheduled) <span class="text-info">| Scheduled</span> @endif
+                </div>
+              </div>
+
+            
+            </div>
+          @empty
+            <div class="text-center py-5">
+              <i class="ti ti-folders ti-lg text-muted mb-2"></i>
+              <p class="text-muted">No draws created for this event yet.</p>
+            </div>
+          @endforelse
         </div>
-      @endforelse
+      </div>
     </div>
   </div>
+
+  <div class="col-xl-5 col-lg-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Venue Fixture Lists</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group">
+          @forelse($scheduledVenues as $venue)
+            <a href="{{ route('headoffice.venue.fixtures', [$event->id, $venue->id]) }}"
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3 mb-2 border rounded">
+              <div class="d-flex align-items-center">
+                <div class="avatar avatar-sm me-3">
+                  <span class="avatar-initial rounded bg-label-secondary"><i class="ti ti-building-community"></i></span>
+                </div>
+                <div>
+                  <div class="fw-bold text-heading">{{ $venue->name }}</div>
+                  <small class="text-muted">{{ $venue->location ?? 'Main Complex' }}</small>
+                </div>
+              </div>
+              <div class="text-end">
+                <span class="badge bg-label-info rounded-pill">
+                  @php
+                    $total = $venue->scheduled_fixtures_count ?? 0;
+                    $finished = $venue->finished_fixtures_count ?? 0;
+                  @endphp
+                  {{ $finished }}/{{ $total }} finished
+                </span>
+                <div class="mt-1"><i class="ti ti-chevron-right text-muted ti-xs"></i></div>
+              </div>
+            </a>
+          @empty
+            <div class="alert alert-outline-secondary d-flex align-items-center" role="alert">
+              <span class="alert-icon text-secondary me-2">
+                <i class="ti ti-info-circle ti-xs"></i>
+              </span>
+              No venues have been assigned fixtures yet.
+            </div>
+          @endforelse
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
-<!-- Modal: Create New Draw -->
-<div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-md">
-    <div class="modal-content">
-      <form id="createDrawForm">
-        @csrf
-        <div class="modal-header">
-          <h5 class="modal-title">Create New Draw</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
+@endsection
 
-        <div class="modal-body">
-
-          <!-- Step 1: Draw Type -->
-          <div class="mb-4">
-            <h6 class="fw-bold mb-3">Choose Draw Type</h6>
-            <div class="d-flex flex-column gap-2">
-              <small class="text-muted fw-bold">Team Formats</small>
-              @foreach($teamDrawTypes as $type)
-                <label class="switch switch-info">
-                  <input type="radio" name="draw_type_id" class="switch-input"
-                         value="{{ $type->id }}" data-mixed="{{ $type->is_mixed ? '1' : '0' }}">
-                  <span class="switch-toggle-slider"></span>
-                  <span class="switch-label">{{ $type->drawTypeName }}</span>
-                </label>
-              @endforeach
-              <small class="text-muted fw-bold mt-2">Individual Formats</small>
-              @foreach($individualDrawTypes as $type)
-                <label class="switch switch-info">
-                  <input type="radio" name="draw_type_id" class="switch-input"
-                         value="{{ $type->id }}" data-mixed="{{ $type->is_mixed ? '1' : '0' }}">
-                  <span class="switch-toggle-slider"></span>
-                  <span class="switch-label">{{ $type->drawTypeName }}</span>
-                </label>
-              @endforeach
-            </div>
-          </div>
-
-          <!-- Step 2a: Categories (NOT mixed) -->
-          <div id="categorySection" class="mb-4 d-none">
-            <h6 class="fw-bold mb-3">Choose Category</h6>
-            <div class="d-flex flex-column gap-2">
-              @foreach($categories as $cat)
-                <label class="switch switch-primary">
-                  <input type="radio"
-                         name="category_choice"
-                         class="switch-input"
-                         data-pivot-id="{{ $cat->pivot_id }}"     {{-- category_events.id --}}
-                         data-category-id="{{ $cat->category_id }}"> {{-- categories.id (optional debug) --}}
-                  <span class="switch-toggle-slider"></span>
-                  <span class="switch-label">{{ $cat->name }}</span>
-                </label>
-              @endforeach
-            </div>
-          </div>
-
-          <!-- Step 2b: Placeholder for Mixed -->
-          <div id="mixedPlaceholder" class="mb-4 d-none">
-            <div class="alert alert-info">
-              Mixed draw option will be available soon.
-            </div>
-          </div>
-
-          @php
-            $ageGroups = collect($categories)
-                          ->map(function($cat) {
-                            return preg_replace('/\s+(Boys|Girls)$/i', '', $cat->name);
-                          })
-                          ->unique()
-                          ->values();
-          @endphp
-
-          <!-- Step 2c: Special Categories for Type 3 -->
-          <div id="type3Categories" class="mb-4 d-none">
-            <h6 class="fw-bold mb-3">Choose Age Group</h6>
-            <div class="d-flex flex-column gap-2">
-              @foreach($ageGroups as $age)
-                @php
-                  $boys  = $categories->first(fn($c) => $c->name === $age . ' Boys');
-                  $girls = $categories->first(fn($c) => $c->name === $age . ' Girls');
-                @endphp
-                @if($boys && $girls)
-                  <label class="switch switch-primary">
-                    <input type="radio"
-                           name="category_choice"
-                           class="switch-input"
-                           data-age="{{ $age }}"
-                           data-ids='[{{ $boys->pivot_id }},{{ $girls->pivot_id }}]'> {{-- pivot ids --}}
-                    <span class="switch-toggle-slider"></span>
-                    <span class="switch-label">{{ $age }}</span>
-                  </label>
-                @endif
-              @endforeach
-            </div>
-          </div>
-
-          <!-- Step 3: Auto-generated Name -->
-          <div class="mb-3">
-            <label for="drawName" class="form-label fw-bold">Draw Name (Auto)</label>
-            <input type="text" id="drawName" name="drawName" class="form-control" readonly>
-          </div>
-
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Create</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Assign Venues (rendered ONCE) -->
+@section('modals')
+<!-- Single Venues Modal (centralized to avoid duplicates / flicker) -->
 <div class="modal fade" id="venuesModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <form id="venuesForm" method="POST">
@@ -280,4 +223,16 @@
   </div>
 </div>
 
-@endsection
+<script>
+  // Expose venues to legacy scripts that expect ALL_VENUES
+  window.ALL_VENUES = window.HeadOffice?.venues || @json($allVenues ?? []);
+
+  // Remove any other legacy venuesModal instances that might still be present
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('#venuesModal').forEach(function (el, idx) {
+      // Keep the first one, remove extras
+      if (idx > 0) el.remove();
+    });
+  });
+</script>
+

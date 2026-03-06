@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\ClothingOrder;
 use Illuminate\Support\Facades\Log;
+use Spatie\Permission\Models\Role;
 
 
 
@@ -348,9 +349,37 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // VIEW
     // ---------------------------------------------------------
-    return view('frontend.event.show', compact(
+    // In your controller
+
+
+$fixtures = \App\Models\TeamFixture::with(['draw'])
+    ->whereHas('draw', function ($q) use ($event) {
+        $q->where('event_id', $event->id);
+    })
+    ->whereNotNull('scheduled_at')
+    ->get();
+
+$fixturesByDay = $fixtures->groupBy(function($fx) {
+    return Carbon::parse($fx->scheduled_at)->toDateString();
+});
+
+$drawsForDay = $fixtures
+    ->map(fn($fx) => $fx->draw)
+    ->filter()
+    ->unique('id')
+    ->sortBy(fn($draw) => $draw->draw_types?->ageCategory ?? '');
+
+$venues = $fixturesPerVenue
+    ->map(fn($fx) => $fx->venue)
+    ->filter()
+    ->unique('id')
+    ->sortBy('name')
+    ->values();
+
+return view('frontend.event.show', compact(
       'fixturesPerVenueGrouped',
       'regions',
+      'fixturesByDay',
       'rounds',
       'ties',
       'eventDraws',
@@ -374,7 +403,8 @@ class EventController extends Controller
       'myClothingOrders',
       'nomRegisteredLookup',
       'canEnter',
-      'canWithdraw'
+      'canWithdraw',
+      'venues'
     ));
   }
 

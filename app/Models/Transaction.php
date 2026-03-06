@@ -32,6 +32,23 @@ class Transaction extends Model
     {
         return $this->belongsTo(CategoryEvent::class, 'category_event_id', 'id');
     }
+    
+    public function category()
+    {
+        return $this->hasOneThrough(
+            Category::class,
+            CategoryEvent::class,
+            'id',
+            'id',
+            'category_event_id',
+            'category_id'
+        );
+    }
+    
+    public function event()
+    {
+        return $this->belongsTo(Event::class, 'event_id', 'id');
+    }
  
 
 }

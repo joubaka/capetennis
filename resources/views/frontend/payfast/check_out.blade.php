@@ -39,11 +39,13 @@
 
   @php
       use App\Models\RegistrationOrder;
+      use App\Models\CategoryEvent;
+      use App\Models\Event;
 
       $orderId = (int) request('custom_int5');
 
       $order = $orderId
-          ? RegistrationOrder::with('items', 'user.wallet')->find($orderId)
+          ? RegistrationOrder::with('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet')->find($orderId)
           : null;
 
       abort_if(!$order, 404);
@@ -52,6 +54,13 @@
       $walletReserved   = (float) $order->wallet_reserved;
       $payfastDue       = (float) $order->payfast_amount_due;
       $walletBalance    = (float) ($order->user->wallet->balance ?? 0);
+      
+      // Get first item to extract event and category info
+      $firstItem = $order->items->first();
+      $categoryEvent = $firstItem?->category_event;
+      $event = $categoryEvent?->event;
+      $category = $categoryEvent?->category;
+      $player = $firstItem?->player;
   @endphp
 
   <div class="row">
@@ -163,8 +172,20 @@
               {{-- 🔐 CRITICAL FIX --}}
               <input type="hidden" name="amount" value="{{ number_format($payfastDue, 2, '.', '') }}">
 
-              <input type="hidden" name="item_name" value="Event Registration">
+              <input type="hidden" name="item_name" value="{{ $event ? $event->name : 'Event Registration' }}">
+              
+              {{-- PayFast Custom Fields --}}
+              <input type="hidden" name="custom_int1" value="{{ $categoryEvent ? $categoryEvent->id : '' }}">
+              <input type="hidden" name="custom_int2" value="{{ $player ? $player->id : '' }}">
+              <input type="hidden" name="custom_int3" value="{{ $event ? $event->id : '' }}">
+              <input type="hidden" name="custom_int4" value="{{ auth()->id() }}">
               <input type="hidden" name="custom_int5" value="{{ $orderId }}">
+              
+              <input type="hidden" name="custom_str1" value="{{ $category ? $category->name : '' }}">
+              <input type="hidden" name="custom_str2" value="{{ $player ? trim($player->name . ' ' . $player->surname) : '' }}">
+              <input type="hidden" name="custom_str3" value="{{ $event ? $event->name : '' }}">
+              <input type="hidden" name="custom_str4" value="{{ auth()->user()->name }}">
+              
               <input type="hidden" name="custom_wallet_reserved" value="{{ $walletReserved }}">
 
               <button class="btn btn-danger btn-lg w-100">

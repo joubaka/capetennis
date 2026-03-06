@@ -256,3 +256,33 @@ $(function () {
     });
   }
 })();
+
+// Example handlers (jQuery)
+$(document).on('click', '.btn-assign-role', function() {
+  const userId = $(this).data('user-id');
+  const role = $(this).data('role'); // e.g. "admin"
+  $.post(`/backend/users/${userId}/add-role`, { role: role, _token: $('meta[name="csrf-token"]').attr('content') })
+    .done(res => toastr.success(res.message))
+    .fail(err => toastr.error('Assign failed'));
+});
+
+$(document).on('click', '.btn-remove-role', function() {
+  const userId = $(this).data('user-id');
+  const role = $(this).data('role');
+  $.post(`/backend/users/${userId}/remove-role`, { role: role, _token: $('meta[name="csrf-token"]').attr('content') })
+    .done(res => toastr.success(res.message))
+    .fail(err => toastr.error('Remove failed'));
+});
+
+// Create role from modal
+$('#addRoleForm').on('submit', function(e) {
+  e.preventDefault();
+  const name = $('#modalRoleName').val().trim();
+  $.post('/backend/roles', { name: name, _token: $('meta[name="csrf-token"]').attr('content') })
+    .done(res => {
+      toastr.success(res.message);
+      $('#addRoleModal').modal('hide');
+      // optionally refresh role list UI
+    })
+    .fail(err => toastr.error('Create role failed'));
+});

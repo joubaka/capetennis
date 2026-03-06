@@ -1277,61 +1277,69 @@ class Fixtures
         ->get();
     }
 
-    // if singles
+    // Determine region and team collection for the requested side
+    if ($t === 1) {
+      $region = TeamRegion::find($fixture->region1);
+      $search = $fixture->age;
+      $teams = Team::where('region_id', $region->id)
+        ->where('name', 'LIKE', '%' . $search . '%')
+        ->orderBy('name')
+        ->get();
+    } else {
+      $region = TeamRegion::find($fixture->region2);
+      $search = $fixture->age;
+      $teams = Team::where('region_id', $region->id)
+        ->where('name', 'LIKE', '%' . $search . '%')
+        ->orderBy('name')
+        ->get();
+    }
+
+    $team = $teams->first();
+
+    // Helper to produce a sensible fallback label using region short name if available
+    $fallbackLabel = optional($region)->short_name ?? optional($region)->region_name ?? ('Region ' . ($t === 1 ? '1' : '2'));
+
+    // Singles
     if ($fixture->fixture_type == 1) {
-      if ($t === 1) {
-        $region = TeamRegion::find($fixture->region1);
-        $search = $fixture->age;
-        // dd('region1',$region);
-        $team = Team::where('region_id', $region->id)
-          ->where('name', 'LIKE', '%' . $search . '%')
-          ->get();
-      } else {
-        $region = TeamRegion::find($fixture->region2);
-        // dd('regoin2',$region);
-        $search = $fixture->age;
-        $team = Team::where('region_id', $region->id)
-          ->where('name', 'LIKE', '%' . $search . '%')
-          ->get();
+      $idx = $rank - 1;
+      if ($team && isset($team->team_players_no_profile[$idx])) {
+        $p = $team->team_players_no_profile[$idx];
+        return trim($p->name . ' ' . $p->surname);
       }
-      if (isset($team[0]->team_players_no_profile[($rank - 1)])) {
-        return $team[0]->team_players_no_profile[($rank - 1)]->name . ' ' . $team[0]->team_players_no_profile[($rank - 1)]->surname;
-      } else {
-        return $region->region_name . ' nr ' . $rank;
-      }
+      return $fallbackLabel . ' nr ' . $rank;
+    }
 
-      // if singles reverse
-    } else if ($fixture->fixture_type == 4) {
-
-      if (isset($team[0]->team_players_no_profile[($rank - 1)])) {
+    // Singles reverse
+    if ($fixture->fixture_type == 4) {
+      $idx = max(0, $rank - 1);
+      if ($team && $team->team_players_no_profile->count() > $idx) {
         if ($t == 2) {
-
           $values = [1, 3, 5, 7];
           if (in_array($rank, $values)) {
-            return $team[0]->team_players_no_profile[($rank)]->name . ' ' . $team[0]->team_players_no_profile[($rank)]->surname;
+            $p = $team->team_players_no_profile[$rank] ?? null;
           } else {
-            return $team[0]->team_players_no_profile[($rank - 2)]->name . ' ' . $team[0]->team_players_no_profile[($rank - 2)]->surname;
+            $p = $team->team_players_no_profile[$rank - 2] ?? null;
           }
-        } else {
-
-
-          return $team[0]->team_players_no_profile[($rank - 1)]->name . ' ' . $team[0]->team_players_no_profile[($rank - 1)]->surname;
+          if ($p) return trim($p->name . ' ' . $p->surname);
         }
-      } else {
-        return $region->region_name . ' nr ' . $rank;
+        $p = $team->team_players_no_profile[$idx] ?? null;
+        if ($p) return trim($p->name . ' ' . $p->surname);
       }
-    } else if ($fixture->fixture_type == 2) {
+      return $fallbackLabel . ' nr ' . $rank;
+    }
 
-      if (isset($team[0]->team_players_no_profile[($rank - 1)])) {
-       if($team[0]->noProfile == 1){
-return $team[0]->team_players_no_profile[(($rank * 2) - 2)]->name . ' ' . $team[0]->team_players_no_profile[(($rank * 2) - 2)]->surname . '/' . $team[0]->team_players_no_profile[(($rank * 2) - 1)]->name . ' ' . $team[0]->team_players_no_profile[(($rank * 2) - 1)]->surname;;
-
-       } else {
-        return '';
-       }
-         } else {
-        return $region->region_name . ' nr ' . $rank;
+    // Doubles
+    if ($fixture->fixture_type == 2) {
+      if ($team && $team->noProfile && $team->team_players_no_profile->count() >= ($rank * 2)) {
+        $firstIdx = ($rank * 2) - 2;
+        $secondIdx = ($rank * 2) - 1;
+        $p1 = $team->team_players_no_profile[$firstIdx] ?? null;
+        $p2 = $team->team_players_no_profile[$secondIdx] ?? null;
+        if ($p1 && $p2) {
+          return trim($p1->name . ' ' . $p1->surname) . '/' . trim($p2->name . ' ' . $p2->surname);
+        }
       }
+      return $fallbackLabel . ' nr ' . $rank;
     }
   }
   public static function getNoProfileMixedTeam($fixture, $t, $rank)

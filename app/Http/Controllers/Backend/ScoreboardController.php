@@ -793,6 +793,9 @@ class ScoreboardController extends Controller
    */
   protected function getScoreWinner($drawtype, $fixture)
   {
+    $winInStraights = 3;
+    $WinInThree = 2;
+
     $results = $fixture->teamResults
       ->sortBy('set_nr')
       ->values()
@@ -808,13 +811,13 @@ class ScoreboardController extends Controller
         $team2Sets = $results->filter(fn($r) => $r->team2_score > $r->team1_score)->count();
 
         if ($team1Sets === 2 && $team2Sets === 0)
-          return 3; // 2–0
+          return $winInStraights; // 2–0
         if ($team1Sets === 2 && $team2Sets === 1)
-          return 2; // 2–1
+          return $WinInThree; // 2–1
         if ($team2Sets === 2 && $team1Sets === 0)
-          return 3; // 0–2
+          return $winInStraights; // 0–2
         if ($team2Sets === 2 && $team1Sets === 1)
-          return 2; // 1–2
+          return $WinInThree; // 1–2
         return 0;
 
       case 2: // doubles

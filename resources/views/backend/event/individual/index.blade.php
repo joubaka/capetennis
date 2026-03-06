@@ -27,6 +27,13 @@
           Results
         </a>
 
+          {{-- Fixtures HQ (admin) --}}
+        <a href="{{ route('headOffice.show', $event) }}"
+           class="btn btn-outline-primary">
+          <i class="ti ti-calendar-meet me-1"></i>
+          Fixtures HQ
+        </a>
+
         {{-- 🔹 SERIES LINK (ONLY IF EVENT BELONGS TO SERIES) --}}
        @if($event->series)
   <a href="{{ route('series.show', $event->series) }}"

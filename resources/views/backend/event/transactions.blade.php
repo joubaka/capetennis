@@ -62,7 +62,9 @@
     <div class="col-md-3">
       <div class="card border-start border-primary">
         <div class="card-body">
-          <small class="text-muted">Total Gross Income</small>
+          <small class="text-muted">
+            Gross Income ({{ $totalEntries }} entries{{ isset($refundCount) && $refundCount > 0 ? ", {$refundCount} refunds" : '' }})
+          </small>
           <h4>R {{ number_format($totalGross, 2) }}</h4>
         </div>
       </div>
@@ -71,7 +73,7 @@
     <div class="col-md-3">
       <div class="card border-start border-warning">
         <div class="card-body">
-          <small class="text-muted">PayFast Fees</small>
+          <small class="text-muted">PayFast Fees (net)</small>
           <h4 class="text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
         </div>
       </div>
@@ -81,9 +83,9 @@
       <div class="card border-start border-danger">
         <div class="card-body">
           <small class="text-muted">
-            Cape Tennis Fees ({{ $totalEntries }} × R{{ $feePerEntry }})
+            Cape Tennis Fees (net)
           </small>
-          <h4 class="text-danger">− R {{ number_format($totalCapeTennisFees, 2) }}</h4>
+          <h4 class="text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
         </div>
       </div>
     </div>
@@ -97,6 +99,7 @@
       </div>
     </div>
   </div>
+
 
   {{-- TABLE --}}
   <div class="card">

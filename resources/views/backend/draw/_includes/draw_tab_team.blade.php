@@ -51,105 +51,62 @@
             Schedule
           </a>
 
-          {{-- #4 — "More" dropdown for secondary/destructive actions --}}
-          <div class="btn-group">
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary dropdown-toggle"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false">
-              <i class="ti ti-dots-vertical"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              {{-- Publish / Unpublish --}}
-              <li>
-                <button type="button"
-                        class="dropdown-item toggle-publish"
-                        data-url="{{ route('draw.toggle.publish', $draw->id) }}"
-                        data-status="{{ $isPublished ? 1 : 0 }}">
-                  <i class="ti ti-{{ $isPublished ? 'eye-off' : 'eye' }} me-2"></i>
-                  {{ $isPublished ? 'Unpublish' : 'Publish' }}
-                </button>
-              </li>
+        {{-- Inline action buttons (Publish/Assign/Recreate/Delete) --}}
+        <div class="btn-group btn-group-sm flex-wrap" role="group">
+          {{-- Publish / Unpublish --}}
+          <button type="button"
+                  class="btn btn-sm btn-outline-secondary toggle-publish"
+                  data-url="{{ route('draw.toggle.publish', $draw->id) }}"
+                  data-status="{{ $isPublished ? 1 : 0 }}">
+            <i class="ti ti-{{ $isPublished ? 'eye-off' : 'eye' }} me-1"></i>
+            {{ $isPublished ? 'Unpublish' : 'Publish' }}
+          </button>
 
-              {{-- Add Venues --}}
-              <li>
-                <button type="button"
-                        class="dropdown-item btn-add-venues"
-                        data-draw-id="{{ $draw->id }}"
-                        data-draw-name="{{ $draw->drawName }}"
-                        data-url="{{ route('backend.draw.venues.store', $draw->id) }}">
-                  <i class="ti ti-map-pin me-2"></i>
-                  Assign Venues
-                </button>
-              </li>
+          {{-- Assign Venues --}}
+          <button type="button"
+                  class="btn btn-sm btn-outline-info btn-add-venues"
+                  data-draw-id="{{ $draw->id }}"
+                  data-draw-name="{{ $draw->drawName }}"
+                  data-url="{{ route('backend.draw.venues.store', $draw->id) }}">
+            <i class="ti ti-map-pin me-1"></i>
+            Assign Venues to draw
+          </button>
 
-              <li><hr class="dropdown-divider"></li>
+          {{-- Recreate Fixtures (disabled if locked) --}}
+          <button type="button"
+                  class="btn btn-sm btn-outline-secondary btn-recreate-fixtures {{ $isLocked ? 'disabled' : '' }}"
+                  data-url="{{ route('headoffice.recreateFixturesForDraw', $draw->id) }}"
+                  data-draw-id="{{ $draw->id }}"
+                  data-draw-name="{{ $draw->drawName }}"
+                  {{ $isLocked ? 'disabled' : '' }}>
+            <i class="ti ti-refresh me-1"></i>
+            Recreate
+            @if($isLocked)
+              <small class="text-muted ms-1">(locked)</small>
+            @endif
+          </button>
 
-              {{-- #8 — Recreate Fixtures (disabled if locked) --}}
-              <li>
-                <button type="button"
-                        class="dropdown-item btn-recreate-fixtures {{ $isLocked ? 'disabled' : '' }}"
-                        data-url="{{ route('headoffice.recreateFixturesForDraw', $draw->id) }}"
-                        data-draw-id="{{ $draw->id }}"
-                        data-draw-name="{{ $draw->drawName }}"
-                        {{ $isLocked ? 'disabled' : '' }}>
-                  <i class="ti ti-refresh me-2"></i>
-                  Recreate Fixtures
-                  @if($isLocked)
-                    <small class="text-muted ms-1">(locked)</small>
-                  @endif
-                </button>
-              </li>
-
-              {{-- #8 — Delete Draw (disabled if locked) --}}
-              <li>
-                <button type="button"
-                        class="dropdown-item text-danger btn-delete-draw {{ $isLocked ? 'disabled' : '' }}"
-                        data-url="{{ route('draws.destroy', $draw->id) }}"
-                        data-draw-id="{{ $draw->id }}"
-                        data-draw-name="{{ $draw->drawName }}"
-                        {{ $isLocked ? 'disabled' : '' }}>
-                  <i class="ti ti-trash me-2"></i>
-                  Delete Draw
-                  @if($isLocked)
-                    <small class="text-muted ms-1">(locked)</small>
-                  @endif
-                </button>
-              </li>
-            </ul>
-          </div>
+          {{-- Delete Draw (disabled if locked) --}}
+          <button type="button"
+                  class="btn btn-sm btn-outline-danger btn-delete-draw {{ $isLocked ? 'disabled' : '' }}"
+                  data-url="{{ route('draws.destroy', $draw->id) }}"
+                  data-draw-id="{{ $draw->id }}"
+                  data-draw-name="{{ $draw->drawName }}"
+                  {{ $isLocked ? 'disabled' : '' }}>
+            <i class="ti ti-trash me-1"></i>
+            Delete
+            @if($isLocked)
+              <small class="text-muted ms-1">(locked)</small>
+            @endif
+          </button>
+        </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-{{-- Global Venues Modal --}}
-<div class="modal fade" id="venuesModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <form id="venuesForm" method="POST">
-      @csrf
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Assign Venues</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-
-        <div class="modal-body">
-          <div id="venues-container">
-            {{-- Rows will be added dynamically --}}
-          </div>
-          <button type="button" class="btn btn-sm btn-secondary" id="addVenueRow">+ Add Venue</button>
-        </div>
-
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Save</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
+{{-- Venues modal removed from repeated include to avoid duplicate IDs ---}}
 
 
 

@@ -80,7 +80,7 @@
     <div class="list-group mt-3">
       @foreach ($series as $value)
         @if ($value->leaderboard_published)
-          <a href="{{ route('rankings.results', $value->id) }}"
+          <a href="{{ route('ranking.frontend.show', $value->id) }}"
              class="list-group-item list-group-item-action d-flex align-items-center p-3">
             <div class="badge bg-primary me-3">
               <i class="ti ti-clipboard ti-xl"></i>

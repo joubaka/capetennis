@@ -93,10 +93,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(EventAdmin::class, 'user_id', 'id')->where('event_id', $event_id)->get();
     }
-    public function is_convenor($event_id)
-    {
-        return $this->hasMany(EventConvenor::class, 'user_id', 'id')->where('event_id', $event_id)->get();
-    }
+
+
+  public function is_convenor($event_id): bool
+  {
+    return \App\Models\EventConvenor::where('user_id', $this->id)
+      ->where('event_id', $event_id)
+      ->exists();
+  }
   public function players()
   {
     return $this->belongsToMany(Player::class, 'user_players')

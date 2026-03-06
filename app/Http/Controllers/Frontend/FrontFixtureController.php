@@ -12,14 +12,14 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\TeamFixtureResult;
-use App\Services\InterproDrawBuilder;
+use App\Services\DrawService;
 
 
 class FrontFixtureController extends Controller
 {
-  protected InterproDrawBuilder $builder;
+  protected DrawService $builder;
 
-  public function __construct(InterproDrawBuilder $builder)
+  public function __construct(DrawService $builder)
   {
     $this->builder = $builder;
   }
@@ -41,12 +41,14 @@ return $this->showInterproFixtures($draw);
   protected function showTeamFixtures(Draw $draw)
   {
     $fixtures = TeamFixture::with([
-      'team1',
-      'team2',
+      'fixturePlayers.player1',
+      'fixturePlayers.player2',
+      'fixturePlayers',
       'fixtureResults',
       'venue',
       'region1Name',
-      'region2Name'
+      'region2Name',
+      'draw'
     ])
       ->where('draw_id', $draw->id)
       ->orderBy('scheduled_at', 'asc')
@@ -95,6 +97,17 @@ return $this->showInterproFixtures($draw);
 
     if ($fixtures->isEmpty()) {
       abort(404, 'No fixtures found for this draw.');
+    }
+
+    // Log fixture details for debugging
+    foreach ($fixtures as $fx) {
+        \Log::debug('Fixture debug', [
+            'fixture_id' => $fx->id,
+            'team1' => $fx->team1 ? $fx->team1->pluck('full_name')->toArray() : [],
+            'team1NoProfile' => $fx->team1NoProfile ? $fx->team1NoProfile->map(fn($np) => $np->name . ' ' . $np->surname)->toArray() : [],
+            'team2' => $fx->team2 ? $fx->team2->pluck('full_name')->toArray() : [],
+            'team2NoProfile' => $fx->team2NoProfile ? $fx->team2NoProfile->map(fn($np) => $np->name . ' ' . $np->surname)->toArray() : [],
+        ]);
     }
 
     // ---------------------------------------------

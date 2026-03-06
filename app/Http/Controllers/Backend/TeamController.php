@@ -426,38 +426,30 @@ class TeamController extends Controller
   public function importNoProfile(Request $request)
   {
     $request->validate([
-        'file' => 'required|file|mimes:xlsx,xls,csv',
-        'team_id' => 'nullable|integer|exists:teams,id',
-        'region_id' => 'nullable|integer|exists:team_regions,id',
+      'file' => 'required|file|mimes:xlsx,xls,csv',
     ]);
 
-    $teamId = $request->input('team_id') ? (int) $request->input('team_id') : null;
-    $file = $request->file('file');
-
     try {
-        // Ensure import class can be resolved
-        $import = new \App\Imports\NoProfileTeamImport($teamId);
-        \Maatwebsite\Excel\Facades\Excel::import($import, $file);
+      $import = new \App\Imports\NoProfileTeamImport(); // ❌ no teamId here
+      \Maatwebsite\Excel\Facades\Excel::import($import, $request->file('file'));
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Import finished',
-            'team_id' => $teamId,
-            'imported_count' => $import->getImportedCount(),
-            'team_ids' => $import->getImportedTeamIds(),
-        ]);
+      return response()->json([
+        'success' => true,
+        'message' => 'Import finished',
+        'imported_count' => $import->getImportedCount(),
+        'team_ids' => $import->getImportedTeamIds(),
+      ]);
     } catch (\Throwable $e) {
-        \Log::error('NoProfile import failed', [
-            'error' => $e->getMessage(),
-            'team_id' => $teamId,
-        ]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Import failed: ' . $e->getMessage(),
-        ], 422);
+      \Log::error('NoProfile import failed', [
+        'error' => $e->getMessage(),
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'Import failed: ' . $e->getMessage(),
+      ], 422);
     }
   }
-
   public function teamPlayersTable($teamId)
   {
     $team = Team::with([

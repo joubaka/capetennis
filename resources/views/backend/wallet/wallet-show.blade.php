@@ -33,7 +33,11 @@
         <span class="badge bg-success fs-6 p-2">
           Balance: R{{ number_format($wallet->balance, 2) }}
         </span>
-       
+        @can('super-user')
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#depositModal">
+          <i class="ti ti-plus"></i> Credit Wallet
+        </button>
+        @endcan
       </div>
     </div>
     <div class="card-body">
@@ -69,7 +73,7 @@
               <td class="fw-bold {{ $tx->type === 'credit' ? 'text-success' : 'text-danger' }}">
                 R{{ number_format($tx->amount, 2) }}
               </td>
-              <td>{{ $tx->reference ?? '-' }}</td>
+              <td>{{ $tx->meta['reference'] ?? '-' }}</td>
             </tr>
           @empty
             <tr>

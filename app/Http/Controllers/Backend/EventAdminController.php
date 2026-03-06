@@ -768,7 +768,7 @@ class EventAdminController extends Controller
     } else {
 
       // Individual event
-      $stats['entries'] = $event->registrations()->count(); // ✅ PLAYERS
+      $stats['entries'] = $event->registrations()->where('status', '!=', 'withdrawn')->count(); // ✅ PLAYERS (excluding withdrawn)
     }
 
     // =====================
@@ -986,6 +986,34 @@ class EventAdminController extends Controller
     ]);
 
     return view('backend.event.settings', compact('event'));
+  }
+
+  public function fixtures(Event $event)
+  {
+    $event->load([
+      'draws.categoryEvent.category',
+      'draws.groups',
+      'venues',
+    ]);
+
+    $draws = $event->draws()
+      ->with([
+        'categoryEvent.category',
+        'drawFixtures.registration1.players',
+        'drawFixtures.registration2.players',
+        'drawFixtures.fixtureResults',
+        'groups.fixtures',
+      ])
+      ->withCount('drawFixtures')
+      ->get();
+
+    $stats = [
+      'totalFixtures' => $draws->sum('draw_fixtures_count'),
+      'completedFixtures' => $event->fixtures()->whereNotNull('winner_registration')->count(),
+      'pendingFixtures' => $event->fixtures()->whereNull('winner_registration')->count(),
+    ];
+
+    return view('backend.event.fixtures', compact('event', 'draws', 'stats'));
   }
 
 

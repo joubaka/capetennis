@@ -20,8 +20,13 @@ class BracketEngine
 
     $this->fixtures = Fixture::where('draw_id', $draw->id)
       ->with([
-        'schedule',            // schedule row
-        'schedule.venue',      // venue name
+        'registration1.players',  // Player names
+        'registration2.players',  // Player names
+        'fixtureResults',         // Scores
+        'schedule',               // schedule row
+        'schedule.venue',         // venue name
+        'orderOfPlay',            // OOP for schedule display
+        'orderOfPlay.venue',      // venue name
       ])
       ->orderBy('stage')
       ->orderBy('round')

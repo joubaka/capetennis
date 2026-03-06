@@ -85,7 +85,20 @@ class RankingController extends Controller
   {
 
     $series = Series::find($id);
-    return view('frontend.ranking.show_ranking', compact('series'));
+
+    // Load series rankings similar to SeriesRankingController@index
+    $rankings = \App\Models\SeriesRanking::with([
+      'registration.players',
+      'category'
+    ])
+      ->where('series_id', $series->id)
+      ->orderBy('category_id')
+      ->orderBy('rank_position')
+      ->get();
+
+    $categories = $rankings->pluck('category')->unique('id');
+
+    return view('frontend.ranking.show_ranking', compact('series', 'rankings', 'categories'));
   }
 
   public function seriesAllAjax()

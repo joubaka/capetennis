@@ -54,7 +54,7 @@
 <!-- Event Header -->
 <div class="card mb-4">
   <div class="card-header text-center">
-    <h3 class="mb-0">Team Event: <span class="text-primary">{{$event->name}}</span></h3>
+    <h3 class="mb-0">InterPro Trials Event: <span class="text-primary">{{$event->name}}</span></h3>
   </div>
 </div>
 

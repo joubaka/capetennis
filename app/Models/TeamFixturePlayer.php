@@ -4,10 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
+use Illuminate\Support\Facades\Log;
 
 class TeamFixturePlayer extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $table = 'team_fixture_players';
 
@@ -18,6 +21,32 @@ class TeamFixturePlayer extends Model
       'team1_no_profile_id',
       'team2_no_profile_id',
     ];
+
+    protected static function booted()
+    {
+        static::updated(function ($model) {
+            Log::debug('🟢 TeamFixturePlayer UPDATED', [
+                'id' => $model->id,
+                'changes' => $model->getChanges(),
+            ]);
+        });
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            // ✅ Include no-profile columns too
+            ->logOnly([
+                'team1_id', 
+                'team2_id', 
+                'team1_no_profile_id', 
+                'team2_no_profile_id',
+                'team_fixture_id'
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->useLogName('fixture_player_assignment');
+    }
 
     public function fixture()
     {

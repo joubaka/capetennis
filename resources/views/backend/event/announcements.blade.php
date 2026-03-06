@@ -4,6 +4,7 @@
 
 @section('content')
 <meta name="csrf-token" content="{{ csrf_token() }}">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 
 <div class="container-xl">
 
@@ -98,7 +99,7 @@
 
         <div class="mb-3">
           <label class="form-label">Message</label>
-          <textarea id="announcement_message" class="form-control" rows="6" required></textarea>
+          <div id="announcement_message" style="height: 200px;"></div>
         </div>
 
         <div class="form-check">
@@ -135,9 +136,24 @@
 
 
 @section('page-script')
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 const csrf  = document.querySelector('meta[name="csrf-token"]').content;
 const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+
+// Initialize Quill editor
+const quill = new Quill('#announcement_message', {
+  theme: 'snow',
+  modules: {
+    toolbar: [
+      ['bold', 'italic', 'underline'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['link'],
+      ['clean']
+    ]
+  },
+  placeholder: 'Write your announcement...'
+});
 
 console.log('[ANNOUNCEMENTS] Script loaded');
 
@@ -146,6 +162,7 @@ document.getElementById('newAnnouncementBtn').addEventListener('click', () => {
   console.log('[ANNOUNCEMENTS] New announcement clicked');
   announcementForm.reset();
   announcement_id.value = '';
+  quill.root.innerHTML = '';
   announcement_send_email.checked = false;
   modal.show();
 });
@@ -169,7 +186,7 @@ document.addEventListener('click', e => {
       console.log('[ANNOUNCEMENTS] Edit payload', a);
       announcement_id.value = a.id;
       announcement_title.value = a.title;
-      announcement_message.value = a.message;
+      quill.root.innerHTML = a.message;
       announcement_send_email.checked = false;
       modal.show();
     })
@@ -199,7 +216,7 @@ announcementForm.addEventListener('submit', e => {
     },
     body: JSON.stringify({
       title: announcement_title.value,
-      message: announcement_message.value,
+      message: quill.root.innerHTML,
       sendMail: announcement_send_email.checked ? 1 : 0
     })
   })

@@ -73,7 +73,7 @@ use App\Http\Controllers\Backend\EventTransactionController;
 use App\Http\Controllers\Backend\SeriesRankingController;
 // ✅ NEW: Region Clothing admin controller
 use App\Http\Controllers\Backend\RegionClothingController;
-
+use App\Http\Controllers\Frontend\TeamFixtureFrontendController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -159,6 +159,10 @@ Route::prefix('team')->group(function () {
   )->name('team.hybrid.cancel');
 
 });
+
+  // Series publish toggle (backend path)
+  Route::post('backend/series/{series}/publish', [\App\Http\Controllers\Backend\SeriesController::class, 'togglePublish'])
+    ->name('series.publish');
 
 // Team Fixtures — Admin HQ routes
 Route::get('backend/team-fixtures/admin/{event}', [TeamFixtureController::class, 'admin'])
@@ -286,6 +290,29 @@ Route::middleware([
 
 //backend
 Route::prefix('backend')->middleware('auth')->group(function () {
+
+  // Add these inside the backend/authenticated group (apply same middleware as other admin routes)
+  Route::post('backend/users/{user}/add-role', [\App\Http\Controllers\Backend\UserController::class, 'addRole'])
+    ->name('backend.users.addRole')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+  Route::post('backend/users/{user}/remove-role', [\App\Http\Controllers\Backend\UserController::class, 'removeRole'])
+    ->name('backend.users.removeRole')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+  // Role management (create/delete roles)
+  Route::post('backend/roles', [\App\Http\Controllers\Backend\RoleController::class, 'store'])
+    ->name('backend.roles.store')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+  Route::delete('backend/roles/{role}', [\App\Http\Controllers\Backend\RoleController::class, 'destroy'])
+    ->name('backend.roles.destroy')
+    ->middleware(['auth', 'role:super-user|admin']);
+
+
+
+
+
   Route::prefix('announcement')->group(function () {
 
     // List announcements for an event
@@ -377,10 +404,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     [EventAdminController::class, 'draws']
   )->name('admin.events.draws');
 
-  Route::get(
-    'event/{event}/fixtures',
-    [EventAdminController::class, 'fixtures']
-  )->name('admin.events.fixtures');
+
   Route::get(
     'event/{event}/settings',
     [EventAdminController::class, 'settings']
@@ -448,6 +472,28 @@ Route::get(
   'event/{event}/transactions',
   [EventTransactionController::class, 'index']
 )->name('admin.events.transactions');
+
+/////////////////////////event finances (convenor)
+
+Route::get(
+  'event/{event}/finances',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'index']
+)->name('admin.events.finances');
+
+Route::post(
+  'event/{event}/finances/expense',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'storeExpense']
+)->name('admin.events.finances.expense.store');
+
+Route::patch(
+  'event/finances/expense/{expense}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'updateExpense']
+)->name('admin.events.finances.expense.update');
+
+Route::delete(
+  'event/finances/expense/{expense}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyExpense']
+)->name('admin.events.finances.expense.destroy');
 
 
 /////////////////result
@@ -531,6 +577,14 @@ Route::get(
   // =========================
   // EMAIL
   // =========================
+
+  // PDF export routes for fixtures (team)
+  Route::get('fixture/create/pdf', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf'])
+    ->name('fixture.create.pdf');
+
+  Route::get('fixture/create/pdf/venue', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf_venue'])
+    ->name('fixture.create.pdf.venue');
+
 
   Route::post(
     'event/email',
@@ -653,6 +707,26 @@ Route::get(
   Route::get('roundrobin/{draw}/admin-scores', [RoundRobinController::class, 'adminScoresPage'])
     ->name('backend.roundrobin.admin.scores');
 
+  // Store score for round-robin fixture
+  Route::post('roundrobin/score/{fixture}', [RoundRobinController::class, 'saveScore'])
+    ->name('backend.roundrobin.score.store');
+
+  // Show round-robin draw (backend)
+  Route::get('draw/roundrobin/{draw}', [RoundRobinController::class, 'show'])
+    ->name('backend.draw.roundrobin.show');
+
+  // Round-robin bracket views (AJAX loaded)
+  Route::get('draw/{draw}/main-bracket', [RoundRobinController::class, 'mainBracket'])
+    ->name('backend.draw.main-bracket');
+
+  Route::post('draw/{draw}/generate-main-bracket', [RoundRobinController::class, 'generateMainBracket'])
+    ->name('backend.draw.generate-main-bracket');
+
+  Route::get('draw/{draw}/plate-bracket', [RoundRobinController::class, 'plateBracket'])
+    ->name('backend.draw.plate-bracket');
+
+  Route::post('draw/{draw}/generate-second-third-bracket', [RoundRobinController::class, 'generateSecondThirdBracket'])
+    ->name('backend.draw.generate-second-third-bracket');
 
   //wallet
   Route::get('/wallet/{id}/transaction/create', [WalletTransactionController::class, 'create'])->name('transaction.create');
@@ -727,6 +801,10 @@ Route::get(
   Route::post('/event/{event}/preview-team-draw', [HeadOfficeController::class, 'previewSingleDrawTeam'])
      ->name('headoffice.previewTeamDraw');
 
+  // Team event scoreboard (admin/backend view)
+  Route::get('event/{event}/team-scoreboard', [ScoreboardController::class, 'showScoreboard'])
+    ->name('backend.scoreboard.team.show');
+
 
 
   //email
@@ -795,7 +873,10 @@ Route::get(
   Route::post('fixtures/create/auto/{draw_id}', [FixtureController::class, 'autoScheduleFixtures'])->name('fixtures.auto.schedule');
   Route::resource('fixture', FixtureController::class);
   Route::get('/nomination/players/category/{id}', [\App\Http\Controllers\backend\NominateController::class, 'playersForCategory']);
-
+  Route::get(
+    '/admin/headoffice/{event}/venue/{venue}',
+    [\App\Http\Controllers\Backend\HeadOfficeController::class, 'venueFixtures']
+  )->name('headoffice.venue.fixtures');
   // nominations
   Route::get('nomination/players/category/{id}', [NominateController::class, 'nominationInCategory'])->name('nomination.category.players');
   Route::post('nomination/publish/toggle/{id}', [NominateController::class, 'togglePublish'])->name('nomination.publish.toggle');
@@ -850,6 +931,27 @@ Route::get(
     'draw/{draw}/save-groups',
     [RoundRobinController::class, 'saveGroups']
   )->name('backend.draw.save-groups');
+
+  Route::post(
+    'draw/{draw}/regenerate-rr',
+    [RoundRobinController::class, 'regenerateRR']
+  )->name('backend.draw.regenerate-rr');
+
+  // Draw settings update (used by settings tab)
+  Route::post('draw/{draw}/settings', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updateSettings'])
+    ->name('backend.draw.update-settings');
+
+  // Playoff configuration update
+  Route::post('draw/{draw}/playoff-config', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updatePlayoffConfig'])
+    ->name('backend.draw.update-playoff-config');
+
+  // Generate playoff brackets from RR standings
+  Route::post('draw/{draw}/generate-playoffs', [\App\Http\Controllers\Backend\ManageDrawController::class, 'generatePlayoffBrackets'])
+    ->name('backend.draw.generate-playoffs');
+
+  // Get playoff brackets data for display
+  Route::get('draw/{draw}/playoff-brackets', [\App\Http\Controllers\Backend\ManageDrawController::class, 'getPlayoffBrackets'])
+    ->name('backend.draw.playoff-brackets');
 
   Route::post(
     '/event/{event}/import-teams',
@@ -1319,7 +1421,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->name('admin.events.draws');
 
     Route::get('{event}/fixtures', [EventAdminController::class, 'fixtures'])
-      ->name('admin.events.fixtures');
+      ->name('admin.events.individual.hq');
 
     Route::get('{event}/entries', [EventEntryController::class, 'index'])
       ->name('admin.events.entries.new');
@@ -1470,246 +1572,36 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
 });
 
-Route::get('/draw/{draw}/round-robin', [PublicRoundRobinController::class, 'show'])
+
+Route::get('/fixtures/{draw}', [TeamFixtureFrontendController::class, 'index'])
+  ->name('frontend.fixtures.index');
+
+// Public frontend ranking view
+Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController::class, 'ranking_frontend_show'])
+  ->name('frontend.ranking.show');
+
+// Public round-robin draw view
+Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])
   ->name('public.roundrobin.show');
 
+// Allow convenor, superadmin, and superuser roles to access score entry and management
+Route::middleware(['auth', 'role:convenor|admin|super-user'])->group(function () {
+  // Enter scores for a specific draw
+  Route::get('/convenor/fixtures/enter-scores/{draw}', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'enterScores'])
+    ->name('frontend.fixtures.enter-scores');
+  // Store a score for a fixture
+  Route::post('/frontend/fixtures/score/store/{fixture}', [TeamFixtureFrontendController::class, 'storeScore'])
+    ->name('frontend.fixtures.score.store');
+  // Delete a score for a fixture
+  Route::delete('/convenor/fixtures/{fixture}/score', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'deleteScore'])
+    ->name('frontend.fixtures.score.delete');
+  // View all fixtures for a venue
+  Route::get('/convenor/fixtures/venue/{venue}', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'venueFixtures'])
+    ->name('frontend.fixtures.venue');
 
-
-
-
-
-Route::get('/check-duplicate-players', function () {
-  $db = env('DB_DATABASE');
-
-  // 1. Find duplicate name+surname groups
-  $dupeGroups = DB::table('players')
-    ->select('name', 'surname', DB::raw('COUNT(*) as total'))
-    ->groupBy('name', 'surname','email')
-    ->havingRaw('COUNT(*) > 1')
-    ->get();
-
-  // 2. Tables where player_id exists
-  $playerTables = [
-    'clothing_orders',
-    'event_nominations',
-    'exersizes',
-    'goals',
-    'invatations',
-    'leaderboards',
-    'player_registrations',
-    'player_subscriptions',
-    'positions',
-    'practices',
-    'ranking_score_legs',
-    'ranking_scores',
-    'rankings',
-    'registration_order_items',
-    'team_players',
-    'transactions_pf',
-    'user_players',
-  ];
-
-  // 3. Build a map of table -> player_ids
-  $tableMap = [];
-  foreach ($playerTables as $table) {
-    $tableMap[$table] = DB::table($table)->pluck('player_id')->unique()->toArray();
-  }
-
-  // 4. For each duplicate group, fetch players + check
-  $result = $dupeGroups->map(function ($group) use ($tableMap) {
-    $players = Player::where('name', $group->name)
-      ->where('surname', $group->surname)
-      ->get(['id', 'name', 'surname', 'email', 'created_at', 'updated_at']);
-
-    $playersWithCheck = $players->map(function ($player) use ($tableMap) {
-      $relations = [];
-
-      foreach ($tableMap as $table => $ids) {
-        if (in_array($player->id, $ids)) {
-          $relations[] = $table;
-        }
-      }
-
-      return [
-        'id' => $player->id,
-        'name' => $player->name,
-        'surname' => $player->surname,
-        'email' => $player->email,
-        'has_links' => !empty($relations),
-        'tables' => $relations,   // ✅ exact tables
-        'safe_to_delete' => empty($relations), // ✅ flag
-      ];
-    });
-
-    return [
-      'name' => $group->name,
-      'surname' => $group->surname,
-      'total' => $group->total,
-      'players' => $playersWithCheck,
-    ];
-  });
-
-  dd($result);
-});
-Route::get('/check-duplicate-players-del-safe', function () {
-  $db = env('DB_DATABASE');
-
-  // 1. Find duplicate name+surname groups
-  $dupeGroups = DB::table('players')
-    ->select('name', 'surname', DB::raw('COUNT(*) as total'))
-    ->groupBy('name', 'surname','email')
-    ->havingRaw('COUNT(*) > 1')
-    ->get();
-
-  // 2. Tables where player_id exists
-  $playerTables = [
-    'clothing_orders',
-    'event_nominations',
-    'exersizes',
-    'goals',
-    'invatations',
-    'leaderboards',
-    'player_registrations',
-    'player_subscriptions',
-    'positions',
-    'practices',
-    'ranking_score_legs',
-    'ranking_scores',
-    'rankings',
-    'registration_order_items',
-    'team_players',
-    'transactions_pf',
-    'user_players',
-  ];
-
-  // 3. Build a map of table -> player_ids
-  $tableMap = [];
-  foreach ($playerTables as $table) {
-    $tableMap[$table] = DB::table($table)->pluck('player_id')->unique()->toArray();
-  }
-
-  $deletedIds = [];
-
-  // 4. For each duplicate group, fetch players + check
-  $result = $dupeGroups->map(function ($group) use ($tableMap, &$deletedIds) {
-    $players = Player::where('name', $group->name)
-      ->where('surname', $group->surname)
-      ->get(['id', 'name', 'surname', 'email', 'created_at', 'updated_at']);
-
-    $playersWithCheck = $players->map(function ($player) use ($tableMap, &$deletedIds) {
-      $relations = [];
-
-      foreach ($tableMap as $table => $ids) {
-        if (in_array($player->id, $ids)) {
-          $relations[] = $table;
-        }
-      }
-
-      $safe = empty($relations);
-
-      if ($safe) {
-        // ✅ Delete player with no relations
-        DB::table('players')->where('id', $player->id)->delete();
-        $deletedIds[] = $player->id;
-      }
-
-      return [
-        'id' => $player->id,
-        'name' => $player->name,
-        'surname' => $player->surname,
-        'email' => $player->email,
-        'has_links' => !empty($relations),
-        'tables' => $relations,
-        'safe_to_delete' => $safe,
-      ];
-    });
-
-    return [
-      'name' => $group->name,
-      'surname' => $group->surname,
-      'total' => $group->total,
-      'players' => $playersWithCheck,
-    ];
-  });
-
-  return [
-    'deleted_ids' => $deletedIds,
-    'result' => $result,
-  ];
-});
-Route::get('/merge-duplicate-players', function () {
-
-
-
-    $db = env('DB_DATABASE');
-
-    // 1. Find duplicate name+surname groups
-    $dupeGroups = DB::table('players')
-        ->select('name', 'surname', DB::raw('COUNT(*) as total'))
-        ->groupBy('name', 'surname')
-        ->havingRaw('COUNT(*) > 1')
-        ->get();
-
-    // 2. Tables where player_id exists
-    $playerTables = [
-        'clothing_orders',
-        'event_nominations',
-        'exersizes',
-        'goals',
-        'invatations',
-        'leaderboards',
-        'player_registrations',
-        'player_subscriptions',
-        'positions',
-        'practices',
-        'ranking_score_legs',
-        'ranking_scores',
-        'rankings',
-        'registration_order_items',
-        'team_players',
-        'transactions_pf',
-        'user_players',
-    ];
-
-    $merged = [];
-
-    DB::transaction(function () use ($dupeGroups, $playerTables, &$merged) {
-        foreach ($dupeGroups as $group) {
-            $players = Player::where('name', $group->name)
-                ->where('surname', $group->surname)
-                ->orderBy('id') // keep the first by ID
-                ->get(['id','name','surname','email']);
-
-            if ($players->count() < 2) {
-                continue; // skip if not a real duplicate group
-            }
-
-            $keepId = $players->first()->id;
-            $removeIds = $players->pluck('id')->skip(1)->toArray();
-
-            foreach ($playerTables as $table) {
-                DB::table($table)
-                    ->whereIn('player_id', $removeIds)
-                    ->update(['player_id' => $keepId]);
-            }
-
-            DB::table('players')->whereIn('id', $removeIds)->delete();
-
-            $merged[] = [
-                'name'      => $group->name,
-                'surname'   => $group->surname,
-                'keep'      => $keepId,
-                'removed'   => $removeIds,
-            ];
-        }
-    });
-
-    return [
-        'status'  => '✅ Merge completed',
-        'details' => $merged,
-    ];
-
-
+  // Convenor: Enter scores for all fixtures at a given event and venue
+  Route::get('/convenor/fixtures/venue/{event}/{venue}/enter', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'enterScoresByEventVenue'])
+    ->name('frontend.fixtures.enter-scores.venue');
 
 });
 

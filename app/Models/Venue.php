@@ -18,6 +18,10 @@ class Venue extends Model
             'event_id'
         );
     }
+    public function fixtures()
+    {
+        return $this->hasMany(\App\Models\TeamFixture::class, 'venue_id');
+    }
 
 
 }

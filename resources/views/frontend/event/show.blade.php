@@ -59,7 +59,7 @@
               @if($event->isIndividual())
                 <li class="badge bg-label-success">
                   <i class="ti ti-users"></i>
-                  Total Entries: {{ $event->registrations->count() }}
+                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->count() }}
                 </li>
               @endif
               <li class="list-inline-item">

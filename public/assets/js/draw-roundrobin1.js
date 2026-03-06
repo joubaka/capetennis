@@ -1,729 +1,241 @@
-/*
- * Round Robin Hub JS
- * - Loads fixtures
- * - Renders matrix
- * - Renders order of play
- * - Score entry via 3-set modal
- * - AJAX update of matrix + standings without page reload
- */
-
 (function ($, window, document) {
-  'use strict';
-  
+    'use strict';
 
-  // NEW: Use the Blade-injected global variable
-  const RR_GROUPS = window.RR_GROUPS || [];
-
-
-  const CSRF = $('meta[name="csrf-token"]').attr('content');
-  $.ajaxSetup({
-    headers: {
-      'X-CSRF-TOKEN': CSRF,
-      'Accept': 'application/json'
-    }
-  });
-
-  const $app = $('#round-robin-app');
-  if (!$app.length) return;
-
-  const drawId = $app.data('draw-id');
-
-  const $matrixWrapper = $('#rr-matrix-wrapper');
-  const $matrixLoading = $('#rr-matrix-loading');
-  const $orderTableBody = $('#rr-order-table tbody');
-
-  // Modal elements
-  const $scoreModalForm = $('#rr-score-modal-form');
-  const $modalFixtureId = $('#rrm-fixture-id');
-  const $modalMatchLabel = $('#rrm-match-label');
-
-  // Init sortable group lists
-  document.querySelectorAll('.rr-sortable').forEach(el => {
-    new Sortable(el, {
-      group: 'rr-groups',
-      animation: 150
+    // 1. Setup AJAX
+    $.ajaxSetup({
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'), 'Accept': 'application/json' }
     });
-  });
 
-  /* ===================================================
-   * INIT
-   * =================================================== */
-  function init() {
-    console.log('[RR] Init draw', drawId);
+    const $app = $('#round-robin-app');
+    if (!$app.length) return;
 
-    if (window.RR_FIXTURES) normalizeAllFixtures();
-
-    if ($matrixLoading.length) $matrixLoading.remove();
-
-    renderMatrixFallback();
-    renderOrderOfPlay();
-    renderStandings();
-    bindEvents();
-  }
-
-  /* ===================================================
-   * NORMALISE FIXTURES
-   * =================================================== */
-  function normalizeAllFixtures() {
-    for (let gid in RR_FIXTURES) {
-      RR_FIXTURES[gid] = RR_FIXTURES[gid].map(f => normalizeFixture(f));
+    /* ===================================================
+     * CORE INITIALIZATION
+     * =================================================== */
+    function init() {
+        normalizeFixtures();
+        renderMatrix();
+        renderOrderOfPlay();
+        renderStandings();
+        // Sortable is now initialized in the Blade template's initGroupsSortable()
+        refreshPlaceholders();
+        bindEvents();
     }
-  }
 
-  function normalizeFixture(f) {
-    if (!f) return f;
-
-    // FIX: Normalize IDs to integers
-    f.id = parseInt(f.id ?? 0, 10);
-    f.r1_id = parseInt(f.r1_id ?? 0, 10);
-    f.r2_id = parseInt(f.r2_id ?? 0, 10);
-
-    // Keep the time untouched
-    f.time = f.time ?? null;
-
-    // Parse last-set score
-    if ((f.home_score == null || f.away_score == null) && f.score) {
-      const parts = String(f.score).trim().split(' ');
-      const last = parts[parts.length - 1];
-      if (last && last.includes('-')) {
-        const [s1, s2] = last.split('-').map(n => parseInt(n, 10));
-        if (!isNaN(s1) && !isNaN(s2)) {
-          f.home_score = s1;
-          f.away_score = s2;
+    function normalizeFixtures() {
+        for (let gid in window.RR_FIXTURES) {
+            window.RR_FIXTURES[gid] = window.RR_FIXTURES[gid].map(f => {
+                if (!f) return f;
+                f.id = parseInt(f.id);
+                f.r1_id = parseInt(f.r1_id);
+                f.r2_id = parseInt(f.r2_id);
+                if (!Array.isArray(f.all_sets)) {
+                    f.all_sets = f.score ? f.score.split(' ').filter(s => s.includes('-')) : [];
+                }
+                return f;
+            });
         }
-      }
     }
 
-    // Ensure all_sets exists
-    if (!f.all_sets || !Array.isArray(f.all_sets)) {
-      if (f.score) {
-        f.all_sets = String(f.score).trim().split(' ').filter(s => s.includes('-'));
-      } else {
-        f.all_sets = [];
-      }
-    }
+    /* ===================================================
+     * DRAG & DROP LOGIC - Sortable initialized in Blade template
+     * =================================================== */
 
-    return f;
-  }
-
-  function formatFixtureTime(dtString) {
-    if (!dtString) return '';
-    const dt = new Date(dtString.replace(' ', 'T'));
-
-    return dt.toLocaleString('en-GB', {
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(',', '');
-  }
-
-  /* ===================================================
-   * MATRIX (HTML TABLE)
-   * =================================================== */
-  function renderMatrixFallback() {
-    console.log('🟦 [RR] renderMatrixFallback() called');
-    console.log('🟦 RR_FIXTURES:', JSON.parse(JSON.stringify(window.RR_FIXTURES)));
-    // DEBUG: detect bad keys
-    Object.keys(RR_FIXTURES).forEach(k => {
-      if (!k || k === "" || isNaN(parseInt(k))) {
-        console.error("❌ BAD RR_FIXTURES KEY:", k, RR_FIXTURES[k]);
-      }
-    });
-    Object.entries(RR_FIXTURES).forEach(([gid, list]) => {
-      list.forEach((fx, i) => {
-        console.log(`DEBUG FIXTURE gid=${gid} index=${i}`, fx.group_id);
-      });
-    });
-
-
-
-
-
-    console.log('🟦 RR_GROUPS:', JSON.parse(JSON.stringify(window.RR_GROUPS)));
-
-    const wrapper = $('#rr-matrix-wrapper');
-    wrapper.empty();
-
-    if (!window.RR_FIXTURES || !window.RR_GROUPS) {
-      console.warn('⚠️ RR_FIXTURES or RR_GROUPS missing');
-      return;
-    }
-
-    wrapper.addClass('rr-matrix-scroll');
-
-    Object.keys(RR_FIXTURES).forEach(groupId => {
-
-      const group = RR_GROUPS.find(g => g.id == groupId);
-      const fixtures = RR_FIXTURES[groupId];
-
-      console.log(`🔷 GROUP ${groupId}`, group);
-      console.log(`🔷 FIXTURES FOR GROUP ${groupId}`, fixtures);
-
-      if (!group) return;
-
-      let players = group.registrations.map(r => ({
-        id: r.id,
-        name: r.display_name,
-        seed: r.pivot ? (r.pivot.seed ?? 9999) : 9999
-      }));
-
-      players = players.sort((a, b) => a.seed - b.seed);
-
-      let html = `
-      <h6 class="fw-bold mt-3 mb-2">Box ${group.name}</h6>
-      <div class="table-responsive mb-4">
-      <table class="table table-bordered table-sm rr-matrix-table rr-matrix-dark">
-
-          <thead>
-            <tr>
-              <th class="bg-light"></th>
-              ${players.map(p => `<th class="text-center">${p.name}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-      players.forEach(rowP => {
-        html += `<tr><th class="bg-light small">${rowP.name}</th>`;
-
-        players.forEach(colP => {
-          if (rowP.id === colP.id) {
-            html += `<td class="bg-light"></td>`;
-            return;
-          }
-
-          const fx = fixtures.find(f =>
-            (f.r1_id === rowP.id && f.r2_id === colP.id) ||
-            (f.r1_id === colP.id && f.r2_id === rowP.id)
-          );
-
-          console.log(`🟩 Checking fixture: ${rowP.name} vs ${colP.name}`, fx);
-
-          if (!fx) {
-            console.log(`   ➜ No fixture found.`);
-            html += `<td class="text-center text-muted">–</td>`;
-            return;
-          }
-
-          // Log the final output choice
-          const debugOutput = (() => {
-            const scoreHtml = formatScoreCell(fx, rowP.id);
-
-            if (scoreHtml && scoreHtml.trim() !== '') {
-              console.log(`   ➜ SCORE shown:`, scoreHtml);
-              return scoreHtml;
+    function refreshPlaceholders() {
+        $('.rr-group').each(function() {
+            if ($(this).children('li').length === 0) {
+                if ($(this).find('.placeholder-text').length === 0) {
+                    $(this).append('<div class="placeholder-text">Drop Players Here</div>');
+                }
+            } else {
+                $(this).find('.placeholder-text').remove();
             }
+        });
+    }
 
-            if (fx.time) {
-              const formatted = formatFixtureTime(fx.time);
-              console.log(`   ➜ TIME shown:`, formatted);
-              return formatted;
-            }
+    /* ===================================================
+     * RENDERING LOGIC (MATRIX & STANDINGS)
+     * =================================================== */
+    function renderMatrix() {
+        const $wrapper = $('#rr-matrix-wrapper');
+        $wrapper.empty().addClass('rr-matrix-scroll');
 
-            console.log(`   ➜ Showing dash.`);
-            return '–';
-          })();
+        window.RR_GROUPS.forEach(group => {
+            const fixtures = window.RR_FIXTURES[group.id] || [];
+            let players = (group.registrations || []).map(r => ({
+                id: r.id,
+                name: r.display_name || 'N/A',
+                seed: r.pivot ? (r.pivot.seed ?? 999) : 999
+            })).sort((a, b) => a.seed - b.seed);
 
-          html += `
-          <td class="text-center rr-score-cell"
-              data-fixture-id="${fx.id}"
-              data-home="${rowP.name}"
-              data-away="${colP.name}">
-              ${debugOutput}
-          </td>`;
+            let html = `<h6 class="fw-bold mt-4 mb-2">Box ${group.name}</h6>
+                        <table class="table table-bordered rr-matrix-table mb-4">
+                            <thead><tr><th class="bg-light"></th>${players.map(p => `<th>${p.name}</th>`).join('')}</tr></thead>
+                            <tbody>`;
+
+            players.forEach(rowP => {
+                html += `<tr><th class="bg-light">${rowP.name}</th>`;
+                players.forEach(colP => {
+                    if (rowP.id === colP.id) {
+                        html += `<td class="bg-diagonal"></td>`;
+                    } else {
+                        const fx = fixtures.find(f => (f.r1_id === rowP.id && f.r2_id === colP.id) || (f.r1_id === colP.id && f.r2_id === rowP.id));
+                        html += `<td class="rr-score-cell" data-fixture-id="${fx ? fx.id : ''}" data-home="${rowP.name}" data-away="${colP.name}">
+                                    ${fx ? formatMatrixScore(fx, rowP.id) : '–'}</td>`;
+                    }
+                });
+                html += `</tr>`;
+            });
+            $wrapper.append(html + `</tbody></table>`);
+        });
+    }
+
+    function formatMatrixScore(fx, rowPlayerId) {
+        if (!fx.all_sets || fx.all_sets.length === 0) return fx.time || '–';
+        const display = fx.all_sets.map(set => {
+            const [s1, s2] = set.split('-').map(Number);
+            return fx.r1_id === rowPlayerId ? `${s1}-${s2}` : `${s2}-${s1}`;
+        });
+        const last = display[display.length - 1].split('-').map(Number);
+        const cls = last[0] > last[1] ? 'rr-win' : (last[1] > last[0] ? 'rr-loss' : '');
+        return `<span class="${cls}">${display.join(', ')}</span>`;
+    }
+
+    function renderOrderOfPlay() {
+        const $tbody = $('#rr-order-table tbody');
+        $tbody.empty();
+        if (!window.RR_OOP.length) { $tbody.html('<tr><td colspan="7" class="text-center py-3 text-muted">No matches generated yet</td></tr>'); return; }
+
+        window.RR_OOP.forEach(fx => {
+            $tbody.append(`
+                <tr data-fixture-id="${fx.id}">
+                    <td><small class="text-muted">#${fx.id}</small></td>
+                    <td class="${fx.winner == fx.r1_id ? 'fw-bold text-success' : ''}">${fx.home}</td>
+                    <td class="text-center text-muted"><small>vs</small></td>
+                    <td class="${fx.winner == fx.r2_id ? 'fw-bold text-success' : ''}">${fx.away}</td>
+                    <td class="text-center">${fx.round || 1}</td>
+                    <td class="text-center fw-bold">${fx.score || '-'}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-icon btn-primary rr-open-score-modal" data-fixture-id="${fx.id}" data-home="${fx.home}" data-away="${fx.away}">
+                            <i class="ti ti-ball-tennis"></i>
+                        </button>
+                    </td>
+                </tr>`);
+        });
+    }
+
+    function renderStandings() {
+        const $wrapper = $('#rr-standings-wrapper');
+        $wrapper.empty();
+        const standings = window.RR_STANDINGS || {};
+
+        window.RR_GROUPS.forEach(group => {
+            if (!standings[group.id]) return;
+            let rows = Object.values(standings[group.id]).sort((a,b) => (b.wins - a.wins) || ((b.sets_won-b.sets_lost) - (a.sets_won-a.sets_lost)));
+            
+            let html = `<h6 class="fw-bold mt-3">Box ${group.name} Standings</h6>
+                        <table class="table table-sm mb-4">
+                            <thead class="table-dark"><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets Diff</th></tr></thead>
+                            <tbody>`;
+            rows.forEach((r, i) => {
+                html += `<tr><td>${i+1}</td><td>${r.player}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.sets_won - r.sets_lost}</td></tr>`;
+            });
+            $wrapper.append(html + `</tbody></table>`);
+        });
+    }
+
+    /* ===================================================
+     * EVENT BINDING
+     * =================================================== */
+    function bindEvents() {
+        // Save Group Assignments
+        $('#btn-save-groups').on('click', function() {
+            const groups = [];
+            $('.rr-group').each(function() {
+                const ids = [];
+                $(this).find('li').each(function() { ids.push($(this).data('id')); });
+                groups.push({ group_id: $(this).data('group-id'), registration_ids: ids });
+            });
+
+            $.post(`${APP_URL}/backend/draw/${DRAW_ID}/save-groups`, { groups }).done(() => toastr.success('Groups Saved'));
         });
 
-        html += `</tr>`;
-      });
+        // Regenerate Fixtures
+        $('#btn-regenerate-fixtures').on('click', function() {
+            Swal.fire({ title: 'Regenerate?', text: 'Existing scores will be lost!', icon: 'warning', showCancelButton: true }).then(res => {
+                if (res.isConfirmed) {
+                    $.post(`${APP_URL}/backend/draw/${DRAW_ID}/regenerate-rr`).done(() => location.reload());
+                }
+            });
+        });
 
-      html += `</tbody></table></div>`;
-      wrapper.append(html);
-    });
-  }
+        // Score Entry Modal
+        $(document).on('click', '.rr-open-score-modal, .rr-score-cell', function() {
+            const id = $(this).data('fixture-id');
+            if (!id) return;
+            $('#rrm-fixture-id').val(id);
+            $('#rrm-match-label').text($(this).data('home') + ' vs ' + $(this).data('away'));
+            $('.p1-name-label').text($(this).data('home'));
+            $('.p2-name-label').text($(this).data('away'));
+            new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
+        });
 
-  /* ===================================================
-   * ORDER OF PLAY
-   * =================================================== */
-  function renderOrderOfPlay() {
+        $('#rr-score-modal-form').on('submit', function(e) {
+            e.preventDefault();
+            const sets = [
+                [$('#set1-p1').val(), $('#set1-p2').val()],
+                [$('#set2-p1').val(), $('#set2-p2').val()],
+                [$('#set3-p1').val(), $('#set3-p2').val()]
+            ].filter(s => s[0] !== '' && s[1] !== '').map(s => `${s[0]}-${s[1]}`);
 
-    const tbody = $('#rr-order-table tbody');
+            $.post(window.RR_SAVE_SCORE_URL.replace('FIXTURE_ID', $('#rrm-fixture-id').val()), { sets })
+             .done(() => location.reload());
+        });
 
-    if (!window.RR_OOP || !window.RR_OOP.length) {
-      tbody.html(`<tr><td colspan="8" class="text-muted text-center">No fixtures…</td></tr>`);
-      return;
+        $(document).on('click', '.btn-remove-item', function() {
+            const $li = $(this).closest('li');
+            $('.rr-sortable[data-type="source"]').first().append($li);
+            $(this).remove();
+            refreshPlaceholders();
+        });
+
+        // Bracket tab - load main bracket when tab is shown
+        $(document).on('shown.bs.tab', '#main-bracket-tab', function () {
+            loadMainBracket();
+        });
+
+        // Generate main bracket button
+        $('#btn-generate-main-bracket').on('click', function () {
+            const btn = $(this).prop('disabled', true);
+
+            $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/generate-main-bracket')
+                .done(res => {
+                    if (res.success) {
+                        toastr.success(res.message);
+                        loadMainBracket(true);
+                    } else {
+                        toastr.error(res.message);
+                    }
+                })
+                .fail(() => toastr.error('Error generating bracket'))
+                .always(() => btn.prop('disabled', false));
+        });
     }
 
-    let html = '';
-
-    RR_OOP.forEach(fx => {
-
-      let p1Class = '';
-      let p2Class = '';
-
-      if (fx.winner) {
-        if (fx.winner == fx.r1_id) {
-          p1Class = 'bg-success text-white';
-          p2Class = 'bg-danger text-white';
-        } else {
-          p1Class = 'bg-danger text-white';
-          p2Class = 'bg-success text-white';
-        }
-      }
-
-      html += `
-       <tr data-fixture-id="${fx.id}">
-           <td>${fx.id}</td>
-           <td class="${p1Class}">${fx.home}</td>
-           <td class="text-center">vs</td>
-           <td class="${p2Class}">${fx.away}</td>
-           <td class="text-center">${fx.round}</td>
-           <td class="text-center">${fx.time ?? ''}</td>
-           <td class="text-center fw-bold">${fx.score || ''}</td>
-
-           <td class="text-center">
-               <button class="btn btn-sm btn-primary rr-open-score-modal"
-                       data-fixture-id="${fx.id}"
-                       data-home="${fx.home}"
-                       data-away="${fx.away}">
-                       <i class="ti ti-ball-tennis"></i>
-               </button>
-           </td>
-       </tr>`;
-    });
-
-    tbody.html(html);
-  }
-
-  /* ===================================================
-   * STANDINGS
-   * =================================================== */
-  function renderStandings() {
-    const wrapper = $('#rr-standings-wrapper');
-    if (!wrapper.length) return;
-
-    wrapper.html('');
-
-    const groups = window.RR_GROUPS || [];
-    const standings = window.RR_STANDINGS || {};
-
-    groups.forEach(group => {
-      const gid = group.id;
-
-      if (!standings[gid]) return;
-
-      let rows = Object.values(standings[gid]);
-
-      function headToHead(a, b) {
-        const fxList = RR_FIXTURES[gid] || [];
-
-        const match = fxList.find(f =>
-          (f.r1_id === a.reg_id && f.r2_id === b.reg_id) ||
-          (f.r1_id === b.reg_id && f.r2_id === a.reg_id)
-        );
-
-        if (!match || !match.winner) return 0;
-        return match.winner === a.reg_id ? 1 : -1;
-      }
-
-      rows.sort((a, b) => {
-        if (a.wins !== b.wins) return b.wins - a.wins;
-
-        const diffA = a.sets_won - a.sets_lost;
-        const diffB = b.sets_won - b.sets_lost;
-
-        if (diffA !== diffB) return diffB - diffA;
-
-        return headToHead(a, b);
-      });
-
-      let html = `
-        <h6 class="fw-bold mt-4">Box ${group.name}</h6>
-        <div class="table-responsive mb-2">
-        <table class="table table-sm table-striped">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Player</th>
-              <th class="text-center">W</th>
-              <th class="text-center">L</th>
-              <th class="text-center">Sets +</th>
-              <th class="text-center">Sets −</th>
-              <th class="text-center">Diff</th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-
-      rows.forEach((r, i) => {
-        const diff = r.sets_won - r.sets_lost;
-        const diffColor =
-          diff > 0 ? 'text-success' :
-            diff < 0 ? 'text-danger' : 'text-muted';
-
-        let rowClass = '';
-        if (i === 0) rowClass = 'table-success fw-bold';
-        else if (i === rows.length - 1) rowClass = 'table-danger';
-        else rowClass = 'table-light';
-
-        html += `
-          <tr class="${rowClass}">
-            <td>${i + 1}</td>
-            <td>${r.player}</td>
-            <td class="text-center">${r.wins}</td>
-            <td class="text-center">${r.losses}</td>
-            <td class="text-center">${r.sets_won}</td>
-            <td class="text-center">${r.sets_lost}</td>
-            <td class="text-center ${diffColor}">${diff}</td>
-          </tr>`;
-      });
-
-      html += `</tbody></table></div>`;
-      wrapper.append(html);
-    });
-  }
-
-  /* ===================================================
-   * OPEN SCORE MODAL
-   * =================================================== */
-  function openScoreModal(id, home, away) {
-    $modalFixtureId.val(id);
-    $modalMatchLabel.html(`<b>${home}</b> vs <b>${away}</b>`);
-
-    $('#set1-p1-label, #set2-p1-label, #set3-p1-label').text(home);
-    $('#set1-p2-label, #set2-p2-label, #set3-p2-label').text(away);
-
-    $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
-
-    new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
-  }
-
-  /* ===================================================
-   * BIND EVENTS
-   * =================================================== */
-  function bindEvents() {
-
-    $(document).on('click', '.rr-score-cell', function () {
-      openScoreModal(
-        $(this).data('fixture-id'),
-        $(this).data('home'),
-        $(this).data('away')
-      );
-    });
-
-    $(document).on('click', '.rr-open-score-modal', function (e) {
-      e.preventDefault();
-      openScoreModal(
-        $(this).data('fixture-id'),
-        $(this).data('home'),
-        $(this).data('away')
-      );
-    });
-
-    // ============================================================
-    // SAVE SCORE (RR + BRACKET)
-    // ============================================================
-    $scoreModalForm.on('submit', function (e) {
-      e.preventDefault();
-
-      const fixtureId = $modalFixtureId.val();
-
-      function readSet(p1, p2) {
-        const v1 = $(p1).val().trim();
-        const v2 = $(p2).val().trim();
-
-        if (v1 === '' && v2 === '') return null;
-        if (v1 === '' || v2 === '') {
-          toastr.error('Please complete both values for a set.');
-          throw new Error();
-        }
-        return `${v1}-${v2}`;
-      }
-
-      let sets;
-      try {
-        sets = [
-          readSet('#set1-p1', '#set1-p2'),
-          readSet('#set2-p1', '#set2-p2'),
-          readSet('#set3-p1', '#set3-p2')
-        ].filter(Boolean);
-      } catch (e) {
-        return;
-      }
-
-      if (!sets.length) {
-        toastr.error('Please enter at least one valid set.');
-        return;
-      }
-
-      const url = window.RR_SAVE_SCORE_URL.replace('FIXTURE_ID', fixtureId);
-
-      $.post(url, { sets })
-        .done(res => {
-          toastr.success('Score saved');
-
-          /* ============================================================
-             ROUND ROBIN RESULT
-          ============================================================ */
-          if (res.mode === 'RR') {
-
-            const updated = res.fixture;
-
-            // Update in-memory fixture
-            // Update in-memory fixture (SAFE)
-            for (let gid in RR_FIXTURES) {
-
-              const idx = RR_FIXTURES[gid].findIndex(f => f && f.id == updated.id);
-
-              if (idx !== -1) {
-                RR_FIXTURES[gid][idx] = {
-                  ...RR_FIXTURES[gid][idx],
-                  score: updated.score,
-                  all_sets: updated.all_sets,
-                  winner: updated.winner_registration,
-                  home_score: updated.home_score,
-                  away_score: updated.away_score
-                };
-              }
-            }
-
-
-            if (res.standings)
-              RR_STANDINGS[updated.draw_group_id] = res.standings;
-
-            if (res.oop) {
-              RR_OOP = res.oop.map(fx => ({
-                id: fx.id,
-                round: fx.round ?? fx.round_nr ?? '',
-                time: fx.time ?? '',
-                home: fx.home ?? fx.home_name ?? fx.name1 ?? '',
-                away: fx.away ?? fx.away_name ?? fx.name2 ?? '',
-                score: fx.score ?? '',
-                winner: fx.winner_registration ?? fx.winner ?? null,
-                r1_id: fx.r1_id,
-                r2_id: fx.r2_id
-              }));
-
-              renderOrderOfPlay();
-            }
-
-            /* ============================================================
-               FAST DOM PATCH — MATRIX
-            ============================================================ */
-            updateMatrixCell(res.fixture);
-
-            /* ============================================================
-               FAST DOM PATCH — ORDER OF PLAY ROW
-            ============================================================ */
-            updateOOPRow(res.fixture);
-
-            /* ============================================================
-               Full re-render (for sync safety)
-            ============================================================ */
-            renderMatrixFallback();
-            renderStandings();
-          }
-
-          /* ============================================================
-             BRACKET RESULT
-          ============================================================ */
-          else if (res.mode === 'BRACKET') {
-
-            if (res.oop) {
-              RR_OOP = res.oop.map(fx => ({
-                id: fx.id,
-                stage: fx.stage ?? '',
-                round: fx.round ?? fx.round_nr ?? '',
-                match_nr: fx.match_nr ?? '',
-                time: fx.time ?? '',
-                home: fx.home ?? fx.home_name ?? fx.name1 ?? '',
-                away: fx.away ?? fx.away_name ?? fx.name2 ?? '',
-                score: fx.score ?? '',
-                winner: fx.winner_registration ?? fx.winner ?? null,
-                r1_id: fx.r1_id,
-                r2_id: fx.r2_id
-              }));
-
-              renderOrderOfPlay();
-            }
-
-            loadMainBracket(true);
-            loadPlateBracket(true);
-            loadConsBracket(true);
-          }
-
-          const modal = bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'));
-          if (modal) modal.hide();
-
-        })
-        .fail(err => {
-          toastr.error(err.responseJSON?.message || 'Error saving score');
-          console.error(err);
-        });
-
-
-    });
-
-    // ============================================================
-    // SAVE GROUPS
-    // ============================================================
-    $('#btn-save-groups').on('click', function () {
-      let payload = [];
-
-      $('.rr-group').each(function () {
-        const groupId = $(this).data('group-id');
-
-        const registrationIds = $(this)
-          .find('li')
-          .map(function () { return $(this).data('id'); })
-          .get();
-
-        payload.push({
-          group_id: groupId,
-          registration_ids: registrationIds
-        });
-      });
-
-      $.post(`${APP_URL}/backend/draw/${drawId}/save-groups`, { groups: payload })
-        .done(() => toastr.success('Groups saved successfully'))
-        .fail(() => toastr.error('Failed to save groups'));
-    });
-  }
-
-  /* ===================================================
-   * SCORE ORIENTATION
-   * =================================================== */
-  function getOrientedScore(fx, rowPlayerId) {
-    if (!fx) return { s1: null, s2: null, isRowReg1: null };
-
-    const isRowReg1 = fx.r1_id === rowPlayerId;
-    const s1 = isRowReg1 ? fx.home_score : fx.away_score;
-    const s2 = isRowReg1 ? fx.away_score : fx.home_score;
-
-    return { s1, s2, isRowReg1 };
-  }
-
-  function formatScoreCell(fx, rowPlayerId) {
-    if (!fx || !fx.all_sets || fx.all_sets.length === 0) return '';
-
-    let display = [];
-
-    fx.all_sets.forEach(setStr => {
-      let [s1, s2] = setStr.split('-').map(Number);
-      if (fx.r2_id === rowPlayerId) display.push(`${s2}-${s1}`);
-      else display.push(`${s1}-${s2}`);
-    });
-
-    const last = display[display.length - 1];
-    const [a, b] = last.split('-').map(Number);
-
-    let cls = '';
-    if (a > b) cls = 'rr-win';
-    else if (b > a) cls = 'rr-loss';
-
-    return `<span class="${cls}">${display.join(', ')}</span>`;
-  }
-
-  /* ===================================================
-   * BRACKET LOADERS
-   * =================================================== */
-  $(document).on('shown.bs.tab', '#main-bracket-tab', function () {
-    loadMainBracket();
-  });
-
-  $('#btn-generate-main-bracket').on('click', function () {
-    const btn = $(this).prop('disabled', true);
-
-    $.post(APP_URL + '/backend/draw/' + drawId + '/generate-main-bracket')
-      .done(res => {
-        if (res.success) {
-          toastr.success(res.message);
-          loadMainBracket();
-        } else toastr.error(res.message);
-      })
-      .fail(() => toastr.error('Error generating bracket'))
-      .always(() => btn.prop('disabled', false));
-  });
-
-  function loadMainBracket(force = false) {
-    $('#main-bracket-wrapper')
-      .load(`${APP_URL}/backend/draw/${drawId}/main-bracket?force=${force}`);
-  }
-
-  function loadPlateBracket(force = false) {
-    $('#plate-bracket-wrapper')
-      .load(`${APP_URL}/backend/draw/${drawId}/plate-bracket?force=${force}`);
-  }
-
-  function loadConsBracket(force = false) {
-    $('#cons-bracket-wrapper')
-      .load(`${APP_URL}/backend/draw/${drawId}/cons-bracket?force=${force}`);
-  }
-
-  /* ===================================================
-   * STARTUP
-   * =================================================== */
-  $(document).ready(init);
-  function updateMatrixCell(fx) {
-    const gid = fx.draw_group_id;
-    const group = RR_GROUPS.find(g => g.id == gid);
-    if (!group) return;
-
-    group.registrations.forEach(rowReg => {
-      group.registrations.forEach(colReg => {
-
-        if (rowReg.id === colReg.id) return;
-
-        const match =
-          (fx.r1_id == rowReg.id && fx.r2_id == colReg.id) ||
-          (fx.r1_id == colReg.id && fx.r2_id == rowReg.id);
-
-        if (!match) return;
-
-        const selector = `.rr-score-cell[data-fixture-id="${fx.id}"]`;
-        const $cell = $(selector);
-        if (!$cell.length) return;
-
-        let display = [];
-        fx.all_sets.forEach(setStr => {
-          let [s1, s2] = setStr.split('-').map(Number);
-          if (fx.r2_id == rowReg.id) display.push(`${s2}-${s1}`);
-          else display.push(`${s1}-${s2}`);
-        });
-
-        const last = display[display.length - 1] || '';
-        const [a, b] = last.split('-').map(Number);
-        let cls = '';
-        if (a > b) cls = 'rr-win';
-        else if (b > a) cls = 'rr-loss';
-
-        $cell.html(`<span class="${cls}">${display.join(', ')}</span>`);
-      });
-    });
-  }
-
-  function updateOOPRow(fx) {
-    const $row = $(`#rr-order-table tr[data-fixture-id="${fx.id}"]`);
-    if (!$row.length) return;
-
-    // Score column
-    $row.find('td:eq(6)').text(fx.score || '');
-
-    // Winner highlight
-    const p1 = $row.find('td:eq(1)');
-    const p2 = $row.find('td:eq(3)');
-    p1.removeClass('bg-success bg-danger text-white');
-    p2.removeClass('bg-success bg-danger text-white');
-
-    if (fx.winner_registration) {
-      if (fx.winner_registration == fx.r1_id) {
-        p1.addClass('bg-success text-white');
-        p2.addClass('bg-danger text-white');
-      } else {
-        p1.addClass('bg-danger text-white');
-        p2.addClass('bg-success text-white');
-      }
+    /* ===================================================
+     * BRACKET LOADERS
+     * =================================================== */
+    function loadMainBracket(force = false) {
+        $('#main-bracket-wrapper')
+            .html('<div class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm"></div><div class="mt-2">Loading bracket…</div></div>')
+            .load(`${APP_URL}/backend/draw/${DRAW_ID}/main-bracket?force=${force}`);
     }
-  }
 
+    function loadPlateBracket(force = false) {
+        $('#plate-bracket-wrapper')
+            .load(`${APP_URL}/backend/draw/${DRAW_ID}/plate-bracket?force=${force}`);
+    }
+
+    $(document).ready(init);
 
 })(jQuery, window, document);

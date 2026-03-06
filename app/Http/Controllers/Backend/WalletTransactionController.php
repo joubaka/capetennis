@@ -23,9 +23,15 @@ class WalletTransactionController extends Controller
 
     /**
      * Store a new wallet transaction.
+     * Only super-users can manually credit/debit wallets.
      */
     public function store(Request $request, $id)
     {
+        // Only super-user can manually credit/debit wallets
+        if (!auth()->user()->can('super-user')) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $request->validate([
             'type' => 'required|in:credit,debit',
             'amount' => 'required|numeric|min:0.01',
@@ -33,21 +39,23 @@ class WalletTransactionController extends Controller
         ]);
 
         $user = User::findOrFail($id);
-        $wallet = $user->wallet ?? $user->wallet()->create(['balance' => 0]);
+        $wallet = $user->wallet ?? $user->wallet()->create();
         $amount = $request->amount;
 
         if ($request->type === 'debit' && $wallet->balance < $amount) {
             return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
         }
 
-        // Apply the transaction
-        $wallet->{$request->type === 'credit' ? 'increment' : 'decrement'}('balance', $amount);
-
+        // Create transaction (balance is computed from transactions)
         $wallet->transactions()->create([
             'type' => $request->type,
             'amount' => $amount,
-            'reference' => $request->reference,
-            'meta' => ['admin' => auth()->user()->name],
+            'source_type' => 'manual',
+            'source_id' => auth()->id(),
+            'meta' => [
+                'admin' => auth()->user()->name,
+                'reference' => $request->reference,
+            ],
         ]);
 
         return redirect()->route('wallet.show', $user->id)->with('success', 'Transaction recorded.');

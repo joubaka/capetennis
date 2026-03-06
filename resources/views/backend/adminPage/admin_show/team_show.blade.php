@@ -32,6 +32,28 @@
   }
   .subtabs-sticky .nav-tabs { overflow-x: auto; flex-wrap: nowrap; }
   .tab-pane .card-header { display: flex; align-items: center; justify-content: space-between; }
+  /* Small device improvements */
+  @media (max-width: 576px) {
+    .tabs-wrap { position: sticky; top: 56px; }
+    .subtabs-sticky { top: 108px; }
+    .tabs-wrap .nav-link { padding: .35rem .5rem; font-size: .9rem; }
+    .tabs-wrap .nav-link .badge { font-size: .65rem; padding: .18rem .36rem; }
+    .tab-content { padding: .5rem !important; }
+    .tab-pane .card-header { flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
+    .card { margin-bottom: .75rem; }
+    /* Make modals use most of the screen on small devices */
+    .modal-dialog { max-width: 100%; margin: .25rem; }
+    .modal-content { height: calc(100vh - 56px); border-radius: .25rem; }
+    .modal-body { overflow-y: auto; }
+    .modal-header .modal-title { font-size: 1rem; }
+  }
+
+  /* Very small screens: reduce clutter by hiding secondary badges */
+  @media (max-width: 420px) {
+    .tabs-wrap .nav-link .badge.bg-label-info,
+    .tabs-wrap .nav-link .badge.bg-label-warning,
+    .tabs-wrap .nav-link .badge.bg-label-primary { display: none; }
+  }
 </style>
 
 <div class="col-xl-12">

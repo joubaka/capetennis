@@ -29,10 +29,22 @@
           Team Payments
         </a>
 
+        <a href="{{ route('admin.events.finances', $event) }}"
+           class="btn btn-outline-warning">
+          <i class="ti ti-report-money me-1"></i>
+          Convenor Finances
+        </a>
+
         <a href="{{ route('admin.events.draws', $event) }}"
            class="btn btn-outline-secondary">
           <i class="ti ti-tournament me-1"></i>
           Draws
+        </a>
+
+        <a href="{{ route('backend.scoreboard.team.show', $event) }}"
+           class="btn btn-outline-secondary">
+          <i class="ti ti-trophy me-1"></i>
+          Team Scoreboard
         </a>
 
       </div>

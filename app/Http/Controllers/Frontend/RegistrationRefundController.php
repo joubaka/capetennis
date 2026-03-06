@@ -67,7 +67,7 @@ class RegistrationRefundController extends Controller
     Log::info('REFUND REQUEST START', [
       'registration_id' => $registration->id,
       'user_id' => $user?->id,
-      'method' => $request->method,
+      'method' => $request->input('method'),
     ]);
 
     if (!$user || (int) $registration->user_id !== (int) $user->id) {
@@ -127,13 +127,13 @@ class RegistrationRefundController extends Controller
       'gross' => $gross,
       'fee' => $fee,
       'net' => $net,
-      'method' => $request->method,
+      'method' => $request->input('method'),
     ]);
 
     // =====================================================
     // WALLET REFUND
     // =====================================================
-    if ($request->method === 'wallet') {
+    if ($request->input('method') === 'wallet') {
 
       try {
 

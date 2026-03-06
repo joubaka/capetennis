@@ -47,6 +47,14 @@
                    class="btn btn-sm btn-outline-secondary">
                   Events
                 </a>
+                <button
+                  class="btn btn-sm btn-outline-success ms-1 publish-toggle"
+                  data-series="{{ $s->id }}"
+                  data-published="{{ $s->leaderboard_published }}"
+                  data-url="{{ url('backend/series/' . $s->id . '/publish') }}"
+                >
+                  {{ $s->leaderboard_published ? 'Unpublish' : 'Publish' }}
+                </button>
               </td>
             </tr>
           @empty
@@ -62,4 +70,45 @@
   </div>
 
 </div>
+@endsection
+
+@section('page-script')
+<script>
+document.querySelectorAll('.publish-toggle').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const seriesId = btn.dataset.series;
+    btn.disabled = true;
+
+    try {
+      const url = btn.dataset.url || `/backend/series/${seriesId}/publish`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+      });
+
+      if (!res.ok) throw new Error('Publish request failed');
+
+      const data = await res.json();
+
+      // Toggle button label
+      const published = data.leaderboard_published;
+      btn.textContent = published ? 'Unpublish' : 'Publish';
+      btn.dataset.published = published ? 1 : 0;
+
+      // Optional: show toast if available
+      if (window.toastr) {
+        toastr.success('Publish status updated');
+      }
+    } catch (e) {
+      console.error('Publish toggle failed', e);
+      if (window.toastr) toastr.error('Failed to update publish status');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+</script>
 @endsection

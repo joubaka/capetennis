@@ -9,13 +9,15 @@ return new class extends Migration {
   {
     // Changing existing columns to nullable uses change(); doctrine/dbal is required.
     Schema::table('team_fixture_players', function (Blueprint $table) {
-      // add no-profile reference columns
-      $table->unsignedBigInteger('team1_no_profile_id')->nullable()->after('team1_id');
-      $table->unsignedBigInteger('team2_no_profile_id')->nullable()->after('team2_id');
 
-      // allow existing profile id columns to be nullable
-      $table->unsignedBigInteger('team1_id')->nullable()->change();
-      $table->unsignedBigInteger('team2_id')->nullable()->change();
+      if (!Schema::hasColumn('team_fixture_players', 'team1_no_profile_id')) {
+        $table->unsignedBigInteger('team1_no_profile_id')->nullable()->after('team1_id');
+      }
+
+      if (!Schema::hasColumn('team_fixture_players', 'team2_no_profile_id')) {
+        $table->unsignedBigInteger('team2_no_profile_id')->nullable()->after('team2_id');
+      }
+
     });
   }
 

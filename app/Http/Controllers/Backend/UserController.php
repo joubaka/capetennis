@@ -98,28 +98,44 @@ class UserController extends Controller
   /**
    * Remove admin role.
    */
-  public function removeRole($id)
+  public function removeRole(Request $request, $id)
   {
+    $request->validate(['role' => 'required|string']);
     $user = User::findOrFail($id);
-    $user->removeRole('admin');
+
+    // permission check: only admin or self (adjust as needed)
+    if (auth()->id() !== $user->id && !auth()->user()->can('admin')) {
+        abort(403);
+    }
+
+    $roleName = $request->input('role');
+    $user->removeRole($roleName);
 
     return response()->json([
-      'success' => true,
-      'message' => 'Admin role removed'
+        'success' => true,
+        'message' => "Role '{$roleName}' removed"
     ]);
   }
 
   /**
    * Add admin role.
    */
-  public function addRole($id)
+  public function addRole(Request $request, $id)
   {
+    $request->validate(['role' => 'required|string']);
     $user = User::findOrFail($id);
-    $user->assignRole('admin');
+
+    // permission check: only admin or self (adjust as needed)
+    if (auth()->id() !== $user->id && !auth()->user()->can('admin')) {
+        abort(403);
+    }
+
+    $roleName = $request->input('role');
+    $user->assignRole($roleName);
 
     return response()->json([
-      'success' => true,
-      'message' => 'Admin role added'
+        'success' => true,
+        'message' => "Role '{$roleName}' assigned"
     ]);
   }
 }

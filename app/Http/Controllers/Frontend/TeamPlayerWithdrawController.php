@@ -113,7 +113,7 @@ class TeamPlayerWithdrawController extends Controller
       'player_id' => $player->id,
       'event_id' => $eventId,
       'user_id' => $user?->id,
-      'method' => $request->method,
+      'method' => $request->input('method'),
     ]);
 
     if (!$user) {
@@ -164,7 +164,7 @@ class TeamPlayerWithdrawController extends Controller
     $net = round($gross - $fee, 2);
 
     // WALLET
-    if ($request->method === 'wallet') {
+    if ($request->input('method') === 'wallet') {
       try {
         DB::transaction(function () use ($order, $user, $teamPlayer, $gross, $fee, $net, $team, $player) {
           app(WalletService::class)->credit(

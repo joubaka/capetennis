@@ -27,7 +27,7 @@ class WalletController extends Controller
         $user = User::findOrFail($id);
 
         // Get wallet or create if missing
-        $wallet = $user->wallet ?? $user->wallet()->create(['balance' => 0]);
+        $wallet = $user->wallet ?? $user->wallet()->create();
 
         // Get transactions
         $transactions = $wallet->transactions()->latest()->get();
@@ -39,17 +39,18 @@ class WalletController extends Controller
 {
     $user = \App\Models\User::findOrFail($userId);
 
-    $wallet = $user->wallet ?? $user->wallet()->create(['balance' => 0]);
+    $wallet = $user->wallet ?? $user->wallet()->create();
 
-    // Update balance
-    $wallet->increment('balance', $amount);
-
-    // Log transaction
+    // Log transaction (balance is computed from transactions)
     $wallet->transactions()->create([
         'type' => 'credit',
         'amount' => $amount,
-        'reference' => $reference ?? 'Auto top-up',
-        'meta' => ['source' => 'auto'],
+        'source_type' => 'manual',
+        'source_id' => auth()->id() ?? 0,
+        'meta' => [
+            'source' => 'auto',
+            'reference' => $reference ?? 'Auto top-up',
+        ],
     ]);
 
     return true;
@@ -58,21 +59,22 @@ public static function deductFromWallet($amount, $userId, $reference = null)
 {
     $user = \App\Models\User::findOrFail($userId);
 
-    $wallet = $user->wallet ?? $user->wallet()->create(['balance' => 0]);
+    $wallet = $user->wallet ?? $user->wallet()->create();
 
     if ($wallet->balance < $amount) {
         throw new \Exception('Insufficient wallet balance.');
     }
 
-    // Deduct balance
-    $wallet->decrement('balance', $amount);
-
-    // Log transaction
+    // Log transaction (balance is computed from transactions)
     $wallet->transactions()->create([
         'type' => 'debit',
         'amount' => $amount,
-        'reference' => $reference ?? 'Wallet deduction',
-        'meta' => ['source' => 'manual'],
+        'source_type' => 'manual',
+        'source_id' => auth()->id() ?? 0,
+        'meta' => [
+            'source' => 'manual',
+            'reference' => $reference ?? 'Wallet deduction',
+        ],
     ]);
 
     return true;

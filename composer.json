@@ -22,6 +22,7 @@
     "livewire/livewire": "^2.11",
     "maatwebsite/excel": "^3.1",
     "rappasoft/laravel-authentication-log": "^2.0",
+    "spatie/laravel-activitylog": "^4.12",
     "spatie/laravel-permission": "^6.24",
     "torann/geoip": "^3.0"
   },

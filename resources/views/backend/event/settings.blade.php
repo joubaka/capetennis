@@ -232,6 +232,26 @@
   </div>
 </div>
 
+{{-- CONVENORS --}}
+@php $convenorIds = \App\Models\EventConvenor::where('event_id', $event->id)->pluck('user_id')->toArray(); @endphp
+<div class="col-lg-6">
+  <div class="card">
+    <div class="card-header"><h5 class="mb-0">Event Convenors</h5></div>
+    <div class="card-body">
+      <select class="form-select select2-convenors"
+              name="convenors" multiple
+              data-placeholder="Select event convenors">
+        @foreach(\App\Models\User::orderBy('name')->get() as $user)
+          <option value="{{ $user->id }}"
+            @selected(in_array($user->id, $convenorIds))>
+            {{ $user->name }}
+          </option>
+        @endforeach
+      </select>
+    </div>
+  </div>
+</div>
+
 </div>
 </form>
 </div>
@@ -288,6 +308,7 @@ $(function () {
       });
 
       payload.admins = $('.select2-admins').val() || [];
+      payload.convenors = $('.select2-convenors').val() || [];
 
       // 🔹 Withdrawal logic
       if (payload.withdrawal_days !== undefined && payload.start_date) {
@@ -354,6 +375,15 @@ $(function () {
     placeholder: $('.select2-admins').data('placeholder')
   }).on('change', function () {
     console.log('👥 Admins changed:', $(this).val());
+    autosave();
+  });
+
+  $('.select2-convenors').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: $('.select2-convenors').data('placeholder')
+  }).on('change', function () {
+    console.log('👥 Convenors changed:', $(this).val());
     autosave();
   });
 

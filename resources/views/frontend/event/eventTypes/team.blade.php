@@ -145,17 +145,7 @@
               <span class="badge bg-label-success">{{ $eDate }}</span>
             </li>
 
-            @forelse($event->eventCategories as $ce)
-              <li class="d-flex align-items-center mb-3">
-                <span class="fw-bold me-2">{{ $ce->category->name }}</span>
-                <span>R{{ number_format((float)$ce->entry_fee, 2) }}</span>
-              </li>
-            @empty
-              <li class="d-flex align-items-center mb-3">
-                <span class="fw-bold me-2">Entry Fee:</span>
-                <span>R{{ number_format((float)$event->entryFee, 2) }}</span>
-              </li>
-            @endforelse
+         
           </ul>
 
           <small class="text-uppercase">Contact</small>

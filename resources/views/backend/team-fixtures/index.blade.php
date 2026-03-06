@@ -57,7 +57,7 @@
 <th>#</th>
 <th>Draw</th>
 <th>Round</th>
-<th>Tie</th>
+<th>Match Nr</th>
 <th>Home</th>
 <th>Away</th>
 <th>Result</th>
@@ -173,7 +173,7 @@ $display = $fx->scheduled_at ?? null;
 <td>{{ $fx->id }}</td>
 <td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
 <td>{{ $fx->round_nr }}</td>
-<td>{{ $fx->tie_nr }}</td>
+<td>{{ $fx->home_rank_nr }}</td>
 
 <td class="home-cell {{ $homeClass }}">
 ({{ $fx->home_rank_nr }}) {{ $homeLabel }}

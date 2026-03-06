@@ -266,6 +266,47 @@ class RegisterController extends Controller
           ]);
         }
 
+        // 6️⃣ Create a Transaction record for this PayFast registration
+        try {
+          // Enrich PayFast data with order info for transaction creation
+          $firstItem = $order->items->first();
+          $categoryEvent = $firstItem ? CategoryEvent::with('event', 'category')->find($firstItem->category_event_id) : null;
+          $player = $firstItem ? Player::find($firstItem->player_id) : null;
+          $event = $categoryEvent?->event;
+          $category = $categoryEvent?->category;
+
+          $enrichedData = $data;
+          $enrichedData['custom_int5'] = $order->id;
+          $enrichedData['custom_int4'] = $order->user_id;
+          
+          // Add event information
+          if ($event) {
+            $enrichedData['custom_int3'] = $event->id;
+            $enrichedData['custom_str3'] = $event->name;
+            $enrichedData['item_name'] = $event->name;
+          }
+          
+          // Add category information
+          if ($category) {
+            $enrichedData['custom_int1'] = $categoryEvent->id; // category_event_id
+            $enrichedData['custom_str1'] = $category->name;
+          }
+          
+          // Add player information
+          if ($player) {
+            $enrichedData['custom_int2'] = $player->id;
+            $enrichedData['custom_str2'] = $player->name . ' ' . $player->surname;
+          }
+
+          self::update_transaction($enrichedData, $order);
+        } catch (\Throwable $e) {
+          Log::error('[HYBRID ITN TRANSACTION FAILED]', [
+            'message' => $e->getMessage(),
+            'order_id' => $orderId,
+          ]);
+          // don't rethrow to avoid aborting the rest of the processing here
+        }
+
         Log::info('[HYBRID ITN SUCCESS]', [
           'order_id' => $orderId
         ]);
@@ -702,7 +743,7 @@ class RegisterController extends Controller
      */
     if ($order === 'admin') {
 
-      $categoryEvent = CategoryEvent::find($data['categoryEvent'] ?? null);
+      $categoryEvent = CategoryEvent::with('event', 'category')->find($data['categoryEvent'] ?? null);
       if (!$categoryEvent) {
         return null;
       }
@@ -718,6 +759,11 @@ class RegisterController extends Controller
       $transaction->player_id = $data['player_id'] ?? null;
 
       $transaction->custom_str1 = 'Admin Remove';
+
+      // Add category name
+      if ($categoryEvent->category) {
+        $transaction->custom_str1 = $categoryEvent->category->name;
+      }
 
       if (!empty($data['player_id'])) {
         $player = Player::find($data['player_id']);
@@ -747,9 +793,8 @@ class RegisterController extends Controller
      */
     if ($order === 'withdrawel_before_deadline') {
 
-      $registration = CategoryEventRegistration::find(
-        $data['categoryEventRegistration'] ?? null
-      );
+      $registration = CategoryEventRegistration::with('categoryEvent.event', 'categoryEvent.category')
+        ->find($data['categoryEventRegistration'] ?? null);
 
       if (!$registration) {
         return null;
@@ -758,6 +803,14 @@ class RegisterController extends Controller
       $transaction = new Transaction();
       $transaction->transaction_type = 'Withdrawal';
       $transaction->category_event_id = $registration->category_event_id;
+      $transaction->event_id = $registration->categoryEvent->event->id;
+      $transaction->item_name = $registration->categoryEvent->event->name;
+
+      // Add category information
+      if ($registration->categoryEvent->category) {
+        $transaction->custom_int1 = $registration->category_event_id;
+        $transaction->custom_str1 = $registration->categoryEvent->category->name;
+      }
 
       if ($registration->payfast_id === 'Admin') {
         $transaction->amount_gross = 0;
@@ -778,6 +831,7 @@ class RegisterController extends Controller
       if ($player) {
         $transaction->custom_int2 = $player->player_id;
         $transaction->custom_str2 = $player->name . ' ' . $player->surname;
+        $transaction->player_id = $player->player_id;
       }
 
       $transaction->custom_int3 = $registration->categoryEvent->event->id;
@@ -806,6 +860,8 @@ class RegisterController extends Controller
     $transaction->amount_fee = $data['amount_fee'] ?? null;
 
     $transaction->event_id = $data['custom_int3'] ?? null;
+    $transaction->category_event_id = $data['custom_int1'] ?? null;
+    $transaction->player_id = $data['custom_int2'] ?? null;
 
     foreach (['1', '2', '3', '4', '5'] as $i) {
       $intKey = "custom_int{$i}";

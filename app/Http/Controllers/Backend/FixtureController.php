@@ -560,10 +560,18 @@ class FixtureController extends Controller
     $ids = $request->input('fixtures');
     // retreive all records from db
     $data['f'] = TeamFixture::whereIn('id', $ids)->get();
+
+    // Sort defensively: some fixtures may not have a related schedule
     $data['fixtures'] = $data['f']->sortBy(function ($item) {
-      return $item->schedule->time;
-    });
-    $data['name'] = $data['fixtures'][0]->schedule->venue->name;
+      return optional($item->schedule)->time ?? $item->scheduled_at ?? '00:00';
+    })->values();
+
+    // Determine a sensible filename: try to read the venue name from any fixture that has it
+    $venueName = $data['f']->map(function ($f) {
+      return optional(optional($f->schedule)->venue)->name;
+    })->filter()->first();
+
+    $data['name'] = $venueName ?? 'Fixtures';
     //return $name;
 
     $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data);

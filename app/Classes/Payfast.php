@@ -177,6 +177,12 @@ class Payfast
     $this->custom_int1 = $categoryEventId;
   }
 
+  public function setCategoryEvent(CategoryEvent $categoryEvent): void
+  {
+    $this->custom_int1 = $categoryEvent->id;
+    $this->custom_str1 = optional($categoryEvent->category)->name;
+  }
+
   /* =====================================================
    * AMOUNT
    * ===================================================== */

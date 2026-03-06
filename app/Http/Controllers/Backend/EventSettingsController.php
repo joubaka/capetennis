@@ -49,11 +49,13 @@ class EventSettingsController extends Controller
       'signUp' => 'sometimes|boolean',
       'organizer' => 'sometimes|nullable|string|max:191',
 
-      'logo_existing' => 'sometimes|nullable|string',
+      'logo_existing' => 'sometimes|nullable|string', 
       'logo_upload' => 'sometimes|image|max:2048',
 
       'admins' => 'sometimes|array',
       'admins.*' => 'integer|exists:users,id',
+      'convenors' => 'sometimes|array',
+      'convenors.*' => 'integer|exists:users,id',
     ]);
 
     Log::debug('📥 Validated data', $data);
@@ -74,6 +76,24 @@ class EventSettingsController extends Controller
       Log::info('🖼 Logo uploaded', ['logo' => $filename]);
     } elseif (!empty($data['logo_existing'])) {
       $event->logo = basename($data['logo_existing']);
+    }
+
+    // Convenors (pivot table: event_convenors)
+    if ($request->has('convenors')) {
+      Log::info('👥 Syncing convenors', [
+        'event_id' => $event->id,
+        'convenors' => $request->input('convenors'),
+      ]);
+
+      // Remove existing and insert new
+      \App\Models\EventConvenor::where('event_id', $event->id)->delete();
+      $rows = collect($request->input('convenors', []))->map(function ($uid) use ($event) {
+        return ['event_id' => $event->id, 'user_id' => $uid, 'created_at' => now(), 'updated_at' => now()];
+      })->toArray();
+
+      if (!empty($rows)) {
+        \DB::table('event_convenors')->insert($rows);
+      }
     }
 
     /**

@@ -24,7 +24,7 @@ class EventResultsController extends Controller
           ->leftJoin('category_results as cr', function ($join) use ($event, $category) {
           $join->on('registrations.id', '=', 'cr.registration_id')
             ->where('cr.event_id', $event->id)
-            ->where('cr.category_id', $category->id);
+            ->where('cr.category_id', $category->category_id);
         })
           ->select('registrations.*', 'cr.position')
           ->orderByRaw('cr.position IS NULL') // saved results first

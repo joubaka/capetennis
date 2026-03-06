@@ -18,7 +18,8 @@ class RankingEngine
       // Overberg / Platteland logic
       'overberg',
       'platteland',
-      'overberg_series' => new OverbergRankingStrategy(),
+      'overberg_series',
+      'platteland_series' => new OverbergRankingStrategy(),
 
       // Future strategies go here
       // 'wilson' => new WilsonRankingStrategy(),

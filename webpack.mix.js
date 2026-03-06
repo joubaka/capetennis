@@ -147,6 +147,8 @@ mix.js('resources/js/pages/eventEdit.js', 'public/js');
 mix.js('resources/js/pages/categories.js', 'public/js');
 mix.js('resources/js/pages/headOffice.js', 'public/js');
 mix.js('resources/js/pages/draw-fixtures-show.js', 'public/js');
+mix.js('resources/js/pages/team-schedule.js', 'public/js');
+mix.js('resources/js/pages/frontend/insert-score.js', 'public/js');
 /*
  |--------------------------------------------------------------------------
  | Assets / Fonts / Images

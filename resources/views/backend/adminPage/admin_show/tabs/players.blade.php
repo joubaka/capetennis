@@ -76,33 +76,39 @@
                   </div>
 
                   <div class="d-flex align-items-center gap-2">
-
-                    <span class="badge {{ $team->published ? 'bg-label-success' : 'bg-label-danger' }}">
+                    <span class="badge {{ $team->published ? 'bg-label-success' : 'bg-label-danger' }} me-2">
                       {{ $team->published ? 'Published' : 'Not Published' }}
                     </span>
 
-                    <button class="btn btn-sm btn-outline-primary editRosterBtn"
-                            data-teamid="{{ $team->id }}">
-                      <i class="ti ti-users"></i> Edit Roster
-                    </button>
-
-                    {{-- EMAIL TEAM --}}
-                    <button class="btn btn-sm btn-outline-secondary emailTeamBtn"
-                            data-teamid="{{ $team->id }}"
-                            data-teamname="{{ $team->name }}">
-                      <i class="ti ti-mail"></i> Email
-                    </button>
-
-                    <a href="{{ route('backend.region.clothing.edit', $region->id) }}"
-                       class="btn btn-sm btn-outline-warning">
-                      <i class="ti ti-settings"></i> Clothing Setup
-                    </a>
-
-                    <a href="{{ route('backend.region.clothing.orders', $region->id) }}"
-                       class="btn btn-sm btn-outline-info"
-                       target="_blank">
-                      <i class="ti ti-shirt"></i> Clothing Orders
-                    </a>
+                    <div class="dropdown">
+                      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="ti ti-dots"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                          <a class="dropdown-item emailTeamBtn" href="#" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">
+                            <i class="ti ti-mail me-1"></i> Email Team
+                          </a>
+                        </li>
+                        <!-- team-level 'Email Unpaid Players' removed from dropdown -->
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                          <a class="dropdown-item editRosterBtn" href="#" data-teamid="{{ $team->id }}">
+                            <i class="ti ti-users me-1"></i> Edit Roster
+                          </a>
+                        </li>
+                        <li>
+                          <a class="dropdown-item" href="{{ route('backend.region.clothing.edit', $region->id) }}">
+                            <i class="ti ti-settings me-1"></i> Clothing Setup
+                          </a>
+                        </li>
+                        <li>
+                          <a class="dropdown-item" href="{{ route('backend.region.clothing.orders', $region->id) }}" target="_blank">
+                            <i class="ti ti-shirt me-1"></i> Clothing Orders
+                          </a>
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
 
