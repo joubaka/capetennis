@@ -42,12 +42,41 @@ class TeamFixtureFrontendController extends Controller
 
   public function enterScores($draw)
   {
-    $fixtures = \App\Models\TeamFixture::with(['fixtureResults', 'homeTeam', 'awayTeam'])
+    $drawModel = \App\Models\Draw::findOrFail($draw);
+
+    // Round-Robin draws use the Fixture model, not TeamFixture
+    $rrCount = \App\Models\Fixture::where('draw_id', $draw)->count();
+    if ($rrCount > 0) {
+      $fixtures = \App\Models\Fixture::where('draw_id', $draw)
+          ->with([
+            'registration1.players',
+            'registration2.players',
+            'fixtureResults',
+          ])
+          ->orderBy('id')
+          ->get();
+
+      return view('frontend.fixtures.enter-score-rr', [
+        'draw'     => $drawModel,
+        'fixtures' => $fixtures,
+      ]);
+    }
+
+    // Team-based draws use TeamFixture
+    $fixtures = \App\Models\TeamFixture::with([
+            'draw',
+            'venue',
+            'fixtureResults',
+            'fixturePlayers.player1',
+            'fixturePlayers.player2',
+            'region1Name',
+            'region2Name',
+        ])
         ->where('draw_id', $draw)
         ->orderBy('scheduled_at')
         ->orderBy('home_rank_nr')
         ->get();
-   
+
     return view('frontend.fixtures.enter-score', compact('fixtures'));
   }
 

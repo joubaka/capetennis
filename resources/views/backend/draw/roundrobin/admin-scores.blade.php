@@ -72,6 +72,12 @@
                 data-away="{{ $p2 }}">
             Enter
         </button>
+        @if($fx->fixtureResults->count())
+          <button class="btn btn-sm btn-outline-danger rr-delete-score"
+                  data-id="{{ $fx->id }}">
+            <i class="ti ti-trash"></i>
+          </button>
+        @endif
     </td>
 </tr>
           @endforeach
@@ -136,6 +142,8 @@
 <script>
   window.RR_SAVE_SCORE_URL =
     "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
+  window.RR_DELETE_SCORE_URL =
+    "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
 </script>
   <script>
     $.ajaxSetup({

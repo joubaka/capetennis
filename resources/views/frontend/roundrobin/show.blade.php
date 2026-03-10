@@ -164,11 +164,41 @@
   /* ==============================================
      BRACKET WRAPPERS
      ============================================== */
-  #main-bracket-wrapper,
-  #plate-bracket-wrapper,
-  #cons-bracket-wrapper {
-    overflow-x: auto;
+  .bracket-zoom-outer {
+    position: relative;
+  }
+  .bracket-zoom-controls {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .bracket-zoom-controls .btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .bracket-zoom-scroll {
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y pinch-zoom;
+    max-height: 75vh;
+  }
+  .bracket-zoom-inner {
+    transform-origin: top left;
+    transition: transform 0.15s ease;
+    display: inline-block;
+    min-width: 100%;
+  }
+  .bracket-zoom-inner svg {
+    display: block;
   }
 
 </style>
@@ -192,7 +222,7 @@
  <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link "
+    <button class="nav-link"
             id="matrix-tab"
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
@@ -202,7 +232,7 @@
   </li>
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link active"
+    <button class="nav-link"
             id="oop-tab"
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
@@ -210,8 +240,6 @@
       Order of Play
     </button>
   </li>
-
- 
 
   <li class="nav-item" role="presentation">
     <button class="nav-link"
@@ -223,7 +251,7 @@
     </button>
   </li>
    <li class="nav-item" role="presentation">
-    <button class="nav-link"
+    <button class="nav-link active"
             id="main-bracket-tab"
             data-bs-toggle="tab"
             data-bs-target="#main-bracket-pane"
@@ -275,7 +303,7 @@
     {{-- ============================
          TAB 2 — ORDER OF PLAY
        ============================ --}}
-    <div class="tab-pane fade show active" 
+    <div class="tab-pane fade" 
          id="oop-pane" 
          role="tabpanel">
        <div class="col-12">
@@ -386,19 +414,28 @@
      Brackets
 ========================================= -->
 
-  <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
+  <div class="tab-pane fade show active" id="main-bracket-pane" role="tabpanel">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="mb-0">Main Bracket</h5>
-      
     </div>
 
-    <div id="main-bracket-wrapper" class="mt-2">
-        <div class="text-center text-muted py-5">
+    <div class="bracket-zoom-outer">
+      <div class="bracket-zoom-controls">
+        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="out">−</button>
+        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="in">+</button>
+        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="fit" style="font-size:11px;width:auto;padding:0 10px;">Fit</button>
+        <small class="text-muted d-flex align-items-center ms-1 bracket-zoom-label">100%</small>
+      </div>
+      <div class="bracket-zoom-scroll">
+        <div class="bracket-zoom-inner" id="main-bracket-wrapper">
+          <div class="text-center text-muted py-5">
             <div class="spinner-border spinner-border-sm"></div>
             <div>Loading…</div>
+          </div>
         </div>
+      </div>
     </div>
-   
+
 </div>
 
   </div> {{-- END TABS --}}
@@ -526,6 +563,60 @@ $(document).on('click', '#btn-import-teams', function () {
 
 <script src="{{ asset('assets/js/draw-roundrobin.js') }}?v={{ time() }}"></script>
 
+<script>
+(function(){
+  var zoom = 1;
+  var minZ = 0.3;
+  var maxZ = 1.5;
+  var step = 0.15;
+
+  function applyZoom(outer) {
+    var inner = outer.querySelector('.bracket-zoom-inner');
+    var label = outer.querySelector('.bracket-zoom-label');
+    if (inner) inner.style.transform = 'scale(' + zoom + ')';
+    if (label) label.textContent = Math.round(zoom * 100) + '%';
+  }
+
+  function fitZoom(outer) {
+    var scroll = outer.querySelector('.bracket-zoom-scroll');
+    var inner  = outer.querySelector('.bracket-zoom-inner');
+    var svg    = inner ? inner.querySelector('svg') : null;
+    if (!svg || !scroll) return;
+    var vb = svg.getAttribute('viewBox');
+    if (!vb) return;
+    var parts = vb.split(/[\s,]+/).map(Number);
+    var svgW = parts[2] || svg.getBoundingClientRect().width;
+    if (svgW <= 0) return;
+    zoom = Math.max(minZ, Math.min(maxZ, scroll.clientWidth / svgW));
+    applyZoom(outer);
+  }
+
+  $(document).on('click', '.btn-bracket-zoom', function(){
+    var dir = $(this).data('dir');
+    var outer = $(this).closest('.bracket-zoom-outer')[0];
+    if (dir === 'in')  zoom = Math.min(maxZ, zoom + step);
+    if (dir === 'out') zoom = Math.max(minZ, zoom - step);
+    if (dir === 'fit') { fitZoom(outer); return; }
+    applyZoom(outer);
+  });
+
+  // Auto-fit on mobile after bracket loads
+  var observer = new MutationObserver(function(mutations){
+    mutations.forEach(function(m){
+      if (m.addedNodes.length) {
+        var outer = m.target.closest('.bracket-zoom-outer');
+        if (outer && m.target.querySelector('svg')) {
+          zoom = 1;
+          setTimeout(function(){ applyZoom(outer); }, 50);
+        }
+      }
+    });
+  });
+  document.querySelectorAll('.bracket-zoom-inner').forEach(function(el){
+    observer.observe(el, { childList: true, subtree: true });
+  });
+})();
+</script>
 
 @endsection
 

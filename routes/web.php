@@ -711,6 +711,10 @@ Route::delete(
   Route::post('roundrobin/score/{fixture}', [RoundRobinController::class, 'saveScore'])
     ->name('backend.roundrobin.score.store');
 
+  // Delete score for round-robin fixture
+  Route::delete('roundrobin/score/{fixture}', [RoundRobinController::class, 'deleteScore'])
+    ->name('backend.roundrobin.score.delete');
+
   // Show round-robin draw (backend)
   Route::get('draw/roundrobin/{draw}', [RoundRobinController::class, 'show'])
     ->name('backend.draw.roundrobin.show');
@@ -923,6 +927,12 @@ Route::delete(
   Route::post('/event/{event}/create-individual-draw', [EventAdminController::class, 'createIndividualDraw'])
     ->name('headoffice.createSingleDraw');
 
+  Route::get('/event/{event}/print-draws-data', [HeadOfficeController::class, 'printDrawsData'])
+    ->name('headoffice.printDrawsData');
+
+  Route::get('/event/{event}/print-draws-pdf', [HeadOfficeController::class, 'printDrawsPdf'])
+    ->name('headoffice.printDrawsPdf');
+
 
   Route::post('/backend/headoffice/recreateFixtures/{draw}', [TeamFixtureController::class, 'recreateFixturesForDraw'])
     ->name('headoffice.recreateFixturesForDraw');
@@ -937,6 +947,11 @@ Route::delete(
     [RoundRobinController::class, 'regenerateRR']
   )->name('backend.draw.regenerate-rr');
 
+  Route::post(
+    'draw/{draw}/toggle-lock',
+    [RoundRobinController::class, 'toggleLock']
+  )->name('backend.draw.toggle-lock');
+
   // Draw settings update (used by settings tab)
   Route::post('draw/{draw}/settings', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updateSettings'])
     ->name('backend.draw.update-settings');
@@ -944,6 +959,10 @@ Route::delete(
   // Playoff configuration update
   Route::post('draw/{draw}/playoff-config', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updatePlayoffConfig'])
     ->name('backend.draw.update-playoff-config');
+
+  // Draw notes/rules update
+  Route::post('draw/{draw}/notes', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updateNotes'])
+    ->name('backend.draw.update-notes');
 
   // Generate playoff brackets from RR standings
   Route::post('draw/{draw}/generate-playoffs', [\App\Http\Controllers\Backend\ManageDrawController::class, 'generatePlayoffBrackets'])
@@ -1583,6 +1602,10 @@ Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController:
 // Public round-robin draw view
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])
   ->name('public.roundrobin.show');
+
+// Public bracket view (AJAX loaded, no auth required)
+Route::get('roundrobin/{draw}/main-bracket', [PublicRoundRobinController::class, 'mainBracket'])
+  ->name('public.roundrobin.main-bracket');
 
 // Allow convenor, superadmin, and superuser roles to access score entry and management
 Route::middleware(['auth', 'role:convenor|admin|super-user'])->group(function () {

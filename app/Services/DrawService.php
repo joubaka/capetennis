@@ -117,15 +117,30 @@ class DrawService
     // ---------------------------------------------------------------------
     // ORDER OF PLAY
     // ---------------------------------------------------------------------
-    $oops = $draw->drawFixtures()
+    $allFixtures = $draw->drawFixtures()
       ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue'])
       ->orderByRaw("
             FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS'),
             round ASC,
             match_nr ASC
         ")
-      ->get()
-      ->map(function ($fx) {
+      ->get();
+
+    // Build feeder map: for each fixture, which match_nr feeds winner/loser into it
+    // child.parent_fixture_id = parent.id  → child's WINNER goes to parent
+    // child.loser_parent_fixture_id = target.id → child's LOSER goes to target
+    $winnerFeeders = []; // target_id => [match_nr, match_nr]
+    $loserFeeders  = []; // target_id => [match_nr, match_nr]
+    foreach ($allFixtures as $fx) {
+      if ($fx->parent_fixture_id) {
+        $winnerFeeders[$fx->parent_fixture_id][] = $fx->match_nr;
+      }
+      if ($fx->loser_parent_fixture_id) {
+        $loserFeeders[$fx->loser_parent_fixture_id][] = $fx->match_nr;
+      }
+    }
+
+    $oops = $allFixtures->map(function ($fx) use ($winnerFeeders, $loserFeeders) {
 
         $sets = $fx->fixtureResults
           ->sortBy('set_nr')
@@ -134,11 +149,18 @@ class DrawService
 
         $winner = optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
 
+        // Build feeder labels (e.g. "W1001/W1002" or "L1005/L1006")
+        $wFeed = $winnerFeeders[$fx->id] ?? [];
+        $lFeed = $loserFeeders[$fx->id]  ?? [];
+        sort($wFeed);
+        sort($lFeed);
+
         return [
           'id' => $fx->id,
           'stage' => $fx->stage,
           'round' => $fx->round,
           'match_nr' => $fx->match_nr,
+          'playoff_type' => $fx->playoff_type,
 
           'home' => $fx->registration1?->display_name ?? 'TBD',
           'away' => $fx->registration2?->display_name ?? 'TBD',
@@ -150,6 +172,9 @@ class DrawService
 
           'score' => $sets,
           'winner' => $winner,
+
+          'winner_feeders' => $wFeed,
+          'loser_feeders'  => $lFeed,
         ];
       });
 
@@ -732,14 +757,14 @@ class DrawService
       Log::info("👉 [RR] Group {$group->id} — {$group->name}");
 
       $registrations = $group->groupRegistrations
-        ->sortBy(fn($r) => $r->pivot->seed ?? $r->id)
+        ->sortBy(fn($r) => $r->seed ?? 9999)
         ->values();
 
       $debugList = $registrations->map(function ($r) {
         return [
           'id' => $r->id,
-          'seed' => $r->pivot->seed ?? null,
-          'name' => $r->display_name,
+          'seed' => $r->seed ?? null,
+          'name' => $r->registration?->display_name ?? 'N/A',
         ];
       });
       Log::info("   🧍 Players:", $debugList->toArray());
@@ -819,13 +844,9 @@ class DrawService
     // 1) INIT STANDINGS PER GROUP
     // ============================================================
     foreach ($draw->groups as $group) {
-      Log::info("📘 [RR HUB] Init standings for group {$group->name}");
-
       foreach ($group->groupRegistrations as $gr) {
         $reg = $gr->registration;
-
-        if (!$reg)
-          continue; // safety
+        if (!$reg) continue;
 
         $standings[$group->id][$reg->id] = [
           'reg_id' => $reg->id,
@@ -835,52 +856,40 @@ class DrawService
           'losses' => 0,
           'sets_won' => 0,
           'sets_lost' => 0,
+          'games_won' => 0,
+          'games_lost' => 0,
+          'tiebreak' => '',
         ];
       }
-
     }
 
     // ============================================================
     // 2) PROCESS ONLY RR FIXTURES
     // ============================================================
     foreach ($draw->drawFixtures as $fx) {
-
-      // ❗ Skip ALL Main / Plate / Consolation fixtures
-      if ($fx->stage !== 'RR') {
-        continue;
-      }
-
-      // ❗ Round robin fixtures MUST have a group id
-      if (empty($fx->draw_group_id)) {
-        continue;
-      }
+      if ($fx->stage !== 'RR') continue;
+      if (empty($fx->draw_group_id)) continue;
 
       $box = $fx->draw_group_id;
+      if (!isset($standings[$box])) continue;
 
-      // Ensure indexes exist to avoid undefined key
-      if (!isset($standings[$box])) {
-        continue;
-      }
+      // Use fixture-level match winner (set during score save)
+      $winner = $fx->winner_registration;
+      if (!$winner || $fx->fixtureResults->isEmpty()) continue;
 
-      $last = $fx->fixtureResults->sortBy('set_nr')->last();
-      if (!$last) {
-        continue;
-      }
-
-      $winner = $last->winner_registration;
       $home = $fx->registration1_id;
       $away = $fx->registration2_id;
+      if (!isset($standings[$box][$home]) || !isset($standings[$box][$away])) continue;
 
-      // If for some reason RR fixtures reference a removed registration
-      if (!isset($standings[$box][$home]) || !isset($standings[$box][$away])) {
-        continue;
-      }
-
-      // Count sets
+      // Count sets and games from individual set results
       $homeSets = 0;
       $awaySets = 0;
+      $homeGames = 0;
+      $awayGames = 0;
 
       foreach ($fx->fixtureResults as $set) {
+        $homeGames += (int) $set->registration1_score;
+        $awayGames += (int) $set->registration2_score;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } else {
@@ -888,20 +897,16 @@ class DrawService
         }
       }
 
-      Log::debug("🏆 [RR HUB] Add to standings", [
-        'fixture_id' => $fx->id,
-        'home_sets' => $homeSets,
-        'away_sets' => $awaySets,
-        'winner' => $winner,
-      ]);
-
-      // Update sets
       $standings[$box][$home]['sets_won'] += $homeSets;
       $standings[$box][$home]['sets_lost'] += $awaySets;
       $standings[$box][$away]['sets_won'] += $awaySets;
       $standings[$box][$away]['sets_lost'] += $homeSets;
 
-      // Update wins/losses
+      $standings[$box][$home]['games_won'] += $homeGames;
+      $standings[$box][$home]['games_lost'] += $awayGames;
+      $standings[$box][$away]['games_won'] += $awayGames;
+      $standings[$box][$away]['games_lost'] += $homeGames;
+
       if ($winner == $home) {
         $standings[$box][$home]['wins']++;
         $standings[$box][$away]['losses']++;
@@ -912,65 +917,98 @@ class DrawService
     }
 
     // ============================================================
-    // 3) HEAD-TO-HEAD ONLY WITH RR MATCHES
+    // 3) HEAD-TO-HEAD — uses fixture-level match winner
     // ============================================================
     $headToHead = function ($regA, $regB) use ($draw) {
-
       foreach ($draw->drawFixtures as $fx) {
-
-        // Only RR fixtures matter
-        if ($fx->stage !== 'RR')
-          continue;
-        if (!$fx->draw_group_id)
-          continue;
-
+        if ($fx->stage !== 'RR') continue;
+        if (!$fx->draw_group_id) continue;
         if (
           ($fx->registration1_id == $regA && $fx->registration2_id == $regB) ||
           ($fx->registration1_id == $regB && $fx->registration2_id == $regA)
         ) {
-          $last = $fx->fixtureResults->sortBy('set_nr')->last();
-          if (!$last)
-            return null;
-
-          return $last->winner_registration;
+          return $fx->winner_registration;
         }
       }
-
       return null;
     };
 
     // ============================================================
+    // Helper: compute sets% and games%
+    // ============================================================
+    $setsPct = function ($r) {
+      $t = $r['sets_won'] + $r['sets_lost'];
+      return $t > 0 ? $r['sets_won'] / $t : 0;
+    };
+    $gamesPct = function ($r) {
+      $t = $r['games_won'] + $r['games_lost'];
+      return $t > 0 ? $r['games_won'] / $t : 0;
+    };
+
+    // ============================================================
     // 4) SORT EACH GROUP
+    //    Tiebreak cascade:
+    //      1. Matches won
+    //      2. Sets won %
+    //      3. Games won %
+    //      4. Head-to-head (only when exactly 2 players tied)
     // ============================================================
     foreach ($standings as $gid => $rows) {
+      $rows = array_values($rows);
 
-      Log::info("📊 [RR HUB] Standings before sort", $rows);
+      usort($rows, function ($a, $b) use ($headToHead, $setsPct, $gamesPct) {
+        if ($a['wins'] !== $b['wins']) return $b['wins'] <=> $a['wins'];
 
-      usort($rows, function ($a, $b) use ($headToHead) {
+        $aSP = $setsPct($a); $bSP = $setsPct($b);
+        if (abs($aSP - $bSP) > 0.0001) return $bSP <=> $aSP;
 
-        // wins first
-        if ($a['wins'] !== $b['wins']) {
-          return $b['wins'] <=> $a['wins'];
-        }
+        $aGP = $gamesPct($a); $bGP = $gamesPct($b);
+        if (abs($aGP - $bGP) > 0.0001) return $bGP <=> $aGP;
 
-        // sets difference next
-        $aDiff = $a['sets_won'] - $a['sets_lost'];
-        $bDiff = $b['sets_won'] - $b['sets_lost'];
-
-        if ($aDiff !== $bDiff) {
-          return $bDiff <=> $aDiff;
-        }
-
-        // head-to-head (if they played)
         $hh = $headToHead($a['reg_id'], $b['reg_id']);
-        if ($hh) {
-          return $hh == $a['reg_id'] ? -1 : 1;
-        }
+        if ($hh) return $hh == $a['reg_id'] ? -1 : 1;
 
-        return 0; // identical
+        return 0;
       });
 
-      Log::info("📈 [RR HUB] Standings AFTER sort", $rows);
+      // --------------------------------------------------------
+      // 5) TAG TIEBREAK INDICATORS
+      //    Compare each player to the one directly above.
+      //    If they share the same wins, mark which criterion
+      //    resolved their relative ranking.
+      // --------------------------------------------------------
+      for ($i = 0; $i < count($rows); $i++) {
+        $rows[$i]['tiebreak'] = '';
+        if ($i === 0) continue;
+
+        $above = $rows[$i - 1];
+        $curr  = $rows[$i];
+
+        if ($above['wins'] !== $curr['wins']) continue;
+
+        $aboveSP = $setsPct($above); $currSP = $setsPct($curr);
+        if (abs($aboveSP - $currSP) > 0.0001) {
+          $rows[$i]['tiebreak'] = 'Sets %';
+          if ($rows[$i - 1]['tiebreak'] === '') $rows[$i - 1]['tiebreak'] = 'Sets %';
+          continue;
+        }
+
+        $aboveGP = $gamesPct($above); $currGP = $gamesPct($curr);
+        if (abs($aboveGP - $currGP) > 0.0001) {
+          $rows[$i]['tiebreak'] = 'Games %';
+          if ($rows[$i - 1]['tiebreak'] === '') $rows[$i - 1]['tiebreak'] = 'Games %';
+          continue;
+        }
+
+        $hh = $headToHead($above['reg_id'], $curr['reg_id']);
+        if ($hh) {
+          $rows[$i]['tiebreak'] = 'H2H';
+          if ($rows[$i - 1]['tiebreak'] === '') $rows[$i - 1]['tiebreak'] = 'H2H';
+        } else {
+          $rows[$i]['tiebreak'] = '=';
+          if ($rows[$i - 1]['tiebreak'] === '') $rows[$i - 1]['tiebreak'] = '=';
+        }
+      }
 
       $standings[$gid] = $rows;
     }
@@ -1551,15 +1589,20 @@ class DrawService
           $next->save();
           
         } else {
-          // Normal behavior for all other matches
-          if (!$next->registration1_id) {
+          // Normal behavior: use child ordering to determine slot.
+          // First child (lower match_nr) → slot 1, second child → slot 2.
+          $childIds = Fixture::where('parent_fixture_id', $next->id)
+            ->orderBy('match_nr')
+            ->pluck('id');
+          $childIndex = $childIds->search($fixture->id);
+          $slot = ($childIndex === 0) ? 1 : 2;
+
+          if ($slot === 1) {
             $next->registration1_id = $winner;
-            Log::info("   ✔ Winner placed into registration1");
-          } elseif (!$next->registration2_id) {
-            $next->registration2_id = $winner;
-            Log::info("   ✔ Winner placed into registration2");
+            Log::info("   ✔ Winner placed into registration1 (child index {$childIndex})");
           } else {
-            Log::warning("   ❗ Both slots FULL in parent fixture {$next->id}");
+            $next->registration2_id = $winner;
+            Log::info("   ✔ Winner placed into registration2 (child index {$childIndex})");
           }
         }
 
@@ -1571,7 +1614,7 @@ class DrawService
 
 
     // ============================================================
-    // LOSER → LOSER BRACKET (unchanged)
+    // LOSER → LOSER BRACKET
     // ============================================================
     if ($fixture->loser_parent_fixture_id) {
 
@@ -1586,17 +1629,64 @@ class DrawService
           'r2' => $next->registration2_id,
         ]);
 
-        if (!$next->registration1_id) {
+        // Use child ordering: first child (lower match_nr) → slot 1, second → slot 2.
+        $childIds = Fixture::where('loser_parent_fixture_id', $next->id)
+          ->orderBy('match_nr')
+          ->pluck('id');
+        $childIndex = $childIds->search($fixture->id);
+        $slot = ($childIndex === 0) ? 1 : 2;
+
+        if ($slot === 1) {
           $next->registration1_id = $loser;
-          Log::info("   ✔ Loser placed into registration1");
-        } elseif (!$next->registration2_id) {
-          $next->registration2_id = $loser;
-          Log::info("   ✔ Loser placed into registration2");
+          Log::info("   ✔ Loser placed into registration1 (child index {$childIndex})");
         } else {
-          Log::warning("   ❗ Both slots FULL in loser fixture {$next->id}");
+          $next->registration2_id = $loser;
+          Log::info("   ✔ Loser placed into registration2 (child index {$childIndex})");
         }
 
         $next->save();
+
+        // Check if the other feeder was a bye → walkover for the lone player
+        $allFeeders = Fixture::where('loser_parent_fixture_id', $next->id)->get();
+        $allResolved = $allFeeders->every(fn($f) => !is_null($f->winner_registration));
+
+        if ($allResolved && is_null($next->winner_registration)) {
+          $hasReg1 = !is_null($next->registration1_id);
+          $hasReg2 = !is_null($next->registration2_id);
+
+          if ($hasReg1 xor $hasReg2) {
+            // One slot is empty because the other feeder was a bye (no real loser)
+            $walkover = $hasReg1 ? $next->registration1_id : $next->registration2_id;
+            $next->winner_registration = $walkover;
+            $next->save();
+
+            Log::info("🎯 [Advance:L] Consolation walkover — other feeder was bye", [
+              'cons_fixture' => $next->id,
+              'winner' => $walkover,
+            ]);
+
+            // Cascade: advance walkover winner to cons parent
+            if ($next->parent_fixture_id) {
+              $consParent = Fixture::find($next->parent_fixture_id);
+              if ($consParent) {
+                $consChildIds = Fixture::where('parent_fixture_id', $consParent->id)
+                  ->orderBy('match_nr')
+                  ->pluck('id');
+                $consChildIndex = $consChildIds->search($next->id);
+                if ($consChildIndex === 0) {
+                  $consParent->registration1_id = $walkover;
+                } else {
+                  $consParent->registration2_id = $walkover;
+                }
+                $consParent->save();
+                Log::info("   ✔ Walkover winner cascaded to parent {$consParent->id}");
+              }
+            }
+
+            // Cascade: loser side of cons fixture (nobody) → e.g. 7th/8th
+            // The loser_parent stays empty, which is correct
+          }
+        }
       }
     }
 

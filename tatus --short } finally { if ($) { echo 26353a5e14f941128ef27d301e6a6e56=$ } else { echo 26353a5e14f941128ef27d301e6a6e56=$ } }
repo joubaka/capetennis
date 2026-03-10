@@ -1,0 +1,59 @@
+warning: in the working copy of 'app/Http/Controllers/Backend/HeadOfficeController.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/Http/Controllers/Backend/ManageDrawController.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/Http/Controllers/Frontend/TeamFixtureFrontendController.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/Models/DrawSetting.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'resources/assets/js/draw-roundrobin1.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'resources/views/backend/draw/roundrobin/admin-scores.blade.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'resources/views/backend/draw/roundrobin/show.blade.php', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'resources/views/frontend/fixtures/enter-score.blade.php', LF will be replaced by CRLF the next time Git touches it
+ .../Controllers/Backend/HeadOfficeController.php   |  220 [32m+++[m
+ .../Controllers/Backend/ManageDrawController.php   |   27 [32m+[m
+ .../Controllers/Backend/RoundRobinController.php   |  372 [32m+++[m[31m--[m
+ .../Frontend/TeamFixtureFrontendController.php     |   33 [32m+[m[31m-[m
+ app/Models/DrawSetting.php                         |   15 [32m+[m
+ app/Services/DrawService.php                       |  280 [32m++[m[31m--[m
+ app/Services/DynamicBracketEngine.php              |  402 [32m++++[m[31m-[m
+ app/Services/InterproDrawBuilder.php               |   73 [32m+[m[31m-[m
+ public/assets/js/draw-roundrobin1.js               | 1001 [32m+++++++++[m[31m---[m
+ public/assets/js/roundrobin-admin-scores.js        |   31 [32m+[m
+ public/assets/js/roundrobin-public.js              |   30 [32m+[m[31m-[m
+ public/assets/vendor/js/bootstrap.js.LICENSE.txt   |    5 [31m-[m
+ .../libs/apex-charts/apexcharts.js.LICENSE.txt     |   13 [31m-[m
+ .../vendor/libs/block-ui/block-ui.js.LICENSE.txt   |   13 [31m-[m
+ .../libs/bloodhound/bloodhound.js.LICENSE.txt      |    5 [31m-[m
+ .../bootstrap-datepicker.js.LICENSE.txt            |    5 [31m-[m
+ .../bootstrap-daterangepicker.js.LICENSE.txt       |    7 [31m-[m
+ .../libs/bs-stepper/bs-stepper.js.LICENSE.txt      |    5 [31m-[m
+ .../vendor/libs/chartjs/chartjs.js.LICENSE.txt     |   13 [31m-[m
+ .../vendor/libs/clipboard/clipboard.js.LICENSE.txt |    6 [31m-[m
+ .../datatables-bootstrap5.js.LICENSE.txt           |   76 [31m-[m
+ .../vendor/libs/flatpickr/flatpickr.js.LICENSE.txt |   16 [31m-[m
+ .../vendor/libs/hammer/hammer.js.LICENSE.txt       |    5 [31m-[m
+ .../vendor/libs/idletimer/idletimer.js.LICENSE.txt |    3 [31m-[m
+ .../jquery-timepicker.js.LICENSE.txt               |    5 [31m-[m
+ .../vendor/libs/jquery/jquery.js.LICENSE.txt       |   24 [31m-[m
+ .../vendor/libs/jstree/jstree.js.LICENSE.txt       |   67 [31m-[m
+ .../vendor/libs/leaflet/leaflet.js.LICENSE.txt     |    4 [31m-[m
+ .../vendor/libs/masonry/masonry.js.LICENSE.txt     |   13 [31m-[m
+ .../vendor/libs/moment/moment.js.LICENSE.txt       |    3 [31m-[m
+ .../libs/node-waves/node-waves.js.LICENSE.txt      |    8 [31m-[m
+ .../vendor/libs/numeral/numeral.js.LICENSE.txt     |   14 [31m-[m
+ .../perfect-scrollbar.js.LICENSE.txt               |    5 [31m-[m
+ .../assets/vendor/libs/pickr/pickr.js.LICENSE.txt  |    1 [31m-[m
+ .../assets/vendor/libs/quill/quill.js.LICENSE.txt  |   15 [31m-[m
+ .../vendor/libs/select2/select2.js.LICENSE.txt     |   20 [31m-[m
+ .../vendor/libs/shepherd/shepherd.js.LICENSE.txt   |    1 [31m-[m
+ .../vendor/libs/sortablejs/sortable.js.LICENSE.txt |    6 [31m-[m
+ .../libs/typeahead-js/typeahead.js.LICENSE.txt     |    5 [31m-[m
+ resources/assets/js/draw-roundrobin1.js            |  181 [32m++[m[31m-[m
+ resources/assets/js/roundrobin-admin-scores.js     |   31 [32m+[m
+ resources/assets/js/roundrobin-public.js           |   30 [32m+[m[31m-[m
+ .../backend/draw/roundrobin/admin-scores.blade.php |    8 [32m+[m
+ .../draw/roundrobin/dynamic-bracket-svg.blade.php  |  287 [32m+++[m[31m-[m
+ .../views/backend/draw/roundrobin/show.blade.php   | 1689 [32m+++++++++++++++++++[m[31m-[m
+ .../headOffice/individual-event-show.blade.php     |  399 [32m++++[m[31m-[m
+ .../frontend/event/eventTypes/individual.blade.php |   18 [32m+[m[31m-[m
+ .../views/frontend/fixtures/enter-score.blade.php  |    7 [32m+[m[31m-[m
+ routes/web.php                                     |   19 [32m+[m
+ tinker_test_rr.php                                 |   54 [31m-[m
+ 50 files changed, 4511 insertions(+), 1059 deletions(-)

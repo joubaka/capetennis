@@ -209,13 +209,27 @@ class RegisterController extends Controller
         }
 
         // 🔎 Validate amount
+        // If payfast_amount_due was reset to 0 (e.g. by cancel), fall back to items total
         $expectedAmount = (float) $order->payfast_amount_due;
+
+        if ($expectedAmount <= 0) {
+          $expectedAmount = (float) $order->items->sum('item_price') - (float) $order->wallet_reserved;
+          $expectedAmount = round(max($expectedAmount, 0), 2);
+
+          Log::info('[HYBRID ITN] payfast_amount_due was 0, recalculated from items', [
+            'order_id' => $order->id,
+            'recalculated' => $expectedAmount,
+          ]);
+        }
 
         $paidAmount = (float) ($data['amount_gross'] ?? 0);
 
         if (round($paidAmount, 2) !== round($expectedAmount, 2)) {
           throw new \Exception("Amount mismatch. Expected {$expectedAmount}, got {$paidAmount}");
         }
+
+        // Restore payfast_amount_due so the order record is accurate
+        $order->payfast_amount_due = $paidAmount;
 
         // 3️⃣ Mark PayFast portion
         $order->payfast_paid = true;

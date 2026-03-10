@@ -23,7 +23,20 @@ class PublicRoundRobinController extends Controller
   // =============================================================
   public function show(Draw $draw)
   {
-    
+    // Block unpublished draws for non-privileged users
+    if (!$draw->published) {
+      $user = auth()->user();
+      $isPrivileged = $user && (
+        (method_exists($user, 'isConvenorForEvent') && $user->isConvenorForEvent($draw->event_id))
+        || (method_exists($user, 'hasRole') && ($user->hasRole('convenor') || $user->hasRole('admin') || $user->hasRole('super-user')))
+        || $user->is_admin($draw->event_id)->count() > 0
+      );
+
+      if (!$isPrivileged) {
+        abort(403, 'This draw has not been published yet.');
+      }
+    }
+
     Log::info("🌍 [PUBLIC RR] Loading draw {$draw->id}", [
       'event_id' => $draw->event_id,
       'type' => $draw->event->eventType ?? null
@@ -79,6 +92,34 @@ class PublicRoundRobinController extends Controller
       'rrFixtures' => $hub['rrFixtures'],
       'oops' => $hub['oops'],
       'standings' => $hub['standings'],
+    ]);
+  }
+
+  // =============================================================
+  // PUBLIC BRACKET (AJAX - no auth required)
+  // =============================================================
+  public function mainBracket(Draw $draw)
+  {
+    $eventType = $draw->event->eventType ?? null;
+    $isEmpty = request()->boolean('empty');
+
+    if ($eventType == 13) {
+      $engine = new \App\Services\BracketEngine($draw);
+      $svgData = $engine->build();
+
+      return view('backend.draw.roundrobin.draw-svg', [
+        'draw' => $draw,
+        'svg' => $svgData,
+      ]);
+    }
+
+    $engine = new \App\Services\DynamicBracketEngine($draw);
+    $svgData = $engine->build();
+
+    return view('backend.draw.roundrobin.dynamic-bracket-svg', [
+      'draw' => $draw,
+      'svgData' => $svgData,
+      'emptyBracket' => $isEmpty,
     ]);
   }
 }

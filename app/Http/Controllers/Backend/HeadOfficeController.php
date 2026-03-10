@@ -13,6 +13,7 @@ use App\Models\EventRegion;
 use App\Models\Team;
 use App\Models\Venue;
 use App\Services\FixtureService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
@@ -501,5 +502,224 @@ class HeadOfficeController extends Controller
     $regions = $regions->sortBy('ordering')->values();
 
     return Fixtures::makeRegionFixtures($regions);
+  }
+
+  /**
+   * Return print-ready JSON for a SINGLE draw.
+   * Called once per draw from the JS sequential loader.
+   */
+  public function printDrawsData(Request $request, Event $event)
+  {
+    $drawId = $request->input('draw_id');
+
+    $draw = Draw::where('event_id', $event->id)
+      ->where('id', $drawId)
+      ->with([
+        'groups.groupRegistrations.registration.players',
+        'drawFixtures.registration1.players',
+        'drawFixtures.registration2.players',
+        'drawFixtures.fixtureResults',
+        'drawFixtures.drawGroup',
+      ])
+      ->first();
+
+    if (!$draw) {
+      return response()->json(['draw' => null]);
+    }
+
+    return response()->json(['draw' => $this->buildDrawPrintData($draw)]);
+  }
+
+  /**
+   * Generate a PDF for selected draws and stream it as a download.
+   */
+  public function printDrawsPdf(Request $request, Event $event)
+  {
+    $drawIds       = $request->input('draw_ids', []);
+    $printType     = $request->input('print_type', 'fixtures');
+    $withStandings = (bool) $request->input('include_standings', false);
+
+    $draws = Draw::where('event_id', $event->id)
+      ->whereIn('id', $drawIds)
+      ->with([
+        'groups.groupRegistrations.registration.players',
+        'drawFixtures.registration1.players',
+        'drawFixtures.registration2.players',
+        'drawFixtures.fixtureResults',
+        'drawFixtures.drawGroup',
+      ])
+      ->orderBy('drawName')
+      ->get();
+
+    $drawsData = $draws->map(fn($d) => $this->buildDrawPrintData($d))->values();
+
+    $pdf = Pdf::loadView('backend.draw.pdf.event-draws-pdf', [
+      'event'         => $event,
+      'draws'         => $drawsData,
+      'printType'     => $printType,
+      'withStandings' => $withStandings,
+    ]);
+
+    $pdf->setPaper('A4', 'portrait');
+
+    $filename = str_replace(' ', '_', $event->name) . '_draws.pdf';
+    return $pdf->download($filename);
+  }
+
+  /**
+   * Build a structured array of print data for one draw.
+   */
+  private function buildDrawPrintData(Draw $draw): array
+  {
+    $groups = $draw->groups->map(function ($g) {
+      return [
+        'id'   => $g->id,
+        'name' => $g->name,
+        'registrations' => $g->groupRegistrations->map(function ($gr) {
+          $reg    = $gr->registration;
+          $player = $reg?->players?->first();
+          return [
+            'id'           => $reg?->id,
+            'display_name' => $player?->full_name ?? 'Unknown',
+            'pivot'        => ['seed' => $gr->seed ?? 9999],
+          ];
+        })->values()->toArray(),
+      ];
+    })->values()->toArray();
+
+    $rrFixtures = [];
+    foreach ($draw->drawFixtures as $fx) {
+      $gid = $fx->draw_group_id ?: optional($fx->drawGroup)->id;
+      if (!$gid) continue;
+
+      $allSets = $fx->fixtureResults
+        ->sortBy('set_nr')
+        ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
+        ->values()->toArray();
+
+      $lastSet = $fx->fixtureResults->sortBy('set_nr')->last();
+
+      $rrFixtures[$gid][] = [
+        'id'         => $fx->id,
+        'group_id'   => $gid,
+        'r1_id'      => $fx->registration1_id,
+        'r2_id'      => $fx->registration2_id,
+        'all_sets'   => $allSets,
+        'score'      => implode(', ', $allSets),
+        'home_score' => $lastSet?->registration1_score,
+        'away_score' => $lastSet?->registration2_score,
+        'winner'     => $lastSet?->winner_registration ?? null,
+      ];
+    }
+
+    $stagePriority = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2, 'CONS' => 3, 'BOWL' => 4, 'SHIELD' => 5, 'SPOON' => 6];
+
+    // Build feeder maps from parent_fixture_id / loser_parent_fixture_id
+    $winnerFeeders = [];
+    $loserFeeders  = [];
+    foreach ($draw->drawFixtures as $fx) {
+      if ($fx->parent_fixture_id) {
+        $winnerFeeders[$fx->parent_fixture_id][] = $fx->match_nr;
+      }
+      if ($fx->loser_parent_fixture_id) {
+        $loserFeeders[$fx->loser_parent_fixture_id][] = $fx->match_nr;
+      }
+    }
+
+    $oops = $draw->drawFixtures
+      ->sortBy(function ($fx) use ($stagePriority) {
+        $sp = $stagePriority[$fx->stage ?? 'RR'] ?? 99;
+        return sprintf('%02d-%05d-%05d', $sp, (int)$fx->round, (int)$fx->match_nr);
+      })
+      ->map(function ($fx) use ($winnerFeeders, $loserFeeders) {
+        $sets = $fx->fixtureResults
+          ->sortBy('set_nr')
+          ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
+          ->implode(', ');
+
+        $winner = optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
+
+        $wFeed = $winnerFeeders[$fx->id] ?? [];
+        $lFeed = $loserFeeders[$fx->id]  ?? [];
+        sort($wFeed);
+        sort($lFeed);
+
+        return [
+          'id'           => $fx->id,
+          'stage'        => $fx->stage,
+          'round'        => $fx->round,
+          'match_nr'     => $fx->match_nr,
+          'playoff_type' => $fx->playoff_type,
+          'home'         => $fx->registration1?->display_name ?? 'TBD',
+          'away'         => $fx->registration2?->display_name ?? 'TBD',
+          'r1_id'        => $fx->registration1_id,
+          'r2_id'        => $fx->registration2_id,
+          'score'        => $sets,
+          'winner'       => $winner,
+          'winner_feeders' => $wFeed,
+          'loser_feeders'  => $lFeed,
+        ];
+      })->values()->toArray();
+
+    $standings = [];
+    foreach ($draw->groups as $group) {
+      foreach ($group->groupRegistrations as $gr) {
+        $reg = $gr->registration;
+        if (!$reg) continue;
+        $player = $reg->players?->first();
+        $standings[$group->id][$reg->id] = [
+          'reg_id'   => $reg->id,
+          'player'   => $player?->full_name ?? 'Unknown',
+          'wins'     => 0,
+          'losses'   => 0,
+          'sets_won' => 0,
+          'sets_lost'=> 0,
+        ];
+      }
+    }
+
+    foreach ($draw->drawFixtures as $fx) {
+      if (($fx->stage ?? 'RR') !== 'RR') continue;
+      if ($fx->fixtureResults->isEmpty()) continue;
+
+      $gid = $fx->draw_group_id ?: optional($fx->drawGroup)->id;
+      if (!$gid || !isset($standings[$gid])) continue;
+
+      foreach ($fx->fixtureResults->sortBy('set_nr') as $set) {
+        $s1 = (int) $set->registration1_score;
+        $s2 = (int) $set->registration2_score;
+
+        if (isset($standings[$gid][$fx->registration1_id])) {
+          $standings[$gid][$fx->registration1_id]['sets_won']  += $s1;
+          $standings[$gid][$fx->registration1_id]['sets_lost'] += $s2;
+        }
+        if (isset($standings[$gid][$fx->registration2_id])) {
+          $standings[$gid][$fx->registration2_id]['sets_won']  += $s2;
+          $standings[$gid][$fx->registration2_id]['sets_lost'] += $s1;
+        }
+      }
+
+      $lastSet = $fx->fixtureResults->sortBy('set_nr')->last();
+      if ($lastSet) {
+        $s1 = (int) $lastSet->registration1_score;
+        $s2 = (int) $lastSet->registration2_score;
+        if ($s1 > $s2) {
+          if (isset($standings[$gid][$fx->registration1_id])) $standings[$gid][$fx->registration1_id]['wins']++;
+          if (isset($standings[$gid][$fx->registration2_id])) $standings[$gid][$fx->registration2_id]['losses']++;
+        } elseif ($s2 > $s1) {
+          if (isset($standings[$gid][$fx->registration2_id])) $standings[$gid][$fx->registration2_id]['wins']++;
+          if (isset($standings[$gid][$fx->registration1_id])) $standings[$gid][$fx->registration1_id]['losses']++;
+        }
+      }
+    }
+
+    return [
+      'id'         => $draw->id,
+      'name'       => $draw->drawName ?? 'Draw #' . $draw->id,
+      'groups'     => $groups,
+      'rrFixtures' => $rrFixtures,
+      'oops'       => $oops,
+      'standings'  => $standings,
+    ];
   }
 }

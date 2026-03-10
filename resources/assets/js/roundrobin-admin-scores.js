@@ -83,6 +83,37 @@
         });
     });
 
+    // DELETE SCORE
+    $(document).on('click', '.rr-delete-score', function () {
+      var $btn = $(this);
+      var id = $btn.data('id');
+      if (!confirm('Delete this score?')) return;
+
+      $btn.prop('disabled', true);
+      var url = window.RR_DELETE_SCORE_URL.replace('FIXTURE_ID', id);
+
+      $.ajax({ url: url, method: 'DELETE' })
+        .done(function () {
+          toastr.success('Score deleted');
+          // Clear score cell & colours in the table row
+          var tr = $('#rr-score-table tr').filter(function () {
+            return $(this).find('td:first').text().trim() == id ||
+                   $(this).find('td.d-none:first').text().trim() == id;
+          });
+          if (tr.length) {
+            tr.find('td').eq(5).text('');
+            tr.find('td').removeClass('bg-success bg-danger text-white');
+            $btn.remove();
+          }
+        })
+        .fail(function (err) {
+          toastr.error(err.responseJSON?.message || 'Error deleting score');
+        })
+        .always(function () {
+          $btn.prop('disabled', false);
+        });
+    });
+
   });
 
 })(jQuery, window, document);

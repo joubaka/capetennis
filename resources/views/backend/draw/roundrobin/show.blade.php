@@ -11,7 +11,7 @@
     border-collapse: collapse !important;
     table-layout: fixed !important;
     background: #ffffff !important;
-    width: max-content !important; /* important: allow full name width */
+    /* width is set dynamically by JS per group */
   }
 
   /* Matrix must scroll */
@@ -23,53 +23,59 @@
   }
 
   /* ----------------------------------------------
-   Smaller boxes: 32 × 32
+   All cells — uniform sizing via table-layout:fixed
    ---------------------------------------------- */
   .rr-matrix-table td.rr-score-cell,
   .rr-matrix-table td {
-    padding: 0 !important;
-    height: 32px !important;
-    width: 32px !important;
-    min-width: 32px !important;
-    max-width: 32px !important;
+    padding: 4px 6px !important;
+    height: 34px !important;
     text-align: center;
     vertical-align: middle;
     border: 1px solid #dcdcdc !important;
     font-size: 12px !important;
     background: #ffffff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
-    /* ==============================================
+  /* ==============================================
    DIAGONAL BLACK
    ============================================== */
-    .rr-matrix-table td.bg-light {
-      background: #000 !important;
-      border: 1px solid #fff !important;
-    }
+  .rr-matrix-table td.bg-light,
+  .rr-matrix-table td.bg-diagonal {
+    background: #000 !important;
+    border: 1px solid #333 !important;
+  }
 
   /* ==============================================
-   HEADER — allow full name width
+   HEADER — column names (border only, no fill)
    ============================================== */
   .rr-matrix-table thead th {
     padding: 6px 10px !important;
-    background: #0a3566 !important;
-    color: #fff !important;
-    font-weight: 600;
+    background: #fff !important;
+    color: #0a3566 !important;
+    border: 2px solid #0a3566 !important;
+    font-weight: 700;
     font-size: 12px !important;
-    white-space: nowrap !important; /* important */
-    width:200px;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   /* ==============================================
-   LEFT NAMES — allow full width
+   LEFT NAMES — row headers (border only, no fill)
    ============================================== */
   .rr-matrix-table tbody th {
-    background: #0b722e !important;
-    color: #fff !important;
-    font-weight: 600;
+    background: #fff !important;
+    color: #0b722e !important;
+    border: 2px solid #0b722e !important;
+    font-weight: 700;
     font-size: 13px !important;
     padding: 6px 12px !important;
-    white-space: nowrap !important; /* important */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   /* ==============================================
@@ -170,6 +176,40 @@
   }
 
   /* ==============================================
+   BRACKET ZOOM CONTROLS
+   ============================================== */
+  .bracket-zoom-controls {
+    display: none;
+    gap: 6px;
+    align-items: center;
+  }
+  .bracket-zoom-controls .btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+  }
+  .bracket-zoom-level {
+    font-size: 12px;
+    min-width: 40px;
+    text-align: center;
+    color: #666;
+  }
+  .bracket-zoom-hint {
+    display: none;
+    font-size: 11px;
+    color: #999;
+  }
+  #bracket-zoom-inner {
+    transform-origin: 0 0;
+    transition: transform 0.1s ease;
+  }
+
+  /* ==============================================
    BRACKET VISUALIZATION STYLES
    ============================================== */
   .bracket-container {
@@ -240,8 +280,122 @@
     background: #dee2e6;
   }
 
+  /* ==============================================
+   RESPONSIVE — SMALL DEVICES
+   ============================================== */
+  @media (max-width: 767.98px) {
+    /* Tab navigation: scrollable pills */
+    #rrTabs {
+      flex-wrap: nowrap !important;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      white-space: nowrap;
+      padding-bottom: 2px;
+    }
+    #rrTabs::-webkit-scrollbar { display: none; }
+    #rrTabs .nav-item { flex-shrink: 0; }
+    #rrTabs .nav-link { font-size: 12px; padding: 6px 10px; }
 
+    /* Draw navigator header — stack vertically */
+    .card.border-primary .d-flex.justify-content-between {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 8px;
+    }
+    .card.border-primary .d-flex.justify-content-between > div:last-child {
+      width: 100%;
+      flex-wrap: wrap;
+    }
 
+    /* Settings — overview stats: 2 per row */
+    #settings-pane .row.g-3 > .col-md-3 { flex: 0 0 50%; max-width: 50%; }
+
+    /* Settings — preset selector full width */
+    #settings-pane .col-md-8 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Settings — basic settings cols */
+    #settings-pane .col-md-3 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Playoff config position buttons — smaller */
+    .position-btn { font-size: 10px !important; padding: 2px 5px !important; }
+
+    /* Groups tab — header stack */
+    #groups-pane .alert.d-flex {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 8px;
+    }
+    #groups-pane .alert .d-flex.align-items-center.gap-2 {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    /* Groups — available players + groups: full-width stacked */
+    #groups-pane .col-md-4,
+    #groups-pane .col-md-8 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+    #groups-pane .col-md-8 .col-6 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+    /* Reduce group card height on mobile */
+    #groups-pane .card-body[style*="min-height: 150px"] {
+      min-height: 80px !important;
+    }
+
+    /* OOP table — horizontal scroll */
+    #oop-pane .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #rr-order-table { min-width: 600px; }
+    #rr-order-table th, #rr-order-table td { font-size: 11px; padding: 4px 6px !important; white-space: nowrap; }
+
+    /* Print tab — 2 per row instead of 4 */
+    #print-pane .col-md-3 { flex: 0 0 50%; max-width: 50%; }
+    #print-pane .card-body.d-flex { padding: 12px 8px !important; }
+    #print-pane .card-body i[style*="font-size: 2.5rem"] { font-size: 1.8rem !important; }
+    #print-pane h6 { font-size: 12px; }
+    #print-pane p.small { font-size: 10px; margin-bottom: 8px !important; }
+
+    /* Bracket SVG wrapper — pinch-to-zoom */
+    #main-bracket-wrapper { overflow: auto; -webkit-overflow-scrolling: touch; }
+    #main-bracket-wrapper svg { min-width: 800px; }
+    .bracket-zoom-controls { display: flex !important; }
+    .bracket-zoom-hint { display: block !important; }
+
+    /* Matrix — already scrollable, ensure touch */
+    .rr-matrix-scroll { -webkit-overflow-scrolling: touch; }
+
+    /* Bracket visualization containers */
+    .bracket-container { min-width: 180px; padding: 10px; margin: 5px; }
+    .bracket-seed { min-width: 120px; padding: 4px 6px; font-size: 11px; }
+    .bracket-matchup { padding: 5px; margin: 5px 0; }
+
+    /* Score modal — full width on mobile */
+    #rrScoreModal .modal-dialog { margin: 8px; max-width: calc(100% - 16px); }
+
+    /* Card header flex items — wrap on small */
+    .card-header.d-flex {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    /* Extra-small: print cards single column */
+    #print-pane .col-md-3 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Groups: reduce source player list height */
+    #groups-pane .card-body[style*="max-height: 500px"] {
+      max-height: 250px !important;
+    }
+
+    /* Standings / matrix heading sizes */
+    h5.card-title, .card-header h5 { font-size: 14px; }
+    h6.fw-bold { font-size: 13px; }
+  }
 
 
 </style>
@@ -254,24 +408,24 @@
      DRAW NAVIGATOR / SELECTOR
    ============================ --}}
 <div class="card mb-3 border-primary">
-  <div class="card-body py-2">
-    <div class="d-flex justify-content-between align-items-center">
+<div class="card-body py-2">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
         
-      {{-- Current Draw Info --}}
-      <div>
-        <h5 class="mb-0">
-          <i class="ti ti-tournament me-2 text-primary"></i>
-          <strong>{{ $draw->drawName ?? 'Unnamed Draw' }}</strong>
-        </h5>
-        <small class="text-muted">
-          {{ $draw->category->name ?? 'No Category' }} 
-          @ {{ $draw->event->name ?? 'Unknown Event' }}
-          <span class="badge bg-label-info ms-2">Draw ID: {{ $draw->id }}</span>
-        </small>
-      </div>
+    {{-- Current Draw Info --}}
+    <div class="text-truncate">
+      <h5 class="mb-0 fs-6 fs-md-5">
+        <i class="ti ti-tournament me-1 text-primary"></i>
+        <strong>{{ $draw->drawName ?? 'Unnamed Draw' }}</strong>
+      </h5>
+      <small class="text-muted d-inline-block text-truncate" style="max-width: 100%;">
+        {{ $draw->category->name ?? 'No Category' }} 
+        @ {{ $draw->event->name ?? 'Unknown Event' }}
+        <span class="badge bg-label-info ms-1 d-none d-sm-inline">Draw ID: {{ $draw->id }}</span>
+      </small>
+    </div>
 
-      {{-- Draw Switcher Dropdown --}}
-      <div class="d-flex align-items-center gap-2">
+    {{-- Draw Switcher Dropdown --}}
+    <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-wrap">
         @php
           $eventDraws = $draw->event->draws ?? collect();
         @endphp
@@ -282,7 +436,8 @@
                     type="button" 
                     data-bs-toggle="dropdown">
               <i class="ti ti-switch-horizontal me-1"></i>
-              Switch Draw ({{ $eventDraws->count() }} total)
+              <span class="d-none d-sm-inline">Switch Draw ({{ $eventDraws->count() }})</span>
+              <span class="d-sm-none">Switch</span>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
               <li><h6 class="dropdown-header">Event Draws</h6></li>
@@ -304,7 +459,7 @@
 
         <a href="{{ route('headOffice.show', $draw->event_id) }}" 
            class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i> Back to Event
+          <i class="ti ti-arrow-left me-1"></i><span class="d-none d-sm-inline">Back to Event</span>
         </a>
       </div>
 
@@ -370,6 +525,24 @@
           data-bs-target="#groups-pane"
           type="button" role="tab">
     Players & Groups
+  </button>
+</li>
+<li class="nav-item" role="presentation">
+  <button class="nav-link"
+          id="print-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#print-pane"
+          type="button" role="tab">
+    <i class="ti ti-printer me-1"></i> Print
+  </button>
+</li>
+<li class="nav-item" role="presentation">
+  <button class="nav-link"
+          id="notes-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#notes-pane"
+          type="button" role="tab">
+    <i class="ti ti-notes me-1"></i> Rules & Notes
   </button>
 </li>
 
@@ -799,6 +972,7 @@
           </button>
         </div>
         <div class="card-body p-0">
+         <div class="table-responsive">
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
     <thead class="table-light">
         <tr>
@@ -807,13 +981,14 @@
             <th class="text-center">VS</th>
             <th>Player 2</th>
             <th class="text-center">Round</th>
-            <th class="text-center">Time</th>
+            <th class="text-center d-none d-sm-table-cell">Time</th>
             <th class="text-center">Score</th>
             <th class="text-center">Actions</th>
         </tr>
     </thead>
     <tbody></tbody>
 </table>
+         </div>
 
         </div>
       </div>
@@ -896,14 +1071,15 @@
  <div class="tab-pane fade" id="groups-pane" role="tabpanel">
 
   {{-- Header with Draw Info --}}
-    <div class="alert alert-primary d-flex justify-content-between align-items-center mb-3">
-    <div>
+    <div class="alert alert-primary mb-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+    <div class="text-truncate">
       <i class="ti ti-info-circle me-1"></i>
       <strong>Assigning players to:</strong> 
       <span class="badge bg-primary ms-1">{{ $draw->drawName ?? 'Unnamed Draw' }}</span>
-      <span class="text-muted ms-2" id="groups-count-label">| {{ $groups->count() }} Groups</span>
+      <span class="text-muted ms-2 d-none d-sm-inline" id="groups-count-label">| {{ $groups->count() }} Groups</span>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
       {{-- Number of Groups Selector --}}
       <div class="d-flex align-items-center">
         <label class="form-label mb-0 me-2 text-nowrap fw-bold">Groups:</label>
@@ -922,19 +1098,26 @@
         </button>
       @endif
       <button class="btn btn-sm btn-success" id="btn-regenerate-fixtures">
-        <i class="ti ti-refresh"></i> Regenerate Fixtures
+        <i class="ti ti-refresh"></i><span class="d-none d-sm-inline"> Regenerate Fixtures</span>
       </button>
+    </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center bg-light">
+    <div class="card-header d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 bg-light">
       <h5 class="mb-0">
         <i class="ti ti-users me-1"></i> Assign Players to Groups
       </h5>
-      <button class="btn btn-sm btn-primary" id="btn-save-groups">
-        <i class="ti ti-device-floppy"></i> Save Group Assignments
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-primary" id="btn-save-groups">
+          <i class="ti ti-device-floppy"></i> Save Group Assignments
+        </button>
+        <button class="btn btn-sm {{ $draw->locked ? 'btn-danger' : 'btn-outline-warning' }}" id="btn-toggle-lock">
+          <i class="ti {{ $draw->locked ? 'ti-lock' : 'ti-lock-open' }} me-1"></i>
+          <span id="lock-label">{{ $draw->locked ? 'Locked' : 'Unlocked' }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="card-body">
@@ -1083,7 +1266,7 @@
 ========================================= -->
 
   <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Brackets</h5>
         <div class="d-flex gap-2">
           <button class="btn btn-sm btn-success" id="btn-generate-main-bracket">
@@ -1092,14 +1275,254 @@
         </div>
     </div>
 
+    {{-- Zoom Controls --}}
+    <div class="bracket-zoom-controls mb-2" id="bracket-zoom-bar">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="bracket-zoom-out" title="Zoom out">−</button>
+      <span class="bracket-zoom-level" id="bracket-zoom-label">100%</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="bracket-zoom-in" title="Zoom in">+</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="bracket-zoom-reset" title="Reset zoom">↺</button>
+      <span class="bracket-zoom-hint"><i class="ti ti-pinch me-1"></i>Pinch to zoom</span>
+    </div>
+
     {{-- Main Bracket Container (loaded via AJAX) --}}
-    <div id="main-bracket-wrapper">
-      <div class="text-center text-muted py-5">
-        <div class="spinner-border spinner-border-sm"></div>
-        <div class="mt-2">Loading playoff brackets…</div>
+    <div id="main-bracket-wrapper" class="overflow-auto" style="touch-action: pan-x pan-y;">
+      <div id="bracket-zoom-inner">
+        <div class="text-center text-muted py-5">
+          <div class="spinner-border spinner-border-sm"></div>
+          <div class="mt-2">Loading playoff brackets…</div>
+        </div>
       </div>
     </div>
    
+
+</div>
+
+{{-- ============================
+     PRINT TAB
+   ============================ --}}
+<div class="tab-pane fade" id="print-pane" role="tabpanel">
+  <div class="card">
+    <div class="card-header">
+      <h5 class="card-title mb-0"><i class="ti ti-printer me-1"></i> Print Options</h5>
+      <small class="text-muted">Generate print-friendly pages for fixtures, matrix, brackets and blank draws</small>
+    </div>
+    <div class="card-body">
+      <div class="row g-4">
+
+        {{-- Print Fixtures --}}
+        <div class="col-6 col-md-3">
+          <div class="card border h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-4">
+              <i class="ti ti-list-details mb-3" style="font-size: 2.5rem; color: #0d6efd;"></i>
+              <h6 class="fw-bold mb-1">Order of Play</h6>
+              <p class="text-muted small mb-3">All fixtures with stage, round and scores.</p>
+              <button class="btn btn-primary btn-sm" id="btn-print-fixtures">
+                <i class="ti ti-printer me-1"></i> Print Fixtures
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Print Matrix --}}
+        <div class="col-6 col-md-3">
+          <div class="card border h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-4">
+              <i class="ti ti-grid-dots mb-3" style="font-size: 2.5rem; color: #198754;"></i>
+              <h6 class="fw-bold mb-1">Round Robin Matrix</h6>
+              <p class="text-muted small mb-2">Matrix grid with all scores per group.</p>
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="chk-print-standings">
+                <label class="form-check-label small" for="chk-print-standings">Include Standings</label>
+              </div>
+              <button class="btn btn-success btn-sm" id="btn-print-matrix">
+                <i class="ti ti-printer me-1"></i> Print Matrix
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Print Bracket (with names) --}}
+        <div class="col-6 col-md-3">
+          <div class="card border h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-4">
+              <i class="ti ti-tournament mb-3" style="font-size: 2.5rem; color: #0d6efd;"></i>
+              <h6 class="fw-bold mb-1">Playoff Bracket</h6>
+              <p class="text-muted small mb-3">Full bracket with player names and scores.</p>
+              <button class="btn btn-primary btn-sm" id="btn-print-bracket">
+                <i class="ti ti-printer me-1"></i> Print Bracket
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Print Empty Bracket --}}
+        <div class="col-6 col-md-3">
+          <div class="card border h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-4">
+              <i class="ti ti-tournament mb-3" style="font-size: 2.5rem; color: #6f42c1;"></i>
+              <h6 class="fw-bold mb-1">Empty Bracket</h6>
+              <p class="text-muted small mb-3">Blank structure — no names, for manual use.</p>
+              <button class="btn btn-outline-dark btn-sm" id="btn-print-empty-bracket">
+                <i class="ti ti-printer me-1"></i> Print Empty Bracket
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Print Combined (Matrix + Fixtures on 1 page) --}}
+        <div class="col-6 col-md-3">
+          <div class="card border h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-4">
+              <i class="ti ti-layout-rows mb-3" style="font-size: 2.5rem; color: #e65100;"></i>
+              <h6 class="fw-bold mb-1">Matrix + Fixtures</h6>
+              <p class="text-muted small mb-3">Matrix on top, fixtures below — one page.</p>
+              <button class="btn btn-warning btn-sm" id="btn-print-combined">
+                <i class="ti ti-printer me-1"></i> Print Combined
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Print Draw Pack (everything) --}}
+        <div class="col-6 col-md-3">
+          <div class="card border border-dark h-100 text-center">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center py-3">
+              <i class="ti ti-package mb-2" style="font-size: 2.5rem; color: #212529;"></i>
+              <h6 class="fw-bold mb-2">Draw Pack</h6>
+              <div class="text-start w-100 px-2 mb-2" style="font-size:12px;">
+                <div class="form-check mb-1">
+                  <input class="form-check-input pack-section" type="checkbox" id="pack-notes" checked>
+                  <label class="form-check-label" for="pack-notes">Rules &amp; Notes</label>
+                </div>
+                <div class="form-check mb-1">
+                  <input class="form-check-input pack-section" type="checkbox" id="pack-matrix" checked>
+                  <label class="form-check-label" for="pack-matrix">RR Matrix</label>
+                </div>
+                <div class="form-check mb-1">
+                  <input class="form-check-input pack-section" type="checkbox" id="pack-rr-fixtures" checked>
+                  <label class="form-check-label" for="pack-rr-fixtures">RR Fixtures</label>
+                </div>
+                <div class="form-check mb-1">
+                  <input class="form-check-input pack-section" type="checkbox" id="pack-playoff-fixtures" checked>
+                  <label class="form-check-label" for="pack-playoff-fixtures">Playoff Fixtures</label>
+                </div>
+                <div class="form-check mb-1">
+                  <input class="form-check-input pack-section" type="checkbox" id="pack-brackets" checked>
+                  <label class="form-check-label" for="pack-brackets">Blank Brackets</label>
+                </div>
+              </div>
+              <button class="btn btn-dark btn-sm" id="btn-print-draw-pack">
+                <i class="ti ti-printer me-1"></i> Print Draw Pack
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- ============================
+     RULES & NOTES TAB
+   ============================ --}}
+<div class="tab-pane fade" id="notes-pane" role="tabpanel">
+  @php
+    $drawNotes = optional($draw->settings)->notes ?? [];
+    $playoffConfig = optional($draw->settings)->playoff_config ?? [];
+    $enabledBrackets = collect($playoffConfig)->where('enabled', true)->values();
+    $defaultGeneralNotes = "General Rules\n\nPlayers must be ready to play at their scheduled time.\nA 5-minute warm-up is allowed before the match starts.\nStandard ITF tennis rules apply unless otherwise specified by the tournament organizer.\nThe tournament referee's decision is final in all disputes.";
+    $defaultRRNotes = "Round Robin Match Format\n\nMatches consist of 1 set starting from 0–0.\nThe first player/team to 4 games wins the set.\nAt 3–3, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+    $defaultPlayoffNotes = "Top Bracket Match Format\n\nMatches are played as Best of 3 sets.\nEach set starts at 2–2.\nAdvantage scoring applies in all games.\nIf a third set is required, it is played as a 10-point match tiebreak.";
+    $defaultBracketNotes = "Other Brackets Match Format\n\nMatches consist of 1 full set starting from 0–0.\nThe first player/team to 6 games wins the set.\nAt 6–6, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+  @endphp
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="card-title mb-0"><i class="ti ti-notes me-1"></i> Rules & Notes</h5>
+        <small class="text-muted">Edit rules for each section. These will appear on printed draw packs.</small>
+      </div>
+      <button class="btn btn-success btn-sm" id="btn-save-notes">
+        <i class="ti ti-device-floppy me-1"></i> Save All Notes
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="row g-4">
+
+        {{-- General Rules --}}
+        <div class="col-md-6">
+          <div class="card border h-100">
+            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="ti ti-info-circle me-1 text-primary"></i> General Rules</h6>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <label class="form-check-label small text-muted">Print</label>
+              </div>
+            </div>
+            <div class="card-body p-2">
+              <textarea class="form-control notes-field" data-key="general" rows="6" placeholder="Enter general event rules...">{{ $drawNotes['general'] ?? $defaultGeneralNotes }}</textarea>
+            </div>
+          </div>
+        </div>
+
+        {{-- Round Robin Scoring --}}
+        <div class="col-md-6">
+          <div class="card border h-100">
+            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="ti ti-tournament me-1 text-success"></i> Round Robin Scoring Rules</h6>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <label class="form-check-label small text-muted">Print</label>
+              </div>
+            </div>
+            <div class="card-body p-2">
+              <textarea class="form-control notes-field" data-key="round_robin" rows="6" placeholder="e.g. Best of 3 sets, tiebreak at 6-all, 10-point match tiebreak in 3rd...">{{ $drawNotes['round_robin'] ?? $defaultRRNotes }}</textarea>
+            </div>
+          </div>
+        </div>
+
+        {{-- Playoff Rules --}}
+        <div class="col-md-6">
+          <div class="card border h-100">
+            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="ti ti-trophy me-1 text-warning"></i> Playoff Rules</h6>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <label class="form-check-label small text-muted">Print</label>
+              </div>
+            </div>
+            <div class="card-body p-2">
+              <textarea class="form-control notes-field" data-key="playoffs" rows="6" placeholder="e.g. Single elimination, 3rd/4th playoff for losers of semis...">{{ $drawNotes['playoffs'] ?? $defaultPlayoffNotes }}</textarea>
+            </div>
+          </div>
+        </div>
+
+        {{-- Per-bracket rules for each enabled bracket --}}
+        @foreach($enabledBrackets as $bracket)
+          <div class="col-md-6">
+            <div class="card border h-100">
+              <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                  <i class="ti ti-brackets me-1 text-info"></i>
+                  {{ $bracket['name'] ?? 'Bracket' }} Rules
+                  <span class="badge bg-secondary ms-1" style="font-size: 10px;">{{ $bracket['slug'] }}</span>
+                </h6>
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input notes-enabled" type="checkbox" checked>
+                  <label class="form-check-label small text-muted">Print</label>
+                </div>
+              </div>
+              <div class="card-body p-2">
+                <textarea class="form-control notes-field" data-key="bracket_{{ $bracket['slug'] }}" rows="5"
+                  placeholder="Rules specific to {{ $bracket['name'] ?? 'this bracket' }}...">{{ $drawNotes['bracket_' . $bracket['slug']] ?? (($bracket['slug'] ?? '') === 'main' ? $defaultPlayoffNotes : $defaultBracketNotes) }}</textarea>
+              </div>
+            </div>
+          </div>
+        @endforeach
+
+      </div>
+    </div>
+  </div>
 </div>
 
   </div> {{-- END TABS --}}
@@ -1163,9 +1586,14 @@
 
       </div>
 
-      <div class="modal-footer">
-        <button type="submit" class="btn btn-primary">Save Score</button>
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+      <div class="modal-footer justify-content-between">
+        <button type="button" class="btn btn-outline-danger" id="rrm-delete-score">
+          <i class="ti ti-trash me-1"></i> Delete Score
+        </button>
+        <div>
+          <button type="submit" class="btn btn-primary">Save Score</button>
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        </div>
       </div>
 
     </form>
@@ -1188,6 +1616,7 @@
     window.RR_STANDINGS = @json($standings);
 
     window.RR_SAVE_SCORE_URL = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
+    window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
 
     window.EVENT_ID = {{ $draw->event_id }};
     const DRAW_ID   = {{ $draw->id }};
@@ -2025,6 +2454,24 @@ function updatePlayerAccounting() {
     });
 }
 
+// Seed builder: straight alphabetical order for EVEN group counts
+// (gives natural cross-group pairing A↔D, B↔C via standard bracket
+// matchups).  For ODD group counts, rotate by floor(N/2) per position
+// to avoid same-group R1 clashes.
+function buildSnakeSeeds(positions, groupNames) {
+    var seeds = [];
+    var n = groupNames.length;
+    var halfOffset = Math.floor(n / 2);
+    positions.forEach(function(pos, posIdx) {
+        var offset = (n >= 3 && n % 2 !== 0) ? (posIdx * halfOffset) % n : 0;
+        for (var g = 0; g < n; g++) {
+            var gn = groupNames[(g + offset) % n];
+            seeds.push({ group: gn, position: pos });
+        }
+    });
+    return seeds;
+}
+
 // Generate detailed seeding chart - CASCADES TO MATRIX AND BRACKET
 function updateSeedingChart() {
     console.log('📊 [SYNC] updateSeedingChart called');
@@ -2059,19 +2506,8 @@ function updateSeedingChart() {
         const positions = playoff.positions || [];
         const totalPlayers = positions.length * numGroups;
         
-        // Calculate seeding for this playoff
-        let seeds = [];
-        
-        // For each position selected (e.g., #1, #2, #3)
-        positions.forEach(position => {
-            // For each group
-            groupNames.forEach(groupName => {
-                seeds.push({
-                    group: groupName,
-                    position: position
-                });
-            });
-        });
+        // Calculate seeding for this playoff (snake order)
+        let seeds = buildSnakeSeeds(positions, groupNames);
         
         // Now show each seed and where it goes in the bracket
         if (seeds.length > 0) {
@@ -2235,16 +2671,8 @@ function updateBracketVisualization() {
         const positions = playoff.positions || [];
         const size = playoff.size;
         
-        // Calculate seeds
-        let seeds = [];
-        positions.forEach(position => {
-            groupNames.forEach(groupName => {
-                seeds.push({
-                    group: groupName,
-                    position: position
-                });
-            });
-        });
+        // Calculate seeds (snake order)
+        let seeds = buildSnakeSeeds(positions, groupNames);
         
         // Generate standard bracket matchups based on size
         const matchups = generateBracketMatchups(size);
@@ -2654,6 +3082,59 @@ $('#settings-boxes').on('change', function() {
     updateFlowPreview();
 });
 
+// ============================================================
+// LOCK / UNLOCK DRAW TOGGLE
+// ============================================================
+$('#btn-toggle-lock').on('click', function() {
+    const $btn = $(this);
+    const isLocked = $btn.hasClass('btn-danger');
+    const action = isLocked ? 'unlock' : 'lock';
+
+    Swal.fire({
+        title: isLocked ? 'Unlock Draw?' : 'Lock Draw?',
+        html: isLocked
+            ? '<p>Unlocking allows changes to groups, fixtures and scores.</p>'
+            : '<p>Locking prevents changes to groups, fixtures and scores.</p>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, ' + action + ' it',
+        confirmButtonColor: isLocked ? '#198754' : '#dc3545'
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+
+        $btn.prop('disabled', true);
+
+        $.ajax({
+            url: `${APP_URL}/backend/draw/${DRAW_ID}/toggle-lock`,
+            method: 'POST',
+            data: { _token: '{{ csrf_token() }}' },
+            success: function(response) {
+                if (response.success) {
+                    toastr.success(response.message);
+
+                    if (response.locked) {
+                        $btn.removeClass('btn-outline-warning').addClass('btn-danger');
+                        $btn.find('i').removeClass('ti-lock-open').addClass('ti-lock');
+                        $('#lock-label').text('Locked');
+                    } else {
+                        $btn.removeClass('btn-danger').addClass('btn-outline-warning');
+                        $btn.find('i').removeClass('ti-lock').addClass('ti-lock-open');
+                        $('#lock-label').text('Unlocked');
+                    }
+                } else {
+                    toastr.error(response.message || 'Failed to toggle lock.');
+                }
+            },
+            error: function(xhr) {
+                toastr.error(xhr.responseJSON?.message || 'Error toggling lock.');
+            },
+            complete: function() {
+                $btn.prop('disabled', false);
+            }
+        });
+    });
+});
+
 $(document).on('click', '#btn-import-teams', function () {
     const url = `${APP_URL}/backend/event/${EVENT_ID}/import-teams`;
 
@@ -2950,6 +3431,1050 @@ $(document).ready(function() {
 </script>
 
 <script src="{{ asset('assets/js/draw-roundrobin1.js') }}"></script>
+
+<script>
+// ============================================================
+// PRINT TAB HANDLERS
+// ============================================================
+(function($) {
+  const drawName = @json($draw->drawName ?? 'Draw');
+  const printStyles = `
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; padding: 15px; color: #000; font-size: 14px; }
+      h1 { font-size: 24px; margin-bottom: 6px; }
+      h2 { font-size: 18px; color: #555; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+      th, td { border: 1px solid #999; padding: 8px 6px; text-align: left; }
+      th { background: #333; color: #fff; font-weight: 600; }
+      .text-center { text-align: center; }
+      .fw-bold { font-weight: bold; }
+      .text-success { color: #198754; }
+      .text-muted { color: #888; }
+      .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+      .bg-dark { background: #000; color: #fff; }
+      .bg-primary { background: #0d6efd; color: #fff; }
+      .bg-secondary { background: #6c757d; color: #fff; }
+      svg { max-width: 100%; }
+      .page-break { page-break-before: always; }
+      .rr-matrix-table { border-collapse: collapse; table-layout: fixed; }
+      .rr-matrix-table td, .rr-matrix-table th { border: 1px solid #999; padding: 9px 5px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rr-matrix-table thead th { background: #fff; color: #0a3566; border: 2px solid #0a3566; font-weight: 700; padding: 9px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rr-matrix-table tbody th { background: #fff; color: #0b722e; border: 2px solid #0b722e; font-weight: 700; white-space: nowrap; text-align: left; padding: 9px 6px; overflow: hidden; text-overflow: ellipsis; }
+      .rr-matrix-table .rr-win { color: #00a859; font-weight: bold; }
+      .rr-matrix-table .rr-loss { color: #d32f2f; font-weight: bold; }
+      .rr-matrix-table td.bg-diagonal, .rr-matrix-table td.bg-light { background: #000 !important; border-color: #333; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      .standings-table { width: auto; margin-top: 10px; }
+      .standings-table th { border: 2px solid #222; color: #222; font-weight: 700; }
+      .bracket-print-wrap svg { width: 100% !important; }
+      @media print {
+        body { padding: 5px; }
+        @page { margin: 8mm; }
+        *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+      }
+    </style>`;
+
+  const landscapeStyles = `
+    <style>
+      @page { size: landscape; margin: 5mm; }
+      html, body { margin: 0 !important; padding: 0 !important; width: 100%; height: 100%; overflow: visible; }
+      .bracket-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 2px; }
+      .bracket-header h1 { font-size: 13px; margin: 0; }
+      .bracket-header h2 { font-size: 10px; margin: 0; color: #555; }
+      .bracket-print-wrap { width: 100%; height: calc(100vh - 20px); overflow: visible; }
+      .bracket-print-wrap svg {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain;
+      }
+      @media print {
+        html, body { height: 100%; overflow: visible !important; }
+        .bracket-print-wrap { width: 100%; height: calc(100vh - 15px); margin: 0; padding: 0; page-break-inside: avoid; break-inside: avoid; }
+        .bracket-print-wrap svg {
+          width: 100% !important;
+          height: 100% !important;
+          max-width: 100%;
+          max-height: 100%;
+          page-break-inside: avoid;
+        }
+        *:last-child { margin-bottom: 0 !important; }
+      }
+    </style>`;
+
+  function openPrintWindow(title, bodyHtml, landscape) {
+    var styles = printStyles + (landscape ? landscapeStyles : '');
+    const w = window.open('', '_blank');
+    w.document.write('<!DOCTYPE html><html><head><title>' + title + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
+    w.document.close();
+    // Remove fixed width/height from SVGs so viewBox controls full-page scaling
+    if (landscape) {
+      var svgs = w.document.querySelectorAll('.bracket-print-wrap svg');
+      svgs.forEach(function(svg) {
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+      });
+    }
+    w.onload = function() { w.print(); };
+  }
+
+  // ---- FEEDER LABEL HELPER ----
+  function feederLabel(fx, slot) {
+    // slot: 'home' or 'away'
+    if (fx.stage === 'RR') return '';
+    var wf = fx.winner_feeders || [];
+    var lf = fx.loser_feeders || [];
+    var idx = (slot === 'home') ? 0 : 1;
+    var playerName = (slot === 'home') ? fx.home : fx.away;
+
+    // If player is already known, no feeder label needed
+    if (playerName && playerName !== 'TBD' && playerName !== '---') return '';
+
+    // Two winner feeders (normal bracket progression)
+    if (wf.length >= 2) return '<small style="color:#0d6efd;">W' + wf[idx] + '</small>';
+    // One winner + one loser feeder (e.g. position playoff fed by winners + losers)
+    if (wf.length === 1 && lf.length >= 1) {
+      return idx === 0
+        ? '<small style="color:#0d6efd;">W' + wf[0] + '</small>'
+        : '<small style="color:#e65100;">L' + lf[0] + '</small>';
+    }
+    // Two loser feeders (e.g. consolation bracket)
+    if (lf.length >= 2) return '<small style="color:#e65100;">L' + lf[idx] + '</small>';
+    if (lf.length === 1 && idx === 0) return '<small style="color:#e65100;">L' + lf[0] + '</small>';
+    return '';
+  }
+
+  // ---- PRINT FIXTURES ----
+  $('#btn-print-fixtures').on('click', function() {
+    const oop = window.RR_OOP || [];
+    if (!oop.length) { toastr.warning('No fixtures to print.'); return; }
+
+    const stageLabels = { RR: 'Round Robin', MAIN: 'Main Draw', PLATE: 'Plate', CONS: 'Consolation', BOWL: 'Bowl', SHIELD: 'Shield', SPOON: 'Spoon' };
+    let html = '<h1>' + drawName + '</h1><h2>Order of Play / Fixtures</h2>';
+    html += '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
+    oop.forEach(function(fx) {
+      var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
+      var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+      var stage = fx.stage || 'RR';
+      var stageLabel = stageLabels[stage] || stage;
+      var score = fx.score ? fx.score : '';
+      var home = (fx.home || '---');
+      var away = (fx.away || '---');
+      var homeFeed = feederLabel(fx, 'home');
+      var awayFeed = feederLabel(fx, 'away');
+      if (homeFeed) home = homeFeed;
+      if (awayFeed) away = awayFeed;
+      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+      html += '<tr>';
+      html += '<td>' + (fx.match_nr || fx.id) + '</td>';
+      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+      html += '<td' + w1 + '>' + home + '</td>';
+      html += '<td class="text-center">vs</td>';
+      html += '<td' + w2 + '>' + away + '</td>';
+      html += '<td class="text-center">' + (fx.round || '') + '</td>';
+      html += '<td class="text-center">' + score + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    openPrintWindow(drawName + ' — Fixtures', html);
+  });
+
+  // ---- PRINT MATRIX ----
+  $('#btn-print-matrix').on('click', function() {
+    var includeStandings = $('#chk-print-standings').is(':checked');
+
+    // Build matrix from JS data (same as renderMatrix)
+    var groups = window.RR_GROUPS || [];
+    var fixtures = window.RR_FIXTURES || {};
+    if (!groups.length) { toastr.warning('No groups/matrix data available.'); return; }
+
+    // Sort groups alphabetically (A, B, C, D …)
+    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+
+    // Global pass: find longest name and most columns across ALL groups
+    var globalMaxLen = 6;
+    var globalMaxCols = 0;
+    sortedGroups.forEach(function(g) {
+      var regs = g.registrations || [];
+      regs.forEach(function(r) {
+        var len = (r.display_name || 'N/A').length;
+        if (len > globalMaxLen) globalMaxLen = len;
+      });
+      if (regs.length + 1 > globalMaxCols) globalMaxCols = regs.length + 1;
+    });
+    var colW = Math.max(130, globalMaxLen * 7 + 20);
+    var tableW = globalMaxCols * colW;
+    var cw = colW + 'px';
+
+    var html = '<h1>' + drawName + '</h1><h2>Round Robin Matrix</h2>';
+
+    sortedGroups.forEach(function(group) {
+      var gFixtures = fixtures[group.id] || [];
+      var players = (group.registrations || []).map(function(r) {
+        return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
+      }).sort(function(a, b) { return a.seed - b.seed; });
+
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+      html += '<table class="rr-matrix-table" style="width:' + (tableW + 60) + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
+      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+      html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach(function(rowP) {
+        html += '<tr><th>' + rowP.name + '</th>';
+        players.forEach(function(colP) {
+          if (rowP.id === colP.id) {
+            html += '<td class="bg-diagonal"></td>';
+          } else {
+            var fx = gFixtures.find(function(f) {
+              return (f.r1_id === rowP.id && f.r2_id === colP.id) || (f.r1_id === colP.id && f.r2_id === rowP.id);
+            });
+            if (fx && fx.all_sets && fx.all_sets.length > 0) {
+              var display = fx.all_sets.map(function(set) {
+                var parts = set.split('-').map(Number);
+                return fx.r1_id === rowP.id ? parts[0] + '-' + parts[1] : parts[1] + '-' + parts[0];
+              });
+              var last = display[display.length - 1].split('-').map(Number);
+              var cls = last[0] > last[1] ? 'rr-win' : (last[1] > last[0] ? 'rr-loss' : '');
+              html += '<td class="' + cls + '">' + display.join(', ') + '</td>';
+            } else {
+              html += '<td></td>';
+            }
+          }
+        });
+        // Count matches won for this row player
+        var rowWins = 0;
+        gFixtures.forEach(function(f) {
+          if (!f.all_sets || !f.all_sets.length) return;
+          var lastSet = f.all_sets[f.all_sets.length - 1].split('-').map(Number);
+          if (f.r1_id === rowP.id && lastSet[0] > lastSet[1]) rowWins++;
+          if (f.r2_id === rowP.id && lastSet[1] > lastSet[0]) rowWins++;
+        });
+        html += '<td style="font-weight:800; font-size:13px; background:#f0fdf4; color:#198754;">' + rowWins + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    });
+
+    // Standings
+    if (includeStandings) {
+      var standings = window.RR_STANDINGS || {};
+      sortedGroups.forEach(function(group) {
+        if (!standings[group.id]) return;
+        var rows = Object.values(standings[group.id]).sort(function(a, b) {
+          if (a.wins !== b.wins) return b.wins - a.wins;
+          var aTotalSets = a.sets_won + a.sets_lost;
+          var bTotalSets = b.sets_won + b.sets_lost;
+          var aSetsPct = aTotalSets > 0 ? a.sets_won / aTotalSets : 0;
+          var bSetsPct = bTotalSets > 0 ? b.sets_won / bTotalSets : 0;
+          if (Math.abs(aSetsPct - bSetsPct) > 0.0001) return bSetsPct - aSetsPct;
+          var aTotalGames = (a.games_won || 0) + (a.games_lost || 0);
+          var bTotalGames = (b.games_won || 0) + (b.games_lost || 0);
+          var aGamesPct = aTotalGames > 0 ? (a.games_won || 0) / aTotalGames : 0;
+          var bGamesPct = bTotalGames > 0 ? (b.games_won || 0) / bTotalGames : 0;
+          if (Math.abs(aGamesPct - bGamesPct) > 0.0001) return bGamesPct - aGamesPct;
+          return 0;
+        });
+        html += '<div class="page-break"></div>';
+        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + ' — Standings</h3>';
+        html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
+        rows.forEach(function(r, i) {
+          var totalSets = r.sets_won + r.sets_lost;
+          var setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) + '%' : '-';
+          var totalGames = (r.games_won || 0) + (r.games_lost || 0);
+          var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
+          var tb = r.tiebreak || '';
+          html += '<tr><td>' + (i + 1) + '</td><td>' + r.player + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + tb + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      });
+    }
+
+    openPrintWindow(drawName + ' — Matrix', html);
+  });
+
+  // ---- PRINT COMBINED (MATRIX + FIXTURES ON 1 PAGE) ----
+  $('#btn-print-combined').on('click', function() {
+    var groups = window.RR_GROUPS || [];
+    var fixtures = window.RR_FIXTURES || {};
+    var oop = window.RR_OOP || [];
+    if (!groups.length && !oop.length) { toastr.warning('No data to print.'); return; }
+
+    var html = '<h1>' + drawName + '</h1>';
+
+    // ---- MATRIX SECTION ----
+    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+
+    // Use same column sizing logic as standalone print matrix
+    var globalMaxLen = 6;
+    var globalMaxCols = 0;
+    sortedGroups.forEach(function(g) {
+      var regs = g.registrations || [];
+      regs.forEach(function(r) {
+        var len = (r.display_name || 'N/A').length;
+        if (len > globalMaxLen) globalMaxLen = len;
+      });
+      if (regs.length + 1 > globalMaxCols) globalMaxCols = regs.length + 1;
+    });
+    var colW = Math.max(130, globalMaxLen * 7 + 20);
+    var tableW = (globalMaxCols + 1) * colW; // +1 for W column
+    var cw = colW + 'px';
+
+    if (sortedGroups.length) {
+      html += '<h2>Round Robin Matrix</h2>';
+
+      sortedGroups.forEach(function(group) {
+        var gFixtures = fixtures[group.id] || [];
+        var players = (group.registrations || []).map(function(r) {
+          return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
+        }).sort(function(a, b) { return a.seed - b.seed; });
+
+        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+        html += '<table class="rr-matrix-table" style="width:' + tableW + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
+        players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+        html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
+        html += '</tr></thead><tbody>';
+
+        players.forEach(function(rowP) {
+          html += '<tr><th>' + rowP.name + '</th>';
+          players.forEach(function(colP) {
+            if (rowP.id === colP.id) {
+              html += '<td class="bg-diagonal"></td>';
+            } else {
+              var fx = gFixtures.find(function(f) {
+                return (f.r1_id === rowP.id && f.r2_id === colP.id) || (f.r1_id === colP.id && f.r2_id === rowP.id);
+              });
+              if (fx && fx.all_sets && fx.all_sets.length > 0) {
+                var display = fx.all_sets.map(function(set) {
+                  var parts = set.split('-').map(Number);
+                  return fx.r1_id === rowP.id ? parts[0] + '-' + parts[1] : parts[1] + '-' + parts[0];
+                });
+                var last = display[display.length - 1].split('-').map(Number);
+                var cls = last[0] > last[1] ? 'rr-win' : (last[1] > last[0] ? 'rr-loss' : '');
+                html += '<td class="' + cls + '">' + display.join(', ') + '</td>';
+              } else {
+                html += '<td></td>';
+              }
+            }
+          });
+          var rowWins = 0;
+          gFixtures.forEach(function(f) {
+            if (!f.all_sets || !f.all_sets.length) return;
+            var lastSet = f.all_sets[f.all_sets.length - 1].split('-').map(Number);
+            if (f.r1_id === rowP.id && lastSet[0] > lastSet[1]) rowWins++;
+            if (f.r2_id === rowP.id && lastSet[1] > lastSet[0]) rowWins++;
+          });
+          html += '<td style="font-weight:800; font-size:13px; background:#f0fdf4; color:#198754;">' + rowWins + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      });
+    }
+
+    // ---- FIXTURES SECTION ----
+    if (oop.length) {
+      var stageLabels = { RR: 'Round Robin', MAIN: 'Main Draw', PLATE: 'Plate', CONS: 'Consolation', BOWL: 'Bowl', SHIELD: 'Shield', SPOON: 'Spoon' };
+      html += '<h2 style="margin-top:20px;">Order of Play / Fixtures</h2>';
+      html += '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
+      oop.forEach(function(fx) {
+        var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
+        var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+        var stage = fx.stage || 'RR';
+        var stageLabel = stageLabels[stage] || stage;
+        var score = fx.score ? fx.score : '';
+        var home = (fx.home || '---');
+        var away = (fx.away || '---');
+        var homeFeed = feederLabel(fx, 'home');
+        var awayFeed = feederLabel(fx, 'away');
+        if (homeFeed) home = homeFeed;
+        if (awayFeed) away = awayFeed;
+        var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+        html += '<tr>';
+        html += '<td>' + (fx.match_nr || fx.id) + '</td>';
+        html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+        html += '<td' + w1 + '>' + home + '</td>';
+        html += '<td class="text-center">vs</td>';
+        html += '<td' + w2 + '>' + away + '</td>';
+        html += '<td class="text-center">' + (fx.round || '') + '</td>';
+        html += '<td class="text-center">' + score + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    openPrintWindow(drawName + ' — Combined', html);
+  });
+
+  // ---- BUILD BRACKET HTML FROM CONFIG (fallback when no fixtures exist) ----
+  function buildBracketFromConfig(isEmpty) {
+    var config = (typeof playoffConfig !== 'undefined') ? playoffConfig : [];
+    var groups = (typeof numGroups !== 'undefined') ? numGroups : 4;
+    var groupNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').slice(0, groups);
+    var html = '';
+
+    var enabledPlayoffs = config.filter(function(p) { return p.enabled; });
+    if (!enabledPlayoffs.length) return '<p style="color:#888;">No playoff brackets configured. Go to Settings tab to configure.</p>';
+
+    enabledPlayoffs.forEach(function(playoff) {
+      var positions = playoff.positions || [];
+      var size = playoff.size || 4;
+      var seeds = buildSnakeSeeds(positions, groupNames);
+
+      var matchups = generateBracketMatchups(size);
+      var numRounds = Math.ceil(Math.log2(size));
+
+      html += '<div style="margin-bottom:30px;">';
+      html += '<h3 style="font-size:15px; margin:10px 0 6px;">' + playoff.name + ' (' + size + '-draw)</h3>';
+
+      // Build rounds
+      for (var rd = 1; rd <= numRounds; rd++) {
+        var rdLabel = rd === numRounds ? 'Final' : rd === numRounds - 1 ? 'SF' : rd === numRounds - 2 ? 'QF' : 'R' + rd;
+        html += '<div style="margin-bottom:8px;"><strong style="font-size:11px; color:#666;">' + rdLabel + '</strong></div>';
+
+        if (rd === 1) {
+          // Show seeded matchups
+          html += '<table style="border-collapse:collapse; margin-bottom:14px; font-size:11px; width:auto;">';
+          matchups.forEach(function(m, idx) {
+            var s1 = seeds[m.seed1 - 1];
+            var s2 = seeds[m.seed2 - 1];
+            var label1 = s1 ? (isEmpty ? s1.group + s1.position : '#' + m.seed1 + ' (' + s1.group + s1.position + ')') : 'BYE';
+            var label2 = s2 ? (isEmpty ? s2.group + s2.position : '#' + m.seed2 + ' (' + s2.group + s2.position + ')') : 'BYE';
+            html += '<tr>';
+            html += '<td style="border:1px solid #999; padding:3px 12px; min-width:160px; background:' + (s1 ? '#fff' : '#f0f0f0') + ';">' + label1 + '</td>';
+            html += '<td style="padding:0 6px; font-size:10px; color:#888;">vs</td>';
+            html += '<td style="border:1px solid #999; padding:3px 12px; min-width:160px; background:' + (s2 ? '#fff' : '#f0f0f0') + ';">' + label2 + '</td>';
+            html += '<td style="padding:0 8px;">→</td>';
+            html += '<td style="border:1px solid #ccc; padding:3px 12px; min-width:140px; background:#fafafa;"></td>';
+            html += '</tr>';
+            if (idx % 2 === 1 && idx < matchups.length - 1) {
+              html += '<tr><td colspan="5" style="height:6px;"></td></tr>';
+            }
+          });
+          html += '</table>';
+        } else {
+          // Show empty slots for later rounds
+          var matchesInRound = Math.pow(2, numRounds - rd);
+          html += '<table style="border-collapse:collapse; margin-bottom:14px; font-size:11px; width:auto;">';
+          for (var mi = 0; mi < matchesInRound; mi++) {
+            html += '<tr>';
+            html += '<td style="border:1px solid #ccc; padding:3px 12px; min-width:160px; background:#fafafa;">Winner M' + (mi*2+1) + '</td>';
+            html += '<td style="padding:0 6px; font-size:10px; color:#888;">vs</td>';
+            html += '<td style="border:1px solid #ccc; padding:3px 12px; min-width:160px; background:#fafafa;">Winner M' + (mi*2+2) + '</td>';
+            html += '<td style="padding:0 8px;">→</td>';
+            html += '<td style="border:1px solid #ccc; padding:3px 12px; min-width:140px; background:#fafafa;"></td>';
+            html += '</tr>';
+          }
+          html += '</table>';
+        }
+      }
+
+      // 3rd/4th playoff
+      if (size >= 4) {
+        html += '<div style="margin-top:6px;"><strong style="font-size:11px; color:#666;">3rd/4th Place</strong></div>';
+        html += '<table style="border-collapse:collapse; margin-bottom:14px; font-size:11px; width:auto;">';
+        html += '<tr><td style="border:1px solid #ccc; padding:3px 12px; min-width:160px; background:#fafafa;">SF Loser 1</td>';
+        html += '<td style="padding:0 6px; font-size:10px; color:#888;">vs</td>';
+        html += '<td style="border:1px solid #ccc; padding:3px 12px; min-width:160px; background:#fafafa;">SF Loser 2</td></tr>';
+        html += '</table>';
+      }
+
+      html += '</div>';
+    });
+
+    return html;
+  }
+
+  // Helper: check if SVG has actual bracket content (not just wrapper + style)
+  function svgHasBracketContent(svgHtml) {
+    return svgHtml && (svgHtml.indexOf('<line') !== -1 || svgHtml.indexOf('<text x=') !== -1);
+  }
+
+  // Helper: build printable notes HTML from the notes textarea fields
+  function buildNotesHtml() {
+    var sections = [];
+    $('#notes-pane .notes-field').each(function() {
+      var val = $(this).val().trim();
+      if (!val) return;
+      var $card = $(this).closest('.card');
+      var isEnabled = $card.find('.notes-enabled').prop('checked');
+      if (!isEnabled) return;
+      var label = $card.find('.card-header h6').text().trim();
+      sections.push({ label: label, text: val });
+    });
+    if (!sections.length) return '';
+    var html = '';
+    for (var i = 0; i < sections.length; i++) {
+      html += '<div style="margin-bottom:18px;">';
+      html += '<h3 style="font-size:18px; font-weight:700; margin:0 0 8px; color:#1e293b; border-bottom:1px solid #ddd; padding-bottom:4px;">' + sections[i].label + '</h3>';
+      html += '<div style="font-size:15px; white-space:pre-wrap; color:#333; line-height:1.7;">' + sections[i].text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  // ---- PRINT EMPTY BRACKET ----
+  $('#btn-print-empty-bracket').on('click', function() {
+    var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Loading…');
+    console.log('🖨️ [PrintEmptyBracket] Button clicked');
+    console.log('🖨️ [PrintEmptyBracket] playoffConfig:', (typeof playoffConfig !== 'undefined') ? playoffConfig : 'UNDEFINED');
+    console.log('🖨️ [PrintEmptyBracket] numGroups:', (typeof numGroups !== 'undefined') ? numGroups : 'UNDEFINED');
+
+    $.get(APP_URL + '/backend/draw/' + DRAW_ID + '/main-bracket?empty=1')
+      .done(function(svgHtml) {
+        var hasContent = svgHasBracketContent(svgHtml);
+        console.log('🖨️ [PrintEmptyBracket] AJAX done, length:', (svgHtml || '').length, 'hasContent:', hasContent);
+        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Blank Bracket</h2></div>';
+        if (hasContent) {
+          console.log('🖨️ [PrintEmptyBracket] Using SVG from server');
+          html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
+        } else {
+          console.log('🖨️ [PrintEmptyBracket] SVG empty, using config fallback');
+          html += buildBracketFromConfig(true);
+        }
+        openPrintWindow(drawName + ' — Empty Bracket', html, true);
+      })
+      .fail(function(xhr, status, err) {
+        console.error('🖨️ [PrintEmptyBracket] AJAX FAILED:', status, err);
+        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Blank Bracket</h2></div>';
+        html += buildBracketFromConfig(true);
+        openPrintWindow(drawName + ' — Empty Bracket', html, true);
+      })
+      .always(function() { $btn.prop('disabled', false).html('<i class="ti ti-printer me-1"></i> Print Empty Bracket'); });
+  });
+
+  // ---- PRINT BRACKET (WITH NAMES) ----
+  $('#btn-print-bracket').on('click', function() {
+    var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Loading…');
+    console.log('🖨️ [PrintBracket] Button clicked');
+
+    $.get(APP_URL + '/backend/draw/' + DRAW_ID + '/main-bracket')
+      .done(function(svgHtml) {
+        var hasContent = svgHasBracketContent(svgHtml);
+        console.log('🖨️ [PrintBracket] AJAX done, length:', (svgHtml || '').length, 'hasContent:', hasContent);
+        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Playoff Brackets</h2></div>';
+        if (hasContent) {
+          html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
+        } else {
+          html += buildBracketFromConfig(false);
+        }
+        openPrintWindow(drawName + ' — Brackets', html, true);
+      })
+      .fail(function() {
+        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Playoff Brackets</h2></div>';
+        html += buildBracketFromConfig(false);
+        openPrintWindow(drawName + ' — Brackets', html, true);
+      })
+      .always(function() { $btn.prop('disabled', false).html('<i class="ti ti-printer me-1"></i> Print Bracket'); });
+  });
+
+  // ---- SHARED: build matrix HTML ----
+  function buildMatrixHtml() {
+    var groups = window.RR_GROUPS || [];
+    var fixtures = window.RR_FIXTURES || {};
+    if (!groups.length) return '';
+
+    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var globalMaxLen = 6;
+    var globalMaxCols = 0;
+    sortedGroups.forEach(function(g) {
+      var regs = g.registrations || [];
+      regs.forEach(function(r) {
+        var len = (r.display_name || 'N/A').length;
+        if (len > globalMaxLen) globalMaxLen = len;
+      });
+      if (regs.length + 1 > globalMaxCols) globalMaxCols = regs.length + 1;
+    });
+    var colW = Math.max(130, globalMaxLen * 7 + 20);
+    var tableW = (globalMaxCols + 1) * colW;
+    var cw = colW + 'px';
+    var html = '';
+
+    sortedGroups.forEach(function(group) {
+      var gFixtures = fixtures[group.id] || [];
+      var players = (group.registrations || []).map(function(r) {
+        return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
+      }).sort(function(a, b) { return a.seed - b.seed; });
+
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+      html += '<table class="rr-matrix-table" style="width:' + tableW + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
+      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+      html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
+      html += '</tr></thead><tbody>';
+
+      players.forEach(function(rowP) {
+        html += '<tr><th>' + rowP.name + '</th>';
+        players.forEach(function(colP) {
+          if (rowP.id === colP.id) {
+            html += '<td class="bg-diagonal"></td>';
+          } else {
+            var fx = gFixtures.find(function(f) {
+              return (f.r1_id === rowP.id && f.r2_id === colP.id) || (f.r1_id === colP.id && f.r2_id === rowP.id);
+            });
+            if (fx && fx.all_sets && fx.all_sets.length > 0) {
+              var display = fx.all_sets.map(function(set) {
+                var parts = set.split('-').map(Number);
+                return fx.r1_id === rowP.id ? parts[0] + '-' + parts[1] : parts[1] + '-' + parts[0];
+              });
+              var last = display[display.length - 1].split('-').map(Number);
+              var cls = last[0] > last[1] ? 'rr-win' : (last[1] > last[0] ? 'rr-loss' : '');
+              html += '<td class="' + cls + '">' + display.join(', ') + '</td>';
+            } else {
+              html += '<td></td>';
+            }
+          }
+        });
+        var rowWins = 0;
+        gFixtures.forEach(function(f) {
+          if (!f.all_sets || !f.all_sets.length) return;
+          var lastSet = f.all_sets[f.all_sets.length - 1].split('-').map(Number);
+          if (f.r1_id === rowP.id && lastSet[0] > lastSet[1]) rowWins++;
+          if (f.r2_id === rowP.id && lastSet[1] > lastSet[0]) rowWins++;
+        });
+        html += '<td style="font-weight:800; font-size:13px; background:#f0fdf4; color:#198754;">' + rowWins + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    });
+
+    return html;
+  }
+
+  // ---- SHARED: build standings HTML ----
+  function buildStandingsHtml() {
+    var groups = window.RR_GROUPS || [];
+    var standings = window.RR_STANDINGS || {};
+    if (!groups.length) return '';
+
+    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var html = '';
+
+    sortedGroups.forEach(function(group) {
+      if (!standings[group.id]) return;
+      var rows = Object.values(standings[group.id]).sort(function(a, b) {
+        if (a.wins !== b.wins) return b.wins - a.wins;
+        var aTotalSets = a.sets_won + a.sets_lost;
+        var bTotalSets = b.sets_won + b.sets_lost;
+        var aSetsPct = aTotalSets > 0 ? a.sets_won / aTotalSets : 0;
+        var bSetsPct = bTotalSets > 0 ? b.sets_won / bTotalSets : 0;
+        if (Math.abs(aSetsPct - bSetsPct) > 0.0001) return bSetsPct - aSetsPct;
+        var aTotalGames = (a.games_won || 0) + (a.games_lost || 0);
+        var bTotalGames = (b.games_won || 0) + (b.games_lost || 0);
+        var aGamesPct = aTotalGames > 0 ? (a.games_won || 0) / aTotalGames : 0;
+        var bGamesPct = bTotalGames > 0 ? (b.games_won || 0) / bTotalGames : 0;
+        if (Math.abs(aGamesPct - bGamesPct) > 0.0001) return bGamesPct - aGamesPct;
+        return 0;
+      });
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + ' — Standings</h3>';
+      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
+      rows.forEach(function(r, i) {
+        var totalSets = r.sets_won + r.sets_lost;
+        var setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) + '%' : '-';
+        var totalGames = (r.games_won || 0) + (r.games_lost || 0);
+        var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
+        var tb = r.tiebreak || '';
+        html += '<tr><td>' + (i + 1) + '</td><td>' + r.player + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + tb + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    });
+
+    return html;
+  }
+
+  // ---- SHARED: build fixtures table HTML ----
+  function buildFixturesHtml(filterStage) {
+    var oop = window.RR_OOP || [];
+    if (!oop.length) return '';
+    var stageLabels = { RR: 'Round Robin', MAIN: 'Main Draw', PLATE: 'Plate', CONS: 'Consolation', BOWL: 'Bowl', SHIELD: 'Shield', SPOON: 'Spoon' };
+    var list = filterStage ? oop.filter(function(fx) { return fx.stage === filterStage; }) : oop;
+    if (!list.length) return '';
+
+    var html = '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
+    list.forEach(function(fx) {
+      var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
+      var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+      var stage = fx.stage || 'RR';
+      var stageLabel = stageLabels[stage] || stage;
+      var score = fx.score ? fx.score : '';
+      var home = (fx.home || '---');
+      var away = (fx.away || '---');
+      var homeFeed = feederLabel(fx, 'home');
+      var awayFeed = feederLabel(fx, 'away');
+      if (homeFeed) home = homeFeed;
+      if (awayFeed) away = awayFeed;
+      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+      html += '<tr>';
+      html += '<td>' + (fx.match_nr || fx.id) + '</td>';
+      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+      html += '<td' + w1 + '>' + home + '</td>';
+      html += '<td class="text-center">vs</td>';
+      html += '<td' + w2 + '>' + away + '</td>';
+      html += '<td class="text-center">' + (fx.round || '') + '</td>';
+      html += '<td class="text-center">' + score + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+  }
+
+  // ---- BUILD BRACKET FIXTURE TABLE FROM CONFIG ----
+  // Generates a fixture list for each enabled playoff bracket from playoffConfig,
+  // with match numbers, round labels, seed sources, and W/L feeder indicators.
+  function buildBracketFixtureTableFromConfig() {
+    var config = (typeof playoffConfig !== 'undefined') ? playoffConfig : [];
+    var nGroups = (typeof numGroups !== 'undefined') ? numGroups : 4;
+    var groupNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').slice(0, nGroups);
+
+    var enabledPlayoffs = config.filter(function(p) { return p.enabled; });
+    if (!enabledPlayoffs.length) return '';
+
+    var html = '';
+
+    enabledPlayoffs.forEach(function(playoff) {
+      var positions = playoff.positions || [];
+      var size = playoff.size || 4;
+      var seeds = buildSnakeSeeds(positions, groupNames);
+
+      var matchups = generateBracketMatchups(size);
+      var numRounds = Math.ceil(Math.log2(size));
+      var matchNr = 1;
+      // Store match numbers per round so later rounds can reference them
+      var roundMatches = {}; // roundMatches[round] = [{nr, idx}]
+
+      html += '<h3 style="font-size:14px; margin:18px 0 6px;">' + playoff.name + ' (' + size + '-draw)</h3>';
+      html += '<table><thead><tr>';
+      html += '<th>M#</th><th>Round</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th>Position</th>';
+      html += '</tr></thead><tbody>';
+
+      // Round 1 — seeded matchups
+      roundMatches[1] = [];
+      matchups.forEach(function(m) {
+        var s1 = seeds[m.seed1 - 1];
+        var s2 = seeds[m.seed2 - 1];
+        var label1 = s1 ? s1.group + '#' + s1.position : '<span style="color:#999;">BYE</span>';
+        var label2 = s2 ? s2.group + '#' + s2.position : '<span style="color:#999;">BYE</span>';
+
+        var rdLabel = numRounds === 1 ? 'Final' : numRounds === 2 ? 'SF' : numRounds === 3 ? 'QF' : 'R1';
+
+        html += '<tr>';
+        html += '<td>' + matchNr + '</td>';
+        html += '<td>' + rdLabel + '</td>';
+        html += '<td>' + label1 + '</td>';
+        html += '<td class="text-center">vs</td>';
+        html += '<td>' + label2 + '</td>';
+        html += '<td></td>';
+        html += '</tr>';
+
+        roundMatches[1].push(matchNr);
+        matchNr++;
+      });
+
+      // Subsequent rounds
+      for (var rd = 2; rd <= numRounds; rd++) {
+        var matchesInRound = Math.pow(2, numRounds - rd);
+        var prevMatchList = roundMatches[rd - 1] || [];
+        var isFinalRound = (rd === numRounds);
+        var isSF = (rd === numRounds - 1) && numRounds >= 3;
+        var isQF = (rd === numRounds - 2) && numRounds >= 4;
+        var rdLabel = isFinalRound ? 'Final' : isSF ? 'SF' : isQF ? 'QF' : 'R' + rd;
+
+        roundMatches[rd] = [];
+
+        for (var mi = 0; mi < matchesInRound; mi++) {
+          var feeder1 = prevMatchList[mi * 2];
+          var feeder2 = prevMatchList[mi * 2 + 1];
+          var p1Label = feeder1 ? '<span style="color:#0d6efd; font-weight:bold;">W' + feeder1 + '</span>' : '---';
+          var p2Label = feeder2 ? '<span style="color:#0d6efd; font-weight:bold;">W' + feeder2 + '</span>' : '---';
+          var posLabel = isFinalRound ? '1st/2nd' : '';
+
+          html += '<tr>';
+          html += '<td>' + matchNr + '</td>';
+          html += '<td>' + rdLabel + '</td>';
+          html += '<td>' + p1Label + '</td>';
+          html += '<td class="text-center">vs</td>';
+          html += '<td>' + p2Label + '</td>';
+          html += '<td>' + posLabel + '</td>';
+          html += '</tr>';
+
+          roundMatches[rd].push(matchNr);
+          matchNr++;
+        }
+
+        // 3rd/4th playoff from SF losers
+        if (isFinalRound && numRounds >= 2) {
+          var sfMatches = roundMatches[rd - 1] || [];
+          var sf1 = sfMatches[0];
+          var sf2 = sfMatches[1];
+          if (sf1 && sf2) {
+            html += '<tr style="border-top:2px solid #999;">';
+            html += '<td>' + matchNr + '</td>';
+            html += '<td>3rd/4th</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + sf1 + '</span></td>';
+            html += '<td class="text-center">vs</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + sf2 + '</span></td>';
+            html += '<td>3rd/4th</td>';
+            html += '</tr>';
+            matchNr++;
+          }
+        }
+
+        // 5th–8th from QF losers
+        if (isSF && matchesInRound === 2) {
+          var qfMatches = roundMatches[rd - 1] || [];
+          if (qfMatches.length >= 4) {
+            // Cons SF 1: L(QF1) vs L(QF2)
+            var cSF1Nr = matchNr;
+            html += '<tr style="border-top:2px solid #ccc;">';
+            html += '<td>' + matchNr + '</td>';
+            html += '<td>Cons SF</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + qfMatches[0] + '</span></td>';
+            html += '<td class="text-center">vs</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + qfMatches[1] + '</span></td>';
+            html += '<td></td>';
+            html += '</tr>';
+            matchNr++;
+
+            // Cons SF 2: L(QF3) vs L(QF4)
+            var cSF2Nr = matchNr;
+            html += '<tr>';
+            html += '<td>' + matchNr + '</td>';
+            html += '<td>Cons SF</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + qfMatches[2] + '</span></td>';
+            html += '<td class="text-center">vs</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + qfMatches[3] + '</span></td>';
+            html += '<td></td>';
+            html += '</tr>';
+            matchNr++;
+
+            // 5th/6th: W(consSF1) vs W(consSF2)
+            html += '<tr>';
+            html += '<td>' + matchNr + '</td>';
+            html += '<td>5th/6th</td>';
+            html += '<td><span style="color:#0d6efd; font-weight:bold;">W' + cSF1Nr + '</span></td>';
+            html += '<td class="text-center">vs</td>';
+            html += '<td><span style="color:#0d6efd; font-weight:bold;">W' + cSF2Nr + '</span></td>';
+            html += '<td>5th/6th</td>';
+            html += '</tr>';
+            matchNr++;
+
+            // 7th/8th: L(consSF1) vs L(consSF2)
+            html += '<tr>';
+            html += '<td>' + matchNr + '</td>';
+            html += '<td>7th/8th</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + cSF1Nr + '</span></td>';
+            html += '<td class="text-center">vs</td>';
+            html += '<td><span style="color:#e65100; font-weight:bold;">L' + cSF2Nr + '</span></td>';
+            html += '<td>7th/8th</td>';
+            html += '</tr>';
+            matchNr++;
+          }
+        }
+      }
+
+      html += '</tbody></table>';
+    });
+
+    return html;
+  }
+
+  // ---- PRINT DRAW PACK ----
+  $('#btn-print-draw-pack').on('click', function() {
+    var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Generating…');
+
+    // Fetch empty bracket SVG first, then assemble everything
+    $.get(APP_URL + '/backend/draw/' + DRAW_ID + '/main-bracket?empty=1')
+      .done(function(svgHtml) {
+        var bracketHtml = '';
+        if (svgHasBracketContent(svgHtml)) {
+          bracketHtml = '<div class="bracket-print-wrap">' + svgHtml + '</div>';
+        } else {
+          bracketHtml = buildBracketFromConfig(true);
+        }
+        assemblePack(bracketHtml);
+      })
+      .fail(function() {
+        assemblePack(buildBracketFromConfig(true));
+      })
+      .always(function() {
+        $btn.prop('disabled', false).html('<i class="ti ti-printer me-1"></i> Print Draw Pack');
+      });
+
+    function assemblePack(bracketHtml) {
+      var html = '';
+      var hasContent = false;
+
+      var incNotes    = $('#pack-notes').is(':checked');
+      var incMatrix   = $('#pack-matrix').is(':checked');
+      var incRRFx     = $('#pack-rr-fixtures').is(':checked');
+      var incPlayFx   = $('#pack-playoff-fixtures').is(':checked');
+      var incBrackets = $('#pack-brackets').is(':checked');
+
+      // --- PAGE 1: Rules & Notes (cover page) ---
+      if (incNotes) {
+        var rulesHtml = buildNotesHtml();
+        if (rulesHtml) {
+          html += '<h1>' + drawName + '</h1>';
+          html += '<h2>Rules &amp; Notes</h2>';
+          html += rulesHtml;
+          hasContent = true;
+        }
+      }
+
+      // --- PAGE 2: Matrix ---
+      if (incMatrix) {
+        if (hasContent) html += '<div class="page-break"></div>';
+        html += '<h1>' + drawName + '</h1>';
+        html += '<h2>Round Robin Matrix</h2>';
+        html += buildMatrixHtml();
+        hasContent = true;
+      }
+
+      // --- PAGE 3: RR Fixtures ---
+      if (incRRFx) {
+        var rrFx = buildFixturesHtml('RR');
+        if (rrFx) {
+          if (hasContent) html += '<div class="page-break"></div>';
+          html += '<h1>' + drawName + '</h1>';
+          html += '<h2>Round Robin Fixtures</h2>';
+          html += rrFx;
+          hasContent = true;
+        }
+      }
+
+      // --- PAGE 4: Bracket Fixtures from config (with W/L feeders) ---
+      if (incPlayFx) {
+        var bracketFx = buildBracketFixtureTableFromConfig();
+        if (bracketFx) {
+          if (hasContent) html += '<div class="page-break"></div>';
+          html += '<h1>' + drawName + '</h1>';
+          html += '<h2>Playoff Fixtures</h2>';
+          html += '<p style="font-size:11px; color:#666; margin-bottom:10px;">';
+          html += '<span style="color:#0d6efd; font-weight:bold;">W3</span> = Winner of match 3 &nbsp; ';
+          html += '<span style="color:#e65100; font-weight:bold;">L3</span> = Loser of match 3 &nbsp; ';
+          html += '<span style="font-weight:bold;">A#1</span> = Group A position 1';
+          html += '</p>';
+          html += bracketFx;
+          hasContent = true;
+        }
+      }
+
+      // --- PAGE 5: Empty Brackets ---
+      if (incBrackets && bracketHtml && bracketHtml.indexOf('No playoff') === -1) {
+        if (hasContent) html += '<div class="page-break"></div>';
+        html += '<h1>' + drawName + '</h1>';
+        html += '<h2>Blank Brackets</h2>';
+        html += bracketHtml;
+        hasContent = true;
+      }
+
+      if (!hasContent) {
+        toastr.warning('No sections selected. Please check at least one option.');
+        return;
+      }
+
+      openPrintWindow(drawName + ' — Draw Pack', html);
+    }
+  });
+
+})(jQuery);
+</script>
+
+<script>
+// ============================================================
+// BRACKET PINCH-TO-ZOOM + BUTTON CONTROLS
+// ============================================================
+(function() {
+  var zoom = 1;
+  var MIN_ZOOM = 0.3;
+  var MAX_ZOOM = 3;
+  var STEP = 0.2;
+
+  var $wrapper = null;
+  var $inner = null;
+  var $label = null;
+
+  function applyZoom() {
+    if (!$inner) return;
+    $inner.css('transform', 'scale(' + zoom + ')');
+    $inner.css('transform-origin', '0 0');
+    if ($label) $label.text(Math.round(zoom * 100) + '%');
+  }
+
+  function setZoom(val) {
+    zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, val));
+    applyZoom();
+  }
+
+  $(document).ready(function() {
+    $wrapper = $('#main-bracket-wrapper');
+    $inner = $('#bracket-zoom-inner');
+    $label = $('#bracket-zoom-label');
+
+    // Button controls
+    $('#bracket-zoom-in').on('click', function() { setZoom(zoom + STEP); });
+    $('#bracket-zoom-out').on('click', function() { setZoom(zoom - STEP); });
+    $('#bracket-zoom-reset').on('click', function() { setZoom(1); });
+
+    // Pinch-to-zoom on touch devices
+    var startDist = 0;
+    var startZoom = 1;
+
+    $wrapper[0]?.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        startDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        startZoom = zoom;
+      }
+    }, { passive: false });
+
+    $wrapper[0]?.addEventListener('touchmove', function(e) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        var dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        var scale = dist / startDist;
+        setZoom(startZoom * scale);
+      }
+    }, { passive: false });
+
+    // Mouse wheel zoom (Ctrl+scroll on desktop)
+    $wrapper[0]?.addEventListener('wheel', function(e) {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        var delta = e.deltaY > 0 ? -STEP : STEP;
+        setZoom(zoom + delta);
+      }
+    }, { passive: false });
+  });
+})();
+</script>
+
+<script>
+// ---- SAVE NOTES ----
+$('#btn-save-notes').on('click', function() {
+  var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving…');
+  var notes = {};
+  $('.notes-field').each(function() {
+    notes[$(this).data('key')] = $(this).val();
+  });
+  $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', { notes: notes })
+    .done(function(res) {
+      toastr.success(res.message || 'Notes saved');
+    })
+    .fail(function(xhr) {
+      toastr.error(xhr.responseJSON?.message || 'Failed to save notes');
+    })
+    .always(function() {
+      $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Notes');
+    });
+});
+</script>
 
 @endsection
 

@@ -371,6 +371,15 @@ class RoundRobinController extends Controller
       // ------------------------
       if ($fixture->stage === 'RR') {
         $response = $this->builder->saveScore($fixture, $validSets);
+
+        // Reload full hub so frontend can refresh matrix, OOP & standings
+        $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
+        $hub  = $this->builder->loadRoundRobinHub($draw);
+
+        $response['oop']        = $hub['oops'] ?? [];
+        $response['rrFixtures'] = $hub['rrFixtures'] ?? [];
+        $response['standings']  = $hub['standings'] ?? [];
+
         return response()->json($response);
       }
 
@@ -378,6 +387,31 @@ class RoundRobinController extends Controller
       $response = $this->builder->saveBracketScore($fixture, $validSets);
       return response()->json($response);
     }
+
+  // ============================================================
+  // DELETE SCORE
+  // ============================================================
+  public function deleteScore($id)
+  {
+    $fixture = Fixture::with(['fixtureResults'])->findOrFail($id);
+
+    $fixture->fixtureResults()->delete();
+    $fixture->winner_registration = null;
+    $fixture->match_status = 0;
+    $fixture->save();
+
+    // Reload full OOP for the draw so the front-end table refreshes
+    $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
+    $hub  = $this->builder->loadRoundRobinHub($draw);
+
+    return response()->json([
+      'success'    => true,
+      'message'    => 'Score deleted',
+      'oop'        => $hub['oops'] ?? [],
+      'rrFixtures' => $hub['rrFixtures'] ?? [],
+      'standings'  => $hub['standings'] ?? [],
+    ]);
+  }
 
   // ============================================================
   // GENERATE MAIN BRACKET (SERVICE)
@@ -446,9 +480,12 @@ class RoundRobinController extends Controller
 
       \Log::info("🧬 [MainBracket] Dynamic seeds built", $seeds);
 
-      // Clear existing playoff fixtures
+      // Clear existing playoff fixtures (include custom stages from config)
+      $allStages = collect(['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
+        ->merge(collect($playoffConfig)->pluck('slug')->map(fn($s) => strtoupper($s)))
+        ->unique()->values()->all();
       Fixture::where('draw_id', $draw->id)
-        ->whereIn('stage', ['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
+        ->whereIn('stage', $allStages)
         ->delete();
 
       // Generate fixtures for each enabled bracket
@@ -530,6 +567,7 @@ class RoundRobinController extends Controller
     $groups = $draw->groups;
     $numGroups = $groups->count();
     $matchNr = 1000; // Starting match number
+    $overallPosition = 0; // Running position offset across brackets
 
     foreach ($playoffConfig as $config) {
       if (!($config['enabled'] ?? false)) {
@@ -567,16 +605,31 @@ class RoundRobinController extends Controller
         ]);
       }
       
-      foreach ($groups as $group) {
-        foreach ($positions as $pos) {
+      // Collect players: iterate POSITIONS first, then GROUPS.
+      // Standard bracket seeding ([1,N],[2,N-1],...) naturally pairs
+      // Group A with Group D and Group B with Group C when groups are
+      // listed in straight alphabetical order.  For EVEN group counts
+      // (2,4,6,8) we keep offset=0 so this cross-group pairing works.
+      // For ODD group counts (3,5,7) we rotate by floor(N/2) per
+      // position to avoid same-group R1 clashes.
+      // IMPORTANT: Always push a value (null for missing) to preserve seed
+      // slot positions — skipping would collapse the array and shift players
+      // into wrong bracket halves.
+      $sortedGroups = $groups->sortBy('name')->values();
+      $halfOffset = (int) floor($numGroups / 2);
+      
+      foreach ($positions as $posIdx => $pos) {
+        // Rotate only for odd group counts; even groups get straight order
+        $offset = ($numGroups >= 3 && $numGroups % 2 !== 0) ? ($posIdx * $halfOffset) % $numGroups : 0;
+        
+        for ($g = 0; $g < $numGroups; $g++) {
+          $group = $sortedGroups[($g + $offset) % $numGroups];
           $key = $group->name . $pos;
-          if (isset($seeds[$key]) && $seeds[$key]) {
-            $players[] = $seeds[$key];
-          }
+          $players[] = $seeds[$key] ?? null;
         }
       }
 
-      \Log::info("🎾 [GenerateDynamic] Players for bracket", [
+      \Log::info("🎾 [GenerateDynamic] Players for bracket (seeded order)", [
         'stage' => $stage,
         'player_count' => count($players),
         'player_ids' => $players,
@@ -587,18 +640,19 @@ class RoundRobinController extends Controller
       $fixtures = [];
       $positionPlayoffs = [];
       
-      // Round 1 fixtures
-      $matchesInR1 = $size / 2;
-      for ($i = 0; $i < $matchesInR1; $i++) {
-        $p1 = $players[$i * 2] ?? null;
-        $p2 = $players[$i * 2 + 1] ?? null;
+      // Round 1 fixtures — use standard bracket seeding matchups
+      $bracketMatchups = $this->getStandardBracketMatchups($size);
+      
+      foreach ($bracketMatchups as $i => $matchup) {
+        $p1 = $players[$matchup[0] - 1] ?? null; // seeds are 1-indexed
+        $p2 = $players[$matchup[1] - 1] ?? null;
         
         $fx = Fixture::create([
           'draw_id' => $draw->id,
           'stage' => $stage,
           'round' => 1,
           'match_nr' => $matchNr++,
-          'position' => null, // Will be set for playoff matches
+          'position' => null,
           'registration1_id' => $p1,
           'registration2_id' => $p2,
         ]);
@@ -639,15 +693,14 @@ class RoundRobinController extends Controller
         }
 
         // Create position playoff for losers of this round
-        // Semi-final losers → 3rd/4th playoff
-        // Quarter-final losers → 5th/8th playoffs (if enabled)
         $positionPlayoff = $this->createPositionPlayoff(
           $draw, 
           $stage, 
           $round, 
           $numRounds, 
           $prevRound, 
-          $matchNr
+          $matchNr,
+          $overallPosition
         );
         
         if ($positionPlayoff) {
@@ -660,6 +713,8 @@ class RoundRobinController extends Controller
         'main' => $fixtures,
         'playoffs' => $positionPlayoffs,
       ];
+
+      $overallPosition += $size;
     }
 
     // Auto-advance all byes in the brackets
@@ -669,101 +724,179 @@ class RoundRobinController extends Controller
   }
 
   /**
-   * Auto-advance players when opponent is missing (bye)
-   * Cascades through the bracket until player meets an actual opponent
+   * Standard bracket seeding matchups (seed1 vs seed2 per match).
+   * Ensures top seeds don't meet until later rounds.
    */
+  protected function getStandardBracketMatchups(int $size): array
+  {
+    return match($size) {
+      2  => [[1, 2]],
+      4  => [[1, 4], [2, 3]],
+      8  => [[1, 8], [4, 5], [2, 7], [3, 6]],
+      16 => [[1, 16], [8, 9], [4, 13], [5, 12], [2, 15], [7, 10], [3, 14], [6, 11]],
+      32 => [
+        [1, 32], [16, 17], [8, 25], [9, 24],
+        [4, 29], [13, 20], [5, 28], [12, 21],
+        [2, 31], [15, 18], [7, 26], [10, 23],
+        [3, 30], [14, 19], [6, 27], [11, 22],
+      ],
+      default => collect(range(1, $size / 2))->map(fn($i) => [$i * 2 - 1, $i * 2])->toArray(),
+    };
+  }
+
   protected function autoAdvanceByes(Draw $draw): void
   {
     \Log::info("🚀 [AutoAdvance] Starting bye advancement", ['draw_id' => $draw->id]);
     
-    $maxIterations = 10; // Prevent infinite loops
-    $iteration = 0;
+    // Load all bracket fixtures into a single in-memory collection.
+    // Object references stay in sync when we mutate + save.
+    // Include custom stages from playoff config
+    $playoffConfig = optional($draw->settings)->playoff_config ?? [];
+    $allStages = collect(['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
+      ->merge(collect($playoffConfig)->pluck('slug')->map(fn($s) => strtoupper($s)))
+      ->unique()->values()->all();
+    $fixtures = \App\Models\Fixture::where('draw_id', $draw->id)
+      ->whereIn('stage', $allStages)
+      ->orderBy('round')
+      ->orderBy('match_nr')
+      ->get();
+    
+    $maxRound = $fixtures->max('round') ?? 0;
     $totalAdvanced = 0;
     
-    do {
-      $iteration++;
-      $advancedThisRound = 0;
+    // Process round by round (R1 → R2 → R3 …).
+    // By the time we reach round N, all round N-1 matches are already resolved.
+    for ($round = 1; $round <= $maxRound; $round++) {
+      $roundFixtures = $fixtures->where('round', $round);
       
-      // Reload fixtures with relationships
-      $fixtures = \App\Models\Fixture::where('draw_id', $draw->id)
-        ->whereIn('stage', ['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
-        ->orderBy('round')
-        ->orderBy('match_nr')
-        ->get();
-      
-      foreach ($fixtures as $fx) {
+      foreach ($roundFixtures as $fx) {
         $hasReg1 = !is_null($fx->registration1_id);
         $hasReg2 = !is_null($fx->registration2_id);
         
-        // Skip if both players present or both missing
-        if ($hasReg1 === $hasReg2) {
+        // Both players present → real match, nothing to do
+        if ($hasReg1 && $hasReg2) {
           continue;
         }
         
-        // Determine the winner (player with no opponent)
-        $winnerId = $hasReg1 ? $fx->registration1_id : $fx->registration2_id;
-        $winnerSlot = $hasReg1 ? 1 : 2;
+        // Both empty → double-bye, no one to advance. Skip.
+        // (Parent will see this child as "done" because both slots are null.)
+        if (!$hasReg1 && !$hasReg2) {
+          continue;
+        }
         
-        \Log::info("🎯 [AutoAdvance] Bye detected", [
+        // Exactly one player. Before treating as a bye, for R2+ we must
+        // verify the empty side is truly unresolvable (child is done).
+        if ($round > 1) {
+          $children = $fixtures->where('parent_fixture_id', $fx->id);
+          
+          // Both children must be "done":
+          //   - has a winner_registration (resolved normally or via bye), OR
+          //   - both slots empty (double-bye — nobody can ever come from it)
+          $allChildrenDone = $children->count() >= 2 && $children->every(function ($c) {
+            if (!is_null($c->winner_registration)) return true;                              // resolved
+            if (is_null($c->registration1_id) && is_null($c->registration2_id)) return true; // double-bye
+            return false;                                                                     // still pending
+          });
+          
+          if (!$allChildrenDone) {
+            // The other feeder match is a real match that still needs to be played.
+            continue;
+          }
+        }
+        
+        // This is a genuine bye — advance the lone player
+        $winnerId = $hasReg1 ? $fx->registration1_id : $fx->registration2_id;
+        $fx->winner_registration = $winnerId;
+        $fx->save();
+        
+        \Log::info("🎯 [AutoAdvance] Bye in R{$round}", [
           'fixture_id' => $fx->id,
-          'match_nr' => $fx->match_nr,
-          'round' => $fx->round,
-          'winner_id' => $winnerId,
-          'slot' => $winnerSlot,
+          'match_nr'   => $fx->match_nr,
+          'winner_id'  => $winnerId,
         ]);
         
-        // Advance to parent fixture (next round)
+        // Place winner into the parent fixture
         if ($fx->parent_fixture_id) {
-          $parent = \App\Models\Fixture::find($fx->parent_fixture_id);
+          $parent = $fixtures->firstWhere('id', $fx->parent_fixture_id);
           
           if ($parent) {
-            // Determine which slot in parent this match feeds
-            // Check if this is the first or second child
-            $childFixtures = \App\Models\Fixture::where('parent_fixture_id', $parent->id)
-              ->orderBy('match_nr')
-              ->pluck('id');
+            $childIndex = $fixtures
+              ->where('parent_fixture_id', $parent->id)
+              ->sortBy('match_nr')
+              ->values()
+              ->search(fn ($c) => $c->id === $fx->id);
             
-            $childIndex = $childFixtures->search($fx->id);
-            $parentSlot = ($childIndex === 0) ? 1 : 2;
-            
-            // Set winner in parent fixture
-            if ($parentSlot == 1) {
+            if ($childIndex === 0) {
               $parent->registration1_id = $winnerId;
             } else {
               $parent->registration2_id = $winnerId;
             }
             $parent->save();
-            
-            \Log::info("✅ [AutoAdvance] Advanced to parent", [
-              'from_fixture' => $fx->id,
-              'to_fixture' => $parent->id,
-              'parent_round' => $parent->round,
-              'parent_slot' => $parentSlot,
-              'winner_id' => $winnerId,
-            ]);
-            
-            $advancedThisRound++;
+            $totalAdvanced++;
           }
         }
         
-        // Also mark this fixture as complete with winner
-        $fx->winner_registration = $winnerId;
-        $fx->save();
+        // Handle loser side → consolation / position playoff fixtures.
+        // A bye has no real loser, so we must tell the consolation fixture
+        // that nobody is coming from this side.  We do that by marking
+        // the loser-parent fixture's slot as "resolved bye":
+        //   - leave registration null (no player)
+        //   - set winner_registration on the consolation fixture if the
+        //     OTHER slot already has a player (that player gets a walkover)
+        if ($fx->loser_parent_fixture_id) {
+          $loserDest = $fixtures->firstWhere('id', $fx->loser_parent_fixture_id)
+                    ?? \App\Models\Fixture::find($fx->loser_parent_fixture_id);
+          
+          if ($loserDest) {
+            \Log::info("🔀 [AutoAdvance] Bye loser feed → consolation fixture", [
+              'from_fixture' => $fx->id,
+              'cons_fixture' => $loserDest->id,
+            ]);
+            
+            // The bye side sends nobody. Check if the consolation fixture
+            // now has exactly one player — if so, auto-advance that player.
+            $consHasReg1 = !is_null($loserDest->registration1_id);
+            $consHasReg2 = !is_null($loserDest->registration2_id);
+            
+            if (($consHasReg1 xor $consHasReg2) && is_null($loserDest->winner_registration)) {
+              $consWinner = $consHasReg1 ? $loserDest->registration1_id : $loserDest->registration2_id;
+              $loserDest->winner_registration = $consWinner;
+              $loserDest->save();
+              
+              \Log::info("🎯 [AutoAdvance] Consolation bye walkover", [
+                'cons_fixture' => $loserDest->id,
+                'winner'       => $consWinner,
+              ]);
+              
+              // Cascade: advance consolation winner to its parent
+              if ($loserDest->parent_fixture_id) {
+                $consParent = $fixtures->firstWhere('id', $loserDest->parent_fixture_id)
+                           ?? \App\Models\Fixture::find($loserDest->parent_fixture_id);
+                if ($consParent) {
+                  if (is_null($consParent->registration1_id)) {
+                    $consParent->registration1_id = $consWinner;
+                  } elseif (is_null($consParent->registration2_id)) {
+                    $consParent->registration2_id = $consWinner;
+                  }
+                  $consParent->save();
+                }
+              }
+              
+              // Cascade: if consolation fixture has a loser_parent (e.g. 7th/8th),
+              // nobody goes there from this side either
+              if ($loserDest->loser_parent_fixture_id) {
+                \Log::info("🔀 [AutoAdvance] Consolation bye also feeds loser bracket (no player)", [
+                  'cons_fixture'    => $loserDest->id,
+                  'loser_dest'      => $loserDest->loser_parent_fixture_id,
+                ]);
+              }
+            }
+          }
+        }
       }
-      
-      $totalAdvanced += $advancedThisRound;
-      
-      \Log::info("🔄 [AutoAdvance] Iteration $iteration complete", [
-        'advanced' => $advancedThisRound,
-        'total' => $totalAdvanced,
-      ]);
-      
-    } while ($advancedThisRound > 0 && $iteration < $maxIterations);
+    }
     
-    \Log::info("🏁 [AutoAdvance] Complete", [
-      'iterations' => $iteration,
-      'total_advanced' => $totalAdvanced,
-    ]);
+    \Log::info("🏁 [AutoAdvance] Complete", ['total_advanced' => $totalAdvanced]);
   }
 
   /**
@@ -775,23 +908,16 @@ class RoundRobinController extends Controller
     int $currentRound, 
     int $totalRounds, 
     array $prevRoundFixtures,
-    int $matchNr
+    int $matchNr,
+    int $positionOffset = 0
   ): ?array {
     $roundsFromFinal = $totalRounds - $currentRound;
     $fixtures = [];
     
-    // Determine position based on round
-    // SF (1 round from final) → 3rd/4th playoff
-    // QF (2 rounds from final) → 5th-8th playoffs
-    // R16 (3 rounds from final) → 9th-16th playoffs
-    
     if ($roundsFromFinal == 0) {
-      // This is the final round - SF losers play for 3rd/4th
-      $position = 3; // 3rd/4th playoff
-      $positionLabel = '3rd/4th';
+      $position = 3 + $positionOffset;
+      $positionLabel = $this->ordinalRange($position);
       
-      // Create single 3rd/4th playoff match
-      // Losers from SF (which are the fixtures in prevRound that feed into Final)
       $fx = Fixture::create([
         'draw_id' => $draw->id,
         'stage' => $stage,
@@ -815,8 +941,10 @@ class RoundRobinController extends Controller
       ]);
       
     } elseif ($roundsFromFinal == 1 && count($prevRoundFixtures) >= 4) {
-      // QF round - create 5th/6th and 7th/8th playoffs
-      // First, create SF for losers (consolation SF)
+      // QF round - create consolation SF and position playoffs
+      $pos5 = 5 + $positionOffset;
+      $pos7 = 7 + $positionOffset;
+
       $consSF1 = Fixture::create([
         'draw_id' => $draw->id,
         'stage' => $stage,
@@ -834,8 +962,6 @@ class RoundRobinController extends Controller
       ]);
       
       // Link QF losers to consolation SF
-      // QF1 & QF2 losers → Cons SF1
-      // QF3 & QF4 losers → Cons SF2
       if (isset($prevRoundFixtures[0])) {
         $prevRoundFixtures[0]->loser_parent_fixture_id = $consSF1->id;
         $prevRoundFixtures[0]->save();
@@ -853,24 +979,22 @@ class RoundRobinController extends Controller
         $prevRoundFixtures[3]->save();
       }
       
-      // Create 5th/6th playoff (winners of cons SF)
       $playoff56 = Fixture::create([
         'draw_id' => $draw->id,
         'stage' => $stage,
         'round' => $currentRound + 1,
         'match_nr' => $matchNr++,
-        'position' => 5,
-        'playoff_type' => '5th/6th',
+        'position' => $pos5,
+        'playoff_type' => $this->ordinalRange($pos5),
       ]);
       
-      // Create 7th/8th playoff (losers of cons SF)
       $playoff78 = Fixture::create([
         'draw_id' => $draw->id,
         'stage' => $stage,
         'round' => $currentRound + 1,
         'match_nr' => $matchNr++,
-        'position' => 7,
-        'playoff_type' => '7th/8th',
+        'position' => $pos7,
+        'playoff_type' => $this->ordinalRange($pos7),
       ]);
       
       // Link cons SF to playoffs
@@ -900,6 +1024,23 @@ class RoundRobinController extends Controller
       'fixtures' => $fixtures,
       'nextMatchNr' => $matchNr,
     ];
+  }
+
+  /**
+   * Generate ordinal position range label from a position number.
+   * e.g. 3 → "3rd/4th", 5 → "5th/6th", 11 → "11th/12th"
+   */
+  protected function ordinalRange(int $pos): string
+  {
+    $next = $pos + 1;
+    return $this->ordinal($pos) . '/' . $this->ordinal($next);
+  }
+
+  protected function ordinal(int $n): string
+  {
+    $s = ['th','st','nd','rd'];
+    $v = $n % 100;
+    return $n . ($s[($v - 20) % 10] ?? $s[$v] ?? $s[0]);
   }
 
 
@@ -972,6 +1113,7 @@ class RoundRobinController extends Controller
   public function mainBracket(Draw $draw)
   {
     $eventType = $draw->event->eventType ?? null;
+    $isEmpty = request()->boolean('empty');
 
     // Use original BracketEngine for Interpro (eventType 13)
     if ($eventType == 13) {
@@ -991,6 +1133,7 @@ class RoundRobinController extends Controller
     return view('backend.draw.roundrobin.dynamic-bracket-svg', [
       'draw' => $draw,
       'svgData' => $svgData,
+      'emptyBracket' => $isEmpty,
     ]);
   }
 
@@ -1008,6 +1151,23 @@ class RoundRobinController extends Controller
     ]);
     }
   
+    public function toggleLock(Request $request, Draw $draw)
+    {
+      $draw->locked = !$draw->locked;
+      $draw->save();
+
+      Log::info("🔒 [toggleLock] Draw lock toggled", [
+        'draw_id' => $draw->id,
+        'locked' => $draw->locked,
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'locked' => $draw->locked,
+        'message' => $draw->locked ? 'Draw has been locked.' : 'Draw has been unlocked.',
+      ]);
+    }
+
     public function regenerateRR(Request $request, Draw $draw)
     {
       Log::info("🔄 [regenerateRR] Starting fixture regeneration", [
@@ -1017,10 +1177,14 @@ class RoundRobinController extends Controller
 
       try {
         // Clear existing RR fixtures for this draw
-        $deleted = $draw->drawFixtures()->where('stage', 'RR')->delete();
+        $deletedRR = $draw->drawFixtures()->where('stage', 'RR')->delete();
+
+        // Clear existing bracket/playoff fixtures for this draw
+        $deletedBracket = $draw->drawFixtures()->where('stage', '!=', 'RR')->delete();
       
-        Log::info("🗑 [regenerateRR] Deleted existing RR fixtures", [
-          'deleted_count' => $deleted,
+        Log::info("🗑 [regenerateRR] Deleted existing fixtures", [
+          'deleted_rr' => $deletedRR,
+          'deleted_bracket' => $deletedBracket,
         ]);
 
         // Regenerate fixtures based on current group assignments
@@ -1108,16 +1272,18 @@ class RoundRobinController extends Controller
         ->where('draw_group_id', $groupId)
         ->delete();
 
-      // Insert new assignments
-      foreach ($registrationIds as $regId) {
+      // Insert new assignments with seed based on array order
+      foreach ($registrationIds as $index => $regId) {
         Log::info("➕ [saveGroups] Adding registration to group", [
           'group_id' => $groupId,
           'registration_id' => $regId,
+          'seed' => $index + 1,
         ]);
 
         DB::table('draw_group_registrations')->insert([
           'draw_group_id' => $groupId,
           'registration_id' => $regId,
+          'seed' => $index + 1,
         ]);
       }
 

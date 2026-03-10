@@ -296,6 +296,11 @@
 
   /* ===================================================
    * STANDINGS
+   * Tiebreak cascade:
+   *   1. Matches won
+   *   2. Sets won %
+   *   3. Games won %
+   *   4. Head-to-head (only when 2 players still tied)
    * =================================================== */
   function renderStandings() {
     const wrapper = $('#rr-standings-wrapper');
@@ -306,34 +311,52 @@
     const groups = window.RR_GROUPS || [];
     const standings = window.RR_STANDINGS || {};
 
+    function sp(r) { const t = r.sets_won + r.sets_lost; return t > 0 ? r.sets_won / t : 0; }
+    function gp(r) { const t = (r.games_won||0) + (r.games_lost||0); return t > 0 ? (r.games_won||0) / t : 0; }
+
     groups.forEach(group => {
       const gid = group.id;
-
       if (!standings[gid]) return;
 
       let rows = Object.values(standings[gid]);
 
       function headToHead(a, b) {
         const fxList = RR_FIXTURES[gid] || [];
-
         const match = fxList.find(f =>
           (f.r1_id === a.reg_id && f.r2_id === b.reg_id) ||
           (f.r1_id === b.reg_id && f.r2_id === a.reg_id)
         );
-
         if (!match || !match.winner) return 0;
         return match.winner === a.reg_id ? 1 : -1;
       }
 
       rows.sort((a, b) => {
         if (a.wins !== b.wins) return b.wins - a.wins;
-
-        const diffA = a.sets_won - a.sets_lost;
-        const diffB = b.sets_won - b.sets_lost;
-
-        if (diffA !== diffB) return diffB - diffA;
-
+        const dSets = sp(b) - sp(a);
+        if (Math.abs(dSets) > 0.0001) return dSets;
+        const dGames = gp(b) - gp(a);
+        if (Math.abs(dGames) > 0.0001) return dGames;
         return headToHead(a, b);
+      });
+
+      // Tag tiebreak indicators (compare each row to the one above)
+      rows.forEach((r, i) => {
+        r.tiebreak = r.tiebreak || '';
+        if (i === 0) return;
+        const above = rows[i - 1];
+        if (above.wins !== r.wins) return;
+        if (Math.abs(sp(above) - sp(r)) > 0.0001) {
+          r.tiebreak = 'Sets %'; if (!above.tiebreak) above.tiebreak = 'Sets %'; return;
+        }
+        if (Math.abs(gp(above) - gp(r)) > 0.0001) {
+          r.tiebreak = 'Games %'; if (!above.tiebreak) above.tiebreak = 'Games %'; return;
+        }
+        const hh = headToHead(above, r);
+        if (hh !== 0) {
+          r.tiebreak = 'H2H'; if (!above.tiebreak) above.tiebreak = 'H2H';
+        } else {
+          r.tiebreak = '='; if (!above.tiebreak) above.tiebreak = '=';
+        }
       });
 
       let html = `
@@ -346,24 +369,27 @@
               <th>Player</th>
               <th class="text-center">W</th>
               <th class="text-center">L</th>
-              <th class="text-center">Sets +</th>
-              <th class="text-center">Sets −</th>
-              <th class="text-center">Diff</th>
+              <th class="text-center">Sets %</th>
+              <th class="text-center">Games %</th>
+              <th class="text-center">TB</th>
             </tr>
           </thead>
           <tbody>
       `;
 
       rows.forEach((r, i) => {
-        const diff = r.sets_won - r.sets_lost;
-        const diffColor =
-          diff > 0 ? 'text-success' :
-            diff < 0 ? 'text-danger' : 'text-muted';
+        const totalSets = r.sets_won + r.sets_lost;
+        const setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) : '-';
+        const totalGames = (r.games_won || 0) + (r.games_lost || 0);
+        const gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) : '-';
 
         let rowClass = '';
         if (i === 0) rowClass = 'table-success fw-bold';
         else if (i === rows.length - 1) rowClass = 'table-danger';
         else rowClass = 'table-light';
+
+        const tb = r.tiebreak || '';
+        const tbBadge = tb ? `<span class="badge bg-warning text-dark" style="font-size:10px;">${tb}</span>` : '';
 
         html += `
           <tr class="${rowClass}">
@@ -371,9 +397,9 @@
             <td>${r.player}</td>
             <td class="text-center">${r.wins}</td>
             <td class="text-center">${r.losses}</td>
-            <td class="text-center">${r.sets_won}</td>
-            <td class="text-center">${r.sets_lost}</td>
-            <td class="text-center ${diffColor}">${diff}</td>
+            <td class="text-center">${setsPct}%</td>
+            <td class="text-center">${gamesPct}%</td>
+            <td class="text-center">${tbBadge}</td>
           </tr>`;
       });
 
@@ -412,6 +438,15 @@
 
     $(document).on('click', '.rr-open-score-modal', function (e) {
       e.preventDefault();
+      openScoreModal(
+        $(this).data('fixture-id'),
+        $(this).data('home'),
+        $(this).data('away')
+      );
+    });
+
+    // Bracket SVG click → open score modal
+    $(document).on('click', '.bracket-score-btn', function () {
       openScoreModal(
         $(this).data('fixture-id'),
         $(this).data('home'),
@@ -487,39 +522,35 @@
             }
 
 
-            if (res.standings)
-              RR_STANDINGS[updated.draw_group_id] = res.standings;
-
+            // Update full data from server response
+            if (res.rrFixtures) {
+              window.RR_FIXTURES = res.rrFixtures;
+            }
+            if (res.standings) {
+              window.RR_STANDINGS = res.standings;
+            }
             if (res.oop) {
-              RR_OOP = res.oop.map(fx => ({
+              window.RR_OOP = res.oop.map(fx => ({
                 id: fx.id,
+                stage: fx.stage ?? '',
                 round: fx.round ?? fx.round_nr ?? '',
+                match_nr: fx.match_nr ?? '',
                 time: fx.time ?? '',
                 home: fx.home ?? fx.home_name ?? fx.name1 ?? '',
                 away: fx.away ?? fx.away_name ?? fx.name2 ?? '',
                 score: fx.score ?? '',
                 winner: fx.winner_registration ?? fx.winner ?? null,
                 r1_id: fx.r1_id,
-                r2_id: fx.r2_id
+                r2_id: fx.r2_id,
+                playoff_type: fx.playoff_type ?? null,
+                winner_feeders: fx.winner_feeders ?? [],
+                loser_feeders: fx.loser_feeders ?? []
               }));
-
-              renderOrderOfPlay();
             }
 
-            /* ============================================================
-               FAST DOM PATCH — MATRIX
-            ============================================================ */
-            updateMatrixCell(res.fixture);
-
-            /* ============================================================
-               FAST DOM PATCH — ORDER OF PLAY ROW
-            ============================================================ */
-            updateOOPRow(res.fixture);
-
-            /* ============================================================
-               Full re-render (for sync safety)
-            ============================================================ */
+            // Re-render all views with fresh data
             renderMatrixFallback();
+            renderOrderOfPlay();
             renderStandings();
           }
 
@@ -554,6 +585,11 @@
           const modal = bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'));
           if (modal) modal.hide();
 
+          // Clear all score inputs
+          $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
+          $modalFixtureId.val('');
+          $modalMatchLabel.html('');
+
         })
         .fail(err => {
           toastr.error(err.responseJSON?.message || 'Error saving score');
@@ -561,6 +597,48 @@
         });
 
 
+    });
+
+    // ============================================================
+    // DELETE SCORE FROM MODAL
+    // ============================================================
+    $(document).on('click', '#rrm-delete-score', function() {
+        var fixtureId = $('#rrm-fixture-id').val();
+        if (!fixtureId) { toastr.warning('No fixture selected.'); return; }
+        if (!confirm('Delete the score for this match?')) return;
+
+        var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Deleting…');
+        var url = window.RR_DELETE_SCORE_URL.replace('FIXTURE_ID', fixtureId);
+
+        $.ajax({ url: url, method: 'DELETE' })
+         .done(function(res) {
+            toastr.success('Score deleted');
+            bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'))?.hide();
+            $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
+            if (res.rrFixtures) {
+                window.RR_FIXTURES = res.rrFixtures;
+            }
+            if (res.standings) {
+                window.RR_STANDINGS = res.standings;
+            }
+            if (res.oop) {
+                window.RR_OOP = res.oop.map(function(fx) {
+                    return {
+                        id: fx.id, stage: fx.stage ?? '', round: fx.round ?? '', match_nr: fx.match_nr ?? '',
+                        time: fx.time ?? '', home: fx.home ?? '', away: fx.away ?? '',
+                        score: fx.score ?? '', winner: fx.winner ?? null, r1_id: fx.r1_id, r2_id: fx.r2_id,
+                        playoff_type: fx.playoff_type ?? null,
+                        winner_feeders: fx.winner_feeders ?? [], loser_feeders: fx.loser_feeders ?? []
+                    };
+                });
+            }
+            renderMatrixFallback();
+            renderOrderOfPlay();
+            renderStandings();
+            if (typeof loadMainBracket === 'function') loadMainBracket(true);
+         })
+         .fail(function(err) { toastr.error(err.responseJSON?.message || 'Error deleting score'); })
+         .always(function() { $btn.prop('disabled', false).html('<i class="ti ti-trash me-1"></i> Delete Score'); });
     });
 
     // ============================================================
@@ -630,32 +708,53 @@
     loadMainBracket();
   });
 
+  const bracketSpinner = `<div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;"></div>
+      <div class="mt-3 fw-bold text-muted">Generating playoff brackets…</div>
+      <small class="text-muted">This may take a few seconds</small>
+    </div>`;
+
+  const bracketLoadingSpinner = `<div class="text-center py-5">
+      <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+      <div class="mt-2 text-muted">Loading bracket…</div>
+    </div>`;
+
   $('#btn-generate-main-bracket').on('click', function () {
     const btn = $(this).prop('disabled', true);
+    $('#main-bracket-wrapper').html(bracketSpinner);
 
     $.post(APP_URL + '/backend/draw/' + drawId + '/generate-main-bracket')
       .done(res => {
         if (res.success) {
           toastr.success(res.message);
           loadMainBracket();
-        } else toastr.error(res.message);
+        } else {
+          toastr.error(res.message);
+          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Generation failed.</div>');
+        }
       })
-      .fail(() => toastr.error('Error generating bracket'))
+      .fail(() => {
+        toastr.error('Error generating bracket');
+        $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
+      })
       .always(() => btn.prop('disabled', false));
   });
 
   function loadMainBracket(force = false) {
     $('#main-bracket-wrapper')
+      .html(bracketLoadingSpinner)
       .load(`${APP_URL}/backend/draw/${drawId}/main-bracket?force=${force}`);
   }
 
   function loadPlateBracket(force = false) {
     $('#plate-bracket-wrapper')
+      .html(bracketLoadingSpinner)
       .load(`${APP_URL}/backend/draw/${drawId}/plate-bracket?force=${force}`);
   }
 
   function loadConsBracket(force = false) {
     $('#cons-bracket-wrapper')
+      .html(bracketLoadingSpinner)
       .load(`${APP_URL}/backend/draw/${drawId}/cons-bracket?force=${force}`);
   }
 

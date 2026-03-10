@@ -199,10 +199,18 @@
 
   /* ===============================
    * STANDINGS
+   * Tiebreak cascade:
+   *   1. Matches won
+   *   2. Sets won %
+   *   3. Games won %
+   *   4. Head-to-head (only when 2 players still tied)
    * =============================== */
   function renderStandings() {
     const wrapper = $('#rr-standings-wrapper');
     wrapper.html('');
+
+    function sp(r) { const t = r.sets_won + r.sets_lost; return t > 0 ? r.sets_won / t : 0; }
+    function gp(r) { const t = (r.games_won||0) + (r.games_lost||0); return t > 0 ? (r.games_won||0) / t : 0; }
 
     RR_GROUPS.forEach(group => {
       const gid = group.id;
@@ -210,7 +218,44 @@
 
       let rows = Object.values(RR_STANDINGS[gid]);
 
-      rows.sort((a, b) => b.wins - a.wins);
+      function headToHead(a, b) {
+        const fxList = RR_FIXTURES[gid] || [];
+        const match = fxList.find(f =>
+          (f.r1_id === a.reg_id && f.r2_id === b.reg_id) ||
+          (f.r1_id === b.reg_id && f.r2_id === a.reg_id)
+        );
+        if (!match || !match.winner) return 0;
+        return match.winner === a.reg_id ? 1 : -1;
+      }
+
+      rows.sort((a, b) => {
+        if (a.wins !== b.wins) return b.wins - a.wins;
+        const dSets = sp(b) - sp(a);
+        if (Math.abs(dSets) > 0.0001) return dSets;
+        const dGames = gp(b) - gp(a);
+        if (Math.abs(dGames) > 0.0001) return dGames;
+        return headToHead(a, b);
+      });
+
+      // Tag tiebreak indicators (compare each row to the one above)
+      rows.forEach((r, i) => {
+        r.tiebreak = r.tiebreak || '';
+        if (i === 0) return;
+        const above = rows[i - 1];
+        if (above.wins !== r.wins) return;
+        if (Math.abs(sp(above) - sp(r)) > 0.0001) {
+          r.tiebreak = 'Sets %'; if (!above.tiebreak) above.tiebreak = 'Sets %'; return;
+        }
+        if (Math.abs(gp(above) - gp(r)) > 0.0001) {
+          r.tiebreak = 'Games %'; if (!above.tiebreak) above.tiebreak = 'Games %'; return;
+        }
+        const hh = headToHead(above, r);
+        if (hh !== 0) {
+          r.tiebreak = 'H2H'; if (!above.tiebreak) above.tiebreak = 'H2H';
+        } else {
+          r.tiebreak = '='; if (!above.tiebreak) above.tiebreak = '=';
+        }
+      });
 
       let html = `
         <h6 class="fw-bold mt-4">Box ${group.name}</h6>
@@ -222,26 +267,37 @@
               <th>Player</th>
               <th class="text-center">W</th>
               <th class="text-center">L</th>
-              <th class="text-center">Sets +</th>
-              <th class="text-center">Sets −</th>
-              <th class="text-center">Diff</th>
+              <th class="text-center">Sets %</th>
+              <th class="text-center">Games %</th>
+              <th class="text-center">TB</th>
             </tr>
           </thead>
           <tbody>
       `;
 
       rows.forEach((r, i) => {
-        const diff = r.sets_won - r.sets_lost;
+        const totalSets = r.sets_won + r.sets_lost;
+        const setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) : '-';
+        const totalGames = (r.games_won || 0) + (r.games_lost || 0);
+        const gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) : '-';
+
+        let rowClass = '';
+        if (i === 0) rowClass = 'table-success fw-bold';
+        else if (i === rows.length - 1) rowClass = 'table-danger';
+        else rowClass = 'table-light';
+
+        const tb = r.tiebreak || '';
+        const tbBadge = tb ? `<span class="badge bg-warning text-dark" style="font-size:10px;">${tb}</span>` : '';
 
         html += `
-          <tr>
+          <tr class="${rowClass}">
             <td>${i + 1}</td>
             <td>${r.player}</td>
             <td class="text-center">${r.wins}</td>
             <td class="text-center">${r.losses}</td>
-            <td class="text-center">${r.sets_won}</td>
-            <td class="text-center">${r.sets_lost}</td>
-            <td class="text-center">${diff}</td>
+            <td class="text-center">${setsPct}%</td>
+            <td class="text-center">${gamesPct}%</td>
+            <td class="text-center">${tbBadge}</td>
           </tr>`;
       });
 

@@ -16,7 +16,7 @@
                     <thead class="table-light">
                         <tr>
                             <th class="fw-bold">Scheduled</th>
-                            <th class="d-none">#</th>
+                            <th>#</th>
                             <th class="d-none d-sm-table-cell">Round</th>
                             <th class="d-none d-md-table-cell">Match #</th>
                             <th>Home</th>
@@ -94,7 +94,7 @@
                                     {{ \Carbon\Carbon::parse($display)->format('Y-m-d H:i') }}
                                 @else — @endif
                             </td>
-                            <td class="d-none">{{ $fx->id }}</td>
+                            <td>{{ $fx->id }}</td>
                             <td class="d-none d-sm-table-cell">{{ $fx->round_nr }}</td>
                             <td class="d-none d-md-table-cell">{{ $fx->home_rank_nr }}</td>
                             <td class="home-cell {{ $homeClass }}">
@@ -136,8 +136,9 @@
 <div class="modal fade" id="editScoreModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
     <div class="modal-content">
-      <form id="editScoreForm" method="POST" action="{{ route('frontend.fixtures.score.store', $fx->id) }}">
+      <form id="editScoreForm" method="POST" action="">
         @csrf
+        <input type="hidden" name="fixture_id" id="editFixtureId">
         <div class="modal-header">
           <h5 class="modal-title">Enter Score</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>

@@ -18,10 +18,12 @@ class DrawSetting extends Model
       'num_sets',
       'playoff_config',  // JSON: playoff brackets configuration
       'preset_key',      // Store which preset template was used
+      'notes',           // JSON: editable rules/notes per section
     ];
 
     protected $casts = [
       'playoff_config' => 'array',
+      'notes' => 'array',
     ];
 
     /**
@@ -59,10 +61,44 @@ class DrawSetting extends Model
             ['name' => 'Shield (33-40)', 'slug' => 'shield', 'size' => 8, 'positions' => [33,34,35,36,37,38,39,40], 'enabled' => false],
           ],
         ],
+        '1_group_pairs' => [
+          'name' => '1 Group: Position Pairs (1v2, 3v4, 5v6…)',
+          'groups' => 1,
+          'max_positions' => 40,
+          'config' => [
+            ['name' => '1st/2nd (#1 vs #2)', 'slug' => 'main', 'size' => 2, 'positions' => [1,2], 'enabled' => true],
+            ['name' => '3rd/4th (#3 vs #4)', 'slug' => 'plate', 'size' => 2, 'positions' => [3,4], 'enabled' => true],
+            ['name' => '5th/6th (#5 vs #6)', 'slug' => 'cons', 'size' => 2, 'positions' => [5,6], 'enabled' => true],
+            ['name' => '7th/8th (#7 vs #8)', 'slug' => 'bowl', 'size' => 2, 'positions' => [7,8], 'enabled' => false],
+            ['name' => '9th/10th (#9 vs #10)', 'slug' => 'shield', 'size' => 2, 'positions' => [9,10], 'enabled' => false],
+            ['name' => '11th/12th (#11 vs #12)', 'slug' => 'spoon', 'size' => 2, 'positions' => [11,12], 'enabled' => false],
+            ['name' => '13th/14th (#13 vs #14)', 'slug' => 'p7', 'size' => 2, 'positions' => [13,14], 'enabled' => false],
+            ['name' => '15th/16th (#15 vs #16)', 'slug' => 'p8', 'size' => 2, 'positions' => [15,16], 'enabled' => false],
+            ['name' => '17th/18th (#17 vs #18)', 'slug' => 'p9', 'size' => 2, 'positions' => [17,18], 'enabled' => false],
+            ['name' => '19th/20th (#19 vs #20)', 'slug' => 'p10', 'size' => 2, 'positions' => [19,20], 'enabled' => false],
+          ],
+        ],
         
         // ============================================================
         // 2 GROUPS
         // ============================================================
+        '2_groups_cross' => [
+          'name' => '2 Groups: Cross-Group (A1vB1, A2vB2, A3vB3…)',
+          'groups' => 2,
+          'max_positions' => 20,
+          'config' => [
+            ['name' => '1st/2nd (A1 vs B1)', 'slug' => 'main', 'size' => 2, 'positions' => [1], 'enabled' => true],
+            ['name' => '3rd/4th (A2 vs B2)', 'slug' => 'plate', 'size' => 2, 'positions' => [2], 'enabled' => true],
+            ['name' => '5th/6th (A3 vs B3)', 'slug' => 'cons', 'size' => 2, 'positions' => [3], 'enabled' => true],
+            ['name' => '7th/8th (A4 vs B4)', 'slug' => 'bowl', 'size' => 2, 'positions' => [4], 'enabled' => true],
+            ['name' => '9th/10th (A5 vs B5)', 'slug' => 'shield', 'size' => 2, 'positions' => [5], 'enabled' => false],
+            ['name' => '11th/12th (A6 vs B6)', 'slug' => 'spoon', 'size' => 2, 'positions' => [6], 'enabled' => false],
+            ['name' => '13th/14th (A7 vs B7)', 'slug' => 'p7', 'size' => 2, 'positions' => [7], 'enabled' => false],
+            ['name' => '15th/16th (A8 vs B8)', 'slug' => 'p8', 'size' => 2, 'positions' => [8], 'enabled' => false],
+            ['name' => '17th/18th (A9 vs B9)', 'slug' => 'p9', 'size' => 2, 'positions' => [9], 'enabled' => false],
+            ['name' => '19th/20th (A10 vs B10)', 'slug' => 'p10', 'size' => 2, 'positions' => [10], 'enabled' => false],
+          ],
+        ],
         '2_groups_4s' => [
           'name' => '2 Groups: 1-4, 5-8, 9-12... (4-player brackets)',
           'groups' => 2,
@@ -78,6 +114,19 @@ class DrawSetting extends Model
             ['name' => '29-32', 'slug' => 'p8', 'size' => 4, 'positions' => [15,16], 'enabled' => false],
             ['name' => '33-36', 'slug' => 'p9', 'size' => 4, 'positions' => [17,18], 'enabled' => false],
             ['name' => '37-40', 'slug' => 'p10', 'size' => 4, 'positions' => [19,20], 'enabled' => false],
+          ],
+        ],
+        '2_groups_1to4' => [
+          'name' => '2 Groups: 1-4, 5-12, 13-20... (Main=4, others=8)',
+          'groups' => 2,
+          'max_positions' => 20,
+          'config' => [
+            ['name' => 'Main Draw (1-4)', 'slug' => 'main', 'size' => 4, 'positions' => [1,2], 'enabled' => true],
+            ['name' => 'Plate (5-12)', 'slug' => 'plate', 'size' => 8, 'positions' => [3,4,5,6], 'enabled' => true],
+            ['name' => 'Consolation (13-20)', 'slug' => 'cons', 'size' => 8, 'positions' => [7,8,9,10], 'enabled' => true],
+            ['name' => 'Bowl (21-28)', 'slug' => 'bowl', 'size' => 8, 'positions' => [11,12,13,14], 'enabled' => false],
+            ['name' => 'Shield (29-36)', 'slug' => 'shield', 'size' => 8, 'positions' => [15,16,17,18], 'enabled' => false],
+            ['name' => '37-40', 'slug' => 'p6', 'size' => 4, 'positions' => [19,20], 'enabled' => false],
           ],
         ],
         '2_groups_8s' => [

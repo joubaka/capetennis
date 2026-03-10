@@ -146,34 +146,64 @@
         <small class="text-uppercase">Draws & Order of Play</small>
       </div>
       <div class="card-body">
-        <div class="d-flex flex-wrap gap-2">
-          @php
-            // Sort draws: published first, then by age category, then by name
-            $sortedDraws = $eventDraws->sortBy([
-              ['published', 'desc'],
-              [fn($d) => $d->draw_types?->ageCategory ?? $d->drawName ?? '', 'asc'],
-              ['drawName', 'asc'],
-            ]);
-          @endphp
-          @foreach($sortedDraws as $draw)
-            @if($draw->published)
-              {{-- Published: Green button --}}
-              <a href="{{ route('public.roundrobin.show', $draw->id) }}"
-                 class="btn btn-sm btn-success">
-                <i class="ti ti-tournament me-1"></i>
-                {{ $draw->drawName ?? 'Draw #'.$draw->id }}
-              </a>
-            @else
-              {{-- Unpublished: Outline with red badge --}}
-              <a href="{{ route('public.roundrobin.show', $draw->id) }}"
-                 class="btn btn-sm btn-outline-secondary">
-                <i class="ti ti-tournament me-1"></i>
-                {{ $draw->drawName ?? 'Draw #'.$draw->id }}
-                <span class="badge bg-danger ms-1">Unpublished</span>
-              </a>
-            @endif
-          @endforeach
-        </div>
+<div class="d-flex flex-wrap gap-2">
+@php
+  $sortedDraws = $eventDraws->sortBy([
+    ['published', 'desc'],
+    [fn($d) => $d->draw_types?->ageCategory ?? $d->drawName ?? '', 'asc'],
+    ['drawName', 'asc'],
+  ]);
+
+  $isConvenorOrSuper = auth()->check() && (
+    (method_exists(auth()->user(), 'isConvenorForEvent') && auth()->user()->isConvenorForEvent($event->id))
+    || (method_exists(auth()->user(), 'hasRole') && (auth()->user()->hasRole('convenor') || auth()->user()->hasRole('admin') || auth()->user()->hasRole('super-user')))
+  );
+@endphp
+
+@foreach($sortedDraws as $draw)
+  <div class="d-flex align-items-center gap-1">
+
+    {{-- PUBLISHED --}}
+    @if($draw->published)
+      <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+         class="btn btn-sm btn-success">
+        <i class="ti ti-tournament me-1"></i>
+        {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+      </a>
+
+      @if($isConvenorOrSuper)
+        <a href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw->id]) }}"
+           class="btn btn-sm btn-light border"
+           title="Insert Score">
+          <i class="bi bi-clipboard-data"></i>
+        </a>
+      @endif
+
+    {{-- UNPUBLISHED --}}
+    @else
+
+      @if($isConvenorOrSuper)
+        {{-- Convenor/Admin/Super can open --}}
+        <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+           class="btn btn-sm btn-outline-secondary">
+          <i class="ti ti-tournament me-1"></i>
+          {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+          <span class="badge bg-danger ms-1">Unpublished</span>
+        </a>
+      @else
+        {{-- Others see button but cannot open --}}
+        <span class="btn btn-sm btn-outline-secondary disabled">
+          <i class="ti ti-tournament me-1"></i>
+          {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+          <span class="badge bg-danger ms-1">Unpublished</span>
+        </span>
+      @endif
+
+    @endif
+
+  </div>
+@endforeach
+</div>
       </div>
     </div>
     @endif
@@ -205,11 +235,9 @@
         @endforeach
       </div>
     </div>
-
-  
-
   </div>
 </div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 <div class="modal fade" id="addFileModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">

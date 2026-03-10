@@ -218,6 +218,33 @@ class ManageDrawController extends Controller
   }
 
   /**
+   * Update draw notes/rules
+   */
+  public function updateNotes(Request $request, Draw $draw)
+  {
+    $validated = $request->validate([
+      'notes' => 'required|array',
+      'notes.*' => 'nullable|string|max:5000',
+    ]);
+
+    if (!$draw->settings) {
+      $draw->settings()->create([
+        'draw_id' => $draw->id,
+        'notes' => $validated['notes'],
+      ]);
+    } else {
+      $draw->settings()->update([
+        'notes' => $validated['notes'],
+      ]);
+    }
+
+    return response()->json([
+      'success' => true,
+      'message' => 'Notes saved successfully.',
+    ]);
+  }
+
+  /**
    * Generate playoff brackets from Round Robin standings
    */
   public function generatePlayoffBrackets(Request $request, Draw $draw)

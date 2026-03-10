@@ -210,6 +210,8 @@ class DrawService
           'losses' => 0,
           'sets_won' => 0,
           'sets_lost' => 0,
+          'games_won' => 0,
+          'games_lost' => 0,
         ];
       }
     }
@@ -232,8 +234,12 @@ class DrawService
 
       $homeSets = 0;
       $awaySets = 0;
+      $homeGames = 0;
+      $awayGames = 0;
 
       foreach ($fx->fixtureResults as $set) {
+        $homeGames += (int) $set->registration1_score;
+        $awayGames += (int) $set->registration2_score;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } else {
@@ -243,9 +249,13 @@ class DrawService
 
       $standings[$gid][$home]['sets_won'] += $homeSets;
       $standings[$gid][$home]['sets_lost'] += $awaySets;
+      $standings[$gid][$home]['games_won'] += $homeGames;
+      $standings[$gid][$home]['games_lost'] += $awayGames;
 
       $standings[$gid][$away]['sets_won'] += $awaySets;
       $standings[$gid][$away]['sets_lost'] += $homeSets;
+      $standings[$gid][$away]['games_won'] += $awayGames;
+      $standings[$gid][$away]['games_lost'] += $homeGames;
 
       $last = $fx->fixtureResults->sortBy('set_nr')->last();
 
@@ -272,9 +282,18 @@ class DrawService
         if ($a['wins'] !== $b['wins'])
           return $b['wins'] <=> $a['wins'];
 
-        $diffA = $a['sets_won'] - $a['sets_lost'];
-        $diffB = $b['sets_won'] - $b['sets_lost'];
-        return $diffB <=> $diffA;
+        $aTotalSets = $a['sets_won'] + $a['sets_lost'];
+        $bTotalSets = $b['sets_won'] + $b['sets_lost'];
+        $aSetsPct = $aTotalSets > 0 ? $a['sets_won'] / $aTotalSets : 0;
+        $bSetsPct = $bTotalSets > 0 ? $b['sets_won'] / $bTotalSets : 0;
+        if (abs($aSetsPct - $bSetsPct) > 0.0001)
+          return $bSetsPct <=> $aSetsPct;
+
+        $aTotalGames = $a['games_won'] + $a['games_lost'];
+        $bTotalGames = $b['games_won'] + $b['games_lost'];
+        $aGamesPct = $aTotalGames > 0 ? $a['games_won'] / $aTotalGames : 0;
+        $bGamesPct = $bTotalGames > 0 ? $b['games_won'] / $bTotalGames : 0;
+        return $bGamesPct <=> $aGamesPct;
       });
 
       $sorted[$gid] = $rows;
@@ -732,14 +751,14 @@ class DrawService
       Log::info("👉 [RR] Group {$group->id} — {$group->name}");
 
       $registrations = $group->groupRegistrations
-        ->sortBy(fn($r) => $r->pivot->seed ?? $r->id)
+        ->sortBy(fn($r) => $r->seed ?? 9999)
         ->values();
 
       $debugList = $registrations->map(function ($r) {
         return [
           'id' => $r->id,
-          'seed' => $r->pivot->seed ?? null,
-          'name' => $r->display_name,
+          'seed' => $r->seed ?? null,
+          'name' => $r->registration?->display_name ?? 'N/A',
         ];
       });
       Log::info("   🧍 Players:", $debugList->toArray());
@@ -835,6 +854,8 @@ class DrawService
           'losses' => 0,
           'sets_won' => 0,
           'sets_lost' => 0,
+          'games_won' => 0,
+          'games_lost' => 0,
         ];
       }
 
@@ -876,11 +897,15 @@ class DrawService
         continue;
       }
 
-      // Count sets
+      // Count sets and games
       $homeSets = 0;
       $awaySets = 0;
+      $homeGames = 0;
+      $awayGames = 0;
 
       foreach ($fx->fixtureResults as $set) {
+        $homeGames += (int) $set->registration1_score;
+        $awayGames += (int) $set->registration2_score;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } else {
@@ -892,6 +917,8 @@ class DrawService
         'fixture_id' => $fx->id,
         'home_sets' => $homeSets,
         'away_sets' => $awaySets,
+        'home_games' => $homeGames,
+        'away_games' => $awayGames,
         'winner' => $winner,
       ]);
 
@@ -900,6 +927,12 @@ class DrawService
       $standings[$box][$home]['sets_lost'] += $awaySets;
       $standings[$box][$away]['sets_won'] += $awaySets;
       $standings[$box][$away]['sets_lost'] += $homeSets;
+
+      // Update games
+      $standings[$box][$home]['games_won'] += $homeGames;
+      $standings[$box][$home]['games_lost'] += $awayGames;
+      $standings[$box][$away]['games_won'] += $awayGames;
+      $standings[$box][$away]['games_lost'] += $homeGames;
 
       // Update wins/losses
       if ($winner == $home) {
@@ -948,20 +981,32 @@ class DrawService
 
       usort($rows, function ($a, $b) use ($headToHead) {
 
-        // wins first
+        // 1) Matches won
         if ($a['wins'] !== $b['wins']) {
           return $b['wins'] <=> $a['wins'];
         }
 
-        // sets difference next
-        $aDiff = $a['sets_won'] - $a['sets_lost'];
-        $bDiff = $b['sets_won'] - $b['sets_lost'];
+        // 2) Sets won percentage
+        $aTotalSets = $a['sets_won'] + $a['sets_lost'];
+        $bTotalSets = $b['sets_won'] + $b['sets_lost'];
+        $aSetsPct = $aTotalSets > 0 ? $a['sets_won'] / $aTotalSets : 0;
+        $bSetsPct = $bTotalSets > 0 ? $b['sets_won'] / $bTotalSets : 0;
 
-        if ($aDiff !== $bDiff) {
-          return $bDiff <=> $aDiff;
+        if (abs($aSetsPct - $bSetsPct) > 0.0001) {
+          return $bSetsPct <=> $aSetsPct;
         }
 
-        // head-to-head (if they played)
+        // 3) Games won percentage
+        $aTotalGames = $a['games_won'] + $a['games_lost'];
+        $bTotalGames = $b['games_won'] + $b['games_lost'];
+        $aGamesPct = $aTotalGames > 0 ? $a['games_won'] / $aTotalGames : 0;
+        $bGamesPct = $bTotalGames > 0 ? $b['games_won'] / $bTotalGames : 0;
+
+        if (abs($aGamesPct - $bGamesPct) > 0.0001) {
+          return $bGamesPct <=> $aGamesPct;
+        }
+
+        // 4) Head-to-head (if they played)
         $hh = $headToHead($a['reg_id'], $b['reg_id']);
         if ($hh) {
           return $hh == $a['reg_id'] ? -1 : 1;
