@@ -558,22 +558,25 @@ return view('frontend.event.show', compact(
 
     public function userEventAjax($id)
     {
-        if ($id == 584) {
-            $e = Event::orderBy('events.start_date', 'desc')
+        // Lightweight query: select only the columns the DataTable needs,
+        // use a raw sub-select for the registration count to avoid the
+        // expensive hasManyThrough withCount on every row.
 
-                ->with('registrations')
+        $countSql = '(SELECT COUNT(*) FROM category_event_registrations
+                      JOIN category_events ON category_events.id = category_event_registrations.category_event_id
+                      WHERE category_events.event_id = events.id) as registrations';
 
-                ->get();
-        } else {
+        $query = Event::selectRaw('events.id, events.name, events.start_date, events.entryFee, ' . $countSql);
 
-            $e = Event::whereHas('admins', function ($query) use ($id) {
-                return $query->where('user_id', '=', $id);
-            })
-                ->with('registrations')->orderByDesc('start_date')->get();
+        if ($id != 584) {
+            $query->whereHas('admins', function ($q) use ($id) {
+                $q->where('user_id', $id);
+            });
         }
 
-        //dd($data);
-        return ['data' => $e];
+        $events = $query->orderByDesc('start_date')->get();
+
+        return ['data' => $events];
     }
     public function convertDate($date)
     {

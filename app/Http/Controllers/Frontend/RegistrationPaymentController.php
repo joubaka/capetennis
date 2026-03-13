@@ -150,13 +150,29 @@ class RegistrationPaymentController extends Controller
           'amount' => $order->wallet_reserved,
         ]);
 
+        $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
+
         app(WalletService::class)->debit(
           $user->wallet,
           $order->wallet_reserved,
           'event_registration_wallet_payment',
           $order->id,
-          ['order_id' => $order->id]
+          [
+            'order_id' => $order->id,
+            'reference' => $eventName,
+          ]
         );
+
+        activity('wallet')
+          ->performedOn($order)
+          ->causedBy($user)
+          ->withProperties([
+            'type' => 'debit',
+            'amount' => $order->wallet_reserved,
+            'reference' => $eventName,
+            'order_id' => $order->id,
+          ])
+          ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
       }
 
       $order->wallet_debited = true;
@@ -166,6 +182,23 @@ class RegistrationPaymentController extends Controller
 
       $this->markOrderPaid($order->id, 'WALLET');
     });
+
+    $walletEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
+    $walletPlayer = optional($order->items->first())->player_id
+      ? \App\Models\Player::find($order->items->first()->player_id)
+      : null;
+
+    activity('registration')
+      ->performedOn($order)
+      ->causedBy($user)
+      ->withProperties([
+        'order_id' => $order->id,
+        'event' => $walletEventName,
+        'player' => $walletPlayer ? trim($walletPlayer->name . ' ' . $walletPlayer->surname) : '',
+        'method' => 'wallet',
+        'amount' => $order->wallet_reserved,
+      ])
+      ->log("Registration paid via wallet for {$walletEventName}");
 
     Log::info('HYBRID COMPLETE SUCCESS', [
       'order_id' => $orderId
@@ -290,6 +323,20 @@ class RegistrationPaymentController extends Controller
     Log::info('HYBRID PAYMENT COMPLETED SUCCESSFULLY', [
       'order_id' => $orderId
     ]);
+
+    $pfEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
+
+    activity('registration')
+      ->performedOn($order)
+      ->causedBy($order->user)
+      ->withProperties([
+        'order_id' => $order->id,
+        'event' => $pfEventName,
+        'method' => 'payfast',
+        'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
+        'amount_gross' => $payfastData['amount_gross'] ?? '',
+      ])
+      ->log("Registration paid via PayFast for {$pfEventName}");
   }
 
   /**

@@ -30,6 +30,11 @@ class RegistrationWithdrawController extends Controller
       return back()->withErrors('This registration is already withdrawn.');
     }
 
+    // Resolve player & event name for logging
+    $player = $registration->players->first();
+    $eventName = optional($registration->categoryEvent?->event)->name ?? 'Event';
+    $categoryName = optional($registration->categoryEvent?->category)->name ?? '';
+
     // -------------------------
     // WITHDRAW (ALWAYS)
     // -------------------------
@@ -45,6 +50,18 @@ class RegistrationWithdrawController extends Controller
       'refund_net' => 0,
       'refunded_at' => null,
     ]);
+
+    activity('withdrawal')
+      ->performedOn($registration)
+      ->causedBy($user)
+      ->withProperties([
+        'registration_id' => $registration->id,
+        'event' => $eventName,
+        'category' => $categoryName,
+        'player' => $player ? trim($player->name . ' ' . $player->surname) : '',
+        'refund_allowed' => $check['refund_allowed'] ?? false,
+      ])
+      ->log("Withdrew from {$eventName} ({$categoryName})");
 
     // -------------------------
     // REFUND DECISION

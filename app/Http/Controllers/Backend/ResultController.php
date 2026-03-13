@@ -59,6 +59,11 @@ class ResultController extends Controller
       $event->results_published = 1;
       $event->save();
     }
-    return 'published';
+
+    if (request()->ajax() || request()->wantsJson()) {
+      return 'published';
+    }
+
+    return back()->with('success', $event->results_published == 1 ? 'Results published.' : 'Results unpublished.');
   }
 }

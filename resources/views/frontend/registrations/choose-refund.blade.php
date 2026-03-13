@@ -55,8 +55,15 @@
       {{-- Amount summary --}}
       <div class="mb-3">
         <p class="mb-1">
-          <strong>Paid:</strong> R{{ number_format($gross, 2) }}
+          <strong>Total Paid:</strong> R{{ number_format($gross, 2) }}
         </p>
+        @if(($walletPaid ?? 0) > 0)
+          <p class="mb-1 text-muted small">
+            <i class="ti ti-wallet me-1"></i> Wallet: R{{ number_format($walletPaid, 2) }}
+            &nbsp;|&nbsp;
+            <i class="ti ti-credit-card me-1"></i> PayFast: R{{ number_format($payfastGross, 2) }}
+          </p>
+        @endif
         <p class="mb-1 text-muted">
           <strong>Refund fee (10%):</strong> R{{ number_format($fee, 2) }}
         </p>

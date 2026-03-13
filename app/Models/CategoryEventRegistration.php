@@ -13,6 +13,28 @@ class CategoryEventRegistration extends Model
 
   use HasFactory;
 
+  protected static function booted(): void
+  {
+    static::updating(function (self $reg) {
+      // Lock withdrawn_at once set — only super-user (id 584 or role) may override
+      if (
+        $reg->getOriginal('withdrawn_at') !== null
+        && $reg->isDirty('withdrawn_at')
+      ) {
+        $user = auth()->user();
+        $isSuperUser = $user
+          && (
+            (int) $user->id === 584
+            || (method_exists($user, 'hasRole') && $user->hasRole('super-user'))
+          );
+
+        if (!$isSuperUser) {
+          $reg->withdrawn_at = $reg->getOriginal('withdrawn_at');
+        }
+      }
+    });
+  }
+
   protected $fillable = [
     'category_event_id',
     'registration_id',
@@ -138,25 +160,37 @@ class CategoryEventRegistration extends Model
       return [];
     }
 
+    $order = $tx->order;
+
     // 🔹 How many registrations were paid in this transaction
     $totalItems = max(
       1,
-      $tx->order->items->count()
+      $order->items->count()
     );
 
-    // 🔹 Per-registration allocation
+    // 🔹 Per-registration allocation (PayFast portion)
     $grossPerReg = (float) $tx->amount_gross / $totalItems;
     $feePerReg = (float) $tx->amount_fee / $totalItems;
     $netPerReg = $grossPerReg - $feePerReg;
+
+    // 🔹 Wallet portion (split across items in the same order)
+    $walletReserved = (float) ($order->wallet_reserved ?? 0);
+    $walletPerReg = $totalItems > 0 ? round($walletReserved / $totalItems, 2) : 0;
 
     return [
       'transaction_id' => $tx->id,
       'pf_payment_id' => $tx->pf_payment_id,
 
-      // ✅ PER REGISTRATION
+      // ✅ PER REGISTRATION (PayFast portion only)
       'gross' => round($grossPerReg, 2),
       'fee' => round($feePerReg, 2),
       'net' => round($netPerReg, 2),
+
+      // ✅ Wallet portion per registration
+      'wallet_paid' => $walletPerReg,
+
+      // ✅ Total paid (PayFast + Wallet)
+      'total_paid' => round($grossPerReg + $walletPerReg, 2),
 
       // meta
       'paid_at' => $tx->created_at,

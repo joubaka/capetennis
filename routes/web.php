@@ -214,6 +214,13 @@ Route::post(
   [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'store']
 )->middleware('auth')
   ->name('registrations.refund.request');
+
+Route::post(
+  '/registrations/{entry}/move-category',
+  [\App\Http\Controllers\Frontend\RegistrationCategoryMoveController::class, 'move']
+)->middleware('auth')
+  ->name('registrations.moveCategory');
+
 // routes/web.php (admin section)
 
 
@@ -1451,7 +1458,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('{event}/settings', [EventAdminController::class, 'settings'])
       ->name('admin.events.settings');
 
-    
+    Route::post('{event}/copy', [BackendEventController::class, 'copyEvent'])
+      ->name('admin.events.copy');
+
+
 
     Route::post('{event}/settings/logo', [EventSettingsController::class, 'uploadLogo'])
       ->name('admin.events.settings.logo');

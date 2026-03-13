@@ -30,12 +30,17 @@ class UserController extends Controller
   }
 
   /**
-   * Display the specified resource.
-   * (Not used currently)
+   * Display the specified user's profile, wallet & transactions.
    */
   public function show(User $user)
   {
-    abort(404);
+    $user->load(['wallet', 'players', 'roles']);
+
+    $wallet       = $user->wallet;
+    $transactions = $wallet ? $wallet->transactions()->latest()->get() : collect();
+    $players      = \App\Models\Player::select('id', 'name', 'surname', 'email')->get();
+
+    return view('backend.user.show', compact('user', 'wallet', 'transactions', 'players'));
   }
 
   /**

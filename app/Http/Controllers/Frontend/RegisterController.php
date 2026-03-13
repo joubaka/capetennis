@@ -195,7 +195,7 @@ class RegisterController extends Controller
 
         $orderId = (int) ($data['custom_int5'] ?? 0);
 
-        $order = RegistrationOrder::with(['items', 'user.wallet'])
+        $order = RegistrationOrder::with(['items.category_event.event', 'user.wallet'])
           ->lockForUpdate()
           ->find($orderId);
 
@@ -243,6 +243,8 @@ class RegisterController extends Controller
           $order->wallet_debited === false
         ) {
 
+          $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
+
           app(\App\Services\Wallet\WalletService::class)->debit(
             $order->user->wallet,
             (float) $order->wallet_reserved,
@@ -251,8 +253,20 @@ class RegisterController extends Controller
             [
               'order_id' => $order->id,
               'source' => 'hybrid_notify',
+              'reference' => $eventName,
             ]
           );
+
+          activity('wallet')
+            ->performedOn($order)
+            ->causedBy($order->user)
+            ->withProperties([
+              'type' => 'debit',
+              'amount' => $order->wallet_reserved,
+              'reference' => $eventName,
+              'order_id' => $order->id,
+            ])
+            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
 
           $order->wallet_debited = true;
           $order->save();
@@ -324,6 +338,20 @@ class RegisterController extends Controller
         Log::info('[HYBRID ITN SUCCESS]', [
           'order_id' => $orderId
         ]);
+
+        // Activity log: registration paid
+        activity('registration')
+          ->performedOn($order)
+          ->causedBy($order->user)
+          ->withProperties([
+            'order_id' => $order->id,
+            'event' => $event?->name ?? optional($order->items->first()?->category_event?->event)->name ?? '',
+            'player' => $player ? trim($player->name . ' ' . $player->surname) : '',
+            'category' => $category?->name ?? '',
+            'method' => 'payfast_hybrid',
+            'amount_gross' => $data['amount_gross'] ?? '',
+          ])
+          ->log('Registration paid via PayFast hybrid');
       });
 
     } catch (\Throwable $e) {
@@ -576,6 +604,8 @@ class RegisterController extends Controller
             'amount' => $order->wallet_reserved
           ]);
 
+          $eventName = optional($order->event)->name ?? 'Team Registration';
+
           app(\App\Services\Wallet\WalletService::class)->debit(
             $order->user->wallet,
             (float) $order->wallet_reserved,
@@ -583,9 +613,21 @@ class RegisterController extends Controller
             $order->id,
             [
               'order_id' => $order->id,
-              'source' => 'team_hybrid_notify'
+              'source' => 'team_hybrid_notify',
+              'reference' => $eventName,
             ]
           );
+
+          activity('wallet')
+            ->performedOn($order)
+            ->causedBy($order->user)
+            ->withProperties([
+              'type' => 'debit',
+              'amount' => $order->wallet_reserved,
+              'reference' => $eventName,
+              'order_id' => $order->id,
+            ])
+            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
 
           $order->wallet_debited = true;
           $order->save();
@@ -623,6 +665,22 @@ class RegisterController extends Controller
         }
 
         Log::info('🟢 TEAM ITN STEP 14: SUCCESS');
+
+        $teamEventName = optional($order->event)->name ?? 'Team Event';
+        $teamPlayerObj = \App\Models\Player::find($order->player_id);
+
+        activity('registration')
+          ->performedOn($order)
+          ->causedBy($order->user)
+          ->withProperties([
+            'order_id' => $order->id,
+            'event' => $teamEventName,
+            'player' => $teamPlayerObj ? trim($teamPlayerObj->name . ' ' . $teamPlayerObj->surname) : '',
+            'team_id' => $order->team_id,
+            'method' => 'payfast_team',
+            'amount' => $data['amount_gross'] ?? '',
+          ])
+          ->log("Team registration paid for {$teamEventName}");
       });
 
     } catch (\Throwable $e) {

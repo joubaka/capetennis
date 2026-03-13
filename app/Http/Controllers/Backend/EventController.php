@@ -248,5 +248,28 @@ class EventController extends Controller
     ]);
   }
 
+  public function copyEvent(Event $event)
+  {
+    $newEvent = $event->replicate();
+    $newEvent->name = $event->name . ' (Copy)';
+    $newEvent->published = 0;
+    $newEvent->signUp = 0;
+    $newEvent->results_published = 0;
+    $newEvent->save();
+
+    $event->categoryEvents()->each(function ($categoryEvent) use ($newEvent) {
+      $newCat = $categoryEvent->replicate();
+      $newCat->event_id = $newEvent->id;
+      $newCat->save();
+    });
+
+    $event->admins()->get()->each(function ($admin) use ($newEvent) {
+      $newEvent->admins()->attach($admin->id);
+    });
+
+    return redirect()
+      ->route('admin.events.overview', $newEvent)
+      ->with('success', 'Event copied successfully.');
+  }
 
 }

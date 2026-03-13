@@ -292,6 +292,11 @@
 
 
 @section('page-script')
+<script>
+  // Debug: expose server-side event lists to browser console
+  console.log('seriesEvents', @json($seriesEvents));
+  console.log('availableEvents', @json($availableEvents));
+</script>
 <script src="{{ asset(mix('js/seriesEvents.js')) }}"></script>
 @endsection
 

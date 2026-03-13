@@ -43,6 +43,9 @@ class WalletTransactionController extends Controller
         $amount = $request->amount;
 
         if ($request->type === 'debit' && $wallet->balance < $amount) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Insufficient balance for debit.'], 422);
+            }
             return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
         }
 
@@ -57,6 +60,24 @@ class WalletTransactionController extends Controller
                 'reference' => $request->reference,
             ],
         ]);
+
+        activity('wallet')
+          ->performedOn($wallet)
+          ->causedBy(auth()->user())
+          ->withProperties([
+            'type' => $request->type,
+            'amount' => $amount,
+            'reference' => $request->reference,
+            'user_id' => $user->id,
+          ])
+          ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Transaction recorded.',
+                'balance' => $wallet->balance,
+            ]);
+        }
 
         return redirect()->route('wallet.show', $user->id)->with('success', 'Transaction recorded.');
     }

@@ -30,6 +30,7 @@
             <th>Event</th>
             <th>Player(s)</th>
             <th>User</th>
+            <th>PayFast ID</th>
             <th>Gross</th>
             <th>Fee</th>
             <th>Net</th>
@@ -51,11 +52,13 @@
             <td>{{ $reg->display_name }}</td>
 
             <td>
-              {{ $reg->registration->user->name ?? '—' }}<br>
+              {{ $reg->user->name ?? '—' }}<br>
               <small class="text-muted">
-                {{ $reg->registration->user->email ?? '' }}
+                {{ $reg->user->email ?? '' }}
               </small>
             </td>
+
+            <td><code>{{ $reg->pf_transaction_id ?? '—' }}</code></td>
 
             <td>R{{ number_format($reg->refund_gross, 2) }}</td>
             <td class="text-danger">
@@ -89,7 +92,7 @@
         {{-- Team refunds appended below --}}
         @if(!empty($pendingTeamRefunds) && $pendingTeamRefunds->count())
           <tr>
-            <td colspan="8"><strong>Team Refunds</strong></td>
+            <td colspan="9"><strong>Team Refunds</strong></td>
           </tr>
           @foreach($pendingTeamRefunds as $t)
             <tr>
@@ -102,6 +105,7 @@
                 {{ $t->user->name ?? '—' }}<br>
                 <small class="text-muted">{{ $t->user->email ?? '' }}</small>
               </td>
+              <td><code>{{ $t->payfast_pf_payment_id ?? '—' }}</code></td>
               <td>R{{ number_format($t->refund_gross, 2) }}</td>
               <td class="text-danger">R{{ number_format($t->refund_fee, 2) }}</td>
               <td class="fw-bold text-success">R{{ number_format($t->refund_net, 2) }}</td>

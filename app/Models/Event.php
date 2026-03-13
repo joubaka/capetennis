@@ -48,7 +48,6 @@ class Event extends Model
     'start_date' => 'date',
     'end_date' => 'date',
     'deadline' => 'int',
-    'series_id' => 'int',
     'withdrawal_deadline' => 'datetime',
   ];
 

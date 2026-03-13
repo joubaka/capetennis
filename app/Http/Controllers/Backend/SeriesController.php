@@ -90,7 +90,11 @@ class SeriesController extends Controller
       ->orderBy('start_date')
       ->get();
 
-    $availableEvents = Event::whereNull('series_id')
+    $availableEvents = Event::where(function ($q) use ($series) {
+          $q->whereNull('series_id')
+            ->orWhere('series_id', 0)
+            ->orWhere('series_id', '!=', $series->id);
+      })
       ->orderBy('start_date')
       ->get();
 
@@ -115,7 +119,7 @@ class SeriesController extends Controller
 
   public function removeEvent(Series $series, Event $event)
   {
-    abort_unless($event->series_id === $series->id, 403);
+    abort_unless((int) $event->series_id === (int) $series->id, 403);
 
     $event->update(['series_id' => null]);
 
@@ -336,8 +340,7 @@ class SeriesController extends Controller
   }
   public function copyEvent(Series $series, Event $event)
   {
-   // dd($series->id,$event->series_id);
-    abort_unless($event->series_id === $series->id, 403);
+   abort_unless((int) $event->series_id === (int) $series->id, 403);
 
     // 1️⃣ Copy event
     $newEvent = $event->replicate();

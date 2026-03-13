@@ -7,6 +7,7 @@ use App\Models\Registration;
 use App\Models\RegistrationOrder;
 use App\Models\User;
 use App\Models\Player;
+use Illuminate\Support\Facades\Http;
 
 class Payfast
 {
@@ -239,5 +240,101 @@ class Payfast
     $html .= '</form>';
 
     return $html;
+  }
+
+  /**
+   * Issue a refund via PayFast Refunds API.
+   *
+   * @param string $pf_payment_id
+   * @param float|string $amount
+   * @param string $reason
+   * @return array{success: bool, data: array|null, error: string|null}
+   */
+  public function refund(string $pf_payment_id, $amount, string $reason = 'Event withdrawal refund'): array
+  {
+    $amount = number_format((float) $amount, 2, '.', '');
+
+    // Resolve passphrase from env (live vs sandbox)
+    $passphrase = $this->mode === 'sandbox'
+      ? (env('PAYFAST_PASSPHRASE_SANDBOX') ?: env('PAYFAST_PASSPHRASE'))
+      : (env('PAYFAST_PASSPHRASE_LIVE') ?: env('PAYFAST_PASSPHRASE'));
+
+    // API endpoint
+    $apiUrl = $this->mode === 'sandbox'
+      ? 'https://api.payfast.co.za/refunds'
+      : 'https://api.payfast.co.za/refunds';
+
+    // Build request body
+    $body = [
+      'merchant_id'  => $this->id,
+      'merchant_key' => $this->key,
+      'pf_payment_id' => $pf_payment_id,
+      'amount'       => $amount,
+      'reason'       => $reason,
+    ];
+
+    // Build required API headers
+    $timestamp = now()->toIso8601String();
+
+    $headerParams = [
+      'merchant-id' => $this->id,
+      'timestamp'   => $timestamp,
+      'version'     => 'v1',
+    ];
+
+    // Generate signature: sort header params, build query string, append passphrase, md5
+    ksort($headerParams);
+    $signatureString = http_build_query($headerParams);
+    if (!empty($passphrase)) {
+      $signatureString .= '&passphrase=' . urlencode($passphrase);
+    }
+    $signature = md5($signatureString);
+
+    $headers = [
+      'merchant-id' => $this->id,
+      'version'     => 'v1',
+      'timestamp'   => $timestamp,
+      'signature'   => $signature,
+    ];
+
+    try {
+      $response = Http::timeout(15)
+        ->withHeaders($headers)
+        ->post($apiUrl, $body);
+
+      \Log::info('PayFast refund response', [
+        'pf_payment_id' => $pf_payment_id,
+        'amount'        => $amount,
+        'status'        => $response->status(),
+        'body'          => $response->body(),
+      ]);
+
+      if ($response->successful()) {
+        return [
+          'success' => true,
+          'data'    => $response->json(),
+          'error'   => null,
+        ];
+      }
+
+      return [
+        'success' => false,
+        'data'    => $response->json(),
+        'error'   => 'HTTP ' . $response->status() . ': ' . $response->body(),
+      ];
+
+    } catch (\Throwable $e) {
+      \Log::error('PayFast refund exception', [
+        'pf_payment_id' => $pf_payment_id,
+        'amount'        => $amount,
+        'error'         => $e->getMessage(),
+      ]);
+
+      return [
+        'success' => false,
+        'data'    => null,
+        'error'   => $e->getMessage(),
+      ];
+    }
   }
 }

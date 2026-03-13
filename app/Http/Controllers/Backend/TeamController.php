@@ -848,13 +848,29 @@ class TeamController extends Controller
           'amount' => $order->wallet_reserved
         ]);
 
+        $eventName = optional($order->event)->name ?? 'Team Registration';
+
         app(\App\Services\Wallet\WalletService::class)->debit(
           $user->wallet,
           (float) $order->wallet_reserved,
           'team_registration_wallet_payment',
           $order->id,
-          ['order_id' => $order->id]
+          [
+            'order_id' => $order->id,
+            'reference' => $eventName,
+          ]
         );
+
+        activity('wallet')
+          ->performedOn($order)
+          ->causedBy($user)
+          ->withProperties([
+            'type' => 'debit',
+            'amount' => $order->wallet_reserved,
+            'reference' => $eventName,
+            'order_id' => $order->id,
+          ])
+          ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
 
         $order->wallet_debited = true;
       }
@@ -876,6 +892,22 @@ class TeamController extends Controller
       Log::info('TEAM WALLET COMPLETE SUCCESS', [
         'order_id' => $order->id
       ]);
+
+      $teamWalletEvent = optional($order->event)->name ?? 'Team Event';
+      $teamWalletPlayer = \App\Models\Player::find($order->player_id);
+
+      activity('registration')
+        ->performedOn($order)
+        ->causedBy($user)
+        ->withProperties([
+          'order_id' => $order->id,
+          'event' => $teamWalletEvent,
+          'player' => $teamWalletPlayer ? trim($teamWalletPlayer->name . ' ' . $teamWalletPlayer->surname) : '',
+          'team_id' => $order->team_id,
+          'method' => 'wallet',
+          'amount' => $order->wallet_reserved,
+        ])
+        ->log("Team registration paid via wallet for {$teamWalletEvent}");
     });
 
     return redirect()->route('events.success', $order->event_id)

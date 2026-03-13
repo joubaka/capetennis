@@ -44,7 +44,10 @@ class RegistrationRefundController extends Controller
         ->with('success', 'Registration withdrawn (no payment to refund).');
     }
 
-    $gross = $payment['gross'];
+    // Include wallet portion in total paid
+    $walletPaid = $payment['wallet_paid'] ?? 0;
+    $payfastGross = $payment['gross'];
+    $gross = round($payfastGross + $walletPaid, 2);
     $fee = round($gross * 0.10, 2);
     $net = round($gross - $fee, 2);
 
@@ -52,7 +55,9 @@ class RegistrationRefundController extends Controller
       'registration',
       'gross',
       'fee',
-      'net'
+      'net',
+      'walletPaid',
+      'payfastGross'
     ));
   }
 
@@ -118,12 +123,17 @@ class RegistrationRefundController extends Controller
       return back()->withErrors('Payment information not found.');
     }
 
-    $gross = $payment['gross'];
+    // Include wallet portion in total paid
+    $walletPaid = $payment['wallet_paid'] ?? 0;
+    $payfastGross = $payment['gross'];
+    $gross = round($payfastGross + $walletPaid, 2);
     $fee = round($gross * 0.10, 2);
     $net = round($gross - $fee, 2);
 
     Log::info('REFUND CALCULATED', [
       'registration_id' => $registration->id,
+      'payfast_gross' => $payfastGross,
+      'wallet_paid' => $walletPaid,
       'gross' => $gross,
       'fee' => $fee,
       'net' => $net,
@@ -150,6 +160,7 @@ class RegistrationRefundController extends Controller
               'gross' => $gross,
               'fee' => $fee,
               'method' => 'wallet',
+              'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
             ]
           );
 
@@ -163,10 +174,38 @@ class RegistrationRefundController extends Controller
           ]);
         });
 
+        $refEventName = optional($registration->categoryEvent?->event)->name ?? 'Event Refund';
+
+        activity('wallet')
+          ->performedOn($registration)
+          ->causedBy($user)
+          ->withProperties([
+            'type' => 'credit',
+            'amount' => $net,
+            'gross' => $gross,
+            'fee' => $fee,
+            'reference' => $refEventName,
+            'registration_id' => $registration->id,
+          ])
+          ->log("Wallet credited R{$net} for refund – {$refEventName}");
+
         Log::info('WALLET REFUND COMPLETED', [
           'registration_id' => $registration->id,
           'amount' => $net,
         ]);
+
+        activity('refund')
+          ->performedOn($registration)
+          ->causedBy($user)
+          ->withProperties([
+            'registration_id' => $registration->id,
+            'method' => 'wallet',
+            'gross' => $gross,
+            'fee' => $fee,
+            'net' => $net,
+            'event' => optional($registration->categoryEvent?->event)->name ?? '',
+          ])
+          ->log("Wallet refund R{$net} processed");
 
         return redirect()
           ->route('events.show', $registration->categoryEvent->event_id)
@@ -216,11 +255,79 @@ class RegistrationRefundController extends Controller
       'refund_account_type' => $request->account_type,
     ]);
 
+    // ── Auto-refund via PayFast if original payment was PayFast ──
+    $pfPaymentId = $payment['pf_payment_id'] ?? null;
+
+    if (!empty($pfPaymentId)) {
+      try {
+        $payfast = new \App\Classes\Payfast();
+        $result = $payfast->refund($pfPaymentId, $net, 'Event withdrawal refund');
+
+        Log::info('PAYFAST AUTO REFUND ATTEMPT', [
+          'registration_id' => $registration->id,
+          'pf_payment_id' => $pfPaymentId,
+          'amount' => $net,
+          'result' => $result,
+        ]);
+
+        if ($result['success']) {
+          $registration->update([
+            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
+            'refunded_at' => now(),
+          ]);
+
+          activity('refund')
+            ->performedOn($registration)
+            ->causedBy($user)
+            ->withProperties([
+              'registration_id' => $registration->id,
+              'method' => 'payfast',
+              'pf_payment_id' => $pfPaymentId,
+              'gross' => $gross,
+              'fee' => $fee,
+              'net' => $net,
+              'event' => optional($registration->categoryEvent?->event)->name ?? '',
+            ])
+            ->log("PayFast auto refund R{$net} processed");
+
+          return redirect()
+            ->route('events.show', $registration->categoryEvent->event_id)
+            ->with('success', 'Refund of R' . number_format($net, 2) . ' processed via PayFast. It may take 3–5 business days to reflect.');
+        }
+
+        // PayFast returned error — leave pending for admin
+        Log::warning('PAYFAST AUTO REFUND FAILED — falling back to manual', [
+          'registration_id' => $registration->id,
+          'error' => $result['error'],
+        ]);
+
+      } catch (\Throwable $e) {
+        Log::error('PAYFAST AUTO REFUND EXCEPTION — falling back to manual', [
+          'registration_id' => $registration->id,
+          'error' => $e->getMessage(),
+        ]);
+      }
+    }
+
     Log::info('BANK REFUND REQUEST CREATED', [
       'registration_id' => $registration->id,
       'amount' => $net,
       'bank_name' => $request->bank_name,
     ]);
+
+    activity('refund')
+      ->performedOn($registration)
+      ->causedBy($user)
+      ->withProperties([
+        'registration_id' => $registration->id,
+        'method' => 'bank',
+        'gross' => $gross,
+        'fee' => $fee,
+        'net' => $net,
+        'bank' => $request->bank_name,
+        'event' => optional($registration->categoryEvent?->event)->name ?? '',
+      ])
+      ->log("Bank refund R{$net} requested");
 
     return redirect()
       ->route('events.show', $registration->categoryEvent->event_id)
@@ -372,6 +479,59 @@ class RegistrationRefundController extends Controller
       return back()->withErrors('Refund already processed.');
     }
 
+    // If originally paid via PayFast, attempt automatic refund
+    $pfPaymentId = $order->payfast_pf_payment_id ?? null;
+
+    if (!empty($pfPaymentId)) {
+      try {
+        $payfast = new \App\Classes\Payfast();
+        $amount = $order->refund_net ?? $order->refund_gross ?? 0;
+
+        $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
+
+        Log::info('PAYFAST REFUND ATTEMPT (team)', [
+          'order_id' => $order->id,
+          'pf_payment_id' => $pfPaymentId,
+          'amount' => $amount,
+          'result' => $result,
+        ]);
+
+        if (!$result['success']) {
+          Log::error('PAYFAST REFUND FAILED (team)', [
+            'order_id' => $order->id,
+            'error' => $result['error'],
+          ]);
+          return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
+        }
+
+        $order->update([
+          'refund_status' => 'completed',
+          'refunded_at' => now(),
+        ]);
+
+        activity('refund')
+          ->performedOn($order)
+          ->causedBy(auth()->user())
+          ->withProperties([
+            'order_id' => $order->id,
+            'method' => 'payfast',
+            'pf_payment_id' => $pfPaymentId,
+            'amount' => $amount,
+          ])
+          ->log("Team PayFast refund R{$amount} processed");
+
+        return back()->with('success', 'Team refund processed via PayFast.');
+
+      } catch (\Throwable $e) {
+        Log::error('PAYFAST REFUND EXCEPTION (team)', [
+          'order_id' => $order->id,
+          'error' => $e->getMessage(),
+        ]);
+        return back()->withErrors('PayFast refund failed. Please process manually.');
+      }
+    }
+
+    // No PayFast transaction — mark as completed (manual)
     $order->update([
       'refund_status' => 'completed',
       'refunded_at' => now(),
@@ -406,12 +566,66 @@ class RegistrationRefundController extends Controller
       return back()->withErrors('Invalid refund method.');
     }
 
+    // If this registration was paid via PayFast, attempt an automatic refund
+    $payment = $registration->paymentInfo();
+    $pfPaymentId = $payment['pf_payment_id'] ?? null;
+
+    if (!empty($pfPaymentId)) {
+      try {
+        $payfast = new \App\Classes\Payfast();
+        $amount = $registration->refund_net ?? $registration->refund_gross ?? 0;
+
+        $result = $payfast->refund($pfPaymentId, $amount, 'Event withdrawal refund');
+
+        Log::info('PAYFAST REFUND ATTEMPT (registration)', [
+          'registration_id' => $registration->id,
+          'pf_payment_id' => $pfPaymentId,
+          'amount' => $amount,
+          'result' => $result,
+        ]);
+
+        if (!$result['success']) {
+          Log::error('PAYFAST REFUND FAILED (registration)', [
+            'registration_id' => $registration->id,
+            'error' => $result['error'],
+          ]);
+          return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
+        }
+
+        $registration->update([
+          'refund_status' => 'completed',
+          'refunded_at' => now(),
+        ]);
+
+        activity('refund')
+          ->performedOn($registration)
+          ->causedBy(auth()->user())
+          ->withProperties([
+            'registration_id' => $registration->id,
+            'method' => 'payfast',
+            'pf_payment_id' => $pfPaymentId,
+            'amount' => $amount,
+          ])
+          ->log("PayFast refund R{$amount} processed");
+
+        return back()->with('success', 'Refund processed via PayFast.');
+
+      } catch (\Throwable $e) {
+        Log::error('PAYFAST REFUND EXCEPTION (registration)', [
+          'registration_id' => $registration->id,
+          'error' => $e->getMessage(),
+        ]);
+        return back()->withErrors('PayFast refund failed. Please process manually.');
+      }
+    }
+
+    // No PayFast transaction — mark as completed (manual bank refund processed)
     $registration->update([
       'refund_status' => 'completed',
       'refunded_at' => now(),
     ]);
 
-    Log::info('BANK REFUND COMPLETED', [
+    Log::info('BANK REFUND COMPLETED (manual)', [
       'registration_id' => $registration->id,
       'amount' => $registration->refund_net,
     ]);

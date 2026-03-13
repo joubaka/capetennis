@@ -24,6 +24,7 @@
           <tr>
             <th>ID</th>
             <th>Player</th>
+            <th>PayFast ID</th>
             <th>Amount</th>
             <th>Account Name</th>
             <th>Bank</th>
@@ -37,6 +38,7 @@
           <tr>
             <td>R-REG-{{ $refund->id }}</td>
             <td>{{ $refund->display_name }}</td>
+            <td><code>{{ $refund->pf_transaction_id ?? '—' }}</code></td>
             <td>R{{ number_format($refund->refund_net, 2) }}</td>
             <td>{{ $refund->refund_account_name }}</td>
             <td>{{ $refund->refund_bank_name }}</td>
@@ -50,12 +52,13 @@
           {{-- Team refunds --}}
           @if(!empty($pendingTeamRefunds) && $pendingTeamRefunds->count())
             <tr>
-              <td colspan="6"><strong>Team Refunds</strong></td>
+              <td colspan="7"><strong>Team Refunds</strong></td>
             </tr>
             @foreach($pendingTeamRefunds as $t)
               <tr>
                 <td>R-TEAM-{{ $t->id }}</td>
                 <td>{{ optional($t->player)->name ?? 'Player #' . ($t->player_id ?? 'N/A') }}</td>
+                <td><code>{{ $t->payfast_pf_payment_id ?? '—' }}</code></td>
                 <td>R{{ number_format($t->refund_net, 2) }}</td>
                 <td>{{ $t->refund_account_name }}</td>
                 <td>{{ $t->refund_bank_name }}</td>
@@ -70,7 +73,7 @@
           @else
             @if($pendingRefunds->isEmpty())
               <tr>
-                <td colspan="6" class="text-center">No pending refunds</td>
+                <td colspan="7" class="text-center">No pending refunds</td>
               </tr>
             @endif
           @endif

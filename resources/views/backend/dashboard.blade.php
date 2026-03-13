@@ -11,6 +11,9 @@
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/katex.css') }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}" />
 @endsection
 
 {{-- ================= PAGE CSS ================= --}}
@@ -32,6 +35,8 @@
 <script src="{{ asset('assets/vendor/libs/cleavejs/cleave-phone.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/quill/katex.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
 @endsection
 
 @section('content')
@@ -136,6 +141,55 @@
         @endforelse
       </div>
     </div>
+
+    {{-- ================= WALLET TRANSACTIONS ================= --}}
+    <div class="card mt-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="m-0"><i class="ti ti-wallet me-1"></i> Wallet Transactions</h3>
+        @can('super-user')
+        <button class="btn btn-sm btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#walletTransactionModal">
+          <i class="ti ti-plus me-1"></i> Credit / Debit
+        </button>
+        @endcan
+      </div>
+
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-striped mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody id="walletTransactionsBody">
+              @forelse($transactions as $tx)
+                <tr>
+                  <td>{{ $tx->created_at->format('d M Y H:i') }}</td>
+                  <td>
+                    <span class="badge {{ $tx->type === 'credit' ? 'bg-success' : 'bg-danger' }}">
+                      {{ ucfirst($tx->type) }}
+                    </span>
+                  </td>
+                  <td class="fw-bold {{ $tx->type === 'credit' ? 'text-success' : 'text-danger' }}">
+                    R {{ number_format($tx->amount, 2) }}
+                  </td>
+                  <td>{{ $tx->meta['reference'] ?? '-' }}</td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-3">No transactions found.</td>
+                </tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   @can('admin')
@@ -175,8 +229,52 @@
   </div>
 </div>
 
+{{-- ================= WALLET CREDIT/DEBIT MODAL ================= --}}
+@can('super-user')
+<div class="modal fade" id="walletTransactionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-wallet me-1"></i> Credit / Debit Wallet</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="txn-type" class="form-label">Transaction Type</label>
+          <select id="txn-type" class="form-select">
+            <option value="credit">Credit (Add funds)</option>
+            <option value="debit">Debit (Deduct funds)</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="txn-amount" class="form-label">Amount (R)</label>
+          <input type="number" id="txn-amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+        </div>
+        <div class="mb-3">
+          <label for="txn-reference" class="form-label">Reference (optional)</label>
+          <input type="text" id="txn-reference" class="form-control" placeholder="e.g. Manual top-up">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="submitWalletTxnBtn">
+          <i class="ti ti-check me-1"></i> Submit
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+@endcan
+
 @include('_partials/_modals/modal-upgrade-plan')
 @include('_partials/_modals/modal-edit-user')
+@can('superUser')
+  @include('_partials/_modals/modal-add-event')
+@endcan
 @endsection
 
   
@@ -196,6 +294,302 @@ $(function () {
 
   $.ajaxSetup({
     headers: { 'X-CSRF-TOKEN': CSRF }
+  });
+
+  // ==========================================================
+  // 🟦 WALLET CREDIT / DEBIT
+  // ==========================================================
+  $('#submitWalletTxnBtn').on('click', function () {
+
+    const type      = $('#txn-type').val();
+    const amount    = $('#txn-amount').val();
+    const reference = $('#txn-reference').val();
+
+    if (!amount || parseFloat(amount) <= 0) {
+      toastr.warning('Please enter a valid amount');
+      return;
+    }
+
+    Swal.fire({
+      title: type === 'credit' ? 'Crediting wallet...' : 'Debiting wallet...',
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading()
+    });
+
+    $.ajax({
+      url: APP_URL + '/backend/wallet/' + userId + '/transaction',
+      type: 'POST',
+      data: {
+        type: type,
+        amount: amount,
+        reference: reference
+      },
+      headers: { 'Accept': 'application/json' },
+      success: res => {
+        Swal.close();
+        toastr.success(res.message);
+        $('#walletTransactionModal').modal('hide');
+        $('#txn-amount').val('');
+        $('#txn-reference').val('');
+        location.reload();
+      },
+      error: xhr => {
+        Swal.close();
+        toastr.error(xhr.responseJSON?.message || 'Transaction failed');
+      }
+    });
+  });
+
+  // ==========================================================
+  // 🟦 EVENTS DATATABLE
+  // ==========================================================
+  var dtEvents = $('.datatable-events');
+  if (dtEvents.length) {
+    dtEvents.DataTable({
+      ordering: true,
+      order: [[1, 'desc']],
+      pageLength: 25,
+      ajax: APP_URL + '/events/ajax/userEvents/' + userId,
+      columns: [
+        { data: 'name' },
+        { data: 'start_date' },
+        { data: 'entryFee' },
+        { data: 'registrations' },
+        { data: null, orderable: false },
+      ],
+      columnDefs: [
+        {
+          targets: 0,
+          render: function (data, type, full) {
+            var link = APP_URL + '/events/' + full.id;
+            var label = '<a href="' + link + '" class="btn btn-warning btn-sm text-white">' + full.name + '</a>';
+            var isUpcoming = full.start_date && new Date(full.start_date) > new Date()
+              ? ' <span class="badge rounded-pill bg-label-success ms-1">Upcoming</span>'
+              : '';
+            return label + isUpcoming;
+          }
+        },
+        {
+          targets: 2,
+          render: function (data, type, full) { return 'R' + (full.entryFee || 0); }
+        },
+        {
+          targets: 3,
+          render: function (data, type, full) { return full.registrations || 0; }
+        },
+        {
+          targets: 4,
+          render: function (data, type, full) {
+            var admin = '<a href="' + APP_URL + '/backend/event/' + full.id + '/overview" class="btn btn-sm btn-secondary me-1">Dashboard</a>';
+            var copy = '<form method="POST" action="' + APP_URL + '/backend/event/' + full.id + '/copy" class="d-inline" onsubmit="return confirm(\'Copy this event?\')">' 
+              + '<input type="hidden" name="_token" value="' + CSRF + '">'
+              + '<button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-copy me-1"></i>Copy</button>'
+              + '</form>';
+            return admin + copy;
+          }
+        },
+      ],
+    });
+  }
+
+  // ==========================================================
+  // 🟦 SERIES DATATABLE
+  // ==========================================================
+  var dtSeries = $('.datatable-series');
+  if (dtSeries.length) {
+    dtSeries.DataTable({
+      ordering: false,
+      paging: false,
+      ajax: APP_URL + '/events/ajax/series',
+      columns: [
+        { data: 'id' },
+        { data: 'name' },
+        { data: null },
+        { data: null },
+        { data: null },
+      ],
+      columnDefs: [
+        {
+          targets: 2,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/ranking/settings/' + full.id + '" class="btn btn-sm btn-warning">Settings</a>';
+          }
+        },
+        {
+          targets: 3,
+          render: function (data, type, full) {
+            var btnClass = full.leaderboard_published ? 'btn-success' : 'btn-danger';
+            var text = full.leaderboard_published ? 'Published' : 'Not Published';
+            return '<div data-id="' + full.id + '" class="btn ' + btnClass + ' btn-sm publishLeaderboard">' + text + '</div>';
+          }
+        },
+        {
+          targets: 4,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/ranking/' + full.id + '" class="btn btn-sm btn-secondary">Show</a>';
+          }
+        },
+      ],
+      initComplete: function () {
+        $(document).on('click', '.publishLeaderboard', function () {
+          var id = $(this).data('id');
+          var $btn = $(this);
+          $.get(APP_URL + '/backend/series/publishLeaderboard/' + id, function (data) {
+            if (data.leaderboard_published == 1) {
+              $btn.removeClass('btn-danger').addClass('btn-success').text('Published');
+            } else {
+              $btn.removeClass('btn-success').addClass('btn-danger').text('Not Published');
+            }
+          });
+        });
+      }
+    });
+  }
+
+  // ==========================================================
+  // 🟦 USERS DATATABLE
+  // ==========================================================
+  var dtUsers = $('.datatable-users');
+  if (dtUsers.length) {
+    dtUsers.DataTable({
+      ordering: true,
+      pageLength: 25,
+      ajax: APP_URL + '/backend/user',
+      columns: [
+        { data: 'id' },
+        { data: 'name' },
+        { data: 'email' },
+        { data: null },
+        { data: null },
+      ],
+      columnDefs: [
+        {
+          targets: 3,
+          render: function (data, type, full) {
+            if (full.roles && full.roles.length) {
+              return full.roles.map(function (r) {
+                return '<span class="badge bg-label-primary me-1">' + r.name + '</span>';
+              }).join('');
+            }
+            return '<span class="text-muted">—</span>';
+          }
+        },
+        {
+          targets: 4,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/user/' + full.id + '" class="btn btn-sm btn-secondary">View</a>';
+          }
+        },
+      ],
+    });
+  }
+
+  // ==========================================================
+  // 🟦 PLAYERS DATATABLE
+  // ==========================================================
+  var dtPlayers = $('.datatable-players');
+  if (dtPlayers.length) {
+    dtPlayers.DataTable({
+      ordering: true,
+      pageLength: 25,
+      ajax: APP_URL + '/backend/player',
+      columns: [
+        { data: 'id' },
+        { data: null },
+        { data: null },
+        { data: null },
+        { data: null },
+      ],
+      columnDefs: [
+        {
+          targets: 1,
+          render: function (data, type, full) {
+            return (full.name || '') + ' ' + (full.surname || '');
+          }
+        },
+        {
+          targets: 2,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/player/profile/' + full.id + '" class="btn btn-primary btn-sm">Profile</a>';
+          }
+        },
+        {
+          targets: 3,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/player/results/' + full.id + '" class="btn btn-secondary btn-sm">Results</a>';
+          }
+        },
+        {
+          targets: 4,
+          render: function (data, type, full) {
+            return '<a href="' + APP_URL + '/backend/player/details/' + full.id + '" class="btn btn-info btn-sm">Details</a>';
+          }
+        },
+      ],
+    });
+  }
+
+  // ==========================================================
+  // 🟦 ACTIVITY LOG DATATABLE
+  // ==========================================================
+  var dtActivity = $('#datatable-activity');
+  if (dtActivity.length) {
+    dtActivity.DataTable({
+      ordering: true,
+      order: [[0, 'asc']],
+      pageLength: 50,
+      columnDefs: [
+        { targets: 4, orderable: false, searchable: false },
+        { targets: 5, visible: false }
+      ],
+      initComplete: function () {
+        $('[data-bs-toggle="popover"]').popover();
+      }
+    });
+  }
+
+  // Raw activity table
+  var dtActivityRawEl = $('#datatable-activity-raw');
+  var dtActivityRaw = null;
+  if (dtActivityRawEl.length) {
+    dtActivityRaw = dtActivityRawEl.DataTable({
+      ordering: true,
+      order: [[0, 'desc']],
+      pageLength: 50,
+      columnDefs: [
+        { targets: 4, orderable: false, searchable: false }
+      ],
+      initComplete: function () {
+        $('[data-bs-toggle="popover"]').popover();
+      }
+    });
+  }
+
+  // Activity filter by log name
+  $('#activity-filter-log').on('change', function () {
+    var val = $(this).val();
+    // Filter grouped table by hidden log-names column (index 5)
+    try {
+      var table = $('#datatable-activity').DataTable();
+      if (val) table.column(5).search(val).draw(); else table.column(5).search('').draw();
+    } catch (e) {}
+
+    // Filter raw table by log column (index 2)
+    if (dtActivityRaw) {
+      if (val) dtActivityRaw.column(2).search('^' + val + '$', true, false).draw(); else dtActivityRaw.column(2).search('').draw();
+    }
+  });
+
+  // Toggle grouped / raw view
+  $('#activity-toggle-view').on('change', function () {
+    var checked = $(this).is(':checked');
+    if (checked) {
+      $('#datatable-activity').removeClass('d-none');
+      $('#datatable-activity-raw').addClass('d-none');
+    } else {
+      $('#datatable-activity').addClass('d-none');
+      $('#datatable-activity-raw').removeClass('d-none');
+    }
   });
 
   // ==========================================================
@@ -342,6 +736,71 @@ $('#linkPlayerBtn').on('click', function () {
 
   });
 });
+
+  // ==========================================================
+  // 🟦 CREATE EVENT (super-admin)
+  // ==========================================================
+  if ($('#addEvent').length) {
+
+    // Select2 for admin picker inside modal
+    $('#addEvent').on('shown.bs.modal', function () {
+      $('.select2user').select2({
+        dropdownParent: $('#addEvent'),
+        placeholder: 'Select admin',
+        width: '100%',
+        allowClear: true
+      });
+    });
+
+    // Quill editor for information field
+    if ($('#full-editor').length) {
+      var quillEditor = new Quill('#full-editor', {
+        bounds: '#full-editor',
+        placeholder: 'Type Something...',
+        modules: {
+          formula: true,
+          toolbar: [
+            [{ font: [] }, { size: [] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ color: [] }, { background: [] }],
+            [{ header: '1' }, { header: '2' }, 'blockquote'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['link', 'image'],
+            ['clean']
+          ]
+        },
+        theme: 'snow'
+      });
+
+      // AJAX submit
+      $('#createEventButton').on('click', function () {
+        var information = quillEditor.root.innerHTML;
+        var data = $('#addEvent form').serialize() + '&info=' + encodeURIComponent(information);
+
+        Swal.fire({
+          title: 'Creating event...',
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading()
+        });
+
+        $.ajax({
+          url: APP_URL + '/events',
+          method: 'POST',
+          data: data,
+          success: function (res) {
+            Swal.close();
+            toastr.success('Event created successfully');
+            $('#addEvent').modal('hide');
+            location.reload();
+          },
+          error: function (xhr) {
+            Swal.close();
+            toastr.error(xhr.responseJSON?.message || 'Failed to create event');
+          }
+        });
+      });
+    }
+  }
 
 });
 </script>

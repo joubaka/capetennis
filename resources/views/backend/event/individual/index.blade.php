@@ -27,6 +27,13 @@
           Results
         </a>
 
+        <a href="{{ route('result.publish', $event->id) }}"
+           class="btn btn-{{ $event->results_published == 1 ? 'danger' : 'success' }}"
+           onclick="return confirm('Are you sure you want to {{ $event->results_published == 1 ? 'unpublish' : 'publish' }} the results?')">
+          <i class="ti ti-{{ $event->results_published == 1 ? 'eye-off' : 'eye' }} me-1"></i>
+          {{ $event->results_published == 1 ? 'Unpublish Results' : 'Publish Results' }}
+        </a>
+
           {{-- Fixtures HQ (admin) --}}
         <a href="{{ route('headOffice.show', $event) }}"
            class="btn btn-outline-primary">

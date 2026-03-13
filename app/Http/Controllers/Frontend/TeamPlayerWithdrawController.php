@@ -178,6 +178,7 @@ class TeamPlayerWithdrawController extends Controller
               'gross' => $gross,
               'fee' => $fee,
               'method' => 'wallet',
+              'reference' => optional($order->event)->name ?? 'Team Refund',
             ]
           );
 
@@ -192,12 +193,42 @@ class TeamPlayerWithdrawController extends Controller
           $order->save();
         });
 
+        $teamRefEventName = optional($order->event)->name ?? 'Team Refund';
+
+        activity('wallet')
+          ->performedOn($order)
+          ->causedBy($user)
+          ->withProperties([
+            'type' => 'credit',
+            'amount' => $net,
+            'gross' => $gross,
+            'fee' => $fee,
+            'reference' => $teamRefEventName,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+          ])
+          ->log("Wallet credited R{$net} for team refund – {$teamRefEventName}");
+
         Log::info('TEAM WALLET REFUND COMPLETED', [
           'team_id' => $team->id,
           'player_id' => $player->id,
           'order_id' => $order->id,
           'amount' => $net,
         ]);
+
+        activity('refund')
+          ->performedOn($order)
+          ->causedBy($user)
+          ->withProperties([
+            'method' => 'wallet',
+            'team_id' => $team->id,
+            'player' => trim($player->name . ' ' . $player->surname),
+            'event' => optional($order->event)->name ?? '',
+            'gross' => $gross,
+            'fee' => $fee,
+            'net' => $net,
+          ])
+          ->log("Team wallet refund R{$net}");
 
         return redirect()->route('events.show', [$eventId])->with('success', 'Refund credited to your wallet.');
 
@@ -242,11 +273,79 @@ class TeamPlayerWithdrawController extends Controller
       ]);
     });
 
+    // ── Auto-refund via PayFast if original payment was PayFast ──
+    $pfPaymentId = $order->payfast_pf_payment_id ?? null;
+
+    if (!empty($pfPaymentId)) {
+      try {
+        $payfast = new \App\Classes\Payfast();
+        $result = $payfast->refund($pfPaymentId, $net, 'Team withdrawal refund');
+
+        Log::info('TEAM PAYFAST AUTO REFUND ATTEMPT', [
+          'order_id' => $order->id,
+          'pf_payment_id' => $pfPaymentId,
+          'amount' => $net,
+          'result' => $result,
+        ]);
+
+        if ($result['success']) {
+          $order->update([
+            'refund_status' => 'completed',
+            'refunded_at' => now(),
+          ]);
+
+          activity('refund')
+            ->performedOn($order)
+            ->causedBy($user)
+            ->withProperties([
+              'method' => 'payfast',
+              'pf_payment_id' => $pfPaymentId,
+              'team_id' => $team->id,
+              'player' => trim($player->name . ' ' . $player->surname),
+              'event' => optional($order->event)->name ?? '',
+              'gross' => $gross,
+              'fee' => $fee,
+              'net' => $net,
+            ])
+            ->log("Team PayFast auto refund R{$net} processed");
+
+          return redirect()->route('events.show', [$eventId])
+            ->with('success', 'Refund of R' . number_format($net, 2) . ' processed via PayFast. It may take 3–5 business days to reflect.');
+        }
+
+        Log::warning('TEAM PAYFAST AUTO REFUND FAILED — falling back to manual', [
+          'order_id' => $order->id,
+          'error' => $result['error'],
+        ]);
+
+      } catch (\Throwable $e) {
+        Log::error('TEAM PAYFAST AUTO REFUND EXCEPTION — falling back to manual', [
+          'order_id' => $order->id,
+          'error' => $e->getMessage(),
+        ]);
+      }
+    }
+
     Log::info('TEAM BANK REFUND REQUEST CREATED', [
       'order_id' => $order->id,
       'amount' => $net,
       'bank_name' => $request->bank_name ?? null,
     ]);
+
+    activity('refund')
+      ->performedOn($order)
+      ->causedBy($user)
+      ->withProperties([
+        'method' => 'bank',
+        'team_id' => $team->id,
+        'player' => trim($player->name . ' ' . $player->surname),
+        'event' => optional($order->event)->name ?? '',
+        'gross' => $gross,
+        'fee' => $fee,
+        'net' => $net,
+        'bank' => $request->bank_name ?? '',
+      ])
+      ->log("Team bank refund R{$net} requested");
 
     // Notify admin via existing EmailController helper
     try {
