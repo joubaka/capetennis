@@ -26,6 +26,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\ClothingOrder;
+use App\Models\CategoryResult;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 
@@ -352,6 +353,19 @@ class EventController extends Controller
     // In your controller
 
 
+    // ---------------------------------------------------------
+    // CATEGORY RESULTS (new system)
+    // ---------------------------------------------------------
+    $categoryResults = collect();
+    if ($event->results_published == 1) {
+      $categoryResults = CategoryResult::where('event_id', $event->id)
+        ->with('registration.players')
+        ->orderBy('category_id')
+        ->orderBy('position')
+        ->get()
+        ->groupBy('category_id');
+    }
+
 $fixtures = \App\Models\TeamFixture::with(['draw'])
     ->whereHas('draw', function ($q) use ($event) {
         $q->where('event_id', $event->id);
@@ -404,8 +418,34 @@ return view('frontend.event.show', compact(
       'nomRegisteredLookup',
       'canEnter',
       'canWithdraw',
-      'venues'
+      'venues',
+      'categoryResults'
     ));
+  }
+
+  /**
+   * Public results page for an individual event.
+   */
+  public function results($id)
+  {
+    $event = Event::with(['eventCategories.category'])->findOrFail($id);
+
+    if ($event->results_published != 1) {
+      abort(404);
+    }
+
+    $categories = $event->eventCategories
+      ->sortBy(fn($ec) => $ec->category->name)
+      ->values();
+
+    $categoryResults = CategoryResult::where('event_id', $event->id)
+      ->with('registration.players')
+      ->orderBy('category_id')
+      ->orderBy('position')
+      ->get()
+      ->groupBy('category_id');
+
+    return view('frontend.event.results.show', compact('event', 'categories', 'categoryResults'));
   }
 
 

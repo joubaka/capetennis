@@ -111,7 +111,7 @@
         <small class="text-uppercase">Results</small>
       </div>
       <div class="card-body">
-        <a href="{{ route('result.show', $event->id) }}" class="btn bg-label-success btn-sm">
+        <a href="{{ route('events.results', $event->id) }}" class="btn bg-label-success btn-sm">
           <i class="ti ti-trophy me-1"></i> View Results
         </a>
       </div>

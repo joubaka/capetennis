@@ -192,6 +192,7 @@ Route::get('events/cancel', [EventController::class, 'cancel'])->name('event.can
 Route::get('events/ajax/userEvents/{id}', [EventController::class, 'userEventAjax'])->name('ajax.event.user');
 Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->name('ajax.series.all');
 Route::resource('events', EventController::class);
+Route::get('events/{event}/results', [EventController::class, 'results'])->name('events.results');
 Route::post(
   '/registrations/{registration}/refund/process',
   [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'process']
