@@ -95,6 +95,11 @@
                   data-bs-target="#editUser">
             <i class="ti ti-user-edit me-1"></i> Edit Profile
           </button>
+          @can('super-user')
+          <a href="{{ route('settings.index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="ti ti-settings me-1"></i> Settings
+          </a>
+          @endcan
         </div>
       </div>
     </div>

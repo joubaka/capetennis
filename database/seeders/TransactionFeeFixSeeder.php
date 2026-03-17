@@ -4,16 +4,16 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Transaction;
+use App\Models\SiteSetting;
 
 class TransactionFeeFixSeeder extends Seeder
 {
     /**
-     * Calculate PayFast fee
-     * Formula: ((amount * 3.2%) + R2.00) * 1.14 (VAT)
+     * Calculate PayFast fee using site settings.
      */
     private function calculatePayfastFee(float $amount): float
     {
-        return round((($amount * 0.032) + 2) * 1.14, 2);
+        return SiteSetting::calculatePayfastFee($amount);
     }
 
     public function run()

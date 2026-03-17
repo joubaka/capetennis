@@ -891,7 +891,7 @@ class RegisterController extends Controller
       } else {
         $entryFee = $registration->categoryEvent->entry_fee;
 
-        $payfastFee = ((($entryFee * 3.2) / 100) + 2) * 1.14;
+        $payfastFee = \App\Models\SiteSetting::calculatePayfastFee($entryFee);
 
         $transaction->cape_tennis_fee = 10;
         $transaction->amount_gross = -$entryFee;
@@ -928,8 +928,13 @@ class RegisterController extends Controller
     $transaction->transaction_type = 'Registration';
 
     $transaction->amount_gross = $data['amount_gross'] ?? null;
-    $transaction->amount_net = $data['amount_net'] ?? null;
-    $transaction->amount_fee = $data['amount_fee'] ?? null;
+
+    // Use configured PayFast fee percentage per payment method (benefits Cape Tennis on negotiated discount)
+    $gross = (float) ($data['amount_gross'] ?? 0);
+    $paymentMethod = $data['payment_method'] ?? null;
+    $configuredFee = \App\Models\SiteSetting::calculatePayfastFee($gross, $paymentMethod);
+    $transaction->amount_fee = $configuredFee;
+    $transaction->amount_net = round($gross - $configuredFee, 2);
 
     $transaction->event_id = $data['custom_int3'] ?? null;
     $transaction->category_event_id = $data['custom_int1'] ?? null;

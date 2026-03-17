@@ -3,85 +3,54 @@
 namespace App\Http\Controllers\backend;
 
 use App\Http\Controllers\Controller;
-use Doctrine\DBAL\Schema\View;
+use App\Models\SiteSetting;
 use Illuminate\Http\Request;
 
 class SettingsController extends Controller
 {
     /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
+     * Display the settings page.
      */
     public function index()
     {
-        dd('settings.index');
-      
+        $payfastSettings = SiteSetting::where('group', 'payfast')->get()->keyBy('key');
+        $paymentMethods  = SiteSetting::PAYMENT_METHOD_LABELS;
+
+        return view('backend.settings.settings-index', compact('payfastSettings', 'paymentMethods'));
     }
 
     /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * Update settings.
      */
     public function store(Request $request)
     {
-        //
+        $rules = [
+            'payfast_fee_percentage' => 'required|numeric|min:0|max:100',
+            'payfast_fee_flat'       => 'required|numeric|min:0',
+            'payfast_vat_rate'       => 'required|numeric|min:0|max:100',
+        ];
+
+        foreach (array_keys(SiteSetting::PAYMENT_METHOD_LABELS) as $method) {
+            $rules["payfast_fee_pct_{$method}"] = 'required|numeric|min:0|max:100';
+        }
+
+        $request->validate($rules);
+
+        SiteSetting::set('payfast_fee_percentage', $request->input('payfast_fee_percentage'));
+        SiteSetting::set('payfast_fee_flat', $request->input('payfast_fee_flat'));
+        SiteSetting::set('payfast_vat_rate', $request->input('payfast_vat_rate'));
+
+        foreach (array_keys(SiteSetting::PAYMENT_METHOD_LABELS) as $method) {
+            SiteSetting::set("payfast_fee_pct_{$method}", $request->input("payfast_fee_pct_{$method}"));
+        }
+
+        return redirect()->route('settings.index')
+            ->with('success', 'PayFast fee settings updated successfully.');
     }
 
-    /**
-     * Display the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function show($id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function update(Request $request, $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy($id)
-    {
-        //
-    }
+    public function create() {}
+    public function show($id) {}
+    public function edit($id) {}
+    public function update(Request $request, $id) {}
+    public function destroy($id) {}
 }
