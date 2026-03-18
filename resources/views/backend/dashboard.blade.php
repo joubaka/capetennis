@@ -547,8 +547,13 @@ $(function () {
         { targets: 4, orderable: false, searchable: false },
         { targets: 5, visible: false }
       ],
-      initComplete: function () {
-        $('[data-bs-toggle="popover"]').popover();
+      drawCallback: function () {
+        var body = this.api().table().body();
+        $(body).find('[data-bs-toggle="popover"]').each(function () {
+          if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+            new bootstrap.Popover(this);
+          }
+        });
       }
     });
   }
@@ -564,8 +569,13 @@ $(function () {
       columnDefs: [
         { targets: 4, orderable: false, searchable: false }
       ],
-      initComplete: function () {
-        $('[data-bs-toggle="popover"]').popover();
+      drawCallback: function () {
+        var body = this.api().table().body();
+        $(body).find('[data-bs-toggle="popover"]').each(function () {
+          if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+            new bootstrap.Popover(this);
+          }
+        });
       }
     });
   }
@@ -595,6 +605,12 @@ $(function () {
       $('#datatable-activity').addClass('d-none');
       $('#datatable-activity-raw').removeClass('d-none');
     }
+  });
+
+  // Adjust DataTable columns when Activity tab is first shown (hidden tabs issue)
+  $('button[data-bs-target="#tab-activity"]').on('shown.bs.tab', function () {
+    $('#datatable-activity').DataTable().columns.adjust().draw(false);
+    if (dtActivityRaw) dtActivityRaw.columns.adjust().draw(false);
   });
 
   // ==========================================================

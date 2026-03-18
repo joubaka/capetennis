@@ -197,6 +197,7 @@
                   <th>Log</th>
                   <th>Action</th>
                   <th>Details</th>
+                  <th class="d-none">Log Names</th>
                 </tr>
               </thead>
               <tbody>
