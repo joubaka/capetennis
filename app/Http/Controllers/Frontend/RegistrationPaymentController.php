@@ -108,6 +108,52 @@ class RegistrationPaymentController extends Controller
   }
 
   /**
+   * Apply wallet balance to an order (AJAX from checkout page).
+   */
+  public function applyWallet(Request $request)
+  {
+    $orderId = (int) $request->order_id;
+    $order = RegistrationOrder::findOrFail($orderId);
+
+    $user = auth()->user();
+    if (!$user || $order->user_id !== $user->id) {
+      return response()->json(['error' => 'Unauthorized.'], 403);
+    }
+
+    if ($order->wallet_debited || $order->payfast_paid) {
+      return response()->json(['error' => 'Order already paid.'], 400);
+    }
+
+    $wallet = $user->wallet;
+    $walletBalance = $wallet?->balance ?? 0;
+
+    if ($walletBalance <= 0) {
+      return response()->json(['error' => 'No wallet balance available.'], 400);
+    }
+
+    $total = (float) $order->items->sum('item_price');
+    $walletApplied = min($walletBalance, $total);
+    $remaining = round($total - $walletApplied, 2);
+
+    $order->wallet_reserved = $walletApplied;
+    $order->payfast_amount_due = $remaining;
+    $order->save();
+
+    Log::info('WALLET APPLIED TO ORDER', [
+      'order_id' => $order->id,
+      'wallet_applied' => $walletApplied,
+      'payfast_due' => $remaining,
+    ]);
+
+    return response()->json([
+      'success' => true,
+      'wallet_applied' => $walletApplied,
+      'payfast_due' => $remaining,
+      'wallet_covers_all' => $remaining <= 0,
+    ]);
+  }
+
+  /**
    * Wallet-only completion
    */
   public function hybridComplete(int $orderId)
@@ -137,6 +183,12 @@ class RegistrationPaymentController extends Controller
     }
 
     if ($order->wallet_debited) {
+      // Redirect back to the event page
+      $eventId = optional($order->items->first()?->category_event?->event)->id;
+      if ($eventId) {
+        return redirect()->route('events.show', $eventId)
+          ->with('success', 'Registration already completed.');
+      }
       return redirect()
         ->route('frontend.registration.success', $orderId);
     }
@@ -203,6 +255,13 @@ class RegistrationPaymentController extends Controller
     Log::info('HYBRID COMPLETE SUCCESS', [
       'order_id' => $orderId
     ]);
+
+    // Redirect back to the event page
+    $eventId = optional($order->items->first()?->category_event)->event_id;
+    if ($eventId) {
+      return redirect()->route('events.show', $eventId)
+        ->with('success', 'Registration paid successfully using wallet.');
+    }
 
     return redirect()
       ->route('frontend.registration.success', $orderId)

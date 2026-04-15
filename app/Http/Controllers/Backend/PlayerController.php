@@ -27,14 +27,39 @@ use SebastianBergmann\Timer\Duration;
 class PlayerController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display the players management page.
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        $players = Player::all();
-        return ['data' => $players];
+        // If AJAX request, return JSON for DataTables
+        if ($request->ajax() || $request->wantsJson()) {
+            $players = Player::all()->map(function ($player) {
+                $player->profile_status = $player->getProfileStatus();
+                $player->needs_update = $player->needsProfileUpdate();
+                $player->is_complete = $player->isProfileComplete();
+                return $player;
+            });
+            return response()->json(['data' => $players]);
+        }
+
+        // Otherwise return the view
+        return view('backend.player.index');
+    }
+
+    /**
+     * Get players data for DataTables (AJAX endpoint).
+     */
+    public function data()
+    {
+        $players = Player::all()->map(function ($player) {
+            $player->profile_status = $player->getProfileStatus();
+            $player->needs_update = $player->needsProfileUpdate();
+            $player->is_complete = $player->isProfileComplete();
+            return $player;
+        });
+        return response()->json(['data' => $players]);
     }
 
     /**

@@ -5,19 +5,33 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
   /**
-   * Display a listing of users (DataTables / AJAX).
+   * Display the users management page.
    */
-  public function index()
+  public function index(Request $request)
+  {
+    // If AJAX request, return JSON for DataTables
+    if ($request->ajax() || $request->wantsJson()) {
+      $users = User::with('roles')->get();
+      return response()->json(['data' => $users]);
+    }
+
+    // Otherwise return the view
+    $roles = Role::all();
+    return view('backend.user.index', compact('roles'));
+  }
+
+  /**
+   * Get users data for DataTables (AJAX endpoint).
+   */
+  public function data()
   {
     $users = User::with('roles')->get();
-
-    return response()->json([
-      'data' => $users
-    ]);
+    return response()->json(['data' => $users]);
   }
 
   /**

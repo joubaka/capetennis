@@ -16,7 +16,9 @@ class SettingsController extends Controller
         $payfastSettings = SiteSetting::where('group', 'payfast')->get()->keyBy('key');
         $paymentMethods  = SiteSetting::PAYMENT_METHOD_LABELS;
 
-        return view('backend.settings.settings-index', compact('payfastSettings', 'paymentMethods'));
+        $generalSettings = SiteSetting::where('group', 'general')->get()->pluck('value', 'key')->toArray();
+
+        return view('backend.settings.settings-index', compact('payfastSettings', 'paymentMethods', 'generalSettings'));
     }
 
     /**
@@ -44,8 +46,12 @@ class SettingsController extends Controller
             SiteSetting::set("payfast_fee_pct_{$method}", $request->input("payfast_fee_pct_{$method}"));
         }
 
+        // Code of Conduct & Terms toggles
+        SiteSetting::set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0');
+        SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0');
+
         return redirect()->route('settings.index')
-            ->with('success', 'PayFast fee settings updated successfully.');
+            ->with('success', 'Settings updated successfully.');
     }
 
     public function create() {}

@@ -62,6 +62,8 @@ use App\Http\Controllers\Frontend\PhotoController as FrontendPhotoController;
 use App\Http\Controllers\Frontend\PlayerController as FrontendPlayerController;
 use App\Http\Controllers\Frontend\RegisterController;
 use App\Http\Controllers\TeamSelectionController;
+use App\Http\Controllers\Frontend\AgreementController as FrontendAgreementController;
+use App\Http\Controllers\Backend\AgreementController as BackendAgreementController;
 use App\Models\ClothingOrder;
 use App\Models\Draw;
 use Illuminate\Support\Facades\Route;
@@ -112,16 +114,41 @@ Route::get('/auth/register-basic', $controller_path . '\authentications\Register
 Route::get('/home/get_events', [HomeController::class, 'get_events'])->name('home.events.get');
 
 //register
-Route::get('register/register/{id}', [RegisterController::class, 'register'])->middleware('auth')->name('register.register');
+Route::get('register/register/{id}', [RegisterController::class, 'register'])->middleware(['auth', 'agreement', 'profile.updated'])->name('register.register');
+Route::get('register/search-players', [RegisterController::class, 'searchPlayers'])->middleware('auth')->name('register.search.players');
+Route::post('register/player-details', [RegisterController::class, 'getPlayerDetails'])->middleware('auth')->name('register.player.details');
+Route::post('register/update-player-details', [RegisterController::class, 'updatePlayerDetails'])->middleware('auth')->name('register.update.player.details');
 Route::post('register/registerAdmin', [RegisterController::class, 'registerPlayerInCategoryFromAdmin'])->middleware('auth')->name('register.admin');
-Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware('auth')->name('pay.now.payfast');
-Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware('auth')->name('pay.order.payfast');
+Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.now.payfast');
+Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.order.payfast');
+
+// Player Profile Update (frontend)
+Route::middleware('auth')->group(function () {
+  Route::get('/player/profiles/pending', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'pending'])->name('player.profiles.pending');
+  Route::get('/player/{player}/profile/edit', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'edit'])->name('player.profile.edit');
+  Route::put('/player/{player}/profile', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'update'])->name('player.profile.update');
+  Route::post('/player/{player}/profile/confirm', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'confirm'])->name('player.profile.confirm');
+  Route::get('/player/{player}/profile/status', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'status'])->name('player.profile.status');
+  Route::delete('/player/{player}/remove', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'remove'])->name('player.profile.remove');
+});
+
+// Code of Conduct / Agreements (frontend)
+Route::middleware('auth')->group(function () {
+  Route::get('/agreements', [FrontendAgreementController::class, 'show'])->name('agreements.show');
+  Route::post('/agreements/accept', [FrontendAgreementController::class, 'accept'])->name('agreements.accept');
+  Route::post('/agreements/check', [FrontendAgreementController::class, 'check'])->name('agreements.check');
+});
 Route::get('/register/success/{order}', [RegisterController::class, 'registrationSuccess'])
   ->name('frontend.registration.success');
 Route::post(
   '/registration/hybrid/pay',
   [RegistrationPaymentController::class, 'hybridPay']
-)->name('registration.hybrid.pay');
+)->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.hybrid.pay');
+
+Route::post(
+  '/registration/hybrid/apply-wallet',
+  [RegistrationPaymentController::class, 'applyWallet']
+)->middleware('auth')->name('registration.hybrid.apply-wallet');
 
 Route::get(
   '/registration/hybrid/complete/{orderId}',
@@ -317,7 +344,22 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->name('backend.roles.destroy')
     ->middleware(['auth', 'role:super-user|admin']);
 
+  // Code of Conduct / Agreements (admin)
+  Route::prefix('agreements')->middleware('role:super-user|admin')->group(function () {
+    Route::get('/', [BackendAgreementController::class, 'index'])->name('backend.agreements.index');
+    Route::get('/create', [BackendAgreementController::class, 'create'])->name('backend.agreements.create');
+    Route::post('/', [BackendAgreementController::class, 'store'])->name('backend.agreements.store');
+    Route::get('/{agreement}', [BackendAgreementController::class, 'show'])->name('backend.agreements.show');
+    Route::get('/{agreement}/edit', [BackendAgreementController::class, 'edit'])->name('backend.agreements.edit');
+    Route::put('/{agreement}', [BackendAgreementController::class, 'update'])->name('backend.agreements.update');
+    Route::post('/{agreement}/duplicate', [BackendAgreementController::class, 'duplicate'])->name('backend.agreements.duplicate');
+    Route::post('/{agreement}/set-active', [BackendAgreementController::class, 'setActive'])->name('backend.agreements.setActive');
+  });
 
+  // Super Admin Dashboard
+  Route::get('superadmin', [\App\Http\Controllers\Backend\SuperAdminController::class, 'index'])
+    ->middleware('role:super-user')
+    ->name('backend.superadmin.index');
 
 
 
@@ -1431,7 +1473,15 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   |--------------------------------------------------------------------------
   */
   Route::get('dashboard', [DashboardController::class, 'dashboard'])
-    ->name('dashboard');
+    ->name('backend.dashboard');
+
+  /*
+  |--------------------------------------------------------------------------
+  | USERS & PLAYERS DATA ENDPOINTS (for DataTables)
+  |--------------------------------------------------------------------------
+  */
+  Route::get('user/data', [UserController::class, 'data'])->name('user.data');
+  Route::get('player/data', [PlayerController::class, 'data'])->name('player.data');
 
   /*
   |--------------------------------------------------------------------------

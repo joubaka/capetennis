@@ -86,16 +86,16 @@
           <hr>
 
           <p>
-            Wallet Reserved for This Order:
-            <strong class="text-success">
-              - R {{ number_format($walletReserved, 2) }}
+            Wallet Balance Available:
+            <strong>
+              R {{ number_format($walletBalance, 2) }}
             </strong>
           </p>
 
           <p>
-            Wallet Current Balance:
-            <strong>
-              R {{ number_format($walletBalance, 2) }}
+            Wallet Applied to This Order:
+            <strong class="text-success" id="walletAppliedDisplay">
+              - R {{ number_format($walletReserved, 2) }}
             </strong>
           </p>
 
@@ -103,10 +103,16 @@
 
           <p>
             Remaining to Pay via PayFast:
-            <strong class="{{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}">
+            <strong class="{{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}" id="payfastDueDisplay">
               R {{ number_format($payfastDue, 2) }}
             </strong>
           </p>
+
+          @if($walletBalance > 0 && $walletReserved <= 0 && $payfastDue > 0)
+            <button type="button" class="btn btn-primary w-100 mb-3" id="applyWalletBtn">
+              <i class="ti ti-wallet me-1"></i> Apply Wallet Balance (R {{ number_format(min($walletBalance, $total), 2) }})
+            </button>
+          @endif
 
           @if($payfastDue <= 0)
 
@@ -124,7 +130,11 @@
           @endif
 
           <small class="text-muted d-block mt-3">
-            Wallet portion is already reserved for this order.
+            @if($walletReserved > 0)
+              Wallet portion is reserved for this order.
+            @else
+              You can optionally apply your wallet balance to reduce the PayFast amount.
+            @endif
           </small>
 
         </div>
@@ -215,4 +225,53 @@
 
 </div>
 
+@endsection
+
+@section('page-script')
+<script>
+$(function () {
+  $('#applyWalletBtn').on('click', function () {
+    var $btn = $(this);
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Applying...');
+
+    $.ajax({
+      url: APP_URL + '/registration/hybrid/apply-wallet',
+      type: 'POST',
+      data: {
+        _token: $('meta[name="csrf-token"]').attr('content'),
+        order_id: {{ $orderId }}
+      },
+      success: function (res) {
+        if (res.success) {
+          // Update displays
+          $('#walletAppliedDisplay').html('- R ' + parseFloat(res.wallet_applied).toFixed(2));
+          $('#payfastDueDisplay').html('R ' + parseFloat(res.payfast_due).toFixed(2));
+
+          // Update PayFast form amount
+          $('input[name="amount"]').val(parseFloat(res.payfast_due).toFixed(2));
+          $('input[name="custom_wallet_reserved"]').val(parseFloat(res.wallet_applied).toFixed(2));
+
+          $btn.replaceWith('<div class="alert alert-success mb-0"><i class="ti ti-check me-1"></i>Wallet applied: R ' + parseFloat(res.wallet_applied).toFixed(2) + '</div>');
+
+          if (res.wallet_covers_all) {
+            // Wallet covers entire order – redirect to complete
+            window.location.href = APP_URL + '/registration/hybrid/complete/{{ $orderId }}';
+          } else {
+            // Update PayFast button text
+            $('.btn-danger.btn-lg').text('Pay R ' + parseFloat(res.payfast_due).toFixed(2) + ' with PayFast');
+          }
+        }
+      },
+      error: function (xhr) {
+        $btn.prop('disabled', false).html('<i class="ti ti-wallet me-1"></i> Apply Wallet Balance');
+        if (xhr.responseJSON && xhr.responseJSON.error) {
+          alert(xhr.responseJSON.error);
+        } else {
+          alert('Failed to apply wallet. Please try again.');
+        }
+      }
+    });
+  });
+});
+</script>
 @endsection

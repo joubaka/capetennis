@@ -35,6 +35,13 @@
 
 <input type="hidden" id="event_id" value="{{ $event->id }}">
 
+@if(session('success'))
+  <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
+    <i class="ti ti-check me-1"></i> {{ session('success') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+@endif
+
 {{-- ================= HEADER ================= --}}
 <div class="row">
   <div class="col-12">

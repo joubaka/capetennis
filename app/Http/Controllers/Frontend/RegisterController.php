@@ -11,6 +11,7 @@ use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Agreement;
 use App\Models\Player;
 use App\Models\PlayerRegistration;
 use App\Models\Registration;
@@ -21,6 +22,7 @@ use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\SiteSetting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -54,6 +56,102 @@ class RegisterController extends Controller
     }
 
 
+  /**
+   * AJAX endpoint for Select2 player search.
+   */
+  public function searchPlayers(Request $request)
+  {
+    $term = $request->get('q', '');
+
+    $query = Player::select('id', 'name', 'surname')
+      ->orderBy('name')
+      ->orderBy('surname');
+
+    if ($term !== '') {
+      $query->where(function ($q) use ($term) {
+        $q->where('name', 'LIKE', "%{$term}%")
+          ->orWhere('surname', 'LIKE', "%{$term}%")
+          ->orWhereRaw("CONCAT(name, ' ', surname) LIKE ?", ["%{$term}%"]);
+      });
+    }
+
+    $players = $query->limit(50)->get();
+
+    return response()->json([
+      'results' => $players->map(fn($p) => [
+        'id' => $p->id,
+        'text' => $p->name . ' ' . $p->surname,
+      ]),
+    ]);
+  }
+
+  /**
+   * AJAX endpoint to get player details for the confirm step.
+   */
+  public function getPlayerDetails(Request $request)
+  {
+    $request->validate(['player_id' => 'required|integer|exists:players,id']);
+
+    $player = Player::findOrFail($request->player_id);
+
+    // Only pre-fill date of birth if the profile was confirmed in 2026 or later
+    $confirmedIn2026 = $player->profile_updated_at
+      && $player->profile_updated_at->year >= 2026;
+
+    return response()->json([
+      'id'          => $player->id,
+      'name'        => $player->name,
+      'surname'     => $player->surname,
+      'email'       => $player->email,
+      'cellNr'      => $player->cellNr,
+      'dateOfBirth' => $confirmedIn2026 ? $player->dateOfBirth : null,
+      'gender'      => $player->gender,
+    ]);
+  }
+
+  /**
+   * AJAX endpoint to update player details from the confirm step.
+   */
+  public function updatePlayerDetails(Request $request)
+  {
+    $validated = $request->validate([
+      'player_id'   => 'required|integer|exists:players,id',
+      'name'        => 'required|string|max:255',
+      'surname'     => 'required|string|max:255',
+      'email'       => 'nullable|email|max:255',
+      'cellNr'      => 'required|string|max:50',
+      'dateOfBirth' => 'required|date|before:today',
+      'gender'      => 'required|in:Male,Female',
+    ]);
+
+    $player = Player::findOrFail($validated['player_id']);
+
+    $player->update([
+      'name'        => $validated['name'],
+      'surname'     => $validated['surname'],
+      'email'       => $validated['email'] ?? $player->email,
+      'cellNr'      => $validated['cellNr'],
+      'dateOfBirth' => $validated['dateOfBirth'],
+      'gender'      => $validated['gender'],
+    ]);
+
+    $player->markProfileUpdated();
+
+    return response()->json([
+      'success' => true,
+      'message' => "Details for \"{$player->name} {$player->surname}\" updated.",
+      'player'  => [
+        'id'          => $player->id,
+        'name'        => $player->name,
+        'surname'     => $player->surname,
+        'email'       => $player->email,
+        'cellNr'      => $player->cellNr,
+        'dateOfBirth' => $player->dateOfBirth,
+        'gender'      => $player->gender,
+      ],
+    ]);
+  }
+
   public function register(int $id)
   {
     $user = Auth::user();
@@ -61,7 +159,7 @@ class RegisterController extends Controller
     // ✅ FIX 1: assign the event properly
     $event = Event::with('eventTypeModel')->findOrFail($id);
 
-    $players = Player::all();
+    $players = collect(); // Players loaded via AJAX Select2
 
     $eventCategories = CategoryEvent::where('event_id', $id)
       ->with('category')
@@ -95,6 +193,15 @@ class RegisterController extends Controller
 
     $orderId = 0;
 
+    // Site-wide toggles
+    $requireCodeOfConduct = SiteSetting::get('require_code_of_conduct', '0') === '1';
+    $requireTerms         = SiteSetting::get('require_terms', '0') === '1';
+
+    // Active Code of Conduct agreement (only load when toggle is on)
+    $agreement = $requireCodeOfConduct
+      ? Agreement::where('is_active', 1)->latest()->first()
+      : null;
+
     return view('frontend.event.checkout', compact(
       'eventCats',
       'players',
@@ -103,7 +210,10 @@ class RegisterController extends Controller
       'user',
       'orderId',
       'payfast',
-      'parentEvent'
+      'parentEvent',
+      'agreement',
+      'requireCodeOfConduct',
+      'requireTerms'
     ));
   }
 
@@ -967,6 +1077,14 @@ class RegisterController extends Controller
   public function payNowPayfast(Request $request)
   {
 
+    // ----------------------------
+    // Validate terms accepted
+    // ----------------------------
+    if (!$request->has('terms_accepted') || $request->terms_accepted != '1') {
+      return back()->withErrors([
+        'msg' => 'You must accept the terms and conditions and Code of Conduct before proceeding.'
+      ]);
+    }
 
     // ----------------------------
     // Validate players/categories
@@ -1023,46 +1141,35 @@ class RegisterController extends Controller
     }
 
     // -----------------------------------
-    // 🔵 SAFE HYBRID LOGIC (RESERVE ONLY)
+    // 🔵 WALLET – DO NOT AUTO-APPLY
+    // Let the user choose on checkout page
     // -----------------------------------
 
     $wallet = Auth::user()->wallet;
     $walletBalance = $wallet?->balance ?? 0;
 
-    $walletApplied = min($walletBalance, $totalFee);
-    $remaining = round($totalFee - $walletApplied, 2);
-
-    // 🔐 DO NOT DEBIT HERE
-    // Just reserve
-
-    $regorder->wallet_reserved = $walletApplied;
-    $regorder->payfast_amount_due = $remaining;
+    $regorder->wallet_reserved = 0;
+    $regorder->payfast_amount_due = $totalFee;
     $regorder->wallet_debited = false;
     $regorder->payfast_paid = false;
     $regorder->save();
 
-    // If wallet covers everything
-    if ($remaining <= 0) {
-
-      return redirect()
-        ->route('registration.hybrid.complete', $regorder->id);
-    }
-
     // -----------------------------------
-    // 🔴 PayFast for remaining
+    // 🔴 PayFast for full amount
     // -----------------------------------
 
     $payfast = new Payfast();
     $payfast->setMode(Auth::id() == 584 ? 0 : 1);
 
-    $request['amount'] = $remaining;
+    $request['amount'] = $totalFee;
     $request['custom_int5'] = $regorder->id;
-    $request['custom_wallet_reserved'] = $walletApplied;
+    $request['custom_wallet_reserved'] = 0;
     Log::info('HYBRID CREATE ORDER', [
       'order_id' => $regorder->id,
       'total_fee' => $totalFee,
-      'wallet_reserved' => $walletApplied,
-      'payfast_due' => $remaining
+      'wallet_balance' => $walletBalance,
+      'wallet_reserved' => 0,
+      'payfast_due' => $totalFee
     ]);
 
     return view('frontend.payfast.check_out', compact('request', 'payfast'));
@@ -1072,7 +1179,16 @@ class RegisterController extends Controller
 
   public function registrationSuccess($orderId)
   {
-    $order = RegistrationOrder::with('items')->findOrFail($orderId);
+    $order = RegistrationOrder::with('items.category_event')->findOrFail($orderId);
+
+    // Redirect back to the event the user registered for
+    $eventId = optional($order->items->first()?->category_event)->event_id;
+
+    if ($eventId) {
+      return redirect()->route('events.show', $eventId)
+        ->with('success', 'Registration completed successfully!');
+    }
+
     return view('frontend.event.registration_success', compact('order'));
   }
 
