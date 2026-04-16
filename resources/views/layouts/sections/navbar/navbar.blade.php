@@ -92,7 +92,7 @@ $navbarDetached = ($navbarDetached ?? '');
       {{-- Profile shortcut --}}
       @if (Auth::check())
         <li class="nav-item me-2">
-          <a href="{{ route('dashboard') }}" class="btn btn-warning btn-sm">
+          <a href="{{ route('backend.dashboard') }}" class="btn btn-warning btn-sm">
             My Profile
           </a>
         </li>
@@ -121,7 +121,7 @@ $navbarDetached = ($navbarDetached ?? '');
         <ul class="dropdown-menu dropdown-menu-end">
 
           <li>
-            <a class="dropdown-item" href="{{ route('dashboard') }}">
+            <a class="dropdown-item" href="{{ route('backend.dashboard') }}">
               <div class="d-flex">
                 <div class="flex-shrink-0 me-3">
                   <div class="avatar avatar-online">
@@ -141,7 +141,7 @@ $navbarDetached = ($navbarDetached ?? '');
           <li><div class="dropdown-divider"></div></li>
 
           <li>
-            <a class="dropdown-item" href="{{ route('dashboard') }}">
+            <a class="dropdown-item" href="{{ route('backend.dashboard') }}">
               <i class="ti ti-user-check me-2"></i>
               My Profile
             </a>

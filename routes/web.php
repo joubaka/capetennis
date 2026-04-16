@@ -164,10 +164,6 @@ Route::get(
   '/team/checkout/{order}',
   [TeamController::class, 'checkout']
 )->name('team.checkout')->middleware('auth');
-Route::post(
-  'team/hybrid/complete/{order}',
-  [TeamController::class, 'teamHybridComplete']
-)->name('team.hybrid.complete');
 Route::prefix('team')->group(function () {
 
   Route::post(
@@ -187,14 +183,7 @@ Route::prefix('team')->group(function () {
 
 });
 
-  // Series publish toggle (backend path)
-  Route::post('backend/series/{series}/publish', [\App\Http\Controllers\Backend\SeriesController::class, 'togglePublish'])
-    ->name('series.publish');
-
-// Team Fixtures — Admin HQ routes
-Route::get('backend/team-fixtures/admin/{event}', [TeamFixtureController::class, 'admin'])
-  ->name('backend.team-fixtures.admin');
-
+  // Team Fixtures — Admin HQ routes
 Route::get('backend/team-fixtures/create', [TeamFixtureController::class, 'create'])
   ->name('backend.team-fixtures.create');
 
@@ -305,12 +294,6 @@ Route::middleware(['auth', 'role:super-user'])
     ])->name('bank.complete.team');
   });
 
-// Alternate named route used by some views: bank.complete.team
-Route::post('backend/refunds/team/{order}/complete', [
-  App\Http\Controllers\Backend\BankRefundController::class,
-  'completeTeam'
-])->middleware(['auth', 'role:super-user'])->name('bank.complete.team');
-
 
 
 Route::middleware([
@@ -318,9 +301,6 @@ Route::middleware([
   config('jetstream.auth_session'),
   'verified'
 ])->group(function () {
-  Route::get('/dashboard', function () {
-    return view('dashboard');
-  })->name('dashboard');
 });
 
 //backend
@@ -442,23 +422,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::get('team-schedule/{draw}', [TeamFixtureController::class, 'schedulePage'])
     ->name('backend.team-schedule.page');
-  Route::get(
-    'individual-schedule/{draw}',
-    [ScheduleController::class, 'schedulePage']
-  )->name('backend.individual-schedule.page');
 
-  ///new admin routes event vs events
+  ///new admin routes
 
   Route::get(
     'event/{event}/draws',
     [EventAdminController::class, 'draws']
   )->name('admin.events.draws');
 
-
-  Route::get(
-    'event/{event}/settings',
-    [EventAdminController::class, 'settings']
-  )->name('admin.events.settings');
 
   Route::get(
     'event/{event}/categories',
@@ -915,7 +886,6 @@ Route::delete(
   Route::get('fixture/rounds', [FixtureController::class, 'rounds'])->name('fixture.rounds');
   Route::get('fixture/ties', [FixtureController::class, 'ties'])->name('fixture.ties');
   Route::get('fixture/updatePlayers', [FixtureController::class, 'updatePlayer'])->name('fixture.update.players');
-  Route::get('fixture/venue/{event_id}/{venue_id}', [FixtureController::class, 'fixtures_venue'])->name('fixtures.venue');
   Route::post('fixtures/create/auto/{draw_id}', [FixtureController::class, 'autoScheduleFixtures'])->name('fixtures.auto.schedule');
   Route::resource('fixture', FixtureController::class);
   Route::get('/nomination/players/category/{id}', [\App\Http\Controllers\backend\NominateController::class, 'playersForCategory']);
@@ -1043,10 +1013,6 @@ Route::delete(
 
   //convenor
   Route::resource('convenor', ConvenorController::class);
-  Route::prefix('ranking')->name('ranking.')->group(function () {
-    // ...your existing ranking routes...
-
-   
 
   /*
    |-----------------------------------------------------------------------
@@ -1063,7 +1029,7 @@ Route::delete(
         'lists/{rankingList}/order',
         [RankingController::class, 'update_ranklist_order']
       )->name('lists.order');
-    });
+
     Route::delete('/ranking/lists/{list}/remove-category', [RankingController::class, 'removeCategory'])
       ->name('backend.ranking.lists.remove-category');
     /*
@@ -1159,6 +1125,7 @@ Route::delete(
     )->name('lists.deleteCategory');
 
   });
+
   // ❌ REMOVE THIS if not strictly required
 // Route::resource('ranking', RankingController::class);
 
@@ -1375,7 +1342,7 @@ Route::prefix('frontend')->middleware('auth')->group(function () {
 });
 
 //Frotend fixtures (public)
-Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.index');
+Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
 Route::get('frontend/fixtures/draw/indexRound/{event}/{round}/{type}', [FrontFixtureController::class, 'drawFixturesRound'])->name('frontend.fixtures.indexRound');
 Route::get('frontend/fixtures/draw/bracket/{id}', [FrontFixtureController::class, 'bracketFixtures'])->name('frontend.bracket.fixtures');
 Route::resource('file', FileController::class);
@@ -1440,9 +1407,7 @@ Route::get('/backend/event/{event}/players/exportExcel',[EventAdminController::c
 
 Route::post('/backend/user/update', [UserController::class, 'update'])->name('backend.user.update');
 
-Route::patch('/backend/player/{id}', [PlayerController::class, 'update'])
-  ->name('backend.player.update');
-Route::post('/backend/player/update/{id}', [PlayerController::class, 'update'])
+Route::match(['patch', 'post'], '/backend/player/{id}', [PlayerController::class, 'update'])
   ->name('backend.player.update');
 Route::get('/backend/team-schedule/all/{event}', [TeamScheduleController::class, 'indexAll'])->name('backend.team-schedule.all');
 Route::get('/backend/team-schedule/all-data/{event}', [TeamScheduleController::class, 'dataAll'])->name('backend.team-schedule.all.data');
@@ -1481,167 +1446,39 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->name('admin.events.teams');
     Route::get('{event}/overview', [EventAdminController::class, 'overview'])
       ->name('admin.events.overview');
-    Route::get('{event}/draws', [EventAdminController::class, 'draws'])
-      ->name('admin.events.draws');
 
     Route::get('{event}/fixtures', [EventAdminController::class, 'fixtures'])
       ->name('admin.events.individual.hq');
 
-    Route::get('{event}/entries', [EventEntryController::class, 'index'])
-      ->name('admin.events.entries.new');
-
-    Route::get('{event}/categories', [EventCategoryController::class, 'index'])
-      ->name('admin.events.categories');
-
-    Route::get('{event}/settings', [EventAdminController::class, 'settings'])
-      ->name('admin.events.settings');
-
     Route::post('{event}/copy', [BackendEventController::class, 'copyEvent'])
       ->name('admin.events.copy');
-
-
-
-    Route::post('{event}/settings/logo', [EventSettingsController::class, 'uploadLogo'])
-      ->name('admin.events.settings.logo');
-
-    Route::get('{event}/transactions/download-pdf', [BackendEventController::class, 'downloadTransactionsPDF'])
-      ->name('transactions.pdf');
-
-    Route::post('saveCategories', [BackendEventController::class, 'saveCategories'])
-      ->name('save.categories');
-
-    Route::get('getEventCategories/{id}', [BackendEventController::class, 'getEventCategories'])
-      ->name('get.event.categories');
   });
-
- 
-  /*
-  |--------------------------------------------------------------------------
-  | CATEGORY MANAGEMENT
-  |--------------------------------------------------------------------------
-  */
-  Route::prefix('category')->group(function () {
-
-    Route::delete('{categoryEvent}', [EventCategoryController::class, 'destroy'])
-      ->name('admin.category.delete');
-
-    Route::delete('event/{event}/cleanup', [EventCategoryController::class, 'cleanup'])
-      ->name('admin.categories.cleanup');
-
-    Route::post('{categoryEvent}/lock', [EventEntryController::class, 'lock'])
-      ->name('admin.category.lock');
-
-    Route::post('{categoryEvent}/unlock', [EventEntryController::class, 'unlock'])
-      ->name('admin.category.unlock');
-
-    Route::post('{categoryEvent}/add-player', [EventEntryController::class, 'addPlayer'])
-      ->name('admin.category.addPlayer');
-
-    Route::delete('{categoryEvent}/remove-player/{registration}', [EventEntryController::class, 'removePlayer'])
-      ->name('admin.category.removePlayer');
-
-    Route::get('{categoryEvent}/available-registrations', [EventEntryController::class, 'availableRegistrations'])
-      ->name('admin.category.availableRegistrations');
-  });
-
-  /*
-  |--------------------------------------------------------------------------
-  | EMAIL
-  |--------------------------------------------------------------------------
-  */
-  Route::post('event/email', [EventEntryController::class, 'sendEmail'])
-    ->name('admin.events.email.send');
-
-  Route::get('email/players/{event}', [EmailController::class, 'getPlayers'])
-    ->name('backend.email.players');
-
-  Route::get('email/teams/{event}', [EmailController::class, 'getTeams'])
-    ->name('backend.email.teams');
-
-  Route::get('email/regions/{event}', [EmailController::class, 'getRegions'])
-    ->name('backend.email.regions');
-
-  Route::post('email/send-unregistered-event', [EmailController::class, 'sendToAllUnregisteredInEvent'])
-    ->name('backend.email.sendUnregisteredEvent');
-
-  Route::post('email/send-unregistered-region', [EmailController::class, 'sendToUnregisteredInRegion'])
-    ->name('backend.email.sendUnregisteredRegion');
 
   /*
   |--------------------------------------------------------------------------
   | DRAWS & FIXTURES
   |--------------------------------------------------------------------------
   */
-  Route::resource('draw', DrawController::class)->except(['destroy']);
-
   Route::post('draw/{draw}/lock', [DrawController::class, 'lock_draw'])
     ->name('draw.lock');
 
   Route::post('draw/{draw}/unlock', [DrawController::class, 'unlock_draw'])
     ->name('draw.unlock');
 
-  Route::post('draw/{draw}/rankvenues/save', [TeamFixtureController::class, 'saveRankVenues'])
-    ->name('backend.draw.rankvenues.save');
-
-  Route::get('draw/{draw}/venues/json', [DrawController::class, 'getVenues'])
-    ->name('backend.draw.venues.json');
-
-  /*
-  |--------------------------------------------------------------------------
-  | SCHEDULES
-  |--------------------------------------------------------------------------
-  */
-  Route::get('team-schedule/{draw}', [TeamFixtureController::class, 'schedulePage'])
-    ->name('backend.team-schedule.page');
-
-  Route::get('team-schedule/{draw}/data', [TeamFixtureController::class, 'scheduleData'])
-    ->name('backend.team-schedule.data');
-
-  Route::post('team-schedule/{draw}/save', [TeamFixtureController::class, 'scheduleSave'])
-    ->name('backend.team-schedule.save');
-
-  /*
-  |--------------------------------------------------------------------------
-  | USERS / PLAYERS / TEAMS
-  |--------------------------------------------------------------------------
-  */
-  Route::resource('user', UserController::class);
-  Route::resource('player', PlayerController::class);
-  Route::resource('team', TeamController::class);
-
-  Route::patch('team/noprofile/update/{id}', [TeamController::class, 'updateNoProfile'])
-    ->name('backend.team.noprofile.update');
   // Team player withdraw / refund (frontend)
   Route::post(
     '/team/{team}/player/{player}/withdraw/{event}',
     [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'withdraw']
   )->middleware('auth')->name('team.player.withdraw');
 
-  // Optionally: choose refund and refund store routes if you want to mirror registrations.refund.choose/store
-  Route::get('/team/{team}/player/{player}/refund/choose/{event}', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'chooseRefund'])
-    ->middleware('auth')->name('team.player.refund.choose');
-
   Route::post('/team/{team}/player/{player}/refund/{event}', [\App\Http\Controllers\Frontend\TeamPlayerWithdrawController::class, 'storeRefund'])
     ->middleware('auth')->name('team.player.refund.store');
-  /*
-  |--------------------------------------------------------------------------
-  | WALLET
-  |--------------------------------------------------------------------------
-  */
-  Route::get('wallet/{id}', [WalletController::class, 'show'])
-    ->name('wallet.show');
-
-  Route::get('wallet/{id}/transaction/create', [WalletTransactionController::class, 'create'])
-    ->name('transaction.create');
-
-  Route::post('wallet/{id}/transaction', [WalletTransactionController::class, 'store'])
-    ->name('wallet.transaction.store');
 
 });
 
 
 Route::get('/fixtures/{draw}', [TeamFixtureFrontendController::class, 'index'])
-  ->name('frontend.fixtures.index');
+  ->name('frontend.fixtures.draw');
 
 // Public frontend ranking view
 Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController::class, 'ranking_frontend_show'])
