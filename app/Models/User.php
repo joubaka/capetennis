@@ -99,6 +99,7 @@ class User extends Authenticatable
   {
     return \App\Models\EventConvenor::where('user_id', $this->id)
       ->where('event_id', $event_id)
+      ->active()
       ->exists();
   }
   public function players()

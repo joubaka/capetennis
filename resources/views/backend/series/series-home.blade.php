@@ -77,6 +77,10 @@
     Ranking Lists
   </a>
 
+  <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#seriesEmailModal">
+    <i class="ti ti-mail me-1"></i> Email All Players
+  </button>
+
 </div>
 
       </div>
@@ -145,4 +149,105 @@
   </div>
 
 </div>
+
+{{-- EMAIL ALL PLAYERS MODAL --}}
+<div class="modal fade" id="seriesEmailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Email All Players in {{ $series->name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">From Name</label>
+          <input type="text" id="seriesEmailFromName" class="form-control" value="Cape Tennis Admin">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Reply To</label>
+          <input type="email" id="seriesEmailReplyTo" class="form-control"
+                 value="{{ auth()->user()->email ?? '' }}" placeholder="your@email.com">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Subject <span class="text-danger">*</span></label>
+          <input type="text" id="seriesEmailSubject" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Message <span class="text-danger">*</span></label>
+          <div id="seriesEmailEditor" style="min-height: 200px;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnSendSeriesEmail">
+          <i class="ti ti-send me-1"></i> Send to All Players
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@endsection
+
+@section('page-script')
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const quill = new Quill('#seriesEmailEditor', {
+    theme: 'snow',
+    placeholder: 'Compose your message...',
+  });
+
+  document.getElementById('btnSendSeriesEmail').addEventListener('click', function () {
+    const btn = this;
+    const subject = document.getElementById('seriesEmailSubject').value.trim();
+    const message = quill.root.innerHTML.trim();
+
+    if (!subject) {
+      toastr.error('Subject is required.');
+      return;
+    }
+    if (!message || message === '<p><br></p>') {
+      toastr.error('Message is required.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending...';
+
+    fetch("{{ route('series.email.players', $series) }}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        emailSubject: subject,
+        message: message,
+        fromName: document.getElementById('seriesEmailFromName').value.trim(),
+        replyTo: document.getElementById('seriesEmailReplyTo').value.trim(),
+      }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        toastr.success(data.message);
+        bootstrap.Modal.getInstance(document.getElementById('seriesEmailModal')).hide();
+      } else {
+        toastr.error(data.message || 'Failed to send emails.');
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      toastr.error('An error occurred while sending emails.');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-send me-1"></i> Send to All Players';
+    });
+  });
+});
+</script>
 @endsection

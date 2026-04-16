@@ -233,7 +233,10 @@
 </div>
 
 {{-- CONVENORS --}}
-@php $convenorIds = \App\Models\EventConvenor::where('event_id', $event->id)->pluck('user_id')->toArray(); @endphp
+@php
+  $convenors = \App\Models\EventConvenor::where('event_id', $event->id)->with('user')->get();
+  $convenorIds = $convenors->pluck('user_id')->toArray();
+@endphp
 <div class="col-lg-6">
   <div class="card">
     <div class="card-header"><h5 class="mb-0">Event Convenors</h5></div>
@@ -248,6 +251,46 @@
           </option>
         @endforeach
       </select>
+
+      <div class="row mt-3">
+        <div class="col-6">
+          <label class="form-label">Convenor Access Starts</label>
+          <input type="datetime-local" class="form-control autosave"
+                 name="convenor_starts_at"
+                 value="{{ optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
+        </div>
+        <div class="col-6">
+          <label class="form-label">Convenor Access Expires</label>
+          <input type="datetime-local" class="form-control autosave"
+                 name="convenor_expires_at"
+                 value="{{ optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
+        </div>
+      </div>
+
+      @if($convenors->isNotEmpty())
+        <div class="mt-3">
+          <small class="text-muted fw-semibold">Active Convenors</small>
+          <ul class="list-unstyled mb-0 mt-1">
+            @foreach($convenors as $c)
+              <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <span>{{ $c->user->name ?? 'Unknown' }}</span>
+                @if($c->isActive())
+                  @if($c->timeRemaining())
+                    <span class="badge bg-warning text-dark">
+                      <i class="ti ti-clock me-1"></i>{{ $c->timeRemaining() }} left
+                    </span>
+                  @else
+                    <span class="badge bg-success">No expiry</span>
+                  @endif
+                @else
+                  <span class="badge bg-danger">Expired</span>
+                @endif
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      @endif
+
     </div>
   </div>
 </div>

@@ -1301,6 +1301,8 @@ Route::delete(
   Route::patch('/series/{series}/publish', [SeriesController::class, 'publish'])->name('series.publish');
   Route::patch('/series/{series}/unpublish', [SeriesController::class, 'unpublish'])->name('series.unpublish');
 
+  Route::post('/series/{series}/email-players', [EmailController::class, 'sendToSeriesPlayers'])->name('series.email.players');
+
   //import export
   Route::get('exportRegistrations/{id}', [ImportExportController::class, 'exportRegistrations'])->name('export.registrations');
 

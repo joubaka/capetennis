@@ -11,6 +11,7 @@ use App\Models\Registration;
 use App\Models\Team;
 use App\Models\TeamRegion;
 use App\Models\Player;
+use App\Models\Series;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -561,6 +562,74 @@ class EmailController extends Controller
     ];
   }
 
+
+  /** ✅ All players across all events in a series */
+  public function sendToSeriesPlayers(Request $request, Series $series)
+  {
+    $mailer = app(MailAccountManager::class)->getMailer();
+
+    $request->validate([
+      'emailSubject' => 'required|string|max:255',
+      'message' => 'required|string',
+    ]);
+
+    Log::info('[sendToSeriesPlayers] ▶️ START', [
+      'series_id' => $series->id,
+      'series_name' => $series->name,
+      'mailer' => $mailer,
+      'user_id' => auth()->id(),
+    ]);
+
+    $details = [
+      'fromName' => trim($request->fromName ?? 'Cape Tennis Admin'),
+      'fromEmail' => match ($mailer) {
+        'noreply1' => 'noreply1@capetennis.co.za',
+        'noreply2' => 'noreply2@capetennis.co.za',
+        default => 'noreply@capetennis.co.za',
+      },
+      'replyTo' => filter_var($request->replyTo, FILTER_VALIDATE_EMAIL)
+        ? $request->replyTo
+        : (auth()->user()->email ?? 'info@capetennis.co.za'),
+      'message' => $request->message,
+      'subject' => $request->emailSubject,
+    ];
+
+    // Collect unique emails across all events in the series
+    $events = $series->events()->with('registrations.players')->get();
+    $recipients = collect();
+
+    foreach ($events as $event) {
+      foreach ($event->registrations as $registration) {
+        foreach ($registration->players ?? collect() as $player) {
+          $email = trim(strtolower((string) $player->email));
+          if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $recipients[$email] = $player;
+          }
+        }
+      }
+    }
+
+    $queuedCount = 0;
+    foreach ($recipients as $email => $player) {
+      $details['email'] = $email;
+      $this->queueMail($details, $mailer);
+      $queuedCount++;
+    }
+
+    $this->sendToOwner($details, $mailer);
+    $this->sendToSender($details, $mailer);
+
+    Log::info('[sendToSeriesPlayers] ✅ FINISHED', [
+      'series_id' => $series->id,
+      'total_unique_players' => $queuedCount,
+    ]);
+
+    return response()->json([
+      'success' => true,
+      'title' => 'success',
+      'message' => "Emails queued for {$queuedCount} unique players across {$events->count()} events in series.",
+    ]);
+  }
 
   /** ✅ Helper: queue the job safely */
   protected function queueMail(array $details, string $mailer = 'smtp')

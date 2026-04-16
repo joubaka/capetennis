@@ -56,6 +56,8 @@ class EventSettingsController extends Controller
       'admins.*' => 'integer|exists:users,id',
       'convenors' => 'sometimes|array',
       'convenors.*' => 'integer|exists:users,id',
+      'convenor_starts_at' => 'sometimes|nullable|date',
+      'convenor_expires_at' => 'sometimes|nullable|date|after_or_equal:convenor_starts_at',
     ]);
 
     Log::debug('📥 Validated data', $data);
@@ -79,20 +81,40 @@ class EventSettingsController extends Controller
     }
 
     // Convenors (pivot table: event_convenors)
-    if ($request->has('convenors')) {
+    if ($request->has('convenors') || $request->has('convenor_starts_at') || $request->has('convenor_expires_at')) {
       Log::info('👥 Syncing convenors', [
         'event_id' => $event->id,
         'convenors' => $request->input('convenors'),
       ]);
 
-      // Remove existing and insert new
-      \App\Models\EventConvenor::where('event_id', $event->id)->delete();
-      $rows = collect($request->input('convenors', []))->map(function ($uid) use ($event) {
-        return ['event_id' => $event->id, 'user_id' => $uid, 'created_at' => now(), 'updated_at' => now()];
-      })->toArray();
+      // Default dates to event start/end if not provided
+      $startsAt  = $request->input('convenor_starts_at') ?: ($event->start_date ? $event->start_date->format('Y-m-d H:i:s') : null);
+      $expiresAt = $request->input('convenor_expires_at') ?: ($event->end_date ? $event->end_date->format('Y-m-d H:i:s') : null);
 
-      if (!empty($rows)) {
-        \DB::table('event_convenors')->insert($rows);
+      // If only dates changed (no convenors array sent), update existing rows
+      if (!$request->has('convenors')) {
+        \App\Models\EventConvenor::where('event_id', $event->id)->update([
+          'starts_at'  => $startsAt,
+          'expires_at' => $expiresAt,
+          'updated_at' => now(),
+        ]);
+      } else {
+        // Full resync: remove and re-insert
+        \App\Models\EventConvenor::where('event_id', $event->id)->delete();
+        $rows = collect($request->input('convenors', []))->map(function ($uid) use ($event, $startsAt, $expiresAt) {
+          return [
+            'event_id'   => $event->id,
+            'user_id'    => $uid,
+            'starts_at'  => $startsAt,
+            'expires_at' => $expiresAt,
+            'created_at' => now(),
+            'updated_at' => now(),
+          ];
+        })->toArray();
+
+        if (!empty($rows)) {
+          \DB::table('event_convenors')->insert($rows);
+        }
       }
     }
 
@@ -100,7 +122,7 @@ class EventSettingsController extends Controller
      * UPDATE EVENT FIELDS
      */
     $updateData = collect($data)
-      ->except(['admins', 'logo_upload', 'logo_existing'])
+      ->except(['admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at', 'logo_upload', 'logo_existing'])
       ->toArray();
 
     // Boolean safety
