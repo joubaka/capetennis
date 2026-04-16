@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SiteSetting;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -25,6 +26,11 @@ class EnsurePlayerProfileUpdated
      */
     public function handle(Request $request, Closure $next)
     {
+        // Skip entirely if profile update requirement is disabled
+        if (SiteSetting::get('require_profile_update', '1') === '0') {
+            return $next($request);
+        }
+
         $user = auth()->user();
 
         if (!$user) {

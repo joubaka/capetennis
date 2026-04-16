@@ -170,6 +170,19 @@
             </div>
           </div>
 
+          <div class="col-md-6">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <label class="form-label mb-0" for="require_profile_update">Require Profile Update on Login</label>
+                <br><small class="text-muted">Players must update their profile details when logging in (if profile is incomplete or outdated).</small>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="require_profile_update" name="require_profile_update" value="1"
+                  {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

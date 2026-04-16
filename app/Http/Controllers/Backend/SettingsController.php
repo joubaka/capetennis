@@ -49,6 +49,7 @@ class SettingsController extends Controller
         // Code of Conduct & Terms toggles
         SiteSetting::set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0');
         SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0');
+        SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0');
 
         return redirect()->route('settings.index')
             ->with('success', 'Settings updated successfully.');

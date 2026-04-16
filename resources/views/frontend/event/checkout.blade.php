@@ -27,6 +27,9 @@
 @endsection
 
 @section('page-script')
+<script>
+  var APP_URL = "{{ url('/') }}";
+</script>
 <script src="{{ asset('assets/js/wizard-ex-checkout.js') }}"></script>
 <script src="{{ asset('assets/js/forms-selects.js') }}"></script>
 <script src="{{ asset('assets/js/select2-search-addon.js') }}"></script>

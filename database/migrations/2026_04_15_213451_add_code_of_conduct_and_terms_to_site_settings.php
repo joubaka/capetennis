@@ -24,6 +24,15 @@ return new class extends Migration
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        DB::table('site_settings')->insert([
+            'key'        => 'require_profile_update',
+            'value'      => '1',
+            'label'      => 'Require Profile Update on Login',
+            'group'      => 'general',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function down(): void
@@ -31,6 +40,7 @@ return new class extends Migration
         DB::table('site_settings')->whereIn('key', [
             'require_code_of_conduct',
             'require_terms',
+            'require_profile_update',
         ])->delete();
     }
 };

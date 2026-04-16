@@ -207,6 +207,8 @@ $(document).ready(function() {
 
   // Initialize Flatpickr
   $('.flatpickr-date').flatpickr({
+    altInput: true,
+    altFormat: 'j F Y',
     dateFormat: 'Y-m-d',
     maxDate: 'today',
     allowInput: true

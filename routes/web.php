@@ -261,23 +261,23 @@ Route::middleware(['auth', 'role:super-user|admin'])
     Route::get(
       '/bank',
       [RegistrationRefundController::class, 'bankIndex']
-    )->name('admin.refunds.bank.index');
+    )->name('admin.registration.refunds.bank.index');
 
     Route::get(
       '/bank/{registration}',
       [RegistrationRefundController::class, 'bankShow']
-    )->name('admin.refunds.bank.show');
+    )->name('admin.registration.refunds.bank.show');
 
     Route::post(
       '/bank/{registration}/complete',
       [RegistrationRefundController::class, 'bankComplete']
-    )->name('admin.refunds.bank.complete');
+    )->name('admin.registration.refunds.bank.complete');
 
     // Mark team bank refund as completed (admin)
     Route::post(
       '/bank/team/{order}/complete',
       [RegistrationRefundController::class, 'bankCompleteTeam']
-    )->name('admin.refunds.bank.complete.team');
+    )->name('admin.registration.refunds.bank.complete.team');
   });
 
 
@@ -628,14 +628,6 @@ Route::delete(
   // EMAIL
   // =========================
 
-  // PDF export routes for fixtures (team)
-  Route::get('fixture/create/pdf', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf'])
-    ->name('fixture.create.pdf');
-
-  Route::get('fixture/create/pdf/venue', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf_venue'])
-    ->name('fixture.create.pdf.venue');
-
-
   Route::post(
     'event/email',
     [EventEntryController::class, 'sendEmail']
@@ -965,7 +957,7 @@ Route::delete(
 
   //headOffice
   Route::post('headOffice/update/region/order', [HeadOfficeController::class, 'updateRegionOrder'])->name('update.region.order');
-  Route::post('headOffice/create/team/fixtures', [HeadOfficeController::class, 'createFormatFixturesTeam'])->name('update.region.order');
+  Route::post('headOffice/create/team/fixtures', [HeadOfficeController::class, 'createFormatFixturesTeam'])->name('create.team.fixtures');
 
 
 
@@ -1173,9 +1165,6 @@ Route::delete(
 
 
   //draw
-  Route::post('draw/unlock/{id}', [DrawController::class, 'unlock_draw'])->name('draw.unlock');
-  Route::post('draw/{draw}/lock', [DrawController::class, 'lock_draw'])->name('draw.lock');
-  Route::post('draw/{draw}/unlock', [DrawController::class, 'unlock_draw'])->name('draw.unlock');
   Route::post('draw/publishToggle/{id}', [DrawController::class, 'togglePublish'])->name('draw.toggle.publish');
   Route::post('draw/publishToggleSchedule/{id}', [DrawController::class, 'togglePublishSchedule'])->name('draw.toggle.publish.schedule');
   Route::post('draw/registration/addPlayer/{id}', [DrawController::class, 'add_draw_registration'])->name('add.draw.registration');
@@ -1216,7 +1205,6 @@ Route::delete(
   Route::get('/admin/draws/{id}/settings', [DrawController::class, 'settings'])->name('draws.settings');
 
   Route::post('/admin/draws/{draw}/players', [DrawController::class, 'addPlayers'])->name('draws.addPlayers');
-  Route::get('/admin/draws/{draw}/manage', [DrawController::class, 'manage'])->name('draws.manage');
 
   Route::post('/category-events/{categoryEvent}/generate-draw', [DrawController::class, 'generate'])->name('draws.generate');
   Route::post('/draw/{draw}/add-player', [DrawController::class, 'addPlayer'])->name('draw.addPlayer');

@@ -78,6 +78,15 @@ class PlayerProfileController extends Controller
             'cellNr' => 'required|string|max:50',
             'dateOfBirth' => 'required|date|before:today',
             'gender' => 'required|in:Male,Female',
+        ], [
+            'dateOfBirth.required' => 'Date of birth is required.',
+            'dateOfBirth.date' => 'Please enter a valid date of birth.',
+            'dateOfBirth.before' => 'Date of birth must be before today.',
+            'name.required' => 'First name is required.',
+            'surname.required' => 'Surname is required.',
+            'cellNr.required' => 'Cell number is required.',
+            'gender.required' => 'Please select a gender.',
+            'gender.in' => 'Gender must be Male or Female.',
         ]);
 
         $player->update($validated);
