@@ -106,6 +106,11 @@ class RegisterController extends Controller
       'cellNr'      => $player->cellNr,
       'dateOfBirth' => $confirmedIn2026 ? $player->dateOfBirth : null,
       'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
+    ]);
+  }
+
+  /**
+   * AJAX endpoint to update player details from the confirm step.
    */
   public function updatePlayerDetails(Request $request)
   {
