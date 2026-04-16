@@ -148,6 +148,11 @@ class RegisterController extends Controller
         'cellNr'      => $player->cellNr,
         'dateOfBirth' => $player->dateOfBirth,
         'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
+      ],
+    ]);
+  }
+
+  public function register(int $id)
   {
     $user = Auth::user();
 

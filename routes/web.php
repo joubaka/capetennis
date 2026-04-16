@@ -1226,7 +1226,6 @@ Route::delete(
   //managedrawcontroller
   Route::put('/admin/draws/{draw}/update-settings', [DrawController::class, 'updateSettings'])->name('admin.draws.update-settings');
   Route::resource('draw', DrawController::class)->except(['destroy']);
-  Route::post('draw/category-events/generate-draw', [DrawController::class, 'generate'])->name('draws.generate');
 
   //category Events
   Route::get('/admin/category/{category_event_id}/manage', [CategoryEventController::class, 'manage'])->name('category.manage');
