@@ -27,7 +27,7 @@ class PlayerProfileController extends Controller
                 'email' => $player->email,
                 'cellNr' => $player->cellNr,
                 'dateOfBirth' => $player->dateOfBirth ? Carbon::parse($player->dateOfBirth)->format('Y-m-d') : '',
-                'gender' => $player->gender,
+                'gender' => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
                 'age' => $player->dateOfBirth ? Carbon::parse($player->dateOfBirth)->age : null,
                 'is_minor' => $player->isMinor(),
                 'needs_update' => $player->needsProfileUpdate() || !$player->isProfileComplete(),
@@ -88,6 +88,9 @@ class PlayerProfileController extends Controller
             'gender.required' => 'Please select a gender.',
             'gender.in' => 'Gender must be Male or Female.',
         ]);
+
+        // Convert gender string to database integer (1 = Male, 2 = Female)
+        $validated['gender'] = $validated['gender'] === 'Male' ? 1 : 2;
 
         $player->update($validated);
         $player->markProfileUpdated();

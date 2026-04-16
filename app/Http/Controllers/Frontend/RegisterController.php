@@ -105,12 +105,7 @@ class RegisterController extends Controller
       'email'       => $player->email,
       'cellNr'      => $player->cellNr,
       'dateOfBirth' => $confirmedIn2026 ? $player->dateOfBirth : null,
-      'gender'      => $player->gender,
-    ]);
-  }
-
-  /**
-   * AJAX endpoint to update player details from the confirm step.
+      'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
    */
   public function updatePlayerDetails(Request $request)
   {
@@ -132,7 +127,7 @@ class RegisterController extends Controller
       'email'       => $validated['email'] ?? $player->email,
       'cellNr'      => $validated['cellNr'],
       'dateOfBirth' => $validated['dateOfBirth'],
-      'gender'      => $validated['gender'],
+      'gender'      => $validated['gender'] === 'Male' ? 1 : 2,
     ]);
 
     $player->markProfileUpdated();
@@ -147,12 +142,7 @@ class RegisterController extends Controller
         'email'       => $player->email,
         'cellNr'      => $player->cellNr,
         'dateOfBirth' => $player->dateOfBirth,
-        'gender'      => $player->gender,
-      ],
-    ]);
-  }
-
-  public function register(int $id)
+        'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
   {
     $user = Auth::user();
 
