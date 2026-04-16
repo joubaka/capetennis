@@ -2,6 +2,14 @@
 
 @section('title', $series->name)
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
+@endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+@endsection
+
 @section('content')
 <div class="container-xl">
 
@@ -213,6 +221,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
+    if (!confirm('Are you sure you want to email ALL players in this series?')) {
+      return;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending...';
 
@@ -230,18 +242,28 @@ document.addEventListener('DOMContentLoaded', function () {
         replyTo: document.getElementById('seriesEmailReplyTo').value.trim(),
       }),
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error('Server returned ' + r.status);
+      return r.json();
+    })
     .then(data => {
       if (data.success) {
-        toastr.success(data.message);
+        toastr.success(data.message, 'Emails Queued', { timeOut: 5000, closeButton: true });
         bootstrap.Modal.getInstance(document.getElementById('seriesEmailModal')).hide();
+
+        // Show persistent success alert on page
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success alert-dismissible fade show mt-3';
+        alert.innerHTML = '<i class="ti ti-check me-2"></i><strong>Done!</strong> ' + data.message +
+          '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        document.querySelector('.container-xl').prepend(alert);
       } else {
-        toastr.error(data.message || 'Failed to send emails.');
+        toastr.error(data.message || 'Failed to send emails.', 'Error');
       }
     })
     .catch(err => {
       console.error(err);
-      toastr.error('An error occurred while sending emails.');
+      toastr.error('An error occurred while sending emails. Check the console for details.', 'Error', { timeOut: 5000 });
     })
     .finally(() => {
       btn.disabled = false;
