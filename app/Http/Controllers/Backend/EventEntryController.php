@@ -29,6 +29,10 @@ class EventEntryController extends Controller
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
+        'categoryEventRegistrations' => function ($q) {
+          $q->where('payment_status_id', 1)
+            ->orWhereNull('payment_status_id');
+        },
         'categoryEventRegistrations.registration.players',
       ])
       ->get();

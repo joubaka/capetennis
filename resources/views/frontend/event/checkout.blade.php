@@ -31,6 +31,7 @@
 @section('page-script')
 <script>
   var APP_URL = "{{ url('/') }}";
+  var REQUIRE_PROFILE_UPDATE = {{ $requireProfileUpdate ? 'true' : 'false' }};
 </script>
 <script src="{{ vasset('assets/js/wizard-ex-checkout.js') }}"></script>
 <script src="{{ vasset('assets/js/forms-selects.js') }}"></script>
@@ -70,6 +71,7 @@
       <i class="ti ti-chevron-right"></i>
     </div>
 
+    @if($requireProfileUpdate)
     <div class="step" data-target="#checkout-confirm-details">
       <button type="button" class="step-trigger">
         <span class="bs-stepper-icon">
@@ -84,6 +86,7 @@
     <div class="line">
       <i class="ti ti-chevron-right"></i>
     </div>
+    @endif
 
     <div class="step" data-target="#checkout-cart">
       <button type="button" class="step-trigger">
@@ -213,6 +216,7 @@
       {{-- =========================
            STEP 2 – CONFIRM PLAYER DETAILS
       ========================== --}}
+      @if($requireProfileUpdate)
       <div id="checkout-confirm-details" class="content">
         <div class="row">
 
@@ -246,6 +250,7 @@
 
         </div>
       </div>
+      @endif
 
       {{-- =========================
            STEP 3 – CART

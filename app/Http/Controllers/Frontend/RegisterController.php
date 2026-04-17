@@ -196,6 +196,7 @@ class RegisterController extends Controller
     // Site-wide toggles
     $requireCodeOfConduct = SiteSetting::get('require_code_of_conduct', '0') === '1';
     $requireTerms         = SiteSetting::get('require_terms', '0') === '1';
+    $requireProfileUpdate = SiteSetting::get('require_profile_update', '1') === '1';
 
     // Active Code of Conduct agreement (only load when toggle is on)
     $agreement = $requireCodeOfConduct
@@ -213,7 +214,8 @@ class RegisterController extends Controller
       'parentEvent',
       'agreement',
       'requireCodeOfConduct',
-      'requireTerms'
+      'requireTerms',
+      'requireProfileUpdate'
     ));
   }
 
