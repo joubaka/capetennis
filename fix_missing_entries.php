@@ -1,13 +1,9 @@
 <?php
 /**
- * Fix missing CategoryEventRegistration + PlayerRegistration rows
- * for orders that were paid but never had entries created.
- *
- * Run: php artisan tinker fix_missing_entries.php
- * Or:  php fix_missing_entries.php (after requiring autoload)
+ * DRY RUN — shows what would be fixed without making changes.
+ * Run: php fix_missing_entries.php
  */
 
-// Boot Laravel if running standalone
 require __DIR__ . '/vendor/autoload.php';
 $app = require_once __DIR__ . '/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -15,95 +11,88 @@ $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 use App\Models\Registration;
 use App\Models\RegistrationOrderItems;
 use App\Models\CategoryEventRegistration;
+use App\Models\Player;
+use App\Models\CategoryEvent;
+use App\Models\EventType;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
-echo "=== Fix Missing Entries ===\n\n";
+echo "=== DRY RUN — No changes will be made (Individual events only) ===\n\n";
 
-// Get all order items that have registration_id, player_id, category_event_id
+// Get individual event type IDs
+$individualTypeIds = EventType::where('type', EventType::INDIVIDUAL)->pluck('id');
+
 $items = RegistrationOrderItems::whereNotNull('registration_id')
     ->whereNotNull('player_id')
     ->whereNotNull('category_event_id')
-    ->with('registration')
+    ->where('created_at', '>=', now()->subDays(30))
+    ->whereHas('category_event.event', function ($q) use ($individualTypeIds) {
+        $q->whereIn('eventType', $individualTypeIds);
+    })
+    ->whereIn('order_id', DB::table('registration_orders')->where('pay_status', 1)->pluck('id'))
     ->get();
 
-echo "Total order items found: " . $items->count() . "\n";
+echo "Total order items found: " . $items->count() . "\n\n";
 
-$fixedPlayers = 0;
-$fixedEntries = 0;
+$missingPlayers = 0;
+$missingEntries = 0;
+$wrongPayment = 0;
 $skipped = 0;
-$errors = 0;
 
 foreach ($items as $item) {
     $registration = Registration::find($item->registration_id);
-
     if (!$registration) {
         $skipped++;
         continue;
     }
 
-    try {
-        // 1. Ensure player is attached to registration
-        $playerAttached = DB::table('player_registrations')
-            ->where('registration_id', $registration->id)
-            ->where('player_id', $item->player_id)
-            ->exists();
+    $order = DB::table('registration_orders')->where('id', $item->order_id)->first();
+    $isPaid = $order && $order->pay_status == 1;
 
-        if (!$playerAttached) {
-            $registration->players()->syncWithoutDetaching([$item->player_id]);
-            $fixedPlayers++;
-            echo "  [FIXED] Player {$item->player_id} attached to Registration {$registration->id}\n";
-        }
+    $player = Player::find($item->player_id);
+    $catEvent = CategoryEvent::with('event', 'category')->find($item->category_event_id);
 
-        // 2. Ensure CategoryEventRegistration exists
-        $entryExists = CategoryEventRegistration::where('registration_id', $registration->id)
-            ->where('category_event_id', $item->category_event_id)
-            ->exists();
+    $playerName = $player ? trim($player->name . ' ' . $player->surname) : "Player#{$item->player_id}";
+    $eventName = $catEvent && $catEvent->event ? $catEvent->event->name : "Event?";
+    $categoryName = $catEvent && $catEvent->category ? $catEvent->category->name : "Cat?";
+    $orderStatus = $isPaid ? 'PAID' : 'UNPAID';
 
-        if (!$entryExists) {
-            // Check if the order is paid
-            $order = DB::table('registration_orders')->where('id', $item->order_id)->first();
-            $isPaid = $order && $order->pay_status == 1;
+    // 1. Check missing player attachment
+    $playerAttached = DB::table('player_registrations')
+        ->where('registration_id', $registration->id)
+        ->where('player_id', $item->player_id)
+        ->exists();
 
-            $registration->categoryEvents()->syncWithoutDetaching([
-                $item->category_event_id => [
-                    'payment_status_id' => $isPaid ? 1 : 0,
-                    'user_id' => $item->user_id,
-                ],
-            ]);
+    if (!$playerAttached) {
+        $missingPlayers++;
+        echo "[MISSING PLAYER] {$playerName} not attached to Registration#{$registration->id}\n";
+        echo "  Event: {$eventName} | Category: {$categoryName} | Order: {$orderStatus}\n\n";
+    }
 
-            $fixedEntries++;
-            $status = $isPaid ? 'PAID' : 'UNPAID';
-            echo "  [FIXED] Entry created: Registration {$registration->id} -> CategoryEvent {$item->category_event_id} ({$status})\n";
-        }
+    // 2. Check missing CategoryEventRegistration
+    $entry = CategoryEventRegistration::where('registration_id', $registration->id)
+        ->where('category_event_id', $item->category_event_id)
+        ->first();
 
-        // 3. If entry exists but payment_status_id is wrong, fix it
-        if ($entryExists) {
-            $order = DB::table('registration_orders')->where('id', $item->order_id)->first();
-            if ($order && $order->pay_status == 1) {
-                $entry = CategoryEventRegistration::where('registration_id', $registration->id)
-                    ->where('category_event_id', $item->category_event_id)
-                    ->first();
+    if (!$entry) {
+        $missingEntries++;
+        echo "[MISSING ENTRY] {$playerName} -> {$categoryName}\n";
+        echo "  Event: {$eventName} | Order#{$item->order_id} ({$orderStatus})\n";
+        echo "  Would create with payment_status_id = " . ($isPaid ? '1 (Paid)' : '0 (Unpaid)') . "\n\n";
+    }
 
-                if ($entry && $entry->payment_status_id != 1) {
-                    $entry->payment_status_id = 1;
-                    $entry->save();
-                    $fixedEntries++;
-                    echo "  [FIXED] Entry payment status updated: Registration {$registration->id} -> CategoryEvent {$item->category_event_id}\n";
-                }
-            }
-        }
-
-    } catch (\Throwable $e) {
-        $errors++;
-        echo "  [ERROR] Item {$item->id}: {$e->getMessage()}\n";
+    // 3. Check wrong payment status
+    if ($entry && $isPaid && $entry->payment_status_id != 1) {
+        $wrongPayment++;
+        echo "[WRONG PAYMENT STATUS] {$playerName} -> {$categoryName}\n";
+        echo "  Event: {$eventName} | Order is PAID but entry shows payment_status_id={$entry->payment_status_id}\n";
+        echo "  Would update to payment_status_id = 1\n\n";
     }
 }
 
-echo "\n=== Summary ===\n";
-echo "Total items checked:  " . $items->count() . "\n";
-echo "Players attached:     {$fixedPlayers}\n";
-echo "Entries fixed:        {$fixedEntries}\n";
-echo "Skipped (no reg):     {$skipped}\n";
-echo "Errors:               {$errors}\n";
-echo "\nDone!\n";
+echo "=== DRY RUN SUMMARY ===\n";
+echo "Total items checked:        " . $items->count() . "\n";
+echo "Missing player attachments: {$missingPlayers}\n";
+echo "Missing entries:            {$missingEntries}\n";
+echo "Wrong payment status:       {$wrongPayment}\n";
+echo "Skipped (no registration):  {$skipped}\n";
+echo "\nTo apply fixes, run: php fix_missing_entries.php --apply\n";
