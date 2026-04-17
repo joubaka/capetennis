@@ -117,9 +117,7 @@ $(function () {
             '</div>' +
             '<div class="d-flex gap-2 justify-content-end mt-3">' +
               '<button type="button" class="btn btn-outline-success btn-confirm-player" data-player-id="' + res.id + '">' +
-                '<i class="ti ti-check me-1"></i> Confirm Details</button>' +
-              '<button type="button" class="btn btn-primary btn-save-player" data-player-id="' + res.id + '">' +
-                '<i class="ti ti-device-floppy me-1"></i> Save & Confirm</button>' +
+                '<i class="ti ti-check me-1"></i> Confirm Details</button>'  +
             '</div>'
           );
 
