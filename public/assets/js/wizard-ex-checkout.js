@@ -35,7 +35,7 @@ $(function () {
     btn.addEventListener('click', function () {
       // When leaving Step 1 (Registration) heading to Confirm Details, build cards
       var currentStep = $(wizardCheckout).find('.step.active').index('.step');
-      if (currentStep === 0 && typeof REQUIRE_PROFILE_UPDATE !== 'undefined' && REQUIRE_PROFILE_UPDATE) {
+      if (currentStep === 0) {
         buildConfirmPlayerCards();
       }
       stepper.next();
@@ -116,6 +116,8 @@ $(function () {
                 '<input type="email" class="form-control pd-email" value="' + (res.email || '') + '"></div>' +
             '</div>' +
             '<div class="d-flex gap-2 justify-content-end mt-3">' +
+              '<button type="button" class="btn btn-outline-success btn-confirm-player" data-player-id="' + res.id + '">' +
+                '<i class="ti ti-check me-1"></i> Confirm Details</button>' +
               '<button type="button" class="btn btn-primary btn-save-player" data-player-id="' + res.id + '">' +
                 '<i class="ti ti-device-floppy me-1"></i> Save & Confirm</button>' +
             '</div>'
@@ -166,9 +168,26 @@ $(function () {
       .html('<i class="ti ti-check me-1"></i>Confirmed');
     // Disable form fields
     $card.find('.player-detail-form input, .player-detail-form select').prop('disabled', true);
-    $card.find('.btn-save-player').hide();
+    $card.find('.btn-confirm-player, .btn-save-player').hide();
     updateGoToCartButton();
   }
+
+  // Confirm without saving (details are already correct)
+  $(document).on('click', '.btn-confirm-player', function () {
+    var $card = $(this).closest('.confirm-player-card');
+    var $form = $card.find('.player-detail-form');
+
+    // Basic validation
+    var valid = true;
+    $form.find('[required]').each(function () {
+      if (!$(this).val()) { $(this).addClass('is-invalid'); valid = false; }
+      else { $(this).removeClass('is-invalid'); }
+    });
+    if (!valid) { toastr.error('Please fill in all required fields.'); return; }
+
+    markPlayerConfirmed($card);
+    toastr.success('Player details confirmed.');
+  });
 
   // Save changes then confirm
   $(document).on('click', '.btn-save-player', function () {

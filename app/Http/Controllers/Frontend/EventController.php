@@ -128,6 +128,7 @@ class EventController extends Controller
       'eventCategories.category',
       'eventCategories.nominations.player',
       'eventCategories.registrations.players',
+      'eventCategories.categoryEventRegistrations.registration.players',
       'draws.draw_types',
       'draws.venues',
       'series',
