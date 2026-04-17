@@ -13,7 +13,7 @@ use App\Models\CategoryEventRegistration;
 use App\Models\Registration;
 use Illuminate\Support\Facades\DB;
 
-$csvPath = 'C:\Users\pajou\Downloads\2026-04-17-Transaction_History_11307280.csv';
+$csvPath = __DIR__ . '/payfast_export.csv';
 
 if (!file_exists($csvPath)) {
     echo "CSV not found: {$csvPath}\n";
