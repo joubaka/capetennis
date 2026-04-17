@@ -37,6 +37,7 @@ $missingPlayers = 0;
 $missingEntries = 0;
 $wrongPayment = 0;
 $skipped = 0;
+$eventProblems = []; // eventName => ['missing_players' => n, 'missing_entries' => n, 'wrong_payment' => n]
 
 foreach ($items as $item) {
     $registration = Registration::find($item->registration_id);
@@ -62,8 +63,14 @@ foreach ($items as $item) {
         ->where('player_id', $item->player_id)
         ->exists();
 
+    if (!isset($eventProblems[$eventName])) {
+        $eventProblems[$eventName] = ['missing_players' => 0, 'missing_entries' => 0, 'wrong_payment' => 0, 'players' => []];
+    }
+
     if (!$playerAttached) {
         $missingPlayers++;
+        $eventProblems[$eventName]['missing_players']++;
+        $eventProblems[$eventName]['players'][] = "[MISSING PLAYER] {$playerName} ({$categoryName})";
         echo "[MISSING PLAYER] {$playerName} not attached to Registration#{$registration->id}\n";
         echo "  Event: {$eventName} | Category: {$categoryName} | Order: {$orderStatus}\n\n";
     }
@@ -75,6 +82,8 @@ foreach ($items as $item) {
 
     if (!$entry) {
         $missingEntries++;
+        $eventProblems[$eventName]['missing_entries']++;
+        $eventProblems[$eventName]['players'][] = "[MISSING ENTRY] {$playerName} ({$categoryName})";
         echo "[MISSING ENTRY] {$playerName} -> {$categoryName}\n";
         echo "  Event: {$eventName} | Order#{$item->order_id} ({$orderStatus})\n";
         echo "  Would create with payment_status_id = " . ($isPaid ? '1 (Paid)' : '0 (Unpaid)') . "\n\n";
@@ -83,6 +92,8 @@ foreach ($items as $item) {
     // 3. Check wrong payment status
     if ($entry && $isPaid && $entry->payment_status_id != 1) {
         $wrongPayment++;
+        $eventProblems[$eventName]['wrong_payment']++;
+        $eventProblems[$eventName]['players'][] = "[WRONG PAYMENT] {$playerName} ({$categoryName})";
         echo "[WRONG PAYMENT STATUS] {$playerName} -> {$categoryName}\n";
         echo "  Event: {$eventName} | Order is PAID but entry shows payment_status_id={$entry->payment_status_id}\n";
         echo "  Would update to payment_status_id = 1\n\n";
@@ -95,4 +106,23 @@ echo "Missing player attachments: {$missingPlayers}\n";
 echo "Missing entries:            {$missingEntries}\n";
 echo "Wrong payment status:       {$wrongPayment}\n";
 echo "Skipped (no registration):  {$skipped}\n";
+// Per-event breakdown
+$problemEvents = array_filter($eventProblems, function ($e) {
+    return $e['missing_players'] + $e['missing_entries'] + $e['wrong_payment'] > 0;
+});
+
+if (count($problemEvents) > 0) {
+    echo "\n=== EVENTS WITH PROBLEMS ===\n";
+    foreach ($problemEvents as $name => $counts) {
+        $total = $counts['missing_players'] + $counts['missing_entries'] + $counts['wrong_payment'];
+        echo "\n{$name} ({$total} issues)\n";
+        echo "  Missing players: {$counts['missing_players']}  |  Missing entries: {$counts['missing_entries']}  |  Wrong payment: {$counts['wrong_payment']}\n";
+        foreach ($counts['players'] as $detail) {
+            echo "    - {$detail}\n";
+        }
+    }
+} else {
+    echo "\n✅ No problems found — all entries are correct.\n";
+}
+
 echo "\nTo apply fixes, run: php fix_missing_entries.php --apply\n";
