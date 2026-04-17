@@ -472,79 +472,54 @@
    ============================ --}}
  <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
 
+  {{-- View tabs --}}
   <li class="nav-item" role="presentation">
-    <button class="nav-link active"
-            id="matrix-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#matrix-pane"
-            type="button" role="tab">
-      Matrix
+    <button class="nav-link active" id="matrix-tab" data-bs-toggle="tab" data-bs-target="#matrix-pane" type="button" role="tab">
+      <i class="ti ti-grid-dots me-1"></i> Matrix
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="oop-tab" data-bs-toggle="tab" data-bs-target="#oop-pane" type="button" role="tab">
+      <i class="ti ti-list-details me-1"></i> Order of Play
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="standings-tab" data-bs-toggle="tab" data-bs-target="#standings-pane" type="button" role="tab">
+      <i class="ti ti-chart-bar me-1"></i> Standings
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="main-bracket-tab" data-bs-toggle="tab" data-bs-target="#main-bracket-pane" type="button" role="tab">
+      <i class="ti ti-tournament me-1"></i> Brackets
     </button>
   </li>
 
+  {{-- Admin tabs --}}
   <li class="nav-item" role="presentation">
-    <button class="nav-link"
-            id="oop-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#oop-pane"
-            type="button" role="tab">
-      Order of Play
+    <button class="nav-link" id="groups-tab" data-bs-toggle="tab" data-bs-target="#groups-pane" type="button" role="tab">
+      <i class="ti ti-users me-1"></i> Players &amp; Groups
     </button>
   </li>
-
- 
-
   <li class="nav-item" role="presentation">
-    <button class="nav-link"
-            id="standings-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#standings-pane"
-            type="button" role="tab">
-      Standings
+    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-pane" type="button" role="tab">
+      <i class="ti ti-settings me-1"></i> Settings
     </button>
   </li>
-   <li class="nav-item" role="presentation">
-    <button class="nav-link"
-            id="main-bracket-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#main-bracket-pane"
-            type="button"
-            role="tab">
-      Main Bracket
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="print-tab" data-bs-toggle="tab" data-bs-target="#print-pane" type="button" role="tab">
+      <i class="ti ti-printer me-1"></i> Print
     </button>
-</li>
-<li class="nav-item" role="presentation">
-  <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-pane" type="button" role="tab">
-    Settings
-  </button>
-</li>
-<li class="nav-item" role="presentation">
-  <button class="nav-link"
-          id="groups-tab"
-          data-bs-toggle="tab"
-          data-bs-target="#groups-pane"
-          type="button" role="tab">
-    Players & Groups
-  </button>
-</li>
-<li class="nav-item" role="presentation">
-  <button class="nav-link"
-          id="print-tab"
-          data-bs-toggle="tab"
-          data-bs-target="#print-pane"
-          type="button" role="tab">
-    <i class="ti ti-printer me-1"></i> Print
-  </button>
-</li>
-<li class="nav-item" role="presentation">
-  <button class="nav-link"
-          id="notes-tab"
-          data-bs-toggle="tab"
-          data-bs-target="#notes-pane"
-          type="button" role="tab">
-    <i class="ti ti-notes me-1"></i> Rules & Notes
-  </button>
-</li>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#schedule-pane" type="button" role="tab">
+      <i class="ti ti-calendar me-1"></i> Schedule &amp; Venues
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="notes-tab" data-bs-toggle="tab" data-bs-target="#notes-pane" type="button" role="tab">
+      <i class="ti ti-notes me-1"></i> Rules &amp; Notes
+    </button>
+  </li>
 
 </ul>
 
@@ -928,16 +903,12 @@
     </div>
 
     {{-- ============================
-         TAB 1 — MATRIX + STANDINGS
+         MATRIX TAB
        ============================ --}}
-    <div class="tab-pane fade show active" 
-         id="matrix-pane" 
-         role="tabpanel">
-      <div class="row"> 
-        <div class="col-12">
-        <div class="card mb-3">
+    <div class="tab-pane fade show active" id="matrix-pane" role="tabpanel">
+      <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0">Round Robin Matrix</h5>
+          <h5 class="card-title mb-0"><i class="ti ti-grid-dots me-1 text-primary"></i> Round Robin Matrix</h5>
           <small class="text-muted">Who plays who + results</small>
         </div>
         <div class="card-body p-0">
@@ -948,111 +919,50 @@
             </div>
           </div>
         </div>
-      </div></div>
-        
       </div>
-    
-
-    
-
     </div>
 
     {{-- ============================
-         TAB 2 — ORDER OF PLAY
+         ORDER OF PLAY TAB
        ============================ --}}
-    <div class="tab-pane fade" 
-         id="oop-pane" 
-         role="tabpanel">
-       <div class="col-12">
-            <div class="card">
+    <div class="tab-pane fade" id="oop-pane" role="tabpanel">
+      <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0">Order of Play</h5>
+          <h5 class="card-title mb-0"><i class="ti ti-list-details me-1 text-primary"></i> Order of Play</h5>
           <button class="btn btn-sm btn-primary" id="rr-save-order-btn">
-            <i class="ti ti-device-floppy"></i> Save Order
+            <i class="ti ti-device-floppy me-1"></i> Save Order
           </button>
         </div>
         <div class="card-body p-0">
-         <div class="table-responsive">
-         <table class="table table-sm table-hover mb-0" id="rr-order-table">
-    <thead class="table-light">
-        <tr>
-            <th>ID</th>
-            <th>Player 1</th>
-            <th class="text-center">VS</th>
-            <th>Player 2</th>
-            <th class="text-center">Round</th>
-            <th class="text-center d-none d-sm-table-cell">Time</th>
-            <th class="text-center">Score</th>
-            <th class="text-center">Actions</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
-</table>
-         </div>
-
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="rr-order-table">
+              <thead class="table-light">
+                <tr>
+                  <th>ID</th>
+                  <th>Player 1</th>
+                  <th class="text-center">VS</th>
+                  <th>Player 2</th>
+                  <th class="text-center">Round</th>
+                  <th class="text-center d-none d-sm-table-cell">Time</th>
+                  <th class="text-center">Score</th>
+                  <th class="text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
-        </div>
-     
     </div>
 
     {{-- ============================
-         TAB 3 — SCORES
+         STANDINGS TAB
        ============================ --}}
-    <div class="tab-pane fade" 
-         id="scores-pane" 
-         role="tabpanel">
-
-      <div class="card">
-        <div class="card-header">
-          <h5 class="card-title mb-0">Scores</h5>
-          <small class="text-muted">Select match from OOP tab</small>
-        </div>
-
-        <div class="card-body">
-          <form id="rr-score-form">
-            @csrf
-            <input type="hidden" name="fixture_id" id="rr-score-fixture-id">
-
-            <div class="mb-2">
-              <label class="form-label">Match</label>
-              <div id="rr-score-match-label" class="fw-bold small text-muted">
-                Select a match from Order of Play…
-              </div>
-            </div>
-
-            <div class="row g-2 align-items-center">
-              <div class="col-5">
-                <label class="form-label small mb-1">Home score</label>
-                <input type="text" class="form-control form-control-sm"
-                       name="home_score" id="rr-home-score"
-                       placeholder="6-4 6-3">
-              </div>
-              <div class="col-5">
-                <label class="form-label small mb-1">Away score</label>
-                <input type="text" class="form-control form-control-sm"
-                       name="away_score" id="rr-away-score"
-                       placeholder="4-6 3-6">
-              </div>
-              <div class="col-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-sm btn-success w-100">
-                  <i class="ti ti-device-floppy"></i>
-                </button>
-              </div>
-            </div>
-
-          </form>
-        </div>
-      </div>
-    </div>
-  {{-- ============================
-     TAB 4 — STANDINGS
-   ============================ --}}
 <div class="tab-pane fade" id="standings-pane" role="tabpanel">
 
   <div class="card">
     <div class="card-header">
-      <h5 class="card-title mb-0">Standings</h5>
+      <h5 class="card-title mb-0"><i class="ti ti-chart-bar me-1 text-primary"></i> Standings</h5>
     </div>
 
     <div class="card-body">
@@ -1424,6 +1334,77 @@
 </div>
 
 {{-- ============================
+     SCHEDULE & VENUES TAB
+   ============================ --}}
+<div class="tab-pane fade" id="schedule-pane" role="tabpanel">
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="card-title mb-0"><i class="ti ti-map-pin me-1 text-primary"></i> Venues</h5>
+        <small class="text-muted">Manage venues assigned to this draw</small>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm addVenues" data-id="{{ $draw->id }}" data-bs-toggle="modal" data-bs-target="#basicModal">
+        <i class="ti ti-plus me-1"></i> Add Venue
+      </button>
+    </div>
+    <div class="card-body">
+      <div id="rr-venues-list">
+        @forelse($draw->venues as $venue)
+          <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
+            <div>
+              <strong>{{ $venue->name }}</strong>
+              <span class="badge bg-label-info ms-2">{{ $venue->pivot->num_courts }} court{{ $venue->pivot->num_courts != 1 ? 's' : '' }}</span>
+            </div>
+            <button class="btn btn-sm btn-outline-danger deleteVenue" data-id="{{ $draw->id }}" data-venue="{{ $venue->id }}">
+              <i class="ti ti-trash me-1"></i> Remove
+            </button>
+          </div>
+        @empty
+          <div class="text-muted text-center py-3">
+            <i class="ti ti-map-pin-off fs-3 d-block mb-2"></i>
+            No venues assigned. Add a venue to enable scheduling.
+          </div>
+        @endforelse
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="card-title mb-0"><i class="ti ti-calendar me-1 text-primary"></i> Schedule</h5>
+        <small class="text-muted">Assign times, venues and courts to matches</small>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#scheduleModal">
+          <i class="ti ti-calendar-plus me-1"></i> Schedule Matches
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="rr-schedule-table">
+          <thead class="table-light">
+            <tr>
+              <th>M#</th>
+              <th>Player 1</th>
+              <th class="text-center">vs</th>
+              <th>Player 2</th>
+              <th class="text-center">Venue</th>
+              <th class="text-center">Court</th>
+              <th class="text-center">Time</th>
+            </tr>
+          </thead>
+          <tbody id="rr-schedule-body">
+            {{-- Populated by JS --}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- ============================
      RULES & NOTES TAB
    ============================ --}}
 <div class="tab-pane fade" id="notes-pane" role="tabpanel">
@@ -1600,14 +1581,21 @@
   </div>
 </div>
 
+{{-- Venue Modal --}}
+@include('backend.draw._modals.addVenueModal')
 
-
+{{-- Schedule Modal --}}
+<input type="hidden" id="drawId" value="{{ $draw->id }}">
+@include('backend.headOffice.modals.scheduleModal')
 
 @endsection
 
 
 
 @section('page-script')
+
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/flatpickr/flatpickr.css') }}">
+<script src="{{ asset('assets/vendor/libs/flatpickr/flatpickr.js') }}"></script>
 
 <script>
     window.RR_FIXTURES  = @json($rrFixtures);
@@ -3431,6 +3419,105 @@ $(document).ready(function() {
 </script>
 
 <script src="{{ asset('assets/js/draw-roundrobin1.js') }}"></script>
+
+<script>
+// ============================================================
+// SCHEDULE & VENUES TAB
+// ============================================================
+(function($) {
+  // Populate schedule table from OOP data
+  function renderScheduleTable() {
+    var oop = window.RR_OOP || [];
+    var $body = $('#rr-schedule-body');
+    if (!oop.length) {
+      $body.html('<tr><td colspan="7" class="text-center text-muted py-3">No fixtures found.</td></tr>');
+      return;
+    }
+    var html = '';
+    oop.forEach(function(fx) {
+      var venue = fx.venue_name || '';
+      var court = fx.court || '';
+      var time  = fx.time || '';
+      html += '<tr>';
+      html += '<td>' + (fx.match_nr || fx.id) + '</td>';
+      html += '<td>' + (fx.home || '---') + '</td>';
+      html += '<td class="text-center">vs</td>';
+      html += '<td>' + (fx.away || '---') + '</td>';
+      html += '<td class="text-center">' + (venue ? '<span class="badge bg-label-primary">' + venue + '</span>' : '<span class="text-muted">—</span>') + '</td>';
+      html += '<td class="text-center">' + (court || '<span class="text-muted">—</span>') + '</td>';
+      html += '<td class="text-center">' + (time || '<span class="text-muted">—</span>') + '</td>';
+      html += '</tr>';
+    });
+    $body.html(html);
+  }
+
+  // Venue add handler
+  $(document).on('click', '.addVenues', function() {
+    $('#drawIdInput').val($(this).data('id'));
+  });
+
+  // Save venue
+  $(document).on('click', '#save-draw-venue-button', function() {
+    var drawId = $('#drawIdInput').val() || DRAW_ID;
+    var venueId = $('#venueDrawSelect2').val();
+    var numCourts = $('#numCourtsInput').val();
+
+    $.post(APP_URL + '/backend/draw/' + drawId + '/venues', {
+      _token: $('meta[name="csrf-token"]').attr('content'),
+      venue_id: venueId,
+      num_courts: numCourts
+    }).done(function(res) {
+      toastr.success(res.message || 'Venue added');
+      $('#basicModal').modal('hide');
+      location.reload();
+    }).fail(function(xhr) {
+      toastr.error(xhr.responseJSON?.message || 'Failed to add venue');
+    });
+  });
+
+  // Delete venue
+  $(document).on('click', '.deleteVenue', function() {
+    var drawId = $(this).data('id');
+    var venueId = $(this).data('venue');
+    var $btn = $(this);
+
+    Swal.fire({
+      title: 'Remove venue?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, remove',
+      confirmButtonColor: '#dc3545'
+    }).then(function(result) {
+      if (!result.isConfirmed) return;
+
+      $.ajax({
+        url: APP_URL + '/backend/draw/' + drawId + '/venues',
+        method: 'POST',
+        data: {
+          _token: $('meta[name="csrf-token"]').attr('content'),
+          venue_id: venueId,
+          _method: 'DELETE'
+        },
+        success: function(res) {
+          toastr.success(res.message || 'Venue removed');
+          $btn.closest('.d-flex').fadeOut(300, function() { $(this).remove(); });
+        },
+        error: function(xhr) {
+          toastr.error(xhr.responseJSON?.message || 'Failed to remove venue');
+        }
+      });
+    });
+  });
+
+  // Tab activation: populate schedule table
+  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+    if ($(e.target).attr('id') === 'schedule-tab') {
+      renderScheduleTable();
+    }
+  });
+
+})(jQuery);
+</script>
 
 <script>
 // ============================================================

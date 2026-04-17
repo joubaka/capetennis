@@ -1,7 +1,7 @@
 
 @extends('layouts/layoutMaster')
 
-@section('title', 'Admin - Event Page')
+@section('title', 'Admin - ' . $event->name)
 
 @section('vendor-style')
 <link rel="stylesheet" href="{{asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css')}}">
@@ -319,10 +319,12 @@ $(document).ready(function () {
             $btn.data('status', newStatus);
 
             if (newStatus) {
-                $btn.removeClass('btn-danger').addClass('btn-success').text('Unpublish');
+                $btn.removeClass('btn-danger').addClass('btn-success')
+                    .html('<i class="ti ti-eye-off me-1"></i>Unpublish');
                 toastr.success("Draw published.");
             } else {
-                $btn.removeClass('btn-success').addClass('btn-danger').text('Publish');
+                $btn.removeClass('btn-success').addClass('btn-danger')
+                    .html('<i class="ti ti-eye me-1"></i>Publish');
                 toastr.info("Draw unpublished.");
             }
         });
@@ -659,17 +661,47 @@ $(document).ready(function () {
 
 @section('content')
 
-<!-- Event Header -->
-<div class="card mb-4">
-  <div class="card-header text-center">
-    <h3 class="mb-0">Individual Event: <span class="text-primary">{{$event->name}}</span></h3>
+<!-- Loading Overlay -->
+<div id="loading-overlay"
+     class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 justify-content-center align-items-center d-none"
+     style="z-index: 2000;">
+  <div class="text-center">
+    <div class="spinner-border text-light mb-3" role="status" style="width: 4rem; height: 4rem;">
+      <span class="visually-hidden">Generating fixtures...</span>
+    </div>
+    <div class="text-white fw-bold fs-5">Generating fixtures… Please wait</div>
   </div>
 </div>
 
-<div class="row g-3">
+<!-- Event Header -->
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+      <div>
+        <h4 class="mb-1">
+          <i class="ti ti-tournament me-1 text-primary"></i>
+          {{ $event->name }}
+        </h4>
+        <span class="text-muted">Individual Event — {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }}</span>
+      </div>
+      <div class="d-flex gap-2 flex-shrink-0">
+        @if($event->draws->count())
+          <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">
+            <i class="ti ti-printer me-1"></i> Print Draws
+          </button>
+        @endif
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">
+          <i class="ti ti-plus me-1"></i> New Draw
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
   <!-- Sidebar -->
-  <div class="col-12 col-md-3">
-    <div class="card h-100">
+  <div class="col-12 col-lg-3">
+    <div class="card sticky-top" style="top: 80px;">
       <div class="card-body p-2">
         @include('backend.adminPage.admin_show.navbar.navbar')
       </div>
@@ -677,51 +709,28 @@ $(document).ready(function () {
   </div>
 
   <!-- Main Content -->
-  <div class="col-12 col-md-9">
+  <div class="col-12 col-lg-9">
     @if(session('success'))
-  <div class="alert alert-success">
-    {{ session('success') }}
-  </div>
-@endif
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="ti ti-check me-1"></i> {{ session('success') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    @endif
 
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Event Draws</h5>
-      
-        <div class="d-flex gap-2">
-          @if($event->draws->count())
-          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">
-            <i class="ti ti-printer me-1"></i> Print Draws
-          </button>
-          @endif
-
-          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">
-            + Create New Draw
+    @forelse($event->draws as $draw)
+      @include('backend.draw._includes.draw_tab_interpro')
+    @empty
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <i class="ti ti-mood-empty ti-lg text-muted mb-3 d-block" style="font-size: 3rem;"></i>
+          <h5 class="text-muted mb-2">No draws created yet</h5>
+          <p class="text-muted mb-3">Get started by creating your first draw for this event.</p>
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">
+            <i class="ti ti-plus me-1"></i> Create First Draw
           </button>
         </div>
       </div>
-
-    <!-- Loading Overlay -->
-<div id="loading-overlay" 
-     class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 justify-content-center align-items-center d-none"
-     style="z-index: 2000;">
-  <div class="spinner-border text-light" role="status" style="width: 4rem; height: 4rem;">
-    <span class="visually-hidden">Generating fixtures...</span>
-  </div>
-  <span class="ms-3 text-white fw-bold fs-5">Generating fixtures...Please wait...</span>
-</div>
-
-
-      <div class="card-body">
-        <div class="list-group">
-          @forelse($event->draws as $draw)
-            @include('backend.draw._includes.draw_tab_interpro')
-          @empty
-            <div class="alert alert-warning">No draws available yet.</div>
-          @endforelse
-        </div>
-      </div>
-    </div>
+    @endforelse
   </div>
 </div>
 

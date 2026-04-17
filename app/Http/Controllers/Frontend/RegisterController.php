@@ -1131,10 +1131,33 @@ class RegisterController extends Controller
       $order->item_price = $categoryEvent->entry_fee ?? 0;
       $order->save();
 
+      // Attach player to registration + create category_event_registration immediately
+      $registration->players()->syncWithoutDetaching([$request->player[$i]]);
+      $registration->categoryEvents()->syncWithoutDetaching([
+        $categoryEvent->id => [
+          'payment_status_id' => 0,
+          'user_id' => Auth::id(),
+        ],
+      ]);
+
       $totalFee += $order->item_price;
     }
 
     if ($totalFee <= 0) {
+      // Free event — mark as paid immediately
+      foreach ($regorder->items as $item) {
+        $reg = Registration::find($item->registration_id);
+        if ($reg) {
+          $reg->categoryEvents()->updateExistingPivot($item->category_event_id, [
+            'payment_status_id' => 1,
+          ]);
+        }
+      }
+      $regorder->pay_status = 1;
+      $regorder->payfast_paid = true;
+      $regorder->wallet_debited = true;
+      $regorder->save();
+
       return redirect()
         ->route('frontend.registration.success', ['order' => $regorder->id])
         ->with('success', 'Your registration was successful (no payment required).');

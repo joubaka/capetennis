@@ -1012,6 +1012,7 @@ Route::delete(
 
 
   //convenor
+  Route::get('convenor/search-users', [ConvenorController::class, 'searchUsers'])->name('convenor.search-users');
   Route::resource('convenor', ConvenorController::class);
 
   /*
