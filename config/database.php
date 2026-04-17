@@ -59,7 +59,7 @@ return [
             'strict' => true,
             'engine' => 'InnoDB ROW_FORMAT=DYNAMIC',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                \Pdo\Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                1010 => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 

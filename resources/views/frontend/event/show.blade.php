@@ -197,10 +197,10 @@ console.log('[EVENT_DATA]', window.EVENT_DATA);
 
 </script>
 
-<script src="{{ asset('assets/js/pages-profile.js') }}"></script>
-<script src="{{ asset('assets/js/forms-editors.js') }}"></script>
-<script src="{{ asset('assets/js/select2-search-addon.js') }}"></script>
-<script src="{{ asset(mix('js/event-show.js')) }}"></script>
+<script src="{{ vasset('assets/js/pages-profile.js') }}"></script>
+<script src="{{ vasset('assets/js/forms-editors.js') }}"></script>
+<script src="{{ vasset('assets/js/select2-search-addon.js') }}"></script>
+<script src="{{ asset(mix('js/event-show.js')) }}?v={{ config('app.asset_version') }}"></script>
 
 
 
