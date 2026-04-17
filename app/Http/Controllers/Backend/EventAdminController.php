@@ -768,7 +768,11 @@ class EventAdminController extends Controller
     } else {
 
       // Individual event
-      $stats['entries'] = $event->registrations()->where('status', '!=', 'withdrawn')->count(); // ✅ PLAYERS (excluding withdrawn)
+      // Count only active, paid player registrations for backend statistics
+      $stats['entries'] = $event->registrations()
+        ->where('status', '!=', 'withdrawn')
+        ->where('payment_status_id', 1)
+        ->count(); // ✅ PLAYERS (excluding withdrawn and unpaid)
     }
 
     // =====================
@@ -844,9 +848,12 @@ class EventAdminController extends Controller
   }
   protected function loadEventCategories(Event $event)
   {
+    // Load categories but only include paid registrations for backend views
     $categories = CategoryEvent::with([
       'category',
-      'registrations.players',
+      'registrations' => function ($query) {
+        $query->where('payment_status_id', 1)->with('players');
+      },
       'nominations',
       'draws.groups.groupRegistrations.registration.players',
     ])->where('event_id', $event->id)->get();
@@ -889,7 +896,9 @@ class EventAdminController extends Controller
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
-        'categoryEventRegistrations.registration.players',
+        'categoryEventRegistrations' => function ($query) {
+          $query->where('payment_status_id', 1)->with('registration.players');
+        },
       ])
       ->get();
 

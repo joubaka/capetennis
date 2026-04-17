@@ -30,7 +30,9 @@ class EventEntryController extends Controller
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
-        'categoryEventRegistrations.registration.players',
+        'categoryEventRegistrations' => function ($query) {
+            $query->where('payment_status_id', 1)->with('registration.players');
+        },
       ])
       ->get();
 
@@ -116,6 +118,7 @@ class EventEntryController extends Controller
     $entry = $categoryEvent->categoryEventRegistrations()->create([
       'registration_id' => $registration->id,
       'status' => 'active',
+      'payment_status_id' => 1,
     ]);
 
     $entry->load('registration.players');
@@ -216,9 +219,11 @@ class EventEntryController extends Controller
 
     } elseif ($data['scope'] === 'category') {
 
-      $categoryEvent = CategoryEvent::with(
-        'categoryEventRegistrations.registration.players'
-      )->findOrFail($data['category_event_id']);
+      $categoryEvent = CategoryEvent::with([
+        'categoryEventRegistrations' => function ($query) {
+            $query->where('payment_status_id', 1)->with('registration.players');
+        }
+      ])->findOrFail($data['category_event_id']);
 
       $emails = $categoryEvent->categoryEventRegistrations
         ->flatMap(fn($r) => $r->registration->players)
@@ -231,7 +236,11 @@ class EventEntryController extends Controller
 
     } else {
 
-      $event = Event::with('registrations.players')->findOrFail($data['event_id']);
+      $event = Event::with(['registrations' => function ($query) {
+          $query->whereHas('categoryEventRegistrations', function ($q) {
+              $q->where('payment_status_id', 1);
+          })->with('players');
+      }])->findOrFail($data['event_id']);
 
       $emails = $event->registrations
         ->flatMap(fn($r) => $r->players)

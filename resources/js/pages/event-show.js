@@ -191,6 +191,7 @@
   }
 
   // ---------- WITHDRAW PLAYER ----------
+  // ---------- WITHDRAW PLAYER ----------
   $(document).on('click', '.withDrawPlayer', function () {
     const $btn = $(this);
     const withdrawUrl = $btn.data('url');
@@ -200,13 +201,30 @@
       title: 'Terms of Refund',
       html: `
         <div class="text-start">
-          <p>Please review the refund terms before proceeding:</p>
-          <ul>
-            <li>Your registration fee will be refunded to your wallet.</li>
+          <p class="mb-3">Please review the refund terms before proceeding:</p>
+
+          <ul class="mb-4">
             <li><strong>10%</strong> of the total entry fee will be deducted as an administration fee.</li>
-            <li>Refunds to bank accounts are processed within 5-7 business days.</li>
-            <li>This action cannot be undone.</li>
+            <li>This action is final and <strong>cannot be undone</strong>.</li>
           </ul>
+
+          <p class="mb-2"><strong>You will be able to choose between two refund methods:</strong></p>
+
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <div class="p-3 border rounded bg-light h-100">
+                <h6 class="mb-1 text-primary">Refund to Wallet</h6>
+                <p class="small mb-0 text-muted">Funds are available <strong>instantly</strong> in your account for future use.</p>
+              </div>
+            </div>
+
+            <div class="col-sm-6">
+              <div class="p-3 border rounded bg-light h-100">
+                <h6 class="mb-1 text-primary">Refund via PayFast</h6>
+                <p class="small mb-0 text-muted">Sent back to your <strong>original payment source</strong>. Processed within 5-7 business days.</p>
+              </div>
+            </div>
+          </div>
         </div>
       `,
       icon: 'info',
@@ -231,6 +249,7 @@
           confirmButtonColor: '#3085d6',
           cancelButtonColor: '#d33',
           confirmButtonText: 'Yes, withdraw player!',
+          cancelButtonText: 'Wait, go back',
           customClass: {
             confirmButton: 'btn btn-primary me-1',
             cancelButton: 'btn btn-label-secondary'
@@ -247,6 +266,7 @@
               name: '_token',
               value: $('meta[name="csrf-token"]').attr('content')
             }));
+
             $('body').append($form);
             $form.submit();
           }
@@ -254,7 +274,6 @@
       }
     });
   });
-
   // ---------- ANNOUNCEMENTS (QUILL + SAVE) ----------
   const fullToolbar = [
     [{ font: [] }, { size: [] }],

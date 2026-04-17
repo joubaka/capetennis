@@ -17,7 +17,9 @@ class EventEntriesExport implements FromCollection, WithHeadings
     return $this->event->eventCategories()
       ->with([
         'category',
-        'categoryEventRegistrations.registration.players',
+        'categoryEventRegistrations' => function ($query) {
+            $query->where('payment_status_id', 1)->with('registration.players');
+        },
       ])
       ->get()
       ->flatMap(function ($categoryEvent) {
