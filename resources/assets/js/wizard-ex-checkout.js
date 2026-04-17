@@ -125,7 +125,7 @@ $(function () {
           $card.find('.pd-dob').flatpickr({
             dateFormat: 'Y-m-d',
             maxDate: 'today',
-            allowInput: true,
+            allowInput: true,  
             altInput: true,
             altFormat: 'j F Y',
             defaultDate: res.dateOfBirth || null

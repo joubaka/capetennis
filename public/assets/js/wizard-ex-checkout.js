@@ -128,7 +128,7 @@ $(function () {
             allowInput: true,
             altInput: true,
             altFormat: 'j F Y',
-            defaultDate: res.dateOfBirth || null
+            defaultDate: res.dateOfBirth || null 
           });
 
           // If DOB was pre-filled (confirmed in 2026+), auto-confirm is allowed
