@@ -579,6 +579,11 @@ Route::delete(
     [EventEntryController::class, 'removePlayer']
   )->name('admin.category.removePlayer');
 
+  Route::post(
+    'event/entry/{entry}/withdraw',
+    [EventEntryController::class, 'withdrawPlayer']
+  )->name('admin.category.withdrawPlayer');
+
 
   // =========================
   // EXPORTS

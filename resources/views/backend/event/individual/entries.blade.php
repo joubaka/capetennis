@@ -211,7 +211,7 @@
   <div class="category-meta">
     <h5 class="mb-0">{{ $categoryEvent->category?->name }}</h5>
     <small class="text-muted">
-      {{ $categoryEvent->categoryEventRegistrations->count() }} entries
+      {{ $categoryEvent->categoryEventRegistrations->where('payment_status_id', 1)->count() }} paid / {{ $categoryEvent->categoryEventRegistrations->count() }} total entries
     </small>
   </div>
 
@@ -279,7 +279,7 @@
             @foreach($categoryEvent->categoryEventRegistrations as $reg)
 
               @php $player = optional($reg->registration?->players)->first(); @endphp
-              <tr>
+              <tr class="{{ $reg->payment_status_id != 1 && $reg->payment_status_id !== null ? 'table-warning' : '' }} {{ $reg->status === 'withdrawn' ? 'table-danger' : '' }}">
                 <td>{{ $loop->iteration }}</td>
                 <td>{{ $player?->name }} {{ $player?->surname }}</td>
                 <td class="col-email">
@@ -324,6 +324,14 @@
 </button>
 
 
+    @if($reg->status !== 'withdrawn' && $reg->registration)
+      <button type="button"
+              class="btn btn-outline-warning withdraw-player-btn"
+              data-url="{{ route('registrations.withdraw', $reg->registration) }}"
+              data-player="{{ $player?->name }} {{ $player?->surname }}">
+        Withdraw
+      </button>
+    @endif
     @unless($categoryEvent->isLocked())
       <button type="button"
               class="btn btn-outline-danger remove-player-btn"
@@ -584,6 +592,29 @@ document.addEventListener('click', function(e) {
     })
     .then(() => location.reload())
     .catch(() => alert('Remove failed'));
+});
+
+/* =====================
+   WITHDRAW PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.withdraw-player-btn');
+    if (!btn) return;
+    e.preventDefault();
+
+    const playerName = btn.dataset.player || 'this player';
+    if (!confirm('Withdraw ' + playerName + '? They will receive a withdrawal email to support@capetennis.co.za.')) return;
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(r => { if (!r.ok) throw r; return r.json(); })
+    .then(() => location.reload())
+    .catch(() => alert('Withdraw failed'));
 });
 
 /* =====================

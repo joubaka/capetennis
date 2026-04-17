@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\Registration;
+use App\Models\CategoryEventRegistration;
 use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\Mail;
@@ -29,10 +30,6 @@ class EventEntryController extends Controller
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
-        'categoryEventRegistrations' => function ($q) {
-          $q->where('payment_status_id', 1)
-            ->orWhereNull('payment_status_id');
-        },
         'categoryEventRegistrations.registration.players',
       ])
       ->get();

@@ -241,7 +241,10 @@ class EventController extends Controller
       ? CategoryEventRegistration::with('registration.players', 'categoryEvent.category')
         ->where('user_id', Auth::id())
         ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
-        ->where(fn($q) => $q->where('payment_status_id', 1)->orWhereNull('payment_status_id'))
+        ->where(function ($q) {
+          $q->where('payment_status_id', 1)       // paid
+            ->orWhere('status', 'withdrawn');        // or withdrawn (show refund status)
+        })
         ->get()
       : collect();
 

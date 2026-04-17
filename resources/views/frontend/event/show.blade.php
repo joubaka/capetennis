@@ -66,7 +66,7 @@
               @if($event->isIndividual())
                 <li class="badge bg-label-success">
                   <i class="ti ti-users"></i>
-                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->filter(fn($r) => $r->payment_status_id === 1 || $r->payment_status_id === null)->count() }}
+                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->where('payment_status_id', 1)->count() }}
                 </li>
               @endif
               <li class="list-inline-item">
