@@ -219,7 +219,12 @@ class RegistrationPaymentController extends Controller
         ->withErrors('Order not found.');
     }
 
-    if ($order->user_id !== $user->id) {
+    if ((int) $order->user_id !== (int) $user->id) {
+      Log::warning('HYBRID COMPLETE: Unauthorized order access', [
+        'order_id' => $orderId,
+        'order_user_id' => (int) $order->user_id,
+        'auth_user_id' => (int) $user->id,
+      ]);
       abort(403);
     }
 
