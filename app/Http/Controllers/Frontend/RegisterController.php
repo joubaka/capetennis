@@ -44,6 +44,62 @@ class RegisterController extends Controller
         dd('index');
     }
 
+  /**
+   * Validate PayFast ITN signature.
+   * Accepts optional Request because some callers pass it and some call without.
+   */
+  private function validatePayfastSignature(Request $request = null)
+  {
+    // Support both direct $_POST and injected Request
+    $data = [];
+    if ($request instanceof Request) {
+      $data = $request->all();
+    } elseif (!empty($_POST)) {
+      $data = $_POST;
+    }
+
+    $incoming = $data['signature'] ?? null;
+    if (empty($incoming)) {
+      return false;
+    }
+
+    // Build signature string according to PayFast spec: sort fields, exclude signature
+    $fields = $data;
+    unset($fields['signature']);
+
+    ksort($fields);
+
+    $parts = [];
+    foreach ($fields as $k => $v) {
+      if ($v === '') {
+        continue;
+      }
+      $parts[] = $k . '=' . urlencode(trim($v));
+    }
+
+    $string = implode('&', $parts);
+
+    // Try known passphrases (live, sandbox, generic) then no-passphrase
+    $passphrases = [env('PAYFAST_PASSPHRASE_LIVE'), env('PAYFAST_PASSPHRASE_SANDBOX'), env('PAYFAST_PASSPHRASE')];
+
+    foreach ($passphrases as $pf) {
+      if (empty($pf)) {
+        continue;
+      }
+      $calc = md5($string . '&passphrase=' . urlencode($pf));
+      if ($calc === $incoming) {
+        return true;
+      }
+    }
+
+    // Fallback: try without passphrase
+    if (md5($string) === $incoming) {
+      return true;
+    }
+
+    return false;
+  }
+
     /**
      * Show the form for creating a new resource.
      *
@@ -475,6 +531,99 @@ class RegisterController extends Controller
 
     return response('OK', 200)
       ->header('Content-Type', 'text/plain');
+  }
+
+  /**
+   * Debug route for local development: simulate a PayFast ITN for an order.
+   * Marks the order and its registrations as paid.
+   */
+  public function simulatePayfast($orderId)
+  {
+    if (!app()->environment('local')) {
+      return response('Not allowed', 403);
+    }
+
+    $order = RegistrationOrder::with(['items.category_event.event', 'user.wallet'])
+      ->lockForUpdate()
+      ->find($orderId);
+
+    if (!$order) {
+      return response()->json(['error' => 'Order not found'], 404);
+    }
+
+    try {
+      DB::transaction(function () use ($order) {
+        $fakePfId = 'SIM' . time();
+        $amount = (float) ($order->payfast_amount_due > 0 ? $order->payfast_amount_due : $order->items->sum('item_price'));
+
+        // Mark order paid
+        $order->payfast_amount_due = $amount;
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $fakePfId;
+        $order->save();
+
+        // Debit wallet if reserved
+        if (
+          $order->wallet_reserved > 0 &&
+          $order->wallet_debited === false &&
+          $order->user &&
+          $order->user->wallet
+        ) {
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'event_registration_wallet_payment_sim',
+            $order->id,
+            [
+              'order_id' => $order->id,
+              'source' => 'simulate_payfast',
+            ]
+          );
+
+          $order->wallet_debited = true;
+          $order->save();
+        }
+
+        // Mark registrations as paid
+        foreach ($order->items as $item) {
+          $registration = Registration::find($item->registration_id);
+          if (!$registration) {
+            continue;
+          }
+
+          $registration->players()->syncWithoutDetaching([
+            $item->player_id
+          ]);
+
+          $registration->categoryEvents()->syncWithoutDetaching([
+            $item->category_event_id => [
+              'payment_status_id' => 1,
+              'user_id' => $order->user_id,
+              'pf_transaction_id' => $fakePfId,
+            ],
+          ]);
+        }
+
+        // Create transaction record (best-effort)
+        try {
+          $fakeData = [
+            'custom_int5' => $order->id,
+            'custom_int4' => $order->user_id,
+            'pf_payment_id' => $fakePfId,
+            'amount_gross' => $amount,
+          ];
+          self::update_transaction($fakeData, $order);
+        } catch (\Throwable $e) {
+          Log::error('[SIMULATE PAYFAST] transaction failed', ['message' => $e->getMessage()]);
+        }
+      });
+
+      return response()->json(['success' => true, 'order' => $order->id]);
+    } catch (\Throwable $e) {
+      Log::error('[SIMULATE PAYFAST] failed', ['message' => $e->getMessage()]);
+      return response()->json(['error' => $e->getMessage()], 500);
+    }
   }
 
 
