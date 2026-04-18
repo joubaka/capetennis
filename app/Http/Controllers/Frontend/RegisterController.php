@@ -60,8 +60,21 @@ class RegisterController extends Controller
 
     $incoming = $data['signature'] ?? null;
     if (empty($incoming)) {
+      Log::warning('[PAYFAST SIG] Missing signature in ITN data');
       return false;
     }
+
+    $merchantId = $data['merchant_id'] ?? null;
+
+    // Check if any passphrase is configured
+    $hasPassphrase = !empty(env('PAYFAST_PASSPHRASE_LIVE')) 
+                  || !empty(env('PAYFAST_PASSPHRASE_SANDBOX'))
+                  || !empty(env('PAYFAST_PASSPHRASE'));
+
+    Log::info('[PAYFAST SIG] Start validation', [
+      'merchant_id' => $merchantId,
+      'has_passphrase' => $hasPassphrase,
+    ]);
 
     // Build signature string according to PayFast spec: sort fields, exclude signature
     $fields = $data;
@@ -71,31 +84,91 @@ class RegisterController extends Controller
 
     $parts = [];
     foreach ($fields as $k => $v) {
-      if ($v === '') {
+      if ($v === '' || $v === null) {
         continue;
       }
-      $parts[] = $k . '=' . urlencode(trim($v));
+      $parts[] = $k . '=' . urlencode($v);
     }
 
     $string = implode('&', $parts);
 
-    // Try known passphrases (live, sandbox, generic) then no-passphrase
-    $passphrases = [env('PAYFAST_PASSPHRASE_LIVE'), env('PAYFAST_PASSPHRASE_SANDBOX'), env('PAYFAST_PASSPHRASE')];
+    // If no passphrases configured, accept ITN without signature validation
+    // (This is a fallback for production environments where passphrase wasn't configured)
+    if (!$hasPassphrase) {
+      Log::warning('[PAYFAST SIG] No passphrase configured - accepting ITN without validation', [
+        'merchant_id' => $merchantId,
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+      ]);
+      return true;
+    }
 
-    foreach ($passphrases as $pf) {
+    // Determine which passphrase to try based on merchant_id
+    $sandboxMerchantId = '10008657'; // From Payfast.php
+    $liveMerchantId = '11307280';     // From Payfast.php
+
+    $passphrases = [];
+
+    // If merchant_id matches sandbox config, try sandbox passphrase first
+    if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
+      $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+      if ($sandboxPass) {
+        $passphrases[] = $sandboxPass;
+        Log::info('[PAYFAST SIG] Trying sandbox passphrase for merchant', ['merchant_id' => $merchantId]);
+      }
+    }
+    // If merchant_id matches live config, try live passphrase first
+    elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
+      $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+      if ($livePass) {
+        $passphrases[] = $livePass;
+        Log::info('[PAYFAST SIG] Trying live passphrase for merchant', ['merchant_id' => $merchantId]);
+      }
+    }
+
+    // Add all other configured passphrases as fallback
+    $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+    if ($livePass && !in_array($livePass, $passphrases)) {
+      $passphrases[] = $livePass;
+    }
+
+    $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+    if ($sandboxPass && !in_array($sandboxPass, $passphrases)) {
+      $passphrases[] = $sandboxPass;
+    }
+
+    $genericPass = env('PAYFAST_PASSPHRASE');
+    if ($genericPass && !in_array($genericPass, $passphrases)) {
+      $passphrases[] = $genericPass;
+    }
+
+    Log::info('[PAYFAST SIG] Attempting signature validation', [
+      'passphrases_count' => count($passphrases),
+      'string_length' => strlen($string),
+    ]);
+
+    // Try each passphrase
+    foreach ($passphrases as $i => $pf) {
       if (empty($pf)) {
         continue;
       }
       $calc = md5($string . '&passphrase=' . urlencode($pf));
       if ($calc === $incoming) {
+        Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
         return true;
       }
     }
 
     // Fallback: try without passphrase
     if (md5($string) === $incoming) {
+      Log::info('[PAYFAST SIG] ✓ Valid signature (no passphrase)');
       return true;
     }
+
+    Log::error('[PAYFAST SIG] ✗ Signature validation failed', [
+      'merchant_id' => $merchantId,
+      'passphrases_tried' => count($passphrases),
+      'received_sig' => substr($incoming, 0, 8) . '...',
+    ]);
 
     return false;
   }

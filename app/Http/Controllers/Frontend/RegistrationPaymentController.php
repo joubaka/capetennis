@@ -112,7 +112,13 @@ class RegistrationPaymentController extends Controller
    */
   public function applyWallet(Request $request)
   {
-    $orderId = (int) $request->order_id;
+    // Support both parameter names: order_id or custom_int5
+    $orderId = (int) ($request->order_id ?? $request->custom_int5 ?? 0);
+
+    if (!$orderId) {
+      return response()->json(['error' => 'No order ID provided.'], 400);
+    }
+
     $order = RegistrationOrder::findOrFail($orderId);
 
     $user = auth()->user();
