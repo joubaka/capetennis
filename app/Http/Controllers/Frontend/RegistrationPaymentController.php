@@ -42,8 +42,8 @@ class RegistrationPaymentController extends Controller
       return back()->withErrors('Invalid payment amounts.');
     }
 
-    // 🔒 Ownership protection
-    if ($order->user_id !== $user->id) {
+    // 🔒 Ownership protection (cast both to int to avoid type mismatch)
+    if ((int) $order->user_id !== (int) $user->id) {
       abort(403, 'Unauthorized order access.');
     }
 
@@ -142,11 +142,12 @@ class RegistrationPaymentController extends Controller
       return response()->json(['error' => 'Unauthorized. Please login again.'], 403);
     }
 
-    if ($order->user_id !== $user->id) {
+    // Cast both to int to avoid type mismatch (string vs int)
+    if ((int) $order->user_id !== (int) $user->id) {
       Log::warning('WALLET APPLY: Order ownership mismatch', [
         'order_id' => $orderId,
-        'order_user_id' => $order->user_id,
-        'auth_user_id' => $user->id,
+        'order_user_id' => (int) $order->user_id,
+        'auth_user_id' => (int) $user->id,
       ]);
       return response()->json(['error' => 'Unauthorized.'], 403);
     }
