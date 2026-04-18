@@ -4,7 +4,7 @@
   // ---------- CONFIG ----------
   const CLOTHING_ITEMS_URL = window.routes?.getRegionClothingItems;
   const SAVE_ANNOUNCEMENT_URL = window.routes?.saveAnnouncement; // set in Blade with @json(route(...))
-
+  console.log('working')
   // ---------- CSRF FOR AJAX ----------
   $.ajaxSetup({
     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
