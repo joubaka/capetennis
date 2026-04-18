@@ -1,23 +1,3 @@
-(function webpackUniversalModuleDefinition(root, factory) {
-	if(typeof exports === 'object' && typeof module === 'object')
-		module.exports = factory();
-	else if(typeof define === 'function' && define.amd)
-		define([], factory);
-	else {
-		var a = factory();
-		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
-	}
-})(self, function() {
-return /******/ (function() { // webpackBootstrap
-/******/ 	var __webpack_modules__ = ({
-
-/***/ "./resources/assets/vendor/libs/formvalidation/dist/js/FormValidation.js":
-/*!*******************************************************************************!*\
-  !*** ./resources/assets/vendor/libs/formvalidation/dist/js/FormValidation.js ***!
-  \*******************************************************************************/
-/***/ (function(module, exports) {
-
-var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;function _typeof(obj) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (obj) { return typeof obj; } : function (obj) { return obj && "function" == typeof Symbol && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }, _typeof(obj); }
 /**
  * FormValidation (https://formvalidation.io), v1.10.0 (2236098)
  * The best validation library for JavaScript
@@ -25,63 +5,75 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
  */
 
 (function (global, factory) {
-  ( false ? 0 : _typeof(exports)) === 'object' && "object" !== 'undefined' ? factory(exports) :  true ? !(__WEBPACK_AMD_DEFINE_ARRAY__ = [exports], __WEBPACK_AMD_DEFINE_FACTORY__ = (factory),
-		__WEBPACK_AMD_DEFINE_RESULT__ = (typeof __WEBPACK_AMD_DEFINE_FACTORY__ === 'function' ?
-		(__WEBPACK_AMD_DEFINE_FACTORY__.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__)) : __WEBPACK_AMD_DEFINE_FACTORY__),
-		__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__)) : (0);
-})(this, function (exports) {
-  'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.FormValidation = {}));
+})(this, (function (exports) { 'use strict';
 
   function t$j(t) {
     var e = t.length;
     var l = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]];
     var n = 0;
     var r = 0;
+
     while (e--) {
       r += l[n][parseInt(t.charAt(e), 10)];
       n = 1 - n;
     }
+
     return r % 10 === 0 && r > 0;
   }
+
   function t$i(t) {
     var e = t.length;
     var n = 5;
+
     for (var r = 0; r < e; r++) {
       n = ((n || 10) * 2 % 11 + parseInt(t.charAt(r), 10)) % 10;
     }
+
     return n === 1;
   }
+
   function t$h(t) {
     var e = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     var n = t.length;
     var o = e.length;
     var l = Math.floor(o / 2);
+
     for (var r = 0; r < n; r++) {
       l = ((l || o) * 2 % (o + 1) + e.indexOf(t.charAt(r))) % o;
     }
+
     return l === 1;
   }
+
   function t$g(t) {
     var e = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5], [2, 3, 4, 0, 1, 7, 8, 9, 5, 6], [3, 4, 0, 1, 2, 8, 9, 5, 6, 7], [4, 0, 1, 2, 3, 9, 5, 6, 7, 8], [5, 9, 8, 7, 6, 0, 4, 3, 2, 1], [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3], [8, 7, 6, 5, 9, 3, 2, 1, 0, 4], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]];
     var n = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4], [5, 8, 0, 3, 7, 9, 6, 1, 4, 2], [8, 9, 1, 6, 0, 4, 3, 5, 2, 7], [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1], [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]];
     var o = t.reverse();
     var r = 0;
+
     for (var _t = 0; _t < o.length; _t++) {
       r = e[r][n[_t % 8][o[_t]]];
     }
+
     return r === 0;
   }
+
   var index$3 = {
     luhn: t$j,
     mod11And10: t$i,
     mod37And36: t$h,
     verhoeff: t$g
   };
+
   function _classCallCheck(instance, Constructor) {
     if (!(instance instanceof Constructor)) {
       throw new TypeError("Cannot call a class as a function");
     }
   }
+
   function _defineProperties(target, props) {
     for (var i = 0; i < props.length; i++) {
       var descriptor = props[i];
@@ -91,6 +83,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       Object.defineProperty(target, descriptor.key, descriptor);
     }
   }
+
   function _createClass(Constructor, protoProps, staticProps) {
     if (protoProps) _defineProperties(Constructor.prototype, protoProps);
     if (staticProps) _defineProperties(Constructor, staticProps);
@@ -99,6 +92,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     });
     return Constructor;
   }
+
   function _defineProperty(obj, key, value) {
     if (key in obj) {
       Object.defineProperty(obj, key, {
@@ -110,12 +104,15 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     } else {
       obj[key] = value;
     }
+
     return obj;
   }
+
   function _inherits(subClass, superClass) {
     if (typeof superClass !== "function" && superClass !== null) {
       throw new TypeError("Super expression must either be null or a function");
     }
+
     subClass.prototype = Object.create(superClass && superClass.prototype, {
       constructor: {
         value: subClass,
@@ -128,12 +125,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     });
     if (superClass) _setPrototypeOf(subClass, superClass);
   }
+
   function _getPrototypeOf(o) {
     _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf.bind() : function _getPrototypeOf(o) {
       return o.__proto__ || Object.getPrototypeOf(o);
     };
     return _getPrototypeOf(o);
   }
+
   function _setPrototypeOf(o, p) {
     _setPrototypeOf = Object.setPrototypeOf ? Object.setPrototypeOf.bind() : function _setPrototypeOf(o, p) {
       o.__proto__ = p;
@@ -141,10 +140,12 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     };
     return _setPrototypeOf(o, p);
   }
+
   function _isNativeReflectConstruct() {
     if (typeof Reflect === "undefined" || !Reflect.construct) return false;
     if (Reflect.construct.sham) return false;
     if (typeof Proxy === "function") return true;
+
     try {
       Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {}));
       return true;
@@ -152,34 +153,44 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       return false;
     }
   }
+
   function _assertThisInitialized(self) {
     if (self === void 0) {
       throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
     }
+
     return self;
   }
+
   function _possibleConstructorReturn(self, call) {
-    if (call && (_typeof(call) === "object" || typeof call === "function")) {
+    if (call && (typeof call === "object" || typeof call === "function")) {
       return call;
     } else if (call !== void 0) {
       throw new TypeError("Derived constructors may only return object or undefined");
     }
+
     return _assertThisInitialized(self);
   }
+
   function _createSuper(Derived) {
     var hasNativeReflectConstruct = _isNativeReflectConstruct();
+
     return function _createSuperInternal() {
       var Super = _getPrototypeOf(Derived),
-        result;
+          result;
+
       if (hasNativeReflectConstruct) {
         var NewTarget = _getPrototypeOf(this).constructor;
+
         result = Reflect.construct(Super, arguments, NewTarget);
       } else {
         result = Super.apply(this, arguments);
       }
+
       return _possibleConstructorReturn(this, result);
     };
   }
+
   function _unsupportedIterableToArray(o, minLen) {
     if (!o) return;
     if (typeof o === "string") return _arrayLikeToArray(o, minLen);
@@ -188,21 +199,28 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     if (n === "Map" || n === "Set") return Array.from(o);
     if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen);
   }
+
   function _arrayLikeToArray(arr, len) {
     if (len == null || len > arr.length) len = arr.length;
+
     for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i];
+
     return arr2;
   }
+
   function _createForOfIteratorHelper(o, allowArrayLike) {
     var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"];
+
     if (!it) {
       if (Array.isArray(o) || (it = _unsupportedIterableToArray(o)) || allowArrayLike && o && typeof o.length === "number") {
         if (it) o = it;
         var i = 0;
-        var F = function F() {};
+
+        var F = function () {};
+
         return {
           s: F,
-          n: function n() {
+          n: function () {
             if (i >= o.length) return {
               done: true
             };
@@ -211,39 +229,42 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               value: o[i++]
             };
           },
-          e: function e(_e5) {
-            throw _e5;
+          e: function (e) {
+            throw e;
           },
           f: F
         };
       }
+
       throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
     }
+
     var normalCompletion = true,
-      didErr = false,
-      err;
+        didErr = false,
+        err;
     return {
-      s: function s() {
+      s: function () {
         it = it.call(o);
       },
-      n: function n() {
+      n: function () {
         var step = it.next();
         normalCompletion = step.done;
         return step;
       },
-      e: function e(_e6) {
+      e: function (e) {
         didErr = true;
-        err = _e6;
+        err = e;
       },
-      f: function f() {
+      f: function () {
         try {
-          if (!normalCompletion && it["return"] != null) it["return"]();
+          if (!normalCompletion && it.return != null) it.return();
         } finally {
           if (didErr) throw err;
         }
       }
     };
   }
+
   function s$6() {
     return {
       fns: {},
@@ -254,6 +275,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         for (var _len = arguments.length, f = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
           f[_key - 1] = arguments[_key];
         }
+
         (this.fns[s] || []).map(function (s) {
           return s.apply(s, f);
         });
@@ -261,6 +283,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       off: function off(s, f) {
         if (this.fns[s]) {
           var n = this.fns[s].indexOf(f);
+
           if (n >= 0) {
             this.fns[s].splice(n, 1);
           }
@@ -271,6 +294,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$f() {
     return {
       filters: {},
@@ -284,12 +308,15 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (!this.filters[t] || !this.filters[t].length) {
           return e;
         }
+
         var s = e;
         var r = this.filters[t];
         var l = r.length;
+
         for (var _t = 0; _t < l; _t++) {
           s = r[_t].apply(s, i);
         }
+
         return s;
       },
       remove: function remove(t, e) {
@@ -301,17 +328,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function e$a(e, t, r, n) {
     var o = (r.getAttribute("type") || "").toLowerCase();
     var c = r.tagName.toLowerCase();
+
     if (c === "textarea") {
       return r.value;
     }
+
     if (c === "select") {
       var _e = r;
       var _t = _e.selectedIndex;
       return _t >= 0 ? _e.options.item(_t).value : "";
     }
+
     if (c === "input") {
       if ("radio" === o || "checkbox" === o) {
         var _e2 = n.filter(function (e) {
@@ -322,8 +353,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         return r.value;
       }
     }
+
     return "";
   }
+
   function r$2(r, e) {
     var t = Array.isArray(e) ? e : [e];
     var a = r;
@@ -332,18 +365,22 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     });
     return a;
   }
+
   function s$5() {
     var s = function s(e) {
       return parseFloat("".concat(e).replace(",", "."));
     };
+
     return {
       validate: function validate(a) {
         var t = a.value;
+
         if (t === "") {
           return {
             valid: true
           };
         }
+
         var n = Object.assign({}, {
           inclusive: true,
           message: ""
@@ -360,6 +397,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$e() {
     return {
       validate: function validate(t) {
@@ -369,19 +407,24 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$d(t, n) {
     if ("function" === typeof t) {
       return t.apply(this, n);
     } else if ("string" === typeof t) {
       var e = t;
+
       if ("()" === e.substring(e.length - 2)) {
         e = e.substring(0, e.length - 2);
       }
+
       var i = e.split(".");
       var o = i.pop();
       var f = window;
+
       var _iterator = _createForOfIteratorHelper(i),
-        _step;
+          _step;
+
       try {
         for (_iterator.s(); !(_step = _iterator.n()).done;) {
           var _t = _step.value;
@@ -392,9 +435,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       } finally {
         _iterator.f();
       }
+
       return typeof f[o] === "undefined" ? null : f[o].apply(this, n);
     }
   }
+
   function o$3() {
     return {
       validate: function validate(o) {
@@ -405,6 +450,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$c() {
     return {
       validate: function validate(t) {
@@ -415,17 +461,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         var n = t.options.max ? "".concat(t.options.max) : "";
         var a = t.l10n ? t.options.message || t.l10n.choice["default"] : t.options.message;
         var l = !(s && o < parseInt(s, 10) || n && o > parseInt(n, 10));
+
         switch (true) {
           case !!s && !!n:
             a = r$2(t.l10n ? t.l10n.choice.between : t.options.message, [s, n]);
             break;
+
           case !!s:
             a = r$2(t.l10n ? t.l10n.choice.more : t.options.message, s);
             break;
+
           case !!n:
             a = r$2(t.l10n ? t.l10n.choice.less : t.options.message, n);
             break;
         }
+
         return {
           message: a,
           valid: l
@@ -433,6 +483,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   var t$b = {
     AMERICAN_EXPRESS: {
       length: [15],
@@ -506,6 +557,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         if (/[^0-9-\s]+/.test(l.value)) {
           return {
             meta: {
@@ -514,7 +566,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: false
           };
         }
+
         var r = l.value.replace(/\D/g, "");
+
         if (!t$j(r)) {
           return {
             meta: {
@@ -523,8 +577,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: false
           };
         }
+
         for (var _i = 0, _Object$keys = Object.keys(t$b); _i < _Object$keys.length; _i++) {
           var _e = _Object$keys[_i];
+
           for (var n in t$b[_e].prefix) {
             if (l.value.substr(0, t$b[_e].prefix[n].length) === t$b[_e].prefix[n] && t$b[_e].length.indexOf(r.length) !== -1) {
               return {
@@ -536,6 +592,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             }
           }
         }
+
         return {
           meta: {
             type: null
@@ -545,48 +602,67 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$a(t, e, n, r) {
     if (isNaN(t) || isNaN(e) || isNaN(n)) {
       return false;
     }
+
     if (t < 1e3 || t > 9999 || e <= 0 || e > 12) {
       return false;
     }
+
     var s = [31, t % 400 === 0 || t % 100 !== 0 && t % 4 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
     if (n <= 0 || n > s[e - 1]) {
       return false;
     }
+
     if (r === true) {
       var _r = new Date();
+
       var _s = _r.getFullYear();
+
       var a = _r.getMonth();
+
       var u = _r.getDate();
+
       return t < _s || t === _s && e - 1 < a || t === _s && e - 1 === a && n < u;
     }
+
     return true;
   }
+
   function n() {
     var n = function n(t, e, _n) {
       var s = e.indexOf("YYYY");
       var a = e.indexOf("MM");
       var l = e.indexOf("DD");
+
       if (s === -1 || a === -1 || l === -1) {
         return null;
       }
+
       var o = t.split(" ");
       var r = o[0].split(_n);
+
       if (r.length < 3) {
         return null;
       }
+
       var c = new Date(parseInt(r[s], 10), parseInt(r[a], 10) - 1, parseInt(r[l], 10));
+
       if (o.length > 1) {
         var _t = o[1].split(":");
+
         c.setHours(_t.length > 0 ? parseInt(_t[0], 10) : 0);
         c.setMinutes(_t.length > 1 ? parseInt(_t[1], 10) : 0);
         c.setSeconds(_t.length > 2 ? parseInt(_t[2], 10) : 0);
       }
+
       return c;
     };
+
     var s = function s(t, e) {
       var n = e.replace(/Y/g, "y").replace(/M/g, "m").replace(/D/g, "d").replace(/:m/g, ":M").replace(/:mm/g, ":MM").replace(/:S/, ":s").replace(/:SS/, ":ss");
       var s = t.getDate();
@@ -623,6 +699,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         return $[t] ? $[t] : t.slice(1, t.length - 1);
       });
     };
+
     return {
       validate: function validate(a) {
         if (a.value === "") {
@@ -633,6 +710,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var l = Object.assign({}, {
           format: a.element && a.element.getAttribute("type") === "date" ? "YYYY-MM-DD" : "MM/DD/YYYY",
           message: ""
@@ -651,61 +729,83 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         var u = a.value.split(" ");
         var m = u[0];
         var d = u.length > 1 ? u[1] : null;
+
         if (c.length !== u.length) {
           return r;
         }
+
         var f = l.separator || (m.indexOf("/") !== -1 ? "/" : m.indexOf("-") !== -1 ? "-" : m.indexOf(".") !== -1 ? "." : "/");
+
         if (f === null || m.indexOf(f) === -1) {
           return r;
         }
+
         var p = m.split(f);
         var h = c[0].split(f);
+
         if (p.length !== h.length) {
           return r;
         }
+
         var $ = p[h.indexOf("YYYY")];
         var M = p[h.indexOf("MM")];
         var Y = p[h.indexOf("DD")];
+
         if (!/^\d+$/.test($) || !/^\d+$/.test(M) || !/^\d+$/.test(Y) || $.length > 4 || M.length > 2 || Y.length > 2) {
           return r;
         }
+
         var D = parseInt($, 10);
         var x = parseInt(M, 10);
         var y = parseInt(Y, 10);
+
         if (!t$a(D, x, y)) {
           return r;
         }
+
         var I = new Date(D, x - 1, y);
+
         if (i) {
           var _t2 = d.split(":");
+
           if (i.split(":").length !== _t2.length) {
             return r;
           }
+
           var _e = _t2.length > 0 ? _t2[0].length <= 2 && /^\d+$/.test(_t2[0]) ? parseInt(_t2[0], 10) : -1 : 0;
+
           var _n2 = _t2.length > 1 ? _t2[1].length <= 2 && /^\d+$/.test(_t2[1]) ? parseInt(_t2[1], 10) : -1 : 0;
+
           var _s = _t2.length > 2 ? _t2[2].length <= 2 && /^\d+$/.test(_t2[2]) ? parseInt(_t2[2], 10) : -1 : 0;
+
           if (_e === -1 || _n2 === -1 || _s === -1) {
             return r;
           }
+
           if (_s < 0 || _s > 60) {
             return r;
           }
+
           if (_e < 0 || _e >= 24 || g && _e > 12) {
             return r;
           }
+
           if (_n2 < 0 || _n2 > 59) {
             return r;
           }
+
           I.setHours(_e);
           I.setMinutes(_n2);
           I.setSeconds(_s);
         }
+
         var O = typeof l.min === "function" ? l.min() : l.min;
         var v = O instanceof Date ? O : O ? n(O, h, f) : I;
         var H = typeof l.max === "function" ? l.max() : l.max;
         var T = H instanceof Date ? H : H ? n(H, h, f) : I;
         var S = O instanceof Date ? s(v, l.format) : O;
         var b = H instanceof Date ? s(T, l.format) : H;
+
         switch (true) {
           case !!S && !b:
             return {
@@ -715,6 +815,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               },
               valid: I.getTime() >= v.getTime()
             };
+
           case !!b && !S:
             return {
               message: r$2(a.l10n ? a.l10n.date.max : o, b),
@@ -723,6 +824,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               },
               valid: I.getTime() <= T.getTime()
             };
+
           case !!b && !!S:
             return {
               message: r$2(a.l10n ? a.l10n.date.range : o, [S, b]),
@@ -731,6 +833,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               },
               valid: I.getTime() <= T.getTime() && I.getTime() >= v.getTime()
             };
+
           default:
             return {
               message: "".concat(o),
@@ -743,6 +846,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function o$2() {
     return {
       validate: function validate(o) {
@@ -753,6 +857,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function e$9() {
     return {
       validate: function validate(e) {
@@ -762,35 +867,45 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$9() {
     var t = function t(_t3, e) {
       var s = _t3.split(/"/);
+
       var l = s.length;
       var n = [];
       var r = "";
+
       for (var _t = 0; _t < l; _t++) {
         if (_t % 2 === 0) {
           var _l = s[_t].split(e);
+
           var a = _l.length;
+
           if (a === 1) {
             r += _l[0];
           } else {
             n.push(r + _l[0]);
+
             for (var _t2 = 1; _t2 < a - 1; _t2++) {
               n.push(_l[_t2]);
             }
+
             r = _l[a - 1];
           }
         } else {
           r += '"' + s[_t];
+
           if (_t < l - 1) {
             r += '"';
           }
         }
       }
+
       n.push(r);
       return n;
     };
+
     return {
       validate: function validate(e) {
         if (e.value === "") {
@@ -798,16 +913,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var s = Object.assign({}, {
           multiple: false,
           separator: /[,;]/
         }, e.options);
         var l = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
         var n = s.multiple === true || "".concat(s.multiple) === "true";
+
         if (n) {
           var _n = s.separator || /[,;]/;
+
           var r = t(e.value, _n);
           var a = r.length;
+
           for (var _t4 = 0; _t4 < a; _t4++) {
             if (!l.test(r[_t4])) {
               return {
@@ -815,6 +934,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               };
             }
           }
+
           return {
             valid: true
           };
@@ -826,6 +946,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function e$8() {
     return {
       validate: function validate(e) {
@@ -834,14 +955,17 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var t;
         var i = e.options.extension ? e.options.extension.toLowerCase().split(",") : null;
         var s = e.options.type ? e.options.type.toLowerCase().split(",") : null;
         var n = window["File"] && window["FileList"] && window["FileReader"];
+
         if (n) {
           var _n = e.element.files;
           var o = _n.length;
           var a = 0;
+
           if (e.options.maxFiles && o > parseInt("".concat(e.options.maxFiles), 10)) {
             return {
               meta: {
@@ -850,6 +974,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               valid: false
             };
           }
+
           if (e.options.minFiles && o < parseInt("".concat(e.options.minFiles), 10)) {
             return {
               meta: {
@@ -858,7 +983,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               valid: false
             };
           }
+
           var r = {};
+
           for (var l = 0; l < o; l++) {
             a += _n[l].size;
             t = _n[l].name.substr(_n[l].name.lastIndexOf(".") + 1);
@@ -868,6 +995,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               size: _n[l].size,
               type: _n[l].type
             };
+
             if (e.options.minSize && _n[l].size < parseInt("".concat(e.options.minSize), 10)) {
               return {
                 meta: Object.assign({}, {
@@ -876,6 +1004,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 valid: false
               };
             }
+
             if (e.options.maxSize && _n[l].size > parseInt("".concat(e.options.maxSize), 10)) {
               return {
                 meta: Object.assign({}, {
@@ -884,6 +1013,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 valid: false
               };
             }
+
             if (i && i.indexOf(t.toLowerCase()) === -1) {
               return {
                 meta: Object.assign({}, {
@@ -892,6 +1022,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 valid: false
               };
             }
+
             if (_n[l].type && s && s.indexOf(_n[l].type.toLowerCase()) === -1) {
               return {
                 meta: Object.assign({}, {
@@ -901,6 +1032,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               };
             }
           }
+
           if (e.options.maxTotalSize && a > parseInt("".concat(e.options.maxTotalSize), 10)) {
             return {
               meta: Object.assign({}, {
@@ -910,6 +1042,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               valid: false
             };
           }
+
           if (e.options.minTotalSize && a < parseInt("".concat(e.options.minTotalSize), 10)) {
             return {
               meta: Object.assign({}, {
@@ -921,6 +1054,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           }
         } else {
           t = e.value.substr(e.value.lastIndexOf(".") + 1);
+
           if (i && i.indexOf(t.toLowerCase()) === -1) {
             return {
               meta: {
@@ -931,12 +1065,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             };
           }
         }
+
         return {
           valid: true
         };
       }
     };
   }
+
   function a$4() {
     return {
       validate: function validate(a) {
@@ -945,6 +1081,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var s = Object.assign({}, {
           inclusive: true,
           message: ""
@@ -960,6 +1097,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function o$1() {
     return {
       validate: function validate(o) {
@@ -970,6 +1108,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function a$3() {
     return {
       validate: function validate(a) {
@@ -978,6 +1117,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var e = Object.assign({}, {
           decimalSeparator: ".",
           thousandsSeparator: ""
@@ -987,17 +1127,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         var o = new RegExp("^-?[0-9]{1,3}(".concat(r, "[0-9]{3})*(").concat(t, "[0-9]+)?$"));
         var n = new RegExp(r, "g");
         var s = "".concat(a.value);
+
         if (!o.test(s)) {
           return {
             valid: false
           };
         }
+
         if (r) {
           s = s.replace(n, "");
         }
+
         if (t) {
           s = s.replace(t, ".");
         }
+
         var i = parseFloat(s);
         return {
           valid: !isNaN(i) && isFinite(i) && Math.floor(i) === i
@@ -1005,6 +1149,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function d() {
     return {
       validate: function validate(d) {
@@ -1013,23 +1158,27 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var a = Object.assign({}, {
           ipv4: true,
           ipv6: true
         }, d.options);
         var e = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/([0-9]|[1-2][0-9]|3[0-2]))?$/;
         var s = /^\s*((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?\s*(\/(\d|\d\d|1[0-1]\d|12[0-8]))?$/;
+
         switch (true) {
           case a.ipv4 && !a.ipv6:
             return {
               message: d.l10n ? a.message || d.l10n.ip.ipv4 : a.message,
               valid: e.test(d.value)
             };
+
           case !a.ipv4 && a.ipv6:
             return {
               message: d.l10n ? a.message || d.l10n.ip.ipv6 : a.message,
               valid: s.test(d.value)
             };
+
           case a.ipv4 && a.ipv6:
           default:
             return {
@@ -1040,6 +1189,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function s$4() {
     return {
       validate: function validate(s) {
@@ -1048,6 +1198,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var a = Object.assign({}, {
           inclusive: true,
           message: ""
@@ -1063,6 +1214,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$8() {
     return {
       validate: function validate(t) {
@@ -1074,6 +1226,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function a$2() {
     return {
       validate: function validate(a) {
@@ -1082,31 +1235,38 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var e = Object.assign({}, {
           decimalSeparator: ".",
           thousandsSeparator: ""
         }, a.options);
         var t = "".concat(a.value);
+
         if (t.substr(0, 1) === e.decimalSeparator) {
           t = "0".concat(e.decimalSeparator).concat(t.substr(1));
         } else if (t.substr(0, 2) === "-".concat(e.decimalSeparator)) {
           t = "-0".concat(e.decimalSeparator).concat(t.substr(2));
         }
+
         var r = e.decimalSeparator === "." ? "\\." : e.decimalSeparator;
         var s = e.thousandsSeparator === "." ? "\\." : e.thousandsSeparator;
         var i = new RegExp("^-?[0-9]{1,3}(".concat(s, "[0-9]{3})*(").concat(r, "[0-9]+)?$"));
         var o = new RegExp(s, "g");
+
         if (!i.test(t)) {
           return {
             valid: false
           };
         }
+
         if (s) {
           t = t.replace(o, "");
         }
+
         if (r) {
           t = t.replace(r, ".");
         }
+
         var l = parseFloat(t);
         return {
           valid: !isNaN(l) && isFinite(l)
@@ -1114,6 +1274,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function r$1() {
     return {
       validate: function validate(r) {
@@ -1121,6 +1282,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function e$7() {
     return {
       validate: function validate(e) {
@@ -1129,7 +1291,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var t = e.options.regexp;
+
         if (t instanceof RegExp) {
           return {
             valid: t.test(e.value)
@@ -1144,17 +1308,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   var e$6 = function e(_e) {
     return Array(_e).fill("").map(function (e) {
       return Math.random().toString(36).charAt(2);
     }).join("");
   };
+
   function t$7(t, n) {
     var o = function o(e) {
       return Object.keys(e).map(function (t) {
         return "".concat(encodeURIComponent(t), "=").concat(encodeURIComponent(e[t]));
       }).join("&");
     };
+
     return new Promise(function (s, a) {
       var r = Object.assign({}, {
         crossDomain: false,
@@ -1167,42 +1334,57 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }).join("&");
       var c = t.indexOf("?");
       var i = "GET" === r.method ? "".concat(t).concat(c ? "?" : "&").concat(d) : t;
+
       if (r.crossDomain) {
         var _t = document.createElement("script");
+
         var _n = "___FormValidationFetch_".concat(e$6(12), "___");
+
         window[_n] = function (e) {
           delete window[_n];
           s(e);
         };
+
         _t.src = "".concat(i).concat(c ? "&" : "?", "callback=").concat(_n);
         _t.async = true;
+
         _t.addEventListener("load", function () {
           _t.parentNode.removeChild(_t);
         });
+
         _t.addEventListener("error", function () {
           return a;
         });
+
         document.head.appendChild(_t);
       } else {
         var _e2 = new XMLHttpRequest();
+
         _e2.open(r.method, i);
+
         _e2.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+
         if ("POST" === r.method) {
           _e2.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         }
+
         Object.keys(r.headers).forEach(function (t) {
           return _e2.setRequestHeader(t, r.headers[t]);
         });
+
         _e2.addEventListener("load", function () {
           s(JSON.parse(this.responseText));
         });
+
         _e2.addEventListener("error", function () {
           return a;
         });
+
         _e2.send(o(r.params));
       }
     });
   }
+
   function a$1() {
     var a = {
       crossDomain: false,
@@ -1218,14 +1400,18 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           });
         }
+
         var s = Object.assign({}, a, t.options);
         var r = s.data;
+
         if ("function" === typeof s.data) {
           r = s.data.call(this, t);
         }
+
         if ("string" === typeof r) {
           r = JSON.parse(r);
         }
+
         r[s.name || t.field] = t.value;
         var o = "function" === typeof s.url ? s.url.call(this, t) : s.url;
         return t$7(o, {
@@ -1247,6 +1433,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function e$5() {
     return {
       validate: function validate(e) {
@@ -1255,6 +1442,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var a = Object.assign({}, {
           "case": "lower"
         }, e.options);
@@ -1266,22 +1454,28 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$6() {
     var t = function t(e) {
       var t = e.length;
+
       for (var s = e.length - 1; s >= 0; s--) {
         var n = e.charCodeAt(s);
+
         if (n > 127 && n <= 2047) {
           t++;
         } else if (n > 2047 && n <= 65535) {
           t += 2;
         }
+
         if (n >= 56320 && n <= 57343) {
           s--;
         }
       }
+
       return "".concat(t);
     };
+
     return {
       validate: function validate(s) {
         var n = Object.assign({}, {
@@ -1290,30 +1484,37 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           utf8Bytes: false
         }, s.options);
         var a = n.trim === true || "".concat(n.trim) === "true" ? s.value.trim() : s.value;
+
         if (a === "") {
           return {
             valid: true
           };
         }
+
         var r = n.min ? "".concat(n.min) : "";
         var l = n.max ? "".concat(n.max) : "";
         var i = n.utf8Bytes ? t(a) : a.length;
         var g = true;
         var m = s.l10n ? n.message || s.l10n.stringLength["default"] : n.message;
+
         if (r && i < parseInt(r, 10) || l && i > parseInt(l, 10)) {
           g = false;
         }
+
         switch (true) {
           case !!r && !!l:
             m = r$2(s.l10n ? n.message || s.l10n.stringLength.between : n.message, [r, l]);
             break;
+
           case !!r:
             m = r$2(s.l10n ? n.message || s.l10n.stringLength.more : n.message, "".concat(parseInt(r, 10)));
             break;
+
           case !!l:
             m = r$2(s.l10n ? n.message || s.l10n.stringLength.less : n.message, "".concat(parseInt(l, 10)));
             break;
         }
+
         return {
           message: m,
           valid: g
@@ -1321,6 +1522,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   function t$5() {
     var t = {
       allowEmptyProtocol: false,
@@ -1334,6 +1536,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             valid: true
           };
         }
+
         var a = Object.assign({}, t, o.options);
         var l = a.allowLocal === true || "".concat(a.allowLocal) === "true";
         var f = a.allowEmptyProtocol === true || "".concat(a.allowEmptyProtocol) === "true";
@@ -1345,6 +1548,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     };
   }
+
   var s$3 = {
     between: s$5,
     blank: t$e,
@@ -1370,9 +1574,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     stringLength: t$6,
     uri: t$5
   };
+
   var l$1 = /*#__PURE__*/function () {
     function l(i, s) {
       _classCallCheck(this, l);
+
       this.elements = {};
       this.ee = s$6();
       this.filter = t$f();
@@ -1382,6 +1588,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       this.form = i;
       this.fields = s;
     }
+
     _createClass(l, [{
       key: "on",
       value: function on(e, t) {
@@ -1398,10 +1605,13 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "emit",
       value: function emit(e) {
         var _this$ee;
+
         for (var _len = arguments.length, t = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
           t[_key - 1] = arguments[_key];
         }
+
         (_this$ee = this.ee).emit.apply(_this$ee, [e].concat(t));
+
         return this;
       }
     }, {
@@ -1410,6 +1620,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (this.plugins[e]) {
           throw new Error("The plguin ".concat(e, " is registered"));
         }
+
         t.setCore(this);
         t.install();
         this.plugins[e] = t;
@@ -1419,9 +1630,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "deregisterPlugin",
       value: function deregisterPlugin(e) {
         var t = this.plugins[e];
+
         if (t) {
           t.uninstall();
         }
+
         delete this.plugins[e];
         return this;
       }
@@ -1431,6 +1644,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (this.validators[e]) {
           throw new Error("The validator ".concat(e, " is registered"));
         }
+
         this.validators[e] = t;
         return this;
       }
@@ -1476,6 +1690,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (!this.fields[e]) {
           throw new Error("The field ".concat(e, " validators are not defined. Please ensure the field is added first"));
         }
+
         var t = this.elements[e];
         var i = this.fields[e];
         delete this.elements[e];
@@ -1491,6 +1706,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "validate",
       value: function validate() {
         var _this = this;
+
         this.emit("core.form.validating", {
           formValidation: this
         });
@@ -1503,16 +1719,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 _this.emit("core.form.invalid", {
                   formValidation: _this
                 });
+
                 return Promise.resolve("Invalid");
+
               case e.indexOf("NotValidated") !== -1:
                 _this.emit("core.form.notvalidated", {
                   formValidation: _this
                 });
+
                 return Promise.resolve("NotValidated");
+
               default:
                 _this.emit("core.form.valid", {
                   formValidation: _this
                 });
+
                 return Promise.resolve("Valid");
             }
           });
@@ -1522,17 +1743,23 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "validateField",
       value: function validateField(e) {
         var _this2 = this;
+
         var t = this.results.get(e);
+
         if (t === "Valid" || t === "Invalid") {
           return Promise.resolve(t);
         }
+
         this.emit("core.field.validating", e);
         var i = this.elements[e];
+
         if (i.length === 0) {
           this.emit("core.field.valid", e);
           return Promise.resolve("Valid");
         }
+
         var s = i[0].getAttribute("type");
+
         if ("radio" === s || "checkbox" === s || i.length === 1) {
           return this.validateElement(e, i[0]);
         } else {
@@ -1542,15 +1769,23 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             switch (true) {
               case t.indexOf("Invalid") !== -1:
                 _this2.emit("core.field.invalid", e);
+
                 _this2.results.set(e, "Invalid");
+
                 return Promise.resolve("Invalid");
+
               case t.indexOf("NotValidated") !== -1:
                 _this2.emit("core.field.notvalidated", e);
+
                 _this2.results["delete"](e);
+
                 return Promise.resolve("NotValidated");
+
               default:
                 _this2.emit("core.field.valid", e);
+
                 _this2.results.set(e, "Valid");
+
                 return Promise.resolve("Valid");
             }
           });
@@ -1560,9 +1795,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "validateElement",
       value: function validateElement(e, t) {
         var _this3 = this;
+
         this.results["delete"](e);
         var i = this.elements[e];
         var s = this.filter.execute("element-ignored", false, [e, t, i]);
+
         if (s) {
           this.emit("core.element.ignored", {
             element: t,
@@ -1571,6 +1808,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           });
           return Promise.resolve("Ignored");
         }
+
         var _l = this.fields[e].validators;
         this.emit("core.element.validating", {
           element: t,
@@ -1584,16 +1822,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         });
         return this.waterfall(r).then(function (s) {
           var _l2 = s.indexOf("Invalid") === -1;
+
           _this3.emit("core.element.validated", {
             element: t,
             elements: i,
             field: e,
             valid: _l2
           });
+
           var r = t.getAttribute("type");
+
           if ("radio" === r || "checkbox" === r || i.length === 1) {
             _this3.emit(_l2 ? "core.field.valid" : "core.field.invalid", e);
           }
+
           return Promise.resolve(_l2 ? "Valid" : "Invalid");
         })["catch"](function (s) {
           _this3.emit("core.element.notvalidated", {
@@ -1601,6 +1843,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             elements: i,
             field: e
           });
+
           return Promise.resolve(s);
         });
       }
@@ -1608,9 +1851,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "executeValidator",
       value: function executeValidator(e, t, i, s) {
         var _this4 = this;
+
         var _l3 = this.elements[e];
         var r = this.filter.execute("validator-name", i, [i, e]);
         s.message = this.filter.execute("validator-message", s.message, [this.locale, e, r]);
+
         if (!this.validators[r] || s.enabled === false) {
           this.emit("core.validator.validated", {
             element: t,
@@ -1623,9 +1868,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           });
           return Promise.resolve("Valid");
         }
+
         var a = this.validators[r];
         var d = this.getElementValue(e, t, r);
         var o = this.filter.execute("field-should-validate", true, [e, t, d, i]);
+
         if (!o) {
           this.emit("core.validator.notvalidated", {
             element: t,
@@ -1635,6 +1882,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           });
           return Promise.resolve("NotValidated");
         }
+
         this.emit("core.validator.validating", {
           element: t,
           elements: _l3,
@@ -1650,9 +1898,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           value: d
         });
         var h = "function" === typeof n["then"];
+
         if (h) {
           return n.then(function (s) {
             var r = _this4.normalizeResult(e, i, s);
+
             _this4.emit("core.validator.validated", {
               element: t,
               elements: _l3,
@@ -1660,10 +1910,12 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               result: r,
               validator: i
             });
+
             return r.valid ? "Valid" : "Invalid";
           });
         } else {
           var _s = this.normalizeResult(e, i, n);
+
           this.emit("core.validator.validated", {
             element: t,
             elements: _l3,
@@ -1678,6 +1930,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "getElementValue",
       value: function getElementValue(e, t, s) {
         var _l4 = e$a(this.form, e, t, this.elements[e]);
+
         return this.filter.execute("field-value", _l4, [_l4, e, t, s]);
       }
     }, {
@@ -1709,26 +1962,33 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "updateFieldStatus",
       value: function updateFieldStatus(e, t, i) {
         var _this5 = this;
+
         var s = this.elements[e];
+
         var _l5 = s[0].getAttribute("type");
+
         var r = "radio" === _l5 || "checkbox" === _l5 ? [s[0]] : s;
         r.forEach(function (s) {
           return _this5.updateElementStatus(e, s, t, i);
         });
+
         if (!i) {
           switch (t) {
             case "NotValidated":
               this.emit("core.field.notvalidated", e);
               this.results["delete"](e);
               break;
+
             case "Validating":
               this.emit("core.field.validating", e);
               this.results["delete"](e);
               break;
+
             case "Valid":
               this.emit("core.field.valid", e);
               this.results.set(e, "Valid");
               break;
+
             case "Invalid":
               this.emit("core.field.invalid", e);
               this.results.set(e, "Invalid");
@@ -1738,15 +1998,18 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
           this.emit("core.field.invalid", e);
           this.results.set(e, "Invalid");
         }
+
         return this;
       }
     }, {
       key: "updateElementStatus",
       value: function updateElementStatus(e, t, i, s) {
         var _this6 = this;
+
         var _l6 = this.elements[e];
         var r = this.fields[e].validators;
         var a = s ? [s] : Object.keys(r);
+
         switch (i) {
           case "NotValidated":
             a.forEach(function (i) {
@@ -1763,6 +2026,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               field: e
             });
             break;
+
           case "Validating":
             a.forEach(function (i) {
               return _this6.emit("core.validator.validating", {
@@ -1778,6 +2042,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               field: e
             });
             break;
+
           case "Valid":
             a.forEach(function (i) {
               return _this6.emit("core.validator.validated", {
@@ -1798,6 +2063,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               valid: true
             });
             break;
+
           case "Invalid":
             a.forEach(function (i) {
               return _this6.emit("core.validator.validated", {
@@ -1819,12 +2085,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             });
             break;
         }
+
         return this;
       }
     }, {
       key: "resetForm",
       value: function resetForm(e) {
         var _this7 = this;
+
         Object.keys(this.fields).forEach(function (t) {
           return _this7.resetField(t, e);
         });
@@ -1839,7 +2107,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function resetField(e, t) {
         if (t) {
           var _t = this.elements[e];
+
           var _i = _t[0].getAttribute("type");
+
           _t.forEach(function (e) {
             if ("radio" === _i || "checkbox" === _i) {
               e.removeAttribute("selected");
@@ -1847,12 +2117,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               e.checked = false;
             } else {
               e.setAttribute("value", "");
+
               if (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement) {
                 e.value = "";
               }
             }
           });
         }
+
         this.updateFieldStatus(e, "NotValidated");
         this.emit("core.field.reset", {
           field: e,
@@ -1866,6 +2138,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (!this.fields[e]) {
           return Promise.resolve("Ignored");
         }
+
         this.updateFieldStatus(e, "NotValidated");
         return this.validateField(e);
       }
@@ -1875,6 +2148,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (!this.fields[e]) {
           return this;
         }
+
         var i = this.elements[e];
         this.toggleValidator(false, e, t);
         this.emit("core.validator.disabled", {
@@ -1891,6 +2165,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (!this.fields[e]) {
           return this;
         }
+
         var i = this.elements[e];
         this.toggleValidator(true, e, t);
         this.emit("core.validator.enabled", {
@@ -1907,6 +2182,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (this.fields[e] && this.fields[e].validators && this.fields[e].validators[t]) {
           this.fields[e].validators[t][i] = s;
         }
+
         return this;
       }
     }, {
@@ -1919,6 +2195,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "destroy",
       value: function destroy() {
         var _this8 = this;
+
         Object.keys(this.plugins).forEach(function (e) {
           return _this8.plugins[e].uninstall();
         });
@@ -1965,7 +2242,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "toggleValidator",
       value: function toggleValidator(e, t, i) {
         var _this9 = this;
+
         var s = this.fields[t].validators;
+
         if (i && s && s[i]) {
           this.fields[t].validators[i].enabled = e;
         } else if (!i) {
@@ -1973,11 +2252,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             return _this9.fields[t].validators[i].enabled = e;
           });
         }
+
         return this.updateFieldStatus(t, "NotValidated", i);
       }
     }]);
+
     return l;
   }();
+
   function r(e, t) {
     var i = Object.assign({}, {
       fields: {},
@@ -1999,11 +2281,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     });
     return r;
   }
+
   var t$4 = /*#__PURE__*/function () {
     function t(_t) {
       _classCallCheck(this, t);
+
       this.opts = _t;
     }
+
     _createClass(t, [{
       key: "setCore",
       value: function setCore(_t2) {
@@ -2017,22 +2302,30 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "uninstall",
       value: function uninstall() {}
     }]);
+
     return t;
   }();
+
   var index$2 = {
     getFieldValue: e$a
   };
+
   var e$4 = /*#__PURE__*/function (_t) {
     _inherits(e, _t);
+
     var _super = _createSuper(e);
+
     function e(t) {
       var _this;
+
       _classCallCheck(this, e);
+
       _this = _super.call(this, t);
       _this.opts = t || {};
       _this.validatorNameFilter = _this.getValidatorName.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(e, [{
       key: "install",
       value: function install() {
@@ -2049,14 +2342,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         return this.opts[t] || t;
       }
     }]);
+
     return e;
   }(t$4);
+
   var i$3 = /*#__PURE__*/function (_e) {
     _inherits(i, _e);
+
     var _super = _createSuper(i);
+
     function i() {
       var _this;
+
       _classCallCheck(this, i);
+
       _this = _super.call(this, {});
       _this.elementValidatedHandler = _this.onElementValidated.bind(_assertThisInitialized(_this));
       _this.fieldValidHandler = _this.onFieldValid.bind(_assertThisInitialized(_this));
@@ -2064,6 +2363,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.messageDisplayedHandler = _this.onMessageDisplayed.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(i, [{
       key: "install",
       value: function install() {
@@ -2086,6 +2386,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldValid",
       value: function onFieldValid(e) {
         var _i = this.core.getElements(e);
+
         if (_i) {
           _i.forEach(function (e) {
             e.setAttribute("aria-invalid", "false");
@@ -2097,6 +2398,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldInvalid",
       value: function onFieldInvalid(e) {
         var _i2 = this.core.getElements(e);
+
         if (_i2) {
           _i2.forEach(function (e) {
             return e.setAttribute("aria-invalid", "true");
@@ -2108,12 +2410,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function onMessageDisplayed(e) {
         e.messageElement.setAttribute("role", "alert");
         e.messageElement.setAttribute("aria-hidden", "false");
+
         var _i3 = this.core.getElements(e.field);
+
         var t = _i3.indexOf(e.element);
+
         var l = "js-fv-".concat(e.field, "-").concat(t, "-").concat(Date.now(), "-message");
         e.messageElement.setAttribute("id", l);
         e.element.setAttribute("aria-describedby", l);
         var a = e.element.getAttribute("type");
+
         if ("radio" === a || "checkbox" === a) {
           _i3.forEach(function (e) {
             return e.setAttribute("aria-describedby", l);
@@ -2121,14 +2427,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         }
       }
     }]);
+
     return i;
   }(t$4);
+
   var t$3 = /*#__PURE__*/function (_e) {
     _inherits(t, _e);
+
     var _super = _createSuper(t);
+
     function t(e) {
       var _this;
+
       _classCallCheck(this, t);
+
       _this = _super.call(this, e);
       _this.addedFields = new Map();
       _this.opts = Object.assign({}, {
@@ -2140,16 +2452,19 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.fieldRemovedHandler = _this.onFieldRemoved.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(t, [{
       key: "install",
       value: function install() {
         var _this2 = this;
+
         this.parsePlugins();
         var e = this.parseOptions();
         Object.keys(e).forEach(function (_t) {
           if (!_this2.addedFields.has(_t)) {
             _this2.addedFields.set(_t, true);
           }
+
           _this2.core.addField(_t, e[_t]);
         });
         this.core.on("core.field.added", this.fieldAddedHandler).on("core.field.removed", this.fieldRemovedHandler);
@@ -2164,18 +2479,24 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldAdded",
       value: function onFieldAdded(e) {
         var _this3 = this;
+
         var _t2 = e.elements;
+
         if (!_t2 || _t2.length === 0 || this.addedFields.has(e.field)) {
           return;
         }
+
         this.addedFields.set(e.field, true);
+
         _t2.forEach(function (_t3) {
           var s = _this3.parseElement(_t3);
+
           if (!_this3.isEmptyOption(s)) {
             var _t12 = {
               selector: e.options.selector,
               validators: Object.assign({}, e.options.validators || {}, s.validators)
             };
+
             _this3.core.setFieldOptions(e.field, _t12);
           }
         });
@@ -2191,6 +2512,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "parseOptions",
       value: function parseOptions() {
         var _this4 = this;
+
         var e = this.opts.prefix;
         var _t5 = {};
         var s = this.core.getFields();
@@ -2198,14 +2520,17 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         var i = [].slice.call(a.querySelectorAll("[name], [".concat(e, "field]")));
         i.forEach(function (s) {
           var a = _this4.parseElement(s);
+
           if (!_this4.isEmptyOption(a)) {
             var _i = s.getAttribute("name") || s.getAttribute("".concat(e, "field"));
+
             _t5[_i] = Object.assign({}, _t5[_i], a);
           }
         });
         Object.keys(_t5).forEach(function (e) {
           Object.keys(_t5[e].validators).forEach(function (a) {
             _t5[e].validators[a].enabled = _t5[e].validators[a].enabled || false;
+
             if (s[e] && s[e].validators && s[e].validators[a]) {
               Object.assign(_t5[e].validators[a], s[e].validators[a]);
             }
@@ -2218,41 +2543,55 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function createPluginInstance(e, _t6) {
         var s = e.split(".");
         var a = window || this;
+
         for (var _e2 = 0, _t13 = s.length; _e2 < _t13; _e2++) {
           a = a[s[_e2]];
         }
+
         if (typeof a !== "function") {
           throw new Error("the plugin ".concat(e, " doesn't exist"));
         }
+
         return new a(_t6);
       }
     }, {
       key: "parsePlugins",
       value: function parsePlugins() {
         var _this5 = this;
+
         var e = this.core.getFormElement();
+
         var _t8 = new RegExp("^".concat(this.opts.pluginPrefix, "([a-z0-9-]+)(___)*([a-z0-9-]+)*$"));
+
         var s = e.attributes.length;
         var a = {};
+
         for (var i = 0; i < s; i++) {
           var _s = e.attributes[i].name;
           var n = e.attributes[i].value;
+
           var r = _t8.exec(_s);
+
           if (r && r.length === 4) {
             var _e3 = this.toCamelCase(r[1]);
+
             a[_e3] = Object.assign({}, r[3] ? _defineProperty({}, this.toCamelCase(r[3]), n) : {
               enabled: "" === n || "true" === n
             }, a[_e3]);
           }
         }
+
         Object.keys(a).forEach(function (e) {
           var _t9 = a[e];
           var s = _t9["enabled"];
           var i = _t9["class"];
+
           if (s && i) {
             delete _t9["enabled"];
             delete _t9["clazz"];
+
             var _s2 = _this5.createPluginInstance(i, _t9);
+
             _this5.core.registerPlugin(e, _s2);
           }
         });
@@ -2267,12 +2606,15 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "parseElement",
       value: function parseElement(e) {
         var _t11 = new RegExp("^".concat(this.opts.prefix, "([a-z0-9-]+)(___)*([a-z0-9-]+)*$"));
+
         var s = e.attributes.length;
         var a = {};
         var i = e.getAttribute("type");
+
         for (var n = 0; n < s; n++) {
           var _s3 = e.attributes[n].name;
           var r = e.attributes[n].value;
+
           if (this.opts.html5Input) {
             switch (true) {
               case "minlength" === _s3:
@@ -2281,39 +2623,46 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                   min: parseInt(r, 10)
                 }, a["stringLength"]);
                 break;
+
               case "maxlength" === _s3:
                 a["stringLength"] = Object.assign({}, {
                   enabled: true,
                   max: parseInt(r, 10)
                 }, a["stringLength"]);
                 break;
+
               case "pattern" === _s3:
                 a["regexp"] = Object.assign({}, {
                   enabled: true,
                   regexp: r
                 }, a["regexp"]);
                 break;
+
               case "required" === _s3:
                 a["notEmpty"] = Object.assign({}, {
                   enabled: true
                 }, a["notEmpty"]);
                 break;
+
               case "type" === _s3 && "color" === r:
                 a["color"] = Object.assign({}, {
                   enabled: true,
                   type: "hex"
                 }, a["color"]);
                 break;
+
               case "type" === _s3 && "email" === r:
                 a["emailAddress"] = Object.assign({}, {
                   enabled: true
                 }, a["emailAddress"]);
                 break;
+
               case "type" === _s3 && "url" === r:
                 a["uri"] = Object.assign({}, {
                   enabled: true
                 }, a["uri"]);
                 break;
+
               case "type" === _s3 && "range" === r:
                 a["between"] = Object.assign({}, {
                   enabled: true,
@@ -2321,12 +2670,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                   min: parseFloat(e.getAttribute("min"))
                 }, a["between"]);
                 break;
+
               case "min" === _s3 && i !== "date" && i !== "range":
                 a["greaterThan"] = Object.assign({}, {
                   enabled: true,
                   min: parseFloat(r)
                 }, a["greaterThan"]);
                 break;
+
               case "max" === _s3 && i !== "date" && i !== "range":
                 a["lessThan"] = Object.assign({}, {
                   enabled: true,
@@ -2335,14 +2686,18 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 break;
             }
           }
+
           var l = _t11.exec(_s3);
+
           if (l && l.length === 4) {
             var _e4 = this.toCamelCase(l[1]);
+
             a[_e4] = Object.assign({}, l[3] ? _defineProperty({}, this.toCamelCase(l[3]), this.normalizeValue(r)) : {
               enabled: "" === r || "true" === r
             }, a[_e4]);
           }
         }
+
         return {
           validators: a
         };
@@ -2363,25 +2718,34 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         return e.replace(/-./g, this.toUpperCase);
       }
     }]);
+
     return t;
   }(t$4);
+
   var o = /*#__PURE__*/function (_t) {
     _inherits(o, _t);
+
     var _super = _createSuper(o);
+
     function o() {
       var _this;
+
       _classCallCheck(this, o);
+
       _this = _super.call(this, {});
       _this.onValidHandler = _this.onFormValid.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(o, [{
       key: "install",
       value: function install() {
         var t = this.core.getFormElement();
+
         if (t.querySelectorAll('[type="submit"][name="submit"]').length) {
           throw new Error("Do not use `submit` for the name attribute of submit button");
         }
+
         this.core.on("core.form.valid", this.onValidHandler);
       }
     }, {
@@ -2393,24 +2757,32 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFormValid",
       value: function onFormValid() {
         var t = this.core.getFormElement();
+
         if (t instanceof HTMLFormElement) {
           t.submit();
         }
       }
     }]);
+
     return o;
   }(t$4);
+
   var e$3 = /*#__PURE__*/function (_t) {
     _inherits(e, _t);
+
     var _super = _createSuper(e);
+
     function e(t) {
       var _this;
+
       _classCallCheck(this, e);
+
       _this = _super.call(this, t);
       _this.opts = t || {};
       _this.triggerExecutedHandler = _this.onTriggerExecuted.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(e, [{
       key: "install",
       value: function install() {
@@ -2426,12 +2798,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function onTriggerExecuted(t) {
         if (this.opts[t.field]) {
           var _e3 = this.opts[t.field].split(" ");
+
           var _iterator = _createForOfIteratorHelper(_e3),
-            _step;
+              _step;
+
           try {
             for (_iterator.s(); !(_step = _iterator.n()).done;) {
               var _t2 = _step.value;
+
               var _e4 = _t2.trim();
+
               if (this.opts[_e4]) {
                 this.core.revalidateField(_e4);
               }
@@ -2444,14 +2820,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         }
       }
     }]);
+
     return e;
   }(t$4);
+
   var e$2 = /*#__PURE__*/function (_t) {
     _inherits(e, _t);
+
     var _super = _createSuper(e);
+
     function e(t) {
       var _this;
+
       _classCallCheck(this, e);
+
       _this = _super.call(this, t);
       _this.opts = Object.assign({}, {
         excluded: e.defaultIgnore
@@ -2459,6 +2841,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.ignoreValidationFilter = _this.ignoreValidation.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(e, [{
       key: "install",
       value: function install() {
@@ -2478,18 +2861,26 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "defaultIgnore",
       value: function defaultIgnore(t, _e, i) {
         var r = !!(_e.offsetWidth || _e.offsetHeight || _e.getClientRects().length);
+
         var n = _e.getAttribute("disabled");
+
         return n === "" || n === "disabled" || _e.getAttribute("type") === "hidden" || !r;
       }
     }]);
+
     return e;
   }(t$4);
+
   var t$2 = /*#__PURE__*/function (_e) {
     _inherits(t, _e);
+
     var _super = _createSuper(t);
+
     function t(e) {
       var _this;
+
       _classCallCheck(this, t);
+
       _this = _super.call(this, e);
       _this.statuses = new Map();
       _this.opts = Object.assign({}, {
@@ -2503,6 +2894,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.fieldRemovedHandler = _this.onFieldRemoved.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(t, [{
       key: "install",
       value: function install() {
@@ -2537,6 +2929,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (this.statuses.has(e.field)) {
           this.statuses["delete"](e.field);
         }
+
         this.opts.onStatusChanged(this.areFieldsValid());
       }
     }, {
@@ -2549,6 +2942,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementValidated",
       value: function onElementValidated(e) {
         this.statuses.set(e.field, e.valid ? "Valid" : "Invalid");
+
         if (e.valid) {
           this.opts.onStatusChanged(this.areFieldsValid());
         } else {
@@ -2568,8 +2962,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         this.opts.onStatusChanged(this.areFieldsValid());
       }
     }]);
+
     return t;
   }(t$4);
+
   function s$2(s, a) {
     a.split(" ").forEach(function (a) {
       if (s.classList) {
@@ -2579,11 +2975,13 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       }
     });
   }
+
   function a(s, a) {
     a.split(" ").forEach(function (a) {
       s.classList ? s.classList.remove(a) : s.className = s.className.replace(a, "");
     });
   }
+
   function c(c, e) {
     var t = [];
     var f = [];
@@ -2599,30 +2997,42 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       return s$2(c, a);
     });
   }
+
   function e$1(e, t) {
     var l = e.matches || e.webkitMatchesSelector || e["mozMatchesSelector"] || e["msMatchesSelector"];
+
     if (l) {
       return l.call(e, t);
     }
+
     var c = [].slice.call(e.parentElement.querySelectorAll(t));
     return c.indexOf(e) >= 0;
   }
+
   function t$1(t, l) {
     var c = t;
+
     while (c) {
       if (e$1(c, l)) {
         break;
       }
+
       c = c.parentElement;
     }
+
     return c;
   }
+
   var s$1 = /*#__PURE__*/function (_e) {
     _inherits(s, _e);
+
     var _super = _createSuper(s);
+
     function s(e) {
       var _this;
+
       _classCallCheck(this, s);
+
       _this = _super.call(this, e);
       _this.useDefaultContainer = false;
       _this.messages = new Map();
@@ -2640,12 +3050,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.validatorNotValidatedHandler = _this.onValidatorNotValidated.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(s, [{
       key: "install",
       value: function install() {
         if (this.useDefaultContainer) {
           this.core.getFormElement().appendChild(this.defaultContainer);
         }
+
         this.core.on("core.element.ignored", this.elementIgnoredHandler).on("core.field.added", this.fieldAddedHandler).on("core.field.removed", this.fieldRemovedHandler).on("core.validator.validated", this.validatorValidatedHandler).on("core.validator.notvalidated", this.validatorNotValidatedHandler);
       }
     }, {
@@ -2654,6 +3066,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         if (this.useDefaultContainer) {
           this.core.getFormElement().removeChild(this.defaultContainer);
         }
+
         this.messages.forEach(function (e) {
           return e.parentNode.removeChild(e);
         });
@@ -2664,12 +3077,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldAdded",
       value: function onFieldAdded(e) {
         var _this2 = this;
+
         var t = e.elements;
+
         if (t) {
           t.forEach(function (e) {
             var t = _this2.messages.get(e);
+
             if (t) {
               t.parentNode.removeChild(t);
+
               _this2.messages["delete"](e);
             }
           });
@@ -2680,15 +3097,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldRemoved",
       value: function onFieldRemoved(e) {
         var _this3 = this;
+
         if (!e.elements.length || !e.field) {
           return;
         }
+
         var t = e.elements[0].getAttribute("type");
+
         var _s2 = "radio" === t || "checkbox" === t ? [e.elements[0]] : e.elements;
+
         _s2.forEach(function (e) {
           if (_this3.messages.has(e)) {
             var _t = _this3.messages.get(e);
+
             _t.parentNode.removeChild(_t);
+
             _this3.messages["delete"](e);
           }
         });
@@ -2697,8 +3120,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareFieldContainer",
       value: function prepareFieldContainer(e, t) {
         var _this4 = this;
+
         if (t.length) {
           var _s12 = t[0].getAttribute("type");
+
           if ("radio" === _s12 || "checkbox" === _s12) {
             this.prepareElementContainer(e, t[0], t);
           } else {
@@ -2712,12 +3137,15 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareElementContainer",
       value: function prepareElementContainer(e, _s5, i) {
         var a;
+
         if ("string" === typeof this.opts.container) {
           var _e2 = "#" === this.opts.container.charAt(0) ? "[id=\"".concat(this.opts.container.substring(1), "\"]") : this.opts.container;
+
           a = this.core.getFormElement().querySelector(_e2);
         } else {
           a = this.opts.container(e, _s5);
         }
+
         var l = document.createElement("div");
         a.appendChild(l);
         c(l, {
@@ -2742,18 +3170,27 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         var _s6 = e.elements;
         var i = e.element.getAttribute("type");
         var a = ("radio" === i || "checkbox" === i) && _s6.length > 0 ? _s6[0] : e.element;
+
         if (this.messages.has(a)) {
           var _s13 = this.messages.get(a);
+
           var _i = _s13.querySelector("[data-field=\"".concat(e.field, "\"][data-validator=\"").concat(e.validator, "\"]"));
+
           if (!_i && !e.result.valid) {
             var _i2 = document.createElement("div");
+
             _i2.innerHTML = this.getMessage(e.result);
+
             _i2.setAttribute("data-field", e.field);
+
             _i2.setAttribute("data-validator", e.validator);
+
             if (this.opts.clazz) {
               c(_i2, _defineProperty({}, this.opts.clazz, true));
             }
+
             _s13.appendChild(_i2);
+
             this.core.emit("plugins.message.displayed", {
               element: e.element,
               field: e.field,
@@ -2781,11 +3218,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onValidatorNotValidated",
       value: function onValidatorNotValidated(e) {
         var t = e.elements;
+
         var _s8 = e.element.getAttribute("type");
+
         var i = "radio" === _s8 || "checkbox" === _s8 ? t[0] : e.element;
+
         if (this.messages.has(i)) {
           var _t3 = this.messages.get(i);
+
           var _s14 = _t3.querySelector("[data-field=\"".concat(e.field, "\"][data-validator=\"").concat(e.validator, "\"]"));
+
           if (_s14) {
             _t3.removeChild(_s14);
           }
@@ -2795,11 +3237,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementIgnored",
       value: function onElementIgnored(e) {
         var t = e.elements;
+
         var _s10 = e.element.getAttribute("type");
+
         var i = "radio" === _s10 || "checkbox" === _s10 ? t[0] : e.element;
+
         if (this.messages.has(i)) {
           var _t4 = this.messages.get(i);
+
           var _s15 = [].slice.call(_t4.querySelectorAll("[data-field=\"".concat(e.field, "\"]")));
+
           _s15.forEach(function (e) {
             _t4.removeChild(e);
           });
@@ -2809,26 +3256,36 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "getClosestContainer",
       value: function getClosestContainer(e, t, _s) {
         var i = e;
+
         while (i) {
           if (i === t) {
             break;
           }
+
           i = i.parentElement;
+
           if (_s.test(i.className)) {
             break;
           }
         }
+
         return i;
       }
     }]);
+
     return s;
   }(t$4);
+
   var l = /*#__PURE__*/function (_e) {
     _inherits(l, _e);
+
     var _super = _createSuper(l);
+
     function l(e) {
       var _this;
+
       _classCallCheck(this, l);
+
       _this = _super.call(this, e);
       _this.results = new Map();
       _this.containers = new Map();
@@ -2850,18 +3307,22 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.messagePlacedHandler = _this.onMessagePlaced.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(l, [{
       key: "install",
       value: function install() {
         var _t,
-          _this2 = this;
+            _this2 = this;
+
         c(this.core.getFormElement(), (_t = {}, _defineProperty(_t, this.opts.formClass, true), _defineProperty(_t, "fv-plugins-framework", true), _t));
         this.core.on("core.element.ignored", this.elementIgnoredHandler).on("core.element.validating", this.elementValidatingHandler).on("core.element.validated", this.elementValidatedHandler).on("core.element.notvalidated", this.elementNotValidatedHandler).on("plugins.icon.placed", this.iconPlacedHandler).on("core.field.added", this.fieldAddedHandler).on("core.field.removed", this.fieldRemovedHandler);
+
         if (this.opts.defaultMessageContainer) {
           this.core.registerPlugin(this.MESSAGE_PLUGIN, new s$1({
             clazz: this.opts.messageClass,
             container: function container(e, t) {
               var _l = "string" === typeof _this2.opts.rowSelector ? _this2.opts.rowSelector : _this2.opts.rowSelector(e, t);
+
               var a = t$1(t, _l);
               return s$1.getClosestContainer(t, a, _this2.opts.rowPattern);
             }
@@ -2873,10 +3334,12 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "uninstall",
       value: function uninstall() {
         var _t2;
+
         this.results.clear();
         this.containers.clear();
         c(this.core.getFormElement(), (_t2 = {}, _defineProperty(_t2, this.opts.formClass, false), _defineProperty(_t2, "fv-plugins-framework", false), _t2));
         this.core.off("core.element.ignored", this.elementIgnoredHandler).off("core.element.validating", this.elementValidatingHandler).off("core.element.validated", this.elementValidatedHandler).off("core.element.notvalidated", this.elementNotValidatedHandler).off("plugins.icon.placed", this.iconPlacedHandler).off("core.field.added", this.fieldAddedHandler).off("core.field.removed", this.fieldRemovedHandler);
+
         if (this.opts.defaultMessageContainer) {
           this.core.deregisterPlugin(this.MESSAGE_PLUGIN);
           this.core.off("plugins.message.placed", this.messagePlacedHandler);
@@ -2892,13 +3355,18 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldAdded",
       value: function onFieldAdded(e) {
         var _this3 = this;
+
         var s = e.elements;
+
         if (s) {
           s.forEach(function (e) {
             var s = _this3.containers.get(e);
+
             if (s) {
               var _t3;
+
               c(s, (_t3 = {}, _defineProperty(_t3, _this3.opts.rowInvalidClass, false), _defineProperty(_t3, _this3.opts.rowValidatingClass, false), _defineProperty(_t3, _this3.opts.rowValidClass, false), _defineProperty(_t3, "fv-plugins-icon-container", false), _t3));
+
               _this3.containers["delete"](e);
             }
           });
@@ -2909,10 +3377,13 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldRemoved",
       value: function onFieldRemoved(e) {
         var _this4 = this;
+
         e.elements.forEach(function (e) {
           var s = _this4.containers.get(e);
+
           if (s) {
             var _t4;
+
             c(s, (_t4 = {}, _defineProperty(_t4, _this4.opts.rowInvalidClass, false), _defineProperty(_t4, _this4.opts.rowValidatingClass, false), _defineProperty(_t4, _this4.opts.rowValidClass, false), _t4));
           }
         });
@@ -2921,8 +3392,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareFieldContainer",
       value: function prepareFieldContainer(e, t) {
         var _this5 = this;
+
         if (t.length) {
           var _s = t[0].getAttribute("type");
+
           if ("radio" === _s || "checkbox" === _s) {
             this.prepareElementContainer(e, t[0]);
           } else {
@@ -2936,9 +3409,12 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareElementContainer",
       value: function prepareElementContainer(e, i) {
         var _l2 = "string" === typeof this.opts.rowSelector ? this.opts.rowSelector : this.opts.rowSelector(e, i);
+
         var a = t$1(i, _l2);
+
         if (a !== i) {
           var _t5;
+
           c(a, (_t5 = {}, _defineProperty(_t5, this.opts.rowClasses, true), _defineProperty(_t5, "fv-plugins-icon-container", true), _t5));
           this.containers.set(i, a);
         }
@@ -2948,10 +3424,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function onElementValidating(e) {
         var s = e.elements;
         var i = e.element.getAttribute("type");
+
         var _l3 = "radio" === i || "checkbox" === i ? s[0] : e.element;
+
         var a = this.containers.get(_l3);
+
         if (a) {
           var _t6;
+
           c(a, (_t6 = {}, _defineProperty(_t6, this.opts.rowInvalidClass, false), _defineProperty(_t6, this.opts.rowValidatingClass, true), _defineProperty(_t6, this.opts.rowValidClass, false), _t6));
         }
       }
@@ -2969,15 +3449,21 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "removeClasses",
       value: function removeClasses(e, s) {
         var _this6 = this;
+
         var i = e.getAttribute("type");
+
         var _l4 = "radio" === i || "checkbox" === i ? s[0] : e;
+
         s.forEach(function (e) {
           var _t7;
+
           c(e, (_t7 = {}, _defineProperty(_t7, _this6.opts.eleValidClass, false), _defineProperty(_t7, _this6.opts.eleInvalidClass, false), _t7));
         });
         var a = this.containers.get(_l4);
+
         if (a) {
           var _t8;
+
           c(a, (_t8 = {}, _defineProperty(_t8, this.opts.rowInvalidClass, false), _defineProperty(_t8, this.opts.rowValidatingClass, false), _defineProperty(_t8, this.opts.rowValidClass, false), _t8));
         }
       }
@@ -2985,17 +3471,23 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementValidated",
       value: function onElementValidated(e) {
         var _this7 = this;
+
         var s = e.elements;
         var i = e.element.getAttribute("type");
+
         var _l5 = "radio" === i || "checkbox" === i ? s[0] : e.element;
+
         s.forEach(function (s) {
           var _t9;
+
           c(s, (_t9 = {}, _defineProperty(_t9, _this7.opts.eleValidClass, e.valid), _defineProperty(_t9, _this7.opts.eleInvalidClass, !e.valid), _t9));
         });
         var a = this.containers.get(_l5);
+
         if (a) {
           if (!e.valid) {
             var _t10;
+
             this.results.set(_l5, false);
             c(a, (_t10 = {}, _defineProperty(_t10, this.opts.rowInvalidClass, true), _defineProperty(_t10, this.opts.rowValidatingClass, false), _defineProperty(_t10, this.opts.rowValidClass, false), _t10));
           } else {
@@ -3006,22 +3498,30 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
                 _e2 = false;
               }
             });
+
             if (_e2) {
               var _t11;
+
               c(a, (_t11 = {}, _defineProperty(_t11, this.opts.rowInvalidClass, false), _defineProperty(_t11, this.opts.rowValidatingClass, false), _defineProperty(_t11, this.opts.rowValidClass, true), _t11));
             }
           }
         }
       }
     }]);
+
     return l;
   }(t$4);
+
   var i$2 = /*#__PURE__*/function (_e) {
     _inherits(i, _e);
+
     var _super = _createSuper(i);
+
     function i(e) {
       var _this;
+
       _classCallCheck(this, i);
+
       _this = _super.call(this, e);
       _this.icons = new Map();
       _this.opts = Object.assign({}, {
@@ -3038,6 +3538,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.fieldAddedHandler = _this.onFieldAdded.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(i, [{
       key: "install",
       value: function install() {
@@ -3056,12 +3557,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onFieldAdded",
       value: function onFieldAdded(e) {
         var _this2 = this;
+
         var t = e.elements;
+
         if (t) {
           t.forEach(function (e) {
             var t = _this2.icons.get(e);
+
             if (t) {
               t.parentNode.removeChild(t);
+
               _this2.icons["delete"](e);
             }
           });
@@ -3072,8 +3577,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareFieldIcon",
       value: function prepareFieldIcon(e, t) {
         var _this3 = this;
+
         if (t.length) {
           var _i8 = t[0].getAttribute("type");
+
           if ("radio" === _i8 || "checkbox" === _i8) {
             this.prepareElementIcon(e, t[0]);
           } else {
@@ -3088,7 +3595,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function prepareElementIcon(e, _i2) {
         var n = document.createElement("i");
         n.setAttribute("data-field", e);
+
         _i2.parentNode.insertBefore(n, _i2.nextSibling);
+
         c(n, {
           "fv-plugins-icon": true
         });
@@ -3110,6 +3619,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementValidating",
       value: function onElementValidating(e) {
         var _this$setClasses;
+
         var t = this.setClasses(e.field, e.element, e.elements, (_this$setClasses = {}, _defineProperty(_this$setClasses, this.opts.invalid, false), _defineProperty(_this$setClasses, this.opts.valid, false), _defineProperty(_this$setClasses, this.opts.validating, true), _this$setClasses));
         var _i3 = {
           element: e.element,
@@ -3124,6 +3634,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementValidated",
       value: function onElementValidated(e) {
         var _this$setClasses2;
+
         var t = this.setClasses(e.field, e.element, e.elements, (_this$setClasses2 = {}, _defineProperty(_this$setClasses2, this.opts.invalid, !e.valid), _defineProperty(_this$setClasses2, this.opts.valid, e.valid), _defineProperty(_this$setClasses2, this.opts.validating, false), _this$setClasses2));
         var _i4 = {
           element: e.element,
@@ -3138,6 +3649,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementNotValidated",
       value: function onElementNotValidated(e) {
         var _this$setClasses3;
+
         var t = this.setClasses(e.field, e.element, e.elements, (_this$setClasses3 = {}, _defineProperty(_this$setClasses3, this.opts.invalid, false), _defineProperty(_this$setClasses3, this.opts.valid, false), _defineProperty(_this$setClasses3, this.opts.validating, false), _this$setClasses3));
         var _i5 = {
           element: e.element,
@@ -3152,6 +3664,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onElementIgnored",
       value: function onElementIgnored(e) {
         var _this$setClasses4;
+
         var t = this.setClasses(e.field, e.element, e.elements, (_this$setClasses4 = {}, _defineProperty(_this$setClasses4, this.opts.invalid, false), _defineProperty(_this$setClasses4, this.opts.valid, false), _defineProperty(_this$setClasses4, this.opts.validating, false), _this$setClasses4));
         var _i6 = {
           element: e.element,
@@ -3166,9 +3679,12 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "setClasses",
       value: function setClasses(e, _i7, n, l) {
         var s = _i7.getAttribute("type");
+
         var d = "radio" === s || "checkbox" === s ? n[0] : _i7;
+
         if (this.icons.has(d)) {
           var _e2 = this.icons.get(d);
+
           c(_e2, l);
           return _e2;
         } else {
@@ -3176,14 +3692,20 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         }
       }
     }]);
+
     return i;
   }(t$4);
+
   var i$1 = /*#__PURE__*/function (_e) {
     _inherits(i, _e);
+
     var _super = _createSuper(i);
+
     function i(e) {
       var _this;
+
       _classCallCheck(this, i);
+
       _this = _super.call(this, e);
       _this.invalidFields = new Map();
       _this.opts = Object.assign({}, {
@@ -3196,6 +3718,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.elementValidatingHandler = _this.onElementValidating.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(i, [{
       key: "install",
       value: function install() {
@@ -3217,12 +3740,15 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onValidatorValidated",
       value: function onValidatorValidated(e) {
         var _i2 = this.invalidFields.has(e.element) ? this.invalidFields.get(e.element) : [];
+
         var t = _i2.indexOf(e.validator);
+
         if (e.result.valid && t >= 0) {
           _i2.splice(t, 1);
         } else if (!e.result.valid && t === -1) {
           _i2.push(e.validator);
         }
+
         this.invalidFields.set(e.element, _i2);
       }
     }, {
@@ -3246,19 +3772,26 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "clearInvalidFields",
       value: function clearInvalidFields(e) {
         var _this2 = this;
+
         e.forEach(function (e) {
           return _this2.invalidFields["delete"](e);
         });
       }
     }]);
+
     return i;
   }(t$4);
+
   var e = /*#__PURE__*/function (_t) {
     _inherits(e, _t);
+
     var _super = _createSuper(e);
+
     function e(t) {
       var _this;
+
       _classCallCheck(this, e);
+
       _this = _super.call(this, t);
       _this.isFormValid = false;
       _this.opts = Object.assign({}, {
@@ -3271,13 +3804,16 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.buttonClickHandler = _this.handleClickEvent.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(e, [{
       key: "install",
       value: function install() {
         var _this2 = this;
+
         if (!(this.core.getFormElement() instanceof HTMLFormElement)) {
           return;
         }
+
         var t = this.core.getFormElement();
         this.submitButtons = this.opts.buttons(t);
         t.setAttribute("novalidate", "novalidate");
@@ -3293,10 +3829,13 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "uninstall",
       value: function uninstall() {
         var _this3 = this;
+
         var t = this.core.getFormElement();
+
         if (t instanceof HTMLFormElement) {
           t.removeEventListener("submit", this.submitHandler);
         }
+
         this.submitButtons.forEach(function (t) {
           t.removeEventListener("click", _this3.buttonClickHandler);
         });
@@ -3311,17 +3850,22 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "handleClickEvent",
       value: function handleClickEvent(t) {
         var _e = t.currentTarget;
+
         if (_e instanceof HTMLElement) {
-          if (this.opts.aspNetButton && this.isFormValid === true) ;else {
+          if (this.opts.aspNetButton && this.isFormValid === true) ; else {
             var _e3 = this.core.getFormElement();
+
             _e3.removeEventListener("submit", this.submitHandler);
+
             this.clickedButton = t.target;
             var i = this.clickedButton.getAttribute("name");
             var s = this.clickedButton.getAttribute("value");
+
             if (i && s) {
               this.hiddenClickedEle.setAttribute("name", i);
               this.hiddenClickedEle.setAttribute("value", s);
             }
+
             this.validateForm(t);
           }
         }
@@ -3330,24 +3874,33 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "validateForm",
       value: function validateForm(t) {
         var _this4 = this;
+
         t.preventDefault();
         this.core.validate().then(function (t) {
           if (t === "Valid" && _this4.opts.aspNetButton && !_this4.isFormValid && _this4.clickedButton) {
             _this4.isFormValid = true;
+
             _this4.clickedButton.removeEventListener("click", _this4.buttonClickHandler);
+
             _this4.clickedButton.click();
           }
         });
       }
     }]);
+
     return e;
   }(t$4);
+
   var i = /*#__PURE__*/function (_t) {
     _inherits(i, _t);
+
     var _super = _createSuper(i);
+
     function i(t) {
       var _this;
+
       _classCallCheck(this, i);
+
       _this = _super.call(this, t);
       _this.messages = new Map();
       _this.opts = Object.assign({}, {
@@ -3360,6 +3913,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.documentClickHandler = _this.onDocumentClicked.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(i, [{
       key: "install",
       value: function install() {
@@ -3369,6 +3923,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         }, "fv-plugins-tooltip--".concat(this.opts.placement), true));
         document.body.appendChild(this.tip);
         this.core.on("plugins.icon.placed", this.iconPlacedHandler).on("core.validator.validated", this.validatorValidatedHandler).on("core.element.validated", this.elementValidatedHandler);
+
         if ("click" === this.opts.trigger) {
           document.addEventListener("click", this.documentClickHandler);
         }
@@ -3379,6 +3934,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         this.messages.clear();
         document.body.removeChild(this.tip);
         this.core.off("plugins.icon.placed", this.iconPlacedHandler).off("core.validator.validated", this.validatorValidatedHandler).off("core.element.validated", this.elementValidatedHandler);
+
         if ("click" === this.opts.trigger) {
           document.removeEventListener("click", this.documentClickHandler);
         }
@@ -3387,9 +3943,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "onIconPlaced",
       value: function onIconPlaced(t) {
         var _this2 = this;
+
         c(t.iconElement, {
           "fv-plugins-tooltip-icon": true
         });
+
         switch (this.opts.trigger) {
           case "hover":
             t.iconElement.addEventListener("mouseenter", function (e) {
@@ -3399,6 +3957,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               return _this2.hide();
             });
             break;
+
           case "click":
           default:
             t.iconElement.addEventListener("click", function (e) {
@@ -3412,7 +3971,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function onValidatorValidated(t) {
         if (!t.result.valid) {
           var _e2 = t.elements;
+
           var _i4 = t.element.getAttribute("type");
+
           var s = "radio" === _i4 || "checkbox" === _i4 ? _e2[0] : t.element;
           var o = typeof t.result.message === "string" ? t.result.message : t.result.message[this.core.getLocale()];
           this.messages.set(s, o);
@@ -3423,7 +3984,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       value: function onElementValidated(t) {
         if (t.valid) {
           var _e3 = t.elements;
+
           var _i5 = t.element.getAttribute("type");
+
           var s = "radio" === _i5 || "checkbox" === _i5 ? _e3[0] : t.element;
           this.messages["delete"](s);
         }
@@ -3437,56 +4000,70 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "show",
       value: function show(t, _i3) {
         _i3.preventDefault();
+
         _i3.stopPropagation();
+
         if (!this.messages.has(t)) {
           return;
         }
+
         c(this.tip, {
           "fv-plugins-tooltip--hide": false
         });
         this.tip.innerHTML = "<div class=\"fv-plugins-tooltip__content\">".concat(this.messages.get(t), "</div>");
         var s = _i3.target;
         var o = s.getBoundingClientRect();
+
         var _this$tip$getBounding = this.tip.getBoundingClientRect(),
-          l = _this$tip$getBounding.height,
-          n = _this$tip$getBounding.width;
+            l = _this$tip$getBounding.height,
+            n = _this$tip$getBounding.width;
+
         var a = 0;
         var d = 0;
+
         switch (this.opts.placement) {
           case "bottom":
             a = o.top + o.height;
             d = o.left + o.width / 2 - n / 2;
             break;
+
           case "bottom-left":
             a = o.top + o.height;
             d = o.left;
             break;
+
           case "bottom-right":
             a = o.top + o.height;
             d = o.left + o.width - n;
             break;
+
           case "left":
             a = o.top + o.height / 2 - l / 2;
             d = o.left - n;
             break;
+
           case "right":
             a = o.top + o.height / 2 - l / 2;
             d = o.left + o.width;
             break;
+
           case "top-left":
             a = o.top - l;
             d = o.left;
             break;
+
           case "top-right":
             a = o.top - l;
             d = o.left + o.width - n;
             break;
+
           case "top":
           default:
             a = o.top - l;
             d = o.left + o.width / 2 - n / 2;
             break;
         }
+
         var c$1 = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         var r = window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
         a = a + c$1;
@@ -3501,18 +4078,26 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
         });
       }
     }]);
+
     return i;
   }(t$4);
+
   var t = /*#__PURE__*/function (_e) {
     _inherits(t, _e);
+
     var _super = _createSuper(t);
+
     function t(e) {
       var _this;
+
       _classCallCheck(this, t);
+
       _this = _super.call(this, e);
       _this.handlers = [];
       _this.timers = new Map();
+
       var _t = document.createElement("div");
+
       _this.defaultEvent = !("oninput" in _t) ? "keyup" : "input";
       _this.opts = Object.assign({}, {
         delay: 0,
@@ -3523,6 +4108,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       _this.fieldRemovedHandler = _this.onFieldRemoved.bind(_assertThisInitialized(_this));
       return _this;
     }
+
     _createClass(t, [{
       key: "install",
       value: function install() {
@@ -3545,8 +4131,10 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "prepareHandler",
       value: function prepareHandler(e, _t2) {
         var _this2 = this;
+
         _t2.forEach(function (_t3) {
           var i = [];
+
           if (!!_this2.opts.event && _this2.opts.event[e] === false) {
             i = [];
           } else if (!!_this2.opts.event && !!_this2.opts.event[e] && typeof _this2.opts.event[e] !== "function") {
@@ -3555,20 +4143,25 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
             i = _this2.opts.event.split(" ");
           } else {
             var _e2 = _t3.getAttribute("type");
+
             var s = _t3.tagName.toLowerCase();
+
             var n = "radio" === _e2 || "checkbox" === _e2 || "file" === _e2 || "select" === s ? "change" : _this2.ieVersion >= 10 && _t3.getAttribute("placeholder") ? "keyup" : _this2.defaultEvent;
             i = [n];
           }
+
           i.forEach(function (i) {
             var s = function s(i) {
               return _this2.handleEvent(i, e, _t3);
             };
+
             _this2.handlers.push({
               element: _t3,
               event: i,
               field: e,
               handler: s
             });
+
             _t3.addEventListener(i, s);
           });
         });
@@ -3577,6 +4170,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "handleEvent",
       value: function handleEvent(e, _t4, i) {
         var _this3 = this;
+
         if (this.exceedThreshold(_t4, i) && this.core.executeFilter("plugins-trigger-should-validate", true, [_t4, i])) {
           var s = function s() {
             return _this3.core.validateElement(_t4, i).then(function (s) {
@@ -3587,14 +4181,18 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
               });
             });
           };
+
           var n = this.opts.delay[_t4] || this.opts.delay;
+
           if (n === 0) {
             s();
           } else {
             var _e3 = this.timers.get(i);
+
             if (_e3) {
               window.clearTimeout(_e3);
             }
+
             this.timers.set(i, window.setTimeout(s, n * 1e3));
           }
         }
@@ -3622,19 +4220,25 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
       key: "exceedThreshold",
       value: function exceedThreshold(e, _t7) {
         var i = this.opts.threshold[e] === 0 || this.opts.threshold === 0 ? false : this.opts.threshold[e] || this.opts.threshold;
+
         if (!i) {
           return true;
         }
+
         var s = _t7.getAttribute("type");
+
         if (["button", "checkbox", "file", "hidden", "image", "radio", "reset", "submit"].indexOf(s) !== -1) {
           return true;
         }
+
         var n = this.core.getElementValue(e, _t7);
         return n.length >= i;
       }
     }]);
+
     return t;
   }(t$4);
+
   var index$1 = {
     Alias: e$4,
     Aria: i$3,
@@ -3651,9 +4255,11 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     Tooltip: i,
     Trigger: t
   };
+
   function s(s, t) {
     return s.classList ? s.classList.contains(t) : new RegExp("(^| )".concat(t, "( |$)"), "gi").test(s.className);
   }
+
   var index = {
     call: t$d,
     classSet: c,
@@ -3663,7 +4269,9 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
     hasClass: s,
     isValidDate: t$a
   };
+
   var p = {};
+
   exports.Plugin = t$4;
   exports.algorithms = index$3;
   exports.filters = index$2;
@@ -3672,47 +4280,7 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_
   exports.plugins = index$1;
   exports.utils = index;
   exports.validators = s$3;
-  Object.defineProperty(exports, '__esModule', {
-    value: true
-  });
-});
 
-/***/ })
+  Object.defineProperty(exports, '__esModule', { value: true });
 
-/******/ 	});
-/************************************************************************/
-/******/ 	// The module cache
-/******/ 	var __webpack_module_cache__ = {};
-/******/ 	
-/******/ 	// The require function
-/******/ 	function __webpack_require__(moduleId) {
-/******/ 		// Check if module is in cache
-/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
-/******/ 		if (cachedModule !== undefined) {
-/******/ 			return cachedModule.exports;
-/******/ 		}
-/******/ 		// Create a new module (and put it into the cache)
-/******/ 		var module = __webpack_module_cache__[moduleId] = {
-/******/ 			// no module.id needed
-/******/ 			// no module.loaded needed
-/******/ 			exports: {}
-/******/ 		};
-/******/ 	
-/******/ 		// Execute the module function
-/******/ 		__webpack_modules__[moduleId].call(module.exports, module, module.exports, __webpack_require__);
-/******/ 	
-/******/ 		// Return the exports of the module
-/******/ 		return module.exports;
-/******/ 	}
-/******/ 	
-/************************************************************************/
-/******/ 	
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __webpack_require__("./resources/assets/vendor/libs/formvalidation/dist/js/FormValidation.js");
-/******/ 	
-/******/ 	return __webpack_exports__;
-/******/ })()
-;
-});
+}));
