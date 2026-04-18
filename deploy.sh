@@ -4,15 +4,42 @@
 
 set -e  # Exit on error
 
-# Configuration
-# Defaults can be overridden by a deploy.config file located next to this script
+# ------------------
+# Default configuration (can be overridden by deploy.config)
+# ------------------
 APP_PATH="/var/www/capetennis"
 PUBLIC_HTML="/home/user/public_html"  # Shared hosting web root - CUSTOMIZE FOR YOUR SETUP or set in deploy.config
-ENV_FILE="$APP_PATH/.env"
 ENVIRONMENT="${1:-production}"
 SKIP_MIGRATIONS=false
 SKIP_DEPS=false
 GIT_BRANCH="main"  # Change to "player-update", "version-2", etc. as needed or set in deploy.config
+
+# Determine script directory (used to locate deploy.config)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_LOADED=false
+
+# If a deploy.config file exists next to this script, source it to override defaults
+if [ -f "$SCRIPT_DIR/deploy.config" ]; then
+    # shellcheck disable=SC1090
+    source "$SCRIPT_DIR/deploy.config"
+    CONFIG_LOADED=true
+fi
+
+# Expand leading tilde in APP_PATH and PUBLIC_HTML if present
+if [[ "$APP_PATH" == ~* ]]; then
+    APP_PATH="${APP_PATH/#\~/$HOME}"
+fi
+if [[ "$PUBLIC_HTML" == ~* ]]; then
+    PUBLIC_HTML="${PUBLIC_HTML/#\~/$HOME}"
+fi
+
+# Fallback: if APP_PATH is empty (not set in config), use current working directory
+if [ -z "$APP_PATH" ]; then
+    APP_PATH="$(pwd)"
+fi
+
+# Derived paths (must be set after APP_PATH is finalized)
+ENV_FILE="$APP_PATH/.env"
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 LOG_FILE="$APP_PATH/logs/deploy_$TIMESTAMP.log"
 BACKUP_PATH="$APP_PATH/backups/backup_$TIMESTAMP"
@@ -25,25 +52,11 @@ for arg in "$@"; do
     esac
 done
 
-# Ensure logs directory exists
+# Ensure logs and backups directories exist (use finalized APP_PATH)
 mkdir -p "$APP_PATH/logs"
 mkdir -p "$APP_PATH/backups"
 
-# If a deploy.config file exists next to this script, source it to override defaults
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/deploy.config" ]; then
-    # shellcheck disable=SC1090
-    source "$SCRIPT_DIR/deploy.config"
-    log "INFO" "Loaded configuration from $SCRIPT_DIR/deploy.config"
-fi
-
-# Expand leading tilde in PUBLIC_HTML if present
-if [[ "$PUBLIC_HTML" == ~* ]]; then
-    PUBLIC_HTML="${PUBLIC_HTML/#\~/$HOME}"
-    log "INFO" "Expanded PUBLIC_HTML to $PUBLIC_HTML"
-fi
-
-# Logging function
+# Logging function (defined after LOG_FILE and log dir exist)
 log() {
     local level=$1
     shift
@@ -59,6 +72,13 @@ error_exit() {
     log "ERROR" "$1"
     exit 1
 }
+
+# If config was loaded earlier, log that fact now
+if [ "$CONFIG_LOADED" = true ]; then
+    log "INFO" "Loaded configuration from $SCRIPT_DIR/deploy.config"
+    log "INFO" "Expanded APP_PATH to $APP_PATH"
+    log "INFO" "Expanded PUBLIC_HTML to $PUBLIC_HTML"
+fi
 
 # Check prerequisites
 check_prerequisites() {
