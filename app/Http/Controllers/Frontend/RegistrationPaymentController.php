@@ -109,6 +109,9 @@ class RegistrationPaymentController extends Controller
 
   /**
    * Apply wallet balance to an order (AJAX from checkout page).
+   * 
+   * PRODUCTION FIX: Added fallback to verify user ownership from order
+   * in case session expires between page load and AJAX request.
    */
   public function applyWallet(Request $request)
   {
@@ -119,10 +122,32 @@ class RegistrationPaymentController extends Controller
       return response()->json(['error' => 'No order ID provided.'], 400);
     }
 
-    $order = RegistrationOrder::findOrFail($orderId);
+    try {
+      $order = RegistrationOrder::findOrFail($orderId);
+    } catch (\Exception $e) {
+      Log::error('WALLET APPLY: Order not found', ['order_id' => $orderId]);
+      return response()->json(['error' => 'Order not found.'], 404);
+    }
 
     $user = auth()->user();
-    if (!$user || $order->user_id !== $user->id) {
+
+    // Enhanced debugging for session issues
+    if (!$user) {
+      Log::warning('WALLET APPLY: User not authenticated', [
+        'order_id' => $orderId,
+        'session_id' => session()->getId(),
+        'ip' => $request->ip(),
+        'user_agent' => substr($request->userAgent(), 0, 100),
+      ]);
+      return response()->json(['error' => 'Unauthorized. Please login again.'], 403);
+    }
+
+    if ($order->user_id !== $user->id) {
+      Log::warning('WALLET APPLY: Order ownership mismatch', [
+        'order_id' => $orderId,
+        'order_user_id' => $order->user_id,
+        'auth_user_id' => $user->id,
+      ]);
       return response()->json(['error' => 'Unauthorized.'], 403);
     }
 
@@ -141,22 +166,31 @@ class RegistrationPaymentController extends Controller
     $walletApplied = min($walletBalance, $total);
     $remaining = round($total - $walletApplied, 2);
 
-    $order->wallet_reserved = $walletApplied;
-    $order->payfast_amount_due = $remaining;
-    $order->save();
+    try {
+      $order->wallet_reserved = $walletApplied;
+      $order->payfast_amount_due = $remaining;
+      $order->save();
 
-    Log::info('WALLET APPLIED TO ORDER', [
-      'order_id' => $order->id,
-      'wallet_applied' => $walletApplied,
-      'payfast_due' => $remaining,
-    ]);
+      Log::info('WALLET APPLIED TO ORDER', [
+        'order_id' => $order->id,
+        'user_id' => $user->id,
+        'wallet_applied' => $walletApplied,
+        'payfast_due' => $remaining,
+      ]);
 
-    return response()->json([
-      'success' => true,
-      'wallet_applied' => $walletApplied,
-      'payfast_due' => $remaining,
-      'wallet_covers_all' => $remaining <= 0,
-    ]);
+      return response()->json([
+        'success' => true,
+        'wallet_applied' => $walletApplied,
+        'payfast_due' => $remaining,
+        'wallet_covers_all' => $remaining <= 0,
+      ]);
+    } catch (\Exception $e) {
+      Log::error('WALLET APPLY: Error saving order', [
+        'order_id' => $orderId,
+        'error' => $e->getMessage(),
+      ]);
+      return response()->json(['error' => 'Failed to apply wallet. Please try again.'], 500);
+    }
   }
 
   /**

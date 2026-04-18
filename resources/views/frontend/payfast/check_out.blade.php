@@ -237,6 +237,9 @@ $(function () {
     $.ajax({
       url: APP_URL + '/registration/hybrid/apply-wallet',
       type: 'POST',
+      xhrFields: {
+        withCredentials: true  // 🔐 Ensure session cookies are sent with AJAX request
+      },
       data: {
         _token: $('meta[name="csrf-token"]').attr('content'),
         order_id: {{ $orderId }}
@@ -264,11 +267,18 @@ $(function () {
       },
       error: function (xhr) {
         $btn.prop('disabled', false).html('<i class="ti ti-wallet me-1"></i> Apply Wallet Balance');
-        if (xhr.responseJSON && xhr.responseJSON.error) {
-          alert(xhr.responseJSON.error);
-        } else {
-          alert('Failed to apply wallet. Please try again.');
+        var errorMsg = 'Failed to apply wallet. Please try again.';
+
+        if (xhr.status === 403) {
+          errorMsg = 'Session expired. Please refresh the page and login again.';
+        } else if (xhr.status === 401) {
+          errorMsg = 'Please login to continue.';
+          setTimeout(function() { window.location.href = APP_URL + '/login'; }, 2000);
+        } else if (xhr.responseJSON && xhr.responseJSON.error) {
+          errorMsg = xhr.responseJSON.error;
         }
+
+        alert(errorMsg);
       }
     });
   });
