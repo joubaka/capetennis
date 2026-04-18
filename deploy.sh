@@ -13,6 +13,7 @@ ENVIRONMENT="${1:-production}"
 SKIP_MIGRATIONS=false
 SKIP_DEPS=false
 GIT_BRANCH="main"  # Change to "player-update", "version-2", etc. as needed or set in deploy.config
+COMPARE_ONLY=false
 
 # Determine script directory (used to locate deploy.config)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +50,7 @@ for arg in "$@"; do
     case $arg in
         --skip-migrations) SKIP_MIGRATIONS=true ;;
         --skip-deps) SKIP_DEPS=true ;;
+        --compare) COMPARE_ONLY=true ;;
     esac
 done
 
@@ -67,6 +69,30 @@ log() {
     echo "$log_entry" >> "$LOG_FILE"
 }
 
+# Compare public folders (APP_PATH/public vs PUBLIC_HTML) using rsync dry-run or diff fallback
+compare_public_html() {
+    log "INFO" "Comparing $APP_PATH/public -> $PUBLIC_HTML"
+
+    if [ ! -d "$APP_PATH/public" ]; then
+        log "ERROR" "$APP_PATH/public does not exist"
+        return 2
+    fi
+
+    if [ ! -d "$PUBLIC_HTML" ]; then
+        log "WARNING" "$PUBLIC_HTML does not exist on remote; nothing to compare"
+        return 1
+    fi
+
+    if command -v rsync &> /dev/null; then
+        log "INFO" "Using rsync --dry-run to show differences"
+        rsync -av --delete --dry-run --itemize-changes "$APP_PATH/public/" "$PUBLIC_HTML/"
+        return 0
+    fi
+
+    log "INFO" "rsync not available, falling back to diff -qr"
+    diff -qr "$APP_PATH/public" "$PUBLIC_HTML" || true
+}
+
 # Error handling
 error_exit() {
     log "ERROR" "$1"
@@ -78,6 +104,12 @@ if [ "$CONFIG_LOADED" = true ]; then
     log "INFO" "Loaded configuration from $SCRIPT_DIR/deploy.config"
     log "INFO" "Expanded APP_PATH to $APP_PATH"
     log "INFO" "Expanded PUBLIC_HTML to $PUBLIC_HTML"
+fi
+
+# If user requested only comparison, run it and exit
+if [ "$COMPARE_ONLY" = true ]; then
+    compare_public_html
+    exit $?
 fi
 
 # Check prerequisites
