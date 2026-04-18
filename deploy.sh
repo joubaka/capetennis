@@ -14,6 +14,7 @@ SKIP_MIGRATIONS=false
 SKIP_DEPS=false
 GIT_BRANCH="main"  # Change to "player-update", "version-2", etc. as needed or set in deploy.config
 COMPARE_ONLY=false
+ONLY_JS=false
 
 # Determine script directory (used to locate deploy.config)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,6 +52,7 @@ for arg in "$@"; do
         --skip-migrations) SKIP_MIGRATIONS=true ;;
         --skip-deps) SKIP_DEPS=true ;;
         --compare) COMPARE_ONLY=true ;;
+        --only-js) ONLY_JS=true ;;
     esac
 done
 
@@ -265,8 +267,18 @@ sync_public_html() {
         log "INFO" "Created $PUBLIC_HTML"
     fi
 
+    # Determine which folders to sync. Prefer SYNC_FOLDERS from deploy.config.
+    if [ "$ONLY_JS" = true ]; then
+        folders_to_sync="js"
+        log "INFO" "Only syncing JS assets (--only-js)"
+    elif [ -n "$SYNC_FOLDERS" ]; then
+        folders_to_sync=$SYNC_FOLDERS
+    else
+        folders_to_sync="css js images vendors assets"
+    fi
+
     # Sync each asset folder individually for better control
-    for folder in css js images vendors assets; do
+    for folder in $folders_to_sync; do
         if [ -d "$APP_PATH/public/$folder" ]; then
             log "INFO" "   Syncing $folder/"
             mkdir -p "$PUBLIC_HTML/$folder"
