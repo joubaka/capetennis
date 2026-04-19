@@ -43,7 +43,7 @@ class WalletTransactionController extends Controller
         $wallet = $user->wallet ?? $user->wallet()->create();
         $amount = $request->amount;
 
-        // Quick pre-check (not under lock – the authoritative check is inside the transaction)
+        // Quick pre-check (not under lock -- the authoritative check is inside the transaction)
         if ($request->type === 'debit' && $wallet->balance < $amount) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Insufficient balance for debit.'], 422);
