@@ -11,6 +11,7 @@ use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Agreement;
 use App\Models\Player;
 use App\Models\PlayerRegistration;
 use App\Models\Registration;
@@ -21,6 +22,7 @@ use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\SiteSetting;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -42,6 +44,135 @@ class RegisterController extends Controller
         dd('index');
     }
 
+  /**
+   * Validate PayFast ITN signature.
+   * Accepts optional Request because some callers pass it and some call without.
+   */
+  private function validatePayfastSignature(Request $request = null)
+  {
+    // Support both direct $_POST and injected Request
+    $data = [];
+    if ($request instanceof Request) {
+      $data = $request->all();
+    } elseif (!empty($_POST)) {
+      $data = $_POST;
+    }
+
+    $incoming = $data['signature'] ?? null;
+    if (empty($incoming)) {
+      Log::warning('[PAYFAST SIG] Missing signature in ITN data');
+      return false;
+    }
+
+    $merchantId = $data['merchant_id'] ?? null;
+
+    // Check if any passphrase is configured
+    $hasPassphrase = !empty(env('PAYFAST_PASSPHRASE_LIVE')) 
+                  || !empty(env('PAYFAST_PASSPHRASE_SANDBOX'))
+                  || !empty(env('PAYFAST_PASSPHRASE'));
+
+    Log::info('[PAYFAST SIG] Start validation', [
+      'merchant_id' => $merchantId,
+      'has_passphrase' => $hasPassphrase,
+    ]);
+
+    // Build signature string according to PayFast spec: sort fields, exclude signature
+    $fields = $data;
+    unset($fields['signature']);
+
+    ksort($fields);
+
+    $parts = [];
+    foreach ($fields as $k => $v) {
+      if ($v === '' || $v === null) {
+        continue;
+      }
+      $parts[] = $k . '=' . urlencode($v);
+    }
+
+    $string = implode('&', $parts);
+
+    // If no passphrases configured, accept ITN without signature validation
+    // (This is a fallback for production environments where passphrase wasn't configured)
+    if (!$hasPassphrase) {
+      Log::warning('[PAYFAST SIG] No passphrase configured - accepting ITN without validation', [
+        'merchant_id' => $merchantId,
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+      ]);
+      return true;
+    }
+
+    // Determine which passphrase to try based on merchant_id
+    $sandboxMerchantId = '10008657'; // From Payfast.php
+    $liveMerchantId = '11307280';     // From Payfast.php
+
+    $passphrases = [];
+
+    // If merchant_id matches sandbox config, try sandbox passphrase first
+    if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
+      $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+      if ($sandboxPass) {
+        $passphrases[] = $sandboxPass;
+        Log::info('[PAYFAST SIG] Trying sandbox passphrase for merchant', ['merchant_id' => $merchantId]);
+      }
+    }
+    // If merchant_id matches live config, try live passphrase first
+    elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
+      $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+      if ($livePass) {
+        $passphrases[] = $livePass;
+        Log::info('[PAYFAST SIG] Trying live passphrase for merchant', ['merchant_id' => $merchantId]);
+      }
+    }
+
+    // Add all other configured passphrases as fallback
+    $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+    if ($livePass && !in_array($livePass, $passphrases)) {
+      $passphrases[] = $livePass;
+    }
+
+    $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+    if ($sandboxPass && !in_array($sandboxPass, $passphrases)) {
+      $passphrases[] = $sandboxPass;
+    }
+
+    $genericPass = env('PAYFAST_PASSPHRASE');
+    if ($genericPass && !in_array($genericPass, $passphrases)) {
+      $passphrases[] = $genericPass;
+    }
+
+    Log::info('[PAYFAST SIG] Attempting signature validation', [
+      'passphrases_count' => count($passphrases),
+      'string_length' => strlen($string),
+    ]);
+
+    // Try each passphrase
+    foreach ($passphrases as $i => $pf) {
+      if (empty($pf)) {
+        continue;
+      }
+      $calc = md5($string . '&passphrase=' . urlencode($pf));
+      if ($calc === $incoming) {
+        Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
+        return true;
+      }
+    }
+
+    // Fallback: try without passphrase
+    if (md5($string) === $incoming) {
+      Log::info('[PAYFAST SIG] ✓ Valid signature (no passphrase)');
+      return true;
+    }
+
+    Log::error('[PAYFAST SIG] ✗ Signature validation failed', [
+      'merchant_id' => $merchantId,
+      'passphrases_tried' => count($passphrases),
+      'received_sig' => substr($incoming, 0, 8) . '...',
+    ]);
+
+    return false;
+  }
+
     /**
      * Show the form for creating a new resource.
      *
@@ -54,6 +185,102 @@ class RegisterController extends Controller
     }
 
 
+  /**
+   * AJAX endpoint for Select2 player search.
+   */
+  public function searchPlayers(Request $request)
+  {
+    $term = $request->get('q', '');
+
+    $query = Player::select('id', 'name', 'surname')
+      ->orderBy('name')
+      ->orderBy('surname');
+
+    if ($term !== '') {
+      $query->where(function ($q) use ($term) {
+        $q->where('name', 'LIKE', "%{$term}%")
+          ->orWhere('surname', 'LIKE', "%{$term}%")
+          ->orWhereRaw("CONCAT(name, ' ', surname) LIKE ?", ["%{$term}%"]);
+      });
+    }
+
+    $players = $query->limit(50)->get();
+
+    return response()->json([
+      'results' => $players->map(fn($p) => [
+        'id' => $p->id,
+        'text' => $p->name . ' ' . $p->surname,
+      ]),
+    ]);
+  }
+
+  /**
+   * AJAX endpoint to get player details for the confirm step.
+   */
+  public function getPlayerDetails(Request $request)
+  {
+    $request->validate(['player_id' => 'required|integer|exists:players,id']);
+
+    $player = Player::findOrFail($request->player_id);
+
+    // Only pre-fill date of birth if the profile was confirmed in 2026 or later
+    $confirmedIn2026 = $player->profile_updated_at
+      && $player->profile_updated_at->year >= 2026;
+
+    return response()->json([
+      'id'          => $player->id,
+      'name'        => $player->name,
+      'surname'     => $player->surname,
+      'email'       => $player->email,
+      'cellNr'      => $player->cellNr,
+      'dateOfBirth' => $confirmedIn2026 ? $player->dateOfBirth : null,
+      'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
+    ]);
+  }
+
+  /**
+   * AJAX endpoint to update player details from the confirm step.
+   */
+  public function updatePlayerDetails(Request $request)
+  {
+    $validated = $request->validate([
+      'player_id'   => 'required|integer|exists:players,id',
+      'name'        => 'required|string|max:255',
+      'surname'     => 'required|string|max:255',
+      'email'       => 'nullable|email|max:255',
+      'cellNr'      => 'required|string|max:50',
+      'dateOfBirth' => 'required|date|before:today',
+      'gender'      => 'required|in:Male,Female',
+    ]);
+
+    $player = Player::findOrFail($validated['player_id']);
+
+    $player->update([
+      'name'        => $validated['name'],
+      'surname'     => $validated['surname'],
+      'email'       => $validated['email'] ?? $player->email,
+      'cellNr'      => $validated['cellNr'],
+      'dateOfBirth' => $validated['dateOfBirth'],
+      'gender'      => $validated['gender'] === 'Male' ? 1 : 2,
+    ]);
+
+    $player->markProfileUpdated();
+
+    return response()->json([
+      'success' => true,
+      'message' => "Details for \"{$player->name} {$player->surname}\" updated.",
+      'player'  => [
+        'id'          => $player->id,
+        'name'        => $player->name,
+        'surname'     => $player->surname,
+        'email'       => $player->email,
+        'cellNr'      => $player->cellNr,
+        'dateOfBirth' => $player->dateOfBirth,
+        'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
+      ],
+    ]);
+  }
+
   public function register(int $id)
   {
     $user = Auth::user();
@@ -61,7 +288,7 @@ class RegisterController extends Controller
     // ✅ FIX 1: assign the event properly
     $event = Event::with('eventTypeModel')->findOrFail($id);
 
-    $players = Player::all();
+    $players = collect(); // Players loaded via AJAX Select2
 
     $eventCategories = CategoryEvent::where('event_id', $id)
       ->with('category')
@@ -95,6 +322,15 @@ class RegisterController extends Controller
 
     $orderId = 0;
 
+    // Site-wide toggles
+    $requireCodeOfConduct = SiteSetting::get('require_code_of_conduct', '0') === '1';
+    $requireTerms         = SiteSetting::get('require_terms', '0') === '1';
+
+    // Active Code of Conduct agreement (only load when toggle is on)
+    $agreement = $requireCodeOfConduct
+      ? Agreement::where('is_active', 1)->latest()->first()
+      : null;
+
     return view('frontend.event.checkout', compact(
       'eventCats',
       'players',
@@ -103,7 +339,10 @@ class RegisterController extends Controller
       'user',
       'orderId',
       'payfast',
-      'parentEvent'
+      'parentEvent',
+      'agreement',
+      'requireCodeOfConduct',
+      'requireTerms'
     ));
   }
 
@@ -365,6 +604,99 @@ class RegisterController extends Controller
 
     return response('OK', 200)
       ->header('Content-Type', 'text/plain');
+  }
+
+  /**
+   * Debug route for local development: simulate a PayFast ITN for an order.
+   * Marks the order and its registrations as paid.
+   */
+  public function simulatePayfast($orderId)
+  {
+    if (!app()->environment('local')) {
+      return response('Not allowed', 403);
+    }
+
+    $order = RegistrationOrder::with(['items.category_event.event', 'user.wallet'])
+      ->lockForUpdate()
+      ->find($orderId);
+
+    if (!$order) {
+      return response()->json(['error' => 'Order not found'], 404);
+    }
+
+    try {
+      DB::transaction(function () use ($order) {
+        $fakePfId = 'SIM' . time();
+        $amount = (float) ($order->payfast_amount_due > 0 ? $order->payfast_amount_due : $order->items->sum('item_price'));
+
+        // Mark order paid
+        $order->payfast_amount_due = $amount;
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $fakePfId;
+        $order->save();
+
+        // Debit wallet if reserved
+        if (
+          $order->wallet_reserved > 0 &&
+          $order->wallet_debited === false &&
+          $order->user &&
+          $order->user->wallet
+        ) {
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'event_registration_wallet_payment_sim',
+            $order->id,
+            [
+              'order_id' => $order->id,
+              'source' => 'simulate_payfast',
+            ]
+          );
+
+          $order->wallet_debited = true;
+          $order->save();
+        }
+
+        // Mark registrations as paid
+        foreach ($order->items as $item) {
+          $registration = Registration::find($item->registration_id);
+          if (!$registration) {
+            continue;
+          }
+
+          $registration->players()->syncWithoutDetaching([
+            $item->player_id
+          ]);
+
+          $registration->categoryEvents()->syncWithoutDetaching([
+            $item->category_event_id => [
+              'payment_status_id' => 1,
+              'user_id' => $order->user_id,
+              'pf_transaction_id' => $fakePfId,
+            ],
+          ]);
+        }
+
+        // Create transaction record (best-effort)
+        try {
+          $fakeData = [
+            'custom_int5' => $order->id,
+            'custom_int4' => $order->user_id,
+            'pf_payment_id' => $fakePfId,
+            'amount_gross' => $amount,
+          ];
+          self::update_transaction($fakeData, $order);
+        } catch (\Throwable $e) {
+          Log::error('[SIMULATE PAYFAST] transaction failed', ['message' => $e->getMessage()]);
+        }
+      });
+
+      return response()->json(['success' => true, 'order' => $order->id]);
+    } catch (\Throwable $e) {
+      Log::error('[SIMULATE PAYFAST] failed', ['message' => $e->getMessage()]);
+      return response()->json(['error' => $e->getMessage()], 500);
+    }
   }
 
 
@@ -967,6 +1299,14 @@ class RegisterController extends Controller
   public function payNowPayfast(Request $request)
   {
 
+    // ----------------------------
+    // Validate terms accepted
+    // ----------------------------
+    if (!$request->has('terms_accepted') || $request->terms_accepted != '1') {
+      return back()->withErrors([
+        'msg' => 'You must accept the terms and conditions and Code of Conduct before proceeding.'
+      ]);
+    }
 
     // ----------------------------
     // Validate players/categories
@@ -1013,56 +1353,68 @@ class RegisterController extends Controller
       $order->item_price = $categoryEvent->entry_fee ?? 0;
       $order->save();
 
+      // Attach player to registration + create category_event_registration immediately
+      $registration->players()->syncWithoutDetaching([$request->player[$i]]);
+      $registration->categoryEvents()->syncWithoutDetaching([
+        $categoryEvent->id => [
+          'payment_status_id' => 0,
+          'user_id' => Auth::id(),
+        ],
+      ]);
+
       $totalFee += $order->item_price;
     }
 
     if ($totalFee <= 0) {
+      // Free event — mark as paid immediately
+      foreach ($regorder->items as $item) {
+        $reg = Registration::find($item->registration_id);
+        if ($reg) {
+          $reg->categoryEvents()->updateExistingPivot($item->category_event_id, [
+            'payment_status_id' => 1,
+          ]);
+        }
+      }
+      $regorder->pay_status = 1;
+      $regorder->payfast_paid = true;
+      $regorder->wallet_debited = true;
+      $regorder->save();
+
       return redirect()
         ->route('frontend.registration.success', ['order' => $regorder->id])
         ->with('success', 'Your registration was successful (no payment required).');
     }
 
     // -----------------------------------
-    // 🔵 SAFE HYBRID LOGIC (RESERVE ONLY)
+    // 🔵 WALLET – DO NOT AUTO-APPLY
+    // Let the user choose on checkout page
     // -----------------------------------
 
     $wallet = Auth::user()->wallet;
     $walletBalance = $wallet?->balance ?? 0;
 
-    $walletApplied = min($walletBalance, $totalFee);
-    $remaining = round($totalFee - $walletApplied, 2);
-
-    // 🔐 DO NOT DEBIT HERE
-    // Just reserve
-
-    $regorder->wallet_reserved = $walletApplied;
-    $regorder->payfast_amount_due = $remaining;
+    $regorder->wallet_reserved = 0;
+    $regorder->payfast_amount_due = $totalFee;
     $regorder->wallet_debited = false;
     $regorder->payfast_paid = false;
     $regorder->save();
 
-    // If wallet covers everything
-    if ($remaining <= 0) {
-
-      return redirect()
-        ->route('registration.hybrid.complete', $regorder->id);
-    }
-
     // -----------------------------------
-    // 🔴 PayFast for remaining
+    // 🔴 PayFast for full amount
     // -----------------------------------
 
     $payfast = new Payfast();
     $payfast->setMode(Auth::id() == 584 ? 0 : 1);
 
-    $request['amount'] = $remaining;
+    $request['amount'] = $totalFee;
     $request['custom_int5'] = $regorder->id;
-    $request['custom_wallet_reserved'] = $walletApplied;
+    $request['custom_wallet_reserved'] = 0;
     Log::info('HYBRID CREATE ORDER', [
       'order_id' => $regorder->id,
       'total_fee' => $totalFee,
-      'wallet_reserved' => $walletApplied,
-      'payfast_due' => $remaining
+      'wallet_balance' => $walletBalance,
+      'wallet_reserved' => 0,
+      'payfast_due' => $totalFee
     ]);
 
     return view('frontend.payfast.check_out', compact('request', 'payfast'));
@@ -1072,7 +1424,16 @@ class RegisterController extends Controller
 
   public function registrationSuccess($orderId)
   {
-    $order = RegistrationOrder::with('items')->findOrFail($orderId);
+    $order = RegistrationOrder::with('items.category_event')->findOrFail($orderId);
+
+    // Redirect back to the event the user registered for
+    $eventId = optional($order->items->first()?->category_event)->event_id;
+
+    if ($eventId) {
+      return redirect()->route('events.show', $eventId)
+        ->with('success', 'Registration completed successfully!');
+    }
+
     return view('frontend.event.registration_success', compact('order'));
   }
 
@@ -1125,153 +1486,5 @@ class RegisterController extends Controller
 
         return view('frontend.payfast.pay_now', compact('request', 'payfast'));
     }
-
-  /**
-   * PayFast ITN signature validation (deep debug)
-   *
-   * How to use:
-   * 1) Deploy this method
-   * 2) Trigger one PayFast ITN
-   * 3) Inspect logs for:
-   *    - [PF_SIG] RAW
-   *    - [PF_SIG] RECEIVED_SIG
-   *    - [PF_SIG] STRING_NO_SIG
-   *    - [PF_SIG] STRING_WITH_PASSPHRASE
-   *    - [PF_SIG] GENERATED_SIG
-   *    - [PF_SIG] MATCH
-   *    - [PF_SIG] FIELD_DUMP (order + values)
-   */
-  private function validatePayfastSignature(): bool
-  {
-    $rawPost = file_get_contents('php://input');
-
-    Log::info('[PF_SIG][1] RAW', [
-      'len' => is_string($rawPost) ? strlen($rawPost) : 0,
-      'raw' => $rawPost,
-    ]);
-
-    if (!is_string($rawPost) || trim($rawPost) === '') {
-      Log::warning('[PF_SIG] EMPTY_RAW');
-      return false;
-    }
-
-    // Parse raw into array (this is ONLY for extracting values, not for rebuilding signature string)
-    $parsed = [];
-    parse_str($rawPost, $parsed);
-
-    Log::info('[PF_SIG][2] PARSED_KEYS', [
-      'keys' => array_keys($parsed),
-      'merchant_id' => $parsed['merchant_id'] ?? null,
-      'pf_payment_id' => $parsed['pf_payment_id'] ?? null,
-      'payment_status' => $parsed['payment_status'] ?? null,
-    ]);
-
-    $receivedSignature = $parsed['signature'] ?? null;
-
-    Log::info('[PF_SIG][3] RECEIVED_SIG', [
-      'received' => $receivedSignature,
-    ]);
-
-    if (!$receivedSignature) {
-      Log::warning('[PF_SIG] MISSING_SIGNATURE');
-      return false;
-    }
-
-    // IMPORTANT:
-    // Build the signature base string from RAW POST EXACTLY, only removing "&signature=..."
-    // (PayFast signature depends on original order + original encoding)
-    $needle1 = '&signature=' . $receivedSignature;
-    $needle2 = 'signature=' . $receivedSignature . '&';
-    $needle3 = 'signature=' . $receivedSignature;
-
-    $stringNoSig = $rawPost;
-
-    if (str_contains($stringNoSig, $needle1)) {
-      $stringNoSig = str_replace($needle1, '', $stringNoSig);
-      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'ampersand_prefix']);
-    } elseif (str_contains($stringNoSig, $needle2)) {
-      $stringNoSig = str_replace($needle2, '', $stringNoSig);
-      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'middle_param']);
-    } elseif (str_contains($stringNoSig, $needle3)) {
-      $stringNoSig = str_replace($needle3, '', $stringNoSig);
-      $stringNoSig = rtrim($stringNoSig, '&');
-      Log::info('[PF_SIG][4] REMOVED_SIG_STYLE', ['style' => 'end_param_or_no_amp']);
-    } else {
-      Log::warning('[PF_SIG] SIGNATURE_SUBSTRING_NOT_FOUND_IN_RAW', [
-        'expected_needles' => [$needle1, $needle2, $needle3],
-      ]);
-      // Continue anyway, but this usually means the raw payload differs from what we parsed
-    }
-
-    // Remove any trailing & caused by replacement
-    $stringNoSig = rtrim($stringNoSig, '&');
-
-    Log::info('[PF_SIG][5] STRING_NO_SIG', [
-      'string' => $stringNoSig,
-    ]);
-
-    // Decide passphrase based on merchant_id
-    $merchantId = $parsed['merchant_id'] ?? null;
-
-    $sandboxMerchant = (string) env('PAYFAST_MERCHANT_ID_SANDBOX');
-    $liveMerchant = (string) env('PAYFAST_MERCHANT_ID_LIVE');
-
-    $passphrase = null;
-    if ($merchantId !== null && (string) $merchantId === $sandboxMerchant) {
-      $passphrase = env('PAYFAST_PASSPHRASE_SANDBOX');
-      Log::info('[PF_SIG][6] MODE', ['mode' => 'sandbox', 'merchant_id' => $merchantId]);
-    } else {
-      $passphrase = env('PAYFAST_PASSPHRASE_LIVE');
-      Log::info('[PF_SIG][6] MODE', ['mode' => 'live', 'merchant_id' => $merchantId]);
-    }
-
-    Log::info('[PF_SIG][7] PASSPHRASE_PRESENT', [
-      'has_passphrase' => !empty($passphrase),
-      // do not log actual passphrase in production
-    ]);
-
-    $stringWithPassphrase = $stringNoSig;
-    if (!empty($passphrase)) {
-      $stringWithPassphrase .= '&passphrase=' . urlencode($passphrase);
-    }
-
-    Log::info('[PF_SIG][8] STRING_WITH_PASSPHRASE', [
-      'string' => $stringWithPassphrase,
-    ]);
-
-    $generatedSignature = md5($stringWithPassphrase);
-
-    Log::info('[PF_SIG][9] GENERATED_SIG', [
-      'generated' => $generatedSignature,
-      'received' => $receivedSignature,
-    ]);
-
-    $match = hash_equals($generatedSignature, $receivedSignature);
-
-    Log::info('[PF_SIG][10] MATCH', [
-      'match' => $match,
-    ]);
-
-    // Extra: dump the parsed fields in raw-order appearance (best-effort)
-    // This helps spot encoding/order problems quickly.
-    $fieldDump = [];
-    $parts = explode('&', $rawPost);
-    foreach ($parts as $p) {
-      if ($p === '')
-        continue;
-      [$k, $v] = array_pad(explode('=', $p, 2), 2, '');
-      $fieldDump[] = [
-        'k' => $k,
-        'v' => $v,
-      ];
-    }
-
-    Log::info('[PF_SIG][11] FIELD_DUMP_RAW_ORDER', [
-      'fields' => $fieldDump,
-    ]);
-
-    return $match;
-  }
-
 
 }

@@ -9,7 +9,7 @@
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">Bank Refund #{{ $registration->id }}</h5>
 
-      <a href="{{ route('admin.refunds.bank.index') }}"
+      <a href="{{ route('admin.registration.refunds.bank.index') }}"
          class="btn btn-sm btn-outline-secondary">
         <i class="ti ti-arrow-left me-1"></i>
         Back to Refund List
@@ -33,7 +33,7 @@
 
       @if($registration->refund_status === 'pending')
       <form method="POST"
-            action="{{ route('admin.refunds.bank.complete', $registration) }}">
+            action="{{ route('admin.registration.refunds.bank.complete', $registration) }}">
         @csrf
         <button class="btn btn-success"
                 onclick="this.disabled=true; this.form.submit();">

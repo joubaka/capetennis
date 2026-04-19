@@ -1,4 +1,5 @@
 <!-- BEGIN: Vendor JS -->
+<script>console.log('🎾 Cape Tennis v{{ config("app.asset_version") }}');</script>
 
 {{-- 1️⃣ jQuery FIRST (ABSOLUTE RULE) --}}
 <script src="{{ asset('assets/vendor/libs/jquery/jquery.js') }}"></script>

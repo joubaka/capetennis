@@ -42,8 +42,8 @@ class RegistrationPaymentController extends Controller
       return back()->withErrors('Invalid payment amounts.');
     }
 
-    // 🔒 Ownership protection
-    if ($order->user_id !== $user->id) {
+    // 🔒 Ownership protection (cast both to int to avoid type mismatch)
+    if ((int) $order->user_id !== (int) $user->id) {
       abort(403, 'Unauthorized order access.');
     }
 
@@ -108,6 +108,93 @@ class RegistrationPaymentController extends Controller
   }
 
   /**
+   * Apply wallet balance to an order (AJAX from checkout page).
+   * 
+   * PRODUCTION FIX: Added fallback to verify user ownership from order
+   * in case session expires between page load and AJAX request.
+   */
+  public function applyWallet(Request $request)
+  {
+    // Support both parameter names: order_id or custom_int5
+    $orderId = (int) ($request->order_id ?? $request->custom_int5 ?? 0);
+
+    if (!$orderId) {
+      return response()->json(['error' => 'No order ID provided.'], 400);
+    }
+
+    try {
+      $order = RegistrationOrder::findOrFail($orderId);
+    } catch (\Exception $e) {
+      Log::error('WALLET APPLY: Order not found', ['order_id' => $orderId]);
+      return response()->json(['error' => 'Order not found.'], 404);
+    }
+
+    $user = auth()->user();
+
+    // Enhanced debugging for session issues
+    if (!$user) {
+      Log::warning('WALLET APPLY: User not authenticated', [
+        'order_id' => $orderId,
+        'session_id' => session()->getId(),
+        'ip' => $request->ip(),
+        'user_agent' => substr($request->userAgent(), 0, 100),
+      ]);
+      return response()->json(['error' => 'Unauthorized. Please login again.'], 403);
+    }
+
+    // Cast both to int to avoid type mismatch (string vs int)
+    if ((int) $order->user_id !== (int) $user->id) {
+      Log::warning('WALLET APPLY: Order ownership mismatch', [
+        'order_id' => $orderId,
+        'order_user_id' => (int) $order->user_id,
+        'auth_user_id' => (int) $user->id,
+      ]);
+      return response()->json(['error' => 'Unauthorized.'], 403);
+    }
+
+    if ($order->wallet_debited || $order->payfast_paid) {
+      return response()->json(['error' => 'Order already paid.'], 400);
+    }
+
+    $wallet = $user->wallet;
+    $walletBalance = $wallet?->balance ?? 0;
+
+    if ($walletBalance <= 0) {
+      return response()->json(['error' => 'No wallet balance available.'], 400);
+    }
+
+    $total = (float) $order->items->sum('item_price');
+    $walletApplied = min($walletBalance, $total);
+    $remaining = round($total - $walletApplied, 2);
+
+    try {
+      $order->wallet_reserved = $walletApplied;
+      $order->payfast_amount_due = $remaining;
+      $order->save();
+
+      Log::info('WALLET APPLIED TO ORDER', [
+        'order_id' => $order->id,
+        'user_id' => $user->id,
+        'wallet_applied' => $walletApplied,
+        'payfast_due' => $remaining,
+      ]);
+
+      return response()->json([
+        'success' => true,
+        'wallet_applied' => $walletApplied,
+        'payfast_due' => $remaining,
+        'wallet_covers_all' => $remaining <= 0,
+      ]);
+    } catch (\Exception $e) {
+      Log::error('WALLET APPLY: Error saving order', [
+        'order_id' => $orderId,
+        'error' => $e->getMessage(),
+      ]);
+      return response()->json(['error' => 'Failed to apply wallet. Please try again.'], 500);
+    }
+  }
+
+  /**
    * Wallet-only completion
    */
   public function hybridComplete(int $orderId)
@@ -132,11 +219,22 @@ class RegistrationPaymentController extends Controller
         ->withErrors('Order not found.');
     }
 
-    if ($order->user_id !== $user->id) {
+    if ((int) $order->user_id !== (int) $user->id) {
+      Log::warning('HYBRID COMPLETE: Unauthorized order access', [
+        'order_id' => $orderId,
+        'order_user_id' => (int) $order->user_id,
+        'auth_user_id' => (int) $user->id,
+      ]);
       abort(403);
     }
 
     if ($order->wallet_debited) {
+      // Redirect back to the event page
+      $eventId = optional($order->items->first()?->category_event?->event)->id;
+      if ($eventId) {
+        return redirect()->route('events.show', $eventId)
+          ->with('success', 'Registration already completed.');
+      }
       return redirect()
         ->route('frontend.registration.success', $orderId);
     }
@@ -203,6 +301,13 @@ class RegistrationPaymentController extends Controller
     Log::info('HYBRID COMPLETE SUCCESS', [
       'order_id' => $orderId
     ]);
+
+    // Redirect back to the event page
+    $eventId = optional($order->items->first()?->category_event)->event_id;
+    if ($eventId) {
+      return redirect()->route('events.show', $eventId)
+        ->with('success', 'Registration paid successfully using wallet.');
+    }
 
     return redirect()
       ->route('frontend.registration.success', $orderId)

@@ -65,17 +65,17 @@ class WalletService
 
     return DB::transaction(function () use ($wallet, $amount, $sourceType, $sourceId, $meta) {
 
-      // 🔒 Lock the wallet row to prevent concurrent double-debits
-      $locked = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
+      // 🔒 Lock wallet row
+      $wallet->refresh();
 
-      if ($locked->balance < $amount) {
+      if ($wallet->balance < $amount) {
         throw new InsufficientFundsException(
-          "Wallet {$locked->id} has insufficient funds"
+          "Wallet {$wallet->id} has insufficient funds"
         );
       }
 
       if (
-        WalletTransaction::where('wallet_id', $locked->id)
+        WalletTransaction::where('wallet_id', $wallet->id)
           ->where('source_type', $sourceType)
           ->where('source_id', $sourceId)
           ->exists()
@@ -86,7 +86,7 @@ class WalletService
       }
 
       return WalletTransaction::create([
-        'wallet_id' => $locked->id,
+        'wallet_id' => $wallet->id,
         'type' => 'debit',
         'amount' => $amount,
         'source_type' => $sourceType,

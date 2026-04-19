@@ -43,7 +43,7 @@
             <td>{{ $refund->refund_account_name }}</td>
             <td>{{ $refund->refund_bank_name }}</td>
             <td>
-              <a href="{{ route('admin.refunds.bank.show', $refund) }}" class="btn btn-sm btn-primary">View</a>
+              <a href="{{ route('admin.registration.refunds.bank.show', $refund) }}" class="btn btn-sm btn-primary">View</a>
             </td>
           </tr>
           @empty
@@ -63,7 +63,7 @@
                 <td>{{ $t->refund_account_name }}</td>
                 <td>{{ $t->refund_bank_name }}</td>
                 <td>
-                  <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
+                  <form method="POST" action="{{ route('admin.registration.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
                     @csrf
                     <button class="btn btn-sm btn-success">Mark Paid</button>
                   </form>

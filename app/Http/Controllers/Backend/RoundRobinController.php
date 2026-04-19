@@ -11,8 +11,9 @@ use App\Services\DrawService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\DrawSetting;
+use App\Models\Venue;
 
-class RoundRobinController extends Controller
+class RoundRobinController
 {
   protected DrawService $builder;
 
@@ -223,6 +224,7 @@ class RoundRobinController extends Controller
         'rrFixtures' => $hub['rrFixtures'],
         'oops' => $hub['oops'],
         'standings' => $hub['standings'],
+        'venues' => Venue::orderBy('name')->get(),
       ]);
 
     }
@@ -282,6 +284,7 @@ class RoundRobinController extends Controller
       'rrFixtures' => $hub['rrFixtures'] ?? [],
       'oops' => $hub['oops'] ?? [],
       'standings' => $hub['standings'] ?? [],
+      'venues' => Venue::orderBy('name')->get(),
     ]);
   }
 

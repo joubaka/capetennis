@@ -67,6 +67,8 @@ class Kernel extends HttpKernel
  
     'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
     'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+    'agreement' => \App\Http\Middleware\EnsureAgreementAccepted::class,
+    'profile.updated' => \App\Http\Middleware\EnsurePlayerProfileUpdated::class,
 
 
 

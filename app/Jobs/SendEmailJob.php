@@ -12,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use App\Mail\SendEmailTest;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
+use Illuminate\Support\Facades\Log;
 
 class SendEmailJob implements ShouldQueue
 {
@@ -42,7 +43,7 @@ class SendEmailJob implements ShouldQueue
 
       Mail::mailer($this->details['mailer'])
         ->to($this->details['email'])
-        ->send(new \App\Mail\GenericMail($this->details));
+        ->send(new SendEmailTest($this->details));
 
       Log::info('[SendEmailJob] ✅ SENT SUCCESS', [
         'to' => $this->details['email'],

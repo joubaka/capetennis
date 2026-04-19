@@ -146,7 +146,9 @@
   </div>
 
 </div>
+@endsection
 
+@section('page-script')
 {{-- ============================
      MAIN SCRIPT
    ============================ --}}
@@ -242,10 +244,11 @@ $(function () {
       .done(res => {
         VENUES = res.venues || [];
 
-        safeSelect2($('#venues').empty(), { placeholder: 'Select venues' });
+        $('#venues').empty();
         VENUES.forEach(v =>
           $('#venues').append(new Option(`${v.name} (${v.num_courts})`, v.id))
         );
+        safeSelect2($('#venues'), { placeholder: 'Select venues' });
 
         safeSelect2($('#filter_stage'), { placeholder: 'Filter stages' });
         safeSelect2($('#filter_round'), { placeholder: 'Filter rounds' });

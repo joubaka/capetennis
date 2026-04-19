@@ -229,7 +229,9 @@
 
         @foreach($eventCats as $eventCategory)
           @php
-            $activeRegistrations = $eventCategory->registrations->filter(fn($r) => !str_contains(strtolower($r->pivot->status ?? ''), 'withdrawn'));
+            $activeRegistrations = $eventCategory->categoryEventRegistrations
+              ->where('payment_status_id', 1)
+              ->filter(fn($r) => !str_contains(strtolower($r->status ?? ''), 'withdrawn'));
           @endphp
           <div class="border rounded p-2 mb-3">
             <span class="badge bg-label-primary mb-2">
@@ -238,53 +240,58 @@
             </span>
 
             <ul class="list-group list-group-flush">
-              @foreach($eventCategory->registrations as $registration)
-                @php $pivotStatus = strtolower($registration->pivot->status ?? ''); @endphp
+              @foreach($eventCategory->categoryEventRegistrations->where('payment_status_id', 1) as $cereg)
+                @php
+                  $registration = $cereg->registration;
+                  $pivotStatus = strtolower($cereg->status ?? '');
+                  $player = $registration ? $registration->players->first() : null;
+                @endphp
+                @if(!$registration || !$player) @continue @endif
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                   <span>
-                    {{ optional($registration->players->first())->name }}
-                    {{ optional($registration->players->first())->surname }}
+                    {{ $player->name }}
+                    {{ $player->surname }}
                   </span>
                   @if(str_contains($pivotStatus, 'withdrawn'))
                     <span class="d-flex align-items-center gap-1">
                       <span class="badge bg-label-danger">
                         Withdrawn
-                        @if($registration->pivot->withdrawn_at)
-                          &nbsp;{{ \Carbon\Carbon::parse($registration->pivot->withdrawn_at)->format('j/n/Y') }}
+                        @if($cereg->withdrawn_at)
+                          &nbsp;{{ \Carbon\Carbon::parse($cereg->withdrawn_at)->format('j/n/Y') }}
                         @endif
                       </span>
                       @auth
-                        @if((int)$registration->pivot->user_id === (int)auth()->id() || (int)auth()->id() === 584)
+                        @if((int)$cereg->user_id === (int)auth()->id() || (int)auth()->id() === 584)
                           <button type="button"
                                   class="btn btn-xs btn-outline-secondary withdrawal-details-btn"
                                   title="View withdrawal details"
                                   data-bs-toggle="modal"
                                   data-bs-target="#withdrawalDetailsModal"
-                                  data-player="{{ optional($registration->players->first())->name }} {{ optional($registration->players->first())->surname }}"
-                                  data-withdrawn-at="{{ $registration->pivot->withdrawn_at ? \Carbon\Carbon::parse($registration->pivot->withdrawn_at)->format('j/n/Y H:i') : '—' }}"
-                                  data-method="{{ ucfirst($registration->pivot->refund_method ?? 'none') }}"
-                                  data-refund-method="{{ strtolower($registration->pivot->refund_method ?? '') }}"
-                                  data-refund-status="{{ ucfirst($registration->pivot->refund_status ?? 'n/a') }}"
-                                  data-show-wallet="{{ $registration->pivot->refund_method === 'wallet' ? '1' : '' }}"
-                                  data-gross="{{ $registration->pivot->refund_gross ? 'R '.number_format($registration->pivot->refund_gross, 2) : '—' }}"
-                                  data-net="{{ $registration->pivot->refund_net ? 'R '.number_format($registration->pivot->refund_net, 2) : '—' }}"
-                                  data-refunded-at="{{ $registration->pivot->refunded_at ? \Carbon\Carbon::parse($registration->pivot->refunded_at)->format('j/n/Y') : '—' }}"
+                                  data-player="{{ $player->name }} {{ $player->surname }}"
+                                  data-withdrawn-at="{{ $cereg->withdrawn_at ? \Carbon\Carbon::parse($cereg->withdrawn_at)->format('j/n/Y H:i') : '—' }}"
+                                  data-method="{{ ucfirst($cereg->refund_method ?? 'none') }}"
+                                  data-refund-method="{{ strtolower($cereg->refund_method ?? '') }}"
+                                  data-refund-status="{{ ucfirst($cereg->refund_status ?? 'n/a') }}"
+                                  data-show-wallet="{{ $cereg->refund_method === 'wallet' ? '1' : '' }}"
+                                  data-gross="{{ $cereg->refund_gross ? 'R '.number_format($cereg->refund_gross, 2) : '—' }}"
+                                  data-net="{{ $cereg->refund_net ? 'R '.number_format($cereg->refund_net, 2) : '—' }}"
+                                  data-refunded-at="{{ $cereg->refunded_at ? \Carbon\Carbon::parse($cereg->refunded_at)->format('j/n/Y') : '—' }}"
                                   data-event-name="{{ $event->name }}"
-                                  data-reg-id="{{ $registration->pivot->id }}"
-                                  data-user-id="{{ $registration->pivot->user_id }}">
+                                  data-reg-id="{{ $cereg->id }}"
+                                  data-user-id="{{ $cereg->user_id }}">
                             <i class="ti ti-info-circle"></i>
                           </button>
                         @endif
                       @endauth
                     </span>
-                  @elseif(auth()->check() && (int)$registration->pivot->user_id === (int)auth()->id() && !empty($canWithdraw) && $canWithdraw)
+                  @elseif(auth()->check() && (int)$cereg->user_id === (int)auth()->id() && !empty($canWithdraw) && $canWithdraw)
                     <button type="button"
                             class="btn btn-xs btn-outline-warning move-category-btn"
                             title="Change category"
                             data-bs-toggle="modal"
                             data-bs-target="#moveCategoryModal"
-                            data-entry-id="{{ $registration->pivot->id }}"
-                            data-player="{{ optional($registration->players->first())->name }} {{ optional($registration->players->first())->surname }}"
+                            data-entry-id="{{ $cereg->id }}"
+                            data-player="{{ $player->name }} {{ $player->surname }}"
                             data-current-category="{{ $eventCategory->category->name }}"
                             data-current-category-id="{{ $eventCategory->id }}">
                       <i class="ti ti-switch-horizontal me-1"></i> Change Category

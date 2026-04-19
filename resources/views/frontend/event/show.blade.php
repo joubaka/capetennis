@@ -35,6 +35,13 @@
 
 <input type="hidden" id="event_id" value="{{ $event->id }}">
 
+@if(session('success'))
+  <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
+    <i class="ti ti-check me-1"></i> {{ session('success') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+@endif
+
 {{-- ================= HEADER ================= --}}
 <div class="row">
   <div class="col-12">
@@ -59,7 +66,7 @@
               @if($event->isIndividual())
                 <li class="badge bg-label-success">
                   <i class="ti ti-users"></i>
-                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->count() }}
+                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->where('payment_status_id', 1)->count() }}
                 </li>
               @endif
               <li class="list-inline-item">
@@ -190,10 +197,10 @@ console.log('[EVENT_DATA]', window.EVENT_DATA);
 
 </script>
 
-<script src="{{ asset('assets/js/pages-profile.js') }}"></script>
-<script src="{{ asset('assets/js/forms-editors.js') }}"></script>
-<script src="{{ asset('assets/js/select2-search-addon.js') }}"></script>
-<script src="{{ asset(mix('js/event-show.js')) }}"></script>
+<script src="{{ vasset('assets/js/pages-profile.js') }}"></script>
+<script src="{{ vasset('assets/js/forms-editors.js') }}"></script>
+<script src="{{ vasset('assets/js/select2-search-addon.js') }}"></script>
+<script src="{{ asset(mix('js/event-show.js')) }}?v={{ config('app.asset_version') }}"></script>
 
 
 

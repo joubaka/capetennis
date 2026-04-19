@@ -133,6 +133,60 @@
       </div>
     </div>
 
+    {{-- ===== CODE OF CONDUCT & TERMS TOGGLES ===== --}}
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="ti ti-file-check me-1"></i> Code of Conduct & Terms</h5>
+        <small class="text-muted">
+          Enable or disable the Code of Conduct and Terms requirements site-wide. When enabled, players must accept these before registering.
+        </small>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <div class="col-md-6">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <label class="form-label mb-0" for="require_code_of_conduct">Require Code of Conduct</label>
+                <br><small class="text-muted">Players must accept the Code of Conduct.</small>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="require_code_of_conduct" name="require_code_of_conduct" value="1"
+                  {{ old('require_code_of_conduct', $generalSettings['require_code_of_conduct'] ?? '0') == '1' ? 'checked' : '' }}>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <label class="form-label mb-0" for="require_terms">Require Terms & Conditions</label>
+                <br><small class="text-muted">Players must accept the Terms & Conditions.</small>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="require_terms" name="require_terms" value="1"
+                  {{ old('require_terms', $generalSettings['require_terms'] ?? '0') == '1' ? 'checked' : '' }}>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <label class="form-label mb-0" for="require_profile_update">Require Profile Update on Login</label>
+                <br><small class="text-muted">Players must update their profile details when logging in (if profile is incomplete or outdated).</small>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="require_profile_update" name="require_profile_update" value="1"
+                  {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
     <div class="mb-4">
       <button type="submit" class="btn btn-primary">
         <i class="ti ti-device-floppy me-1"></i> Save Settings

@@ -252,13 +252,18 @@
                 @foreach($event->eventCategories as $eventcategories)
                 <div class="card p-2 mb-2">
 
-                    <h3 class="badge bg-label-primary">{{$eventcategories->category->name}} ({{count($eventcategories->registrations)}}) </h3>
+                    @php
+                      $paidRegs = $eventcategories->categoryEventRegistrations->where('payment_status_id', 1)->where('status', '!=', 'withdrawn');
+                    @endphp
+                    <h3 class="badge bg-label-primary">{{$eventcategories->category->name}} ({{$paidRegs->count()}}) </h3>
                     <div class="list-group list-group-flush">
 
                         <div class="demo-inline-spacing ">
                             <div class="list-group list-group-flush">
 
-                                @foreach($eventcategories->registrations as $registration)
+                                @foreach($paidRegs as $cereg)
+                                @php $registration = $cereg->registration; @endphp
+                                @if($registration && $registration->players->count())
 
                                 <a href="javascript:void(0);" class="list-group-item list-group-item-action"> {{$registration->players[0]->name}} {{$registration->players[0]->surname}}
                                     @if($registration->order_item)
@@ -268,7 +273,7 @@
                                     @endif
 
                                 </a>
-
+                                @endif
 
                                 @endforeach
                             </div>

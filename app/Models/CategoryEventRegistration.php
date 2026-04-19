@@ -209,7 +209,8 @@ class CategoryEventRegistration extends Model
 
   public function isRefunded(): bool
   {
-    return $this->refund_status === self::REFUND_COMPLETED;
+   
+    return $this->status === 'completed';
   }
 
   // --------------------------------------------------
@@ -281,17 +282,18 @@ class CategoryEventRegistration extends Model
 
   public function isRefundPending(): bool
   {
-    return $this->refund_status === self::REFUND_PENDING;
+    return $this->status === 'pending';
   }
 
   public function isRefundCompleted(): bool
   {
-    return $this->refund_status === self::REFUND_COMPLETED;
+   
+    return $this->status === 'completed';
   }
 
   public function hasRefund(): bool
   {
-    return !empty($this->refund_status);
+    return !empty($this->status);
   }
 
   public function isBankRefund(): bool

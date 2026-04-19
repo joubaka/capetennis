@@ -20,6 +20,7 @@ class CategoryEntriesExport implements FromCollection, WithHeadings, ShouldAutoS
   {
     return $this->categoryEvent
       ->categoryEventRegistrations()
+      ->where('payment_status_id', 1)
       ->with(['registration.players'])
       ->get()
       ->map(function ($entry) {

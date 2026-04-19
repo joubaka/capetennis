@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
 use App\Models\CategoryEventRegistration;
@@ -42,12 +43,6 @@ class AppServiceProvider extends ServiceProvider
         $pendingBankRefundCount = $registrationPending + $teamPending;
 
         $view->with('pendingBankRefundCount', $pendingBankRefundCount);
-
-        \Log::debug('APP SERVICE PROVIDER pendingBankRefundCount', [
-          'registrationPending' => $registrationPending,
-          'teamPending' => $teamPending,
-          'total' => $pendingBankRefundCount,
-        ]);
       }
 
     });

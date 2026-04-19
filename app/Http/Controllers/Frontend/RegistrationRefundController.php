@@ -37,6 +37,13 @@ class RegistrationRefundController extends Controller
         ->with('success', 'Registration withdrawn (no payment to refund).');
     }
 
+    // Already refunded via PayFast (no manual refund needed)
+    if (!empty($payment['pf_transaction_id'])) {
+      return redirect()
+        ->route('events.show', $registration->categoryEvent->event_id)
+        ->with('success', 'Registration withdrawn (no payment to refund).');
+    }
+
     // Include wallet portion in total paid
     $walletPaid = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'];
@@ -322,23 +329,6 @@ class RegistrationRefundController extends Controller
       ])
       ->log("Bank refund R{$net} requested");
 
-    // Notify admin so they can process the bank transfer
-    try {
-      $refEventName = optional($registration->categoryEvent?->event)->name ?? 'Event';
-      $playerName = $registration->display_name;
-
-      app(\App\Http\Controllers\Backend\EmailController::class)->sendToOwner([
-        'subject' => "Bank refund requested: {$refEventName} – {$playerName}",
-        'body' => "A bank refund has been requested.\n\nPlayer: {$playerName}\nEvent: {$refEventName}\nAmount: R" . number_format($net, 2) . "\nBank: {$request->bank_name}\n\nPlease log in to process this refund.",
-        'replyTo' => $user->email ?? null,
-      ], 'smtp');
-    } catch (\Throwable $e) {
-      Log::error('BANK REFUND ADMIN EMAIL FAILED', [
-        'registration_id' => $registration->id,
-        'error' => $e->getMessage(),
-      ]);
-    }
-
     return redirect()
       ->route('events.show', $registration->categoryEvent->event_id)
       ->with('success', 'Bank refund request submitted. It will be processed manually.');
@@ -448,6 +438,27 @@ class RegistrationRefundController extends Controller
       'pending_registration_refunds' => $pendingRefunds->count(),
       'pending_team_refunds' => $pendingTeamRefunds->count(),
     ]);
+
+    // Detailed debug dump (IDs + key fields) to help trace missing rows in view
+    try {
+      Log::debug('BANK INDEX: pending team refunds data', [
+        'team_refunds' => $pendingTeamRefunds->map(function ($r) {
+          return [
+            'id' => $r->id,
+            'team_id' => $r->team_id,
+            'player_id' => $r->player_id,
+            'event_id' => $r->event_id,
+            'refund_status' => $r->refund_status,
+            'refund_net' => $r->refund_net,
+            'refund_account_name' => $r->refund_account_name,
+            'refund_bank_name' => $r->refund_bank_name,
+            'updated_at' => optional($r->updated_at)->toDateTimeString(),
+          ];
+        })->toArray()
+      ]);
+    } catch (\Throwable $e) {
+      Log::error('BANK INDEX debug dump failed', ['error' => $e->getMessage()]);
+    }
 
     return view('admin.refunds.bank-index', compact(
       'pendingRefunds',
