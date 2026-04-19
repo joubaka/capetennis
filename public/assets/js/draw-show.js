@@ -163,40 +163,126 @@ $(function () {
 
 
   // ===============================
-  // ADD VENUE MODAL (fills hidden drawId)
+  // VENUES — Multi-venue modal (headOffice pattern)
   // ===============================
-  $(document).on("click", ".addVenues", function () {
-    const drawId = $(this).data("id");
-    $("#drawIdInput").val(drawId);
+  var $venuesModal = $('#venuesModal');
+  var $venuesForm  = $('#venuesForm');
+  var $venuesContainer = $('#venues-container');
+  var csrfToken = $('meta[name="csrf-token"]').attr('content');
 
-    // Build dynamic store route
-    window.storeVenueRoute = window.venueStoreBase.replace("DRAW_ID", drawId);
+  // Fetch all venues once, cache for row template
+  var allVenuesCache = [];
+
+  function venueRowTemplate(selectedId, numCourts) {
+    selectedId = selectedId || '';
+    numCourts  = numCourts || 1;
+    var options = '<option value="">-- Select Venue --</option>';
+    allVenuesCache.forEach(function (v) {
+      var sel = (selectedId == v.id) ? 'selected' : '';
+      options += '<option value="' + v.id + '" ' + sel + '>' + v.name + '</option>';
+    });
+    return '<div class="venue-row d-flex gap-2 mb-2">'
+      + '<select name="venue_id[]" class="form-select venue-select" required>' + options + '</select>'
+      + '<input type="number" name="num_courts[]" class="form-control" value="' + numCourts + '" min="1" required style="max-width:100px">'
+      + '<button type="button" class="btn btn-danger btn-remove-row">&times;</button>'
+      + '</div>';
+  }
+
+  function initVenueSelect2($row) {
+    var $select = $row.find('.venue-select');
+    if ($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+    $select.select2({ dropdownParent: $venuesModal, width: '100%' });
+  }
+
+  // Open modal — load existing venues via JSON
+  $(document).on('click', '.btn-add-venues', function () {
+    var drawId   = $(this).data('draw-id');
+    var drawName = $(this).data('draw-name') || 'Draw';
+
+    var storeUrl = window.venueStoreBase.replace('DRAW_ID', drawId);
+    var jsonUrl  = window.venueJsonBase.replace('DRAW_ID', drawId);
+
+    $venuesForm.attr('action', storeUrl).data('draw-id', drawId);
+    $venuesModal.find('.modal-title').text('Assign Venues to ' + drawName);
+    $venuesContainer.empty();
+
+    // Fetch all venues list (for dropdown options)
+    var venuesListUrl = (window.allVenuesUrl || '/backend/venues/json');
+
+    $.when(
+      $.get(jsonUrl),
+      allVenuesCache.length ? $.Deferred().resolve(allVenuesCache) : $.get(venuesListUrl)
+    ).done(function (existingResult, allResult) {
+      var existing = Array.isArray(existingResult) ? existingResult : existingResult[0];
+      var allVenues = Array.isArray(allResult) ? allResult : (allResult[0] || allResult);
+      allVenuesCache = allVenues;
+
+      if (existing && existing.length > 0) {
+        existing.forEach(function (v) {
+          var $row = $(venueRowTemplate(v.id, v.num_courts));
+          $venuesContainer.append($row);
+          initVenueSelect2($row);
+        });
+      } else {
+        var $row = $(venueRowTemplate());
+        $venuesContainer.append($row);
+        initVenueSelect2($row);
+      }
+
+      $venuesModal.modal('show');
+    }).fail(function () {
+      toastr.error('Failed to load venues');
+    });
   });
 
+  // Add row
+  $('#addVenueRow').on('click', function () {
+    var $row = $(venueRowTemplate());
+    $venuesContainer.append($row);
+    initVenueSelect2($row);
+  });
 
-  // ===============================
-  // SAVE VENUE
-  // ===============================
-  $(document).on("click", "#save-draw-venue-button", function (e) {
+  // Remove row
+  $(document).on('click', '.btn-remove-row', function () {
+    $(this).closest('.venue-row').remove();
+  });
+
+  // Save venues
+  $venuesForm.on('submit', function (e) {
     e.preventDefault();
 
-    const drawId = $("#drawIdInput").val();
-    const venueId = $("#venueDrawSelect2").val();
-    const courts = $("#numCourtsInput").val();
+    var url    = $(this).attr('action');
+    var data   = $(this).serialize();
+    var drawId = $(this).data('draw-id');
 
-    if (!venueId) return toastr.error("Select a venue");
-    if (!courts || courts <= 0) return toastr.error("Invalid court count");
+    $.post(url, data + '&_token=' + csrfToken)
+      .done(function (response) {
+        if (!response.success) {
+          toastr.error('Could not save venues.');
+          return;
+        }
 
-    $.post(window.storeVenueRoute, {
-      "venue_id[]": venueId,
-      "num_courts[]": courts
-    }).done(function () {
-      toastr.success("Venue added");
-      $("#basicModal").modal("hide");
-      loadData();
-    }).fail(function () {
-      toastr.error("Failed to save venue");
-    });
+        toastr.success('Venues updated successfully.');
+        $venuesModal.modal('hide');
+
+        // Update the badge display inline
+        var $container = $('.draw-venues[data-draw-id="' + drawId + '"]');
+        if (response.venues && response.venues.length) {
+          var html = '<small class="text-muted me-1"><i class="ti ti-map-pin ti-xs"></i> Venues:</small> ';
+          response.venues.forEach(function (v) {
+            var courts = v.pivot ? v.pivot.num_courts : (v.num_courts || 1);
+            html += '<span class="badge bg-label-primary me-1">'
+              + v.name + ' <span class="text-muted">(' + courts + ' court' + (courts != 1 ? 's' : '') + ')</span>'
+              + '</span>';
+          });
+          $container.html(html);
+        } else {
+          $container.html('<small class="text-muted"><i class="ti ti-map-pin-off ti-xs me-1"></i>No venues assigned</small>');
+        }
+      })
+      .fail(function () {
+        toastr.error('Error while saving venues.');
+      });
   });
 
 

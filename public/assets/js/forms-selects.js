@@ -80,8 +80,8 @@ $(function () {
   // Select2
   // --------------------------------------------------------------------
   $(".select2category").select2();
-  // Default
-  if (select2Player.length) {
+  // Default – skip .select2player init on checkout page (wizard handles it with AJAX)
+  if (select2Player.length && !$('#wizard-checkout').length) {
     select2Player.each(function () {
       var $this = $(this);
       $this.wrap('<div class="position-relative"></div>').select2({
