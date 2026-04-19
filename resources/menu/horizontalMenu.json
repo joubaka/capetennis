@@ -16,10 +16,10 @@
       "menuLevel" : "super",
       "submenu": [
         {
-          "url": "backend/dashboard",
+          "url": "backend/super-admin/dashboard",
           "name": "Dashboard",
           "icon": "menu-icon tf-icons ti ti-smart-home",
-          "slug": "dashboard"
+          "slug": "super-admin.dashboard"
         },
         {
           "url": "backend/user",

@@ -6,6 +6,7 @@ use App\Http\Controllers\Backend\ChartController;
 use App\Http\Controllers\Backend\ClothingOrderController;
 use App\Http\Controllers\Backend\ConvenorController;
 use App\Http\Controllers\Backend\DashboardController;
+use App\Http\Controllers\Backend\SuperAdminDashboardController;
 use App\Http\Controllers\Backend\DrawController;
 use App\Http\Controllers\Backend\EmailController;
 use App\Http\Controllers\Backend\UserPlayerController;
@@ -765,6 +766,11 @@ Route::delete(
 
   //dashboard
   Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
+
+  // Super Admin Dashboard
+  Route::get('super-admin/dashboard', [SuperAdminDashboardController::class, 'index'])
+    ->name('super-admin.dashboard')
+    ->middleware('role:super-user');
 
   //user
   Route::get('user/addRole/{id}', [UserController::class, 'addRole'])->name('user.add.role');
