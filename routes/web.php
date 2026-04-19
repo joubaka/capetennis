@@ -1041,6 +1041,7 @@ Route::delete(
 
 
   //convenor
+  Route::get('convenor/search-users', [ConvenorController::class, 'searchUsers'])->name('convenor.search-users');
   Route::resource('convenor', ConvenorController::class);
   Route::prefix('ranking')->name('ranking.')->group(function () {
     // ...your existing ranking routes...
@@ -1338,6 +1339,8 @@ Route::delete(
   Route::patch('/series/{series}/publish', [SeriesController::class, 'publish'])->name('series.publish');
   Route::patch('/series/{series}/unpublish', [SeriesController::class, 'unpublish'])->name('series.unpublish');
 
+  Route::post('/series/{series}/email-players', [EmailController::class, 'sendToSeriesPlayers'])->name('series.email.players');
+
   //import export
   Route::get('exportRegistrations/{id}', [ImportExportController::class, 'exportRegistrations'])->name('export.registrations');
 
@@ -1465,6 +1468,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   */
   Route::get('dashboard', [DashboardController::class, 'dashboard'])
     ->name('backend.dashboard');
+
+  /*
+  |--------------------------------------------------------------------------
+  | USERS & PLAYERS DATA ENDPOINTS (for DataTables)
+  |--------------------------------------------------------------------------
+  */
+  Route::get('user/data', [UserController::class, 'data'])->name('user.data');
+  Route::get('player/data', [PlayerController::class, 'data'])->name('player.data');
 
   // Super Admin Dashboard
   Route::get('superadmin', [\App\Http\Controllers\Backend\SuperAdminController::class, 'index'])
