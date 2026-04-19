@@ -40,12 +40,12 @@ class EvaluationController extends Controller
     {
         for ($i=0; $i < count($request->exersize); $i++) { 
             $exercise = new Exercise();
-            $exersize->exersize_name_id = $request->exersize[$i];
-            $exersize->score = $request->score[$i];
-            $exersize->user_id = Auth::user()->id;
-            $exersize->player_id = $request->player_id;
-            $exersize->date_of_lesson = $request->date;
-            $exersize->save();
+            $exercise->exersize_name_id = $request->exersize[$i];
+            $exercise->score = $request->score[$i];
+            $exercise->user_id = Auth::user()->id;
+            $exercise->player_id = $request->player_id;
+            $exercise->date_of_lesson = $request->date;
+            $exercise->save();
         }
      
 
