@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\Payfast;
+use App\Services\Payfast;
 use App\Exports\ClothingOrdersExport;
 use App\Http\Controllers\Controller;
 use App\Models\ClothingItemType;
@@ -224,7 +224,7 @@ class ClothingOrderController extends Controller
     $orderItems = ClothingOrderItem::where('clothing_order_id', $order->id)->get();
 
     // PayFast
-    $payfast = new \App\Classes\Payfast();
+    $payfast = new \App\Services\Payfast();
 
     // MODE FIRST
     if ($userId === 584) {

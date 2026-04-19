@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\Payfast;
+use App\Services\Payfast;
 use App\Http\Controllers\Controller;
 use App\Models\ClothingItemType;
 use App\Models\ClothingOrder;

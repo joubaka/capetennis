@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Classes;
+namespace App\Services\Ranking;
 
 use App\Models\CategoryEvent;
 use App\Models\RankingScores;

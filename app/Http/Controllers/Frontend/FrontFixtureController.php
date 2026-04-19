@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Frontend;
 
-use App\Classes\CapeTennisDraw;
+use App\Services\Draw\CapeTennisDraw;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\Player;

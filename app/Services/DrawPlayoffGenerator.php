@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Helpers;
+namespace App\Services;
 
 use App\Models\Draw;
 use App\Models\Fixture;

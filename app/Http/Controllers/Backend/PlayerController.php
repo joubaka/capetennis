@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\ExersizeName;
-use App\Models\ExersizeType;
+use App\Models\ExerciseName;
+use App\Models\ExerciseType;
 use App\Models\Fixture;
 use App\Models\FixturePlayer;
 use App\Models\Goal;
@@ -217,9 +217,9 @@ class PlayerController extends Controller
     public function profile($id)
     {
         $player = Player::find($id);
-        $exersize_types = ExersizeType::all();
+        $exersize_types = ExerciseType::all();
         $practice_types = PracticeType::all();
-        $physical_exersizes  = ExersizeName::where('exersize_type_id', 1)->get();
+        $physical_exersizes  = ExerciseName::where('exersize_type_id', 1)->get();
         $durations = PracticeDuration::all();
         $general_goal_types = Goal::where('player_id', $id)
             ->whereHas('names', function ($item) {

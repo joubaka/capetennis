@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Classes;
+namespace App\Services;
 
 use App\Models\Event;
 use App\Models\Registration;

@@ -260,7 +260,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $result = $payfast->refund($pfPaymentId, $net, 'Event withdrawal refund');
 
         Log::info('PAYFAST AUTO REFUND ATTEMPT', [
@@ -484,7 +484,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $amount = $order->refund_net ?? $order->refund_gross ?? 0;
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
@@ -572,7 +572,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $amount = $registration->refund_net ?? $registration->refund_gross ?? 0;
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Event withdrawal refund');

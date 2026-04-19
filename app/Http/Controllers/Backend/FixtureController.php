@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\CapeTennisDraw;
+use App\Services\Draw\CapeTennisDraw;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\DrawVenue;

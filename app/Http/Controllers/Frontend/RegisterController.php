@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Frontend;
 
-use App\Classes\Payfast;
+use App\Services\Payfast;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryEvent;

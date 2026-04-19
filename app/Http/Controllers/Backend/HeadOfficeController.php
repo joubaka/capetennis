@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Backend;
 
-use App\Helpers\Fixtures;
+use App\Services\Fixtures;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Draw;

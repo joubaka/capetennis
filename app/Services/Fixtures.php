@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Helpers;
+namespace App\Services;
 
 use App\Models\CategoryEventRegistration;
 use App\Models\Draw;

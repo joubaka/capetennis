@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Exersize;
+use App\Models\Exercise;
 use App\Models\Exerzize;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,7 +39,7 @@ class EvaluationController extends Controller
     public function store(Request $request)
     {
         for ($i=0; $i < count($request->exersize); $i++) { 
-            $exersize = new Exersize();
+            $exercise = new Exercise();
             $exersize->exersize_name_id = $request->exersize[$i];
             $exersize->score = $request->score[$i];
             $exersize->user_id = Auth::user()->id;

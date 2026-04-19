@@ -5,17 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Exersize extends Model
+class Exercise extends Model
 {
     use HasFactory;
-    
-    function player()
+
+    protected $table = 'exersizes';
+
+    public function player()
     {
         return $this->belongsTo(Player::class);
     }
 
-    function exersizeName()
+    public function exerciseName()
     {
-        return $this->belongsTo(ExersizeName::class,'exersize_name_id','id');
+        return $this->belongsTo(ExerciseName::class, 'exersize_name_id', 'id');
     }
 }

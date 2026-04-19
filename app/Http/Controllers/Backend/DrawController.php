@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\Brackets;
-use App\Classes\CapeTennisDraw;
-use App\Classes\MonradFeedin;
-use App\Helpers\Fixtures;
+use App\Services\Draw\Brackets;
+use App\Services\Draw\CapeTennisDraw;
+use App\Services\Draw\MonradFeedin;
+use App\Services\Fixtures;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Draw;
