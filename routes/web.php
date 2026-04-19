@@ -284,6 +284,12 @@ Route::post('backend/refunds/team/{order}/complete', [
   'completeTeam'
 ])->middleware(['auth', 'role:super-user'])->name('bank.complete.team');
 
+// Super-admin live system check
+Route::get('super-admin/system-check', [
+  App\Http\Controllers\Backend\SystemCheckController::class,
+  'index'
+])->middleware(['auth', 'role:super-user'])->name('super-admin.system-check');
+
 
 
 Route::middleware([

@@ -21,6 +21,12 @@
       "icon": "menu-icon tf-icons fa-regular fa-star",
       "slug": "convenor.show"
 
+    },
+    {
+      "url": "super-admin/system-check",
+      "name": "System Check",
+      "icon": "menu-icon tf-icons ti ti-stethoscope",
+      "slug": "super-admin.system-check"
     }
 
   ]
