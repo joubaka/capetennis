@@ -4,6 +4,10 @@ namespace App\Providers;
 
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
+use App\Models\CategoryEventRegistration;
+use App\Models\Wallet;
+use App\Policies\RegistrationPolicy;
+use App\Policies\WalletPolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -13,7 +17,8 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        // 'App\Models\Model' => 'App\Policies\ModelPolicy',
+        CategoryEventRegistration::class => RegistrationPolicy::class,
+        Wallet::class => WalletPolicy::class,
     ];
 
     /**

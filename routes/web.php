@@ -587,10 +587,10 @@ Route::delete(
   // =========================
 
   // PDF export routes for fixtures (team)
-  Route::get('fixture/create/pdf', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf'])
+  Route::get('fixture/create/pdf', [\App\Http\Controllers\Backend\FixtureController::class, 'fixtures_create_pdf'])
     ->name('fixture.create.pdf');
 
-  Route::get('fixture/create/pdf/venue', [\App\Http\Controllers\backend\FixtureController::class, 'fixtures_create_pdf_venue'])
+  Route::get('fixture/create/pdf/venue', [\App\Http\Controllers\Backend\FixtureController::class, 'fixtures_create_pdf_venue'])
     ->name('fixture.create.pdf.venue');
 
 
@@ -884,7 +884,7 @@ Route::delete(
   Route::get('fixture/venue/{event_id}/{venue_id}', [FixtureController::class, 'fixtures_venue'])->name('fixtures.venue');
   Route::post('fixtures/create/auto/{draw_id}', [FixtureController::class, 'autoScheduleFixtures'])->name('fixtures.auto.schedule');
   Route::resource('fixture', FixtureController::class);
-  Route::get('/nomination/players/category/{id}', [\App\Http\Controllers\backend\NominateController::class, 'playersForCategory']);
+  Route::get('/nomination/players/category/{id}', [\App\Http\Controllers\Backend\NominateController::class, 'playersForCategory']);
   Route::get(
     '/admin/headoffice/{event}/venue/{venue}',
     [\App\Http\Controllers\Backend\HeadOfficeController::class, 'venueFixtures']
