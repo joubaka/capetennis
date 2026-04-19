@@ -9,36 +9,61 @@
       "menuLevel" : "all"
     },
     {
-      
-      "name": "Settings",
-      "icon": "menu-icon tf-icons ti ti-smart-home",
-      "slug": "settings.index",
+      "name": "Super Admin",
+      "icon": "menu-icon tf-icons ti ti-shield-chevron",
+      "slug": "dashboard",
       "type": "admin",
       "menuLevel" : "super",
       "submenu": [
         {
-            "url": "backend/series",
-            "name": "Series",
-            "icon": "circle",
-            "slug": ""
+          "url": "backend/dashboard",
+          "name": "Dashboard",
+          "icon": "menu-icon tf-icons ti ti-smart-home",
+          "slug": "dashboard"
+        },
+        {
+          "url": "backend/user",
+          "name": "Users",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "slug": "user.index"
+        },
+        {
+          "url": "backend/player",
+          "name": "Players",
+          "icon": "menu-icon tf-icons ti ti-ball-tennis",
+          "slug": "player.index"
+        },
+        {
+          "url": "backend/agreements",
+          "name": "Agreements",
+          "icon": "menu-icon tf-icons ti ti-file-text",
+          "slug": "agreements.index"
+        },
+        {
+          "url": "backend/settings",
+          "name": "Site Settings",
+          "icon": "menu-icon tf-icons ti ti-settings",
+          "slug": "settings.index"
+        },
+        {
+          "url": "backend/series",
+          "name": "Series",
+          "icon": "menu-icon tf-icons ti ti-timeline",
+          "slug": "series.index"
         },
         {
           "url": "backend/league",
           "name": "League",
-          "icon": "circle",
-          "slug": ""
-      }
-
-    ]
-
-    },
-    {
-      "url": "/backend/eventPhoto",
-      "name": "Photos",
-      "icon": "menu-icon tf-icons ti ti-smart-home",
-      "slug": "home",
-      "type": "admin",
-      "menuLevel" : "super"
+          "icon": "menu-icon tf-icons ti ti-trophy",
+          "slug": "league.index"
+        },
+        {
+          "url": "backend/eventPhoto",
+          "name": "Photos",
+          "icon": "menu-icon tf-icons ti ti-photo",
+          "slug": "eventPhoto.index"
+        }
+      ]
     }
   ]
 }
