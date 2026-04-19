@@ -9,36 +9,61 @@
       "menuLevel" : "all"
     },
     {
-      
-      "name": "Settings",
-      "icon": "menu-icon tf-icons ti ti-smart-home",
-      "slug": "settings.index",
+      "name": "Super Admin",
+      "icon": "menu-icon tf-icons ti ti-shield-check",
+      "slug": "superadmin",
       "type": "admin",
       "menuLevel" : "super",
       "submenu": [
         {
-            "url": "backend/series",
-            "name": "Series",
-            "icon": "circle",
-            "slug": ""
+          "url": "backend/superadmin",
+          "name": "Dashboard",
+          "icon": "circle",
+          "slug": "backend.superadmin"
+        },
+        {
+          "url": "backend/user",
+          "name": "Users",
+          "icon": "circle",
+          "slug": "user.index"
+        },
+        {
+          "url": "backend/player",
+          "name": "Players",
+          "icon": "circle",
+          "slug": "player.index"
+        },
+        {
+          "url": "backend/agreements",
+          "name": "Agreements",
+          "icon": "circle",
+          "slug": "backend.agreements"
+        },
+        {
+          "url": "backend/settings",
+          "name": "Site Settings",
+          "icon": "circle",
+          "slug": "settings.index"
+        },
+        {
+          "url": "backend/series",
+          "name": "Series",
+          "icon": "circle",
+          "slug": ""
         },
         {
           "url": "backend/league",
           "name": "League",
           "icon": "circle",
           "slug": ""
-      }
-
-    ]
-
-    },
-    {
-      "url": "/backend/eventPhoto",
-      "name": "Photos",
-      "icon": "menu-icon tf-icons ti ti-smart-home",
-      "slug": "home",
-      "type": "admin",
-      "menuLevel" : "super"
+        },
+        {
+          "url": "/backend/eventPhoto",
+          "name": "Photos",
+          "icon": "circle",
+          "slug": ""
+        }
+      ]
     }
   ]
 }

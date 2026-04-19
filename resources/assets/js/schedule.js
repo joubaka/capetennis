@@ -84,24 +84,24 @@
       <div class="col-12 col-md-4">
 
         <button type="button"
-          class="btn btn-info btn-sm addVenues mb-3"
-          data-id="{{ $draw->id }}"
-          data-bs-toggle="modal"
-          data-bs-target="#basicModal">
+          class="btn btn-info btn-sm btn-add-venues mb-3"
+          data-draw-id="{{ $draw->id }}"
+          data-draw-name="{{ $draw->drawName }}">
           Add Venues
         </button>
 
-        @foreach($draw->venues as $venue)
-        <p class="mb-1">
-          {{ $venue-> name}} — {{ $venue-> pivot -> num_courts}} courts
-
-          <span class="btn btn-sm btn-danger deleteVenue ms-2"
-            data-id="{{ $draw->id }}"
-            data-venue="{{ $venue->id }}">
-            Delete
-          </span>
-        </p>
-        @endforeach
+        <div class="draw-venues" data-draw-id="{{ $draw->id }}">
+          @if($draw->venues && $draw->venues->count() > 0)
+            <small class="text-muted me-1"><i class="ti ti-map-pin ti-xs"></i> Venues:</small>
+            @foreach($draw->venues as $venue)
+              <span class="badge bg-label-primary me-1">
+                {{ $venue->name }} <span class="text-muted">({{ $venue->pivot->num_courts }} {{ Str::plural('court', $venue->pivot->num_courts) }})</span>
+              </span>
+            @endforeach
+          @else
+            <small class="text-muted"><i class="ti ti-map-pin-off ti-xs me-1"></i>No venues assigned</small>
+          @endif
+        </div>
 
       </div>
 
@@ -111,3 +111,10 @@
 
 { { --Venue Modal-- } }
 @include('backend.draw._modals.addVenueModal')
+@once
+<script>
+    window.venueStoreBase = window.venueStoreBase || "{{ route('backend.draw.venues.store', ['draw' => 'DRAW_ID']) }}";
+    window.venueJsonBase = window.venueJsonBase || "{{ route('backend.draw.venues.json', ['draw' => 'DRAW_ID']) }}";
+    window.allVenuesUrl = window.allVenuesUrl || "{{ route('venue.list') }}";
+</script>
+@endonce
