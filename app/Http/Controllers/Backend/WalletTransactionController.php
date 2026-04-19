@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WalletTransactionController extends Controller
 {
@@ -42,6 +43,7 @@ class WalletTransactionController extends Controller
         $wallet = $user->wallet ?? $user->wallet()->create();
         $amount = $request->amount;
 
+        // Quick pre-check (not under lock – the authoritative check is inside the transaction)
         if ($request->type === 'debit' && $wallet->balance < $amount) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Insufficient balance for debit.'], 422);
@@ -49,28 +51,50 @@ class WalletTransactionController extends Controller
             return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
         }
 
-        // Create transaction (balance is computed from transactions)
-        $wallet->transactions()->create([
-            'type' => $request->type,
-            'amount' => $amount,
-            'source_type' => 'manual',
-            'source_id' => auth()->id(),
-            'meta' => [
-                'admin' => auth()->user()->name,
-                'reference' => $request->reference,
-            ],
-        ]);
+        $insufficientFunds = false;
 
-        activity('wallet')
-          ->performedOn($wallet)
-          ->causedBy(auth()->user())
-          ->withProperties([
-            'type' => $request->type,
-            'amount' => $amount,
-            'reference' => $request->reference,
-            'user_id' => $user->id,
-          ])
-          ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+        DB::transaction(function () use ($wallet, $amount, $request, $user, &$insufficientFunds) {
+
+          if ($request->type === 'debit') {
+            // Re-check balance under a row lock to prevent concurrent over-debits
+            $locked = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
+
+            if ($locked->balance < $amount) {
+              $insufficientFunds = true;
+              return;
+            }
+          }
+
+          // Create transaction (balance is computed from transactions)
+          $wallet->transactions()->create([
+              'type' => $request->type,
+              'amount' => $amount,
+              'source_type' => 'manual',
+              'source_id' => auth()->id(),
+              'meta' => [
+                  'admin' => auth()->user()->name,
+                  'reference' => $request->reference,
+              ],
+          ]);
+
+          activity('wallet')
+            ->performedOn($wallet)
+            ->causedBy(auth()->user())
+            ->withProperties([
+              'type' => $request->type,
+              'amount' => $amount,
+              'reference' => $request->reference,
+              'user_id' => $user->id,
+            ])
+            ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+        });
+
+        if ($insufficientFunds) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Insufficient balance for debit.'], 422);
+            }
+            return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
+        }
 
         if ($request->expectsJson()) {
             return response()->json([

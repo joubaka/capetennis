@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Frontend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class RegistrationWithdrawController extends Controller
 {
@@ -62,6 +63,37 @@ class RegistrationWithdrawController extends Controller
         'refund_allowed' => $check['refund_allowed'] ?? false,
       ])
       ->log("Withdrew from {$eventName} ({$categoryName})");
+
+    // ── Email player confirmation ──
+    if ($player && !empty($player->email)) {
+      try {
+        app(\App\Http\Controllers\Backend\EmailController::class)->sendToOwner([
+          'subject' => "Withdrawal confirmed: {$eventName}",
+          'body' => "This is to confirm that " . trim($player->name . ' ' . $player->surname) . " has been withdrawn from {$eventName} ({$categoryName}).",
+          'replyTo' => null,
+        ], 'smtp');
+
+        // Notify the player directly
+        $mailer = app(\App\Services\MailAccountManager::class)->getMailer();
+        app(\App\Http\Controllers\Backend\EmailController::class)->sendToIndividual([
+          'email' => $player->email,
+          'subject' => "Withdrawal confirmed: {$eventName}",
+          'body' => "Hi " . trim($player->name) . ",\n\nYour withdrawal from {$eventName} ({$categoryName}) has been confirmed.\n\n" .
+            (($check['refund_allowed'] ?? false)
+              ? "A refund will be processed. Please follow the link you have been given to choose your refund method."
+              : "No refund is applicable as the withdrawal deadline has passed.") .
+            "\n\nFor any queries please contact support@capetennis.co.za.",
+          'fromName' => 'Cape Tennis',
+          'replyTo' => 'support@capetennis.co.za',
+        ], $mailer);
+      } catch (\Throwable $e) {
+        Log::warning('WITHDRAWAL EMAIL FAILED', [
+          'registration_id' => $registration->id,
+          'player_email' => $player->email,
+          'error' => $e->getMessage(),
+        ]);
+      }
+    }
 
     // -------------------------
     // REFUND DECISION

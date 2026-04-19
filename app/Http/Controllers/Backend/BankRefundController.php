@@ -56,26 +56,6 @@ class BankRefundController extends Controller
       'pending_team_refunds' => $pendingTeamRefunds->count(),
     ]);
 
-    try {
-      \Log::debug('BACKEND BANK INDEX team refunds data', [
-        'team_refunds' => $pendingTeamRefunds->map(function ($r) {
-          return [
-            'id' => $r->id,
-            'team_id' => $r->team_id,
-            'player_id' => $r->player_id,
-            'event_id' => $r->event_id,
-            'refund_status' => $r->refund_status,
-            'refund_net' => $r->refund_net,
-            'refund_account_name' => $r->refund_account_name,
-            'refund_bank_name' => $r->refund_bank_name,
-            'updated_at' => optional($r->updated_at)->toDateTimeString(),
-          ];
-        })->toArray()
-      ]);
-    } catch (\Throwable $e) {
-      \Log::error('BACKEND BANK INDEX debug dump failed', ['error' => $e->getMessage()]);
-    }
-
     return view('backend.refunds.bank', compact('refunds', 'completedRefunds', 'pendingTeamRefunds', 'completedTeamRefunds'));
   }
 
