@@ -1437,7 +1437,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   |--------------------------------------------------------------------------
   */
   Route::get('dashboard', [DashboardController::class, 'dashboard'])
-    ->name('dashboard');
+    ->name('backend.dashboard');
+
+  // Super Admin Dashboard
+  Route::get('superadmin', [\App\Http\Controllers\Backend\SuperAdminController::class, 'index'])
+    ->middleware('role:super-user')
+    ->name('backend.superadmin.index');
 
   /*
   |--------------------------------------------------------------------------

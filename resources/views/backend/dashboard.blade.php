@@ -117,26 +117,65 @@
 
       <div class="card-body">
         @forelse($user->players as $player)
-         <div class="linked-player-row mb-3 pb-2 border-bottom d-flex justify-content-between">
+          @php
+            $profileStatus = $player->getProfileStatus();
+            $agreementStatus = $player->hasAcceptedLatestAgreement();
+          @endphp
+          <div class="linked-player-row mb-3 pb-3 border-bottom">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <a href="{{ route('backend.player.profile', $player->id) }}"
+                   class="btn btn-sm btn-outline-primary fw-semibold">
+                  {{ $player->name }} {{ $player->surname }}
+                </a>
+                @if($player->isMinor())
+                  <span class="badge bg-info ms-1">Minor</span>
+                @endif
+                <div class="text-muted small">{{ $player->email }}</div>
+              </div>
 
-            <div>
-              <a href="{{ route('backend.player.profile', $player->id) }}"
-                 class="btn btn-sm btn-outline-primary fw-semibold">
-                {{ $player->name }} {{ $player->surname }}
-              </a>
-              <div class="text-muted small">{{ $player->email }}</div>
+              <div class="btn-group btn-group-sm">
+                <button
+                  class="btn btn-danger btn-sm unlink-player"
+                  data-user="{{ $user->id }}"
+                  data-player="{{ $player->id }}">
+                  <i class="ti ti-trash"></i>
+                </button>
+              </div>
             </div>
 
-            <div class="btn-group btn-group-sm">
-            
-             <button
-  class="btn btn-danger btn-sm unlink-player"
-  data-user="{{ $user->id }}"
-  data-player="{{ $player->id }}">
-  <i class="ti ti-trash"></i>
-</button>
+            {{-- Status Badges --}}
+            <div class="mt-2 d-flex flex-wrap gap-2">
+              {{-- Profile Status --}}
+              <a href="{{ route('player.profile.edit', $player) }}" 
+                 class="badge bg-{{ $profileStatus['badge'] }} text-decoration-none"
+                 title="Click to update profile">
+                <i class="ti {{ $profileStatus['icon'] }} me-1"></i>
+                Profile: {{ ucfirst($profileStatus['status']) }}
+              </a>
 
+              {{-- Agreement Status --}}
+              @if($agreementStatus)
+                <span class="badge bg-success">
+                  <i class="ti ti-file-check me-1"></i> CoC Accepted
+                </span>
+              @else
+                <a href="{{ route('agreements.show') }}" class="badge bg-warning text-decoration-none">
+                  <i class="ti ti-file-alert me-1"></i> CoC Pending
+                </a>
+              @endif
 
+              {{-- Last Updated --}}
+              @if($player->profile_updated_at)
+                <span class="badge bg-label-secondary" title="Last profile update">
+                  <i class="ti ti-clock me-1"></i>
+                  {{ $player->profile_updated_at->diffForHumans() }}
+                </span>
+              @else
+                <span class="badge bg-label-danger">
+                  <i class="ti ti-alert-circle me-1"></i> Never updated
+                </span>
+              @endif
             </div>
           </div>
         @empty
@@ -296,6 +335,42 @@ $(function () {
   const CSRF   = $('meta[name="csrf-token"]').attr('content');
   const userId = $('#user').val();
   const PLAYER_URL = APP_URL + '/backend/player';
+
+  // ==========================================================
+  // 🟦 TAB NAVIGATION FROM URL HASH OR LOCALSTORAGE
+  // ==========================================================
+  function activateTabFromHash() {
+    var hash = window.location.hash;
+    var storedTab = localStorage.getItem('dashboardTab');
+
+    // Clear stored tab after use
+    if (storedTab) {
+      localStorage.removeItem('dashboardTab');
+      hash = '#' + storedTab;
+    }
+
+    if (hash) {
+      var tabId = hash.replace('#', '');
+      var tabButton = $('[data-bs-target="#' + tabId + '"]');
+      if (tabButton.length) {
+        // Deactivate all tabs
+        $('.nav-pills .nav-link').removeClass('active');
+        $('.tab-pane').removeClass('show active');
+
+        // Activate the target tab
+        tabButton.addClass('active').attr('aria-selected', 'true');
+        $(hash).addClass('show active');
+
+        console.log('✅ Activated tab: ' + tabId);
+      }
+    }
+  }
+
+  // Run on page load
+  activateTabFromHash();
+
+  // Also handle hash changes
+  $(window).on('hashchange', activateTabFromHash);
 
   $.ajaxSetup({
     headers: { 'X-CSRF-TOKEN': CSRF }
