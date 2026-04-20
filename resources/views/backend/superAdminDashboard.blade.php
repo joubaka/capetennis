@@ -1,4 +1,1 @@
-@php
-  // This view is no longer used. Redirect to the canonical Super Admin dashboard.
-  abort(redirect()->route('backend.superadmin.index'));
-@endphp
+{{-- This view is no longer used. The canonical Super Admin dashboard is at backend/superadmin (backend.superadmin.index). --}}

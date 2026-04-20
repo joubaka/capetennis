@@ -486,7 +486,7 @@
                   <th>User</th>
                   <th>Actions</th>
                   <th>Last Action</th>
-                  <th class="d-none">Log Names</th>
+                  <th class="d-none">Log Names{{-- hidden; used by DataTables column(4) for log-name filter --}}</th>
                 </tr>
               </thead>
               <tbody>
