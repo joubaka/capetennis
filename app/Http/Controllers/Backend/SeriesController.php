@@ -255,18 +255,22 @@ class SeriesController extends Controller
   {
     $series->update(['leaderboard_published' => 1]);
 
-    return redirect()
-      ->route('series.index')
-      ->with('success', 'Rankings published.');
+    return response()->json([
+      'success' => true,
+      'leaderboard_published' => 1,
+      'message' => 'Rankings published.'
+    ]);
   }
 
   public function unpublish(Series $series)
   {
     $series->update(['leaderboard_published' => 0]);
 
-    return redirect()
-      ->route('series.index')
-      ->with('success', 'Rankings unpublished.');
+    return response()->json([
+      'success' => true,
+      'leaderboard_published' => 0,
+      'message' => 'Rankings unpublished.'
+    ]);
   }
 
   public function togglePublish(int $id)
