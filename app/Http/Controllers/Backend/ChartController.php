@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Exersize;
-use App\Models\ExersizeName;
+use App\Models\Exercise;
+use App\Models\ExerciseName;
 use App\Models\Player;
 use App\Models\Practice;
 use Carbon\Carbon;
@@ -58,7 +58,7 @@ class ChartController extends Controller
                 $data['x'][] = $value[0]->score;
             }
 
-            $data['y'][] = ExersizeName::find($key)->name;
+            $data['y'][] = ExerciseName::find($key)->name;
             $data['player'] = Player::find($id)->full_name;
         }
 

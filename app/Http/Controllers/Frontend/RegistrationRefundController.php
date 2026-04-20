@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\RefundMethodRequest;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
@@ -65,7 +66,7 @@ class RegistrationRefundController extends Controller
    * Save refund choice (wallet / bank)
    */
 
-  public function store(Request $request, CategoryEventRegistration $registration)
+  public function store(RefundMethodRequest $request, CategoryEventRegistration $registration)
   {
     $user = auth()->user();
 
@@ -97,15 +98,6 @@ class RegistrationRefundController extends Controller
       ]);
       return back()->with('success', 'Refund already requested.');
     }
-
-    $request->validate([
-      'method' => 'required|in:wallet,bank',
-      'account_name' => 'required_if:method,bank|string|max:255',
-      'bank_name' => 'required_if:method,bank|string|max:255',
-      'account_number' => 'required_if:method,bank|string|max:50',
-      'branch_code' => 'required_if:method,bank|string|max:20',
-      'account_type' => 'required_if:method,bank|in:cheque,savings,business',
-    ]);
 
     if (!$registration->is_paid) {
       Log::warning('REFUND BLOCKED: Not paid', [
@@ -260,7 +252,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $result = $payfast->refund($pfPaymentId, $net, 'Event withdrawal refund');
 
         Log::info('PAYFAST AUTO REFUND ATTEMPT', [
@@ -484,7 +476,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $amount = $order->refund_net ?? $order->refund_gross ?? 0;
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
@@ -572,7 +564,7 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $amount = $registration->refund_net ?? $registration->refund_gross ?? 0;
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Event withdrawal refund');

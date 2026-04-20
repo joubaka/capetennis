@@ -278,7 +278,7 @@ class TeamPlayerWithdrawController extends Controller
 
     if (!empty($pfPaymentId)) {
       try {
-        $payfast = new \App\Classes\Payfast();
+        $payfast = new \App\Services\Payfast();
         $result = $payfast->refund($pfPaymentId, $net, 'Team withdrawal refund');
 
         Log::info('TEAM PAYFAST AUTO REFUND ATTEMPT', [

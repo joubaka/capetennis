@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\TransactionHelper;
+use App\Services\TransactionHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Frontend\RegisterController;
 use App\Models\CategoryEvent;
@@ -12,7 +12,7 @@ use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Models\Withdrawels;
+use App\Models\Withdrawals;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -172,13 +172,13 @@ class RegistrationController extends Controller
 
   public function withdraw($registration_id, $categoryEvent_id)
   {
-    $withdrawel = new Withdrawels();
-    $withdrawel->user_id = Auth::user()->id;
-    $withdrawel->registration_id = $registration_id;
-    $withdrawel->category_event_id = $categoryEvent_id;
-    $withdrawel->save();
+    $withdrawal = new Withdrawals();
+    $withdrawal->user_id = Auth::user()->id;
+    $withdrawal->registration_id = $registration_id;
+    $withdrawal->category_event_id = $categoryEvent_id;
+    $withdrawal->save();
 
-    return $withdrawel;
+    return $withdrawal;
   }
 
   public function withdraw_player(Request $request)

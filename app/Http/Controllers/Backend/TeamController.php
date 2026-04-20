@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Backend;
 
-use App\Classes\Payfast;
+use App\Services\Payfast;
 use App\Http\Controllers\Controller;
 use App\Imports\ImportUsers;
 use App\Imports\UsersImport;
@@ -365,7 +365,7 @@ class TeamController extends Controller
     );
 
     // Prepare Payfast instance
-    $payfast = new \App\Classes\Payfast();
+    $payfast = new \App\Services\Payfast();
     // use same mode logic as other controllers (user id 584 => sandbox)
     $payfast->setMode($user->id == 584 ? 0 : 1);
 
@@ -970,7 +970,7 @@ class TeamController extends Controller
     }
 
     // Send to PayFast
-    $payfast = new \App\Classes\Payfast();
+    $payfast = new \App\Services\Payfast();
     $payfast->setMode($user->id == 584 ? 0 : 1);
 
     return view('frontend.payfast.pay_now', [

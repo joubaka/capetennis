@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Wallet extends Model
 {
+  use HasFactory;
+
   protected $fillable = ['payable_type', 'payable_id'];
 
   public function payable()

@@ -92,7 +92,7 @@ class RegistrationPaymentController extends Controller
     }
 
     // 🔁 Send to PayFast
-    $payfast = new \App\Classes\Payfast();
+    $payfast = new \App\Services\Payfast();
     $payfast->setMode($user->id == 584 ? 0 : 1);
 
     return view('frontend.payfast.pay_now', [

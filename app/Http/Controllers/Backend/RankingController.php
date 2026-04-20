@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Http\Controllers\backend;
+namespace App\Http\Controllers\Backend;
 
-use App\Classes\Rank;
+use App\Services\Ranking\Rank;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;

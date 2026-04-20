@@ -106,9 +106,9 @@ class Player extends Model
   {
     return $this->hasMany(Position::class, 'player_id', 'id')->where('category_event_id', $id)->first();
   }
-  public function exersizes()
+  public function exercises()
   {
-    return $this->hasMany(Exersize::class);
+    return $this->hasMany(Exercise::class);
   }
   public function practices()
   {

@@ -9,6 +9,7 @@ use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
+use App\Observers\RegistrationObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
+    CategoryEventRegistration::observe(RegistrationObserver::class);
     // ✅ Global admin badge: pending bank refunds (registrations + team refunds)
     View::composer('*', function ($view) {
 

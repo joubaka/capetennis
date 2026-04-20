@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Covid;
-use App\Models\test;
 use Illuminate\Console\Command;
 
 class SendMails extends Command
@@ -20,7 +18,7 @@ class SendMails extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Send scheduled emails';
 
     /**
      * Execute the console command.
@@ -29,18 +27,10 @@ class SendMails extends Command
      */
     public function handle()
     {
-        info("Cron Job running at ". now());
-    
-        /*------------------------------------------
-        --------------------------------------------
-        Write Your Logic Here....
-        I am getting users and create new users if not exist....
-        --------------------------------------------
-        --------------------------------------------*/
-     
-    
-       $test = new test();
-       $test->name = '00';
-       $test->save();
+        info('Cron Job running at ' . now());
+
+        // TODO: implement scheduled email sending logic here
+
+        return Command::SUCCESS;
     }
 }

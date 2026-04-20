@@ -31,7 +31,7 @@ class CategoryEvent extends Model
     }
     public function withdrawals()
     {
-        return $this->hasMany(Withdrawels::class, 'category_event_id', 'id');
+        return $this->hasMany(Withdrawals::class, 'category_event_id', 'id');
     }
     public function event()
     {
