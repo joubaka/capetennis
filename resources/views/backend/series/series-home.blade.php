@@ -85,6 +85,12 @@
     Ranking Lists
   </a>
 
+  <a href="{{ route('ranking.series.audit', $series) }}"
+     class="btn btn-outline-secondary">
+    <i class="ti ti-clipboard-check me-1"></i>
+    Audit Rankings
+  </a>
+
   <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#seriesEmailModal">
     <i class="ti ti-mail me-1"></i> Email All Players
   </button>

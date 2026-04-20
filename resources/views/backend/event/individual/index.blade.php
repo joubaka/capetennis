@@ -48,6 +48,11 @@
     <i class="ti ti-layers me-1"></i>
     {{ $event->series->name }}
   </a>
+  <a href="{{ route('ranking.series.list', $event->series) }}"
+     class="btn btn-outline-dark" target="_blank">
+    <i class="ti ti-printer me-1"></i>
+    Print Series Rankings
+  </a>
 @endif
 
       </div>

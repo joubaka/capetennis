@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\CategoryResult;
+use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -234,6 +235,94 @@ class SeriesRankingController extends Controller
 
     return response()->json([
       'message' => 'Category-based series rankings rebuilt successfully'
+    ]);
+  }
+
+  /**
+   * Show an audit of the series ranking data
+   */
+  public function audit(Series $series)
+  {
+    $eventIds = $series->events->pluck('id')->values()->toArray();
+    $pointsMap = $series->points->pluck('score', 'position')->toArray();
+    $categoryNames = Category::pluck('name', 'id')->toArray();
+
+    $normalize = fn(string $name) =>
+      strtolower(preg_replace('/\s+/', ' ', trim($name)));
+
+    // Gather raw results grouped by event and category
+    $rawResults = CategoryResult::query()
+      ->join('registrations', 'registrations.id', '=', 'category_results.registration_id')
+      ->join('player_registrations', 'player_registrations.registration_id', '=', 'registrations.id')
+      ->whereIn('category_results.event_id', $eventIds)
+      ->select(
+        'category_results.event_id',
+        'category_results.category_id',
+        'player_registrations.player_id',
+        'category_results.position'
+      )
+      ->get();
+
+    // Build per-event summary
+    $eventSummary = $series->events->map(function ($event) use ($rawResults, $categoryNames) {
+      $eventRows = $rawResults->where('event_id', $event->id);
+      $categoriesWithResults = $eventRows->pluck('category_id')->unique()->values();
+
+      return [
+        'event'              => $event,
+        'result_rows'        => $eventRows->count(),
+        'categories'         => $categoriesWithResults->map(fn($id) => [
+          'id'      => $id,
+          'name'    => $categoryNames[$id] ?? 'Unknown',
+          'players' => $eventRows->where('category_id', $id)->pluck('player_id')->unique()->count(),
+        ])->values(),
+        'has_results'        => $eventRows->isNotEmpty(),
+      ];
+    });
+
+    // Build per-category summary (merged by normalised name)
+    $merged = $rawResults->groupBy(fn($r) => $normalize($categoryNames[$r->category_id] ?? 'unknown'));
+
+    $categorySummary = $merged->map(function ($rows, $key) use ($categoryNames, $pointsMap) {
+      $categoryId = $rows->pluck('category_id')->unique()->first();
+      $playerCount = $rows->pluck('player_id')->unique()->count();
+      $eventsRepresented = $rows->pluck('event_id')->unique()->count();
+
+      // Positions present in results
+      $positionCounts = $rows->groupBy('position')->map->count();
+
+      // Positions that have no points defined
+      $missingPoints = $rows->pluck('position')->unique()
+        ->filter(fn($pos) => !isset($pointsMap[$pos]))
+        ->values();
+
+      return [
+        'category_key'       => $key,
+        'category_name'      => $categoryNames[$categoryId] ?? 'Unknown',
+        'category_id'        => $categoryId,
+        'player_count'       => $playerCount,
+        'events_represented' => $eventsRepresented,
+        'position_counts'    => $positionCounts,
+        'missing_points'     => $missingPoints,
+      ];
+    })->values();
+
+    // Existing ranking rows
+    $existingRankings = SeriesRanking::where('series_id', $series->id)
+      ->orderBy('category_id')
+      ->orderBy('rank_position')
+      ->with(['player', 'category'])
+      ->get();
+
+    $rankingsByCategory = $existingRankings->groupBy('category_id');
+
+    return view('backend.ranking.series.audit', [
+      'series'           => $series,
+      'eventSummary'     => $eventSummary,
+      'categorySummary'  => $categorySummary,
+      'pointsMap'        => $pointsMap,
+      'rankingsByCategory' => $rankingsByCategory,
+      'totalRankingRows' => $existingRankings->count(),
     ]);
   }
 }

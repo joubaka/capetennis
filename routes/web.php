@@ -1079,6 +1079,9 @@ Route::delete(
     Route::get('series/{series}/list', [SeriesRankingController::class, 'index'])
       ->name('series.list');
 
+    Route::get('series/{series}/audit', [SeriesRankingController::class, 'audit'])
+      ->name('series.audit');
+
     Route::post('series/{series}/rebuild', [SeriesRankingController::class, 'rebuild'])
       ->name('series.rebuild');
 

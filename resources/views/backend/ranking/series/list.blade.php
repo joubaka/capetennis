@@ -17,14 +17,29 @@
   .points { font-weight: 600; }
   .category-title { font-weight: 600; margin-top: 1rem; }
   .score-badge { cursor: pointer; }
+
+  @media print {
+    body * { visibility: hidden; }
+    .print-area, .print-area * { visibility: visible; }
+    .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+    .no-print { display: none !important; }
+    .card { border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; }
+    .card-header { background: #eee !important; color: #000 !important; }
+    .badge { border: 1px solid #ccc; color: #000 !important; background: #f0f0f0 !important; }
+    .badge.bg-success { background: #d4edda !important; border-color: #28a745; }
+    .badge.bg-danger { background: #f8d7da !important; border-color: #dc3545; }
+    .badge.bg-warning { background: #fff3cd !important; border-color: #ffc107; }
+    a { color: #000 !important; text-decoration: none !important; }
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background-color: #f9f9f9 !important; }
+  }
 </style>
 @endsection
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl print-area">
 
   {{-- HEADER --}}
-  <div class="card mb-4">
+  <div class="card mb-4 no-print">
     <div class="card-body d-flex justify-content-between align-items-center">
       <div>
         <h4 class="mb-1">Ranking List</h4>
@@ -38,11 +53,26 @@
           <i class="ti ti-arrow-left me-1"></i> Back to Series
         </a>
 
+        <a href="{{ route('ranking.series.audit', $series) }}" class="btn btn-outline-info">
+          <i class="ti ti-clipboard-check me-1"></i> Audit Rankings
+        </a>
+
+        <button id="print-ranking" class="btn btn-outline-dark" onclick="window.print()">
+          <i class="ti ti-printer me-1"></i> Print Rankings
+        </button>
+
         <button id="rebuild-ranking" class="btn btn-warning">
           <i class="ti ti-refresh me-1"></i> Rebuild Rankings
         </button>
       </div>
     </div>
+  </div>
+
+  {{-- PRINT HEADER (only shown when printing) --}}
+  <div class="d-none d-print-block mb-4">
+    <h2>{{ $series->name }} ({{ $series->year }}) – Ranking List</h2>
+    <small class="text-muted">Printed: {{ now()->format('d M Y H:i') }}</small>
+    <hr>
   </div>
 
   {{-- BODY --}}
