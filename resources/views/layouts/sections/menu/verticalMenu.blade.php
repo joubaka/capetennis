@@ -62,7 +62,9 @@ $configData = Helper::appClasses();
     }
     @endphp
 
-    {{-- main menu --}}
+    {{-- render menu item with role-based visibility --}}
+    @can('super-user')
+    @if(!isset($menu->menuLevel) || $menu->menuLevel === 'super' || $menu->menuLevel === 'all')
     <li class="menu-item {{$activeClass}}">
       <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
         @isset($menu->icon)
@@ -71,7 +73,6 @@ $configData = Helper::appClasses();
         <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
         @isset($menu->badge)
         <div class="badge bg-label-{{ $menu->badge[0] }} rounded-pill ms-auto">{{ $menu->badge[1] }}</div>
-
         @endisset
       </a>
 
@@ -80,6 +81,27 @@ $configData = Helper::appClasses();
       @include('layouts.sections.menu.submenu',['menu' => $menu->submenu])
       @endisset
     </li>
+    @endif
+    @else
+    @if(!isset($menu->menuLevel) || $menu->menuLevel === 'all')
+    <li class="menu-item {{$activeClass}}">
+      <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
+        @isset($menu->icon)
+        <i class="{{ $menu->icon }}"></i>
+        @endisset
+        <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
+        @isset($menu->badge)
+        <div class="badge bg-label-{{ $menu->badge[0] }} rounded-pill ms-auto">{{ $menu->badge[1] }}</div>
+        @endisset
+      </a>
+
+      {{-- submenu --}}
+      @isset($menu->submenu)
+      @include('layouts.sections.menu.submenu',['menu' => $menu->submenu])
+      @endisset
+    </li>
+    @endif
+    @endcan
     @endif
     @endforeach
   </ul>

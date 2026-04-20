@@ -9,85 +9,158 @@ use App\Models\Player;
 use App\Models\PlayerAgreement;
 use App\Models\Registration;
 use App\Models\User;
+use App\Models\Withdrawals;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Spatie\Activitylog\Models\Activity;
 
 class SuperAdminController extends Controller
 {
     /**
-     * Show the Super Admin Dashboard.
+     * Show the consolidated Super Admin Dashboard.
      */
     public function index()
     {
-        // Overview statistics
-        $stats = [
-            'total_users' => User::count(),
-            'total_players' => Player::count(),
-            'total_events' => Event::count(),
-            'active_events' => Event::where('status', 1)->count(),
-            'total_registrations' => Registration::count(),
-        ];
-
-        // Agreement statistics
-        $activeAgreement = Agreement::where('is_active', 1)->latest()->first();
-        $agreementStats = [
-            'total_agreements' => Agreement::count(),
-            'active_agreement' => $activeAgreement,
-            'total_acceptances' => $activeAgreement ? PlayerAgreement::where('agreement_id', $activeAgreement->id)->count() : 0,
-            'pending_players' => $activeAgreement ? Player::whereDoesntHave('agreements', function ($q) use ($activeAgreement) {
-                $q->where('agreement_id', $activeAgreement->id);
-            })->count() : 0,
-        ];
-
-        // Profile update statistics
         $oneYearAgo = Carbon::now()->subYear();
+
+        // ── Top stat cards ──────────────────────────────────────────────────
+        $totalUsers          = User::count();
+        $totalPlayers        = Player::count();
+        $totalEvents         = Event::count();
+        $activeEvents        = Event::where('start_date', '<=', Carbon::today())
+                                    ->where('end_date', '>=', Carbon::today())
+                                    ->count();
+        $totalRegistrations  = Registration::count();
+        $recentRegistrations = Registration::where('created_at', '>=', Carbon::now()->subDays(30))->count();
+
+        // ── User / Player growth ─────────────────────────────────────────────
+        $newUsersThisWeek    = User::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
+        $newUsersThisMonth   = User::where('created_at', '>=', Carbon::now()->startOfMonth())->count();
+        $newPlayersThisWeek  = Player::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
+
+        // ── Pending withdrawals ──────────────────────────────────────────────
+        $pendingWithdrawals = Withdrawals::count();
+
+        // ── Agreement statistics ─────────────────────────────────────────────
+        $activeAgreement = Agreement::where('is_active', 1)->latest()->first();
+        $agreementStats  = [
+            'total_agreements'  => Agreement::count(),
+            'active_agreement'  => $activeAgreement,
+            'total_acceptances' => $activeAgreement
+                ? PlayerAgreement::where('agreement_id', $activeAgreement->id)->count()
+                : 0,
+            'pending_players'   => $activeAgreement
+                ? Player::whereDoesntHave('agreements', function ($q) use ($activeAgreement) {
+                      $q->where('agreement_id', $activeAgreement->id);
+                  })->count()
+                : 0,
+        ];
+
+        // ── Player Profile Status ─────────────────────────────────────────────
         $profileStats = [
-            'up_to_date' => Player::where('profile_updated_at', '>=', $oneYearAgo)
-                ->where('profile_complete', true)
-                ->count(),
-            'needs_update' => Player::where(function ($q) use ($oneYearAgo) {
-                $q->whereNull('profile_updated_at')
-                  ->orWhere('profile_updated_at', '<', $oneYearAgo);
-            })->count(),
-            'incomplete' => Player::where('profile_complete', false)
-                ->orWhereNull('profile_complete')
-                ->count(),
+            'up_to_date'    => Player::where('profile_complete', true)
+                                     ->where('profile_updated_at', '>=', $oneYearAgo)
+                                     ->count(),
+            'needs_update'  => Player::where(function ($q) use ($oneYearAgo) {
+                                   $q->whereNull('profile_updated_at')
+                                     ->orWhere('profile_updated_at', '<', $oneYearAgo);
+                               })->count(),
+            'incomplete'    => Player::where(function ($q) {
+                                   $q->where('profile_complete', false)
+                                     ->orWhereNull('profile_complete');
+                               })->count(),
             'never_updated' => Player::whereNull('profile_updated_at')->count(),
         ];
 
-        // Recent acceptances
-        $recentAcceptances = PlayerAgreement::with(['player', 'agreement'])
-            ->orderByDesc('accepted_at')
-            ->limit(10)
-            ->get();
-
-        // Recent users
-        $recentUsers = User::orderByDesc('created_at')
-            ->limit(10)
-            ->get();
-
-        // All agreements for management
-        $agreements = Agreement::orderByDesc('created_at')->get();
-
-        // Players needing attention (outdated or incomplete profiles)
+        // ── Players needing attention ─────────────────────────────────────────
         $playersNeedingAttention = Player::where(function ($q) use ($oneYearAgo) {
             $q->whereNull('profile_updated_at')
               ->orWhere('profile_updated_at', '<', $oneYearAgo)
               ->orWhere('profile_complete', false)
               ->orWhereNull('profile_complete');
         })
+        ->with('user')
         ->orderBy('profile_updated_at', 'asc')
-        ->limit(10)
+        ->limit(15)
         ->get();
 
+        // ── All agreements for management table ───────────────────────────────
+        $agreements = Agreement::withCount('playerAgreements')->orderByDesc('created_at')->get();
+
+        // ── Recent users ──────────────────────────────────────────────────────
+        $recentUsers = User::orderByDesc('created_at')->limit(10)->get();
+
+        // ── Activity Log (Spatie) ─────────────────────────────────────────────
+        $activityLogs = Activity::with('causer')->latest()->limit(100)->get();
+
+        $activityByUser = collect();
+        if ($activityLogs->isNotEmpty()) {
+            $activityByUser = $activityLogs
+                ->groupBy(fn ($a) => $a->causer_id ?? 'system')
+                ->map(function ($group) {
+                    $first = $group->first();
+                    return (object) [
+                        'causer'              => $first->causer,
+                        'causer_id'           => $first->causer_id,
+                        'count'               => $group->count(),
+                        'last_at'             => $group->sortByDesc('created_at')->first()->created_at,
+                        'example_description' => $group->sortByDesc('created_at')->first()->description,
+                        'log_names'           => $group->pluck('log_name')->unique()->values()->toArray(),
+                    ];
+                })->values();
+        }
+        $logNames = $activityLogs->pluck('log_name')->unique()->values()->toArray();
+
+        // ── Login Audit (Rappasoft authentication_log) ────────────────────────
+        $loginAuditLogs = DB::table('authentication_log as al')
+            ->join('users as u', 'u.id', '=', 'al.authenticatable_id')
+            ->where('al.authenticatable_type', 'like', '%User%')
+            ->select(
+                'al.id',
+                'u.name',
+                'u.email',
+                'al.ip_address',
+                'al.user_agent',
+                'al.login_at',
+                'al.logout_at',
+                'al.login_successful'
+            )
+            ->orderByDesc('al.login_at')
+            ->limit(50)
+            ->get();
+
+        $loginAuditTodayCount  = DB::table('authentication_log')
+            ->where('login_at', '>=', Carbon::today())
+            ->where('login_successful', true)
+            ->count();
+
+        $loginAuditFailedToday = DB::table('authentication_log')
+            ->where('login_at', '>=', Carbon::today())
+            ->where('login_successful', false)
+            ->count();
+
         return view('backend.superadmin.index', compact(
-            'stats',
+            'totalUsers',
+            'totalPlayers',
+            'totalEvents',
+            'activeEvents',
+            'totalRegistrations',
+            'recentRegistrations',
+            'newUsersThisWeek',
+            'newUsersThisMonth',
+            'newPlayersThisWeek',
+            'pendingWithdrawals',
             'agreementStats',
             'profileStats',
-            'recentAcceptances',
-            'recentUsers',
+            'playersNeedingAttention',
             'agreements',
-            'playersNeedingAttention'
+            'recentUsers',
+            'activityLogs',
+            'activityByUser',
+            'logNames',
+            'loginAuditLogs',
+            'loginAuditTodayCount',
+            'loginAuditFailedToday'
         ));
     }
 }
