@@ -490,16 +490,21 @@ $(function () {
   $(document).on(
     'click',
     '.select2-results__option .btn[data-bs-target="#addPlayerModal"]',
-    function () {
+    function (e) {
+      e.preventDefault();
+      e.stopPropagation();
       window.addPlayerTargetIndex = $(this).data('index');
     }
   );
 
-  $('#createPlayerButton').on('click', function () {
+  $('#createPlayerButton').on('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
     let formData = $('.formPlayer').serialize();
 
     $.ajax({
-      url: APP_URL + '/backend/player/store',
+      url: APP_URL + '/backend/player',
       type: 'POST',
       data: formData,
       success: function (res) {
@@ -517,9 +522,21 @@ $(function () {
 
         toastr.success(fullName + ' added');
       },
-      error: function () {
-        toastr.error('Failed to add player');
+      error: function (xhr) {
+        let errorMsg = 'Failed to add player';
+        if (xhr.responseJSON && xhr.responseJSON.message) {
+          errorMsg = xhr.responseJSON.message;
+        }
+        toastr.error(errorMsg);
       }
+    });
+  });
+
+  // Prevent form submission when modal is shown
+  $('#addPlayerModal').on('show.bs.modal', function () {
+    $('.formPlayer').off('submit').on('submit', function (e) {
+      e.preventDefault();
+      return false;
     });
   });
 

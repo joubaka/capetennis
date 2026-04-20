@@ -31,12 +31,13 @@ $(function () {
 
 
   createPlayerButton.on('click', function (f) {
+    f.preventDefault();
+    f.stopPropagation();
+    
     var mydata = $('.formPlayer').serialize();
     var selectIndex = 10;
 
-
     selectIndex = $('#createPlayerButton').attr('data-index');
-
 
     $.ajaxSetup({
       headers: {
@@ -47,26 +48,25 @@ $(function () {
       method: "POST",
       url: APP_URL + '/backend/player',
       data: mydata,
-
-
       success: function (datas) {
-
         $('#addPlayerModal').modal('hide');
-
 
         var newOption = new Option(datas.name + ' ' + datas.surname, datas.id, false, false);
         var sel = $('.select2player');
         console.log('selects', sel[selectIndex])
         $(sel[selectIndex]).append(newOption).trigger('change');
-
         $(sel[selectIndex]).val(datas.id).trigger('change');
-
-
       },
       error: function (error) {
         console.log(error)
-      },
-
+        let errorMsg = 'Failed to add player';
+        if (error.responseJSON && error.responseJSON.message) {
+          errorMsg = error.responseJSON.message;
+        } else if (error.responseJSON && error.responseJSON.errors) {
+          errorMsg = Object.values(error.responseJSON.errors).flat().join(', ');
+        }
+        alert(errorMsg);
+      }
     });
   })
 

@@ -27,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
+    // Share asset version globally for cache busting
+    View::share('assetVersion', config('app.asset_version', '1.0.0'));
+
     CategoryEventRegistration::observe(RegistrationObserver::class);
     // ✅ Global admin badge: pending bank refunds (registrations + team refunds)
     View::composer('*', function ($view) {

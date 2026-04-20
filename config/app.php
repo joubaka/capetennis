@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Facade;
 
 return [
 
-  'asset_version' => env('ASSET_VERSION', '1.0.1'),
+  'asset_version' => env('ASSET_VERSION', '1.0.2'),
 
   /*
     |--------------------------------------------------------------------------

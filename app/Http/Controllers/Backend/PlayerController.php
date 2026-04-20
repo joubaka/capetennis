@@ -94,12 +94,22 @@ class PlayerController extends Controller
    */
   public function store(Request $request)
   {
+    // Validate input
+    $validated = $request->validate([
+      'player_name' => 'required|string',
+      'player_surname' => 'required|string',
+      'dob' => 'required|date',
+      'gender' => 'required|in:1,2',
+      'cell_nr' => 'nullable|string',
+      'email' => 'nullable|email'
+    ]);
+
     // Create the Player
     $player = new Player();
     $player->name = $request->player_name;
     $player->surname = $request->player_surname;
     $player->dateOfBirth = $request->dob;
-    $player->gender = $request->gender;
+    $player->gender = (int)$request->gender;
     $player->userId = Auth::id();
     $player->cellNr = $request->cell_nr;
     $player->email = $request->email;
@@ -136,11 +146,23 @@ class PlayerController extends Controller
         $player->id,
         $request->event
       ])->with($notification);
-    }else{
+    } else {
+      // Return JSON response for AJAX requests
+      if ($request->wantsJson() || $request->ajax()) {
+        return response()->json([
+          'id' => $player->id,
+          'name' => $player->name,
+          'surname' => $player->surname,
+          'dateOfBirth' => $player->dateOfBirth,
+          'gender' => $player->gender,
+          'cellNr' => $player->cellNr,
+          'email' => $player->email,
+          'message' => 'Player added successfully'
+        ], 201);
+      }
+      
       return $player;
     }
-
-    
   }
 
   /**

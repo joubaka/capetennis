@@ -31,6 +31,9 @@ $(function () {
 
 
   createPlayerButton.on('click', function (f) {
+    f.preventDefault();
+    f.stopPropagation();
+    
     var mydata = $('.formPlayer').serialize();
     var selectIndex = 10;
 
@@ -65,6 +68,13 @@ $(function () {
       },
       error: function (error) {
         console.log(error)
+        let errorMsg = 'Failed to add player';
+        if (error.responseJSON && error.responseJSON.message) {
+          errorMsg = error.responseJSON.message;
+        } else if (error.responseJSON && error.responseJSON.errors) {
+          errorMsg = Object.values(error.responseJSON.errors).flat().join(', ');
+        }
+        alert(errorMsg);
       },
 
     });

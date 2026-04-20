@@ -5,7 +5,7 @@
     "creatorUrl" => "Cape Tennis",
     "templateName" => "Cape Tennis",
     "templateSuffix" => " Cape Tennis",
-    "templateVersion" => "1.0.0",
+    "templateVersion" => "1.0.2",
     "templateFree" => false,
     "templateDescription" => "",
     "templateKeyword" => "",

@@ -486,36 +486,58 @@ $(function () {
   $(document).on(
     'click',
     '.select2-results__option .btn[data-bs-target="#addPlayerModal"]',
-    function () {
+    function (e) {
+      e.preventDefault();
+      e.stopPropagation();
       window.addPlayerTargetIndex = $(this).data('index');
     }
   );
 
-  $('#createPlayerButton').on('click', function () {
-    let formData = $('.formPlayer').serialize();
+  // Only handle createPlayerButton if forms-selects.js hasn't already bound it
+  if (!$._data($('#createPlayerButton')[0], 'events') || !$._data($('#createPlayerButton')[0], 'events').click) {
+    $('#createPlayerButton').on('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      let formData = $('.formPlayer').serialize();
 
-    $.ajax({
-      url: APP_URL + '/backend/player/store',
-      type: 'POST',
-      data: formData,
-      success: function (res) {
-        const fullName = res.name + ' ' + res.surname;
-        const index = window.addPlayerTargetIndex ?? $('.select2player').length - 1;
+      $.ajax({
+        url: APP_URL + '/backend/player',
+        type: 'POST',
+        data: formData,
+        success: function (res) {
+          const fullName = res.name + ' ' + res.surname;
+          const index = window.addPlayerTargetIndex ?? $('.select2player').length - 1;
 
-        const $select = $('.select2player').eq(index);
-        const option = new Option(fullName, res.id, true, true);
-        $(option).attr('data-name', fullName);
+          const $select = $('.select2player').eq(index);
+          const option = new Option(fullName, res.id, true, true);
+          $(option).attr('data-name', fullName);
 
-        $select.append(option).trigger('change');
+          $select.append(option).trigger('change');
 
-        $('#addPlayerModal').modal('hide');
-        $('.formPlayer')[0].reset();
+          $('#addPlayerModal').modal('hide');
+          $('.formPlayer')[0].reset();
 
-        toastr.success(fullName + ' added');
-      },
-      error: function () {
-        toastr.error('Failed to add player');
-      }
+          toastr.success(fullName + ' added');
+        },
+        error: function (xhr) {
+          let errorMsg = 'Failed to add player';
+          if (xhr.responseJSON && xhr.responseJSON.message) {
+            errorMsg = xhr.responseJSON.message;
+          } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+            errorMsg = Object.values(xhr.responseJSON.errors).flat().join(', ');
+          }
+          toastr.error(errorMsg);
+        }
+      });
+    });
+  }
+
+  // Prevent form submission when modal is shown
+  $('#addPlayerModal').on('show.bs.modal', function () {
+    $('.formPlayer').off('submit').on('submit', function (e) {
+      e.preventDefault();
+      return false;
     });
   });
 
