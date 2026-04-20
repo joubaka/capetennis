@@ -82,7 +82,7 @@ document.querySelectorAll('.publish-toggle').forEach(btn => {
     try {
       const url = btn.dataset.url || `/backend/series/${seriesId}/publish`;
       const res = await fetch(url, {
-        method: 'POST',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': '{{ csrf_token() }}'
