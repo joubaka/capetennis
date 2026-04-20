@@ -50,8 +50,7 @@
                 <button
                   class="btn btn-sm btn-outline-success ms-1 publish-toggle"
                   data-series="{{ $s->id }}"
-                  data-published="{{ $s->leaderboard_published }}"
-                  data-url="{{ url('backend/series/' . $s->id . '/publish') }}"
+                  data-published="{{ $s->leaderboard_published ? '1' : '0' }}"
                 >
                   {{ $s->leaderboard_published ? 'Unpublish' : 'Publish' }}
                 </button>
@@ -77,10 +76,14 @@
 document.querySelectorAll('.publish-toggle').forEach(btn => {
   btn.addEventListener('click', async () => {
     const seriesId = btn.dataset.series;
+    const isPublished = btn.dataset.published === '1';
     btn.disabled = true;
 
     try {
-      const url = btn.dataset.url || `/backend/series/${seriesId}/publish`;
+      // Toggle between publish/unpublish endpoints
+      const action = isPublished ? 'unpublish' : 'publish';
+      const url = `{{ url('backend/series') }}/${seriesId}/${action}`;
+
       const res = await fetch(url, {
         method: 'PATCH',
         headers: {
@@ -96,7 +99,7 @@ document.querySelectorAll('.publish-toggle').forEach(btn => {
       // Toggle button label
       const published = data.leaderboard_published;
       btn.textContent = published ? 'Unpublish' : 'Publish';
-      btn.dataset.published = published ? 1 : 0;
+      btn.dataset.published = published ? '1' : '0';
 
       // Optional: show toast if available
       if (window.toastr) {
