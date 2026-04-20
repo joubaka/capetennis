@@ -24,7 +24,7 @@
 @endsection
 
 @section('page-style')
-<link rel="stylesheet" href="{{ vasset('assets/vendor/css/pages/wizard-ex-checkout.css') }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/wizard-ex-checkout.css') }}" />
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
 @endsection
 
@@ -32,9 +32,9 @@
 <script>
   var APP_URL = "{{ url('/') }}";
 </script>
-<script src="{{ vasset('assets/js/wizard-ex-checkout.js') }}"></script>
-<script src="{{ vasset('assets/js/forms-selects.js') }}"></script>
-<script src="{{ vasset('assets/js/select2-search-addon.js') }}"></script>
+<script src="{{ asset('assets/js/wizard-ex-checkout.js') }}"></script>
+<script src="{{ asset('assets/js/forms-selects.js') }}"></script>
+<script src="{{ asset('assets/js/select2-search-addon.js') }}"></script>
 @endsection
 
 @section('content')
