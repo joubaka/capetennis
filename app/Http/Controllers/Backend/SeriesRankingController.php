@@ -15,6 +15,14 @@ use App\Services\Ranking\RankingEngine;
 class SeriesRankingController extends Controller
 {
   /**
+   * Normalize a category name for consistent cross-event merging.
+   */
+  private function normalizeCategory(string $name): string
+  {
+    return strtolower(preg_replace('/\s+/', ' ', trim($name)));
+  }
+
+  /**
    * Display the ranking list for a series
    */
   public function index(Series $series)
@@ -46,8 +54,7 @@ class SeriesRankingController extends Controller
 
       $runId = 'sr-' . $series->id . '-' . now()->format('YmdHis') . '-' . substr(md5((string) microtime(true)), 0, 6);
 
-      $normalize = fn(string $name) =>
-        strtolower(preg_replace('/\s+/', ' ', trim($name)));
+      $normalize = fn(string $name) => $this->normalizeCategory($name);
 
       Log::info('=== SERIES RANKING REBUILD START ===', [
         'run_id' => $runId,
@@ -247,9 +254,6 @@ class SeriesRankingController extends Controller
     $pointsMap = $series->points->pluck('score', 'position')->toArray();
     $categoryNames = Category::pluck('name', 'id')->toArray();
 
-    $normalize = fn(string $name) =>
-      strtolower(preg_replace('/\s+/', ' ', trim($name)));
-
     // Gather raw results grouped by event and category
     $rawResults = CategoryResult::query()
       ->join('registrations', 'registrations.id', '=', 'category_results.registration_id')
@@ -280,8 +284,13 @@ class SeriesRankingController extends Controller
       ];
     });
 
-    // Build per-category summary (merged by normalised name)
-    $merged = $rawResults->groupBy(fn($r) => $normalize($categoryNames[$r->category_id] ?? 'unknown'));
+    // Build per-category summary (merged by normalised name, falling back to category ID)
+    $merged = $rawResults->groupBy(function ($r) use ($categoryNames) {
+      $name = $categoryNames[$r->category_id] ?? null;
+      return $name !== null
+        ? $this->normalizeCategory($name)
+        : 'category-id-' . $r->category_id;
+    });
 
     $categorySummary = $merged->map(function ($rows, $key) use ($categoryNames, $pointsMap) {
       $categoryId = $rows->pluck('category_id')->unique()->first();
