@@ -1343,12 +1343,11 @@ Route::prefix('frontend')->middleware('auth')->group(function () {
   Route::get('frontPhoto/showFolder/{id}', [FrontendPhotoController::class, 'show_folder'])->name('frontend.event.show.folder');
   Route::get('frontPhoto/eventPhoto/{id}', [FrontendPhotoController::class, 'folders'])->name('frontend.event.photos');
   Route::resource('frontPhoto', FrontendPhotoController::class);
-  //Frotend fixtures
-  Route::get('fixtures/draw/index/{id}', [FrontFixtureController::class, 'drawFixtures'])->name('frontend.fixtures.index');
 });
 
 //Frotend fixtures (public)
-Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
+Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'drawFixtures'])->name('frontend.fixtures.index');
+Route::get('frontend/fixtures/draw/show/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
 Route::get('frontend/fixtures/draw/indexRound/{event}/{round}/{type}', [FrontFixtureController::class, 'drawFixturesRound'])->name('frontend.fixtures.indexRound');
 Route::get('frontend/fixtures/draw/bracket/{id}', [FrontFixtureController::class, 'bracketFixtures'])->name('frontend.bracket.fixtures');
 Route::resource('file', FileController::class);
