@@ -24,7 +24,7 @@
     <div class="d-flex flex-wrap gap-2">
       @foreach($draws as $draw)
         <div class="d-flex align-items-center gap-1">
-          <a href="{{ route('frontend.fixtures.index', ['draw' => $draw->id]) }}"
+          <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
             {{ $draw->drawName }}
           </a>
@@ -97,7 +97,7 @@
           <div class="d-flex flex-wrap gap-2">
             @foreach($draws as $draw)
               @if($isAdmin)
-                <a href="{{ route('frontend.fixtures.index', ['draw' => $draw->id]) }}"
+                <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
                    class="btn btn-sm btn-outline-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                   {{ $draw->drawName }}
                   <span class="badge bg-danger ms-1">Not published</span>
