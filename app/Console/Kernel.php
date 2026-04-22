@@ -12,8 +12,14 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Schedule the queue work command
-        $schedule->command('queue:work')->everyMinute();
+        // Process queued jobs safely on a shared server.
+        // --stop-when-empty: exits as soon as the queue is empty (not a daemon).
+        // --max-time=270: hard stop after 4.5 min so the process is gone before
+        //                 the next 5-minute cron fires another instance.
+        // withoutOverlapping(): prevents a second instance starting while one runs.
+        $schedule->command('queue:work --stop-when-empty --max-time=270 --memory=128')
+            ->everyMinute()
+            ->withoutOverlapping();
     }
 
     /**

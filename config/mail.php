@@ -77,6 +77,26 @@ return [
                 'log',
             ],
         ],
+
+        'noreply1' => [
+            'transport' => 'smtp',
+            'host' => env('MAIL_NOREPLY1_HOST', env('MAIL_HOST', 'smtp.mailgun.org')),
+            'port' => env('MAIL_NOREPLY1_PORT', env('MAIL_PORT', 587)),
+            'encryption' => env('MAIL_NOREPLY1_ENCRYPTION', env('MAIL_ENCRYPTION', 'tls')),
+            'username' => env('MAIL_NOREPLY1_USERNAME'),
+            'password' => env('MAIL_NOREPLY1_PASSWORD'),
+            'timeout' => null,
+        ],
+
+        'noreply2' => [
+            'transport' => 'smtp',
+            'host' => env('MAIL_NOREPLY2_HOST', env('MAIL_HOST', 'smtp.mailgun.org')),
+            'port' => env('MAIL_NOREPLY2_PORT', env('MAIL_PORT', 587)),
+            'encryption' => env('MAIL_NOREPLY2_ENCRYPTION', env('MAIL_ENCRYPTION', 'tls')),
+            'username' => env('MAIL_NOREPLY2_USERNAME'),
+            'password' => env('MAIL_NOREPLY2_PASSWORD'),
+            'timeout' => null,
+        ],
     ],
 
     /*
