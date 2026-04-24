@@ -516,6 +516,32 @@ Route::delete(
   [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyExpense']
 )->name('admin.events.finances.expense.destroy');
 
+Route::post(
+  'event/finances/expense/{expense}/approve',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'approveExpense']
+)->name('admin.events.finances.expense.approve');
+
+Route::post(
+  'event/finances/expense/{expense}/reimburse',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'reimburseExpense']
+)->name('admin.events.finances.expense.reimburse');
+
+// Income items CRUD
+Route::post(
+  'event/{event}/finances/income',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'storeIncomeItem']
+)->name('admin.events.finances.income.store');
+
+Route::patch(
+  'event/finances/income/{item}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'updateIncomeItem']
+)->name('admin.events.finances.income.update');
+
+Route::delete(
+  'event/finances/income/{item}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyIncomeItem']
+)->name('admin.events.finances.income.destroy');
+
 
 /////////////////result
 

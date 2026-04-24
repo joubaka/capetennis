@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use App\Models\EventType;
+use App\Models\EventIncomeItem;
 
 class Event extends Model
 {
@@ -35,6 +36,9 @@ class Event extends Model
     'published',
     'signUp',
     'series_id',
+    'budget_cap',
+    'target_entries',
+    'target_income',
   ];
 
   /*
@@ -43,12 +47,14 @@ class Event extends Model
   |--------------------------------------------------------------------------
   */
   protected $casts = [
-    'published' => 'boolean',
-    'signUp' => 'boolean',
-    'start_date' => 'date',
-    'end_date' => 'date',
-    'deadline' => 'int',
+    'published'           => 'boolean',
+    'signUp'              => 'boolean',
+    'start_date'          => 'date',
+    'end_date'            => 'date',
+    'deadline'            => 'int',
     'withdrawal_deadline' => 'datetime',
+    'budget_cap'          => 'decimal:2',
+    'target_income'       => 'decimal:2',
   ];
 
   /*
@@ -189,6 +195,22 @@ class Event extends Model
   {
     return $this->hasMany(Transaction::class, 'event_id', 'id')
       ->orderByDesc('created_at');
+  }
+
+  public function convenors()
+  {
+    return $this->hasMany(EventConvenor::class, 'event_id', 'id');
+  }
+
+  public function incomeItems()
+  {
+    return $this->hasMany(EventIncomeItem::class, 'event_id', 'id')
+      ->orderBy('date');
+  }
+
+  public function expenses()
+  {
+    return $this->hasMany(EventExpense::class, 'event_id', 'id');
   }
 
   public function fixtures()
