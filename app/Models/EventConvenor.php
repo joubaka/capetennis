@@ -13,6 +13,7 @@ class EventConvenor extends Model
     protected $fillable = [
         'event_id',
         'user_id',
+        'role',
         'starts_at',
         'expires_at',
     ];
@@ -42,6 +43,14 @@ class EventConvenor extends Model
         return $this->event();
     }
 
+    /**
+     * Expenses paid by this convenor.
+     */
+    public function expenses()
+    {
+        return $this->hasMany(EventExpense::class, 'paid_by_convenor_id');
+    }
+
     /* ------------------------------------------------------------------ */
     /*  SCOPES                                                            */
     /* ------------------------------------------------------------------ */
@@ -63,6 +72,16 @@ class EventConvenor extends Model
     /* ------------------------------------------------------------------ */
     /*  HELPERS                                                           */
     /* ------------------------------------------------------------------ */
+
+    public function isHoof(): bool
+    {
+        return $this->role === 'hoof';
+    }
+
+    public function isHulp(): bool
+    {
+        return $this->role === 'hulp';
+    }
 
     /**
      * Is this convenor assignment currently active?

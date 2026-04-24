@@ -5,19 +5,23 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\EventExpense;
+use App\Models\EventIncomeItem;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class EventFinanceController extends Controller
 {
-    /**
-     * Display the convenor finances page with income and expenses.
-     */
+    /* ------------------------------------------------------------------ */
+    /*  INDEX                                                              */
+    /* ------------------------------------------------------------------ */
+
     public function index(Event $event)
     {
-        // Get registration income (same logic as transactions page)
+        // ── Registration income (from PayFast transactions) ──────────────
         $feePerEntry = (float) $event->cape_tennis_fee;
-        
+
         $transactions = Transaction::with([
             'user',
             'order.items.player',
@@ -29,36 +33,82 @@ class EventFinanceController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        // Calculate income totals
-        $totalGross = $transactions->sum('amount_gross');
-        $totalPayfastFees = $transactions->sum('amount_fee');
-        $totalEntries = $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
+        $totalGross        = $transactions->sum('amount_gross');
+        $totalPayfastFees  = $transactions->sum('amount_fee');
+        $totalEntries      = $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
         $totalCapeTennisFees = $totalEntries * $feePerEntry;
         $netRegistrationIncome = $totalGross - abs($totalPayfastFees) - $totalCapeTennisFees;
 
-        // Get expenses
+        // ── Manual income items ───────────────────────────────────────────
+        $incomeItems     = $event->incomeItems()->get();
+        $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
+        $grandTotalIncome = $netRegistrationIncome + $totalIncomeItems;
+
+        // ── Convenors (Hoof first, then Hulp, then others) ───────────────
+        $convenors = $event->convenors()
+            ->with('user')
+            ->orderByRaw("FIELD(role, 'hoof', 'hulp', 'admin')")
+            ->get();
+
+        // ── Expenses ─────────────────────────────────────────────────────
         $expenses = EventExpense::where('event_id', $event->id)
+            ->with(['paidByConvenor.user', 'approvedByUser', 'reimbursedByUser'])
             ->orderByDesc('created_at')
             ->get();
 
-        // Group expenses by type
-        $expenseTypes = [
-            'balls' => 'Balls',
-            'venue' => 'Venue',
-            'convenors' => 'Convenors',
-            'data' => 'Data',
-            'petrol' => 'Petrol',
-            'accommodation' => 'Accommodation',
-            'cape_tennis_fee' => 'Cape Tennis Fee',
-            'payfast' => 'PayFast Fees',
-            'other' => 'Other',
-        ];
+        // Auto-sync PayFast and Cape Tennis Fee from transactions if none exist yet
+        $this->autoSyncSystemExpenses($event, $totalPayfastFees, $totalCapeTennisFees, $expenses);
 
+        // Refresh after potential sync
+        $expenses = EventExpense::where('event_id', $event->id)
+            ->with(['paidByConvenor.user', 'approvedByUser', 'reimbursedByUser'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $expenseTypes = $this->expenseTypes();
+
+        // Group expenses by paying convenor for per-convenor sections
+        $expensesByConvenor = $expenses->groupBy('paid_by_convenor_id');
+
+        // Group expenses by type (for summary sidebar)
         $expensesByType = $expenses->groupBy('expense_type');
-        $totalExpenses = $expenses->sum('amount');
 
-        // Calculate net profit/loss
-        $netProfit = $netRegistrationIncome - $totalExpenses;
+        $totalExpenses    = $expenses->sum(fn($e) => $e->calculatedAmount());
+        $totalBudget      = $expenses->whereNotNull('budget_amount')->sum('budget_amount');
+        $pendingApproval  = $expenses->whereNull('approved_at')->count();
+        $pendingReimbursement = $expenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
+
+        // ── Per-convenor totals for reconciliation ────────────────────────
+        $recon = $convenors->map(function ($convenor) use ($expenses, $grandTotalIncome, $totalExpenses) {
+            $paid = $expenses
+                ->where('paid_by_convenor_id', $convenor->id)
+                ->sum(fn($e) => $e->calculatedAmount());
+
+            // System expenses (payfast + cape_tennis_fee) are deducted from gross — not from convenors
+            $systemExpenses = $expenses
+                ->where('paid_by_convenor_id', $convenor->id)
+                ->whereIn('expense_type', ['payfast', 'cape_tennis_fee'])
+                ->sum(fn($e) => $e->calculatedAmount());
+
+            $operationalPaid = $paid - $systemExpenses;
+
+            return [
+                'convenor'       => $convenor,
+                'total_paid'     => $paid,
+                'owed_back'      => $paid,          // full amount owed back from event funds
+                'reimbursed'     => $expenses
+                    ->where('paid_by_convenor_id', $convenor->id)
+                    ->whereNotNull('reimbursed_at')
+                    ->sum(fn($e) => $e->calculatedAmount()),
+            ];
+        });
+
+        // Budget cap warning threshold (90%)
+        $budgetCapWarning = $event->budget_cap
+            ? ($totalExpenses / $event->budget_cap) >= 0.9
+            : false;
+
+        $netProfit = $grandTotalIncome - $totalExpenses;
 
         return view('backend.event.finances', compact(
             'event',
@@ -69,64 +119,269 @@ class EventFinanceController extends Controller
             'totalEntries',
             'feePerEntry',
             'netRegistrationIncome',
+            'incomeItems',
+            'totalIncomeItems',
+            'grandTotalIncome',
+            'convenors',
             'expenses',
             'expenseTypes',
+            'expensesByConvenor',
             'expensesByType',
             'totalExpenses',
+            'totalBudget',
+            'pendingApproval',
+            'pendingReimbursement',
+            'recon',
+            'budgetCapWarning',
             'netProfit'
         ));
     }
 
-    /**
-     * Store a new expense.
-     */
+    /* ------------------------------------------------------------------ */
+    /*  EXPENSES – CRUD                                                    */
+    /* ------------------------------------------------------------------ */
+
     public function storeExpense(Request $request, Event $event)
     {
         $validated = $request->validate([
-            'expense_type' => 'required|string|max:50',
-            'convenor_name' => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:255',
-            'amount' => 'required|numeric|min:0',
-            'date' => 'nullable|date',
+            'expense_type'          => 'required|string|max:50',
+            'paid_by_convenor_id'   => 'nullable|exists:event_convenors,id',
+            'convenor_name'         => 'nullable|string|max:100',
+            'description'           => 'nullable|string|max:255',
+            'recipient_name'        => 'nullable|string|max:150',
+            'amount'                => 'required|numeric|min:0',
+            'quantity'              => 'nullable|numeric|min:0',
+            'unit_price'            => 'nullable|numeric|min:0',
+            'budget_amount'         => 'nullable|numeric|min:0',
+            'date'                  => 'nullable|date',
+            'receipt'               => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
+
+        // Compute amount from qty × unit_price when both provided
+        $amount = $this->resolveAmount($validated);
+
+        $receiptPath = null;
+        if ($request->hasFile('receipt')) {
+            $receiptPath = $request->file('receipt')
+                ->store("event_receipts/{$event->id}", 'public');
+        }
 
         EventExpense::create([
-            'event_id' => $event->id,
-            'expense_type' => $validated['expense_type'],
-            'convenor_name' => $validated['convenor_name'] ?? null,
-            'description' => $validated['description'] ?? null,
-            'amount' => $validated['amount'],
-            'date' => $validated['date'] ?? now(),
+            'event_id'             => $event->id,
+            'expense_type'         => $validated['expense_type'],
+            'paid_by_convenor_id'  => $validated['paid_by_convenor_id'] ?? null,
+            'convenor_name'        => $validated['convenor_name'] ?? null,
+            'description'          => $validated['description'] ?? null,
+            'recipient_name'       => $validated['recipient_name'] ?? null,
+            'amount'               => $amount,
+            'quantity'             => $validated['quantity'] ?? null,
+            'unit_price'           => $validated['unit_price'] ?? null,
+            'budget_amount'        => $validated['budget_amount'] ?? null,
+            'receipt_path'         => $receiptPath,
+            'date'                 => $validated['date'] ?? now(),
         ]);
 
-        return back()->with('success', 'Expense added successfully.');
+        return back()->with('success', 'Uitgawe suksesvol bygevoeg.');
     }
 
-    /**
-     * Update an existing expense.
-     */
     public function updateExpense(Request $request, EventExpense $expense)
     {
         $validated = $request->validate([
-            'expense_type' => 'required|string|max:50',
-            'convenor_name' => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:255',
-            'amount' => 'required|numeric|min:0',
-            'date' => 'nullable|date',
+            'expense_type'          => 'required|string|max:50',
+            'paid_by_convenor_id'   => 'nullable|exists:event_convenors,id',
+            'convenor_name'         => 'nullable|string|max:100',
+            'description'           => 'nullable|string|max:255',
+            'recipient_name'        => 'nullable|string|max:150',
+            'amount'                => 'required|numeric|min:0',
+            'quantity'              => 'nullable|numeric|min:0',
+            'unit_price'            => 'nullable|numeric|min:0',
+            'budget_amount'         => 'nullable|numeric|min:0',
+            'date'                  => 'nullable|date',
+            'receipt'               => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
-        $expense->update($validated);
+        $amount = $this->resolveAmount($validated);
 
-        return back()->with('success', 'Expense updated successfully.');
+        $updates = array_merge($validated, ['amount' => $amount]);
+        unset($updates['receipt']);
+
+        if ($request->hasFile('receipt')) {
+            // Delete old receipt if exists
+            if ($expense->receipt_path) {
+                Storage::disk('public')->delete($expense->receipt_path);
+            }
+            $updates['receipt_path'] = $request->file('receipt')
+                ->store("event_receipts/{$expense->event_id}", 'public');
+        }
+
+        $expense->update($updates);
+
+        return back()->with('success', 'Uitgawe suksesvol opgedateer.');
+    }
+
+    public function destroyExpense(EventExpense $expense)
+    {
+        if ($expense->receipt_path) {
+            Storage::disk('public')->delete($expense->receipt_path);
+        }
+
+        $expense->delete();
+
+        return back()->with('success', 'Uitgawe suksesvol verwyder.');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  EXPENSES – APPROVAL & REIMBURSEMENT                               */
+    /* ------------------------------------------------------------------ */
+
+    public function approveExpense(EventExpense $expense)
+    {
+        $expense->update([
+            'approved_at' => now(),
+            'approved_by' => Auth::id(),
+        ]);
+
+        return back()->with('success', 'Uitgawe goedgekeur.');
+    }
+
+    public function reimburseExpense(EventExpense $expense)
+    {
+        $expense->update([
+            'reimbursed_at' => now(),
+            'reimbursed_by' => Auth::id(),
+        ]);
+
+        return back()->with('success', 'Terugbetaling gemerk.');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  INCOME ITEMS – CRUD                                                */
+    /* ------------------------------------------------------------------ */
+
+    public function storeIncomeItem(Request $request, Event $event)
+    {
+        $validated = $request->validate([
+            'label'      => 'required|string|max:255',
+            'quantity'   => 'nullable|numeric|min:0',
+            'unit_price' => 'nullable|numeric|min:0',
+            'total'      => 'nullable|numeric|min:0',
+            'source'     => 'nullable|string|max:255',
+            'date'       => 'nullable|date',
+        ]);
+
+        $total = ($validated['quantity'] ?? null) !== null && ($validated['unit_price'] ?? null) !== null
+            ? (float) $validated['quantity'] * (float) $validated['unit_price']
+            : (float) ($validated['total'] ?? 0);
+
+        EventIncomeItem::create([
+            'event_id'   => $event->id,
+            'label'      => $validated['label'],
+            'quantity'   => $validated['quantity'] ?? null,
+            'unit_price' => $validated['unit_price'] ?? null,
+            'total'      => $total,
+            'source'     => $validated['source'] ?? null,
+            'date'       => $validated['date'] ?? null,
+        ]);
+
+        return back()->with('success', 'Inkomste-item bygevoeg.');
+    }
+
+    public function updateIncomeItem(Request $request, EventIncomeItem $item)
+    {
+        $validated = $request->validate([
+            'label'      => 'required|string|max:255',
+            'quantity'   => 'nullable|numeric|min:0',
+            'unit_price' => 'nullable|numeric|min:0',
+            'total'      => 'nullable|numeric|min:0',
+            'source'     => 'nullable|string|max:255',
+            'date'       => 'nullable|date',
+        ]);
+
+        $total = ($validated['quantity'] ?? null) !== null && ($validated['unit_price'] ?? null) !== null
+            ? (float) $validated['quantity'] * (float) $validated['unit_price']
+            : (float) ($validated['total'] ?? $item->total);
+
+        $item->update(array_merge($validated, ['total' => $total]));
+
+        return back()->with('success', 'Inkomste-item opgedateer.');
+    }
+
+    public function destroyIncomeItem(EventIncomeItem $item)
+    {
+        $item->delete();
+
+        return back()->with('success', 'Inkomste-item verwyder.');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  PRIVATE HELPERS                                                    */
+    /* ------------------------------------------------------------------ */
+
+    private function expenseTypes(): array
+    {
+        return [
+            'balls'           => 'Balle',
+            'venue'           => 'Bane (Venue)',
+            'convenors'       => 'Convenors',
+            'medals'          => 'Medalies',
+            'couriers'        => 'Koeriersdiens',
+            'airtime'         => 'Airtime/Data',
+            'petrol'          => 'Petrol',
+            'admin_fee'       => 'Adminfooi',
+            'accommodation'   => 'Akkommodasie',
+            'extras'          => 'Ekstra\'s',
+            'payfast'         => 'PayFast Fooie',
+            'cape_tennis_fee' => 'Cape Tennis Fooi',
+            'other'           => 'Ander',
+        ];
     }
 
     /**
-     * Delete an expense.
+     * If qty × unit_price are both provided, override the submitted amount.
      */
-    public function destroyExpense(EventExpense $expense)
+    private function resolveAmount(array $validated): float
     {
-        $expense->delete();
+        if (
+            !empty($validated['quantity']) &&
+            !empty($validated['unit_price'])
+        ) {
+            return (float) $validated['quantity'] * (float) $validated['unit_price'];
+        }
 
-        return back()->with('success', 'Expense deleted successfully.');
+        return (float) $validated['amount'];
+    }
+
+    /**
+     * Auto-create locked system expense rows for PayFast fees and Cape Tennis fees
+     * derived from actual transaction data, if they don't already exist.
+     */
+    private function autoSyncSystemExpenses(
+        Event $event,
+        float $totalPayfastFees,
+        float $totalCapeTennisFees,
+        $expenses
+    ): void {
+        $hasPayfast  = $expenses->whereIn('expense_type', ['payfast'])->count() > 0;
+        $hasCT       = $expenses->whereIn('expense_type', ['cape_tennis_fee'])->count() > 0;
+
+        if (!$hasPayfast && abs($totalPayfastFees) > 0) {
+            EventExpense::create([
+                'event_id'    => $event->id,
+                'expense_type' => 'payfast',
+                'description'  => 'PayFast fooie (outomaties gesinkroniseer)',
+                'amount'       => abs($totalPayfastFees),
+                'date'         => now(),
+            ]);
+        }
+
+        if (!$hasCT && $totalCapeTennisFees > 0) {
+            EventExpense::create([
+                'event_id'    => $event->id,
+                'expense_type' => 'cape_tennis_fee',
+                'description'  => 'Cape Tennis fooi (outomaties gesinkroniseer)',
+                'amount'       => $totalCapeTennisFees,
+                'date'         => now(),
+            ]);
+        }
     }
 }
