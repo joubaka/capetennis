@@ -32,7 +32,7 @@
         <a href="{{ route('admin.events.finances', $event) }}"
            class="btn btn-outline-warning">
           <i class="ti ti-report-money me-1"></i>
-          Convenor Finances
+          Finances
         </a>
 
         <a href="{{ route('admin.events.draws', $event) }}"

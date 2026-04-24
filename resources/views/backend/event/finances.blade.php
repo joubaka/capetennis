@@ -1,6 +1,6 @@
 @extends('layouts/layoutMaster')
 
-@section('title', $event->name . ' – Finansies')
+@section('title', $event->name . ' – Finances')
 
 @section('page-style')
 <style>
@@ -30,17 +30,17 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0">
         <i class="ti ti-report-money me-2 text-warning"></i>
-        Finansies — {{ $event->name }}
+        Finances — {{ $event->name }}
       </h4>
       <div class="d-flex gap-2 flex-wrap">
         <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-printer me-1"></i>Druk / PDF
+          <i class="ti ti-printer me-1"></i>Print / PDF
         </button>
         <a href="{{ route('admin.events.transactions', $event) }}" class="btn btn-outline-primary btn-sm">
-          <i class="ti ti-credit-card me-1"></i>Transaksies
+          <i class="ti ti-credit-card me-1"></i>Transactions
         </a>
         <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Terug
+          <i class="ti ti-arrow-left me-1"></i>Back
         </a>
       </div>
     </div>
@@ -58,8 +58,8 @@
     <div class="alert alert-warning d-flex align-items-center no-print" role="alert">
       <i class="ti ti-alert-triangle me-2 fs-4"></i>
       <div>
-        <strong>Begrotingswaarskuwing!</strong>
-        Besteding het 90% van die begroting (R {{ number_format($event->budget_cap, 2) }}) bereik.
+        <strong>Budget Warning!</strong>
+        Spending has reached 90% of the budget (R {{ number_format($event->budget_cap, 2) }}).
       </div>
     </div>
   @endif
@@ -67,7 +67,7 @@
   @if($pendingApproval > 0)
     <div class="alert alert-info d-flex align-items-center no-print" role="alert">
       <i class="ti ti-clock me-2"></i>
-      {{ $pendingApproval }} uitgawe(s) wag op goedkeuring.
+      {{ $pendingApproval }} expense(s) awaiting approval.
     </div>
   @endif
 
@@ -76,13 +76,13 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-primary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Totale Inkomste</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Total Income</small>
           <h5 class="mb-0">R {{ number_format($grandTotalIncome, 2) }}</h5>
           @if($event->target_income)
-            <div class="progress mt-2" style="height:4px" title="R{{ number_format($grandTotalIncome,2) }} van R{{ number_format($event->target_income,2) }}">
+            <div class="progress mt-2" style="height:4px" title="R{{ number_format($grandTotalIncome,2) }} of R{{ number_format($event->target_income,2) }}">
               <div class="progress-bar bg-primary" style="width: {{ min(100, round($grandTotalIncome / $event->target_income * 100)) }}%"></div>
             </div>
-            <small class="text-muted">{{ round($grandTotalIncome / $event->target_income * 100) }}% van teiken</small>
+            <small class="text-muted">{{ round($grandTotalIncome / $event->target_income * 100) }}% of target</small>
           @endif
         </div>
       </div>
@@ -91,14 +91,14 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-danger border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-shopping-cart me-1 text-danger"></i>Totale Uitgawes</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-shopping-cart me-1 text-danger"></i>Total Expenses</small>
           <h5 class="mb-0 text-danger">R {{ number_format($totalExpenses, 2) }}</h5>
           @if($event->budget_cap)
-            <div class="progress mt-2" style="height:4px" title="R{{ number_format($totalExpenses,2) }} van R{{ number_format($event->budget_cap,2) }}">
+            <div class="progress mt-2" style="height:4px" title="R{{ number_format($totalExpenses,2) }} of R{{ number_format($event->budget_cap,2) }}">
               <div class="progress-bar {{ ($totalExpenses/$event->budget_cap) >= 0.9 ? 'bg-danger' : 'bg-warning' }}"
                    style="width: {{ min(100, round($totalExpenses / $event->budget_cap * 100)) }}%"></div>
             </div>
-            <small class="text-muted">{{ round($totalExpenses / $event->budget_cap * 100) }}% van begroting (R {{ number_format($event->budget_cap, 2) }})</small>
+            <small class="text-muted">{{ round($totalExpenses / $event->budget_cap * 100) }}% of budget (R {{ number_format($event->budget_cap, 2) }})</small>
           @endif
         </div>
       </div>
@@ -109,7 +109,7 @@
         <div class="card-body">
           <small class="text-muted d-block mb-1">
             <i class="ti ti-trending-{{ $netProfit >= 0 ? 'up text-success' : 'down text-danger' }} me-1"></i>
-            Netto {{ $netProfit >= 0 ? 'Wins' : 'Verlies' }}
+            Net {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}
           </small>
           <h5 class="mb-0 {{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">
             R {{ number_format(abs($netProfit), 2) }}
@@ -121,13 +121,13 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-secondary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Inskrywings</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Entries</small>
           <h5 class="mb-0">{{ $totalEntries }}</h5>
           @if($event->target_entries)
             <div class="progress mt-2" style="height:4px">
               <div class="progress-bar bg-secondary" style="width: {{ min(100, round($totalEntries / $event->target_entries * 100)) }}%"></div>
             </div>
-            <small class="text-muted">{{ $totalEntries }} van {{ $event->target_entries }} teiken</small>
+            <small class="text-muted">{{ $totalEntries }} of {{ $event->target_entries }} target</small>
           @endif
         </div>
       </div>
@@ -139,9 +139,9 @@
   ══════════════════════════════════════════════════════════════════════ --}}
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0"><i class="ti ti-cash me-2 text-success"></i>Inkomste</h5>
+      <h5 class="mb-0"><i class="ti ti-cash me-2 text-success"></i>Income</h5>
       <button class="btn btn-success btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addIncomeModal">
-        <i class="ti ti-plus me-1"></i>Voeg Inkomste By
+        <i class="ti ti-plus me-1"></i>Add Income
       </button>
     </div>
     <div class="card-body p-0">
@@ -149,12 +149,12 @@
         <table class="table table-hover mb-0">
           <thead class="table-light">
             <tr>
-              <th>Beskrywing</th>
-              <th class="text-center">Hoeveelheid</th>
-              <th class="text-end">Eenheidsprys</th>
-              <th>Bron</th>
-              <th>Datum</th>
-              <th class="text-end">Totaal</th>
+              <th>Description</th>
+              <th class="text-center">Quantity</th>
+              <th class="text-end">Unit Price</th>
+              <th>Source</th>
+              <th>Date</th>
+              <th class="text-end">Total</th>
               <th class="no-print" style="width:80px"></th>
             </tr>
           </thead>
@@ -162,12 +162,12 @@
             {{-- Registration income row --}}
             <tr>
               <td>
-                <span class="badge bg-label-primary me-1">Stelsel</span>
-                Inskrywingsgeld (PayFast)
+                <span class="badge bg-label-primary me-1">System</span>
+                Registration Fees (PayFast)
               </td>
               <td class="text-center">{{ $totalEntries }}</td>
               <td class="text-end">—</td>
-              <td><small class="text-muted">PayFast transaksies</small></td>
+              <td><small class="text-muted">PayFast transactions</small></td>
               <td>—</td>
               <td class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
               <td class="no-print"></td>
@@ -188,7 +188,7 @@
                     <i class="ti ti-edit"></i>
                   </button>
                   <form action="{{ route('admin.events.finances.income.destroy', $item) }}" method="POST" class="d-inline"
-                        onsubmit="return confirm('Verwyder hierdie inkomste-item?')">
+                        onsubmit="return confirm('Delete this income item?')">
                     @csrf @method('DELETE')
                     <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                   </form>
@@ -202,15 +202,15 @@
                     <form action="{{ route('admin.events.finances.income.update', $item) }}" method="POST">
                       @csrf @method('PATCH')
                       <div class="modal-header">
-                        <h5 class="modal-title">Wysig Inkomste-item</h5>
+                        <h5 class="modal-title">Edit Income Item</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                       </div>
                       <div class="modal-body">
                         @include('backend.event._income_item_fields', ['item' => $item])
                       </div>
                       <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Kanselleer</button>
-                        <button type="submit" class="btn btn-primary">Stoor</button>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
                       </div>
                     </form>
                   </div>
@@ -220,7 +220,7 @@
           </tbody>
           <tfoot class="table-light">
             <tr>
-              <td colspan="5" class="fw-bold">Totale Inkomste</td>
+              <td colspan="5" class="fw-bold">Total Income</td>
               <td class="text-end fw-bold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td class="no-print"></td>
             </tr>
@@ -234,9 +234,9 @@
        SECTION 2 – EXPENSES (per convenor)
   ══════════════════════════════════════════════════════════════════════ --}}
   <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="mb-0"><i class="ti ti-list me-2"></i>Uitgawes per Convenor</h5>
+    <h5 class="mb-0"><i class="ti ti-list me-2"></i>Expenses per Convenor</h5>
     <button class="btn btn-primary btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
-      <i class="ti ti-plus me-1"></i>Voeg Uitgawe By
+      <i class="ti ti-plus me-1"></i>Add Expense
     </button>
   </div>
 
@@ -246,15 +246,15 @@
         $cExpenses = $expensesByConvenor->get($convenor->id, collect());
         $cTotal    = $cExpenses->sum(fn($e) => $e->calculatedAmount());
         $roleLabel = match($convenor->role) {
-          'hoof'  => 'HoofConvenor',
-          'hulp'  => 'HulpConvenor',
+          'hoof'  => 'HeadConvenor',
+          'hulp'  => 'AssistConvenor',
           default => ucfirst($convenor->role),
         };
       @endphp
       <div class="card mb-3">
         <div class="card-header convenor-header d-flex justify-content-between align-items-center">
           <div>
-            <strong>Betaal deur {{ $convenor->user->name ?? 'Onbekend' }}</strong>
+            <strong>Paid by {{ $convenor->user->name ?? 'Unknown' }}</strong>
             <span class="badge bg-warning text-dark ms-2">{{ $roleLabel }}</span>
           </div>
           <span class="fw-bold">R {{ number_format($cTotal, 2) }}</span>
@@ -265,12 +265,12 @@
               <table class="table table-hover mb-0">
                 <thead class="table-light">
                   <tr>
-                    <th>Tipe</th>
-                    <th>Ontvanger / Beskrywing</th>
-                    <th class="text-center">Hoeveelheid × Prys</th>
-                    <th class="text-end">Begroting</th>
-                    <th class="text-end">Werklik</th>
-                    <th class="text-end">Verskil</th>
+                    <th>Type</th>
+                    <th>Recipient / Description</th>
+                    <th class="text-center">Quantity × Price</th>
+                    <th class="text-end">Budget</th>
+                    <th class="text-end">Actual</th>
+                    <th class="text-end">Variance</th>
                     <th>Status</th>
                     <th class="no-print" style="width:120px"></th>
                   </tr>
@@ -288,7 +288,7 @@
                           {{ $expenseTypes[$expense->expense_type] ?? ucfirst($expense->expense_type) }}
                         </span>
                         @if($isSystem)
-                          <span class="badge bg-label-info ms-1" title="Outomaties gesinkroniseer">
+                          <span class="badge bg-label-info ms-1" title="Automatically synced">
                             <i class="ti ti-refresh"></i>
                           </span>
                         @endif
@@ -321,21 +321,21 @@
                       </td>
                       <td>
                         @if($expense->approved_at)
-                          <span class="badge bg-success approved-badge" title="Goedgekeur deur {{ $expense->approvedByUser?->name }}">
-                            <i class="ti ti-check"></i> Goedgekeur
+                          <span class="badge bg-success approved-badge" title="Approved by {{ $expense->approvedByUser?->name }}">
+                            <i class="ti ti-check"></i> Approved
                           </span>
                         @else
-                          <span class="badge bg-label-warning approved-badge">Hangende</span>
+                          <span class="badge bg-label-warning approved-badge">Pending</span>
                         @endif
                         @if($expense->reimbursed_at)
-                          <span class="badge bg-label-success approved-badge mt-1 d-block" title="Terugbetaal aan {{ $convenor->user->name }}">
-                            <i class="ti ti-coin"></i> Terugbetaal
+                          <span class="badge bg-label-success approved-badge mt-1 d-block" title="Reimbursed to {{ $convenor->user->name }}">
+                            <i class="ti ti-coin"></i> Reimbursed
                           </span>
                         @endif
                         @if($expense->receipt_path)
                           <a href="{{ asset('storage/'.$expense->receipt_path) }}" target="_blank"
                              class="badge bg-label-primary approved-badge mt-1 d-block">
-                            <i class="ti ti-paperclip"></i> Kwitansie
+                            <i class="ti ti-paperclip"></i> Receipt
                           </a>
                         @endif
                       </td>
@@ -343,7 +343,7 @@
                         @if(!$expense->approved_at && !$isSystem)
                           <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline">
                             @csrf
-                            <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Keur goed">
+                            <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve">
                               <i class="ti ti-check"></i>
                             </button>
                           </form>
@@ -351,7 +351,7 @@
                         @if($expense->approved_at && !$expense->reimbursed_at && !$isSystem)
                           <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline">
                             @csrf
-                            <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Merk as terugbetaal">
+                            <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed">
                               <i class="ti ti-coin"></i>
                             </button>
                           </form>
@@ -365,7 +365,7 @@
                           </button>
                           <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}"
                                 method="POST" class="d-inline"
-                                onsubmit="return confirm('Verwyder hierdie uitgawe?')">
+                                onsubmit="return confirm('Delete this expense?')">
                             @csrf @method('DELETE')
                             <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                           </form>
@@ -376,7 +376,7 @@
                 </tbody>
                 <tfoot class="table-light">
                   <tr>
-                    <td colspan="4" class="fw-bold">Subtotaal – {{ $convenor->user->name ?? 'Onbekend' }}</td>
+                    <td colspan="4" class="fw-bold">Subtotal – {{ $convenor->user->name ?? 'Unknown' }}</td>
                     <td class="text-end fw-bold">R {{ number_format($cTotal, 2) }}</td>
                     <td colspan="3"></td>
                   </tr>
@@ -385,7 +385,7 @@
             </div>
           @else
             <div class="text-center py-3 text-muted">
-              Geen uitgawes nie.
+              No expenses.
             </div>
           @endif
         </div>
@@ -401,7 +401,7 @@
   @if($unassigned->count() > 0)
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center bg-light">
-        <strong><i class="ti ti-question-mark me-1 text-muted"></i>Geen Convenor Toegeken</strong>
+        <strong><i class="ti ti-question-mark me-1 text-muted"></i>No Convenor Assigned</strong>
         <span class="fw-bold">R {{ number_format($unassignedTotal, 2) }}</span>
       </div>
       <div class="card-body p-0">
@@ -409,10 +409,10 @@
           <table class="table table-hover mb-0">
             <thead class="table-light">
               <tr>
-                <th>Tipe</th>
-                <th>Beskrywing</th>
-                <th class="text-center">Hoeveelheid × Prys</th>
-                <th class="text-end">Werklik</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th class="text-center">Quantity × Price</th>
+                <th class="text-end">Actual</th>
                 <th class="no-print" style="width:100px"></th>
               </tr>
             </thead>
@@ -435,7 +435,7 @@
                       <i class="ti ti-edit"></i>
                     </button>
                     <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}" method="POST" class="d-inline"
-                          onsubmit="return confirm('Verwyder?')">
+                          onsubmit="return confirm('Delete?')">
                       @csrf @method('DELETE')
                       <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                     </form>
@@ -454,7 +454,7 @@
   ══════════════════════════════════════════════════════════════════════ --}}
   <div class="card mb-4">
     <div class="card-header">
-      <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Rekonsiliasie (Wins / Recon)</h5>
+      <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Reconciliation</h5>
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -463,9 +463,9 @@
             <tr>
               <th>Convenor</th>
               <th>Rol</th>
-              <th class="text-end">Betaal Uit</th>
-              <th class="text-end">Terugbetaal</th>
-              <th class="text-end">Uitstaande</th>
+              <th class="text-end">Paid Out</th>
+              <th class="text-end">Reimbursed</th>
+              <th class="text-end">Outstanding</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -475,10 +475,10 @@
                 $outstanding = $row['owed_back'] - $row['reimbursed'];
               @endphp
               <tr>
-                <td class="fw-semibold">{{ $row['convenor']->user->name ?? 'Onbekend' }}</td>
+                <td class="fw-semibold">{{ $row['convenor']->user->name ?? 'Unknown' }}</td>
                 <td>
                   <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}">
-                    {{ $row['convenor']->isHoof() ? 'HoofConvenor' : ($row['convenor']->isHulp() ? 'HulpConvenor' : ucfirst($row['convenor']->role)) }}
+                    {{ $row['convenor']->isHoof() ? 'HeadConvenor' : ($row['convenor']->isHulp() ? 'AssistConvenor' : ucfirst($row['convenor']->role)) }}
                   </span>
                 </td>
                 <td class="text-end">R {{ number_format($row['total_paid'], 2) }}</td>
@@ -488,9 +488,9 @@
                 </td>
                 <td>
                   @if($outstanding <= 0)
-                    <span class="badge bg-success"><i class="ti ti-check me-1"></i>Vereffen</span>
+                    <span class="badge bg-success"><i class="ti ti-check me-1"></i>Settled</span>
                   @else
-                    <span class="badge bg-danger"><i class="ti ti-alert-circle me-1"></i>Uitstaande</span>
+                    <span class="badge bg-danger"><i class="ti ti-alert-circle me-1"></i>Outstanding</span>
                   @endif
                 </td>
               </tr>
@@ -498,7 +498,7 @@
           </tbody>
           <tfoot class="table-light">
             <tr>
-              <td colspan="2" class="fw-bold">Recon Totaal</td>
+              <td colspan="2" class="fw-bold">Recon Total</td>
               <td class="text-end fw-bold">R {{ number_format($recon->sum('total_paid'), 2) }}</td>
               <td class="text-end fw-bold text-success">R {{ number_format($recon->sum('reimbursed'), 2) }}</td>
               <td class="text-end fw-bold {{ $recon->sum(fn($r) => $r['owed_back'] - $r['reimbursed']) > 0 ? 'text-danger' : 'text-success' }}">
@@ -507,17 +507,17 @@
               <td></td>
             </tr>
             <tr class="table-secondary">
-              <td colspan="2"><small class="text-muted">Totale Inkomste</small></td>
+              <td colspan="2"><small class="text-muted">Total Income</small></td>
               <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td></td>
             </tr>
             <tr class="table-secondary">
-              <td colspan="2"><small class="text-muted">Totale Uitgawes</small></td>
+              <td colspan="2"><small class="text-muted">Total Expenses</small></td>
               <td colspan="3" class="text-end fw-semibold text-danger">R {{ number_format($totalExpenses, 2) }}</td>
               <td></td>
             </tr>
             <tr class="{{ $netProfit >= 0 ? 'table-success' : 'table-danger' }}">
-              <td colspan="2" class="fw-bold">Netto {{ $netProfit >= 0 ? 'Wins' : 'Verlies' }}</td>
+              <td colspan="2" class="fw-bold">Net {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}</td>
               <td colspan="3" class="text-end fw-bold">R {{ number_format(abs($netProfit), 2) }}</td>
               <td></td>
             </tr>
@@ -540,15 +540,15 @@
       <form action="{{ route('admin.events.finances.expense.store', $event) }}" method="POST" enctype="multipart/form-data">
         @csrf
         <div class="modal-header">
-          <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Voeg Uitgawe By</h5>
+          <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add Expense</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           @include('backend.event._expense_fields', ['expense' => null, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Kanselleer</button>
-          <button type="submit" class="btn btn-primary"><i class="ti ti-check me-1"></i>Voeg By</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="ti ti-check me-1"></i>Add</button>
         </div>
       </form>
     </div>
@@ -564,15 +564,15 @@
           <form action="{{ route('admin.events.finances.expense.update', $expense) }}" method="POST" enctype="multipart/form-data">
             @csrf @method('PATCH')
             <div class="modal-header">
-              <h5 class="modal-title">Wysig Uitgawe</h5>
+              <h5 class="modal-title">Edit Expense</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               @include('backend.event._expense_fields', ['expense' => $expense, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Kanselleer</button>
-              <button type="submit" class="btn btn-primary">Stoor Wysigings</button>
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
             </div>
           </form>
         </div>
@@ -588,15 +588,15 @@
       <form action="{{ route('admin.events.finances.income.store', $event) }}" method="POST">
         @csrf
         <div class="modal-header">
-          <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Voeg Inkomste By</h5>
+          <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add Income</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           @include('backend.event._income_item_fields', ['item' => null])
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Kanselleer</button>
-          <button type="submit" class="btn btn-success"><i class="ti ti-check me-1"></i>Voeg By</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success"><i class="ti ti-check me-1"></i>Add</button>
         </div>
       </form>
     </div>
