@@ -462,7 +462,7 @@
           <thead>
             <tr>
               <th>Convenor</th>
-              <th>Rol</th>
+              <th>Role</th>
               <th class="text-end">Paid Out</th>
               <th class="text-end">Reimbursed</th>
               <th class="text-end">Outstanding</th>

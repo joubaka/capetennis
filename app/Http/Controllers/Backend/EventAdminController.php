@@ -24,6 +24,9 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\EventPlayersExport;
 use Illuminate\Support\Facades\Log;
+use App\Models\EventExpense;
+use App\Models\EventIncomeItem;
+use Illuminate\Support\Facades\Storage;
 use App\Models\Registration;
 use App\Models\PlayerRegistration;
 use App\Models\CategoryEventRegistration;
@@ -798,17 +801,146 @@ class EventAdminController extends Controller
       );
     }
 
+    $financeData = $event->isTeam() ? $this->buildFinanceData($event) : [];
+
     return view('backend.event.overview', [
       'event' => $event,
       'stats' => $stats,
       'teamData' => $teamData,
       'venues' => \App\Models\Venue::all(), // <-- this line is required!
-    ]);
+    ] + $financeData);
+  }
+
+  protected function buildFinanceData(Event $event): array
+  {
+    $feePerEntry = (float) $event->cape_tennis_fee;
+
+    $transactions = Transaction::with([
+      'user',
+      'order.items.player',
+      'order.items.category_event.category',
+    ])
+      ->where('event_id', $event->id)
+      ->where('transaction_type', 'Registration')
+      ->where('amount_gross', '>', 0)
+      ->orderByDesc('created_at')
+      ->get();
+
+    $totalGross             = $transactions->sum('amount_gross');
+    $totalPayfastFees       = $transactions->sum('amount_fee');
+    $totalEntries           = $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
+    $totalCapeTennisFees    = $totalEntries * $feePerEntry;
+    $netRegistrationIncome  = $totalGross - abs($totalPayfastFees) - $totalCapeTennisFees;
+
+    $incomeItems      = $event->incomeItems()->get();
+    $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
+    $grandTotalIncome = $netRegistrationIncome + $totalIncomeItems;
+
+    $convenors = $event->convenors()
+      ->with('user')
+      ->orderByRaw("FIELD(role, 'hoof', 'hulp', 'admin')")
+      ->get();
+
+    $expenses = EventExpense::where('event_id', $event->id)
+      ->with(['paidByConvenor.user', 'approvedByUser', 'reimbursedByUser'])
+      ->orderByDesc('created_at')
+      ->get();
+
+    // Auto-sync system expense rows from transaction data
+    $hasPayfast = $expenses->whereIn('expense_type', ['payfast'])->count() > 0;
+    $hasCT      = $expenses->whereIn('expense_type', ['cape_tennis_fee'])->count() > 0;
+
+    if (!$hasPayfast && abs($totalPayfastFees) > 0) {
+      EventExpense::create([
+        'event_id'     => $event->id,
+        'expense_type' => 'payfast',
+        'description'  => 'PayFast fees (auto-synced)',
+        'amount'       => abs($totalPayfastFees),
+        'date'         => now(),
+      ]);
+    }
+    if (!$hasCT && $totalCapeTennisFees > 0) {
+      EventExpense::create([
+        'event_id'     => $event->id,
+        'expense_type' => 'cape_tennis_fee',
+        'description'  => 'Cape Tennis fee (auto-synced)',
+        'amount'       => $totalCapeTennisFees,
+        'date'         => now(),
+      ]);
+    }
+
+    // Refresh after potential sync
+    $expenses = EventExpense::where('event_id', $event->id)
+      ->with(['paidByConvenor.user', 'approvedByUser', 'reimbursedByUser'])
+      ->orderByDesc('created_at')
+      ->get();
+
+    $expenseTypes = [
+      'balls'           => 'Balls',
+      'venue'           => 'Venue',
+      'convenors'       => 'Convenors',
+      'medals'          => 'Medals',
+      'couriers'        => 'Couriers',
+      'airtime'         => 'Airtime / Data',
+      'petrol'          => 'Petrol',
+      'admin_fee'       => 'Admin Fee',
+      'accommodation'   => 'Accommodation',
+      'extras'          => 'Extras',
+      'payfast'         => 'PayFast Fees',
+      'cape_tennis_fee' => 'Cape Tennis Fee',
+      'other'           => 'Other',
+    ];
+
+    $expensesByConvenor = $expenses->groupBy('paid_by_convenor_id');
+    $totalExpenses      = $expenses->sum(fn($e) => $e->calculatedAmount());
+    $pendingApproval    = $expenses->whereNull('approved_at')->count();
+
+    $recon = $convenors->map(function ($convenor) use ($expenses) {
+      $paid = $expenses
+        ->where('paid_by_convenor_id', $convenor->id)
+        ->sum(fn($e) => $e->calculatedAmount());
+
+      return [
+        'convenor'   => $convenor,
+        'total_paid' => $paid,
+        'owed_back'  => $paid,
+        'reimbursed' => $expenses
+          ->where('paid_by_convenor_id', $convenor->id)
+          ->whereNotNull('reimbursed_at')
+          ->sum(fn($e) => $e->calculatedAmount()),
+      ];
+    });
+
+    $budgetCapWarning = $event->budget_cap
+      ? ($totalExpenses / $event->budget_cap) >= 0.9
+      : false;
+
+    $netProfit = $grandTotalIncome - $totalExpenses;
+
+    return compact(
+      'totalGross',
+      'totalPayfastFees',
+      'totalCapeTennisFees',
+      'totalEntries',
+      'feePerEntry',
+      'netRegistrationIncome',
+      'incomeItems',
+      'totalIncomeItems',
+      'grandTotalIncome',
+      'convenors',
+      'expenses',
+      'expenseTypes',
+      'expensesByConvenor',
+      'totalExpenses',
+      'pendingApproval',
+      'recon',
+      'budgetCapWarning',
+      'netProfit'
+    );
   }
 
   protected function buildEventTransactions(Event $event): array
   {
-    $capeTennisFeeSet = 15;
     $runningBalance = 0;
 
     $transactions = $event->transactions->map(function ($transaction) use (&$runningBalance, $capeTennisFeeSet) {

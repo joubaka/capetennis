@@ -29,12 +29,6 @@
           Team Payments
         </a>
 
-        <a href="{{ route('admin.events.finances', $event) }}"
-           class="btn btn-outline-warning">
-          <i class="ti ti-report-money me-1"></i>
-          Finances
-        </a>
-
         <a href="{{ route('admin.events.draws', $event) }}"
            class="btn btn-outline-secondary">
           <i class="ti ti-tournament me-1"></i>
