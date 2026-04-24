@@ -181,7 +181,7 @@ class EventFinanceController extends Controller
             'date'                 => $validated['date'] ?? now(),
         ]);
 
-        return back()->with('success', 'Uitgawe suksesvol bygevoeg.');
+        return back()->with('success', 'Expense added successfully.');
     }
 
     public function updateExpense(Request $request, EventExpense $expense)
@@ -216,7 +216,7 @@ class EventFinanceController extends Controller
 
         $expense->update($updates);
 
-        return back()->with('success', 'Uitgawe suksesvol opgedateer.');
+        return back()->with('success', 'Expense updated successfully.');
     }
 
     public function destroyExpense(EventExpense $expense)
@@ -227,7 +227,7 @@ class EventFinanceController extends Controller
 
         $expense->delete();
 
-        return back()->with('success', 'Uitgawe suksesvol verwyder.');
+        return back()->with('success', 'Expense deleted.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -241,7 +241,7 @@ class EventFinanceController extends Controller
             'approved_by' => Auth::id(),
         ]);
 
-        return back()->with('success', 'Uitgawe goedgekeur.');
+        return back()->with('success', 'Expense approved.');
     }
 
     public function reimburseExpense(EventExpense $expense)
@@ -251,7 +251,7 @@ class EventFinanceController extends Controller
             'reimbursed_by' => Auth::id(),
         ]);
 
-        return back()->with('success', 'Terugbetaling gemerk.');
+        return back()->with('success', 'Reimbursement marked.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -283,7 +283,7 @@ class EventFinanceController extends Controller
             'date'       => $validated['date'] ?? null,
         ]);
 
-        return back()->with('success', 'Inkomste-item bygevoeg.');
+        return back()->with('success', 'Income item added.');
     }
 
     public function updateIncomeItem(Request $request, EventIncomeItem $item)
@@ -303,14 +303,14 @@ class EventFinanceController extends Controller
 
         $item->update(array_merge($validated, ['total' => $total]));
 
-        return back()->with('success', 'Inkomste-item opgedateer.');
+        return back()->with('success', 'Income item updated.');
     }
 
     public function destroyIncomeItem(EventIncomeItem $item)
     {
         $item->delete();
 
-        return back()->with('success', 'Inkomste-item verwyder.');
+        return back()->with('success', 'Income item deleted.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -368,7 +368,7 @@ class EventFinanceController extends Controller
             EventExpense::create([
                 'event_id'    => $event->id,
                 'expense_type' => 'payfast',
-                'description'  => 'PayFast fooie (outomaties gesinkroniseer)',
+                'description'  => 'PayFast fees (auto-synced)',
                 'amount'       => abs($totalPayfastFees),
                 'date'         => now(),
             ]);
@@ -378,7 +378,7 @@ class EventFinanceController extends Controller
             EventExpense::create([
                 'event_id'    => $event->id,
                 'expense_type' => 'cape_tennis_fee',
-                'description'  => 'Cape Tennis fooi (outomaties gesinkroniseer)',
+                'description'  => 'Cape Tennis fee (auto-synced)',
                 'amount'       => $totalCapeTennisFees,
                 'date'         => now(),
             ]);
