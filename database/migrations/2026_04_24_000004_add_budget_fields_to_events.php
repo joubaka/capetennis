@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('events', 'budget_cap')) {
+            return;
+        }
+
         Schema::table('events', function (Blueprint $table) {
             // Budget cap — total spending limit for the event
             $table->decimal('budget_cap', 10, 2)->nullable()->after('cape_tennis_fee');

@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('event_expenses', 'paid_by_convenor_id')) {
+            return;
+        }
+
         Schema::table('event_expenses', function (Blueprint $table) {
             // Link expense to the convenor who paid it (replaces free-text convenor_name)
             $table->unsignedBigInteger('paid_by_convenor_id')->nullable()->after('convenor_name');
