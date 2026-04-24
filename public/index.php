@@ -5,6 +5,10 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// Suppress deprecation warnings caused by PHP 8.4+ incompatibility with Laravel 9 vendor code.
+// Fix: upgrade to Laravel 10/11 or downgrade PHP to 8.3.
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
 /*
 |--------------------------------------------------------------------------
 | Check If The Application Is Under Maintenance
