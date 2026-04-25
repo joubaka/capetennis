@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventConvenor;
 use App\Models\EventExpense;
@@ -10,8 +11,10 @@ use App\Models\EventIncomeItem;
 use App\Models\ExpenseType;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class EventFinanceController extends Controller
@@ -150,6 +153,23 @@ class EventFinanceController extends Controller
         // All expense types including system types (for the manage-types modal)
         $allExpenseTypes = ExpenseType::ordered()->get();
 
+        // ── Per-venue entry counts (via draws linked to this event) ──────
+        // draws → draw_venues → venues, entries counted from category_event_registrations
+        $venueEntrySummary = Venue::query()
+            ->join('draw_venues', 'draw_venues.venue_id', '=', 'venues.id')
+            ->join('draws', 'draws.id', '=', 'draw_venues.draw_id')
+            ->join('category_events', 'category_events.id', '=', 'draws.category_event_id')
+            ->join('category_event_registrations', 'category_event_registrations.category_event_id', '=', 'category_events.id')
+            ->where('draws.event_id', $event->id)
+            ->select(
+                'venues.id',
+                'venues.name',
+                DB::raw('COUNT(DISTINCT category_event_registrations.registration_id) as entry_count')
+            )
+            ->groupBy('venues.id', 'venues.name')
+            ->orderBy('venues.name')
+            ->get();
+
         return view('backend.event.finances', compact(
             'event',
             'transactions',
@@ -176,7 +196,8 @@ class EventFinanceController extends Controller
             'pendingReimbursement',
             'recon',
             'budgetCapWarning',
-            'netProfit'
+            'netProfit',
+            'venueEntrySummary'
         ));
     }
 
@@ -496,11 +517,12 @@ class EventFinanceController extends Controller
         }
 
         EventConvenor::create([
-            'event_id'   => $event->id,
-            'user_id'    => $validated['user_id'],
-            'role'       => $validated['role'] ?? 'hulp',
-            'starts_at'  => $validated['starts_at'] ?? null,
-            'expires_at' => $validated['expires_at'] ?? null,
+            'event_id'         => $event->id,
+            'user_id'          => $validated['user_id'],
+            'role'             => $validated['role'] ?? 'hulp',
+            'profit_share_pct' => $validated['profit_share_pct'] ?? null,
+            'starts_at'        => $validated['starts_at'] ?? null,
+            'expires_at'       => $validated['expires_at'] ?? null,
         ]);
 
         return $request->wantsJson()
@@ -511,15 +533,19 @@ class EventFinanceController extends Controller
     public function updateConvenor(Request $request, EventConvenor $convenor)
     {
         $validated = $request->validate([
-            'role'       => 'nullable|string|max:20',
-            'starts_at'  => 'nullable|date',
-            'expires_at' => 'nullable|date|after_or_equal:starts_at',
+            'role'             => 'nullable|string|max:20',
+            'profit_share_pct' => 'nullable|numeric|min:0|max:100',
+            'starts_at'        => 'nullable|date',
+            'expires_at'       => 'nullable|date|after_or_equal:starts_at',
         ]);
 
         $convenor->update([
-            'role'       => $validated['role'] ?? $convenor->role,
-            'starts_at'  => $validated['starts_at'] ?? null,
-            'expires_at' => $validated['expires_at'] ?? null,
+            'role'             => $validated['role'] ?? $convenor->role,
+            'profit_share_pct' => array_key_exists('profit_share_pct', $validated)
+                                    ? $validated['profit_share_pct']
+                                    : $convenor->profit_share_pct,
+            'starts_at'        => $validated['starts_at'] ?? null,
+            'expires_at'       => $validated['expires_at'] ?? null,
         ]);
 
         return $request->wantsJson()

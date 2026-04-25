@@ -725,6 +725,8 @@
               <th class="text-end">Paid Out</th>
               <th class="text-end">Reimbursed</th>
               <th class="text-end">Outstanding</th>
+              <th class="text-end">Profit Share</th>
+              <th class="text-end">Final Payout</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -745,6 +747,17 @@
                 <td class="text-end {{ $outstanding > 0 ? 'text-danger fw-bold' : 'text-success' }}">
                   R {{ number_format($outstanding, 2) }}
                 </td>
+                <td class="text-end">
+                  @if($row['profit_share_pct'] > 0)
+                    <span class="text-info">{{ number_format($row['profit_share_pct'], 1) }}%</span>
+                    <small class="text-muted d-block">R {{ number_format($row['profit_share_amount'], 2) }}</small>
+                  @else
+                    <span class="text-muted">—</span>
+                  @endif
+                </td>
+                <td class="text-end fw-bold {{ $row['final_payout'] > 0 ? 'text-primary' : 'text-muted' }}">
+                  R {{ number_format($row['final_payout'], 2) }}
+                </td>
                 <td>
                   @if($outstanding <= 0)
                     <span class="badge bg-success"><i class="ti ti-check me-1"></i>Settled</span>
@@ -763,40 +776,46 @@
               <td class="text-end fw-bold {{ $recon->sum(fn($r) => $r['owed_back'] - $r['reimbursed']) > 0 ? 'text-danger' : 'text-success' }}">
                 R {{ number_format($recon->sum(fn($r) => $r['owed_back'] - $r['reimbursed']), 2) }}
               </td>
+              <td class="text-end fw-bold text-info">
+                R {{ number_format($recon->sum('profit_share_amount'), 2) }}
+              </td>
+              <td class="text-end fw-bold text-primary">
+                R {{ number_format($recon->sum('final_payout'), 2) }}
+              </td>
               <td></td>
             </tr>
             <tr class="table-secondary">
               <td colspan="2"><small class="text-muted">Gross Registration Income</small></td>
-              <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
+              <td colspan="5" class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
               <td></td>
             </tr>
             @if($totalSystemFees > 0)
               <tr class="table-secondary">
                 <td colspan="2"><small class="text-muted">System Fees (PayFast + Cape Tennis – deducted from gross)</small></td>
-                <td colspan="3" class="text-end fw-semibold text-danger">−R {{ number_format($totalSystemFees, 2) }}</td>
+                <td colspan="5" class="text-end fw-semibold text-danger">−R {{ number_format($totalSystemFees, 2) }}</td>
                 <td></td>
               </tr>
             @endif
             @if($totalIncomeItems > 0)
               <tr class="table-secondary">
                 <td colspan="2"><small class="text-muted">Other Income Items</small></td>
-                <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($totalIncomeItems, 2) }}</td>
+                <td colspan="5" class="text-end fw-semibold text-success">R {{ number_format($totalIncomeItems, 2) }}</td>
                 <td></td>
               </tr>
             @endif
             <tr class="table-secondary">
               <td colspan="2"><small class="text-muted">Total Net Income</small></td>
-              <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
+              <td colspan="5" class="text-end fw-semibold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td></td>
             </tr>
             <tr class="table-secondary">
               <td colspan="2"><small class="text-muted">Operational Expenses</small></td>
-              <td colspan="3" class="text-end fw-semibold text-danger">R {{ number_format($totalExpenses, 2) }}</td>
+              <td colspan="5" class="text-end fw-semibold text-danger">R {{ number_format($totalExpenses, 2) }}</td>
               <td></td>
             </tr>
             <tr class="{{ $netProfit >= 0 ? 'table-success' : 'table-danger' }}">
               <td colspan="2" class="fw-bold">Net {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}</td>
-              <td colspan="3" class="text-end fw-bold">R {{ number_format(abs($netProfit), 2) }}</td>
+              <td colspan="5" class="text-end fw-bold">R {{ number_format(abs($netProfit), 2) }}</td>
               <td></td>
             </tr>
           </tfoot>
@@ -806,6 +825,99 @@
   </div>
 {{-- Toast notification container (fixed, bottom-right) --}}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="financeToastContainer" style="z-index:1200"></div>
+
+  {{-- ══════════════════════════════════════════════════════════════════════
+       SECTION 4 – CONVENOR PAYOUT BREAKDOWN
+  ══════════════════════════════════════════════════════════════════════ --}}
+  @if($recon->count())
+  <div class="card mb-4 no-print">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0"><i class="ti ti-cash me-2"></i>Convenor Payout Breakdown</h5>
+      <small class="text-muted">Net Profit: <strong class="{{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">R {{ number_format(abs($netProfit), 2) }}</strong></small>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        @foreach($recon as $row)
+          @php
+            $outstanding = $row['owed_back'] - $row['reimbursed'];
+          @endphp
+          <div class="col-md-6 col-xl-4">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <div class="fw-bold">{{ $row['convenor']->user->name ?? 'Unknown' }}</div>
+                  <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }} mt-1">
+                    {{ $row['convenor']->isHoof() ? 'Head Convenor' : ($row['convenor']->isHulp() ? 'Assist Convenor' : ucfirst($row['convenor']->role)) }}
+                  </span>
+                </div>
+                <span class="badge {{ $row['final_payout'] > 0 ? 'bg-primary' : 'bg-success' }} fs-6">
+                  R {{ number_format($row['final_payout'], 2) }}
+                </span>
+              </div>
+              <ul class="list-unstyled mb-0 small text-muted">
+                <li class="d-flex justify-content-between">
+                  <span>Expenses paid out:</span>
+                  <span class="fw-semibold text-body">R {{ number_format($row['total_paid'], 2) }}</span>
+                </li>
+                @if($row['reimbursed'] > 0)
+                <li class="d-flex justify-content-between">
+                  <span>Already reimbursed:</span>
+                  <span class="text-success">−R {{ number_format($row['reimbursed'], 2) }}</span>
+                </li>
+                @endif
+                @if($outstanding > 0)
+                <li class="d-flex justify-content-between">
+                  <span>Expenses still owed:</span>
+                  <span class="text-danger fw-semibold">R {{ number_format($outstanding, 2) }}</span>
+                </li>
+                @endif
+                @if($row['profit_share_pct'] > 0)
+                <li class="d-flex justify-content-between mt-1 pt-1 border-top">
+                  <span>Profit share ({{ number_format($row['profit_share_pct'], 1) }}% of R {{ number_format($netProfit, 2) }}):</span>
+                  <span class="text-info fw-semibold">R {{ number_format($row['profit_share_amount'], 2) }}</span>
+                </li>
+                @endif
+                <li class="d-flex justify-content-between mt-1 pt-1 border-top fw-bold text-body">
+                  <span>Total to pay:</span>
+                  <span class="text-primary">R {{ number_format($row['final_payout'], 2) }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  </div>
+  @endif
+
+  {{-- ══════════════════════════════════════════════════════════════════════
+       SECTION 5 – VENUE ENTRY SUMMARY
+  ══════════════════════════════════════════════════════════════════════ --}}
+  @if($venueEntrySummary->count())
+  <div class="card mb-4 no-print">
+    <div class="card-header">
+      <h5 class="mb-0"><i class="ti ti-map-pin me-2"></i>Venue Entry Summary</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        @foreach($venueEntrySummary as $vs)
+          <div class="col-md-4 col-sm-6">
+            <div class="border rounded p-3 bg-light">
+              <div class="fw-bold mb-1"><i class="ti ti-map-pin text-primary me-1"></i>{{ $vs->name }}</div>
+              <div class="text-muted small">
+                <span class="fw-semibold text-body fs-5">{{ number_format($vs->entry_count) }}</span>
+                entr{{ $vs->entry_count === 1 ? 'y' : 'ies' }}
+              </div>
+            </div>
+          </div>
+        @endforeach
+      </div>
+      <p class="text-muted small mt-3 mb-0">
+        <i class="ti ti-info-circle me-1"></i>Entry counts are based on registrations in draw categories assigned to each venue.
+      </p>
+    </div>
+  </div>
+  @endif
 
 </div>{{-- /container --}}
 
@@ -903,6 +1015,7 @@
               <tr>
                 <th>Name</th>
                 <th>Role</th>
+                <th>Profit %</th>
                 <th>Active From</th>
                 <th>Expires</th>
                 <th style="width:90px"></th>
@@ -916,6 +1029,13 @@
                     <span class="badge {{ $c->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}">
                       {{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }}
                     </span>
+                  </td>
+                  <td class="align-middle">
+                    @if($c->profit_share_pct !== null && $c->profit_share_pct > 0)
+                      <span class="badge bg-label-info">{{ number_format((float)$c->profit_share_pct, 1) }}%</span>
+                    @else
+                      <span class="text-muted">—</span>
+                    @endif
                   </td>
                   <td class="align-middle">
                     <small>{{ $c->starts_at ? $c->starts_at->format('d M Y') : '—' }}</small>
@@ -959,19 +1079,27 @@
                 data-ajax="1" data-modal="manageConvenorsModal">
             @csrf
             <div class="row g-2">
-              <div class="col-md-8">
+              <div class="col-md-6">
                 <label class="form-label">User <span class="text-danger">*</span></label>
                 <select name="user_id" id="convenorUserSelect" class="form-select convenor-user-select" required>
                   <option value="">Search by name or email…</option>
                 </select>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-3">
                 <label class="form-label">Role</label>
                 <select name="role" class="form-select">
                   <option value="hulp">Assist Convenor</option>
                   <option value="hoof">Head Convenor</option>
                   <option value="admin">Admin</option>
                 </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Profit Share %</label>
+                <div class="input-group">
+                  <input type="number" name="profit_share_pct" class="form-control"
+                         min="0" max="100" step="0.1" placeholder="e.g. 25">
+                  <span class="input-group-text">%</span>
+                </div>
               </div>
               <div class="col-12 text-end">
                 <button type="submit" class="btn btn-primary btn-sm">
@@ -1011,6 +1139,18 @@
                   <option value="hoof"  {{ $c->role === 'hoof'  ? 'selected' : '' }}>Head Convenor</option>
                   <option value="admin" {{ $c->role === 'admin' ? 'selected' : '' }}>Admin</option>
                 </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Profit Share %
+                  <small class="text-muted ms-1">(0–100, leave blank for none)</small>
+                </label>
+                <div class="input-group">
+                  <input type="number" name="profit_share_pct" class="form-control"
+                         min="0" max="100" step="0.1"
+                         value="{{ $c->profit_share_pct !== null ? number_format((float)$c->profit_share_pct, 1) : '' }}"
+                         placeholder="e.g. 25">
+                  <span class="input-group-text">%</span>
+                </div>
               </div>
               <div class="col-md-6">
                 <label class="form-label">Active From</label>
