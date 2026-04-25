@@ -9,23 +9,46 @@
 
   .convenor-header { background: #fff9c4; border-left: 4px solid #f0c040; }
   .system-row td { background: #f8f9fa; font-style: italic; }
+  .deduction-row td { background: #fff5f5; color: #dc3545; font-style: italic; }
   .approved-badge { font-size: 0.7rem; }
   .budget-over { color: #dc3545; font-weight: 600; }
   .budget-under { color: #28a745; }
   .recon-table th { background: #343a40; color: #fff; }
+  .cat-summary-badge { font-size: 0.75rem; min-width: 4rem; }
 
+  /* Print styles */
   @media print {
-    .no-print, .btn, .modal, .card-header .btn { display: none !important; }
-    .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
-    body { font-size: 12px; }
+    .no-print, .btn, .modal, .card-header .btn, nav, .navbar,
+    .layout-menu, .layout-overlay, .layout-navbar { display: none !important; }
+    .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; page-break-inside: avoid; }
+    .print-header { display: block !important; }
+    body { font-size: 11px; }
+    .table td, .table th { padding: 4px 6px !important; }
+    .container-xl { max-width: 100% !important; padding: 0 !important; }
+    h5 { font-size: 13px !important; }
   }
+  .print-header { display: none; }
 </style>
 @endsection
 
 @section('content')
 <div class="container-xl">
 
-  {{-- ── HEADER ──────────────────────────────────────────────────────── --}}
+  {{-- ── PRINT-ONLY HEADER ────────────────────────────────────────────── --}}
+  <div class="print-header mb-4 pb-3 border-bottom">
+    <h3 class="mb-1">{{ $event->name }} – Budget / Expense Statement</h3>
+    <div class="d-flex gap-4 text-muted" style="font-size:0.85rem">
+      @if($event->start_date)
+        <span><strong>Date:</strong> {{ $event->start_date->format('d M Y') }}{{ $event->end_date && $event->end_date->ne($event->start_date) ? ' – '.$event->end_date->format('d M Y') : '' }}</span>
+      @endif
+      @if($event->organizer)
+        <span><strong>Organizer:</strong> {{ $event->organizer }}</span>
+      @endif
+      <span><strong>Generated:</strong> {{ now()->format('d M Y H:i') }}</span>
+    </div>
+  </div>
+
+  {{-- ── PAGE HEADER ──────────────────────────────────────────────────── --}}
   <div class="card mb-3 no-print">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0">
@@ -59,7 +82,7 @@
       <i class="ti ti-alert-triangle me-2 fs-4"></i>
       <div>
         <strong>Budget Warning!</strong>
-        Spending has reached 90% of the budget (R {{ number_format($event->budget_cap, 2) }}).
+        Operational spending has reached 90% of the budget cap (R {{ number_format($event->budget_cap, 2) }}).
       </div>
     </div>
   @endif
@@ -76,8 +99,9 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-primary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Total Income</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Net Income</small>
           <h5 class="mb-0">R {{ number_format($grandTotalIncome, 2) }}</h5>
+          <small class="text-muted">Gross: R {{ number_format($totalGross, 2) }}</small>
           @if($event->target_income)
             <div class="progress mt-2" style="height:4px" title="R{{ number_format($grandTotalIncome,2) }} of R{{ number_format($event->target_income,2) }}">
               <div class="progress-bar bg-primary" style="width: {{ min(100, round($grandTotalIncome / $event->target_income * 100)) }}%"></div>
@@ -91,8 +115,11 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-danger border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-shopping-cart me-1 text-danger"></i>Total Expenses</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-shopping-cart me-1 text-danger"></i>Operational Expenses</small>
           <h5 class="mb-0 text-danger">R {{ number_format($totalExpenses, 2) }}</h5>
+          @if($totalSystemFees > 0)
+            <small class="text-muted">+ R {{ number_format($totalSystemFees, 2) }} system fees</small>
+          @endif
           @if($event->budget_cap)
             <div class="progress mt-2" style="height:4px" title="R{{ number_format($totalExpenses,2) }} of R{{ number_format($event->budget_cap,2) }}">
               <div class="progress-bar {{ ($totalExpenses/$event->budget_cap) >= 0.9 ? 'bg-danger' : 'bg-warning' }}"
@@ -159,11 +186,11 @@
             </tr>
           </thead>
           <tbody>
-            {{-- Registration income row --}}
+            {{-- ── Registration gross row ── --}}
             <tr>
               <td>
                 <span class="badge bg-label-primary me-1">System</span>
-                Registration Fees (PayFast)
+                Registration Fees (PayFast gross)
               </td>
               <td class="text-center">{{ $totalEntries }}</td>
               <td class="text-end">—</td>
@@ -173,7 +200,127 @@
               <td class="no-print"></td>
             </tr>
 
-            {{-- Manual income items --}}
+            {{-- ── PayFast fee deduction row ── --}}
+            @if(abs($totalPayfastFees) > 0)
+              <tr class="deduction-row">
+                <td class="ps-4">
+                  <i class="ti ti-minus me-1"></i>PayFast fees deducted
+                  <small class="text-muted ms-1">(auto-synced)</small>
+                </td>
+                <td class="text-center">—</td>
+                <td class="text-end">—</td>
+                <td><small class="text-muted">PayFast</small></td>
+                <td>—</td>
+                <td class="text-end fw-semibold">−R {{ number_format(abs($totalPayfastFees), 2) }}</td>
+                <td class="no-print"></td>
+              </tr>
+            @endif
+
+            {{-- ── Cape Tennis fee deduction row ── --}}
+            @if($totalCapeTennisFees > 0)
+              <tr class="deduction-row">
+                <td class="ps-4">
+                  <i class="ti ti-minus me-1"></i>Cape Tennis fee deducted
+                  <small class="text-muted ms-1">({{ $totalEntries }} × R{{ number_format($feePerEntry, 2) }})</small>
+                </td>
+                <td class="text-center">{{ $totalEntries }}</td>
+                <td class="text-end">R {{ number_format($feePerEntry, 2) }}</td>
+                <td><small class="text-muted">Cape Tennis</small></td>
+                <td>—</td>
+                <td class="text-end fw-semibold">−R {{ number_format($totalCapeTennisFees, 2) }}</td>
+                <td class="no-print"></td>
+              </tr>
+            @endif
+
+            {{-- ── Net registration income subtotal ── --}}
+            @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0)
+              <tr class="table-light fw-semibold">
+                <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration Income</td>
+                <td class="text-end text-success">R {{ number_format($netRegistrationIncome, 2) }}</td>
+                <td class="no-print"></td>
+              </tr>
+            @endif
+
+            {{-- ── Income by category / team breakdown (collapsible) ── --}}
+            @if($incomeByCategory->isNotEmpty())
+              <tr class="no-print">
+                <td colspan="7" class="py-1 px-3">
+                  <button class="btn btn-link btn-sm p-0 text-decoration-none text-muted"
+                          data-bs-toggle="collapse" data-bs-target="#incomeByCat">
+                    <i class="ti ti-chevron-down me-1"></i>Show income by {{ $event->isTeam() ? 'team category' : 'category' }}
+                  </button>
+                </td>
+              </tr>
+              <tr class="no-print">
+                <td colspan="7" class="p-0">
+                  <div class="collapse" id="incomeByCat">
+                    <table class="table table-sm mb-0 border-top">
+                      <thead class="table-secondary">
+                        <tr>
+                          <th class="ps-5">{{ $event->isTeam() ? 'Team Category' : 'Category' }}</th>
+                          <th class="text-center">Entries</th>
+                          <th class="text-end">Est. Income</th>
+                          <th class="text-end">% of Gross</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @foreach($incomeByCategory as $catName => $catData)
+                          <tr>
+                            <td class="ps-5">{{ $catName }}</td>
+                            <td class="text-center">{{ $catData['entries'] }}</td>
+                            <td class="text-end">R {{ number_format($catData['amount'], 2) }}</td>
+                            <td class="text-end">
+                              @if($totalGross > 0)
+                                <span class="badge bg-label-secondary cat-summary-badge">
+                                  {{ round($catData['amount'] / $totalGross * 100) }}%
+                                </span>
+                              @else
+                                —
+                              @endif
+                            </td>
+                          </tr>
+                        @endforeach
+                      </tbody>
+                      <tfoot class="table-secondary">
+                        <tr>
+                          <td class="ps-5 fw-semibold">Total</td>
+                          <td class="text-center fw-semibold">{{ $totalEntries }}</td>
+                          <td class="text-end fw-semibold">R {{ number_format($totalGross, 2) }}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+              {{-- Print version: always visible --}}
+              <tr style="display:none" class="print-only-row">
+                <td colspan="7" class="p-0">
+                  <table class="table table-sm mb-0">
+                    <thead class="table-secondary">
+                      <tr>
+                        <th class="ps-5">{{ $event->isTeam() ? 'Team Category' : 'Category' }}</th>
+                        <th class="text-center">Entries</th>
+                        <th class="text-end">Est. Income</th>
+                        <th class="text-end">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach($incomeByCategory as $catName => $catData)
+                        <tr>
+                          <td class="ps-5">{{ $catName }}</td>
+                          <td class="text-center">{{ $catData['entries'] }}</td>
+                          <td class="text-end">R {{ number_format($catData['amount'], 2) }}</td>
+                          <td class="text-end">{{ $totalGross > 0 ? round($catData['amount'] / $totalGross * 100) : 0 }}%</td>
+                        </tr>
+                      @endforeach
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            @endif
+
+            {{-- ── Manual income items ── --}}
             @foreach($incomeItems as $item)
               <tr>
                 <td>{{ $item->label }}</td>
@@ -183,7 +330,7 @@
                 <td>{{ $item->date?->format('d M Y') ?? '—' }}</td>
                 <td class="text-end fw-semibold text-success">R {{ number_format($item->calculatedTotal(), 2) }}</td>
                 <td class="text-center no-print">
-                  <button class="btn btn-icon btn-sm btn-outline-primary" 
+                  <button class="btn btn-icon btn-sm btn-outline-primary"
                           data-bs-toggle="modal" data-bs-target="#editIncomeModal{{ $item->id }}">
                     <i class="ti ti-edit"></i>
                   </button>
@@ -220,7 +367,7 @@
           </tbody>
           <tfoot class="table-light">
             <tr>
-              <td colspan="5" class="fw-bold">Total Income</td>
+              <td colspan="5" class="fw-bold">Total Net Income</td>
               <td class="text-end fw-bold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td class="no-print"></td>
             </tr>
@@ -239,6 +386,88 @@
       <i class="ti ti-plus me-1"></i>Add Expense
     </button>
   </div>
+
+  {{-- Expense category summary accordion --}}
+  @if($expensesByType->isNotEmpty())
+    <div class="card mb-3 no-print">
+      <div class="card-header py-2">
+        <button class="btn btn-link p-0 text-decoration-none fw-semibold text-dark"
+                data-bs-toggle="collapse" data-bs-target="#expenseSummaryAccordion">
+          <i class="ti ti-chart-pie me-1 text-muted"></i>Expense Summary by Category
+          <i class="ti ti-chevron-down ms-1 text-muted" style="font-size:0.8rem"></i>
+        </button>
+      </div>
+      <div class="collapse" id="expenseSummaryAccordion">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-secondary">
+                <tr>
+                  <th>Category</th>
+                  <th class="text-center">Items</th>
+                  <th class="text-end">Budget</th>
+                  <th class="text-end">Actual</th>
+                  <th class="text-end">Variance</th>
+                  <th class="text-end">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($expensesByType->sortKeys() as $type => $typeExpenses)
+                  @php
+                    $typeActual  = $typeExpenses->sum(fn($e) => $e->calculatedAmount());
+                    $typeBudget  = $typeExpenses->whereNotNull('budget_amount')->sum('budget_amount');
+                    $typeVariance = $typeBudget > 0 ? $typeBudget - $typeActual : null;
+                    $typePct     = $totalExpenses > 0 ? round($typeActual / $totalExpenses * 100) : 0;
+                  @endphp
+                  <tr>
+                    <td>
+                      <span class="badge bg-label-secondary">
+                        {{ $expenseTypes[$type] ?? ucfirst($type) }}
+                      </span>
+                    </td>
+                    <td class="text-center">{{ $typeExpenses->count() }}</td>
+                    <td class="text-end">{{ $typeBudget > 0 ? 'R '.number_format($typeBudget, 2) : '—' }}</td>
+                    <td class="text-end fw-semibold">R {{ number_format($typeActual, 2) }}</td>
+                    <td class="text-end">
+                      @if($typeVariance !== null)
+                        <span class="{{ $typeVariance >= 0 ? 'budget-under' : 'budget-over' }}">
+                          {{ $typeVariance >= 0 ? '+' : '' }}R {{ number_format($typeVariance, 2) }}
+                        </span>
+                      @else
+                        —
+                      @endif
+                    </td>
+                    <td class="text-end">
+                      <span class="badge bg-label-secondary cat-summary-badge">{{ $typePct }}%</span>
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+              <tfoot class="table-light">
+                <tr>
+                  <td class="fw-bold">Total</td>
+                  <td class="text-center fw-bold">{{ $expensesByType->flatten()->count() }}</td>
+                  <td class="text-end fw-bold">{{ $totalBudget > 0 ? 'R '.number_format($totalBudget, 2) : '—' }}</td>
+                  <td class="text-end fw-bold text-danger">R {{ number_format($totalExpenses, 2) }}</td>
+                  <td class="text-end fw-bold">
+                    @if($totalBudget > 0)
+                      @php $totalVar = $totalBudget - $totalExpenses; @endphp
+                      <span class="{{ $totalVar >= 0 ? 'budget-under' : 'budget-over' }}">
+                        {{ $totalVar >= 0 ? '+' : '' }}R {{ number_format($totalVar, 2) }}
+                      </span>
+                    @else
+                      —
+                    @endif
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  @endif
 
   @if($convenors->count() > 0)
     @foreach($convenors as $convenor)
@@ -280,18 +509,12 @@
                     @php
                       $calcAmt  = $expense->calculatedAmount();
                       $variance = $expense->budgetVariance();
-                      $isSystem = in_array($expense->expense_type, ['payfast', 'cape_tennis_fee']);
                     @endphp
-                    <tr class="expense-row{{ $isSystem ? ' system-row' : '' }}">
+                    <tr class="expense-row">
                       <td>
                         <span class="badge bg-label-secondary">
                           {{ $expenseTypes[$expense->expense_type] ?? ucfirst($expense->expense_type) }}
                         </span>
-                        @if($isSystem)
-                          <span class="badge bg-label-info ms-1" title="Automatically synced">
-                            <i class="ti ti-refresh"></i>
-                          </span>
-                        @endif
                       </td>
                       <td>
                         @if($expense->recipient_name)
@@ -340,7 +563,7 @@
                         @endif
                       </td>
                       <td class="text-center no-print">
-                        @if(!$expense->approved_at && !$isSystem)
+                        @if(!$expense->approved_at)
                           <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline">
                             @csrf
                             <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve">
@@ -348,7 +571,7 @@
                             </button>
                           </form>
                         @endif
-                        @if($expense->approved_at && !$expense->reimbursed_at && !$isSystem)
+                        @if($expense->approved_at && !$expense->reimbursed_at)
                           <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline">
                             @csrf
                             <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed">
@@ -356,20 +579,18 @@
                             </button>
                           </form>
                         @endif
-                        @if(!$isSystem)
-                          <button type="button"
-                                  class="btn btn-icon btn-sm btn-outline-primary"
-                                  data-bs-toggle="modal"
-                                  data-bs-target="#editExpenseModal{{ $expense->id }}">
-                            <i class="ti ti-edit"></i>
-                          </button>
-                          <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}"
-                                method="POST" class="d-inline"
-                                onsubmit="return confirm('Delete this expense?')">
-                            @csrf @method('DELETE')
-                            <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
-                          </form>
-                        @endif
+                        <button type="button"
+                                class="btn btn-icon btn-sm btn-outline-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editExpenseModal{{ $expense->id }}">
+                          <i class="ti ti-edit"></i>
+                        </button>
+                        <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}"
+                              method="POST" class="d-inline"
+                              onsubmit="return confirm('Delete this expense?')">
+                          @csrf @method('DELETE')
+                          <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
+                        </form>
                       </td>
                     </tr>
                   @endforeach
@@ -393,9 +614,9 @@
     @endforeach
   @endif
 
-  {{-- Unassigned expenses (no paid_by_convenor_id) --}}
+  {{-- Unassigned operational expenses (no paid_by_convenor_id) --}}
   @php
-    $unassigned = $expensesByConvenor->get(null, collect());
+    $unassigned      = $expensesByConvenor->get(null, collect());
     $unassignedTotal = $unassigned->sum(fn($e) => $e->calculatedAmount());
   @endphp
   @if($unassigned->count() > 0)
@@ -412,12 +633,18 @@
                 <th>Type</th>
                 <th>Description</th>
                 <th class="text-center">Quantity × Price</th>
+                <th class="text-end">Budget</th>
                 <th class="text-end">Actual</th>
+                <th class="text-end">Variance</th>
                 <th class="no-print" style="width:100px"></th>
               </tr>
             </thead>
             <tbody>
               @foreach($unassigned as $expense)
+                @php
+                  $calcAmt  = $expense->calculatedAmount();
+                  $variance = $expense->budgetVariance();
+                @endphp
                 <tr>
                   <td><span class="badge bg-label-secondary">{{ $expenseTypes[$expense->expense_type] ?? ucfirst($expense->expense_type) }}</span></td>
                   <td>{{ $expense->description ?? '—' }}</td>
@@ -428,7 +655,17 @@
                       —
                     @endif
                   </td>
-                  <td class="text-end fw-semibold">R {{ number_format($expense->calculatedAmount(), 2) }}</td>
+                  <td class="text-end">{{ $expense->budget_amount ? 'R '.number_format($expense->budget_amount, 2) : '—' }}</td>
+                  <td class="text-end fw-semibold">R {{ number_format($calcAmt, 2) }}</td>
+                  <td class="text-end">
+                    @if($variance !== null)
+                      <span class="{{ $variance >= 0 ? 'budget-under' : 'budget-over' }}">
+                        {{ $variance >= 0 ? '+' : '' }}R {{ number_format($variance, 2) }}
+                      </span>
+                    @else
+                      —
+                    @endif
+                  </td>
                   <td class="text-center no-print">
                     <button class="btn btn-icon btn-sm btn-outline-primary"
                             data-bs-toggle="modal" data-bs-target="#editExpenseModal{{ $expense->id }}">
@@ -507,12 +744,31 @@
               <td></td>
             </tr>
             <tr class="table-secondary">
-              <td colspan="2"><small class="text-muted">Total Income</small></td>
+              <td colspan="2"><small class="text-muted">Gross Registration Income</small></td>
+              <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
+              <td></td>
+            </tr>
+            @if($totalSystemFees > 0)
+              <tr class="table-secondary">
+                <td colspan="2"><small class="text-muted">System Fees (PayFast + Cape Tennis – deducted from gross)</small></td>
+                <td colspan="3" class="text-end fw-semibold text-danger">−R {{ number_format($totalSystemFees, 2) }}</td>
+                <td></td>
+              </tr>
+            @endif
+            @if($totalIncomeItems > 0)
+              <tr class="table-secondary">
+                <td colspan="2"><small class="text-muted">Other Income Items</small></td>
+                <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($totalIncomeItems, 2) }}</td>
+                <td></td>
+              </tr>
+            @endif
+            <tr class="table-secondary">
+              <td colspan="2"><small class="text-muted">Total Net Income</small></td>
               <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td></td>
             </tr>
             <tr class="table-secondary">
-              <td colspan="2"><small class="text-muted">Total Expenses</small></td>
+              <td colspan="2"><small class="text-muted">Operational Expenses</small></td>
               <td colspan="3" class="text-end fw-semibold text-danger">R {{ number_format($totalExpenses, 2) }}</td>
               <td></td>
             </tr>
@@ -555,30 +811,28 @@
   </div>
 </div>
 
-{{-- EDIT EXPENSE MODALS (one per expense) --}}
-@foreach($expenses as $expense)
-  @if(!in_array($expense->expense_type, ['payfast', 'cape_tennis_fee']))
-    <div class="modal fade" id="editExpenseModal{{ $expense->id }}" tabindex="-1">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <form action="{{ route('admin.events.finances.expense.update', $expense) }}" method="POST" enctype="multipart/form-data">
-            @csrf @method('PATCH')
-            <div class="modal-header">
-              <h5 class="modal-title">Edit Expense</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              @include('backend.event._expense_fields', ['expense' => $expense, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="submit" class="btn btn-primary">Save Changes</button>
-            </div>
-          </form>
-        </div>
+{{-- EDIT EXPENSE MODALS (one per operational expense) --}}
+@foreach($expenses->reject(fn($e) => in_array($e->expense_type, ['payfast', 'cape_tennis_fee'])) as $expense)
+  <div class="modal fade" id="editExpenseModal{{ $expense->id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <form action="{{ route('admin.events.finances.expense.update', $expense) }}" method="POST" enctype="multipart/form-data">
+          @csrf @method('PATCH')
+          <div class="modal-header">
+            <h5 class="modal-title">Edit Expense</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            @include('backend.event._expense_fields', ['expense' => $expense, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
       </div>
     </div>
-  @endif
+  </div>
 @endforeach
 
 {{-- ADD INCOME ITEM MODAL --}}
@@ -617,6 +871,22 @@
       if (amtInput && qty > 0 && up > 0) {
         amtInput.value = (qty * up).toFixed(2);
       }
+    });
+  });
+
+  // Show income-by-category table in print view
+  window.addEventListener('beforeprint', function () {
+    document.querySelectorAll('.print-only-row').forEach(function(el) {
+      el.style.display = '';
+    });
+    const catCollapse = document.getElementById('incomeByCat');
+    if (catCollapse) catCollapse.classList.add('show');
+    const expSummary = document.getElementById('expenseSummaryAccordion');
+    if (expSummary) expSummary.classList.add('show');
+  });
+  window.addEventListener('afterprint', function () {
+    document.querySelectorAll('.print-only-row').forEach(function(el) {
+      el.style.display = 'none';
     });
   });
 </script>
