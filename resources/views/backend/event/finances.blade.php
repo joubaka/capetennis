@@ -1415,17 +1415,148 @@ $(document).ready(function() {
     initConvenorUserSelect2();
   }
 
-  /* ── Expense "Paid by" multi-select (Select2) ── */
+  /* ── Expense "Paid by" multi-select + inline convenor panel (Select2) ── */
   $('#addExpenseModal').on('shown.bs.modal', function() {
-    var $sel = $(this).find('#expensePaidBySelect');
-    if ($sel.length && !$sel.data('select2')) {
-      $sel.select2({
+    // Paid By multi-select
+    var $paidBy = $(this).find('#expensePaidBySelect');
+    if ($paidBy.length && !$paidBy.data('select2')) {
+      $paidBy.select2({
         placeholder:    'Select director(s)…',
         multiple:       true,
         dropdownParent: $('#addExpenseModal'),
         width:          '100%',
       });
     }
+
+    // Inline user search Select2
+    var $search = $('#inlineConvenorUserSearch');
+    if ($search.length && !$search.data('select2')) {
+      $search.select2({
+        ajax: {
+          url:     '{{ route('convenor.search-users') }}',
+          dataType: 'json',
+          delay:    250,
+          data:     function(params) { return { q: params.term }; },
+          processResults: function(data) { return { results: data }; },
+          cache:    true,
+        },
+        placeholder:        'Search user to add…',
+        minimumInputLength: 2,
+        dropdownParent:     $('#addExpenseModal'),
+        width:              '100%',
+      });
+    }
+  });
+
+  /* ── Inline Add convenor ── */
+  $(document).on('click', '#inlineAddConvenorBtn', function() {
+    var btn     = this;
+    var userId  = $('#inlineConvenorUserSearch').val();
+    var role    = $('#inlineConvenorRole').val();
+    var storeUrl = btn.dataset.storeUrl;
+
+    if (!userId) { showFinanceToast('Please search and select a user first.', 'warning'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+
+    var fd = new FormData();
+    fd.append('_token', _csrf);
+    fd.append('user_ids[]', userId);
+    fd.append('role', role);
+
+    fetch(storeUrl, {
+      method:  'POST',
+      body:    fd,
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+    })
+    .then(function(r) {
+      return r.json().then(function(d) {
+        if (!r.ok) throw new Error(d.message || 'Error adding director.');
+        return d;
+      });
+    })
+    .then(function(d) {
+      (d.convenors || []).forEach(function(c) {
+        var roleLabel = c.role === 'hoof' ? 'Head' : (c.role === 'hulp' ? 'Assist' : 'Admin');
+        var badgeClass = c.role === 'hoof' ? 'bg-warning text-dark' : 'bg-label-secondary';
+
+        // Add to Paid By multi-select
+        var $paidBy = $('#expensePaidBySelect');
+        if (!$paidBy.find('option[value="' + c.id + '"]').length) {
+          $paidBy.append(new Option(c.user_name + ' (' + roleLabel + ')', c.id, false, false));
+          if ($paidBy.data('select2')) $paidBy.trigger('change');
+        }
+
+        // Add row to inline list
+        $('#noConvenorMsg').remove();
+        $('#inlineConvenorList').append(
+          '<div class="d-flex align-items-center py-1 border-bottom inline-convenor-row" ' +
+               'data-id="' + c.id + '" data-destroy-url="' + c.destroy_url + '">' +
+            '<div class="flex-grow-1">' +
+              '<span class="small">' + $('<span>').text(c.user_name).html() + '</span>' +
+              '<span class="badge ms-1 ' + badgeClass + '" style="font-size:.65rem">' + roleLabel + '</span>' +
+            '</div>' +
+            '<button type="button" class="btn btn-icon btn-xs btn-outline-danger inline-remove-convenor" title="Remove">' +
+              '<i class="ti ti-x" style="font-size:.7rem"></i>' +
+            '</button>' +
+          '</div>'
+        );
+      });
+      showFinanceToast(d.message, 'success');
+      $('#inlineConvenorUserSearch').val(null).trigger('change');
+    })
+    .catch(function(e) { showFinanceToast(e.message, 'danger'); })
+    .finally(function() {
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="ti ti-plus"></i> Add';
+    });
+  });
+
+  /* ── Inline Remove convenor ── */
+  $(document).on('click', '.inline-remove-convenor', function() {
+    var $btn        = $(this);
+    var $row        = $btn.closest('.inline-convenor-row');
+    var convenorId  = $row.data('id');
+    var destroyUrl  = $row.data('destroy-url');
+
+    if (!confirm('Remove this director?')) return;
+
+    $btn.prop('disabled', true);
+
+    var fd = new FormData();
+    fd.append('_token', _csrf);
+    fd.append('_method', 'DELETE');
+
+    fetch(destroyUrl, {
+      method:  'POST',
+      body:    fd,
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+    })
+    .then(function(r) {
+      return r.json().then(function(d) {
+        if (!r.ok) throw new Error(d.message || 'Error removing director.');
+        return d;
+      });
+    })
+    .then(function(d) {
+      $row.remove();
+      if ($('#inlineConvenorList .inline-convenor-row').length === 0) {
+        $('#inlineConvenorList').append(
+          '<div class="text-muted small text-center py-2" id="noConvenorMsg">No event directors assigned yet.</div>'
+        );
+      }
+      // Remove from Paid By multi-select
+      var $paidBy = $('#expensePaidBySelect');
+      $paidBy.find('option[value="' + convenorId + '"]').remove();
+      if ($paidBy.data('select2')) $paidBy.trigger('change');
+
+      showFinanceToast(d.message, 'success');
+    })
+    .catch(function(e) {
+      $btn.prop('disabled', false);
+      showFinanceToast(e.message, 'danger');
+    });
   });
 });
 
