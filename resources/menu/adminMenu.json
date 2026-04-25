@@ -17,7 +17,7 @@
   ,
     {
       "url": "backend/convenor",
-      "name": "Convenors",
+      "name": "Event Directors",
       "icon": "menu-icon tf-icons fa-regular fa-star",
       "slug": "convenor.show"
 

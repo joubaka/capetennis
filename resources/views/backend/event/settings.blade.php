@@ -239,11 +239,11 @@
 @endphp
 <div class="col-lg-6">
   <div class="card">
-    <div class="card-header"><h5 class="mb-0">Event Convenors</h5></div>
+    <div class="card-header"><h5 class="mb-0">Event Directors</h5></div>
     <div class="card-body">
       <select class="form-select select2-convenors"
               name="convenors" multiple
-              data-placeholder="Select event convenors">
+              data-placeholder="Select event directors">
         @foreach(\App\Models\User::orderBy('name')->get() as $user)
           <option value="{{ $user->id }}"
             @selected(in_array($user->id, $convenorIds))>
@@ -254,13 +254,13 @@
 
       <div class="row mt-3">
         <div class="col-6">
-          <label class="form-label">Convenor Access Starts</label>
+          <label class="form-label">Event Director Access Starts</label>
           <input type="datetime-local" class="form-control autosave"
                  name="convenor_starts_at"
                  value="{{ optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
         </div>
         <div class="col-6">
-          <label class="form-label">Convenor Access Expires</label>
+          <label class="form-label">Event Director Access Expires</label>
           <input type="datetime-local" class="form-control autosave"
                  name="convenor_expires_at"
                  value="{{ optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
@@ -269,7 +269,7 @@
 
       @if($convenors->isNotEmpty())
         <div class="mt-3">
-          <small class="text-muted fw-semibold">Active Convenors</small>
+          <small class="text-muted fw-semibold">Active Event Directors</small>
           <ul class="list-unstyled mb-0 mt-1">
             @foreach($convenors as $c)
               <li class="d-flex justify-content-between align-items-center py-1 border-bottom">

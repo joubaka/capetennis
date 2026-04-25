@@ -65,7 +65,7 @@
       </h4>
       <div class="d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
-          <i class="ti ti-users me-1"></i>Convenors
+          <i class="ti ti-users me-1"></i>Event Directors
         </button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#manageTypesModal">
           <i class="ti ti-tags me-1"></i>Expense Types
@@ -497,8 +497,8 @@
         $cExpenses = $expensesByConvenor->get($convenor->id, collect());
         $cTotal    = $cExpenses->sum(fn($e) => $e->calculatedAmount());
         $roleLabel = match($convenor->role) {
-          'hoof'  => 'HeadConvenor',
-          'hulp'  => 'AssistConvenor',
+          'hoof'  => 'Head Director',
+          'hulp'  => 'Assist Director',
           default => ucfirst($convenor->role),
         };
       @endphp
@@ -644,7 +644,7 @@
   @if($unassigned->count() > 0)
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center bg-light">
-        <strong><i class="ti ti-question-mark me-1 text-muted"></i>No Convenor Assigned</strong>
+        <strong><i class="ti ti-question-mark me-1 text-muted"></i>No Event Director Assigned</strong>
         <span class="fw-bold">R {{ number_format($unassignedTotal, 2) }}</span>
       </div>
       <div class="card-body p-0">
@@ -739,7 +739,7 @@
                 <td class="fw-semibold">{{ $row['convenor']->user->name ?? 'Unknown' }}</td>
                 <td>
                   <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}">
-                    {{ $row['convenor']->isHoof() ? 'HeadConvenor' : ($row['convenor']->isHulp() ? 'AssistConvenor' : ucfirst($row['convenor']->role)) }}
+                    {{ $row['convenor']->isHoof() ? 'Head Director' : ($row['convenor']->isHulp() ? 'Assist Director' : ucfirst($row['convenor']->role)) }}
                   </span>
                 </td>
                 <td class="text-end">R {{ number_format($row['total_paid'], 2) }}</td>
@@ -847,7 +847,7 @@
                 <div>
                   <div class="fw-bold">{{ $row['convenor']->user->name ?? 'Unknown' }}</div>
                   <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }} mt-1">
-                    {{ $row['convenor']->isHoof() ? 'Head Convenor' : ($row['convenor']->isHulp() ? 'Assist Convenor' : ucfirst($row['convenor']->role)) }}
+                    {{ $row['convenor']->isHoof() ? 'Head Director' : ($row['convenor']->isHulp() ? 'Assist Director' : ucfirst($row['convenor']->role)) }}
                   </span>
                 </div>
                 <span class="badge {{ $row['final_payout'] > 0 ? 'bg-primary' : 'bg-success' }} fs-6">
@@ -997,18 +997,18 @@
 </div>
 
 {{-- ════════════════════════════════════════════════════════════════════════
-     MANAGE CONVENORS MODAL
+     MANAGE EVENT DIRECTORS MODAL
 ════════════════════════════════════════════════════════════════════════ --}}
 <div class="modal fade" id="manageConvenorsModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="ti ti-users me-2"></i>Manage Convenors – {{ $event->name }}</h5>
+        <h5 class="modal-title"><i class="ti ti-users me-2"></i>Manage Event Directors – {{ $event->name }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
 
-        {{-- Current convenors list --}}
+        {{-- Current event directors list --}}
         @if($convenors->count())
           <table class="table table-sm mb-0">
             <thead class="table-light">
@@ -1055,7 +1055,7 @@
                     </button>
                     <form action="{{ route('admin.events.finances.convenor.destroy', $c) }}"
                           method="POST" class="d-inline"
-                          data-ajax="1" data-confirm="Remove {{ $c->user->name ?? 'this convenor' }} from this event?">
+                          data-ajax="1" data-confirm="Remove {{ $c->user->name ?? 'this event director' }} from this event?">
                       @csrf @method('DELETE')
                       <button class="btn btn-icon btn-sm btn-outline-danger" title="Remove">
                         <i class="ti ti-trash"></i>
@@ -1067,14 +1067,14 @@
             </tbody>
           </table>
         @else
-          <p class="text-muted text-center py-3">No convenors assigned yet.</p>
+          <p class="text-muted text-center py-3">No event directors assigned yet.</p>
         @endif
 
         <hr class="m-0">
 
-        {{-- Add new convenor --}}
+        {{-- Add new event director --}}
         <div class="p-3">
-          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Convenor</h6>
+          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Event Director</h6>
           <form action="{{ route('admin.events.finances.convenor.store', $event) }}" method="POST"
                 data-ajax="1" data-modal="manageConvenorsModal">
             @csrf
@@ -1088,8 +1088,8 @@
               <div class="col-md-3">
                 <label class="form-label">Role</label>
                 <select name="role" class="form-select">
-                  <option value="hulp">Assist Convenor</option>
-                  <option value="hoof">Head Convenor</option>
+                  <option value="hulp">Assist Director</option>
+                  <option value="hoof">Head Director</option>
                   <option value="admin">Admin</option>
                 </select>
               </div>
@@ -1103,7 +1103,7 @@
               </div>
               <div class="col-12 text-end">
                 <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="ti ti-user-plus me-1"></i>Add Convenor
+                  <i class="ti ti-user-plus me-1"></i>Add Event Director
                 </button>
               </div>
             </div>
@@ -1118,7 +1118,7 @@
   </div>
 </div>
 
-{{-- Edit Convenor modals (one per convenor) --}}
+{{-- Edit Event Director modals (one per director) --}}
 @foreach($convenors as $c)
   <div class="modal fade" id="editConvenorModal{{ $c->id }}" tabindex="-1">
     <div class="modal-dialog">
@@ -1127,7 +1127,7 @@
               data-ajax="1" data-modal="editConvenorModal{{ $c->id }}">
           @csrf @method('PATCH')
           <div class="modal-header">
-            <h5 class="modal-title">Edit Convenor – {{ $c->user->name ?? '?' }}</h5>
+            <h5 class="modal-title">Edit Event Director – {{ $c->user->name ?? '?' }}</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -1135,8 +1135,8 @@
               <div class="col-12">
                 <label class="form-label">Role</label>
                 <select name="role" class="form-select">
-                  <option value="hulp"  {{ $c->role === 'hulp'  ? 'selected' : '' }}>Assist Convenor</option>
-                  <option value="hoof"  {{ $c->role === 'hoof'  ? 'selected' : '' }}>Head Convenor</option>
+                  <option value="hulp"  {{ $c->role === 'hulp'  ? 'selected' : '' }}>Assist Director</option>
+                  <option value="hoof"  {{ $c->role === 'hoof'  ? 'selected' : '' }}>Head Director</option>
                   <option value="admin" {{ $c->role === 'admin' ? 'selected' : '' }}>Admin</option>
                 </select>
               </div>

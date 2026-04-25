@@ -37,7 +37,7 @@
       <div class="card-header">
         <h5 class="mb-0"><i class="ti ti-credit-card me-1"></i> Default PayFast Fee Settings</h5>
         <small class="text-muted">
-          These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the convenor is charged at the rates set below.
+          These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the event director is charged at the rates set below.
         </small>
       </div>
       <div class="card-body">
@@ -85,7 +85,7 @@
       <div class="card-header">
         <h5 class="mb-0"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h5>
         <small class="text-muted">
-          Set the percentage charged to the event convenor for each payment type. The flat fee and VAT above apply to all methods.
+          Set the percentage charged to the event director for each payment type. The flat fee and VAT above apply to all methods.
         </small>
       </div>
       <div class="card-body p-0">
