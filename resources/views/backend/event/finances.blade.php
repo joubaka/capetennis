@@ -2,7 +2,12 @@
 
 @section('title', $event->name . ' – Finances')
 
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('page-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
 <style>
   .finance-card { transition: all 0.2s ease; }
   .finance-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -956,11 +961,8 @@
             <div class="row g-2">
               <div class="col-md-8">
                 <label class="form-label">User <span class="text-danger">*</span></label>
-                <select name="user_id" class="form-select" required>
-                  <option value="">— Select user —</option>
-                  @foreach($allUsers as $u)
-                    <option value="{{ $u->id }}">{{ $u->name }} ({{ $u->email }})</option>
-                  @endforeach
+                <select name="user_id" id="convenorUserSelect" class="form-select convenor-user-select" required>
+                  <option value="">Search by name or email…</option>
                 </select>
               </div>
               <div class="col-md-4">
@@ -1243,21 +1245,33 @@ document.addEventListener('submit', function(e) {
 /* ═══════════════════════════════════════════════════════════════════════════
    CONVENOR USER SEARCH (Select2 AJAX)
    ═══════════════════════════════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded', function() {
-  if (typeof $ !== 'undefined' && $.fn.select2) {
-    $('.convenor-user-select').select2({
-      ajax: {
-        url:     '{{ route('convenor.search-users') }}',
-        dataType: 'json',
-        delay:    250,
-        data:     params  => ({ q: params.term }),
-        processResults: data => ({ results: data }),
-        cache:    true,
-      },
-      placeholder:        'Search by name or email...',
-      minimumInputLength: 2,
-      dropdownParent:     $('#manageConvenorsModal'),
-    });
+function initConvenorUserSelect2() {
+  var $sel = $('#convenorUserSelect');
+  if (!$sel.length) return;
+  if ($sel.data('select2')) $sel.select2('destroy');
+  $sel.select2({
+    ajax: {
+      url:     '{{ route('convenor.search-users') }}',
+      dataType: 'json',
+      delay:    250,
+      data:     function(params) { return { q: params.term }; },
+      processResults: function(data) { return { results: data }; },
+      cache:    true,
+    },
+    placeholder:        'Search by name or email…',
+    minimumInputLength: 2,
+    dropdownParent:     $('#manageConvenorsModal'),
+    width:              '100%',
+  });
+}
+
+$(document).ready(function() {
+  $('#manageConvenorsModal').on('shown.bs.modal', function() {
+    initConvenorUserSelect2();
+  });
+  // If already visible on load
+  if ($('#manageConvenorsModal').is(':visible')) {
+    initConvenorUserSelect2();
   }
 });
 
