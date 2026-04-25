@@ -351,7 +351,7 @@
                     <i class="ti ti-edit"></i>
                   </button>
                   <form action="{{ route('admin.events.finances.income.destroy', $item) }}" method="POST" class="d-inline"
-                        onsubmit="return confirm('Delete this income item?')">
+                        data-ajax="1" data-confirm="Delete this income item?">
                     @csrf @method('DELETE')
                     <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                   </form>
@@ -362,7 +362,8 @@
               <div class="modal fade" id="editIncomeModal{{ $item->id }}" tabindex="-1">
                 <div class="modal-dialog">
                   <div class="modal-content">
-                    <form action="{{ route('admin.events.finances.income.update', $item) }}" method="POST">
+                    <form action="{{ route('admin.events.finances.income.update', $item) }}" method="POST"
+                          data-ajax="1" data-modal="editIncomeModal{{ $item->id }}">
                       @csrf @method('PATCH')
                       <div class="modal-header">
                         <h5 class="modal-title">Edit Income Item</h5>
@@ -580,7 +581,7 @@
                       </td>
                       <td class="text-center no-print">
                         @if(!$expense->approved_at)
-                          <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline">
+                          <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline" data-ajax="1">
                             @csrf
                             <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve">
                               <i class="ti ti-check"></i>
@@ -588,7 +589,7 @@
                           </form>
                         @endif
                         @if($expense->approved_at && !$expense->reimbursed_at)
-                          <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline">
+                          <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline" data-ajax="1">
                             @csrf
                             <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed">
                               <i class="ti ti-coin"></i>
@@ -603,7 +604,7 @@
                         </button>
                         <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}"
                               method="POST" class="d-inline"
-                              onsubmit="return confirm('Delete this expense?')">
+                              data-ajax="1" data-confirm="Delete this expense?">
                           @csrf @method('DELETE')
                           <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                         </form>
@@ -688,7 +689,7 @@
                       <i class="ti ti-edit"></i>
                     </button>
                     <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}" method="POST" class="d-inline"
-                          onsubmit="return confirm('Delete?')">
+                          data-ajax="1" data-confirm="Delete this expense?">
                       @csrf @method('DELETE')
                       <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
                     </form>
@@ -798,6 +799,8 @@
       </div>
     </div>
   </div>
+{{-- Toast notification container (fixed, bottom-right) --}}
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="financeToastContainer" style="z-index:1200"></div>
 
 </div>{{-- /container --}}
 
@@ -809,7 +812,8 @@
 <div class="modal fade" id="addExpenseModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <form action="{{ route('admin.events.finances.expense.store', $event) }}" method="POST" enctype="multipart/form-data">
+      <form action="{{ route('admin.events.finances.expense.store', $event) }}" method="POST" enctype="multipart/form-data"
+            data-ajax="1" data-modal="addExpenseModal">
         @csrf
         <div class="modal-header">
           <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add Expense</h5>
@@ -832,7 +836,8 @@
   <div class="modal fade" id="editExpenseModal{{ $expense->id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
-        <form action="{{ route('admin.events.finances.expense.update', $expense) }}" method="POST" enctype="multipart/form-data">
+        <form action="{{ route('admin.events.finances.expense.update', $expense) }}" method="POST" enctype="multipart/form-data"
+              data-ajax="1" data-modal="editExpenseModal{{ $expense->id }}">
           @csrf @method('PATCH')
           <div class="modal-header">
             <h5 class="modal-title">Edit Expense</h5>
@@ -855,7 +860,8 @@
 <div class="modal fade" id="addIncomeModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form action="{{ route('admin.events.finances.income.store', $event) }}" method="POST">
+      <form action="{{ route('admin.events.finances.income.store', $event) }}" method="POST"
+            data-ajax="1" data-modal="addIncomeModal">
         @csrf
         <div class="modal-header">
           <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add Income</h5>
@@ -924,7 +930,7 @@
                     </button>
                     <form action="{{ route('admin.events.finances.convenor.destroy', $c) }}"
                           method="POST" class="d-inline"
-                          onsubmit="return confirm('Remove {{ addslashes($c->user->name ?? 'this convenor') }} from this event?')">
+                          data-ajax="1" data-confirm="Remove {{ $c->user->name ?? 'this convenor' }} from this event?">
                       @csrf @method('DELETE')
                       <button class="btn btn-icon btn-sm btn-outline-danger" title="Remove">
                         <i class="ti ti-trash"></i>
@@ -944,30 +950,23 @@
         {{-- Add new convenor --}}
         <div class="p-3">
           <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Convenor</h6>
-          <form action="{{ route('admin.events.finances.convenor.store', $event) }}" method="POST">
+          <form action="{{ route('admin.events.finances.convenor.store', $event) }}" method="POST"
+                data-ajax="1" data-modal="manageConvenorsModal">
             @csrf
             <div class="row g-2">
-              <div class="col-md-5">
+              <div class="col-md-8">
                 <label class="form-label">User <span class="text-danger">*</span></label>
                 <select name="user_id" class="form-select convenor-user-select" required>
                   <option value="">Search user...</option>
                 </select>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-4">
                 <label class="form-label">Role</label>
                 <select name="role" class="form-select">
                   <option value="hulp">Assist Convenor</option>
                   <option value="hoof">Head Convenor</option>
                   <option value="admin">Admin</option>
                 </select>
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">Active From</label>
-                <input type="date" name="starts_at" class="form-control">
-              </div>
-              <div class="col-md-2">
-                <label class="form-label">Expires</label>
-                <input type="date" name="expires_at" class="form-control">
               </div>
               <div class="col-12 text-end">
                 <button type="submit" class="btn btn-primary btn-sm">
@@ -991,7 +990,8 @@
   <div class="modal fade" id="editConvenorModal{{ $c->id }}" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
-        <form action="{{ route('admin.events.finances.convenor.update', $c) }}" method="POST">
+        <form action="{{ route('admin.events.finances.convenor.update', $c) }}" method="POST"
+              data-ajax="1" data-modal="editConvenorModal{{ $c->id }}">
           @csrf @method('PATCH')
           <div class="modal-header">
             <h5 class="modal-title">Edit Convenor – {{ $c->user->name ?? '?' }}</h5>
@@ -1120,8 +1120,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
-                onclick="location.reload()">Close &amp; Refresh</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
@@ -1131,182 +1130,233 @@
 
 @section('page-script')
 <script>
-  // Auto-calculate amount from quantity × unit_price
-  document.querySelectorAll('input[name="quantity"], input[name="unit_price"]').forEach(function(el) {
-    el.addEventListener('input', function() {
-      const form = el.closest('form');
-      const qty  = parseFloat(form.querySelector('input[name="quantity"]')?.value) || 0;
-      const up   = parseFloat(form.querySelector('input[name="unit_price"]')?.value) || 0;
-      const amtInput = form.querySelector('input[name="amount"]');
-      if (amtInput && qty > 0 && up > 0) {
-        amtInput.value = (qty * up).toFixed(2);
-      }
-    });
+'use strict';
+
+/* ── CSRF token ─────────────────────────────────────────────────────────── */
+const _csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOAST HELPER
+   ═══════════════════════════════════════════════════════════════════════════ */
+function showFinanceToast(message, type = 'success') {
+  const container = document.getElementById('financeToastContainer');
+  if (!container) return;
+  const id      = 'ft-' + Date.now();
+  const icons   = { success: 'ti-circle-check', danger: 'ti-alert-circle', warning: 'ti-alert-triangle', info: 'ti-info-circle' };
+  const icon    = icons[type] || 'ti-info-circle';
+  const textCls = type === 'warning' ? 'text-dark' : 'text-white';
+  container.insertAdjacentHTML('beforeend',
+    `<div id="${id}" class="toast align-items-center ${textCls} bg-${type} border-0" role="alert" aria-live="assertive">
+       <div class="d-flex">
+         <div class="toast-body"><i class="ti ${icon} me-2"></i>${message}</div>
+         <button type="button" class="btn-close ${textCls === 'text-white' ? 'btn-close-white' : ''} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+       </div>
+     </div>`);
+  const toastEl = document.getElementById(id);
+  const bsToast = new bootstrap.Toast(toastEl, { delay: 3500 });
+  bsToast.show();
+  toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GENERIC AJAX FORM SUBMISSION
+   ═══════════════════════════════════════════════════════════════════════════ */
+function submitFinanceForm(form) {
+  const confirmMsg = form.dataset.confirm;
+  if (confirmMsg && !confirm(confirmMsg)) return;
+
+  /* Disable submit button(s) and show a spinner */
+  const submitBtns = Array.from(form.querySelectorAll('[type="submit"]'));
+  submitBtns.forEach(btn => {
+    btn.disabled        = true;
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.innerHTML       = '<span class="spinner-border spinner-border-sm" role="status"></span>';
   });
 
-  // ── Convenor user search (Select2 AJAX) ─────────────────────────────────
-  document.addEventListener('DOMContentLoaded', function () {
-    if (typeof $ !== 'undefined' && $.fn.select2) {
-      $('.convenor-user-select').select2({
-        ajax: {
-          url: '{{ route('convenor.search-users') }}',
-          dataType: 'json',
-          delay: 250,
-          data: function (params) { return { q: params.term }; },
-          processResults: function (data) { return { results: data }; },
-          cache: true,
-        },
-        placeholder: 'Search by name or email...',
-        minimumInputLength: 2,
-        dropdownParent: $('#manageConvenorsModal'),
-      });
+  fetch(form.action, {
+    method:  form.method.toUpperCase(),   /* always POST (PATCH/DELETE via _method) */
+    body:    new FormData(form),
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept':           'application/json',
+      'X-CSRF-TOKEN':     _csrf,
+    },
+  })
+  .then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err    = new Error(data.message || 'An error occurred.');
+      err.status   = r.status;
+      err.errors   = data.errors ?? null;
+      throw err;
+    }
+    return data;
+  })
+  .then(data => {
+    /* Close the nearest Bootstrap modal if the form specifies one */
+    const modalId = form.dataset.modal;
+    const modalEl = modalId ? document.getElementById(modalId) : form.closest('.modal');
+    if (modalEl) {
+      const bsModal = bootstrap.Modal.getInstance(modalEl);
+      if (bsModal) bsModal.hide();
+    }
+    showFinanceToast(data.message || 'Done!', 'success');
+    /* Reload after the toast is visible for a moment */
+    setTimeout(() => location.reload(), 1200);
+  })
+  .catch(err => {
+    /* Re-enable buttons */
+    submitBtns.forEach(btn => {
+      btn.disabled  = false;
+      if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+    });
+    if (err.errors) {
+      const msgs = Object.values(err.errors).flat().join(' | ');
+      showFinanceToast(msgs, 'danger');
+    } else {
+      showFinanceToast(err.message || 'An error occurred.', 'danger');
     }
   });
+}
 
-  // ── Expense Types CRUD (inline, AJAX) ────────────────────────────────────
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
-
-  // Edit mode toggle
-  document.querySelectorAll('.et-edit-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const row = document.getElementById('et-row-' + btn.dataset.id);
-      row.querySelector('.et-label-display').classList.add('d-none');
-      row.querySelector('.et-label-input').classList.remove('d-none');
-      row.querySelector('.et-sort-display').classList.add('d-none');
-      row.querySelector('.et-sort-input').classList.remove('d-none');
-      row.querySelector('.et-save-btn').classList.remove('d-none');
-      btn.classList.add('d-none');
-    });
+/* ─── Auto-calc amount from quantity × unit_price ─── */
+document.querySelectorAll('input[name="quantity"], input[name="unit_price"]').forEach(el => {
+  el.addEventListener('input', () => {
+    const form    = el.closest('form');
+    const qty     = parseFloat(form.querySelector('input[name="quantity"]')?.value)   || 0;
+    const up      = parseFloat(form.querySelector('input[name="unit_price"]')?.value) || 0;
+    const amtInput = form.querySelector('input[name="amount"]');
+    if (amtInput && qty > 0 && up > 0) amtInput.value = (qty * up).toFixed(2);
   });
+});
 
-  // Save edited type
-  document.querySelectorAll('.et-save-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const row   = document.getElementById('et-row-' + btn.dataset.id);
-      const label = row.querySelector('.et-label-input').value.trim();
-      const sort  = parseInt(row.querySelector('.et-sort-input').value) || 0;
-      if (!label) return;
+/* ─── Wire all [data-ajax] forms via event delegation ─── */
+document.addEventListener('submit', function(e) {
+  if (!e.target.hasAttribute('data-ajax')) return;
+  e.preventDefault();
+  submitFinanceForm(e.target);
+});
 
-      fetch(btn.dataset.url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-        body: JSON.stringify({ label, sort_order: sort }),
-      })
-      .then(r => r.json())
-      .then(data => {
-        row.querySelector('.et-label-display').textContent = data.label;
-        row.querySelector('.et-sort-display').textContent  = data.sort_order;
-        row.querySelector('.et-label-display').classList.remove('d-none');
-        row.querySelector('.et-label-input').classList.add('d-none');
-        row.querySelector('.et-sort-display').classList.remove('d-none');
-        row.querySelector('.et-sort-input').classList.add('d-none');
-        btn.classList.add('d-none');
-        row.querySelector('.et-edit-btn').classList.remove('d-none');
-      })
-      .catch(() => alert('Save failed.'));
-    });
-  });
-
-  // Delete type
-  document.querySelectorAll('.et-delete-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      if (!confirm('Delete expense type "' + btn.dataset.label + '"?')) return;
-
-      fetch(btn.dataset.url, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-      })
-      .then(r => r.json())
-      .then(() => {
-        document.getElementById('et-row-' + btn.dataset.id)?.remove();
-      })
-      .catch(r => r.json().then(d => alert(d.message ?? 'Delete failed.')));
-    });
-  });
-
-  // Add new type
-  document.getElementById('addExpenseTypeBtn')?.addEventListener('click', function() {
-    const label = document.getElementById('newTypeLabel').value.trim();
-    const sort  = parseInt(document.getElementById('newTypeSort').value) || 100;
-    if (!label) { alert('Please enter a label.'); return; }
-
-    fetch('{{ route('admin.expense-types.store') }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-      body: JSON.stringify({ label, sort_order: sort }),
-    })
-    .then(r => r.json())
-    .then(function(et) {
-      // Append new row to the table
-      const tbody = document.querySelector('#expenseTypesTable tbody');
-      const tr = document.createElement('tr');
-      tr.id = 'et-row-' + et.id;
-      tr.innerHTML = `
-        <td><code>${et.key}</code></td>
-        <td>
-          <span class="et-label-display">${et.label}</span>
-          <input type="text" class="form-control form-control-sm et-label-input d-none" value="${et.label}" style="max-width:160px">
-        </td>
-        <td class="text-center">
-          <span class="et-sort-display">${et.sort_order}</span>
-          <input type="number" class="form-control form-control-sm et-sort-input d-none text-center" value="${et.sort_order}" style="max-width:70px" min="0">
-        </td>
-        <td class="text-center">—</td>
-        <td class="text-end">
-          <button type="button" class="btn btn-icon btn-sm btn-outline-primary et-edit-btn" data-id="${et.id}" title="Edit"><i class="ti ti-edit"></i></button>
-          <button type="button" class="btn btn-icon btn-sm btn-outline-success et-save-btn d-none" data-id="${et.id}" data-url="/expense-types/${et.id}" title="Save"><i class="ti ti-check"></i></button>
-          <button type="button" class="btn btn-icon btn-sm btn-outline-danger et-delete-btn" data-id="${et.id}" data-url="/expense-types/${et.id}" data-label="${et.label}" title="Delete"><i class="ti ti-trash"></i></button>
-        </td>`;
-      tbody.appendChild(tr);
-      // Wire up event listeners for the new row
-      wireTypeRow(tr, et.id);
-      document.getElementById('newTypeLabel').value = '';
-    })
-    .catch(() => alert('Failed to add type.'));
-  });
-
-  function wireTypeRow(tr, id) {
-    tr.querySelector('.et-edit-btn')?.addEventListener('click', function() {
-      tr.querySelector('.et-label-display').classList.add('d-none');
-      tr.querySelector('.et-label-input').classList.remove('d-none');
-      tr.querySelector('.et-sort-display').classList.add('d-none');
-      tr.querySelector('.et-sort-input').classList.remove('d-none');
-      tr.querySelector('.et-save-btn').classList.remove('d-none');
-      tr.querySelector('.et-edit-btn').classList.add('d-none');
-    });
-    tr.querySelector('.et-save-btn')?.addEventListener('click', function() {
-      const label = tr.querySelector('.et-label-input').value.trim();
-      const sort  = parseInt(tr.querySelector('.et-sort-input').value) || 0;
-      if (!label) return;
-      const url = tr.querySelector('.et-save-btn').dataset.url;
-      fetch(url, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-        body: JSON.stringify({ label, sort_order: sort }),
-      })
-      .then(r => r.json())
-      .then(data => {
-        tr.querySelector('.et-label-display').textContent = data.label;
-        tr.querySelector('.et-sort-display').textContent  = data.sort_order;
-        tr.querySelector('.et-label-display').classList.remove('d-none');
-        tr.querySelector('.et-label-input').classList.add('d-none');
-        tr.querySelector('.et-sort-display').classList.remove('d-none');
-        tr.querySelector('.et-sort-input').classList.add('d-none');
-        tr.querySelector('.et-save-btn').classList.add('d-none');
-        tr.querySelector('.et-edit-btn').classList.remove('d-none');
-      });
-    });
-    tr.querySelector('.et-delete-btn')?.addEventListener('click', function() {
-      const lbl = tr.querySelector('.et-delete-btn').dataset.label;
-      if (!confirm('Delete expense type "' + lbl + '"?')) return;
-      const url = tr.querySelector('.et-delete-btn').dataset.url;
-      fetch(url, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-      })
-      .then(() => tr.remove())
-      .catch(r => r.json().then(d => alert(d.message ?? 'Delete failed.')));
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONVENOR USER SEARCH (Select2 AJAX)
+   ═══════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof $ !== 'undefined' && $.fn.select2) {
+    $('.convenor-user-select').select2({
+      ajax: {
+        url:     '{{ route('convenor.search-users') }}',
+        dataType: 'json',
+        delay:    250,
+        data:     params  => ({ q: params.term }),
+        processResults: data => ({ results: data }),
+        cache:    true,
+      },
+      placeholder:        'Search by name or email...',
+      minimumInputLength: 2,
+      dropdownParent:     $('#manageConvenorsModal'),
     });
   }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPENSE TYPES CRUD (fully AJAX, no page reload)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Toggle a type row into edit mode */
+function etEditMode(row, on) {
+  row.querySelector('.et-label-display').classList.toggle('d-none', on);
+  row.querySelector('.et-label-input').classList.toggle('d-none',  !on);
+  row.querySelector('.et-sort-display').classList.toggle('d-none', on);
+  row.querySelector('.et-sort-input').classList.toggle('d-none',   !on);
+  row.querySelector('.et-save-btn')?.classList.toggle('d-none',    !on);
+  row.querySelector('.et-edit-btn')?.classList.toggle('d-none',    on);
+}
+
+/* Save edits for an expense type row */
+function etSaveRow(row) {
+  const label = row.querySelector('.et-label-input').value.trim();
+  const sort  = parseInt(row.querySelector('.et-sort-input').value) || 0;
+  if (!label) return;
+  const url   = row.querySelector('.et-save-btn').dataset.url;
+
+  fetch(url, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json' },
+    body:    JSON.stringify({ label, sort_order: sort }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    row.querySelector('.et-label-display').textContent = data.label;
+    row.querySelector('.et-sort-display').textContent  = data.sort_order;
+    row.querySelector('.et-label-input').value         = data.label;
+    row.querySelector('.et-sort-input').value          = data.sort_order;
+    etEditMode(row, false);
+    showFinanceToast('Expense type updated.', 'success');
+  })
+  .catch(() => showFinanceToast('Save failed.', 'danger'));
+}
+
+/* Wire up a freshly-created or server-rendered type row */
+function wireTypeRow(row) {
+  row.querySelector('.et-edit-btn')?.addEventListener('click',   () => etEditMode(row, true));
+  row.querySelector('.et-save-btn')?.addEventListener('click',   () => etSaveRow(row));
+  row.querySelector('.et-delete-btn')?.addEventListener('click', function() {
+    const lbl = this.dataset.label;
+    if (!confirm(`Delete expense type "${lbl}"?`)) return;
+    fetch(this.dataset.url, {
+      method:  'DELETE',
+      headers: { 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json' },
+    })
+    .then(r => r.json())
+    .then(() => {
+      row.remove();
+      showFinanceToast(`"${lbl}" deleted.`, 'success');
+    })
+    .catch(r => r.json?.().then(d => showFinanceToast(d.message ?? 'Delete failed.', 'danger')));
+  });
+}
+
+/* Wire all pre-rendered type rows */
+document.querySelectorAll('#expenseTypesTable tbody tr').forEach(wireTypeRow);
+
+/* Add new expense type */
+document.getElementById('addExpenseTypeBtn')?.addEventListener('click', function() {
+  const label = document.getElementById('newTypeLabel').value.trim();
+  const sort  = parseInt(document.getElementById('newTypeSort').value) || 100;
+  if (!label) { showFinanceToast('Please enter a label.', 'warning'); return; }
+
+  fetch('{{ route('admin.expense-types.store') }}', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': _csrf, 'Accept': 'application/json' },
+    body:    JSON.stringify({ label, sort_order: sort }),
+  })
+  .then(r => r.json())
+  .then(et => {
+    const tbody = document.querySelector('#expenseTypesTable tbody');
+    const tr    = document.createElement('tr');
+    tr.id        = 'et-row-' + et.id;
+    tr.innerHTML = `
+      <td><code>${et.key}</code></td>
+      <td>
+        <span class="et-label-display">${et.label}</span>
+        <input type="text" class="form-control form-control-sm et-label-input d-none" value="${et.label}" style="max-width:160px">
+      </td>
+      <td class="text-center">
+        <span class="et-sort-display">${et.sort_order}</span>
+        <input type="number" class="form-control form-control-sm et-sort-input d-none text-center" value="${et.sort_order}" style="max-width:70px" min="0">
+      </td>
+      <td class="text-center">—</td>
+      <td class="text-end">
+        <button type="button" class="btn btn-icon btn-sm btn-outline-primary et-edit-btn" data-id="${et.id}" title="Edit"><i class="ti ti-edit"></i></button>
+        <button type="button" class="btn btn-icon btn-sm btn-outline-success et-save-btn d-none" data-id="${et.id}" data-url="/expense-types/${et.id}" title="Save"><i class="ti ti-check"></i></button>
+        <button type="button" class="btn btn-icon btn-sm btn-outline-danger et-delete-btn" data-id="${et.id}" data-url="/expense-types/${et.id}" data-label="${et.label}" title="Delete"><i class="ti ti-trash"></i></button>
+      </td>`;
+    tbody.appendChild(tr);
+    wireTypeRow(tr);
+    document.getElementById('newTypeLabel').value = '';
+    showFinanceToast(`"${et.label}" added.`, 'success');
+  })
+  .catch(() => showFinanceToast('Failed to add type.', 'danger'));
+});
 </script>
 @endsection

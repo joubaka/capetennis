@@ -278,7 +278,9 @@ class EventFinanceController extends Controller
             'date'                 => $validated['date'] ?? now(),
         ]);
 
-        return back()->with('success', 'Expense added successfully.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Expense added successfully.'])
+            : back()->with('success', 'Expense added successfully.');
     }
 
     public function updateExpense(Request $request, EventExpense $expense)
@@ -313,7 +315,9 @@ class EventFinanceController extends Controller
 
         $expense->update($updates);
 
-        return back()->with('success', 'Expense updated successfully.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Expense updated successfully.'])
+            : back()->with('success', 'Expense updated successfully.');
     }
 
     public function destroyExpense(EventExpense $expense)
@@ -323,6 +327,10 @@ class EventFinanceController extends Controller
         }
 
         $expense->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['message' => 'Expense deleted.']);
+        }
 
         return back()->with('success', 'Expense deleted.');
     }
@@ -338,7 +346,9 @@ class EventFinanceController extends Controller
             'approved_by' => Auth::id(),
         ]);
 
-        return back()->with('success', 'Expense approved.');
+        return request()->wantsJson()
+            ? response()->json(['message' => 'Expense approved.'])
+            : back()->with('success', 'Expense approved.');
     }
 
     public function reimburseExpense(EventExpense $expense)
@@ -348,7 +358,9 @@ class EventFinanceController extends Controller
             'reimbursed_by' => Auth::id(),
         ]);
 
-        return back()->with('success', 'Reimbursement marked.');
+        return request()->wantsJson()
+            ? response()->json(['message' => 'Reimbursement marked.'])
+            : back()->with('success', 'Reimbursement marked.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -380,7 +392,9 @@ class EventFinanceController extends Controller
             'date'       => $validated['date'] ?? null,
         ]);
 
-        return back()->with('success', 'Income item added.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Income item added.'])
+            : back()->with('success', 'Income item added.');
     }
 
     public function updateIncomeItem(Request $request, EventIncomeItem $item)
@@ -400,14 +414,18 @@ class EventFinanceController extends Controller
 
         $item->update(array_merge($validated, ['total' => $total]));
 
-        return back()->with('success', 'Income item updated.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Income item updated.'])
+            : back()->with('success', 'Income item updated.');
     }
 
     public function destroyIncomeItem(EventIncomeItem $item)
     {
         $item->delete();
 
-        return back()->with('success', 'Income item deleted.');
+        return request()->wantsJson()
+            ? response()->json(['message' => 'Income item deleted.'])
+            : back()->with('success', 'Income item deleted.');
     }
 
     /* ------------------------------------------------------------------ */
@@ -524,6 +542,9 @@ class EventFinanceController extends Controller
             ->exists();
 
         if ($exists) {
+            if ($request->wantsJson()) {
+                return response()->json(['message' => 'This user is already a convenor for this event.'], 422);
+            }
             return back()->with('error', 'This user is already a convenor for this event.');
         }
 
@@ -535,7 +556,9 @@ class EventFinanceController extends Controller
             'expires_at' => $validated['expires_at'] ?? null,
         ]);
 
-        return back()->with('success', 'Convenor added.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Convenor added.'])
+            : back()->with('success', 'Convenor added.');
     }
 
     public function updateConvenor(Request $request, EventConvenor $convenor)
@@ -552,13 +575,17 @@ class EventFinanceController extends Controller
             'expires_at' => $validated['expires_at'] ?? null,
         ]);
 
-        return back()->with('success', 'Convenor updated.');
+        return $request->wantsJson()
+            ? response()->json(['message' => 'Convenor updated.'])
+            : back()->with('success', 'Convenor updated.');
     }
 
     public function destroyConvenor(EventConvenor $convenor)
     {
         $convenor->delete();
 
-        return back()->with('success', 'Convenor removed.');
+        return request()->wantsJson()
+            ? response()->json(['message' => 'Convenor removed.'])
+            : back()->with('success', 'Convenor removed.');
     }
 }
