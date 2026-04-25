@@ -497,37 +497,60 @@ class EventFinanceController extends Controller
 
     public function storeConvenor(Request $request, Event $event)
     {
-        $validated = $request->validate([
-            'user_id'          => 'required|exists:users,id',
+        $request->validate([
+            'user_ids'         => 'required|array|min:1',
+            'user_ids.*'       => 'integer|exists:users,id',
             'role'             => 'nullable|string|max:20',
             'profit_share_pct' => 'nullable|numeric|min:0|max:100',
             'starts_at'        => 'nullable|date',
             'expires_at'       => 'nullable|date|after_or_equal:starts_at',
         ]);
 
-        $exists = EventConvenor::where('event_id', $event->id)
-            ->where('user_id', $validated['user_id'])
-            ->exists();
+        $role            = $request->input('role', 'hulp');
+        $profitSharePct  = $request->input('profit_share_pct');
+        $startsAt        = $request->input('starts_at');
+        $expiresAt       = $request->input('expires_at');
 
-        if ($exists) {
-            if ($request->wantsJson()) {
-                return response()->json(['message' => 'This user is already a convenor for this event.'], 422);
+        $added    = 0;
+        $skipped  = 0;
+
+        foreach ($request->input('user_ids') as $userId) {
+            $exists = EventConvenor::where('event_id', $event->id)
+                ->where('user_id', $userId)
+                ->exists();
+
+            if ($exists) {
+                $skipped++;
+                continue;
             }
-            return back()->with('error', 'This user is already a convenor for this event.');
+
+            EventConvenor::create([
+                'event_id'         => $event->id,
+                'user_id'          => $userId,
+                'role'             => $role,
+                'profit_share_pct' => $profitSharePct ?? null,
+                'starts_at'        => $startsAt ?? null,
+                'expires_at'       => $expiresAt ?? null,
+            ]);
+
+            $added++;
         }
 
-        EventConvenor::create([
-            'event_id'         => $event->id,
-            'user_id'          => $validated['user_id'],
-            'role'             => $validated['role'] ?? 'hulp',
-            'profit_share_pct' => $validated['profit_share_pct'] ?? null,
-            'starts_at'        => $validated['starts_at'] ?? null,
-            'expires_at'       => $validated['expires_at'] ?? null,
-        ]);
+        $message = $added === 1 ? '1 event director added.' : "{$added} event directors added.";
+        if ($skipped > 0) {
+            $message .= " {$skipped} skipped (already assigned).";
+        }
+
+        if ($added === 0) {
+            if ($request->wantsJson()) {
+                return response()->json(['message' => $message], 422);
+            }
+            return back()->with('error', $message);
+        }
 
         return $request->wantsJson()
-            ? response()->json(['message' => 'Convenor added.'])
-            : back()->with('success', 'Convenor added.');
+            ? response()->json(['message' => $message])
+            : back()->with('success', $message);
     }
 
     public function updateConvenor(Request $request, EventConvenor $convenor)

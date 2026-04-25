@@ -1074,16 +1074,16 @@
 
         {{-- Add new event director --}}
         <div class="p-3">
-          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Event Director</h6>
+          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Event Director(s)</h6>
           <form action="{{ route('admin.events.finances.convenor.store', $event) }}" method="POST"
                 data-ajax="1" data-modal="manageConvenorsModal">
             @csrf
             <div class="row g-2">
               <div class="col-md-6">
-                <label class="form-label">User <span class="text-danger">*</span></label>
-                <select name="user_id" id="convenorUserSelect" class="form-select convenor-user-select" required>
-                  <option value="">Search by name or email…</option>
+                <label class="form-label">User(s) <span class="text-danger">*</span></label>
+                <select name="user_ids[]" id="convenorUserSelect" class="form-select convenor-user-select" multiple required>
                 </select>
+                <small class="text-muted">Search and select one or more people.</small>
               </div>
               <div class="col-md-3">
                 <label class="form-label">Role</label>
@@ -1103,7 +1103,7 @@
               </div>
               <div class="col-12 text-end">
                 <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="ti ti-user-plus me-1"></i>Add Event Director
+                  <i class="ti ti-user-plus me-1"></i>Add Event Director(s)
                 </button>
               </div>
             </div>
@@ -1383,7 +1383,7 @@ document.addEventListener('submit', function(e) {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CONVENOR USER SEARCH (Select2 AJAX)
+   CONVENOR USER SEARCH (Select2 AJAX – multiple)
    ═══════════════════════════════════════════════════════════════════════════ */
 function initConvenorUserSelect2() {
   var $sel = $('#convenorUserSelect');
@@ -1400,6 +1400,7 @@ function initConvenorUserSelect2() {
     },
     placeholder:        'Search by name or email…',
     minimumInputLength: 2,
+    multiple:           true,
     dropdownParent:     $('#manageConvenorsModal'),
     width:              '100%',
   });
