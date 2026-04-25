@@ -937,7 +937,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          @include('backend.event._expense_fields', ['expense' => null, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
+          @include('backend.event._expense_fields', ['expense' => null, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes, 'multiPaidBy' => true])
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1414,6 +1414,19 @@ $(document).ready(function() {
   if ($('#manageConvenorsModal').is(':visible')) {
     initConvenorUserSelect2();
   }
+
+  /* ── Expense "Paid by" multi-select (Select2) ── */
+  $('#addExpenseModal').on('shown.bs.modal', function() {
+    var $sel = $(this).find('#expensePaidBySelect');
+    if ($sel.length && !$sel.data('select2')) {
+      $sel.select2({
+        placeholder:    'Select director(s)…',
+        multiple:       true,
+        dropdownParent: $('#addExpenseModal'),
+        width:          '100%',
+      });
+    }
+  });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
