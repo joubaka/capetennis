@@ -22,12 +22,15 @@
     .layout-menu, .layout-overlay, .layout-navbar { display: none !important; }
     .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; page-break-inside: avoid; }
     .print-header { display: block !important; }
+    .print-only-row { display: table-row !important; }
+    #incomeByCat, #expenseSummaryAccordion { display: block !important; }
     body { font-size: 11px; }
     .table td, .table th { padding: 4px 6px !important; }
     .container-xl { max-width: 100% !important; padding: 0 !important; }
     h5 { font-size: 13px !important; }
   }
   .print-header { display: none; }
+  .print-only-row { display: none; }
 </style>
 @endsection
 
@@ -294,7 +297,7 @@
                 </td>
               </tr>
               {{-- Print version: always visible --}}
-              <tr style="display:none" class="print-only-row">
+              <tr class="print-only-row">
                 <td colspan="7" class="p-0">
                   <table class="table table-sm mb-0">
                     <thead class="table-secondary">
@@ -871,22 +874,6 @@
       if (amtInput && qty > 0 && up > 0) {
         amtInput.value = (qty * up).toFixed(2);
       }
-    });
-  });
-
-  // Show income-by-category table in print view
-  window.addEventListener('beforeprint', function () {
-    document.querySelectorAll('.print-only-row').forEach(function(el) {
-      el.style.display = '';
-    });
-    const catCollapse = document.getElementById('incomeByCat');
-    if (catCollapse) catCollapse.classList.add('show');
-    const expSummary = document.getElementById('expenseSummaryAccordion');
-    if (expSummary) expSummary.classList.add('show');
-  });
-  window.addEventListener('afterprint', function () {
-    document.querySelectorAll('.print-only-row').forEach(function(el) {
-      el.style.display = 'none';
     });
   });
 </script>
