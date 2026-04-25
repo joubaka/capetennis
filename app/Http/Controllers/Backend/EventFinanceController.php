@@ -208,17 +208,19 @@ class EventFinanceController extends Controller
     public function storeExpense(Request $request, Event $event)
     {
         $validated = $request->validate([
-            'expense_type'          => 'required|string|max:50',
-            'paid_by_convenor_id'   => 'nullable|exists:event_convenors,id',
-            'convenor_name'         => 'nullable|string|max:100',
-            'description'           => 'nullable|string|max:255',
-            'recipient_name'        => 'nullable|string|max:150',
-            'amount'                => 'required|numeric|min:0',
-            'quantity'              => 'nullable|numeric|min:0',
-            'unit_price'            => 'nullable|numeric|min:0',
-            'budget_amount'         => 'nullable|numeric|min:0',
-            'date'                  => 'nullable|date',
-            'receipt'               => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'expense_type'            => 'required|string|max:50',
+            'paid_by_convenor_ids'    => 'nullable|array',
+            'paid_by_convenor_ids.*'  => 'integer|exists:event_convenors,id',
+            'paid_by_convenor_id'     => 'nullable|exists:event_convenors,id',
+            'convenor_name'           => 'nullable|string|max:100',
+            'description'             => 'nullable|string|max:255',
+            'recipient_name'          => 'nullable|string|max:150',
+            'amount'                  => 'required|numeric|min:0',
+            'quantity'                => 'nullable|numeric|min:0',
+            'unit_price'              => 'nullable|numeric|min:0',
+            'budget_amount'           => 'nullable|numeric|min:0',
+            'date'                    => 'nullable|date',
+            'receipt'                 => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
         // Compute amount from qty × unit_price when both provided
@@ -230,10 +232,9 @@ class EventFinanceController extends Controller
                 ->store("event_receipts/{$event->id}", 'public');
         }
 
-        EventExpense::create([
+        $base = [
             'event_id'             => $event->id,
             'expense_type'         => $validated['expense_type'],
-            'paid_by_convenor_id'  => $validated['paid_by_convenor_id'] ?? null,
             'convenor_name'        => $validated['convenor_name'] ?? null,
             'description'          => $validated['description'] ?? null,
             'recipient_name'       => $validated['recipient_name'] ?? null,
@@ -243,11 +244,26 @@ class EventFinanceController extends Controller
             'budget_amount'        => $validated['budget_amount'] ?? null,
             'receipt_path'         => $receiptPath,
             'date'                 => $validated['date'] ?? now(),
-        ]);
+        ];
+
+        // Multi-director mode: create one expense per selected director
+        $convenorIds = $validated['paid_by_convenor_ids'] ?? null;
+        if (!empty($convenorIds)) {
+            foreach ($convenorIds as $convenorId) {
+                EventExpense::create(array_merge($base, ['paid_by_convenor_id' => $convenorId]));
+            }
+            $count = count($convenorIds);
+            $msg = $count === 1 ? 'Expense added successfully.' : "{$count} expenses added successfully.";
+        } else {
+            EventExpense::create(array_merge($base, [
+                'paid_by_convenor_id' => $validated['paid_by_convenor_id'] ?? null,
+            ]));
+            $msg = 'Expense added successfully.';
+        }
 
         return $request->wantsJson()
-            ? response()->json(['message' => 'Expense added successfully.'])
-            : back()->with('success', 'Expense added successfully.');
+            ? response()->json(['message' => $msg])
+            : back()->with('success', $msg);
     }
 
     public function updateExpense(Request $request, EventExpense $expense)

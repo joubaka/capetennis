@@ -14,17 +14,30 @@
   </div>
 
   <div class="col-md-6">
-    <label class="form-label">Paid by (Event Director)</label>
-    <select name="paid_by_convenor_id" class="form-select">
-      <option value="">— No event director assigned —</option>
-      @foreach($convenors as $c)
-        <option value="{{ $c->id }}"
-                {{ old('paid_by_convenor_id', $expense?->paid_by_convenor_id) == $c->id ? 'selected' : '' }}>
-          {{ $c->user->name ?? 'Unknown' }}
-          ({{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }})
-        </option>
-      @endforeach
-    </select>
+    @if(!empty($multiPaidBy))
+      <label class="form-label">Paid by (Event Director(s))</label>
+      <select name="paid_by_convenor_ids[]" id="expensePaidBySelect" class="form-select" multiple>
+        @foreach($convenors as $c)
+          <option value="{{ $c->id }}">
+            {{ $c->user->name ?? 'Unknown' }}
+            ({{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }})
+          </option>
+        @endforeach
+      </select>
+      <small class="text-muted">Select one or more directors. One expense record will be created per person.</small>
+    @else
+      <label class="form-label">Paid by (Event Director)</label>
+      <select name="paid_by_convenor_id" class="form-select">
+        <option value="">— No event director assigned —</option>
+        @foreach($convenors as $c)
+          <option value="{{ $c->id }}"
+                  {{ old('paid_by_convenor_id', $expense?->paid_by_convenor_id) == $c->id ? 'selected' : '' }}>
+            {{ $c->user->name ?? 'Unknown' }}
+            ({{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }})
+          </option>
+        @endforeach
+      </select>
+    @endif
   </div>
 
   <div class="col-md-6">
