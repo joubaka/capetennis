@@ -296,7 +296,7 @@
      SECTION 2 – EXPENSES (per convenor)
 ══════════════════════════════════════════════════════════════════════ --}}
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <h5 class="mb-0"><i class="ti ti-list me-2"></i>Expenses per Convenor</h5>
+  <h5 class="mb-0"><i class="ti ti-list me-2"></i>Expenses per Event Director</h5>
   <button class="btn btn-primary btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
     <i class="ti ti-plus me-1"></i>Add Expense
   </button>
@@ -390,8 +390,8 @@
       $cExpenses = $expensesByConvenor->get($convenor->id, collect());
       $cTotal    = $cExpenses->sum(fn($e) => $e->calculatedAmount());
       $roleLabel = match($convenor->role) {
-        'hoof'  => 'HeadConvenor',
-        'hulp'  => 'AssistConvenor',
+        'hoof'  => 'Head Director',
+        'hulp'  => 'Assist Director',
         default => ucfirst($convenor->role),
       };
     @endphp
@@ -537,7 +537,7 @@
 @if($unassigned->count() > 0)
   <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center bg-light">
-      <strong><i class="ti ti-question-mark me-1 text-muted"></i>No Convenor Assigned</strong>
+      <strong><i class="ti ti-question-mark me-1 text-muted"></i>No Event Director Assigned</strong>
       <span class="fw-bold">R {{ number_format($unassignedTotal, 2) }}</span>
     </div>
     <div class="card-body p-0">
@@ -613,7 +613,7 @@
       <table class="table recon-table mb-0">
         <thead>
           <tr>
-            <th>Convenor</th>
+            <th>Event Director</th>
             <th>Role</th>
             <th class="text-end">Paid Out</th>
             <th class="text-end">Reimbursed</th>
@@ -630,7 +630,7 @@
               <td class="fw-semibold">{{ $row['convenor']->user->name ?? 'Unknown' }}</td>
               <td>
                 <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}">
-                  {{ $row['convenor']->isHoof() ? 'HeadConvenor' : ($row['convenor']->isHulp() ? 'AssistConvenor' : ucfirst($row['convenor']->role)) }}
+                  {{ $row['convenor']->isHoof() ? 'Head Director' : ($row['convenor']->isHulp() ? 'Assist Director' : ucfirst($row['convenor']->role)) }}
                 </span>
               </td>
               <td class="text-end">R {{ number_format($row['total_paid'], 2) }}</td>

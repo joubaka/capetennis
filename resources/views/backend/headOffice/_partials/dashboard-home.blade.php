@@ -18,7 +18,7 @@
             <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-top-draws" aria-controls="navs-top-draws" aria-selected="false">Draws</button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-top-convenors" aria-controls="navs-top-convenors" aria-selected="false">Convenors</button>
+            <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-top-convenors" aria-controls="navs-top-convenors" aria-selected="false">Event Directors</button>
         </li>
         <li class="nav-item">
             <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-top-setup" aria-controls="navs-top-setup" aria-selected="false">Setup</button>

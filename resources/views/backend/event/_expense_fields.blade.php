@@ -14,9 +14,9 @@
   </div>
 
   <div class="col-md-6">
-    <label class="form-label">Paid by (Convenor)</label>
+    <label class="form-label">Paid by (Event Director)</label>
     <select name="paid_by_convenor_id" class="form-select">
-      <option value="">— No convenor assigned —</option>
+      <option value="">— No event director assigned —</option>
       @foreach($convenors as $c)
         <option value="{{ $c->id }}"
                 {{ old('paid_by_convenor_id', $expense?->paid_by_convenor_id) == $c->id ? 'selected' : '' }}>
