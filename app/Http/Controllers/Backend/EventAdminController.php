@@ -26,6 +26,7 @@ use App\Exports\EventPlayersExport;
 use Illuminate\Support\Facades\Log;
 use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
+use App\Models\ExpenseType;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Registration;
 use App\Models\PlayerRegistration;
@@ -875,28 +876,22 @@ class EventAdminController extends Controller
       ->orderByDesc('created_at')
       ->get();
 
-    $expenseTypes = [
-      'balls'           => 'Balls',
-      'venue'           => 'Venue',
-      'convenors'       => 'Convenors',
-      'medals'          => 'Medals',
-      'couriers'        => 'Couriers',
-      'airtime'         => 'Airtime / Data',
-      'petrol'          => 'Petrol',
-      'admin_fee'       => 'Admin Fee',
-      'accommodation'   => 'Accommodation',
-      'extras'          => 'Extras',
-      'payfast'         => 'PayFast Fees',
-      'cape_tennis_fee' => 'Cape Tennis Fee',
-      'other'           => 'Other',
-    ];
+    $expenseTypes = ExpenseType::asOptions();
 
-    $expensesByConvenor = $expenses->groupBy('paid_by_convenor_id');
-    $totalExpenses      = $expenses->sum(fn($e) => $e->calculatedAmount());
-    $pendingApproval    = $expenses->whereNull('approved_at')->count();
+    $systemTypes         = ['payfast', 'cape_tennis_fee'];
+    $operationalExpenses = $expenses->reject(fn($e) => in_array($e->expense_type, $systemTypes));
+    $systemExpenseRows   = $expenses->filter(fn($e) => in_array($e->expense_type, $systemTypes));
 
-    $recon = $convenors->map(function ($convenor) use ($expenses) {
-      $paid = $expenses
+    $expensesByConvenor = $operationalExpenses->groupBy('paid_by_convenor_id');
+    $expensesByType     = $operationalExpenses->groupBy('expense_type');
+    $totalExpenses      = $operationalExpenses->sum(fn($e) => $e->calculatedAmount());
+    $totalSystemFees    = $systemExpenseRows->sum(fn($e) => $e->calculatedAmount());
+    $totalBudget        = $operationalExpenses->whereNotNull('budget_amount')->sum('budget_amount');
+    $pendingApproval    = $operationalExpenses->whereNull('approved_at')->count();
+    $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
+
+    $recon = $convenors->map(function ($convenor) use ($operationalExpenses) {
+      $paid = $operationalExpenses
         ->where('paid_by_convenor_id', $convenor->id)
         ->sum(fn($e) => $e->calculatedAmount());
 
@@ -904,7 +899,7 @@ class EventAdminController extends Controller
         'convenor'   => $convenor,
         'total_paid' => $paid,
         'owed_back'  => $paid,
-        'reimbursed' => $expenses
+        'reimbursed' => $operationalExpenses
           ->where('paid_by_convenor_id', $convenor->id)
           ->whereNotNull('reimbursed_at')
           ->sum(fn($e) => $e->calculatedAmount()),
@@ -917,6 +912,24 @@ class EventAdminController extends Controller
 
     $netProfit = $grandTotalIncome - $totalExpenses;
 
+    // Income by category (individual events)
+    $incomeByCategory = collect();
+    foreach ($transactions as $t) {
+      $items     = $t->order?->items ?? collect();
+      $itemCount = $items->count();
+      if ($itemCount === 0) continue;
+      $amtPerItem = (float) $t->amount_gross / $itemCount;
+      foreach ($items as $item) {
+        $catName = $item->category_event?->category?->name ?? 'Unknown';
+        $current = $incomeByCategory->get($catName, ['entries' => 0, 'amount' => 0.0]);
+        $incomeByCategory->put($catName, [
+          'entries' => $current['entries'] + 1,
+          'amount'  => $current['amount'] + $amtPerItem,
+        ]);
+      }
+    }
+    $incomeByCategory = $incomeByCategory->sortKeys();
+
     return compact(
       'totalGross',
       'totalPayfastFees',
@@ -924,6 +937,7 @@ class EventAdminController extends Controller
       'totalEntries',
       'feePerEntry',
       'netRegistrationIncome',
+      'incomeByCategory',
       'incomeItems',
       'totalIncomeItems',
       'grandTotalIncome',
@@ -931,8 +945,12 @@ class EventAdminController extends Controller
       'expenses',
       'expenseTypes',
       'expensesByConvenor',
+      'expensesByType',
       'totalExpenses',
+      'totalSystemFees',
+      'totalBudget',
       'pendingApproval',
+      'pendingReimbursement',
       'recon',
       'budgetCapWarning',
       'netProfit'

@@ -59,6 +59,12 @@
         Finances — {{ $event->name }}
       </h4>
       <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
+          <i class="ti ti-users me-1"></i>Convenors
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#manageTypesModal">
+          <i class="ti ti-tags me-1"></i>Expense Types
+        </button>
         <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-printer me-1"></i>Print / PDF
         </button>
@@ -76,6 +82,12 @@
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show no-print" role="alert">
       <i class="ti ti-circle-check me-1"></i>{{ session('success') }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  @endif
+  @if(session('error'))
+    <div class="alert alert-danger alert-dismissible fade show no-print" role="alert">
+      <i class="ti ti-alert-circle me-1"></i>{{ session('error') }}
       <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
   @endif
@@ -861,6 +873,260 @@
   </div>
 </div>
 
+{{-- ════════════════════════════════════════════════════════════════════════
+     MANAGE CONVENORS MODAL
+════════════════════════════════════════════════════════════════════════ --}}
+<div class="modal fade" id="manageConvenorsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-users me-2"></i>Manage Convenors – {{ $event->name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+
+        {{-- Current convenors list --}}
+        @if($convenors->count())
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Active From</th>
+                <th>Expires</th>
+                <th style="width:90px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach($convenors as $c)
+                <tr>
+                  <td class="align-middle">{{ $c->user->name ?? '—' }}</td>
+                  <td class="align-middle">
+                    <span class="badge {{ $c->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}">
+                      {{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }}
+                    </span>
+                  </td>
+                  <td class="align-middle">
+                    <small>{{ $c->starts_at ? $c->starts_at->format('d M Y') : '—' }}</small>
+                  </td>
+                  <td class="align-middle">
+                    <small>{{ $c->expires_at ? $c->expires_at->format('d M Y') : '—' }}</small>
+                    @if($c->expires_at && !$c->isActive())
+                      <span class="badge bg-danger ms-1" style="font-size:0.65rem">Expired</span>
+                    @endif
+                  </td>
+                  <td class="text-end align-middle">
+                    <button type="button" class="btn btn-icon btn-sm btn-outline-primary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#editConvenorModal{{ $c->id }}"
+                            title="Edit">
+                      <i class="ti ti-edit"></i>
+                    </button>
+                    <form action="{{ route('admin.events.finances.convenor.destroy', $c) }}"
+                          method="POST" class="d-inline"
+                          onsubmit="return confirm('Remove {{ addslashes($c->user->name ?? 'this convenor') }} from this event?')">
+                      @csrf @method('DELETE')
+                      <button class="btn btn-icon btn-sm btn-outline-danger" title="Remove">
+                        <i class="ti ti-trash"></i>
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        @else
+          <p class="text-muted text-center py-3">No convenors assigned yet.</p>
+        @endif
+
+        <hr class="m-0">
+
+        {{-- Add new convenor --}}
+        <div class="p-3">
+          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Convenor</h6>
+          <form action="{{ route('admin.events.finances.convenor.store', $event) }}" method="POST">
+            @csrf
+            <div class="row g-2">
+              <div class="col-md-5">
+                <label class="form-label">User <span class="text-danger">*</span></label>
+                <select name="user_id" class="form-select convenor-user-select" required>
+                  <option value="">Search user...</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Role</label>
+                <select name="role" class="form-select">
+                  <option value="hulp">Assist Convenor</option>
+                  <option value="hoof">Head Convenor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Active From</label>
+                <input type="date" name="starts_at" class="form-control">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Expires</label>
+                <input type="date" name="expires_at" class="form-control">
+              </div>
+              <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="ti ti-user-plus me-1"></i>Add Convenor
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Edit Convenor modals (one per convenor) --}}
+@foreach($convenors as $c)
+  <div class="modal fade" id="editConvenorModal{{ $c->id }}" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form action="{{ route('admin.events.finances.convenor.update', $c) }}" method="POST">
+          @csrf @method('PATCH')
+          <div class="modal-header">
+            <h5 class="modal-title">Edit Convenor – {{ $c->user->name ?? '?' }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Role</label>
+                <select name="role" class="form-select">
+                  <option value="hulp"  {{ $c->role === 'hulp'  ? 'selected' : '' }}>Assist Convenor</option>
+                  <option value="hoof"  {{ $c->role === 'hoof'  ? 'selected' : '' }}>Head Convenor</option>
+                  <option value="admin" {{ $c->role === 'admin' ? 'selected' : '' }}>Admin</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Active From</label>
+                <input type="date" name="starts_at" class="form-control"
+                       value="{{ $c->starts_at?->format('Y-m-d') }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Expires</label>
+                <input type="date" name="expires_at" class="form-control"
+                       value="{{ $c->expires_at?->format('Y-m-d') }}">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+@endforeach
+
+{{-- ════════════════════════════════════════════════════════════════════════
+     MANAGE EXPENSE TYPES MODAL
+════════════════════════════════════════════════════════════════════════ --}}
+<div class="modal fade" id="manageTypesModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-tags me-2"></i>Manage Expense Types</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+
+        {{-- Existing types --}}
+        <table class="table table-sm mb-0" id="expenseTypesTable">
+          <thead class="table-light">
+            <tr>
+              <th>Key</th>
+              <th>Label</th>
+              <th class="text-center">Sort</th>
+              <th class="text-center">System</th>
+              <th style="width:100px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($allExpenseTypes as $et)
+              <tr id="et-row-{{ $et->id }}">
+                <td><code>{{ $et->key }}</code></td>
+                <td>
+                  <span class="et-label-display">{{ $et->label }}</span>
+                  <input type="text" class="form-control form-control-sm et-label-input d-none"
+                         value="{{ $et->label }}" style="max-width:160px">
+                </td>
+                <td class="text-center">
+                  <span class="et-sort-display">{{ $et->sort_order }}</span>
+                  <input type="number" class="form-control form-control-sm et-sort-input d-none text-center"
+                         value="{{ $et->sort_order }}" style="max-width:70px" min="0">
+                </td>
+                <td class="text-center">
+                  @if($et->is_system)
+                    <span class="badge bg-label-info">System</span>
+                  @else
+                    —
+                  @endif
+                </td>
+                <td class="text-end">
+                  @if(!$et->is_system)
+                    <button type="button" class="btn btn-icon btn-sm btn-outline-primary et-edit-btn"
+                            data-id="{{ $et->id }}" title="Edit">
+                      <i class="ti ti-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-icon btn-sm btn-outline-success et-save-btn d-none"
+                            data-id="{{ $et->id }}"
+                            data-url="{{ route('admin.expense-types.update', $et) }}" title="Save">
+                      <i class="ti ti-check"></i>
+                    </button>
+                    <button type="button" class="btn btn-icon btn-sm btn-outline-danger et-delete-btn"
+                            data-id="{{ $et->id }}"
+                            data-url="{{ route('admin.expense-types.destroy', $et) }}"
+                            data-label="{{ $et->label }}" title="Delete">
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  @endif
+                </td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+
+        <hr class="m-0">
+
+        {{-- Add new type --}}
+        <div class="p-3">
+          <h6 class="mb-2"><i class="ti ti-plus me-1"></i>Add Expense Type</h6>
+          <div class="row g-2 align-items-end">
+            <div class="col-md-7">
+              <label class="form-label">Label <span class="text-danger">*</span></label>
+              <input type="text" id="newTypeLabel" class="form-control" placeholder="e.g. Toerusting">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Sort</label>
+              <input type="number" id="newTypeSort" class="form-control" value="100" min="0">
+            </div>
+            <div class="col-md-3">
+              <button type="button" id="addExpenseTypeBtn" class="btn btn-primary w-100">
+                <i class="ti ti-plus me-1"></i>Add
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
+                onclick="location.reload()">Close &amp; Refresh</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 @endsection
 
 @section('page-script')
@@ -877,5 +1143,170 @@
       }
     });
   });
+
+  // ── Convenor user search (Select2 AJAX) ─────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof $ !== 'undefined' && $.fn.select2) {
+      $('.convenor-user-select').select2({
+        ajax: {
+          url: '{{ route('convenor.search-users') }}',
+          dataType: 'json',
+          delay: 250,
+          data: function (params) { return { q: params.term }; },
+          processResults: function (data) { return { results: data }; },
+          cache: true,
+        },
+        placeholder: 'Search by name or email...',
+        minimumInputLength: 2,
+        dropdownParent: $('#manageConvenorsModal'),
+      });
+    }
+  });
+
+  // ── Expense Types CRUD (inline, AJAX) ────────────────────────────────────
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+  // Edit mode toggle
+  document.querySelectorAll('.et-edit-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const row = document.getElementById('et-row-' + btn.dataset.id);
+      row.querySelector('.et-label-display').classList.add('d-none');
+      row.querySelector('.et-label-input').classList.remove('d-none');
+      row.querySelector('.et-sort-display').classList.add('d-none');
+      row.querySelector('.et-sort-input').classList.remove('d-none');
+      row.querySelector('.et-save-btn').classList.remove('d-none');
+      btn.classList.add('d-none');
+    });
+  });
+
+  // Save edited type
+  document.querySelectorAll('.et-save-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const row   = document.getElementById('et-row-' + btn.dataset.id);
+      const label = row.querySelector('.et-label-input').value.trim();
+      const sort  = parseInt(row.querySelector('.et-sort-input').value) || 0;
+      if (!label) return;
+
+      fetch(btn.dataset.url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+        body: JSON.stringify({ label, sort_order: sort }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        row.querySelector('.et-label-display').textContent = data.label;
+        row.querySelector('.et-sort-display').textContent  = data.sort_order;
+        row.querySelector('.et-label-display').classList.remove('d-none');
+        row.querySelector('.et-label-input').classList.add('d-none');
+        row.querySelector('.et-sort-display').classList.remove('d-none');
+        row.querySelector('.et-sort-input').classList.add('d-none');
+        btn.classList.add('d-none');
+        row.querySelector('.et-edit-btn').classList.remove('d-none');
+      })
+      .catch(() => alert('Save failed.'));
+    });
+  });
+
+  // Delete type
+  document.querySelectorAll('.et-delete-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (!confirm('Delete expense type "' + btn.dataset.label + '"?')) return;
+
+      fetch(btn.dataset.url, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+      })
+      .then(r => r.json())
+      .then(() => {
+        document.getElementById('et-row-' + btn.dataset.id)?.remove();
+      })
+      .catch(r => r.json().then(d => alert(d.message ?? 'Delete failed.')));
+    });
+  });
+
+  // Add new type
+  document.getElementById('addExpenseTypeBtn')?.addEventListener('click', function() {
+    const label = document.getElementById('newTypeLabel').value.trim();
+    const sort  = parseInt(document.getElementById('newTypeSort').value) || 100;
+    if (!label) { alert('Please enter a label.'); return; }
+
+    fetch('{{ route('admin.expense-types.store') }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+      body: JSON.stringify({ label, sort_order: sort }),
+    })
+    .then(r => r.json())
+    .then(function(et) {
+      // Append new row to the table
+      const tbody = document.querySelector('#expenseTypesTable tbody');
+      const tr = document.createElement('tr');
+      tr.id = 'et-row-' + et.id;
+      tr.innerHTML = `
+        <td><code>${et.key}</code></td>
+        <td>
+          <span class="et-label-display">${et.label}</span>
+          <input type="text" class="form-control form-control-sm et-label-input d-none" value="${et.label}" style="max-width:160px">
+        </td>
+        <td class="text-center">
+          <span class="et-sort-display">${et.sort_order}</span>
+          <input type="number" class="form-control form-control-sm et-sort-input d-none text-center" value="${et.sort_order}" style="max-width:70px" min="0">
+        </td>
+        <td class="text-center">—</td>
+        <td class="text-end">
+          <button type="button" class="btn btn-icon btn-sm btn-outline-primary et-edit-btn" data-id="${et.id}" title="Edit"><i class="ti ti-edit"></i></button>
+          <button type="button" class="btn btn-icon btn-sm btn-outline-success et-save-btn d-none" data-id="${et.id}" data-url="/expense-types/${et.id}" title="Save"><i class="ti ti-check"></i></button>
+          <button type="button" class="btn btn-icon btn-sm btn-outline-danger et-delete-btn" data-id="${et.id}" data-url="/expense-types/${et.id}" data-label="${et.label}" title="Delete"><i class="ti ti-trash"></i></button>
+        </td>`;
+      tbody.appendChild(tr);
+      // Wire up event listeners for the new row
+      wireTypeRow(tr, et.id);
+      document.getElementById('newTypeLabel').value = '';
+    })
+    .catch(() => alert('Failed to add type.'));
+  });
+
+  function wireTypeRow(tr, id) {
+    tr.querySelector('.et-edit-btn')?.addEventListener('click', function() {
+      tr.querySelector('.et-label-display').classList.add('d-none');
+      tr.querySelector('.et-label-input').classList.remove('d-none');
+      tr.querySelector('.et-sort-display').classList.add('d-none');
+      tr.querySelector('.et-sort-input').classList.remove('d-none');
+      tr.querySelector('.et-save-btn').classList.remove('d-none');
+      tr.querySelector('.et-edit-btn').classList.add('d-none');
+    });
+    tr.querySelector('.et-save-btn')?.addEventListener('click', function() {
+      const label = tr.querySelector('.et-label-input').value.trim();
+      const sort  = parseInt(tr.querySelector('.et-sort-input').value) || 0;
+      if (!label) return;
+      const url = tr.querySelector('.et-save-btn').dataset.url;
+      fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+        body: JSON.stringify({ label, sort_order: sort }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        tr.querySelector('.et-label-display').textContent = data.label;
+        tr.querySelector('.et-sort-display').textContent  = data.sort_order;
+        tr.querySelector('.et-label-display').classList.remove('d-none');
+        tr.querySelector('.et-label-input').classList.add('d-none');
+        tr.querySelector('.et-sort-display').classList.remove('d-none');
+        tr.querySelector('.et-sort-input').classList.add('d-none');
+        tr.querySelector('.et-save-btn').classList.add('d-none');
+        tr.querySelector('.et-edit-btn').classList.remove('d-none');
+      });
+    });
+    tr.querySelector('.et-delete-btn')?.addEventListener('click', function() {
+      const lbl = tr.querySelector('.et-delete-btn').dataset.label;
+      if (!confirm('Delete expense type "' + lbl + '"?')) return;
+      const url = tr.querySelector('.et-delete-btn').dataset.url;
+      fetch(url, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+      })
+      .then(() => tr.remove())
+      .catch(r => r.json().then(d => alert(d.message ?? 'Delete failed.')));
+    });
+  }
 </script>
 @endsection
