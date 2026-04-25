@@ -1513,6 +1513,132 @@ $(document).ready(function() {
    VENUE CONVENORS CRUD (AJAX)
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Inline +/- buttons in expense form ── */
+$(document).on('click', '.vc-add-btn', function() {
+  var $wrapper = $(this).closest('.vc-field-wrapper');
+  $wrapper.find('.vc-add-form').toggleClass('d-none');
+  $wrapper.find('.vc-add-name').val('').focus();
+});
+
+$(document).on('click', '.vc-add-cancel-btn', function() {
+  var $wrapper = $(this).closest('.vc-field-wrapper');
+  $wrapper.find('.vc-add-form').addClass('d-none');
+  $wrapper.find('.vc-add-name').val('');
+});
+
+$(document).on('keydown', '.vc-add-name', function(e) {
+  if (e.key === 'Escape') $(this).closest('.vc-field-wrapper').find('.vc-add-cancel-btn').trigger('click');
+  if (e.key === 'Enter')  { e.preventDefault(); $(this).closest('.vc-field-wrapper').find('.vc-add-save-btn').trigger('click'); }
+});
+
+$(document).on('click', '.vc-add-save-btn', function() {
+  var $saveBtn = $(this);
+  var $wrapper = $saveBtn.closest('.vc-field-wrapper');
+  var $nameInput = $wrapper.find('.vc-add-name');
+  var name = $nameInput.val().trim();
+  if (!name) { $nameInput.focus(); return; }
+
+  var $select   = $wrapper.find('.vc-select');
+  var storeUrl  = $select.data('vc-store-url');
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('_token', '{{ csrf_token() }}');
+
+  $saveBtn.prop('disabled', true);
+
+  fetch(storeUrl, {
+    method: 'POST',
+    body: fd,
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+  })
+  .then(function(r) {
+    return r.json().then(function(d) {
+      if (!r.ok) throw new Error(d.message || 'Error adding venue convenor.');
+      return d;
+    });
+  })
+  .then(function(d) {
+    var vc = d.venueConvenor;
+    var safeHtml = $('<span>').text(vc.name).html();
+
+    // Add option to every .vc-select on the page and select in the current one
+    $('.vc-select').each(function() {
+      $(this).append('<option value="' + safeHtml + '" data-vc-id="' + vc.id + '">' + safeHtml + '</option>');
+    });
+    $select.val(vc.name);
+
+    // Sync manage-modal table if open
+    vcAddRowToModal(vc);
+
+    showFinanceToast(d.message, 'success');
+    $nameInput.val('');
+    $wrapper.find('.vc-add-form').addClass('d-none');
+  })
+  .catch(function(e) { showFinanceToast(e.message, 'danger'); })
+  .finally(function() { $saveBtn.prop('disabled', false); });
+});
+
+$(document).on('click', '.vc-remove-btn', function() {
+  var $select = $(this).closest('.input-group').find('.vc-select');
+  var $selectedOpt = $select.find('option:selected');
+  var id = $selectedOpt.data('vc-id');
+  if (!id) { showFinanceToast('No venue convenor selected.', 'warning'); return; }
+
+  var name = $selectedOpt.text().trim();
+  if (!confirm('Remove "' + name + '" from this event?')) return;
+
+  var destroyUrl = $select.data('vc-destroy-url').replace('__ID__', id);
+  var fd = new FormData();
+  fd.append('_token', '{{ csrf_token() }}');
+  fd.append('_method', 'DELETE');
+
+  fetch(destroyUrl, {
+    method: 'POST',
+    body: fd,
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+  })
+  .then(function(r) {
+    return r.json().then(function(d) {
+      if (!r.ok) throw new Error(d.message || 'Error removing venue convenor.');
+      return d;
+    });
+  })
+  .then(function(d) {
+    $('.vc-select option[data-vc-id="' + id + '"]').remove();
+    $('#vc-row-' + id).remove();
+    showFinanceToast(d.message, 'success');
+  })
+  .catch(function(e) { showFinanceToast(e.message, 'danger'); });
+});
+
+/* ── Helper: add a new VC row to the manage-modal table ── */
+function vcAddRowToModal(vc) {
+  var $emptyMsg = $('#vcEmptyMsg');
+  if ($emptyMsg.length) {
+    $emptyMsg.replaceWith(
+      '<table class="table table-sm mb-0" id="vcTable">' +
+        '<thead class="table-light"><tr><th>Name</th><th style="width:80px"></th></tr></thead>' +
+        '<tbody></tbody>' +
+      '</table>'
+    );
+  }
+  if (!$('#vcTable').length) return;
+  var destroyForm =
+    '<form method="POST" action="' + vc.destroy_url + '" class="d-inline" data-ajax="1"' +
+    ' data-confirm="Remove ' + $('<span>').text(vc.name).html() + ' from this event?">' +
+      '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
+      '<input type="hidden" name="_method" value="DELETE">' +
+      '<button class="btn btn-icon btn-sm btn-outline-danger" title="Remove"><i class="ti ti-trash"></i></button>' +
+    '</form>';
+  $('#vcTable tbody').append(
+    '<tr id="vc-row-' + vc.id + '">' +
+      '<td class="align-middle">' + $('<span>').text(vc.name).html() + '</td>' +
+      '<td class="text-end align-middle">' + destroyForm + '</td>' +
+    '</tr>'
+  );
+}
+
+/* ── Add via manage-modal form ── */
 $('#addVenueConvenorForm').on('submit', function(e) {
   e.preventDefault();
   var form = this;
@@ -1538,33 +1664,15 @@ $('#addVenueConvenorForm').on('submit', function(e) {
   })
   .then(function(d) {
     var vc = d.venueConvenor;
+    var safeHtml = $('<span>').text(vc.name).html();
 
-    // Add row to modal table
-    var $emptyMsg = $('#vcEmptyMsg');
-    if ($emptyMsg.length) {
-      $emptyMsg.replaceWith(
-        '<table class="table table-sm mb-0" id="vcTable">' +
-          '<thead class="table-light"><tr><th>Name</th><th style="width:80px"></th></tr></thead>' +
-          '<tbody></tbody>' +
-        '</table>'
-      );
-    }
-    var destroyForm =
-      '<form method="POST" action="' + vc.destroy_url + '" class="d-inline" data-ajax="1"' +
-      ' data-confirm="Remove ' + $('<span>').text(vc.name).html() + ' from this event?">' +
-        '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
-        '<input type="hidden" name="_method" value="DELETE">' +
-        '<button class="btn btn-icon btn-sm btn-outline-danger" title="Remove"><i class="ti ti-trash"></i></button>' +
-      '</form>';
-    $('#vcTable tbody').append(
-      '<tr id="vc-row-' + vc.id + '">' +
-        '<td class="align-middle">' + $('<span>').text(vc.name).html() + '</td>' +
-        '<td class="text-end align-middle">' + destroyForm + '</td>' +
-      '</tr>'
-    );
+    // Sync modal table
+    vcAddRowToModal(vc);
 
-    // Add to datalist
-    $('#venueConvenorSuggestions').append('<option value="' + $('<span>').text(vc.name).html() + '">');
+    // Add option to every .vc-select on the page
+    $('.vc-select').each(function() {
+      $(this).append('<option value="' + safeHtml + '" data-vc-id="' + vc.id + '">' + safeHtml + '</option>');
+    });
 
     showFinanceToast(d.message, 'success');
     $nameInput.val('');

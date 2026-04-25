@@ -42,16 +42,36 @@
 
   <div class="col-md-6">
     <label class="form-label">Venue Convenor / Recipient</label>
-    <input type="text" name="recipient_name" class="form-control"
-           list="venueConvenorSuggestions"
-           value="{{ old('recipient_name', $expense?->recipient_name) }}"
-           placeholder="e.g. Ingrid Le Roux"
-           autocomplete="off">
-    <datalist id="venueConvenorSuggestions">
-      @foreach($venueConvenors ?? [] as $vc)
-        <option value="{{ $vc->name }}">
-      @endforeach
-    </datalist>
+    <div class="vc-field-wrapper">
+      <div class="input-group">
+        <select name="recipient_name" class="form-select vc-select"
+                data-vc-store-url="{{ route('admin.events.finances.venue-convenor.store', $event) }}"
+                data-vc-destroy-url="{{ route('admin.events.finances.venue-convenor.destroy', ['venueConvenor' => '__ID__']) }}">
+          <option value="">— none —</option>
+          @foreach($venueConvenors ?? [] as $vc)
+            <option value="{{ $vc->name }}" data-vc-id="{{ $vc->id }}"
+                    {{ old('recipient_name', $expense?->recipient_name) == $vc->name ? 'selected' : '' }}>
+              {{ $vc->name }}
+            </option>
+          @endforeach
+        </select>
+        <button type="button" class="btn btn-outline-success vc-add-btn" title="Add venue convenor">
+          <i class="ti ti-plus"></i>
+        </button>
+        <button type="button" class="btn btn-outline-danger vc-remove-btn" title="Remove selected venue convenor">
+          <i class="ti ti-minus"></i>
+        </button>
+      </div>
+      <div class="vc-add-form mt-2 d-none">
+        <div class="input-group input-group-sm">
+          <input type="text" class="form-control vc-add-name" placeholder="New convenor name" maxlength="150">
+          <button type="button" class="btn btn-success vc-add-save-btn">
+            <i class="ti ti-check me-1"></i>Save
+          </button>
+          <button type="button" class="btn btn-outline-secondary vc-add-cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
     <small class="text-muted">Person paid to convene a venue, or other payee.</small>
   </div>
 
