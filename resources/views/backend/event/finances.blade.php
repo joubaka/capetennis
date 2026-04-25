@@ -956,8 +956,11 @@
             <div class="row g-2">
               <div class="col-md-8">
                 <label class="form-label">User <span class="text-danger">*</span></label>
-                <select name="user_id" class="form-select convenor-user-select" required>
-                  <option value="">Search user...</option>
+                <select name="user_id" class="form-select" required>
+                  <option value="">— Select user —</option>
+                  @foreach($allUsers as $u)
+                    <option value="{{ $u->id }}">{{ $u->name }} ({{ $u->email }})</option>
+                  @endforeach
                 </select>
               </div>
               <div class="col-md-4">

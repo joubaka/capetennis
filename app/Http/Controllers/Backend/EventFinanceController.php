@@ -141,6 +141,9 @@ class EventFinanceController extends Controller
         // All expense types including system types (for the manage-types modal)
         $allExpenseTypes = ExpenseType::ordered()->get();
 
+        // All users for the add-convenor dropdown
+        $allUsers = User::orderBy('name')->get(['id', 'name', 'email']);
+
         return view('backend.event.finances', compact(
             'event',
             'transactions',
@@ -167,7 +170,8 @@ class EventFinanceController extends Controller
             'pendingReimbursement',
             'recon',
             'budgetCapWarning',
-            'netProfit'
+            'netProfit',
+            'allUsers'
         ));
     }
 
