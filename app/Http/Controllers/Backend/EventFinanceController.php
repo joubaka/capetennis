@@ -44,6 +44,7 @@ class EventFinanceController extends Controller
         foreach ($transactions as $t) {
             $items     = $t->order?->items ?? collect();
             $itemCount = $items->count();
+            // Skip transactions with no order items to avoid division by zero below
             if ($itemCount === 0) {
                 continue;
             }
