@@ -113,19 +113,28 @@ class EventFinanceController extends Controller
         $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
 
         // ── Per-convenor totals for reconciliation (operational only) ─────
-        $recon = $convenors->map(function ($convenor) use ($operationalExpenses) {
+        $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $netProfit) {
             $paid = $operationalExpenses
                 ->where('paid_by_convenor_id', $convenor->id)
                 ->sum(fn($e) => $e->calculatedAmount());
 
+            $profitSharePct    = (float) ($convenor->profit_share_pct ?? 0);
+            $profitShareAmount = $netProfit > 0 ? round($netProfit * $profitSharePct / 100, 2) : 0.0;
+
+            $reimbursed = $operationalExpenses
+                ->where('paid_by_convenor_id', $convenor->id)
+                ->whereNotNull('reimbursed_at')
+                ->sum(fn($e) => $e->calculatedAmount());
+
             return [
-                'convenor'   => $convenor,
-                'total_paid' => $paid,
-                'owed_back'  => $paid,
-                'reimbursed' => $operationalExpenses
-                    ->where('paid_by_convenor_id', $convenor->id)
-                    ->whereNotNull('reimbursed_at')
-                    ->sum(fn($e) => $e->calculatedAmount()),
+                'convenor'           => $convenor,
+                'total_paid'         => $paid,
+                'owed_back'          => $paid,
+                'reimbursed'         => $reimbursed,
+                'profit_share_pct'   => $profitSharePct,
+                'profit_share_amount'=> $profitShareAmount,
+                // Final payout = expenses owed back + profit share
+                'final_payout'       => ($paid - $reimbursed) + $profitShareAmount,
             ];
         });
 
@@ -468,10 +477,11 @@ class EventFinanceController extends Controller
     public function storeConvenor(Request $request, Event $event)
     {
         $validated = $request->validate([
-            'user_id'    => 'required|exists:users,id',
-            'role'       => 'nullable|string|max:20',
-            'starts_at'  => 'nullable|date',
-            'expires_at' => 'nullable|date|after_or_equal:starts_at',
+            'user_id'          => 'required|exists:users,id',
+            'role'             => 'nullable|string|max:20',
+            'profit_share_pct' => 'nullable|numeric|min:0|max:100',
+            'starts_at'        => 'nullable|date',
+            'expires_at'       => 'nullable|date|after_or_equal:starts_at',
         ]);
 
         $exists = EventConvenor::where('event_id', $event->id)
