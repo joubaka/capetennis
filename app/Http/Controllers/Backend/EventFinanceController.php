@@ -592,6 +592,7 @@ class EventFinanceController extends Controller
 
         $added    = 0;
         $skipped  = 0;
+        $created  = [];
 
         foreach ($request->input('user_ids') as $userId) {
             $exists = EventConvenor::where('event_id', $event->id)
@@ -603,7 +604,7 @@ class EventFinanceController extends Controller
                 continue;
             }
 
-            EventConvenor::create([
+            $convenor = EventConvenor::create([
                 'event_id'         => $event->id,
                 'user_id'          => $userId,
                 'role'             => $role,
@@ -612,6 +613,13 @@ class EventFinanceController extends Controller
                 'expires_at'       => $expiresAt ?? null,
             ]);
 
+            $convenor->load('user');
+            $created[] = [
+                'id'          => $convenor->id,
+                'user_name'   => $convenor->user->name ?? 'Unknown',
+                'role'        => $convenor->role,
+                'destroy_url' => route('admin.events.finances.convenor.destroy', $convenor),
+            ];
             $added++;
         }
 
@@ -628,7 +636,7 @@ class EventFinanceController extends Controller
         }
 
         return $request->wantsJson()
-            ? response()->json(['message' => $message])
+            ? response()->json(['message' => $message, 'convenors' => $created])
             : back()->with('success', $message);
     }
 
@@ -657,10 +665,11 @@ class EventFinanceController extends Controller
 
     public function destroyConvenor(EventConvenor $convenor)
     {
+        $id = $convenor->id;
         $convenor->delete();
 
         return request()->wantsJson()
-            ? response()->json(['message' => 'Convenor removed.'])
+            ? response()->json(['message' => 'Convenor removed.', 'id' => $id])
             : back()->with('success', 'Convenor removed.');
     }
 }
