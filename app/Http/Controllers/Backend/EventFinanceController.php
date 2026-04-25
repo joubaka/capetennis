@@ -641,7 +641,7 @@ class EventFinanceController extends Controller
             'name'     => $validated['name'],
         ]);
 
-        $message = "Venue convenor "{$vc->name}" added.";
+        $message = "Venue convenor \"{$vc->name}\" added.";
 
         return $request->wantsJson()
             ? response()->json([
@@ -662,7 +662,7 @@ class EventFinanceController extends Controller
         $venueConvenor->delete();
 
         return request()->wantsJson()
-            ? response()->json(['message' => "Venue convenor "{$name}" removed.", 'id' => $id])
-            : back()->with('success', "Venue convenor "{$name}" removed.");
+            ? response()->json(['message' => "Venue convenor \"{$name}\" removed.", 'id' => $id])
+            : back()->with('success', "Venue convenor \"{$name}\" removed.");
     }
 }
