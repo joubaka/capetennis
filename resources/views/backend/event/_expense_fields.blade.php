@@ -40,65 +40,12 @@
     @endif
   </div>
 
-  @if(!empty($multiPaidBy))
-  {{-- Inline on-the-fly convenor management --}}
-  <div class="col-12">
-    <div class="border rounded p-2 bg-body-secondary" id="inlineConvenorPanel">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <small class="fw-semibold"><i class="ti ti-users me-1"></i>Event Directors (add / remove on the fly)</small>
-      </div>
-
-      {{-- Current list --}}
-      <div id="inlineConvenorList">
-        @forelse($convenors as $c)
-          <div class="d-flex align-items-center py-1 border-bottom inline-convenor-row"
-               data-id="{{ $c->id }}"
-               data-destroy-url="{{ route('admin.events.finances.convenor.destroy', $c) }}">
-            <div class="flex-grow-1">
-              <span class="small">{{ $c->user->name ?? 'Unknown' }}</span>
-              <span class="badge ms-1 {{ $c->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }}" style="font-size:.65rem">
-                {{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }}
-              </span>
-            </div>
-            <button type="button" class="btn btn-icon btn-xs btn-outline-danger inline-remove-convenor" title="Remove">
-              <i class="ti ti-x" style="font-size:.7rem"></i>
-            </button>
-          </div>
-        @empty
-          <div class="text-muted small text-center py-2" id="noConvenorMsg">No event directors assigned yet.</div>
-        @endforelse
-      </div>
-
-      {{-- Add new director row --}}
-      <div class="mt-2 pt-1">
-        <div class="row g-1 align-items-end">
-          <div class="col">
-            <select id="inlineConvenorUserSearch" class="form-select form-select-sm" style="width:100%"></select>
-          </div>
-          <div class="col-auto">
-            <select id="inlineConvenorRole" class="form-select form-select-sm" style="min-width:90px">
-              <option value="hulp">Assist</option>
-              <option value="hoof">Head</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div class="col-auto">
-            <button type="button" id="inlineAddConvenorBtn" class="btn btn-sm btn-primary"
-                    data-store-url="{{ route('admin.events.finances.convenor.store', $event) }}">
-              <i class="ti ti-plus"></i> Add
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  @endif
-
   <div class="col-md-6">
-    <label class="form-label">Recipient Name</label>
+    <label class="form-label">Venue Convenor / Recipient</label>
     <input type="text" name="recipient_name" class="form-control"
            value="{{ old('recipient_name', $expense?->recipient_name) }}"
            placeholder="e.g. Ingrid Le Roux">
+    <small class="text-muted">Person paid to convene a venue, or other payee.</small>
   </div>
 
   <div class="col-md-6">
