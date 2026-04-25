@@ -58,7 +58,7 @@
         <button type="button" class="btn btn-outline-success vc-add-btn" title="Add venue convenor">
           <i class="ti ti-plus"></i>
         </button>
-        <button type="button" class="btn btn-outline-danger vc-remove-btn" title="Remove selected venue convenor">
+        <button type="button" class="btn btn-outline-danger vc-remove-btn d-none" title="Remove selected venue convenor">
           <i class="ti ti-minus"></i>
         </button>
       </div>

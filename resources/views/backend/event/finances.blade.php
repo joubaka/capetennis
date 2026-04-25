@@ -1514,6 +1514,14 @@ $(document).ready(function() {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Inline +/- buttons in expense form ── */
+
+/* Show/hide the − button based on whether a real VC is selected */
+$(document).on('change', '.vc-select', function() {
+  var $btn = $(this).closest('.input-group').find('.vc-remove-btn');
+  var hasId = !!$(this).find('option:selected').data('vc-id');
+  $btn.toggleClass('d-none', !hasId);
+});
+
 $(document).on('click', '.vc-add-btn', function() {
   var $wrapper = $(this).closest('.vc-field-wrapper');
   $wrapper.find('.vc-add-form').toggleClass('d-none');
@@ -1605,6 +1613,11 @@ $(document).on('click', '.vc-remove-btn', function() {
   })
   .then(function(d) {
     $('.vc-select option[data-vc-id="' + id + '"]').remove();
+    // Re-hide the − button on every select that no longer has a vc-id selected
+    $('.vc-select').each(function() {
+      var hasId = !!$(this).find('option:selected').data('vc-id');
+      $(this).closest('.input-group').find('.vc-remove-btn').toggleClass('d-none', !hasId);
+    });
     $('#vc-row-' + id).remove();
     showFinanceToast(d.message, 'success');
   })
