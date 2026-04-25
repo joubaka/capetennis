@@ -115,6 +115,10 @@ class EventFinanceController extends Controller
         $pendingApproval      = $operationalExpenses->whereNull('approved_at')->count();
         $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
 
+        // Net profit: grandTotalIncome is already net of system fees;
+        // subtract only operational expenses to avoid double-counting.
+        $netProfit = $grandTotalIncome - $totalExpenses;
+
         // ── Per-convenor totals for reconciliation (operational only) ─────
         $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $netProfit) {
             $paid = $operationalExpenses
@@ -145,10 +149,6 @@ class EventFinanceController extends Controller
         $budgetCapWarning = $event->budget_cap
             ? ($totalExpenses / $event->budget_cap) >= 0.9
             : false;
-
-        // Net profit: grandTotalIncome is already net of system fees;
-        // subtract only operational expenses to avoid double-counting.
-        $netProfit = $grandTotalIncome - $totalExpenses;
 
         // All expense types including system types (for the manage-types modal)
         $allExpenseTypes = ExpenseType::ordered()->get();
