@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use App\Models\EventType;
 use App\Models\EventIncomeItem;
+use App\Models\EventVenueConvenor;
 
 class Event extends Model
 {
@@ -200,6 +201,12 @@ class Event extends Model
   public function convenors()
   {
     return $this->hasMany(EventConvenor::class, 'event_id', 'id');
+  }
+
+  public function venueConvenors()
+  {
+    return $this->hasMany(EventVenueConvenor::class, 'event_id', 'id')
+      ->orderBy('name');
   }
 
   public function incomeItems()

@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventConvenor;
 use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
+use App\Models\EventVenueConvenor;
 use App\Models\ExpenseType;
 use App\Models\Transaction;
 use App\Models\User;
@@ -153,6 +154,9 @@ class EventFinanceController extends Controller
         // All expense types including system types (for the manage-types modal)
         $allExpenseTypes = ExpenseType::ordered()->get();
 
+        // ── Venue convenors for this event ────────────────────────────────
+        $venueConvenors = $event->venueConvenors()->get();
+
         // ── Per-venue entry counts (via draws linked to this event) ──────
         // draws → draw_venues → venues, entries counted from category_event_registrations
         $venueEntrySummary = Venue::query()
@@ -197,7 +201,8 @@ class EventFinanceController extends Controller
             'recon',
             'budgetCapWarning',
             'netProfit',
-            'venueEntrySummary'
+            'venueEntrySummary',
+            'venueConvenors'
         ));
     }
 
@@ -608,5 +613,56 @@ class EventFinanceController extends Controller
         return request()->wantsJson()
             ? response()->json(['message' => 'Convenor removed.', 'id' => $id])
             : back()->with('success', 'Convenor removed.');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  VENUE CONVENORS – CRUD                                             */
+    /* ------------------------------------------------------------------ */
+
+    public function storeVenueConvenor(Request $request, Event $event)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:150',
+        ]);
+
+        $exists = EventVenueConvenor::where('event_id', $event->id)
+            ->where('name', $validated['name'])
+            ->exists();
+
+        if ($exists) {
+            $message = 'A venue convenor with that name already exists for this event.';
+            return $request->wantsJson()
+                ? response()->json(['message' => $message], 422)
+                : back()->with('error', $message);
+        }
+
+        $vc = EventVenueConvenor::create([
+            'event_id' => $event->id,
+            'name'     => $validated['name'],
+        ]);
+
+        $message = "Venue convenor "{$vc->name}" added.";
+
+        return $request->wantsJson()
+            ? response()->json([
+                'message'       => $message,
+                'venueConvenor' => [
+                    'id'          => $vc->id,
+                    'name'        => $vc->name,
+                    'destroy_url' => route('admin.events.finances.venue-convenor.destroy', $vc),
+                ],
+            ])
+            : back()->with('success', $message);
+    }
+
+    public function destroyVenueConvenor(EventVenueConvenor $venueConvenor)
+    {
+        $id   = $venueConvenor->id;
+        $name = $venueConvenor->name;
+        $venueConvenor->delete();
+
+        return request()->wantsJson()
+            ? response()->json(['message' => "Venue convenor "{$name}" removed.", 'id' => $id])
+            : back()->with('success', "Venue convenor "{$name}" removed.");
     }
 }

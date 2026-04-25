@@ -43,8 +43,15 @@
   <div class="col-md-6">
     <label class="form-label">Venue Convenor / Recipient</label>
     <input type="text" name="recipient_name" class="form-control"
+           list="venueConvenorSuggestions"
            value="{{ old('recipient_name', $expense?->recipient_name) }}"
-           placeholder="e.g. Ingrid Le Roux">
+           placeholder="e.g. Ingrid Le Roux"
+           autocomplete="off">
+    <datalist id="venueConvenorSuggestions">
+      @foreach($venueConvenors ?? [] as $vc)
+        <option value="{{ $vc->name }}">
+      @endforeach
+    </datalist>
     <small class="text-muted">Person paid to convene a venue, or other payee.</small>
   </div>
 

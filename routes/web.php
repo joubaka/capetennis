@@ -558,6 +558,17 @@ Route::delete(
   [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyConvenor']
 )->name('admin.events.finances.convenor.destroy');
 
+// Venue Convenors CRUD (per-event, from finance page)
+Route::post(
+  'event/{event}/finances/venue-convenor',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'storeVenueConvenor']
+)->name('admin.events.finances.venue-convenor.store');
+
+Route::delete(
+  'event/finances/venue-convenor/{venueConvenor}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyVenueConvenor']
+)->name('admin.events.finances.venue-convenor.destroy');
+
 // Expense Types CRUD (user-managed)
 Route::get(
   'expense-types',

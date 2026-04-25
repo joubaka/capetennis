@@ -67,6 +67,9 @@
         <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
           <i class="ti ti-users me-1"></i>Event Directors
         </button>
+        <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#manageVenueConvenorsModal">
+          <i class="ti ti-map-pin me-1"></i>Venue Convenors
+        </button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#manageTypesModal">
           <i class="ti ti-tags me-1"></i>Expense Types
         </button>
@@ -937,7 +940,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          @include('backend.event._expense_fields', ['expense' => null, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes, 'multiPaidBy' => true])
+          @include('backend.event._expense_fields', ['expense' => null, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes, 'multiPaidBy' => true, 'venueConvenors' => $venueConvenors])
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -961,7 +964,7 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            @include('backend.event._expense_fields', ['expense' => $expense, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes])
+            @include('backend.event._expense_fields', ['expense' => $expense, 'convenors' => $convenors, 'expenseTypes' => $expenseTypes, 'venueConvenors' => $venueConvenors])
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1173,6 +1176,83 @@
     </div>
   </div>
 @endforeach
+
+{{-- ════════════════════════════════════════════════════════════════════════
+     MANAGE VENUE CONVENORS MODAL
+════════════════════════════════════════════════════════════════════════ --}}
+<div class="modal fade" id="manageVenueConvenorsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-map-pin me-2"></i>Venue Convenors – {{ $event->name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+
+        {{-- Current venue convenors list --}}
+        <div id="venueConvenorList">
+          @if($venueConvenors->count())
+            <table class="table table-sm mb-0" id="vcTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th style="width:80px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($venueConvenors as $vc)
+                  <tr id="vc-row-{{ $vc->id }}">
+                    <td class="align-middle">{{ $vc->name }}</td>
+                    <td class="text-end align-middle">
+                      <form action="{{ route('admin.events.finances.venue-convenor.destroy', $vc) }}"
+                            method="POST" class="d-inline"
+                            data-ajax="1" data-confirm="Remove {{ $vc->name }} from this event?">
+                        @csrf @method('DELETE')
+                        <button class="btn btn-icon btn-sm btn-outline-danger" title="Remove">
+                          <i class="ti ti-trash"></i>
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          @else
+            <p class="text-muted text-center py-3" id="vcEmptyMsg">No venue convenors added yet.</p>
+          @endif
+        </div>
+
+        <hr class="m-0">
+
+        {{-- Add new venue convenor --}}
+        <div class="p-3">
+          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Venue Convenor</h6>
+          <form action="{{ route('admin.events.finances.venue-convenor.store', $event) }}" method="POST"
+                data-ajax="1" data-modal="manageVenueConvenorsModal" id="addVenueConvenorForm">
+            @csrf
+            <div class="row g-2 align-items-end">
+              <div class="col">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control"
+                       placeholder="e.g. Ingrid Le Roux" required maxlength="150">
+                <small class="text-muted">The person hired to convene a venue on behalf of the directors.</small>
+              </div>
+              <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="ti ti-plus me-1"></i>Add
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {{-- ════════════════════════════════════════════════════════════════════════
      MANAGE EXPENSE TYPES MODAL
@@ -1427,6 +1507,70 @@ $(document).ready(function() {
       });
     }
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VENUE CONVENORS CRUD (AJAX)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+$('#addVenueConvenorForm').on('submit', function(e) {
+  e.preventDefault();
+  var form = this;
+  var $btn = $(form).find('[type=submit]');
+  var $nameInput = $(form).find('[name=name]');
+  var name = $nameInput.val().trim();
+  if (!name) return;
+
+  $btn.prop('disabled', true);
+
+  var fd = new FormData(form);
+
+  fetch(form.action, {
+    method:  'POST',
+    body:    fd,
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+  })
+  .then(function(r) {
+    return r.json().then(function(d) {
+      if (!r.ok) throw new Error(d.message || 'Error adding venue convenor.');
+      return d;
+    });
+  })
+  .then(function(d) {
+    var vc = d.venueConvenor;
+
+    // Add row to modal table
+    var $emptyMsg = $('#vcEmptyMsg');
+    if ($emptyMsg.length) {
+      $emptyMsg.replaceWith(
+        '<table class="table table-sm mb-0" id="vcTable">' +
+          '<thead class="table-light"><tr><th>Name</th><th style="width:80px"></th></tr></thead>' +
+          '<tbody></tbody>' +
+        '</table>'
+      );
+    }
+    var destroyForm =
+      '<form method="POST" action="' + vc.destroy_url + '" class="d-inline" data-ajax="1"' +
+      ' data-confirm="Remove ' + $('<span>').text(vc.name).html() + ' from this event?">' +
+        '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
+        '<input type="hidden" name="_method" value="DELETE">' +
+        '<button class="btn btn-icon btn-sm btn-outline-danger" title="Remove"><i class="ti ti-trash"></i></button>' +
+      '</form>';
+    $('#vcTable tbody').append(
+      '<tr id="vc-row-' + vc.id + '">' +
+        '<td class="align-middle">' + $('<span>').text(vc.name).html() + '</td>' +
+        '<td class="text-end align-middle">' + destroyForm + '</td>' +
+      '</tr>'
+    );
+
+    // Add to datalist
+    $('#venueConvenorSuggestions').append('<option value="' + $('<span>').text(vc.name).html() + '">');
+
+    showFinanceToast(d.message, 'success');
+    $nameInput.val('');
+  })
+  .catch(function(e) { showFinanceToast(e.message, 'danger'); })
+  .finally(function() { $btn.prop('disabled', false); });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
