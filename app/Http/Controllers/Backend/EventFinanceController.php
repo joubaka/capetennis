@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
+use App\Models\EventConvenor;
 use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
+use App\Models\ExpenseType;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -135,6 +138,9 @@ class EventFinanceController extends Controller
         // subtract only operational expenses to avoid double-counting.
         $netProfit = $grandTotalIncome - $totalExpenses;
 
+        // All expense types including system types (for the manage-types modal)
+        $allExpenseTypes = ExpenseType::ordered()->get();
+
         return view('backend.event.finances', compact(
             'event',
             'transactions',
@@ -151,6 +157,7 @@ class EventFinanceController extends Controller
             'convenors',
             'expenses',
             'expenseTypes',
+            'allExpenseTypes',
             'expensesByConvenor',
             'expensesByType',
             'totalExpenses',
@@ -346,21 +353,7 @@ class EventFinanceController extends Controller
 
     private function expenseTypes(): array
     {
-        return [
-            'balls'           => 'Balle',
-            'venue'           => 'Bane (Venue)',
-            'convenors'       => 'Convenors',
-            'medals'          => 'Medalies',
-            'couriers'        => 'Koeriersdiens',
-            'airtime'         => 'Airtime/Data',
-            'petrol'          => 'Petrol',
-            'admin_fee'       => 'Adminfooi',
-            'accommodation'   => 'Akkommodasie',
-            'extras'          => 'Ekstra\'s',
-            'payfast'         => 'PayFast Fooie',
-            'cape_tennis_fee' => 'Cape Tennis Fooi',
-            'other'           => 'Ander',
-        ];
+        return ExpenseType::asOptions();
     }
 
     /**
@@ -448,5 +441,61 @@ class EventFinanceController extends Controller
                 $ctRow->update($ctData);
             }
         }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  CONVENORS – CRUD (per event, called from finance page)             */
+    /* ------------------------------------------------------------------ */
+
+    public function storeConvenor(Request $request, Event $event)
+    {
+        $validated = $request->validate([
+            'user_id'    => 'required|exists:users,id',
+            'role'       => 'nullable|string|max:20',
+            'starts_at'  => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:starts_at',
+        ]);
+
+        $exists = EventConvenor::where('event_id', $event->id)
+            ->where('user_id', $validated['user_id'])
+            ->exists();
+
+        if ($exists) {
+            return back()->with('error', 'This user is already a convenor for this event.');
+        }
+
+        EventConvenor::create([
+            'event_id'   => $event->id,
+            'user_id'    => $validated['user_id'],
+            'role'       => $validated['role'] ?? 'hulp',
+            'starts_at'  => $validated['starts_at'] ?? null,
+            'expires_at' => $validated['expires_at'] ?? null,
+        ]);
+
+        return back()->with('success', 'Convenor added.');
+    }
+
+    public function updateConvenor(Request $request, EventConvenor $convenor)
+    {
+        $validated = $request->validate([
+            'role'       => 'nullable|string|max:20',
+            'starts_at'  => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:starts_at',
+        ]);
+
+        $convenor->update([
+            'role'       => $validated['role'] ?? $convenor->role,
+            'starts_at'  => $validated['starts_at'] ?? null,
+            'expires_at' => $validated['expires_at'] ?? null,
+        ]);
+
+        return back()->with('success', 'Convenor updated.');
+    }
+
+    public function destroyConvenor(EventConvenor $convenor)
+    {
+        $convenor->delete();
+
+        return back()->with('success', 'Convenor removed.');
     }
 }

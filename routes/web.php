@@ -542,6 +542,43 @@ Route::delete(
   [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyIncomeItem']
 )->name('admin.events.finances.income.destroy');
 
+// Convenors CRUD (per-event, from finance page)
+Route::post(
+  'event/{event}/finances/convenor',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'storeConvenor']
+)->name('admin.events.finances.convenor.store');
+
+Route::patch(
+  'event/finances/convenor/{convenor}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'updateConvenor']
+)->name('admin.events.finances.convenor.update');
+
+Route::delete(
+  'event/finances/convenor/{convenor}',
+  [\App\Http\Controllers\Backend\EventFinanceController::class, 'destroyConvenor']
+)->name('admin.events.finances.convenor.destroy');
+
+// Expense Types CRUD (user-managed)
+Route::get(
+  'expense-types',
+  [\App\Http\Controllers\Backend\ExpenseTypeController::class, 'index']
+)->name('admin.expense-types.index');
+
+Route::post(
+  'expense-types',
+  [\App\Http\Controllers\Backend\ExpenseTypeController::class, 'store']
+)->name('admin.expense-types.store');
+
+Route::patch(
+  'expense-types/{expenseType}',
+  [\App\Http\Controllers\Backend\ExpenseTypeController::class, 'update']
+)->name('admin.expense-types.update');
+
+Route::delete(
+  'expense-types/{expenseType}',
+  [\App\Http\Controllers\Backend\ExpenseTypeController::class, 'destroy']
+)->name('admin.expense-types.destroy');
+
 
 /////////////////result
 
