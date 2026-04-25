@@ -1515,6 +1515,29 @@ $(document).ready(function() {
 
 /* ── Inline +/- buttons in expense form ── */
 
+/* Show VC row when "Add venue convenor / payee" link is clicked */
+$(document).on('click', '.vc-show-link', function(e) {
+  e.preventDefault();
+  var $row = $(this).closest('.row');
+  $row.find('.vc-col-wrapper').removeClass('d-none');
+  $(this).closest('small').remove();
+});
+
+/* Hide VC row and clear selection when "Remove" link is clicked */
+$(document).on('click', '.vc-hide-link', function(e) {
+  e.preventDefault();
+  var $col = $(this).closest('.vc-col-wrapper');
+  var $row = $col.closest('.row');
+  // Clear select back to "— none —"
+  $col.find('.vc-select').val('').trigger('change');
+  $col.addClass('d-none');
+  // Re-add the "Add venue convenor" toggle link to the description col
+  if (!$row.find('.vc-show-link').length) {
+    $row.find('[name="description"]').closest('.col-md-6')
+      .append('<small><a href="#" class="vc-show-link text-muted"><i class="ti ti-user-plus"></i> Add venue convenor / payee</a></small>');
+  }
+});
+
 /* Show/hide the − button based on whether a real VC is selected */
 $(document).on('change', '.vc-select', function() {
   var $btn = $(this).closest('.input-group').find('.vc-remove-btn');

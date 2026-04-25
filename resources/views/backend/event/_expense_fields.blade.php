@@ -40,7 +40,7 @@
     @endif
   </div>
 
-  <div class="col-md-6">
+  <div class="col-md-6 vc-col-wrapper{{ old('recipient_name', $expense?->recipient_name) ? '' : ' d-none' }}">
     <label class="form-label">Venue Convenor / Recipient</label>
     <div class="vc-field-wrapper">
       <div class="input-group">
@@ -72,7 +72,10 @@
         </div>
       </div>
     </div>
-    <small class="text-muted">Person paid to convene a venue, or other payee.</small>
+    <small class="text-muted">
+      Person paid to convene a venue, or other payee.
+      <a href="#" class="vc-hide-link ms-2 text-muted"><i class="ti ti-x"></i> Remove</a>
+    </small>
   </div>
 
   <div class="col-md-6">
@@ -80,6 +83,9 @@
     <input type="text" name="description" class="form-control"
            value="{{ old('description', $expense?->description) }}"
            placeholder="Optional description">
+    @if(!old('recipient_name', $expense?->recipient_name))
+      <small><a href="#" class="vc-show-link text-muted"><i class="ti ti-user-plus"></i> Add venue convenor / payee</a></small>
+    @endif
   </div>
 
   <div class="col-md-4">
