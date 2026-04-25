@@ -205,13 +205,14 @@
 
             {{-- ── PayFast fee deduction row ── --}}
             @if(abs($totalPayfastFees) > 0)
+              @php $payfastPerEntry = $totalEntries > 0 ? abs($totalPayfastFees) / $totalEntries : 0; @endphp
               <tr class="deduction-row">
                 <td class="ps-4">
                   <i class="ti ti-minus me-1"></i>PayFast fees deducted
-                  <small class="text-muted ms-1">(auto-synced)</small>
+                  <small class="text-muted ms-1">({{ $totalEntries }} × ~R{{ number_format($payfastPerEntry, 2) }})</small>
                 </td>
-                <td class="text-center">—</td>
-                <td class="text-end">—</td>
+                <td class="text-center">{{ $totalEntries }}</td>
+                <td class="text-end">~R {{ number_format($payfastPerEntry, 2) }}</td>
                 <td><small class="text-muted">PayFast</small></td>
                 <td>—</td>
                 <td class="text-end fw-semibold">−R {{ number_format(abs($totalPayfastFees), 2) }}</td>

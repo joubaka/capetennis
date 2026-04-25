@@ -79,7 +79,7 @@ class EventFinanceController extends Controller
             ->get();
 
         // Auto-sync (create or update) PayFast and Cape Tennis Fee rows
-        $this->autoSyncSystemExpenses($event, $totalPayfastFees, $totalCapeTennisFees, $expenses);
+        $this->autoSyncSystemExpenses($event, $totalPayfastFees, $totalCapeTennisFees, $expenses, $totalEntries, $feePerEntry);
 
         // Refresh after potential sync
         $expenses = EventExpense::where('event_id', $event->id)
@@ -382,42 +382,70 @@ class EventFinanceController extends Controller
      * Auto-create or update system expense rows for PayFast fees and Cape Tennis fees
      * derived from actual transaction data. Rows are updated whenever the live totals
      * change (e.g. after new registrations come in).
+     *
+     * Quantity and unit_price are stored so the "Quantity × Price" column renders
+     * meaningful data rather than dashes:
+     *   - Cape Tennis fee: entries × fee_per_entry
+     *   - PayFast fee:     entries × avg_payfast_fee_per_entry (percentage-based, so this
+     *                      is an effective/average rate — not a fixed tariff)
      */
     private function autoSyncSystemExpenses(
         Event $event,
         float $totalPayfastFees,
         float $totalCapeTennisFees,
-        $expenses
+        $expenses,
+        int   $totalEntries = 0,
+        float $feePerEntry  = 0.0
     ): void {
         $payfastRow = $expenses->where('expense_type', 'payfast')->first();
         $ctRow      = $expenses->where('expense_type', 'cape_tennis_fee')->first();
 
         $payfastAmount = abs($totalPayfastFees);
+
+        // Average PayFast fee per entry (percentage-based, so this is effective/average)
+        $payfastUnitPrice = ($totalEntries > 0) ? round($payfastAmount / $totalEntries, 4) : 0.0;
+
         if ($payfastAmount > 0) {
+            $payfastData = [
+                'description'  => 'PayFast fees (auto-synced)',
+                'amount'       => $payfastAmount,
+                'quantity'     => $totalEntries ?: null,
+                'unit_price'   => $payfastUnitPrice ?: null,
+            ];
             if (!$payfastRow) {
-                EventExpense::create([
+                EventExpense::create(array_merge($payfastData, [
                     'event_id'     => $event->id,
                     'expense_type' => 'payfast',
-                    'description'  => 'PayFast fees (auto-synced)',
-                    'amount'       => $payfastAmount,
                     'date'         => now(),
-                ]);
-            } elseif ((float) $payfastRow->amount !== $payfastAmount) {
-                $payfastRow->update(['amount' => $payfastAmount]);
+                ]));
+            } elseif (
+                (float) $payfastRow->amount    !== $payfastAmount       ||
+                (int)   $payfastRow->quantity  !== $totalEntries        ||
+                (float) $payfastRow->unit_price !== $payfastUnitPrice
+            ) {
+                $payfastRow->update($payfastData);
             }
         }
 
         if ($totalCapeTennisFees > 0) {
+            $ctData = [
+                'description'  => 'Cape Tennis fee (auto-synced)',
+                'amount'       => $totalCapeTennisFees,
+                'quantity'     => $totalEntries ?: null,
+                'unit_price'   => $feePerEntry ?: null,
+            ];
             if (!$ctRow) {
-                EventExpense::create([
+                EventExpense::create(array_merge($ctData, [
                     'event_id'     => $event->id,
                     'expense_type' => 'cape_tennis_fee',
-                    'description'  => 'Cape Tennis fee (auto-synced)',
-                    'amount'       => $totalCapeTennisFees,
                     'date'         => now(),
-                ]);
-            } elseif ((float) $ctRow->amount !== $totalCapeTennisFees) {
-                $ctRow->update(['amount' => $totalCapeTennisFees]);
+                ]));
+            } elseif (
+                (float) $ctRow->amount    !== $totalCapeTennisFees ||
+                (int)   $ctRow->quantity  !== $totalEntries        ||
+                (float) $ctRow->unit_price !== $feePerEntry
+            ) {
+                $ctRow->update($ctData);
             }
         }
     }
