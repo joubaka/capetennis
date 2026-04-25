@@ -14,13 +14,15 @@ class EventConvenor extends Model
         'event_id',
         'user_id',
         'role',
+        'profit_share_pct',
         'starts_at',
         'expires_at',
     ];
 
     protected $casts = [
-        'starts_at'  => 'datetime',
-        'expires_at' => 'datetime',
+        'profit_share_pct' => 'decimal:2',
+        'starts_at'        => 'datetime',
+        'expires_at'       => 'datetime',
     ];
 
     /* ------------------------------------------------------------------ */
