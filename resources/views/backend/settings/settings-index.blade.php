@@ -5,6 +5,16 @@
 @section('content')
 <div class="container-xl">
 
+  <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+    <i class="ti ti-info-circle me-2 fs-5"></i>
+    <div>
+      These settings are also available in the
+      <a href="{{ route('backend.superadmin.index') }}#settings"
+         onclick="event.preventDefault(); window.location.href='{{ route('backend.superadmin.index') }}'; sessionStorage.setItem('openSettingsTab','1');"
+         class="alert-link">Super Admin Dashboard → Settings tab</a>.
+    </div>
+  </div>
+
   <div class="card mb-4">
     <div class="card-body">
       <h4 class="mb-0">Site Settings</h4>

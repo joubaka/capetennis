@@ -290,6 +290,13 @@ class SuperAdminController extends Controller
             'total_entries' => $financeByEvent->sum('total_entries'),
         ];
 
+        // ── Settings for inline Settings tab ─────────────────────────────────
+        $emailSettings        = SiteSetting::where('group', SiteSetting::GROUP_EMAIL)->get()->pluck('value', 'key')->toArray();
+        $registrationSettings = SiteSetting::where('group', SiteSetting::GROUP_REGISTRATION)->get()->pluck('value', 'key')->toArray();
+        $payfastSettings      = SiteSetting::where('group', SiteSetting::GROUP_PAYFAST)->get()->keyBy('key');
+        $paymentMethods       = SiteSetting::PAYMENT_METHOD_LABELS;
+        $generalSettings      = SiteSetting::where('group', SiteSetting::GROUP_GENERAL)->get()->pluck('value', 'key')->toArray();
+
         return view('backend.superadmin.index', compact(
             'totalUsers',
             'totalPlayers',
@@ -318,7 +325,12 @@ class SuperAdminController extends Controller
             'withdrawalCompletedRefunds',
             'withdrawalWalletRefunds',
             'withdrawalPendingTeamRefunds',
-            'withdrawalCompletedTeamRefunds'
+            'withdrawalCompletedTeamRefunds',
+            'emailSettings',
+            'registrationSettings',
+            'payfastSettings',
+            'paymentMethods',
+            'generalSettings',
         ));
     }
 }
