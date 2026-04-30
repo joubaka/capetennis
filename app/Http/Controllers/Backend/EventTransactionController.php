@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
+use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\Transaction;
 use App\Models\CategoryEventRegistration;
@@ -339,14 +340,40 @@ class EventTransactionController extends Controller
     }
 
     // =========================
-    // STEP 7: TOTALS (FULL LEDGER - includes refunds)
+    // STEP 7: TOTALS
     // =========================
-    $netTournamentIncome = $ledger->sum('net');
 
-    // ✅ Use full ledger so refunds reduce these totals
-    $totalGross = $ledger->sum('gross');
-    $totalPayfastFees = $ledger->sum('fee');
-    $totalCapeTennisFees = $ledger->sum('capeFee');
+    // Load payouts for this event
+    $payouts = EventPayout::where('event_id', $event->id)->orderByDesc('created_at')->get();
+
+    $payoutRows = $payouts->map(function ($p) {
+      return (object) [
+        'type'       => 'payout',
+        'created_at' => $p->created_at,
+        'player'     => $p->recipient,
+        'method'     => $p->method,
+        'gross'      => -1 * abs($p->amount),
+        'fee'        => 0,
+        'capeFee'    => 0,
+        'net'        => -1 * abs($p->amount),
+      ];
+    });
+
+    // Merge payouts into ledger
+    $ledger = $ledger->merge($payoutRows)->sortByDesc('created_at')->values();
+
+    // ✅ Gross = payments only (not reduced by refunds or payouts)
+    $totalGross = $paymentRows->sum('gross');
+
+    // Fees are net of refund recoveries
+    $totalPayfastFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
+    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
+
+    // Total payouts (absolute value for display)
+    $totalPayouts = $payouts->sum('amount');
+
+    // Net = gross + fees (negative) + refund impact + payouts (negative)
+    $netTournamentIncome = $ledger->sum('net');
 
     // Entry count for display (payments only - refunds don't add entries)
     $totalEntries = $isTeamEvent
@@ -391,6 +418,7 @@ class EventTransactionController extends Controller
       'totalGross' => $totalGross,
       'totalPayfastFees' => $totalPayfastFees,
       'totalCapeTennisFees' => $totalCapeTennisFees,
+      'totalPayouts' => $totalPayouts,
       'netTournamentIncome' => $netTournamentIncome,
     ]);
   }
@@ -480,12 +508,30 @@ class EventTransactionController extends Controller
       ];
     });
 
-    // ---- MERGE & TOTALS ----
-    $ledger = collect()->merge($paymentRows)->merge($refundRows)->sortByDesc('created_at')->values();
+    // ---- PAYOUTS ----
+    $payouts = EventPayout::where('event_id', $event->id)->orderByDesc('created_at')->get();
 
-    $totalGross          = $ledger->sum('gross');
-    $totalPayfastFees    = $ledger->sum('fee');
-    $totalCapeTennisFees = $ledger->sum('capeFee');
+    $payoutRows = $payouts->map(function ($p) {
+      return (object) [
+        'type'       => 'payout',
+        'created_at' => $p->created_at,
+        'player'     => $p->recipient,
+        'method'     => $p->method,
+        'gross'      => -1 * abs($p->amount),
+        'fee'        => 0,
+        'capeFee'    => 0,
+        'net'        => -1 * abs($p->amount),
+      ];
+    });
+
+    // ---- MERGE & TOTALS ----
+    $ledger = collect()->merge($paymentRows)->merge($refundRows)->merge($payoutRows)->sortByDesc('created_at')->values();
+
+    // ✅ Gross = payments only
+    $totalGross          = $paymentRows->sum('gross');
+    $totalPayfastFees    = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
+    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
+    $totalPayouts        = $payouts->sum('amount');
     $netTournamentIncome = $ledger->sum('net');
 
     $totalEntries = $isTeamEvent
@@ -503,6 +549,7 @@ class EventTransactionController extends Controller
       'totalGross',
       'totalPayfastFees',
       'totalCapeTennisFees',
+      'totalPayouts',
       'netTournamentIncome'
     );
   }
