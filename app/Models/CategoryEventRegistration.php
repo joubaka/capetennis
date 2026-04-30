@@ -171,8 +171,10 @@ class CategoryEventRegistration extends Model
 
     // 🔹 Per-registration allocation (PayFast portion)
     $grossPerReg = (float) $tx->amount_gross / $totalItems;
-    $feePerReg = (float) $tx->amount_fee / $totalItems;
-    $netPerReg = $grossPerReg - $feePerReg;
+    // Recalculate using current custom rates (applied on per-registration PayFast gross)
+    $totalFee    = SiteSetting::calculatePayfastFee((float) $tx->amount_gross);
+    $feePerReg   = $totalItems > 0 ? round($totalFee / $totalItems, 2) : $totalFee;
+    $netPerReg   = $grossPerReg - $feePerReg;
 
     // 🔹 Wallet portion (split across items in the same order)
     $walletReserved = (float) ($order->wallet_reserved ?? 0);
