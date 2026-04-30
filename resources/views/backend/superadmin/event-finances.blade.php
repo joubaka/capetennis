@@ -2,6 +2,11 @@
 
 @section('title', $event->name . ' – Finances (Super Admin)')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css') }}">
+@endsection
+
 @section('page-style')
 <style>
   td.dt-toggle { cursor:pointer; text-align:center; user-select:none; }
@@ -353,8 +358,11 @@
 </div>
 @endsection
 
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js') }}"></script>
+@endsection
+
 @section('page-script')
-<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script>
 $(function () {
   const table = $('#txTable').DataTable({
