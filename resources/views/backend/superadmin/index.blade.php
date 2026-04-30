@@ -206,6 +206,15 @@
           <i class="ti ti-wallet me-1 text-success"></i>Wallets
         </button>
       </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-disciplinary" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-disciplinary" type="button" role="tab">
+          <i class="ti ti-gavel me-1 text-danger"></i>Disciplinary
+          @if($disciplinaryStats['active_suspensions'] > 0)
+            <span class="badge bg-danger ms-1">{{ $disciplinaryStats['active_suspensions'] }}</span>
+          @endif
+        </button>
+      </li>
     </ul>
   </div>
 
@@ -306,6 +315,13 @@
                 <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
                   <i class="ti ti-cash-banknote me-1"></i>Refunds
                 </a>
+                <button type="button" class="btn btn-outline-danger btn-sm"
+                        onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
+                  <i class="ti ti-gavel me-1"></i>Disciplinary
+                  @if($disciplinaryStats['active_suspensions'] > 0)
+                    <span class="badge bg-danger ms-1">{{ $disciplinaryStats['active_suspensions'] }}</span>
+                  @endif
+                </button>
               </div>
               <hr>
               <div class="d-flex gap-3 mt-2 flex-wrap">
@@ -1582,6 +1598,205 @@
 
     </div>{{-- /wallets --}}
 
+    {{-- ══ TAB: DISCIPLINARY ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-disciplinary" role="tabpanel">
+
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h5 class="mb-0"><i class="ti ti-gavel me-2 text-danger"></i>Disciplinary Overview</h5>
+        <div class="d-flex gap-2">
+          <a href="{{ route('backend.disciplinary.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="ti ti-list me-1"></i>Full Log
+          </a>
+          <a href="{{ route('backend.disciplinary.create') }}" class="btn btn-sm btn-primary">
+            <i class="ti ti-plus me-1"></i>Record Violation
+          </a>
+          <a href="{{ route('backend.disciplinary.settings') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="ti ti-settings me-1"></i>Settings
+          </a>
+        </div>
+      </div>
+
+      {{-- Stat cards --}}
+      <div class="row mb-4">
+        <div class="col-sm-6 col-md-3 mb-3">
+          <div class="card h-100" style="border:2px solid #ea5455;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#ffe0e0;">
+                <i class="ti ti-ban" style="font-size:1.3rem;color:#ea5455;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($disciplinaryStats['active_suspensions']) }}</h4>
+                <small class="text-muted">Active Suspensions</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-md-3 mb-3">
+          <div class="card h-100" style="border:2px solid #ff9f43;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#fff4e0;">
+                <i class="ti ti-alert-triangle" style="font-size:1.3rem;color:#ff9f43;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($disciplinaryStats['active_violations']) }}</h4>
+                <small class="text-muted">Active Violations</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-md-3 mb-3">
+          <div class="card h-100" style="border:2px solid #7367f0;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#ede9fb;">
+                <i class="ti ti-users" style="font-size:1.3rem;color:#7367f0;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($disciplinaryStats['players_with_violations']) }}</h4>
+                <small class="text-muted">Players with Active Pts</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-md-3 mb-3">
+          <div class="card h-100" style="border:2px solid #b0b8c1;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#f0f0f0;">
+                <i class="ti ti-history" style="font-size:1.3rem;color:#a0aab4;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($disciplinaryStats['total_suspensions']) }}</h4>
+                <small class="text-muted">Total Suspensions (all time)</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        {{-- Active Suspensions --}}
+        <div class="col-md-5 mb-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="mb-0"><i class="ti ti-ban me-1 text-danger"></i>Active Suspensions</h6>
+            </div>
+            @if($activeSuspensions->isEmpty())
+              <div class="card-body text-center text-muted py-4">
+                <i class="ti ti-check-circle text-success me-1"></i>No active suspensions.
+              </div>
+            @else
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Player</th>
+                      <th>#</th>
+                      <th>Ends</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach($activeSuspensions as $s)
+                      <tr>
+                        <td>
+                          <a href="{{ route('backend.disciplinary.player', $s->player_id) }}" class="text-primary">
+                            {{ $s->player->full_name ?? '—' }}
+                          </a>
+                        </td>
+                        <td><span class="badge bg-label-danger">{{ $s->suspension_number }}</span></td>
+                        <td>{{ $s->ends_at->format('d M Y') }}</td>
+                        <td>
+                          <form action="{{ route('backend.disciplinary.suspension.lift', $s->id) }}"
+                                method="POST" onsubmit="return confirm('Lift this suspension?');">
+                            @csrf
+                            <button type="submit" class="btn btn-xs btn-outline-secondary" title="Lift">
+                              <i class="ti ti-lock-open"></i>
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    @endforeach
+                  </tbody>
+                </table>
+              </div>
+            @endif
+            <div class="card-footer text-end">
+              <a href="{{ route('backend.disciplinary.index') }}" class="btn btn-sm btn-outline-secondary">
+                View All &rarr;
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {{-- Recent Violations --}}
+        <div class="col-md-7 mb-4">
+          <div class="card h-100">
+            <div class="card-header">
+              <h6 class="mb-0"><i class="ti ti-alert-triangle me-1 text-warning"></i>Recent Violations</h6>
+            </div>
+            @if($recentViolations->isEmpty())
+              <div class="card-body text-center text-muted py-4">
+                <i class="ti ti-check-circle text-success me-1"></i>No violations recorded.
+              </div>
+            @else
+              <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Date</th>
+                      <th>Player</th>
+                      <th>Type</th>
+                      <th>Pts</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @foreach($recentViolations as $v)
+                      @php
+                        $expiryDate = \Carbon\Carbon::now()->subDays($disciplinaryStats['threshold'])->toDateString();
+                      @endphp
+                      <tr>
+                        <td>{{ $v->violation_date->format('d M Y') }}</td>
+                        <td>
+                          <a href="{{ route('backend.disciplinary.player', $v->player_id) }}" class="text-primary">
+                            {{ $v->player->full_name ?? '—' }}
+                          </a>
+                        </td>
+                        <td>
+                          <span class="badge bg-label-{{ match($v->violationType->category ?? '') {
+                            'on_court' => 'warning',
+                            'withdrawal' => 'info',
+                            'no_show' => 'danger',
+                            'abuse' => 'danger',
+                            default => 'secondary'
+                          } }}">
+                            {{ $v->violationType->name ?? '—' }}
+                          </span>
+                        </td>
+                        <td><strong>{{ $v->points_assigned }}</strong></td>
+                        <td>
+                          @if($v->is_expired)
+                            <span class="badge bg-secondary">Expired</span>
+                          @else
+                            <span class="badge bg-success">Active</span>
+                          @endif
+                        </td>
+                      </tr>
+                    @endforeach
+                  </tbody>
+                </table>
+              </div>
+            @endif
+            <div class="card-footer text-end">
+              <a href="{{ route('backend.disciplinary.index') }}" class="btn btn-sm btn-outline-secondary">
+                View All &rarr;
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>{{-- /disciplinary --}}
+
   </div>{{-- /tab-content --}}
 </div>{{-- /main tabs card --}}
 
@@ -1972,6 +2187,10 @@ $(function () {
     var params = new URLSearchParams(window.location.search);
     if (params.get('tab') === 'finance') {
       var el = document.getElementById('sa-tab-finance');
+      if (el) bootstrap.Tab.getOrCreateInstance(el).show();
+    }
+    if (params.get('tab') === 'disciplinary') {
+      var el = document.getElementById('sa-tab-disciplinary');
       if (el) bootstrap.Tab.getOrCreateInstance(el).show();
     }
   })();
