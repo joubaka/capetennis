@@ -574,14 +574,7 @@
                     </td>
                   </tr>
                 @endforeach
-                @if($withdrawalPendingRefunds->isEmpty() && $withdrawalPendingTeamRefunds->isEmpty())
-                  <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
-                      <i class="ti ti-check-circle ti-lg text-success d-block mb-2"></i>
-                      No pending bank refunds.
-                    </td>
-                  </tr>
-                @endif
+
               </tbody>
             </table>
           </div>
@@ -622,11 +615,7 @@
                     <td><small class="text-muted">{{ optional($t->refunded_at)->format('d M Y H:i') ?? '—' }}</small></td>
                   </tr>
                 @endforeach
-                @if($withdrawalCompletedRefunds->isEmpty() && $withdrawalCompletedTeamRefunds->isEmpty())
-                  <tr>
-                    <td colspan="6" class="text-center text-muted py-4">No completed bank refunds.</td>
-                  </tr>
-                @endif
+
               </tbody>
             </table>
           </div>
@@ -646,7 +635,7 @@
                 </tr>
               </thead>
               <tbody>
-                @forelse($withdrawalWalletRefunds as $refund)
+                @foreach($withdrawalWalletRefunds as $refund)
                   <tr>
                     <td><span class="badge bg-label-info">REG-{{ $refund->id }}</span></td>
                     <td>{{ $refund->display_name }}</td>
@@ -663,11 +652,7 @@
                     </td>
                     <td><small class="text-muted">{{ $refund->withdrawn_at?->format('d M Y H:i') ?? '—' }}</small></td>
                   </tr>
-                @empty
-                  <tr>
-                    <td colspan="6" class="text-center text-muted py-4">No wallet withdrawals found.</td>
-                  </tr>
-                @endforelse
+                @endforeach
               </tbody>
             </table>
           </div>
@@ -973,17 +958,17 @@ $(function () {
 
   $('#sa-tab-withdrawals').on('shown.bs.tab', function () {
     if (!dtWPending) {
-      dtWPending = $('#dt-w-pending').DataTable({ ordering: true, order: [[6,'asc']], pageLength: 25 });
+      dtWPending = $('#dt-w-pending').DataTable({ ordering: true, order: [[6,'asc']], pageLength: 25, language: { emptyTable: '<i class="ti ti-check-circle text-success me-1"></i> No pending bank refunds.' } });
     }
   });
   $('#sa-wtab-completed').on('shown.bs.tab', function () {
     if (!dtWCompleted) {
-      dtWCompleted = $('#dt-w-completed').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25 });
+      dtWCompleted = $('#dt-w-completed').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No completed bank refunds.' } });
     } else { dtWCompleted.columns.adjust().draw(false); }
   });
   $('#sa-wtab-wallet').on('shown.bs.tab', function () {
     if (!dtWWallet) {
-      dtWWallet = $('#dt-w-wallet').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25 });
+      dtWWallet = $('#dt-w-wallet').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No wallet withdrawals found.' } });
     } else { dtWWallet.columns.adjust().draw(false); }
   });
 
