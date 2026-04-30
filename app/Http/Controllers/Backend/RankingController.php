@@ -89,6 +89,7 @@ class RankingController extends Controller
     // Load series rankings similar to SeriesRankingController@index
     $rankings = \App\Models\SeriesRanking::with([
       'registration.players',
+      'player',
       'category'
     ])
       ->where('series_id', $series->id)
@@ -99,6 +100,37 @@ class RankingController extends Controller
     $categories = $rankings->pluck('category')->unique('id');
 
     return view('frontend.ranking.show_ranking', compact('series', 'rankings', 'categories'));
+  }
+
+  public function playerDetail(Series $series, Player $player)
+  {
+    $rankingRecord = \App\Models\SeriesRanking::with(['category'])
+      ->where('series_id', $series->id)
+      ->where('player_id', $player->id)
+      ->first();
+
+    $eventsById = $series->events()
+      ->select('id', 'name', 'start_date')
+      ->get()
+      ->keyBy('id');
+
+    $legs = collect();
+    if ($rankingRecord && !empty($rankingRecord->meta_json['legs'])) {
+      $legs = collect($rankingRecord->meta_json['legs'])->map(function ($leg) use ($eventsById) {
+        $event = $eventsById->get($leg['event_id'] ?? null);
+        return array_merge($leg, [
+          'event_name' => $event?->name ?? 'Event #' . ($leg['event_id'] ?? '?'),
+          'event_date' => $event?->start_date ?? null,
+        ]);
+      });
+    }
+
+    return view('frontend.ranking.player_detail', compact(
+      'series',
+      'player',
+      'rankingRecord',
+      'legs'
+    ));
   }
 
   public function seriesAllAjax()

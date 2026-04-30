@@ -1535,6 +1535,10 @@ Route::get('/fixtures/{draw}', [TeamFixtureFrontendController::class, 'index'])
 Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController::class, 'ranking_frontend_show'])
   ->name('frontend.ranking.show');
 
+// Public player ranking detail view
+Route::get('ranking/{series}/player/{player}', [\App\Http\Controllers\Backend\RankingController::class, 'playerDetail'])
+  ->name('frontend.ranking.player-detail');
+
 // Public round-robin draw view
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])
   ->name('public.roundrobin.show');
