@@ -8,7 +8,7 @@
   ],
   "license": "MIT",
   "require": {
-    "php": "^8.0.2",
+    "php": "^8.0.2|^8.5",
     "barryvdh/laravel-dompdf": "^2.0",
     "bavix/laravel-wallet": "^9.6",
     "fedeisas/laravel-mail-css-inliner": "^5.2",
@@ -21,6 +21,7 @@
     "laravel/tinker": "^2.7",
     "livewire/livewire": "^2.11",
     "maatwebsite/excel": "^3.1",
+    "phpoffice/phpspreadsheet": "^2.0",
     "rappasoft/laravel-authentication-log": "^2.0",
     "spatie/laravel-activitylog": "^4.12",
     "spatie/laravel-permission": "^6.24",
