@@ -113,6 +113,16 @@ class User extends Authenticatable
     {
         return $this->hasMany(ClothingOrder::class, 'user_id', 'id');
     }
+
+    /**
+     * Override Jetstream's default to use the gender-neutral local avatar
+     * instead of the external ui-avatars.com URL.
+     */
+    protected function defaultProfilePhotoUrl(): string
+    {
+        return asset('assets/img/avatars/default.svg');
+    }
+
     public function wallet()
     {
         return $this->morphOne(\App\Models\Wallet::class, 'payable');
