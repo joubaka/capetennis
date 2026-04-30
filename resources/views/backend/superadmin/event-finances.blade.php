@@ -507,6 +507,7 @@
       <div class="modal-content">
         <form id="fullRefundForm" method="POST" action="">
           @csrf
+          <input type="hidden" name="percentage" id="modalPercentageInput" value="0">
           <div class="modal-header">
             <h5 class="modal-title" id="fullRefundModalLabel">
               <i class="ti ti-receipt-refund me-2 text-warning"></i>Issue Full Refund
@@ -515,20 +516,48 @@
           </div>
 
           <div class="modal-body">
-            <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+            <div class="alert alert-warning d-flex align-items-center gap-2 mb-3" id="modalAlertBox">
               <i class="ti ti-alert-triangle fs-5"></i>
-              <span>This will refund the <strong>full amount</strong> — no handling fee will be deducted.</span>
+              <span id="modalAlertText">This will refund the <strong>full amount</strong> — no handling fee will be deducted.</span>
             </div>
 
             <dl class="row mb-3">
               <dt class="col-sm-4">Player</dt>
               <dd class="col-sm-8 fw-semibold" id="modalPlayerName">—</dd>
+              <dt class="col-sm-4">Original Amount</dt>
+              <dd class="col-sm-8 fw-semibold" id="modalOriginalAmount">R 0.00</dd>
               <dt class="col-sm-4">Refund Amount</dt>
               <dd class="col-sm-8">
                 <span class="fs-5 text-success fw-bold">R <span id="modalAmount">0.00</span></span>
-                <small class="text-muted d-block">No handling fee deducted</small>
+                <small class="text-muted d-block" id="modalAmountNote">No handling fee deducted</small>
               </dd>
             </dl>
+
+            <hr>
+
+            {{-- Optional percentage deduction --}}
+            <div class="mb-3">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="enablePercentage" role="switch">
+                <label class="form-check-label fw-semibold" for="enablePercentage">
+                  Deduct a percentage (cancellation / handling fee)
+                </label>
+              </div>
+              <div id="percentageField" class="d-none mt-2">
+                <label for="percentageRange" class="form-label">
+                  Deduction: <strong><span id="percentageDisplay">0</span>%</strong>
+                  <span class="text-muted ms-2">( − R <span id="modalFeeAmount">0.00</span> )</span>
+                </label>
+                <input type="range" class="form-range" id="percentageRange" min="0" max="100" step="1" value="0">
+                <div class="d-flex justify-content-between">
+                  <small class="text-muted">0%</small>
+                  <small class="text-muted">25%</small>
+                  <small class="text-muted">50%</small>
+                  <small class="text-muted">75%</small>
+                  <small class="text-muted">100%</small>
+                </div>
+              </div>
+            </div>
 
             <hr>
 
@@ -556,7 +585,7 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             <button type="submit" id="fullRefundSubmit" class="btn btn-warning fw-semibold">
-              <i class="ti ti-cash-banknote me-1"></i>Confirm Full Refund
+              <i class="ti ti-cash-banknote me-1"></i><span id="fullRefundSubmitLabel">Confirm Full Refund</span>
             </button>
           </div>
         </form>
@@ -667,15 +696,65 @@ if (fullRefundSearch) {
 // Full Refund Modal: populate form action and display fields from button data attributes
 const fullRefundModal = document.getElementById('fullRefundModal');
 if (fullRefundModal) {
+  let modalGrossAmount = 0;
+
+  function updateRefundDisplay(percentage) {
+    const fee = Math.round(modalGrossAmount * (percentage / 100) * 100) / 100;
+    const net = Math.round((modalGrossAmount - fee) * 100) / 100;
+
+    document.getElementById('modalAmount').textContent = net.toFixed(2);
+    document.getElementById('modalFeeAmount').textContent = fee.toFixed(2);
+    document.getElementById('percentageDisplay').textContent = percentage;
+    document.getElementById('modalPercentageInput').value = percentage;
+
+    if (percentage > 0) {
+      document.getElementById('modalAmountNote').textContent = percentage + '% deducted (R ' + fee.toFixed(2) + ' handling fee)';
+      document.getElementById('modalAlertText').innerHTML = 'A <strong>' + percentage + '% handling fee</strong> will be deducted — player receives <strong>R ' + net.toFixed(2) + '</strong>.';
+      document.getElementById('modalAlertBox').classList.remove('alert-warning');
+      document.getElementById('modalAlertBox').classList.add('alert-info');
+      document.getElementById('fullRefundSubmitLabel').textContent = 'Confirm Partial Refund (' + percentage + '% deducted)';
+    } else {
+      document.getElementById('modalAmountNote').textContent = 'No handling fee deducted';
+      document.getElementById('modalAlertText').innerHTML = 'This will refund the <strong>full amount</strong> — no handling fee will be deducted.';
+      document.getElementById('modalAlertBox').classList.remove('alert-info');
+      document.getElementById('modalAlertBox').classList.add('alert-warning');
+      document.getElementById('fullRefundSubmitLabel').textContent = 'Confirm Full Refund';
+    }
+  }
+
   fullRefundModal.addEventListener('show.bs.modal', function (event) {
     const btn = event.relatedTarget;
+    const rawAmount = parseFloat((btn.dataset.amount || '0').replace(/[^0-9.]/g, ''));
+    modalGrossAmount = isNaN(rawAmount) ? 0 : rawAmount;
+
     document.getElementById('modalPlayerName').textContent = btn.dataset.player || '—';
-    document.getElementById('modalAmount').textContent = btn.dataset.amount || '0.00';
+    document.getElementById('modalOriginalAmount').textContent = 'R ' + modalGrossAmount.toFixed(2);
     document.getElementById('fullRefundForm').action = btn.dataset.route || '';
+
+    // Reset percentage controls
+    document.getElementById('enablePercentage').checked = false;
+    document.getElementById('percentageField').classList.add('d-none');
+    document.getElementById('percentageRange').value = 0;
+    updateRefundDisplay(0);
 
     // Reset radio buttons and re-enable submit button on each open
     fullRefundModal.querySelectorAll('input[name="method"]').forEach(r => r.checked = false);
     document.getElementById('fullRefundSubmit').disabled = false;
+  });
+
+  document.getElementById('enablePercentage').addEventListener('change', function () {
+    const field = document.getElementById('percentageField');
+    if (this.checked) {
+      field.classList.remove('d-none');
+    } else {
+      field.classList.add('d-none');
+      document.getElementById('percentageRange').value = 0;
+      updateRefundDisplay(0);
+    }
+  });
+
+  document.getElementById('percentageRange').addEventListener('input', function () {
+    updateRefundDisplay(parseInt(this.value, 10));
   });
 
   document.getElementById('fullRefundForm').addEventListener('submit', function () {
