@@ -23,6 +23,10 @@
     background:#fff4f4 !important;
   }
 
+  tr.payout-row {
+    background:#f0f7ff !important;
+  }
+
   #transactionsTable td.text-end {
     font-variant-numeric: tabular-nums;
   }
@@ -171,7 +175,7 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             }
           @endphp
 
-          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : '' }}"
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'payout' ? 'payout-row' : '') }}"
               @if($payload->count()) data-items='@json($payload)' @endif>
 
             <td class="dt-toggle">
@@ -183,7 +187,15 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             <td>{{ \Carbon\Carbon::parse($tx->created_at)->format('Y-m-d') }}</td>
 
             <td>
-              <span class="badge {{ $tx->type === 'payment' ? 'bg-success' : 'bg-danger' }}">
+              @php
+                $badgeClass = match($tx->type) {
+                  'payment' => 'bg-success',
+                  'refund'  => 'bg-danger',
+                  'payout'  => 'bg-info',
+                  default   => 'bg-secondary',
+                };
+              @endphp
+              <span class="badge {{ $badgeClass }}">
                 {{ ucfirst($tx->type) }}
               </span>
             </td>
@@ -193,31 +205,32 @@ if ($tx->type === 'payment' && isset($tx->order)) {
 
             {{-- Gross --}}
             <td class="text-end">
-              {{ $tx->type === 'refund' ? '− ' : '' }}
-              R {{ number_format($tx->gross, 2) }}
+              @if($tx->type === 'refund' || $tx->type === 'payout')
+                − R {{ number_format(abs($tx->gross), 2) }}
+              @else
+                R {{ number_format($tx->gross, 2) }}
+              @endif
             </td>
 
             {{-- PayFast Fee --}}
-        <td class="text-end {{ $tx->fee >= 0 ? 'text-success' : 'text-warning' }}">
-  @if($tx->fee != 0)
-    {{ $tx->fee > 0 ? '+ ' : '− ' }}
-    R {{ number_format(abs($tx->fee), 2) }}
-  @else
-    —
-  @endif
-</td>
-
+            <td class="text-end {{ $tx->fee >= 0 ? 'text-success' : 'text-warning' }}">
+              @if($tx->fee != 0)
+                {{ $tx->fee > 0 ? '+ ' : '− ' }}
+                R {{ number_format(abs($tx->fee), 2) }}
+              @else
+                —
+              @endif
+            </td>
 
             {{-- Cape Tennis Fee --}}
-      <td class="text-end {{ $tx->capeFee >= 0 ? 'text-success' : 'text-danger' }}">
-  @if($tx->capeFee != 0)
-    {{ $tx->capeFee > 0 ? '+ ' : '− ' }}
-    R {{ number_format(abs($tx->capeFee), 2) }}
-  @else
-    —
-  @endif
-</td>
-
+            <td class="text-end {{ $tx->capeFee >= 0 ? 'text-success' : 'text-danger' }}">
+              @if($tx->capeFee != 0)
+                {{ $tx->capeFee > 0 ? '+ ' : '− ' }}
+                R {{ number_format(abs($tx->capeFee), 2) }}
+              @else
+                —
+              @endif
+            </td>
 
             {{-- Net --}}
             <td class="text-end {{ $tx->net < 0 ? 'text-danger' : 'text-success' }}">

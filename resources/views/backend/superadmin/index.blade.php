@@ -252,6 +252,9 @@
       <i class="ti ti-calendar-stats me-2 text-warning"></i>
       <h5 class="mb-0">Per-Event Financial Summary</h5>
     </div>
+    <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning">
+      <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
+    </a>
   </div>
   <div class="table-responsive">
     <table class="table table-hover mb-0">
@@ -269,7 +272,7 @@
         @forelse($financeByEvent as $row)
           <tr>
             <td>
-              <a href="{{ route('admin.events.finances', $row['event']) }}" class="fw-semibold text-primary">
+              <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="fw-semibold text-primary">
                 {{ $row['event']->name }}
               </a>
             </td>
@@ -282,7 +285,7 @@
             <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
             <td class="text-center">{{ number_format($row['total_entries']) }}</td>
             <td>
-              <a href="{{ route('admin.events.finances', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
+              <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
                 <i class="ti ti-report-money"></i>
               </a>
             </td>

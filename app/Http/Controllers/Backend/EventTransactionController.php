@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\Transaction;
-use App\Models\CategoryEventRegistration;
 use Illuminate\Support\Facades\Log;
 
 class EventTransactionController extends Controller
@@ -312,11 +313,30 @@ class EventTransactionController extends Controller
     }
 
     // =========================
-    // STEP 6: MERGE LEDGER
+    // STEP 6: MERGE LEDGER (payments + refunds + payouts)
     // =========================
+    $payoutModels = EventPayout::with(['convenor.user'])
+      ->where('event_id', $event->id)
+      ->orderByDesc('paid_at')
+      ->get();
+
+    $payoutRows = $payoutModels->map(fn ($p) => (object) [
+      'type'        => 'payout',
+      'created_at'  => $p->paid_at ?? $p->created_at,
+      'player'      => $p->display_name,
+      'method'      => $p->payment_method,
+      'gross'       => -$p->amount,
+      'fee'         => 0,
+      'capeFee'     => 0,
+      'net'         => -$p->amount,
+      'description' => $p->description,
+      'reference'   => $p->reference,
+    ]);
+
     $ledger = collect()
       ->merge($paymentRows)
       ->merge($refundRows)
+      ->merge($payoutRows)
       ->sortByDesc('created_at')
       ->values();
    
