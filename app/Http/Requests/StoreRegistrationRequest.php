@@ -14,23 +14,30 @@ class StoreRegistrationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'event_id' => ['required', 'integer', 'exists:events,id'],
-            'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
-            'player_ids' => ['required', 'array', 'min:1'],
-            'player_ids.*' => ['integer', 'exists:players,id'],
+            'custom_int3'    => ['required', 'integer', 'exists:events,id'],
+            'player'         => ['required', 'array', 'min:1'],
+            'player.*'       => ['required', 'integer', 'exists:players,id'],
+            'category'       => ['required', 'array', 'min:1'],
+            'category.*'     => ['required', 'integer', 'exists:category_events,id'],
+            'terms_accepted' => ['required', 'in:1'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'event_id.required' => 'An event must be selected.',
-            'event_id.exists' => 'The selected event does not exist.',
-            'category_event_id.required' => 'A category must be selected.',
-            'category_event_id.exists' => 'The selected category does not exist.',
-            'player_ids.required' => 'At least one player must be selected.',
-            'player_ids.min' => 'At least one player must be selected.',
-            'player_ids.*.exists' => 'One or more selected players do not exist.',
+            'custom_int3.required'    => 'An event must be selected.',
+            'custom_int3.exists'      => 'The selected event does not exist.',
+            'player.required'         => 'At least one player must be selected.',
+            'player.min'              => 'At least one player must be selected.',
+            'player.*.required'       => 'Please select a valid player.',
+            'player.*.exists'         => 'One or more selected players do not exist.',
+            'category.required'       => 'At least one category must be selected.',
+            'category.min'            => 'At least one category must be selected.',
+            'category.*.required'     => 'Please select a valid category.',
+            'category.*.exists'       => 'One or more selected categories do not exist.',
+            'terms_accepted.required' => 'You must accept the terms and conditions and Code of Conduct before proceeding.',
+            'terms_accepted.in'       => 'You must accept the terms and conditions and Code of Conduct before proceeding.',
         ];
     }
 }

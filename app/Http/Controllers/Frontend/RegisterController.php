@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Services\Payfast;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreRegistrationRequest;
+use App\Mail\RegistrationConfirmedMail;
 use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
@@ -27,6 +29,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use stdClass;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -1296,37 +1299,65 @@ class RegisterController extends Controller
     return $transaction;
   }
 
-  public function payNowPayfast(Request $request)
+  public function payNowPayfast(StoreRegistrationRequest $request)
   {
+    // ----------------------------
+    // Validation handled by StoreRegistrationRequest
+    // (player[], category[], custom_int3, terms_accepted)
+    // ----------------------------
+
+    $eventId = (int) $request->custom_int3;
 
     // ----------------------------
-    // Validate terms accepted
+    // Fix 2: Enforce registration deadline server-side
     // ----------------------------
-    if (!$request->has('terms_accepted') || $request->terms_accepted != '1') {
-      return back()->withErrors([
-        'msg' => 'You must accept the terms and conditions and Code of Conduct before proceeding.'
-      ]);
+    $event = Event::find($eventId);
+
+    if (!$event) {
+      return back()->withErrors(['msg' => 'Event not found.']);
+    }
+
+    if (!$event->signUp) {
+      return back()->withErrors(['msg' => 'Registrations are not open for this event.']);
+    }
+
+    if (now()->gt($event->entryCloseAt())) {
+      return back()->withErrors(['msg' => 'The registration deadline for this event has passed.']);
     }
 
     // ----------------------------
-    // Validate players/categories
+    // Fix 1: Server-side duplicate entry check
+    // Fix 7: Null entry_fee guard
     // ----------------------------
-    foreach ($request->player as $player) {
-      if ($player == 0) {
+    for ($i = 0; $i < count($request->player); $i++) {
+      $playerId        = (int) $request->player[$i];
+      $categoryEventId = (int) $request->category[$i];
+
+      $categoryEvent = CategoryEvent::find($categoryEventId);
+
+      // Fix 7: Null entry_fee guard
+      if ($categoryEvent && $categoryEvent->entry_fee === null) {
         return back()->withErrors([
-          'msg' => 'Please confirm that you have selected a player and category for each player!'
+          'msg' => 'The entry fee for one or more selected categories has not been set. Please contact the administrator.',
+        ]);
+      }
+
+      // Fix 1: Duplicate check — active paid registration for this player + category
+      $alreadyRegistered = CategoryEventRegistration::where('category_event_id', $categoryEventId)
+        ->where('payment_status_id', 1)
+        ->where(function ($q) {
+          $q->whereNull('status')->orWhere('status', '!=', 'withdrawn');
+        })
+        ->whereHas('registration.players', fn($q) => $q->where('players.id', $playerId))
+        ->exists();
+
+      if ($alreadyRegistered) {
+        return back()->withErrors([
+          'msg' => 'One or more players are already registered in the selected category.',
         ]);
       }
     }
 
-    foreach ($request->category as $cat) {
-      if ($cat == 0) {
-        return back()->withErrors([
-          'msg' => 'Please confirm that you have selected a player and category for each player!'
-        ]);
-      }
-    }
- 
     // ----------------------------
     // Create order
     // ----------------------------
@@ -1350,7 +1381,7 @@ class RegisterController extends Controller
       $order->registration_id = $registration->id;
       $order->player_id = $request->player[$i];
       $order->user_id = Auth::id();
-      $order->item_price = $categoryEvent->entry_fee ?? 0;
+      $order->item_price = $categoryEvent->entry_fee;
       $order->save();
 
       // Attach player to registration + create category_event_registration immediately
@@ -1379,6 +1410,10 @@ class RegisterController extends Controller
       $regorder->payfast_paid = true;
       $regorder->wallet_debited = true;
       $regorder->save();
+
+      // Fix 5: Send confirmation email for free registrations
+      $regorder->load('items.player', 'items.category_event.event', 'items.category_event.category');
+      $this->sendRegistrationConfirmationEmails($regorder, 'Free');
 
       return redirect()
         ->route('frontend.registration.success', ['order' => $regorder->id])
@@ -1418,6 +1453,40 @@ class RegisterController extends Controller
     ]);
 
     return view('frontend.payfast.check_out', compact('request', 'payfast'));
+  }
+
+  /**
+   * Send registration confirmation email to each player in the order.
+   */
+  private function sendRegistrationConfirmationEmails(RegistrationOrder $regorder, string $paymentMethod): void
+  {
+    foreach ($regorder->items as $item) {
+      $player = $item->player;
+
+      if (!$player || empty($player->email)) {
+        continue;
+      }
+
+      $eventName    = optional($item->category_event?->event)->name ?? 'Event';
+      $categoryName = optional($item->category_event?->category)->name ?? '';
+      $amount       = $item->item_price ?? 0;
+
+      try {
+        Mail::to($player->email)->queue(new RegistrationConfirmedMail([
+          'player_name'    => trim($player->name . ' ' . $player->surname),
+          'event_name'     => $eventName,
+          'category_name'  => $categoryName,
+          'payment_method' => $paymentMethod,
+          'amount'         => $amount,
+        ]));
+      } catch (\Throwable $e) {
+        Log::warning('REGISTRATION CONFIRMATION EMAIL FAILED', [
+          'order_id'     => $regorder->id,
+          'player_email' => $player->email,
+          'error'        => $e->getMessage(),
+        ]);
+      }
+    }
   }
 
 
