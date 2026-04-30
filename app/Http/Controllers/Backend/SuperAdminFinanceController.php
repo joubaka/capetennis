@@ -9,6 +9,7 @@ use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 
 class SuperAdminFinanceController extends Controller
@@ -17,13 +18,29 @@ class SuperAdminFinanceController extends Controller
     /*  INDEX – All-events financial summary                               */
     /* ------------------------------------------------------------------ */
 
-    public function index()
+    public function index(Request $request)
     {
+        // ── Financial year helpers (SA: March 1 – last day of February) ──────
+        $availableFYs = $this->buildAvailableFinancialYears();
+        $currentFY    = $request->query('fy', $this->currentFinancialYear());
+
+        // Normalise: if the requested FY isn't in the list, fall back to current
+        if (! $availableFYs->contains($currentFY)) {
+            $currentFY = $this->currentFinancialYear();
+        }
+
+        [$fyStart, $fyEnd] = $this->financialYearDates($currentFY);
+
         $allEvents = Event::with(['incomeItems', 'convenors.user'])
+            ->whereBetween('start_date', [$fyStart, $fyEnd])
             ->orderByDesc('start_date')
             ->get();
 
+        // Load transactions only for events in the selected FY
+        $eventIds = $allEvents->pluck('id');
+
         $allTransactions = Transaction::with(['order.items'])
+            ->whereIn('event_id', $eventIds)
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
             ->where('is_test', false)
@@ -37,10 +54,11 @@ class SuperAdminFinanceController extends Controller
             ->where('status', 'withdrawn')
             ->where('refund_status', 'completed')
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIds))
             ->get()
             ->groupBy(fn ($r) => $r->categoryEvent->event_id);
 
-        $allPayouts = EventPayout::all()->groupBy('event_id');
+        $allPayouts = EventPayout::whereIn('event_id', $eventIds)->get()->groupBy('event_id');
 
         $financeByEvent = $allEvents->map(function ($event) use ($allTransactions, $allRefunds, $allPayouts) {
             $feePerEntry = (float) $event->cape_tennis_fee;
@@ -92,12 +110,13 @@ class SuperAdminFinanceController extends Controller
                 : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
             return [
-                'event'          => $event,
-                'total_gross'    => $totalGross,
-                'total_income'   => $netIncome,
-                'total_entries'  => $totalEntries,
-                'total_paid_out' => $totalPaidOut,
-                'balance'        => round($netIncome - $totalPaidOut, 2),
+                'event'            => $event,
+                'total_gross'      => $totalGross,
+                'total_income'     => $netIncome,
+                'total_entries'    => $totalEntries,
+                'total_paid_out'   => $totalPaidOut,
+                'balance'          => round($netIncome - $totalPaidOut, 2),
+                'has_transactions' => $txForEvent->isNotEmpty(),
             ];
         });
 
@@ -109,7 +128,7 @@ class SuperAdminFinanceController extends Controller
             'balance'        => $financeByEvent->sum('balance'),
         ];
 
-        return view('backend.superadmin.finances', compact('financeByEvent', 'financeSummary'));
+        return view('backend.superadmin.finances', compact('financeByEvent', 'financeSummary', 'availableFYs', 'currentFY'));
     }
 
     /* ------------------------------------------------------------------ */
@@ -307,5 +326,93 @@ class SuperAdminFinanceController extends Controller
         return redirect()
             ->route('superadmin.finances.event', $event)
             ->with('success', 'Payout deleted.');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  FINANCIAL YEAR HELPERS (SA: March 1 – last day of February)       */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Returns the current SA financial year string, e.g. "2025/26".
+     */
+    private function currentFinancialYear(): string
+    {
+        $now = now();
+        return $now->month >= 3
+            ? $this->formatFY($now->year)
+            : $this->formatFY($now->year - 1);
+    }
+
+    /**
+     * Converts a Carbon date into an SA financial year string.
+     */
+    private function dateToFinancialYear(Carbon $date): string
+    {
+        return $date->month >= 3
+            ? $this->formatFY($date->year)
+            : $this->formatFY($date->year - 1);
+    }
+
+    /**
+     * Formats a start year as an SA financial year string, e.g. 2025 → "2025/26".
+     */
+    private function formatFY(int $startYear): string
+    {
+        return $startYear . '/' . substr((string) ($startYear + 1), -2);
+    }
+
+    /**
+     * Extracts the start year integer from an FY string like "2025/26".
+     * Returns null if the string is not in the expected format.
+     */
+    private function fyStartYear(string $fy): ?int
+    {
+        if (! preg_match('/^(\d{4})\/\d{2}$/', $fy, $m)) {
+            return null;
+        }
+        return (int) $m[1];
+    }
+
+    /**
+     * Returns [start, end] Carbon dates for the given FY string (e.g. "2025/26").
+     */
+    private function financialYearDates(string $fy): array
+    {
+        $startYear = $this->fyStartYear($fy) ?? (int) explode('/', $fy)[0];
+        $endYear   = $startYear + 1;
+        $start = Carbon::create($startYear, 3, 1)->startOfDay();
+        $end   = Carbon::create($endYear, 2, 1)->endOfMonth()->endOfDay();
+        return [$start, $end];
+    }
+
+    /**
+     * Collects all SA financial years that have at least one event.
+     * Also always includes the current FY so the default selection is never empty.
+     */
+    private function buildAvailableFinancialYears(): \Illuminate\Support\Collection
+    {
+        $dates = Event::selectRaw('MIN(start_date) as min_date, MAX(start_date) as max_date')
+            ->whereNotNull('start_date')
+            ->first();
+
+        $currentFY = $this->currentFinancialYear();
+
+        if (! $dates || ! $dates->min_date) {
+            return collect([$currentFY]);
+        }
+
+        $startYear = $this->fyStartYear($this->dateToFinancialYear(Carbon::parse($dates->min_date)));
+        $endYear   = $this->fyStartYear($this->dateToFinancialYear(Carbon::parse($dates->max_date)));
+
+        // Also ensure the current FY is included even if no events exist in it yet
+        $currentYear = $this->fyStartYear($currentFY);
+        $endYear = max($endYear, $currentYear);
+
+        $years = collect();
+        for ($y = $startYear; $y <= $endYear; $y++) {
+            $years->push($this->formatFY($y));
+        }
+
+        return $years;
     }
 }
