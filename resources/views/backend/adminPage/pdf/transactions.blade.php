@@ -86,7 +86,7 @@
                 <th>R{{ number_format($netTournamentIncome, 2) }}</th>
                 <th>R{{ number_format($runningBalance, 2) }}</th>
             </tr>
-            @if(isset($totalPayouts) && $totalPayouts > 0)
+            @if($totalPayouts > 0)
             <tr>
                 <th colspan="9" style="text-align: right;">
                     Payouts: − R{{ number_format($totalPayouts, 2) }}

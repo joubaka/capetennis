@@ -352,10 +352,10 @@ class EventTransactionController extends Controller
         'created_at' => $p->created_at,
         'player'     => $p->recipient,
         'method'     => $p->method,
-        'gross'      => -1 * abs($p->amount),
+        'gross'      => -abs($p->amount),
         'fee'        => 0,
         'capeFee'    => 0,
-        'net'        => -1 * abs($p->amount),
+        'net'        => -abs($p->amount),
       ];
     });
 
@@ -517,10 +517,10 @@ class EventTransactionController extends Controller
         'created_at' => $p->created_at,
         'player'     => $p->recipient,
         'method'     => $p->method,
-        'gross'      => -1 * abs($p->amount),
+        'gross'      => -abs($p->amount),
         'fee'        => 0,
         'capeFee'    => 0,
-        'net'        => -1 * abs($p->amount),
+        'net'        => -abs($p->amount),
       ];
     });
 
