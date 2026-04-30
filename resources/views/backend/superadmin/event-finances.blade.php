@@ -629,9 +629,8 @@ if (fullRefundModal) {
     document.getElementById('fullRefundSubmit').disabled = false;
   });
 
-  document.getElementById('fullRefundSubmit').addEventListener('click', function () {
-    this.disabled = true;
-    document.getElementById('fullRefundForm').submit();
+  document.getElementById('fullRefundForm').addEventListener('submit', function () {
+    document.getElementById('fullRefundSubmit').disabled = true;
   });
 }
 </script>
