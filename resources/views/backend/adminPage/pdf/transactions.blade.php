@@ -58,7 +58,7 @@
                     @endif
                 </td>
                 <td>{{ $t->method ?? '-' }}</td>
-                <td>{{ $isRefund ? '−' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
+                <td>{{ in_array($t->type, ['refund', 'payout']) ? '−' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
                 <td>
                     @if($t->fee != 0)
                         {{ $t->fee > 0 ? '+' : '−' }} R{{ number_format(abs($t->fee), 2) }}
@@ -78,13 +78,22 @@
         </tbody>
         <tfoot>
             <tr>
-                <th colspan="5" style="text-align: right;">Totals:</th>
+                <th colspan="4" style="text-align: right;">Totals:</th>
+                <th></th>
                 <th>R{{ number_format($totalGross, 2) }}</th>
                 <th>R{{ number_format($totalPayfastFees, 2) }}</th>
                 <th>R{{ number_format($totalCapeTennisFees, 2) }}</th>
                 <th>R{{ number_format($netTournamentIncome, 2) }}</th>
                 <th>R{{ number_format($runningBalance, 2) }}</th>
             </tr>
+            @if($totalPayouts > 0)
+            <tr>
+                <th colspan="9" style="text-align: right;">
+                    Payouts: − R{{ number_format($totalPayouts, 2) }}
+                </th>
+                <th></th>
+            </tr>
+            @endif
         </tfoot>
     </table>
 </body>
