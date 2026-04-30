@@ -37,12 +37,20 @@
         <tbody>
             @foreach($transactions as $t)
             @php
-            $gross = $t->amount_gross ?? 0;
             $isWithdrawal = $t->transaction_type === 'Withdrawal';
 
-            // Payfast Fee: always positive for Withdrawal, negative for normal
-            $fee = $t->amount_fee ?? 0;
-            $fee = $isWithdrawal ? abs($fee) : -abs($fee);
+            // Gross: PayFast-charged amount + any wallet credit applied to this order
+            $pfGross    = (float) ($t->amount_gross ?? 0);
+            $walletUsed = (float) (optional($t->order)->wallet_reserved ?? 0);
+            $gross      = $isWithdrawal ? $pfGross : ($pfGross + $walletUsed);
+
+            // PayFast fee: recalculate using current custom rates on the PayFast-charged portion only.
+            // Withdrawals were admin-created (no PayFast charge), so fee is 0.
+            if ($isWithdrawal) {
+                $fee = 0;
+            } else {
+                $fee = -\App\Models\SiteSetting::calculatePayfastFee(abs($pfGross));
+            }
 
             // Cape Tennis Fee: positive for withdrawal, negative for others
             $itemCount = $t->order && $t->order->items ? $t->order->items->count() : 1;
