@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
+use App\Models\SiteSetting;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,7 +22,13 @@ class EventFinanceController extends Controller
     public function index(Event $event)
     {
         // ── Registration income (from PayFast transactions) ──────────────
+        // Uses the same logic as EventTransactionController (source of truth):
+        //   - Excludes test transactions (is_test = false)
+        //   - Recalculates PayFast fee via SiteSetting::calculatePayfastFee()
+        //   - Adds wallet amounts to gross (order->wallet_reserved)
+        //   - Includes completed refunds as negative ledger entries
         $feePerEntry = (float) $event->cape_tennis_fee;
+        $isTeamEvent = $event->isTeam();
 
         $transactions = Transaction::with([
             'user',
@@ -30,14 +38,68 @@ class EventFinanceController extends Controller
             ->where('event_id', $event->id)
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
+            ->where('is_test', false)
             ->orderByDesc('created_at')
             ->get();
 
-        $totalGross        = $transactions->sum('amount_gross');
-        $totalPayfastFees  = $transactions->sum('amount_fee');
-        $totalEntries      = $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
-        $totalCapeTennisFees = $totalEntries * $feePerEntry;
-        $netRegistrationIncome = $totalGross - abs($totalPayfastFees) - $totalCapeTennisFees;
+        // Build payment ledger rows — mirrors EventTransactionController exactly
+        $paymentLedger = $transactions->map(function ($tx) use ($feePerEntry) {
+            $payfastGross = round((float) $tx->amount_gross, 2);
+            $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
+            $entryCount   = max(1, $tx->order?->items?->count() ?? 0);
+            $pfFee        = SiteSetting::calculatePayfastFee($payfastGross);
+            $capeFee      = round($feePerEntry * $entryCount, 2);
+
+            return [
+                'gross'       => $payfastGross + $walletUsed,
+                'payfast_fee' => $pfFee,
+                'cape_fee'    => $capeFee,
+                'net'         => round($payfastGross + $walletUsed - $pfFee - $capeFee, 2),
+                'items'       => $tx->order?->items ?? collect(),
+            ];
+        });
+
+        // Load completed refunds and build refund ledger rows
+        $refundRegs = CategoryEventRegistration::with([
+            'players',
+            'categoryEvent.category',
+            'payfastTransaction.order.items',
+        ])
+            ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+            ->where('status', 'withdrawn')
+            ->where('refund_status', 'completed')
+            ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->get();
+
+        $refundLedger = $refundRegs->map(function ($reg) use ($feePerEntry) {
+            $payment    = $reg->paymentInfo();
+            if (empty($payment)) {
+                return null;
+            }
+            $grossPaid  = (float) ($payment['gross'] ?? 0);
+            $payfastFee = abs((float) ($payment['fee'] ?? 0));
+
+            return [
+                'gross'       => -$grossPaid,
+                'payfast_fee' => -$payfastFee,
+                'cape_fee'    => -$feePerEntry,
+                'net'         => round(-$grossPaid + $payfastFee + $feePerEntry, 2),
+                'items'       => collect(),
+            ];
+        })->filter()->values();
+
+        $ledger = $paymentLedger->merge($refundLedger);
+
+        // Totals using positive magnitudes (consistent with original variable conventions)
+        $totalGross          = round($ledger->sum('gross'), 2);
+        $totalPayfastFees    = abs(round($ledger->sum('payfast_fee'), 2));
+        $totalCapeTennisFees = abs(round($ledger->sum('cape_fee'), 2));
+        $netRegistrationIncome = round($ledger->sum('net'), 2);
+
+        // Entry count: payments only, same as EventTransactionController
+        $totalEntries = $isTeamEvent
+            ? $transactions->count()
+            : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
         // ── Manual income items ───────────────────────────────────────────
         $incomeItems     = $event->incomeItems()->get();
