@@ -123,6 +123,45 @@ class RankingController extends Controller
           'event_date' => $event?->start_date ?? null,
         ]);
       });
+    } elseif ($rankingRecord) {
+      // Fallback: build legs from CategoryResult when meta_json has no legs
+      // (e.g. rankings created via direct data entry, not through the rebuild process)
+      $eventIds = $eventsById->keys()->toArray();
+      $pointsMap = $series->points->pluck('score', 'position')->toArray();
+      $bestN = (int) ($series->best_num_of_scores ?? 0);
+
+      $rawResults = \App\Models\CategoryResult::query()
+        ->join('registrations', 'registrations.id', '=', 'category_results.registration_id')
+        ->join('player_registrations', 'player_registrations.registration_id', '=', 'registrations.id')
+        ->whereIn('category_results.event_id', $eventIds)
+        ->where('player_registrations.player_id', $player->id)
+        ->select(
+          'category_results.event_id',
+          'category_results.category_id',
+          'category_results.position'
+        )
+        ->get();
+
+      if ($rawResults->isNotEmpty()) {
+        // Sort by points descending (best first) so Best-N counting matches rebuild logic
+        $sorted = $rawResults->map(function ($result) use ($eventsById, $pointsMap) {
+          return [
+            'event_id'   => (int) $result->event_id,
+            'event_name' => $eventsById->get($result->event_id)?->name ?? 'Event #' . $result->event_id,
+            'event_date' => $eventsById->get($result->event_id)?->start_date ?? null,
+            'position'   => (int) $result->position,
+            'points'     => (int) ($pointsMap[$result->position] ?? 0),
+          ];
+        })->sortByDesc('points')->values();
+
+        $legs = $sorted->map(function ($leg, $i) use ($bestN) {
+          $counted = $bestN <= 0 || $i < $bestN;
+          return array_merge($leg, [
+            'status' => $counted ? 'counted' : 'dropped',
+            'colour' => $counted ? 'green' : 'red',
+          ]);
+        });
+      }
     }
 
     return view('frontend.ranking.player_detail', compact(
