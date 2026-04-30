@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('player_suspensions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('player_id')->constrained('players')->cascadeOnDelete();
+            $table->unsignedBigInteger('player_id');
             $table->date('triggered_at');
             $table->unsignedTinyInteger('suspension_number')->default(1);
             $table->unsignedInteger('duration_months');
