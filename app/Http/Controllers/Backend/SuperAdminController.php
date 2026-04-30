@@ -10,6 +10,7 @@ use App\Models\Player;
 use App\Models\PlayerAgreement;
 use App\Models\Registration;
 use App\Models\SiteSetting;
+use App\Models\TeamPaymentOrder;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Withdrawals;
@@ -41,8 +42,59 @@ class SuperAdminController extends Controller
         $newUsersThisMonth   = User::where('created_at', '>=', Carbon::now()->startOfMonth())->count();
         $newPlayersThisWeek  = Player::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
 
-        // ── Pending withdrawals ──────────────────────────────────────────────
+        // ── Pending withdrawals (legacy Withdrawals model count) ────────────
         $pendingWithdrawals = Withdrawals::count();
+
+        // ── Withdrawal / Refund data for Withdrawals tab ─────────────────────
+        $withdrawalPendingRefunds = CategoryEventRegistration::with([
+                'categoryEvent.event',
+                'players',
+                'registration',
+                'user',
+            ])
+            ->where('status', 'withdrawn')
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->orderBy('updated_at')
+            ->get();
+
+        $withdrawalCompletedRefunds = CategoryEventRegistration::with([
+                'categoryEvent.event',
+                'players',
+                'registration',
+                'user',
+            ])
+            ->where('status', 'withdrawn')
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'completed')
+            ->orderByDesc('refunded_at')
+            ->get();
+
+        $withdrawalWalletRefunds = CategoryEventRegistration::with([
+                'categoryEvent.event',
+                'players',
+                'registration',
+                'user',
+            ])
+            ->where('status', 'withdrawn')
+            ->where(function ($q) {
+                $q->where('refund_method', 'wallet')
+                  ->orWhereNull('refund_method');
+            })
+            ->orderByDesc('withdrawn_at')
+            ->get();
+
+        $withdrawalPendingTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->orderBy('updated_at')
+            ->get();
+
+        $withdrawalCompletedTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'completed')
+            ->orderByDesc('refunded_at')
+            ->get();
 
         // ── Agreement statistics ─────────────────────────────────────────────
         $activeAgreement = Agreement::where('is_active', 1)->latest()->first();
@@ -258,7 +310,12 @@ class SuperAdminController extends Controller
             'loginAuditTodayCount',
             'loginAuditFailedToday',
             'financeByEvent',
-            'financeSummary'
+            'financeSummary',
+            'withdrawalPendingRefunds',
+            'withdrawalCompletedRefunds',
+            'withdrawalWalletRefunds',
+            'withdrawalPendingTeamRefunds',
+            'withdrawalCompletedTeamRefunds'
         ));
     }
 }
