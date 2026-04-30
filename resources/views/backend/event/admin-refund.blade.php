@@ -22,10 +22,7 @@
 
     <div class="card-body">
 
-      {{-- Flash messages --}}
-      @if ($errors->any())
-        <div class="alert alert-danger">{{ $errors->first() }}</div>
-      @endif
+      {{-- Errors are shown via the global toastr flash handler --}}
 
       {{-- Summary --}}
       <dl class="row mb-4">

@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="{{ asset(mix('assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css')) }}" />
 <link rel="stylesheet" href="{{ asset(mix('assets/vendor/libs/node-waves/node-waves.css')) }}" />
 <link rel="stylesheet" href="{{ asset(mix('assets/vendor/libs/typeahead-js/typeahead.css')) }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
 
 <!-- Vendor Styles -->
 @yield('vendor-style')
