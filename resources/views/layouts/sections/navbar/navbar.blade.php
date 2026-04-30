@@ -125,7 +125,7 @@ $navbarDetached = ($navbarDetached ?? '');
               <div class="d-flex">
                 <div class="flex-shrink-0 me-3">
                   <div class="avatar avatar-online">
-                    <img src="{{ Auth::user() ? Auth::user()->profile_photo_url : asset('assets/img/avatars/1.png') }}"
+                    <img src="{{ Auth::user() ? Auth::user()->profile_photo_url : asset('assets/img/avatars/default.svg') }}"
                          class="w-px-40 h-auto rounded-circle">
                   </div>
                 </div>
