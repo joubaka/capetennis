@@ -242,6 +242,89 @@ class Payfast
     return $html;
   }
 
+  /* =====================================================
+   * SIGNED HEADER BUILDER (shared by refund + refundQuery)
+   * ===================================================== */
+  private function buildApiHeaders(): array
+  {
+    $passphrase = $this->mode === 'sandbox'
+      ? (env('PAYFAST_PASSPHRASE_SANDBOX') ?: env('PAYFAST_PASSPHRASE'))
+      : (env('PAYFAST_PASSPHRASE_LIVE') ?: env('PAYFAST_PASSPHRASE'));
+
+    $timestamp = now()->toIso8601String();
+
+    $headerParams = [
+      'merchant-id' => $this->id,
+      'timestamp'   => $timestamp,
+      'version'     => 'v1',
+    ];
+
+    ksort($headerParams);
+    $signatureString = http_build_query($headerParams);
+    if (!empty($passphrase)) {
+      $signatureString .= '&passphrase=' . urlencode($passphrase);
+    }
+    $signature = md5($signatureString);
+
+    return [
+      'merchant-id' => $this->id,
+      'version'     => 'v1',
+      'timestamp'   => $timestamp,
+      'signature'   => $signature,
+    ];
+  }
+
+  /**
+   * Query the status of a previously issued refund via PayFast API.
+   *
+   * @param string $pf_payment_id
+   * @return array{success: bool, data: array|null, error: string|null}
+   */
+  public function refundQuery(string $pf_payment_id): array
+  {
+    $apiUrl = 'https://api.payfast.co.za/refunds/query/' . urlencode($pf_payment_id);
+
+    $headers = $this->buildApiHeaders();
+
+    try {
+      $response = Http::timeout(15)
+        ->withHeaders($headers)
+        ->get($apiUrl);
+
+      \Log::info('PayFast refund query response', [
+        'pf_payment_id' => $pf_payment_id,
+        'status'        => $response->status(),
+        'body'          => $response->body(),
+      ]);
+
+      if ($response->successful()) {
+        return [
+          'success' => true,
+          'data'    => $response->json(),
+          'error'   => null,
+        ];
+      }
+
+      return [
+        'success' => false,
+        'data'    => $response->json(),
+        'error'   => 'HTTP ' . $response->status() . ': ' . $response->body(),
+      ];
+
+    } catch (\Throwable $e) {
+      \Log::error('PayFast refund query exception', [
+        'pf_payment_id' => $pf_payment_id,
+        'error'         => $e->getMessage(),
+      ]);
+
+      return [
+        'success' => false,
+        'data'    => null,
+        'error'   => $e->getMessage(),
+      ];
+    }
+  }
+
   /**
    * Issue a refund via PayFast Refunds API.
    *
@@ -254,48 +337,18 @@ class Payfast
   {
     $amount = number_format((float) $amount, 2, '.', '');
 
-    // Resolve passphrase from env (live vs sandbox)
-    $passphrase = $this->mode === 'sandbox'
-      ? (env('PAYFAST_PASSPHRASE_SANDBOX') ?: env('PAYFAST_PASSPHRASE'))
-      : (env('PAYFAST_PASSPHRASE_LIVE') ?: env('PAYFAST_PASSPHRASE'));
-
-    // API endpoint
-    $apiUrl = $this->mode === 'sandbox'
-      ? 'https://api.payfast.co.za/refunds'
-      : 'https://api.payfast.co.za/refunds';
+    $apiUrl = 'https://api.payfast.co.za/refunds';
 
     // Build request body
     $body = [
-      'merchant_id'  => $this->id,
-      'merchant_key' => $this->key,
+      'merchant_id'   => $this->id,
+      'merchant_key'  => $this->key,
       'pf_payment_id' => $pf_payment_id,
-      'amount'       => $amount,
-      'reason'       => $reason,
+      'amount'        => $amount,
+      'reason'        => $reason,
     ];
 
-    // Build required API headers
-    $timestamp = now()->toIso8601String();
-
-    $headerParams = [
-      'merchant-id' => $this->id,
-      'timestamp'   => $timestamp,
-      'version'     => 'v1',
-    ];
-
-    // Generate signature: sort header params, build query string, append passphrase, md5
-    ksort($headerParams);
-    $signatureString = http_build_query($headerParams);
-    if (!empty($passphrase)) {
-      $signatureString .= '&passphrase=' . urlencode($passphrase);
-    }
-    $signature = md5($signatureString);
-
-    $headers = [
-      'merchant-id' => $this->id,
-      'version'     => 'v1',
-      'timestamp'   => $timestamp,
-      'signature'   => $signature,
-    ];
+    $headers = $this->buildApiHeaders();
 
     try {
       $response = Http::timeout(15)

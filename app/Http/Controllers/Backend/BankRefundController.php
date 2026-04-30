@@ -80,8 +80,35 @@ class BankRefundController extends Controller
   }
 
   /**
-   * Mark bank refund as completed (auto-refunds via PayFast when applicable)
+   * Query the PayFast status of a previously issued refund.
    */
+  public function queryPayfast(CategoryEventRegistration $registration)
+  {
+    $payment = $registration->paymentInfo();
+    $pfPaymentId = $payment['pf_payment_id'] ?? null;
+
+    if (empty($pfPaymentId)) {
+      return back()->withErrors('No PayFast payment ID found for this registration.');
+    }
+
+    $payfast = new \App\Services\Payfast();
+    $result = $payfast->refundQuery($pfPaymentId);
+
+    Log::info('PAYFAST REFUND QUERY (backend registration)', [
+      'registration_id' => $registration->id,
+      'pf_payment_id'   => $pfPaymentId,
+      'result'          => $result,
+    ]);
+
+    if ($result['success']) {
+      $status = $result['data']['status'] ?? $result['data']['refund_status'] ?? 'unknown';
+      return back()->with('pf_query_result', "PayFast status for {$pfPaymentId}: {$status}");
+    }
+
+    return back()->withErrors('PayFast query failed: ' . ($result['error'] ?? 'Unknown error'));
+  }
+
+
   public function complete(CategoryEventRegistration $registration)
   {
     if ($registration->refund_method !== 'bank') {

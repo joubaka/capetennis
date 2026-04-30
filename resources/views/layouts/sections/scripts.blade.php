@@ -35,6 +35,27 @@
 
 @stack('pricing-script')
 
+{{-- Global toastr flash-to-toast handler --}}
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
+<script>
+toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton: true, progressBar: true };
+@if(session('success'))
+  toastr.success(@json(session('success')));
+@endif
+@if(session('error'))
+  toastr.error(@json(session('error')));
+@endif
+@if(session('info'))
+  toastr.info(@json(session('info')));
+@endif
+@if(session('warning'))
+  toastr.warning(@json(session('warning')));
+@endif
+@if($errors->any())
+  toastr.error(@json($errors->first()));
+@endif
+</script>
+
 {{-- 7️⃣ Page scripts MUST be last --}}
 @yield('page-script')
 
