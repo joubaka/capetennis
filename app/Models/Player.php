@@ -258,4 +258,14 @@ class Player extends Model
     return $this->hasMany(PlayerAgreement::class);
   }
 
+  public function violations()
+  {
+    return $this->hasMany(PlayerViolation::class);
+  }
+
+  public function suspensions()
+  {
+    return $this->hasMany(PlayerSuspension::class);
+  }
+
 }

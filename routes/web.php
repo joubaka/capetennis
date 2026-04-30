@@ -64,6 +64,8 @@ use App\Http\Controllers\Frontend\RegisterController;
 use App\Http\Controllers\TeamSelectionController;
 use App\Http\Controllers\Frontend\AgreementController as FrontendAgreementController;
 use App\Http\Controllers\Backend\AgreementController as BackendAgreementController;
+use App\Http\Controllers\Backend\DisciplinaryController;
+use App\Http\Controllers\Backend\DisciplineSettingsController;
 use App\Models\ClothingOrder;
 use App\Models\Draw;
 use Illuminate\Support\Facades\Route;
@@ -339,6 +341,24 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::put('/{agreement}', [BackendAgreementController::class, 'update'])->name('backend.agreements.update');
     Route::post('/{agreement}/duplicate', [BackendAgreementController::class, 'duplicate'])->name('backend.agreements.duplicate');
     Route::post('/{agreement}/set-active', [BackendAgreementController::class, 'setActive'])->name('backend.agreements.setActive');
+  });
+
+  // Disciplinary & Suspension Tracker
+  Route::prefix('disciplinary')->middleware('role:super-user|admin')->group(function () {
+    Route::get('/', [DisciplinaryController::class, 'index'])->name('backend.disciplinary.index');
+    Route::get('/create', [DisciplinaryController::class, 'create'])->name('backend.disciplinary.create');
+    Route::post('/', [DisciplinaryController::class, 'store'])->name('backend.disciplinary.store');
+    Route::get('/player/{playerId}', [DisciplinaryController::class, 'playerProfile'])->name('backend.disciplinary.player');
+    Route::get('/violation/{id}/edit', [DisciplinaryController::class, 'editViolation'])->name('backend.disciplinary.violation.edit');
+    Route::put('/violation/{id}', [DisciplinaryController::class, 'updateViolation'])->name('backend.disciplinary.violation.update');
+    Route::delete('/violation/{id}', [DisciplinaryController::class, 'destroyViolation'])->name('backend.disciplinary.violation.destroy');
+    Route::post('/suspension/{suspensionId}/lift', [DisciplinaryController::class, 'liftSuspension'])->name('backend.disciplinary.suspension.lift');
+    // Settings
+    Route::get('/settings', [DisciplineSettingsController::class, 'index'])->name('backend.disciplinary.settings');
+    Route::post('/settings', [DisciplineSettingsController::class, 'updateSettings'])->name('backend.disciplinary.settings.update');
+    Route::post('/violation-type', [DisciplineSettingsController::class, 'storeViolationType'])->name('backend.disciplinary.violation-type.store');
+    Route::put('/violation-type/{violationType}', [DisciplineSettingsController::class, 'updateViolationType'])->name('backend.disciplinary.violation-type.update');
+    Route::delete('/violation-type/{violationType}', [DisciplineSettingsController::class, 'destroyViolationType'])->name('backend.disciplinary.violation-type.destroy');
   });
 
   // Super Admin Dashboard

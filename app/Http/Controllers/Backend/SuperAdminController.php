@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Agreement;
 use App\Models\CategoryEventRegistration;
+use App\Models\DisciplineSetting;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\PlayerAgreement;
+use App\Models\PlayerSuspension;
+use App\Models\PlayerViolation;
 use App\Models\Registration;
 use App\Models\SiteSetting;
 use App\Models\TeamPaymentOrder;
@@ -328,6 +331,34 @@ class SuperAdminController extends Controller
             ->sortByDesc('balance')
             ->values();
 
+        // ── Disciplinary stats ─────────────────────────────────────────────
+        $expiryDays = DisciplineSetting::expiryDays();
+        $expiryDate = Carbon::now()->subDays($expiryDays)->toDateString();
+
+        $disciplinaryStats = [
+            'total_violations'        => PlayerViolation::count(),
+            'active_violations'       => PlayerViolation::where('violation_date', '>=', $expiryDate)->count(),
+            'active_suspensions'      => PlayerSuspension::whereNull('lifted_at')
+                                            ->where('ends_at', '>', Carbon::today()->toDateString())
+                                            ->count(),
+            'total_suspensions'       => PlayerSuspension::count(),
+            'players_with_violations' => PlayerViolation::where('violation_date', '>=', $expiryDate)
+                                            ->distinct('player_id')
+                                            ->count('player_id'),
+            'threshold'               => DisciplineSetting::suspensionThreshold(),
+        ];
+
+        $recentViolations = PlayerViolation::with(['player', 'violationType'])
+            ->orderByDesc('violation_date')
+            ->limit(10)
+            ->get();
+
+        $activeSuspensions = PlayerSuspension::with('player')
+            ->whereNull('lifted_at')
+            ->where('ends_at', '>', Carbon::today()->toDateString())
+            ->orderBy('ends_at')
+            ->get();
+
         return view('backend.superadmin.index', compact(
             'totalUsers',
             'totalPlayers',
@@ -364,7 +395,10 @@ class SuperAdminController extends Controller
             'generalSettings',
             'emailSettings',
             'registrationSettings',
-            'wallets'
+            'wallets',
+            'disciplinaryStats',
+            'recentViolations',
+            'activeSuspensions'
         ));
     }
 }

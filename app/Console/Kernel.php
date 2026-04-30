@@ -20,6 +20,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('queue:work --stop-when-empty --max-time=270 --memory=128')
             ->everyMinute()
             ->withoutOverlapping();
+
+        // Check for new suspension threshold breaches daily.
+        $schedule->command('disciplinary:check-thresholds')
+            ->dailyAt('06:00')
+            ->withoutOverlapping();
     }
 
     /**
