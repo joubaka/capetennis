@@ -557,7 +557,7 @@
                 @foreach($withdrawalPendingTeamRefunds as $t)
                   <tr>
                     <td><span class="badge bg-label-warning">TEAM-{{ $t->id }}</span></td>
-                    <td>{{ optional($t->player)->name ?? 'Player #'.($t->player_id ?? 'N/A') }}</td>
+                    <td>{{ optional($t->player)->name ?? 'Unknown Player' }}</td>
                     <td><small>{{ optional($t->event)->name ?? '—' }}</small></td>
                     <td class="text-danger fw-semibold">R{{ number_format($t->refund_net, 2) }}</td>
                     <td>{{ $t->refund_account_name ?? '—' }}</td>
@@ -615,7 +615,7 @@
                 @foreach($withdrawalCompletedTeamRefunds as $t)
                   <tr>
                     <td><span class="badge bg-label-warning">TEAM-{{ $t->id }}</span></td>
-                    <td>{{ optional($t->player)->name ?? 'Player #'.($t->player_id ?? '') }}</td>
+                    <td>{{ optional($t->player)->name ?? 'Unknown Player' }}</td>
                     <td><small>{{ optional($t->event)->name ?? '—' }}</small></td>
                     <td class="text-success fw-semibold">R{{ number_format($t->refund_net, 2) }}</td>
                     <td>{{ $t->refund_bank_name ?? '—' }}</td>
