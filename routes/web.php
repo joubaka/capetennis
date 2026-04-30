@@ -232,6 +232,12 @@ Route::post(
 )->middleware('auth')
   ->name('registrations.refund.request');
 
+Route::get(
+  '/my/refunds',
+  [\App\Http\Controllers\Frontend\RegistrationRefundController::class, 'myRefunds']
+)->middleware('auth')
+  ->name('my.refunds');
+
 Route::post(
   '/registrations/{entry}/move-category',
   [\App\Http\Controllers\Frontend\RegistrationCategoryMoveController::class, 'move']
@@ -297,6 +303,12 @@ Route::middleware(['auth', 'role:super-user'])
       App\Http\Controllers\Backend\BankRefundController::class,
       'queryPayfast'
     ])->name('bank.payfast-query');
+
+    // Bulk: mark all selected pending bank refunds as completed (manual)
+    Route::post('bulk-complete', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'bulkComplete'
+    ])->name('bank.bulk-complete');
   });
 
 

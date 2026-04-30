@@ -19,9 +19,27 @@
         <span class="badge bg-primary">Team pending: {{ $pendingTeamRefunds->count() ?? 0 }}</span>
       </div>
 
+      {{-- Bulk complete form (hidden; submitted by button below table) --}}
+      <form id="bulk-complete-form"
+            method="POST"
+            action="{{ route('admin.refunds.bank.bulk-complete') }}"
+            onsubmit="return confirm('Mark all selected registrations as completed?');">
+        @csrf
+        {{-- checkboxes injected by the table rows above --}}
+      </form>
+
+      <div class="mb-2">
+        <button type="submit" form="bulk-complete-form" class="btn btn-sm btn-success">
+          <i class="ti ti-checks me-1"></i> Mark Selected as Completed
+        </button>
+      </div>
+
       <table class="table table-bordered">
         <thead>
           <tr>
+            <th style="width:36px;">
+              <input type="checkbox" id="select-all" title="Select all">
+            </th>
             <th>ID</th>
             <th>Player</th>
             <th>PayFast ID</th>
@@ -36,6 +54,7 @@
           {{-- Registration refunds --}}
           @forelse($pendingRefunds as $refund)
           <tr>
+            <td><input type="checkbox" name="registration_ids[]" value="{{ $refund->id }}" form="bulk-complete-form" class="reg-checkbox"></td>
             <td>R-REG-{{ $refund->id }}</td>
             <td>{{ $refund->display_name }}</td>
             <td><code>{{ $refund->pf_transaction_id ?? '—' }}</code></td>
@@ -148,4 +167,12 @@
   </div>
 
 </div>
+@endsection
+
+@section('page-script')
+<script>
+document.getElementById('select-all')?.addEventListener('change', function () {
+  document.querySelectorAll('.reg-checkbox').forEach(cb => cb.checked = this.checked);
+});
+</script>
 @endsection

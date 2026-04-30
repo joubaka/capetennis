@@ -203,6 +203,14 @@ class RegistrationRefundController extends Controller
           ])
           ->log("Wallet refund R{$net} processed");
 
+        // Send wallet refund confirmation email to the player
+        $playerEmail = optional($registration->players->first())->email
+                    ?? $registration->user?->email;
+        if ($playerEmail) {
+          \Illuminate\Support\Facades\Mail::to($playerEmail)
+            ->queue(new \App\Mail\WalletRefundConfirmationMail($registration));
+        }
+
         return redirect()
           ->route('events.show', $registration->categoryEvent->event_id)
           ->with('success', 'Refund credited to your wallet.');
@@ -624,11 +632,11 @@ class RegistrationRefundController extends Controller
 
     if (!empty($pfPaymentId)) {
       // For hybrid payments PayFast can only refund its own portion;
-      // the wallet contribution is credited back to the user's wallet separately.
+      // the wallet portion is refunded in full (no fee) to the wallet.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = round($payfastGross * 0.90, 2);
-      $walletNet    = round($walletPaid  * 0.90, 2);
+      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      $walletNet    = $walletPaid;
 
       try {
         $payfast = new \App\Services\Payfast();
@@ -663,7 +671,7 @@ class RegistrationRefundController extends Controller
                 [
                   'registration_id' => $registration->id,
                   'gross' => $walletPaid,
-                  'fee' => round($walletPaid * 0.10, 2),
+                  'fee' => 0,   // wallet portion carries no fee
                   'method' => 'hybrid_bank',
                   'initiated_by' => 'admin',
                 ]
@@ -718,6 +726,27 @@ class RegistrationRefundController extends Controller
     ]);
 
     return back()->with('success', 'Bank refund marked as completed.');
+  }
+
+  /**
+   * Player-facing refund status page: list all withdrawn registrations
+   * with their current refund state.
+   */
+  public function myRefunds()
+  {
+    $user = auth()->user();
+
+    if (!$user) {
+      return redirect()->route('login');
+    }
+
+    $registrations = CategoryEventRegistration::where('user_id', $user->id)
+      ->where('status', 'withdrawn')
+      ->with(['categoryEvent.event', 'categoryEvent.category', 'players'])
+      ->orderByDesc('withdrawn_at')
+      ->get();
+
+    return view('frontend.registrations.refund-status', compact('registrations'));
   }
 
 

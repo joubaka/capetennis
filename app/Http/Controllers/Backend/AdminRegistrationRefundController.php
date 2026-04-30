@@ -182,6 +182,14 @@ class AdminRegistrationRefundController extends Controller
           ])
           ->log("Admin wallet refund R{$gross} processed");
 
+        // Notify the player/payer of the wallet credit
+        $playerEmail = optional($registration->players->first())->email
+                    ?? optional($registration->user)->email;
+        if ($playerEmail) {
+          \Illuminate\Support\Facades\Mail::to($playerEmail)
+            ->queue(new \App\Mail\WalletRefundConfirmationMail($registration));
+        }
+
         return redirect()
           ->route('admin.events.entries.new', $event)
           ->with('success', 'Wallet refund of R' . number_format($gross, 2) . " credited to {$user->name}'s wallet.");

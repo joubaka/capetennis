@@ -20,6 +20,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('queue:work --stop-when-empty --max-time=270 --memory=128')
             ->everyMinute()
             ->withoutOverlapping();
+
+        // Remind super-users and players of bank refunds pending > 30 days.
+        $schedule->command('refunds:send-bank-reminders')
+            ->dailyAt('08:00')
+            ->withoutOverlapping();
     }
 
     /**
