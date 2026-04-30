@@ -364,13 +364,23 @@
 
     {{-- ══ TAB: FINANCE ══ --}}
     <div class="tab-pane fade p-3" id="sa-pane-finance" role="tabpanel">
+      {{-- Year filter --}}
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <span class="text-muted small"><i class="ti ti-filter me-1"></i>Year:</span>
+        @foreach($financeYears as $yr)
+          <a href="{{ request()->fullUrlWithQuery(['finance_year' => $yr, 'tab' => 'finance']) }}"
+             class="btn btn-sm {{ $yr == $financeYear ? 'btn-warning' : 'btn-outline-secondary' }}">
+            {{ $yr }}
+          </a>
+        @endforeach
+      </div>
       <div class="row g-3 mb-3">
         <div class="col-6 col-md-4">
           <div class="card border-start border-success border-3 h-100">
             <div class="card-body">
               <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-success"></i>Total Gross Income</small>
               <h5 class="mb-0 text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
-              <small class="text-muted">All registration payments</small>
+              <small class="text-muted">All registration payments in {{ $financeYear }}</small>
             </div>
           </div>
         </div>
@@ -388,7 +398,7 @@
             <div class="card-body">
               <small class="text-muted d-block mb-1"><i class="ti ti-users me-1 text-secondary"></i>Total Entries</small>
               <h5 class="mb-0">{{ number_format($financeSummary['total_entries']) }}</h5>
-              <small class="text-muted">Across all events</small>
+              <small class="text-muted">Across all {{ $financeYear }} events</small>
             </div>
           </div>
         </div>
@@ -397,7 +407,7 @@
         <div class="card-header d-flex align-items-center justify-content-between">
           <div class="d-flex align-items-center">
             <i class="ti ti-calendar-stats me-2 text-warning"></i>
-            <h5 class="mb-0">Per-Event Financial Summary</h5>
+            <h5 class="mb-0">Per-Event Financial Summary – {{ $financeYear }}</h5>
           </div>
           <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning">
             <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
@@ -1906,6 +1916,15 @@ $(function () {
     var el = document.getElementById('sa-tab-settings');
     if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   }
+
+  // Open Finance tab if ?tab=finance is in the URL
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'finance') {
+      var el = document.getElementById('sa-tab-finance');
+      if (el) bootstrap.Tab.getOrCreateInstance(el).show();
+    }
+  })();
 
   // ── Wallets DataTable (lazy init on tab show) ─────────────────
   var dtWallets = null;

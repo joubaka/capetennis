@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Withdrawals;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Spatie\Activitylog\Models\Activity;
@@ -25,7 +26,7 @@ class SuperAdminController extends Controller
     /**
      * Show the consolidated Super Admin Dashboard.
      */
-    public function index()
+    public function index(Request $request)
     {
         $oneYearAgo = Carbon::now()->subYear();
 
@@ -208,11 +209,31 @@ class SuperAdminController extends Controller
 
         $allEvents = Event::with(['incomeItems'])->orderByDesc('start_date')->get();
 
+        // ── Year filter ───────────────────────────────────────────────────────
+        $financeYears = $allEvents
+            ->filter(fn ($e) => $e->start_date)
+            ->map(fn ($e) => (string) \Carbon\Carbon::parse($e->start_date)->year)
+            ->unique()
+            ->sort()
+            ->values();
+
+        $financeYear = $request->input('finance_year');
+        if (! $financeYears->contains($financeYear)) {
+            $financeYear = $financeYears->last() ?? (string) now()->year;
+        }
+
+        $eventsForYear = $allEvents->filter(
+            fn ($e) => $e->start_date && (string) \Carbon\Carbon::parse($e->start_date)->year === $financeYear
+        );
+
         // All real payment transactions, eager-loaded with order items
+        $eventIdsForYear = $eventsForYear->pluck('id');
+
         $allTransactions = Transaction::with(['order.items'])
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
             ->where('is_test', false)
+            ->whereIn('event_id', $eventIdsForYear)
             ->get()
             ->groupBy('event_id');
 
@@ -224,10 +245,11 @@ class SuperAdminController extends Controller
             ->where('status', 'withdrawn')
             ->where('refund_status', 'completed')
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIdsForYear))
             ->get()
             ->groupBy(fn ($r) => $r->categoryEvent->event_id);
 
-        $financeByEvent = $allEvents->map(function ($event) use ($allTransactions, $allRefunds) {
+        $financeByEvent = $eventsForYear->map(function ($event) use ($allTransactions, $allRefunds) {
             $feePerEntry = (float) $event->cape_tennis_fee;
             $txForEvent  = $allTransactions->get($event->id, collect());
 
@@ -335,6 +357,8 @@ class SuperAdminController extends Controller
             'loginAuditFailedToday',
             'financeByEvent',
             'financeSummary',
+            'financeYear',
+            'financeYears',
             'payfastSettings',
             'paymentMethods',
             'generalSettings',
