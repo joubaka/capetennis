@@ -8,6 +8,13 @@
       "menuLevel": "all"
     },
     {
+      "url": "rankings",
+      "name": "Rankings",
+      "icon": "menu-icon tf-icons ti ti-trophy",
+      "slug": "rankings.index",
+      "menuLevel": "all"
+    },
+    {
       "name": "Super Admin",
       "icon": "menu-icon tf-icons ti ti-shield-check",
       "slug": "backend.superadmin",
