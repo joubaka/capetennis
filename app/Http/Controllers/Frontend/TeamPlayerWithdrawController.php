@@ -61,7 +61,7 @@ class TeamPlayerWithdrawController extends Controller
           ->with('success', 'Player withdrawn from team (payment marked as unpaid). Please choose refund method.');
       }
 
-      return back()->with('success', 'Player withdrawn from team (no refund – withdrawal deadline passed).');
+      return back()->with('success', 'Player withdrawn from team. Refund is not available because the withdrawal deadline has passed. For assistance, contact support@capetennis.co.za.');
     }
 
     // Unpaid: clear the slot to make it available
