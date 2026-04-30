@@ -28,10 +28,33 @@ class SuperAdminFinanceController extends Controller
             ->orderByDesc('start_date')
             ->get();
 
+        // ── Financial Year helpers ────────────────────────────────────────────
+        // FY = calendar year of start_date (e.g. "2025")
+        $availableFYs = $allEvents
+            ->filter(fn ($e) => $e->start_date)
+            ->map(fn ($e) => (string) $e->start_date->year)
+            ->unique()
+            ->sort()
+            ->values();
+
+        $currentFY = request('fy');
+        if (! $availableFYs->contains($currentFY)) {
+            $currentFY = $availableFYs->last() ?? (string) now()->year;
+        }
+
+        // Filter to selected FY
+        $eventsForFY = $allEvents->filter(
+            fn ($e) => $e->start_date && (string) $e->start_date->year === $currentFY
+        );
+
+        // ── Load transactions & refunds for the filtered event set ────────────
+        $eventIds = $eventsForFY->pluck('id');
+
         $allTransactions = Transaction::with(['order.items'])
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
             ->where('is_test', false)
+            ->whereIn('event_id', $eventIds)
             ->get()
             ->groupBy('event_id');
 
@@ -42,12 +65,13 @@ class SuperAdminFinanceController extends Controller
             ->where('status', 'withdrawn')
             ->where('refund_status', 'completed')
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIds))
             ->get()
             ->groupBy(fn ($r) => $r->categoryEvent->event_id);
 
-        $allPayouts = EventPayout::all()->groupBy('event_id');
+        $allPayouts = EventPayout::whereIn('event_id', $eventIds)->get()->groupBy('event_id');
 
-        $financeByEvent = $allEvents->map(function ($event) use ($allTransactions, $allRefunds, $allPayouts) {
+        $financeByEvent = $eventsForFY->map(function ($event) use ($allTransactions, $allRefunds, $allPayouts) {
             $feePerEntry = (float) $event->cape_tennis_fee;
             $txForEvent  = $allTransactions->get($event->id, collect());
 
@@ -97,12 +121,13 @@ class SuperAdminFinanceController extends Controller
                 : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
             return [
-                'event'          => $event,
-                'total_gross'    => $totalGross,
-                'total_income'   => $netIncome,
-                'total_entries'  => $totalEntries,
-                'total_paid_out' => $totalPaidOut,
-                'balance'        => round($netIncome - $totalPaidOut, 2),
+                'event'            => $event,
+                'total_gross'      => $totalGross,
+                'total_income'     => $netIncome,
+                'total_entries'    => $totalEntries,
+                'total_paid_out'   => $totalPaidOut,
+                'balance'          => round($netIncome - $totalPaidOut, 2),
+                'has_transactions' => $txForEvent->isNotEmpty(),
             ];
         });
 
@@ -114,7 +139,12 @@ class SuperAdminFinanceController extends Controller
             'balance'        => $financeByEvent->sum('balance'),
         ];
 
-        return view('backend.superadmin.finances', compact('financeByEvent', 'financeSummary'));
+        return view('backend.superadmin.finances', compact(
+            'financeByEvent',
+            'financeSummary',
+            'availableFYs',
+            'currentFY'
+        ));
     }
 
     /* ------------------------------------------------------------------ */
