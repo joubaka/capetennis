@@ -42,21 +42,26 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('Team player not found.');
     }
 
-    // Paid slot: mark as unpaid and notify user to request refund / contact admin
+    // Check withdrawal deadline
+    $event = \App\Models\Event::find($eventId);
+    if (!$event) {
+      return back()->withErrors('Event not found.');
+    }
+    $refundAllowed = now()->lte($event->withdrawalCloseAt());
+
+    // Paid slot: mark as unpaid and redirect to refund or notify no-refund
     if ((int) $teamPlayer->pay_status === 1) {
       $teamPlayer->pay_status = 0;
       $teamPlayer->save();
 
-      // If super-user withdraws, optionally clear the slot (uncomment if desired)
-      // if ($isSuperUser) {
-      //     $teamPlayer->player_id = 0;
-      //     $teamPlayer->save();
-      // }
+      if ($refundAllowed) {
+        // Redirect user to refund choice so they can select wallet or bank refund
+        return redirect()
+          ->route('team.player.refund.choose', [$team->id, $player->id, $eventId])
+          ->with('success', 'Player withdrawn from team (payment marked as unpaid). Please choose refund method.');
+      }
 
-      // Redirect user to refund choice so they can select wallet or bank refund
-      return redirect()
-        ->route('team.player.refund.choose', [$team->id, $player->id, $eventId])
-        ->with('success', 'Player withdrawn from team (payment marked as unpaid). Please choose refund method.');
+      return back()->with('success', 'Player withdrawn from team (no refund – withdrawal deadline passed).');
     }
 
     // Unpaid: clear the slot to make it available
