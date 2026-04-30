@@ -631,15 +631,34 @@
                   <th>Event</th>
                   <th>Refund Method</th>
                   <th>Status</th>
+                  <th>Reason</th>
                   <th>Withdrawn At</th>
                 </tr>
               </thead>
               <tbody>
                 @foreach($withdrawalWalletRefunds as $refund)
+                  @php
+                    $refundEvent = optional($refund->categoryEvent)->event;
+                    $withdrawnAt = $refund->withdrawn_at;
+                    if ($refund->refund_status === 'completed') {
+                      $reason = '<span class="badge bg-success">Refunded to wallet</span>';
+                    } elseif (!$refund->is_paid) {
+                      $reason = '<span class="badge bg-label-secondary">Not paid</span>';
+                    } elseif ($refundEvent && $withdrawnAt && $withdrawnAt->gt($refundEvent->withdrawalCloseAt())) {
+                      $deadline = $refundEvent->withdrawalCloseAt()->format('d M Y H:i');
+                      $reason = '<span class="badge bg-danger" title="Deadline: ' . $deadline . '">Late withdrawal</span>';
+                    } elseif ($refund->refund_status === 'pending') {
+                      $reason = '<span class="badge bg-warning text-dark">Awaiting processing</span>';
+                    } elseif (in_array($refund->refund_status, [null, '', 'not_refunded'])) {
+                      $reason = '<span class="badge bg-label-warning">Refund not chosen</span>';
+                    } else {
+                      $reason = '—';
+                    }
+                  @endphp
                   <tr>
                     <td><span class="badge bg-label-info">REG-{{ $refund->id }}</span></td>
                     <td>{{ $refund->display_name }}</td>
-                    <td><small>{{ optional(optional($refund->categoryEvent)->event)->name ?? '—' }}</small></td>
+                    <td><small>{{ $refundEvent->name ?? '—' }}</small></td>
                     <td><span class="badge bg-label-info">{{ $refund->refund_method ?? 'wallet' }}</span></td>
                     <td>
                       @if($refund->refund_status === 'completed')
@@ -650,7 +669,8 @@
                         <span class="badge bg-label-secondary">{{ $refund->refund_status ?? 'N/A' }}</span>
                       @endif
                     </td>
-                    <td><small class="text-muted">{{ $refund->withdrawn_at?->format('d M Y H:i') ?? '—' }}</small></td>
+                    <td>{!! $reason !!}</td>
+                    <td><small class="text-muted">{{ $withdrawnAt?->format('d M Y H:i') ?? '—' }}</small></td>
                   </tr>
                 @endforeach
               </tbody>
