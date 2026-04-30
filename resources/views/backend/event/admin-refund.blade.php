@@ -139,7 +139,9 @@
 
 </div>
 
-@push('scripts')
+@endsection
+
+@section('page-script')
 <script>
 document.getElementById('cancel-withdraw-btn').addEventListener('click', function () {
   if (confirm('Cancel this withdrawal? The player will be restored to active status.')) {
@@ -147,6 +149,4 @@ document.getElementById('cancel-withdraw-btn').addEventListener('click', functio
   }
 });
 </script>
-@endpush
-
 @endsection
