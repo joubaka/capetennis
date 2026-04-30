@@ -341,6 +341,20 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')
     ->name('backend.superadmin.index');
 
+  // Super Admin Financial Dashboard
+  Route::middleware('role:super-user')->group(function () {
+    Route::get('superadmin/finances', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'index'])
+      ->name('superadmin.finances');
+
+    Route::get('superadmin/finances/event/{event}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'show'])
+      ->name('superadmin.finances.event');
+
+    Route::post('superadmin/finances/event/{event}/payout', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storePayout'])
+      ->name('superadmin.finances.payout.store');
+
+    Route::delete('superadmin/finances/payout/{payout}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'destroyPayout'])
+      ->name('superadmin.finances.payout.destroy');
+  });
 
 
   Route::prefix('announcement')->group(function () {
