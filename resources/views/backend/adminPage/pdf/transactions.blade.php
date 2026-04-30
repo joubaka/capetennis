@@ -7,117 +7,82 @@
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
         th { background-color: #f5f5f5; }
+        .refund-row td { background-color: #fff4f4; }
+        ul { margin: 0; padding-left: 15px; font-size: 10px; }
     </style>
 </head>
 <body>
     <h2>Transactions - {{ $event->name }}</h2>
 
-    @php
-        $runningBalance = 0;
-        $grossTotal = 0;
-        $feeTotal = 0;
-        $capeTotal = 0;
-        $nettTotal = 0;
-    @endphp
+    @php $runningBalance = 0; @endphp
 
     <table>
         <thead>
             <tr>
                 <th>#</th>
                 <th>Date</th>
-                <th>User</th>
                 <th>Type</th>
+                <th>Participant / Items</th>
+                <th>Method</th>
                 <th>Gross</th>
-                <th>Payfast Fee</th>
+                <th>PayFast Fee</th>
                 <th>Cape Tennis Fee</th>
-                <th>Nett</th>
+                <th>Net</th>
                 <th>Balance</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($transactions as $t)
+            @foreach($ledger as $t)
             @php
-            $isWithdrawal = $t->transaction_type === 'Withdrawal';
-
-            // Gross: PayFast-charged amount + any wallet credit applied to this order
-            $pfGross    = (float) ($t->amount_gross ?? 0);
-            $walletUsed = (float) (optional($t->order)->wallet_reserved ?? 0);
-            $gross      = $isWithdrawal ? $pfGross : ($pfGross + $walletUsed);
-
-            // PayFast fee: recalculate using current custom rates on the PayFast-charged portion only.
-            // Withdrawals were admin-created (no PayFast charge), so fee is 0.
-            if ($isWithdrawal) {
-                $fee = 0;
-            } else {
-                $fee = -\App\Models\SiteSetting::calculatePayfastFee(abs($pfGross));
-            }
-
-            // Cape Tennis Fee: positive for withdrawal, negative for others
-            $itemCount = $t->order && $t->order->items ? $t->order->items->count() : 1;
-$capeFeeValue = $event->cape_tennis_fee ?? 15;
-$cape = $isWithdrawal ? $capeFeeValue * $itemCount : -$capeFeeValue * $itemCount;
-            $cape = $isWithdrawal ? abs($cape) : -abs($cape);
-
-            // Nett = Gross + Payfast Fee + Cape Fee
-            $nett = $gross + $fee + $cape;
-            $runningBalance += $nett;
-
-            // Totals
-            $grossTotal += $gross;
-            $feeTotal += $fee;
-            $capeTotal += $cape;
-            $nettTotal += $nett;
-        @endphp
-
-
-                <tr>
-                    <td>{{ $t->pf_payment_id ?? '-' }}</td>
-                    <td>{{ $t->created_at->format('d M Y') }}</td>
-                    <td style="text-align: left;">
-                      <strong>{{ $t->user->name ?? '-' }}</strong><br>
-                      <ul style="margin: 0; padding-left: 15px; font-size: 10px;">
-                        @if ($isWithdrawal)
-                            @php
-                                $amount = $t->item_price ?? abs($gross);
-                            @endphp
+                $runningBalance = round($runningBalance + $t->net, 2);
+                $isRefund = $t->type === 'refund';
+            @endphp
+            <tr class="{{ $isRefund ? 'refund-row' : '' }}">
+                <td>{{ $t->pf_payment_id ?? '-' }}</td>
+                <td>{{ \Carbon\Carbon::parse($t->created_at)->format('d M Y') }}</td>
+                <td>{{ ucfirst($t->type) }}</td>
+                <td style="text-align: left;">
+                    <strong>{{ $t->player ?? '-' }}</strong>
+                    @if(!$isRefund && isset($t->order) && $t->order && $t->order->items && $t->order->items->count())
+                        <ul>
+                            @foreach($t->order->items as $item)
                             <li>
-                                {{ optional($t->player)->name }} {{ optional($t->player)->surname }}
-                                ({{ optional(optional($t->category_event)->category)->name }})
-                                - R{{ number_format($amount, 2) }}
+                                {{ $item->player->name ?? '' }} {{ $item->player->surname ?? '' }}
+                                ({{ optional(optional($item->category_event)->category)->name ?? '-' }})
+                                — R{{ number_format($item->item_price ?? 0, 2) }}
                             </li>
-                        @elseif ($t->order && $t->order->items)
-                            @foreach ($t->order->items as $item)
-                                @php
-                                    $amount = $item->item_price ?? $event->entryFee ?? 0;
-                                @endphp
-                                <li>
-                                    {{ $item->player->name }} {{ $item->player->surname }}
-                                    ({{ optional($item->category_event->category)->name }})
-                                    - R{{ number_format($amount, 2) }}
-                                </li>
                             @endforeach
-                        @endif
-                    </ul>
-
-                  </td>
-
-                    <td>{{ $t->transaction_type }}</td>
-                    <td>R{{ number_format($gross, 2) }}</td>
-                    <td>R{{ number_format($fee, 2) }}</td>
-                    <td>R{{ number_format($cape, 2) }}</td>
-                    <td>R{{ number_format($nett, 2) }}</td>
-                    <td>R{{ number_format($runningBalance, 2) }}</td>
-
-                </tr>
+                        </ul>
+                    @elseif($isRefund && isset($t->category))
+                        <ul><li>{{ $t->category ?? '-' }}</li></ul>
+                    @endif
+                </td>
+                <td>{{ $t->method ?? '-' }}</td>
+                <td>{{ $isRefund ? '−' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
+                <td>
+                    @if($t->fee != 0)
+                        {{ $t->fee > 0 ? '+' : '−' }} R{{ number_format(abs($t->fee), 2) }}
+                    @else —
+                    @endif
+                </td>
+                <td>
+                    @if($t->capeFee != 0)
+                        {{ $t->capeFee > 0 ? '+' : '−' }} R{{ number_format(abs($t->capeFee), 2) }}
+                    @else —
+                    @endif
+                </td>
+                <td>{{ $t->net < 0 ? '−' : '' }} R{{ number_format(abs($t->net), 2) }}</td>
+                <td>R{{ number_format($runningBalance, 2) }}</td>
+            </tr>
             @endforeach
         </tbody>
         <tfoot>
             <tr>
-                <th colspan="4" style="text-align: right;">Totals:</th>
-                <th>R{{ number_format($grossTotal, 2) }}</th>
-                <th>R{{ number_format($feeTotal, 2) }}</th>
-                <th>R{{ number_format($capeTotal, 2) }}</th>
-                <th>R{{ number_format($nettTotal, 2) }}</th>
+                <th colspan="5" style="text-align: right;">Totals:</th>
+                <th>R{{ number_format($totalGross, 2) }}</th>
+                <th>R{{ number_format($totalPayfastFees, 2) }}</th>
+                <th>R{{ number_format($totalCapeTennisFees, 2) }}</th>
+                <th>R{{ number_format($netTournamentIncome, 2) }}</th>
                 <th>R{{ number_format($runningBalance, 2) }}</th>
             </tr>
         </tfoot>
