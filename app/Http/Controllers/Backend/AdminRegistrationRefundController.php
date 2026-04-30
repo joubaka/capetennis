@@ -247,4 +247,47 @@ class AdminRegistrationRefundController extends Controller
 
     return back()->withErrors('Invalid refund method selected.');
   }
+
+  /**
+   * Cancel a pending withdrawal: revert the registration status back to active.
+   * Only super-users may do this (they are the only ones redirected to the chooser).
+   */
+  public function cancelWithdraw(Event $event, CategoryEventRegistration $registration)
+  {
+    $user = auth()->user();
+    if (! ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
+      abort(403, 'Only super-users can cancel a withdrawal.');
+    }
+
+    if ($registration->status !== 'withdrawn') {
+      return redirect()
+        ->route('admin.events.entries.new', $event)
+        ->with('info', 'Registration is not in a withdrawn state — nothing to revert.');
+    }
+
+    $registration->update([
+      'status'        => 'active',
+      'withdrawn_at'  => null,
+      'refund_status' => null,
+      'refund_method' => null,
+      'refund_gross'  => 0,
+      'refund_fee'    => 0,
+      'refund_net'    => 0,
+      'refunded_at'   => null,
+    ]);
+
+    activity('withdrawal')
+      ->performedOn($registration)
+      ->causedBy($user)
+      ->withProperties([
+        'registration_id' => $registration->id,
+        'event'           => $event->name,
+        'initiated_by'    => 'admin',
+      ])
+      ->log('Admin cancelled withdrawal — registration reverted to active');
+
+    return redirect()
+      ->route('admin.events.entries.new', $event)
+      ->with('success', 'Withdrawal cancelled — registration restored.');
+  }
 }

@@ -119,9 +119,15 @@
           <button type="submit" class="btn btn-warning">
             <i class="ti ti-check me-1"></i> Process Refund
           </button>
-          <a href="{{ route('admin.events.entries.new', $event) }}" class="btn btn-outline-secondary">
-            Cancel
-          </a>
+          <form method="POST"
+                action="{{ route('admin.registration.refund.cancel', [$event, $registration]) }}"
+                onsubmit="return confirm('Cancel this withdrawal? The player will be restored to active status.');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="btn btn-outline-secondary">
+              <i class="ti ti-x me-1"></i> Cancel
+            </button>
+          </form>
         </div>
 
       </form>

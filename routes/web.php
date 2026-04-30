@@ -1270,6 +1270,11 @@ Route::delete(
     [\App\Http\Controllers\Backend\AdminRegistrationRefundController::class, 'storeRefund']
   )->name('admin.registration.refund.store');
 
+  Route::delete(
+    '/admin/event/{event}/registration/{registration}/refund/cancel',
+    [\App\Http\Controllers\Backend\AdminRegistrationRefundController::class, 'cancelWithdraw']
+  )->name('admin.registration.refund.cancel');
+
   Route::get('selection/index/{id}', [BackendTeamSelectionController::class, 'selection_index'])->name('selection.index');
 
   //scoreboard
