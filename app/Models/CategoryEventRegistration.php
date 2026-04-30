@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CategoryEventRegistration extends Model
 {
@@ -12,21 +13,20 @@ class CategoryEventRegistration extends Model
   public const REFUND_COMPLETED = 'completed';
 
   use HasFactory;
+  use SoftDeletes;
 
   protected static function booted(): void
   {
     static::updating(function (self $reg) {
-      // Lock withdrawn_at once set — only super-user (id 584 or role) may override
+      // Lock withdrawn_at once set — only super-users may override
       if (
         $reg->getOriginal('withdrawn_at') !== null
         && $reg->isDirty('withdrawn_at')
       ) {
         $user = auth()->user();
         $isSuperUser = $user
-          && (
-            (int) $user->id === 584
-            || (method_exists($user, 'hasRole') && $user->hasRole('super-user'))
-          );
+          && method_exists($user, 'hasRole')
+          && $user->hasRole('super-user');
 
         if (!$isSuperUser) {
           $reg->withdrawn_at = $reg->getOriginal('withdrawn_at');
@@ -251,6 +251,17 @@ class CategoryEventRegistration extends Model
     }
 
     $event = $this->categoryEvent->event;
+
+    // Draw has been finalised (category locked) — non-admins cannot withdraw
+    // once the draw is published, as their slot may already be scheduled.
+    if (!$isAdmin && $this->categoryEvent->isLocked()) {
+      return [
+        'ok' => false,
+        'reason' => 'draw_locked',
+        'refund_allowed' => false,
+        'message' => 'Withdrawals are not allowed after the draw has been finalised. Please contact the event administrator.',
+      ];
+    }
 
     // 🔴 Deadline passed → withdraw OK, refund NOT OK
     if (now()->gt($event->withdrawalCloseAt())) {

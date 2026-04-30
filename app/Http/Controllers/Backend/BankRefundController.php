@@ -129,8 +129,9 @@ class BankRefundController extends Controller
       // the wallet contribution is credited back to the user's wallet separately.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = round($payfastGross * 0.90, 2);
-      $walletNet    = round($walletPaid  * 0.90, 2);
+      // Use SiteSetting-based fee; wallet portion carries no fee.
+      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      $walletNet    = $walletPaid;
 
       try {
         $payfast = new \App\Services\Payfast();
@@ -165,7 +166,7 @@ class BankRefundController extends Controller
                 [
                   'registration_id' => $registration->id,
                   'gross' => $walletPaid,
-                  'fee' => round($walletPaid * 0.10, 2),
+                  'fee' => 0,   // wallet portion carries no fee
                   'method' => 'hybrid_bank',
                   'initiated_by' => 'admin',
                 ]
@@ -289,5 +290,53 @@ class BankRefundController extends Controller
     ]);
 
     return back()->with('success', 'Team bank refund marked as completed.');
+  }
+
+  /**
+   * Bulk-complete: mark a set of selected pending bank refunds as completed (manual).
+   *
+   * Expects POST body: registration_ids[] (array of CategoryEventRegistration IDs)
+   */
+  public function bulkComplete(\Illuminate\Http\Request $request)
+  {
+    $request->validate([
+      'registration_ids'   => 'required|array|min:1',
+      'registration_ids.*' => 'integer|exists:category_event_registrations,id',
+    ]);
+
+    $ids = $request->input('registration_ids');
+
+    $updated = CategoryEventRegistration::whereIn('id', $ids)
+      ->where('refund_method', 'bank')
+      ->where('refund_status', 'pending')
+      ->get();
+
+    $count = 0;
+    foreach ($updated as $registration) {
+      $registration->update([
+        'refund_status' => 'completed',
+        'refunded_at'   => now(),
+      ]);
+
+      activity('refund')
+        ->performedOn($registration)
+        ->causedBy(auth()->user())
+        ->withProperties([
+          'registration_id' => $registration->id,
+          'method'          => 'bank',
+          'initiated_by'    => 'admin',
+          'bulk'            => true,
+        ])
+        ->log('Bank refund marked completed (bulk)');
+
+      $count++;
+    }
+
+    Log::info('BULK BANK REFUND COMPLETE', [
+      'requested_ids' => $ids,
+      'completed'     => $count,
+    ]);
+
+    return back()->with('success', "{$count} bank refund(s) marked as completed.");
   }
 }

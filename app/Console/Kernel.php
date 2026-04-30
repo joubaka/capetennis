@@ -21,9 +21,9 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping();
 
-        // Check for new suspension threshold breaches daily.
-        $schedule->command('disciplinary:check-thresholds')
-            ->dailyAt('06:00')
+        // Remind super-users and players of bank refunds pending > 30 days.
+        $schedule->command('refunds:send-bank-reminders')
+            ->dailyAt('08:00')
             ->withoutOverlapping();
     }
 
