@@ -380,7 +380,8 @@ class SuperAdminFinanceController extends Controller
     public function storeFullRefund(Request $request, Event $event, CategoryEventRegistration $registration)
     {
         $request->validate([
-            'method' => 'required|in:wallet,bank',
+            'method'     => 'required|in:wallet,bank',
+            'percentage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         if ($registration->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
@@ -399,18 +400,23 @@ class SuperAdminFinanceController extends Controller
             return back()->withErrors('No refundable amount found.');
         }
 
-        // Full refund: fee is waived
-        $net    = $gross;
-        $method = $request->input('method');
+        $percentage = (float) ($request->input('percentage') ?? 0);
+        $fee        = round($gross * ($percentage / 100), 2);
+        $net        = round($gross - $fee, 2);
+        $method     = $request->input('method');
 
         $baseUpdate = [
-            'status'       => 'withdrawn',
-            'withdrawn_at' => $registration->withdrawn_at ?? now(),
+            'status'        => 'withdrawn',
+            'withdrawn_at'  => $registration->withdrawn_at ?? now(),
             'refund_method' => $method,
             'refund_gross'  => $gross,
-            'refund_fee'    => 0,
+            'refund_fee'    => $fee,
             'refund_net'    => $net,
         ];
+
+        $refundLabel = $percentage > 0
+            ? "Partial refund ({$percentage}% deducted)"
+            : 'Full refund';
 
         if ($method === 'wallet') {
             $user   = $registration->user;
@@ -421,7 +427,7 @@ class SuperAdminFinanceController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($registration, $wallet, $gross, $net, $event, $baseUpdate) {
+                DB::transaction(function () use ($registration, $wallet, $gross, $fee, $net, $percentage, $event, $baseUpdate) {
                     app(WalletService::class)->credit(
                         $wallet,
                         $net,
@@ -431,7 +437,8 @@ class SuperAdminFinanceController extends Controller
                             'registration_id' => $registration->id,
                             'event_id'        => $event->id,
                             'gross'           => $gross,
-                            'fee'             => 0,
+                            'fee'             => $fee,
+                            'percentage'      => $percentage,
                             'method'          => 'wallet',
                             'reference'       => $event->name,
                             'initiated_by'    => 'super_admin',
@@ -451,13 +458,15 @@ class SuperAdminFinanceController extends Controller
                         'registration_id' => $registration->id,
                         'method'          => 'wallet',
                         'gross'           => $gross,
+                        'fee'             => $fee,
+                        'percentage'      => $percentage,
                         'net'             => $net,
                         'event'           => $event->name,
                         'initiated_by'    => 'super_admin',
                     ])
-                    ->log("Super-admin full wallet refund R{$net}");
+                    ->log("Super-admin {$refundLabel} wallet refund R{$net}");
 
-                return back()->with('success', "Full refund of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
+                return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
 
             } catch (DuplicateTransactionException $e) {
                 $registration->update(array_merge($baseUpdate, [
@@ -484,7 +493,7 @@ class SuperAdminFinanceController extends Controller
         if (!empty($pfPaymentId)) {
             try {
                 $payfast = new \App\Services\Payfast();
-                $result  = $payfast->refund($pfPaymentId, $net, 'Full event refund (admin)');
+                $result  = $payfast->refund($pfPaymentId, $net, "{$refundLabel} (admin)");
 
                 if ($result['success']) {
                     $registration->update([
@@ -500,13 +509,15 @@ class SuperAdminFinanceController extends Controller
                             'method'          => 'payfast',
                             'pf_payment_id'   => $pfPaymentId,
                             'gross'           => $gross,
+                            'fee'             => $fee,
+                            'percentage'      => $percentage,
                             'net'             => $net,
                             'event'           => $event->name,
                             'initiated_by'    => 'super_admin',
                         ])
-                        ->log("Super-admin full PayFast refund R{$net}");
+                        ->log("Super-admin {$refundLabel} PayFast refund R{$net}");
 
-                    return back()->with('success', "Full refund of R" . number_format($net, 2) . " processed via PayFast.");
+                    return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " processed via PayFast.");
                 }
 
                 Log::warning('ADMIN FULL REFUND: PayFast failed — marked pending', [
@@ -529,11 +540,13 @@ class SuperAdminFinanceController extends Controller
                 'registration_id' => $registration->id,
                 'method'          => 'bank',
                 'gross'           => $gross,
+                'fee'             => $fee,
+                'percentage'      => $percentage,
                 'net'             => $net,
                 'event'           => $event->name,
                 'initiated_by'    => 'super_admin',
             ])
-            ->log("Super-admin full bank refund R{$net} (pending)");
+            ->log("Super-admin {$refundLabel} bank refund R{$net} (pending)");
 
         return back()->with('success', "Bank refund of R" . number_format($net, 2) . " marked as pending. Please process manually.");
     }
@@ -545,7 +558,8 @@ class SuperAdminFinanceController extends Controller
     public function storeFullRefundTeam(Request $request, Event $event, TeamPaymentOrder $order)
     {
         $request->validate([
-            'method' => 'required|in:wallet,bank',
+            'method'     => 'required|in:wallet,bank',
+            'percentage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         if ($order->refund_status === 'completed') {
@@ -558,13 +572,19 @@ class SuperAdminFinanceController extends Controller
             return back()->withErrors('No refundable amount found.');
         }
 
-        $net    = $gross;
-        $method = $request->input('method');
+        $percentage = (float) ($request->input('percentage') ?? 0);
+        $fee        = round($gross * ($percentage / 100), 2);
+        $net        = round($gross - $fee, 2);
+        $method     = $request->input('method');
+
+        $refundLabel = $percentage > 0
+            ? "Partial refund ({$percentage}% deducted)"
+            : 'Full refund';
 
         $baseUpdate = [
             'refund_method' => $method,
             'refund_gross'  => $gross,
-            'refund_fee'    => 0,
+            'refund_fee'    => $fee,
             'refund_net'    => $net,
         ];
 
@@ -577,7 +597,7 @@ class SuperAdminFinanceController extends Controller
             }
 
             try {
-                DB::transaction(function () use ($order, $wallet, $gross, $net, $event, $baseUpdate) {
+                DB::transaction(function () use ($order, $wallet, $gross, $fee, $net, $percentage, $event, $baseUpdate) {
                     app(WalletService::class)->credit(
                         $wallet,
                         $net,
@@ -587,7 +607,8 @@ class SuperAdminFinanceController extends Controller
                             'order_id'     => $order->id,
                             'event_id'     => $event->id,
                             'gross'        => $gross,
-                            'fee'          => 0,
+                            'fee'          => $fee,
+                            'percentage'   => $percentage,
                             'method'       => 'wallet',
                             'reference'    => $event->name,
                             'initiated_by' => 'super_admin',
@@ -607,13 +628,15 @@ class SuperAdminFinanceController extends Controller
                         'order_id'     => $order->id,
                         'method'       => 'wallet',
                         'gross'        => $gross,
+                        'fee'          => $fee,
+                        'percentage'   => $percentage,
                         'net'          => $net,
                         'event'        => $event->name,
                         'initiated_by' => 'super_admin',
                     ])
-                    ->log("Super-admin full wallet refund (team) R{$net}");
+                    ->log("Super-admin {$refundLabel} wallet refund (team) R{$net}");
 
-                return back()->with('success', "Full refund of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
+                return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
 
             } catch (DuplicateTransactionException $e) {
                 $order->update(array_merge($baseUpdate, [
@@ -640,7 +663,7 @@ class SuperAdminFinanceController extends Controller
         if (!empty($pfPaymentId)) {
             try {
                 $payfast = new \App\Services\Payfast();
-                $result  = $payfast->refund($pfPaymentId, $net, 'Full team event refund (admin)');
+                $result  = $payfast->refund($pfPaymentId, $net, "{$refundLabel} team (admin)");
 
                 if ($result['success']) {
                     $order->update([
@@ -652,17 +675,19 @@ class SuperAdminFinanceController extends Controller
                         ->performedOn($order)
                         ->causedBy(Auth::user())
                         ->withProperties([
-                            'order_id'     => $order->id,
-                            'method'       => 'payfast',
+                            'order_id'      => $order->id,
+                            'method'        => 'payfast',
                             'pf_payment_id' => $pfPaymentId,
-                            'gross'        => $gross,
-                            'net'          => $net,
-                            'event'        => $event->name,
-                            'initiated_by' => 'super_admin',
+                            'gross'         => $gross,
+                            'fee'           => $fee,
+                            'percentage'    => $percentage,
+                            'net'           => $net,
+                            'event'         => $event->name,
+                            'initiated_by'  => 'super_admin',
                         ])
-                        ->log("Super-admin full PayFast refund (team) R{$net}");
+                        ->log("Super-admin {$refundLabel} PayFast refund (team) R{$net}");
 
-                    return back()->with('success', "Full refund of R" . number_format($net, 2) . " processed via PayFast.");
+                    return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " processed via PayFast.");
                 }
 
                 Log::warning('ADMIN FULL REFUND (team): PayFast failed — marked pending', [
@@ -685,11 +710,13 @@ class SuperAdminFinanceController extends Controller
                 'order_id'     => $order->id,
                 'method'       => 'bank',
                 'gross'        => $gross,
+                'fee'          => $fee,
+                'percentage'   => $percentage,
                 'net'          => $net,
                 'event'        => $event->name,
                 'initiated_by' => 'super_admin',
             ])
-            ->log("Super-admin full bank refund (team) R{$net} (pending)");
+            ->log("Super-admin {$refundLabel} bank refund (team) R{$net} (pending)");
 
         return back()->with('success', "Bank refund of R" . number_format($net, 2) . " marked as pending. Please process manually.");
     }
