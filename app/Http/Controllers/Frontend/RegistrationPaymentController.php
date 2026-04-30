@@ -6,12 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\RegistrationConfirmedMail;
-use App\Models\CategoryEventRegistration;
-use App\Models\Registration;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
+use App\Models\Registration;
 use App\Services\Wallet\WalletService;
 
 class RegistrationPaymentController extends Controller
@@ -305,9 +302,6 @@ class RegistrationPaymentController extends Controller
       'order_id' => $orderId
     ]);
 
-    // Send confirmation email to each player
-    $this->sendConfirmationEmails($order, 'Wallet');
-
     // Redirect back to the event page
     $eventId = optional($order->items->first()?->category_event)->event_id;
     if ($eventId) {
@@ -435,9 +429,6 @@ class RegistrationPaymentController extends Controller
       'order_id' => $orderId
     ]);
 
-    // Send confirmation email to each player
-    $this->sendConfirmationEmails($order, 'PayFast');
-
     $pfEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
 
     activity('registration')
@@ -458,26 +449,9 @@ class RegistrationPaymentController extends Controller
    */
   public function hybridCancel(int $orderId)
   {
-    $order = RegistrationOrder::with('items')->find($orderId);
+    $order = RegistrationOrder::find($orderId);
 
-    if ($order && !$order->isFullyPaid()) {
-      // Clean up unpaid registrations created for this order
-      foreach ($order->items as $item) {
-        // Remove the unpaid pivot entry in category_event_registrations
-        CategoryEventRegistration::where('registration_id', $item->registration_id)
-          ->where('category_event_id', $item->category_event_id)
-          ->where('payment_status_id', CategoryEventRegistration::PAYMENT_PENDING)
-          ->delete();
-
-        // Remove the bare Registration row if it has no remaining pivot entries
-        $reg = Registration::find($item->registration_id);
-        if ($reg && $reg->categoryEventRegistrations()->count() === 0) {
-          $reg->players()->detach();
-          $reg->delete();
-        }
-      }
-
-      // Reset wallet reservation
+    if ($order) {
       $order->wallet_reserved = 0;
       $order->payfast_amount_due = 0;
       $order->save();
@@ -514,41 +488,6 @@ class RegistrationPaymentController extends Controller
           'pf_transaction_id' => $method . '-' . now()->timestamp,
         ],
       ]);
-    }
-  }
-
-  /**
-   * Send a registration confirmation email to each player in the order.
-   */
-  private function sendConfirmationEmails(RegistrationOrder $order, string $paymentMethod): void
-  {
-    foreach ($order->items as $item) {
-      $player = $item->player;
-
-      if (!$player || empty($player->email)) {
-        continue;
-      }
-
-      $eventName    = optional($item->category_event?->event)->name ?? 'Event';
-      $categoryName = optional($item->category_event?->category)->name ?? '';
-      $amount       = $item->item_price ?? 0;
-
-      try {
-        Mail::to($player->email)->queue(new RegistrationConfirmedMail([
-          'player_name'    => trim($player->name . ' ' . $player->surname),
-          'event_name'     => $eventName,
-          'category_name'  => $categoryName,
-          'payment_method' => $paymentMethod,
-          'amount'         => $amount,
-        ]));
-      } catch (\Throwable $e) {
-        Log::warning('REGISTRATION CONFIRMATION EMAIL FAILED', [
-          'order_id'     => $order->id,
-          'player_id'    => $player->id,
-          'player_email' => $player->email,
-          'error'        => $e->getMessage(),
-        ]);
-      }
     }
   }
 }
