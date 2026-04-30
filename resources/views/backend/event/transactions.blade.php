@@ -2,6 +2,10 @@
 
 @section('title', $event->name . ' – Transactions')
 
+@section('vendor-style')
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
+@endsection
+
 @section('page-style')
 <style>
   td.dt-toggle { cursor:pointer; text-align:center; user-select:none; }
@@ -31,11 +35,20 @@
     width: 100%;
   }
 
-    #transactionsTable th,
-    #transactionsTable td {
-      white-space: nowrap;
-    }
+  #transactionsTable th,
+  #transactionsTable td {
+    white-space: nowrap;
+  }
 
+  /* Tighten up the DataTables control row */
+  .dt-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .75rem 1rem;
+  }
 </style>
 @endsection
 
@@ -104,7 +117,8 @@
   {{-- TABLE --}}
   <div class="card">
     <div class="card-body p-0">
-      <table id="transactionsTable" class="table table-striped mb-0">
+      <div class="table-responsive">
+      <table id="transactionsTable" class="table table-striped mb-0 w-100">
        <thead class="table-light">
   <tr>
     <th style="width:32px;"></th>
@@ -229,25 +243,43 @@ if ($tx->type === 'payment' && isset($tx->order)) {
         @endforeach
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
 </div>
 @endsection
 
-@section('page-script')
+@section('vendor-script')
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+@endsection
 
+@section('page-script')
 <script>
 $(function () {
 
   const table = $('#transactionsTable').DataTable({
-  order: [[1, 'desc']],
-  columnDefs: [
-    { orderable: false, targets: 0 }
-  ],
-  autoWidth: false   // ← THIS IS THE MISSING PIECE
-});
+    order: [[1, 'desc']],
+    columnDefs: [
+      { orderable: false, targets: 0 }
+    ],
+    autoWidth: false,
+    dom:
+      "<'dt-controls-row'<'d-flex align-items-center gap-2'l><'ms-auto'f>>" +
+      "<'row'<'col-12'tr>>" +
+      "<'dt-controls-row'<'text-muted small'i><'ms-auto'p>>",
+    language: {
+      search:         '',
+      searchPlaceholder: 'Search…',
+      lengthMenu:     '_MENU_ per page',
+      info:           'Showing _START_–_END_ of _TOTAL_',
+      paginate: {
+        previous: '<i class="ti ti-chevron-left"></i>',
+        next:     '<i class="ti ti-chevron-right"></i>'
+      }
+    }
+  });
 
 
   function renderItems(items) {
