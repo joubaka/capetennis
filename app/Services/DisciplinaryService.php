@@ -2,13 +2,17 @@
 
 namespace App\Services;
 
+use App\Mail\ViolationNotificationMail;
 use App\Models\DisciplineSetting;
 use App\Models\Player;
 use App\Models\PlayerSuspension;
 use App\Models\PlayerViolation;
+use App\Models\SiteSetting;
+use App\Models\User;
 use App\Models\ViolationType;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 class DisciplinaryService
 {
@@ -126,7 +130,89 @@ class DisciplinaryService
 
         $this->checkAndTriggerSuspension($violation->player);
 
+        $this->sendViolationNotification($violation);
+
         return $violation;
+    }
+
+    /**
+     * Send violation notification emails if the setting is enabled.
+     * Recipients: player, guardian (if exists), event admins (CC), recorder (CC).
+     */
+    private function sendViolationNotification(PlayerViolation $violation): void
+    {
+        if (SiteSetting::get('email_on_violation', '1') !== '1') {
+            return;
+        }
+
+        $player   = $violation->player;
+        $recorder = $violation->recorded_by ? User::find($violation->recorded_by) : null;
+
+        // Build primary TO addresses: player email + guardian email
+        $toAddresses = collect();
+
+        if ($player->email) {
+            $toAddresses->push($player->email);
+        }
+
+        // Parent/guardian email from the most recent accepted agreement
+        $guardian = $player->agreements()
+            ->whereNotNull('guardian_email')
+            ->latest('accepted_at')
+            ->first();
+
+        if ($guardian && $guardian->guardian_email && $guardian->guardian_email !== $player->email) {
+            $toAddresses->push($guardian->guardian_email);
+        }
+
+        // Also include any linked user emails (account holders)
+        foreach ($player->users as $user) {
+            if ($user->email && !$toAddresses->contains($user->email)) {
+                $toAddresses->push($user->email);
+            }
+        }
+
+        if ($toAddresses->isEmpty()) {
+            return;
+        }
+
+        // Build CC: event admins + recorder
+        $ccAddresses = collect();
+
+        if ($violation->event_id) {
+            $violation->loadMissing('event');
+            $event = $violation->event;
+            if ($event) {
+                $event->admins->pluck('email')->filter()->each(fn ($e) => $ccAddresses->push($e));
+            }
+        }
+
+        // Super-users always get CC'd
+        User::role('super-user')->pluck('email')->filter()
+            ->each(fn ($e) => $ccAddresses->push($e));
+
+        if ($recorder?->email) {
+            $ccAddresses->push($recorder->email);
+        }
+
+        $ccAddresses = $ccAddresses->unique()->filter();
+
+        // Remove CC addresses that are already in TO (avoid duplicates)
+        $ccAddresses = $ccAddresses->diff($toAddresses)->values();
+
+        $mailable = new ViolationNotificationMail($player, $violation, $recorder);
+
+        $mailer = Mail::to($toAddresses->first());
+
+        if ($toAddresses->count() > 1) {
+            $mailer = $mailer->cc($toAddresses->slice(1)->values()->toArray());
+        }
+
+        if ($ccAddresses->isNotEmpty()) {
+            $mailer = $mailer->cc($ccAddresses->toArray());
+        }
+
+        $mailer->queue($mailable);
     }
 
     /**

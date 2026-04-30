@@ -20,12 +20,14 @@ use App\Models\TeamFixturePlayer;
 use App\Models\TeamPlayer;
 use App\Models\User;
 use App\Models\UserPlayer;
+use App\Services\DisciplinaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use SebastianBergmann\Timer\Duration;
 
 class PlayerController extends Controller
 {
+    public function __construct(protected DisciplinaryService $disciplinaryService) {}
+
     /**
      * Display the players management page.
      *
@@ -316,7 +318,10 @@ class PlayerController extends Controller
         $players = Player::all();
         $u = Auth::user();
 
-        return view('backend.player.player_profile', compact('u', 'goal_themes', 'goal_types', 'setslost', 'setswon', 'totsets', 'players', 'physical_exersizes', 'practice_types', 'durations', 'player', 'general_goal_types', 'career_goal_types', 'exersize_types'));
+        $violations        = $player->violations()->with('violationType')->orderByDesc('violation_date')->get();
+        $disciplinaryStatus = $this->disciplinaryService->getPlayerStatus($player);
+
+        return view('backend.player.player_profile', compact('u', 'goal_themes', 'goal_types', 'setslost', 'setswon', 'totsets', 'players', 'physical_exersizes', 'practice_types', 'durations', 'player', 'general_goal_types', 'career_goal_types', 'exersize_types', 'violations', 'disciplinaryStatus'));
     }
     public function results($id)
     {
