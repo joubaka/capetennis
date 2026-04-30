@@ -9,5 +9,5 @@ class ExerciseType extends Model
 {
     use HasFactory;
 
-    protected $table = 'exersize_types';
+    protected $table = 'exercise_types';
 }
