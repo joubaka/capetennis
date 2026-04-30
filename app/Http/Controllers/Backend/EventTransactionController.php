@@ -108,7 +108,13 @@ class EventTransactionController extends Controller
       $entryCount = max(1, $items->count());
 
       // PayFast totals (transaction-level)
-      $grossTx = round((float) $tx->amount_gross, 2);
+      $payfastGross = round((float) $tx->amount_gross, 2);
+
+      // Wallet credit applied to this order (if any)
+      $walletUsed = round((float) optional($tx->order)->wallet_reserved, 2);
+
+      // Full gross = what PayFast charged + what wallet covered
+      $grossTx = $payfastGross + $walletUsed;
 
       // Ledger convention: costs are negative
       $pfFeeTx = -1 * round(abs((float) $tx->amount_fee), 2);
@@ -119,13 +125,16 @@ class EventTransactionController extends Controller
       // ✅ Net to event for this transaction
       $netTx = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
+      // Method label
+      $method = $walletUsed > 0 ? 'PayFast + Wallet' : 'PayFast';
+
       return (object) [
         'type' => 'payment',
         'created_at' => $tx->created_at,
 
         // display
         'player' => optional($tx->user)->name,   // payer
-        'method' => 'PayFast',
+        'method' => $method,
 
         // ledger (ONE ROW PER TRANSACTION)
         'gross' => $grossTx,
@@ -141,6 +150,8 @@ class EventTransactionController extends Controller
         // for child drill-down
         'order' => $tx->order,
         'entryCount' => $entryCount,
+        'payfastGross' => $payfastGross,
+        'walletUsed' => $walletUsed,
       ];
     });
 

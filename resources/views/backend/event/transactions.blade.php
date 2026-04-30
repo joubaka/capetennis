@@ -135,13 +135,15 @@ if ($tx->type === 'payment' && isset($tx->order)) {
 
   $payload = collect([
     [
-      'mode'          => 'payment_summary',
-      'pf_payment_id' => $tx->pf_payment_id ?? '—',
-      'entries'       => $tx->entryCount ?? 1,
-      'gross'         => number_format($tx->gross, 2),
-      'pf_fee'        => number_format(abs($tx->fee), 2),
-      'cape_fee'      => number_format(abs($tx->capeFee), 2),
-      'net'           => number_format($tx->net, 2),
+      'mode'           => 'payment_summary',
+      'pf_payment_id'  => $tx->pf_payment_id ?? '—',
+      'entries'        => $tx->entryCount ?? 1,
+      'gross'          => number_format($tx->gross, 2),
+      'payfast_gross'  => number_format($tx->payfastGross ?? $tx->gross, 2),
+      'wallet_used'    => number_format($tx->walletUsed ?? 0, 2),
+      'pf_fee'         => number_format(abs($tx->fee), 2),
+      'cape_fee'       => number_format(abs($tx->capeFee), 2),
+      'net'            => number_format($tx->net, 2),
     ]
   ])->merge(
     collect($tx->order->items ?? [])->map(fn ($item) => [
@@ -282,12 +284,18 @@ $(function () {
       const s = items[0];
       const players = items.filter(i => i.mode === 'payment_item');
 
+      const walletRow = parseFloat(s.wallet_used) > 0
+        ? `<tr><th>Wallet Credit Applied</th><td class="text-info">R ${s.wallet_used}</td></tr>
+           <tr><th>PayFast Amount</th><td>R ${s.payfast_gross}</td></tr>`
+        : '';
+
       let html = `
         <table class="table table-sm mb-0 child-table">
           <tbody>
             <tr><th>PayFast Reference</th><td><code>${s.pf_payment_id}</code></td></tr>
             <tr><th>Entries</th><td>${s.entries}</td></tr>
             <tr><th>Gross Paid</th><td>R ${s.gross}</td></tr>
+            ${walletRow}
             <tr><th>PayFast Fee</th><td class="text-danger">− R ${s.pf_fee}</td></tr>
             <tr><th>Cape Tennis Fee</th><td class="text-danger">− R ${s.cape_fee}</td></tr>
             <tr class="fw-bold text-success">
