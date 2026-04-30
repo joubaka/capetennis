@@ -301,6 +301,20 @@
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
                     {{ ucfirst($reg->status ?? 'active') }}
                   </span>
+                  @if($reg->status === 'withdrawn' && $reg->refund_status)
+                    <br>
+                    @php
+                      $rsBadge = match($reg->refund_status) {
+                        'completed'    => 'bg-success',
+                        'pending'      => 'bg-warning text-dark',
+                        'not_refunded' => 'bg-secondary',
+                        default        => 'bg-light text-dark',
+                      };
+                    @endphp
+                    <span class="badge {{ $rsBadge }} mt-1" style="font-size:.65rem;">
+                      {{ str_replace('_', ' ', ucfirst($reg->refund_status)) }}
+                    </span>
+                  @endif
                 </td>
                 <td>
                   <span class="badge {{ $reg->payment_status_id == 1 ? 'bg-success' : 'bg-warning' }}">
@@ -331,6 +345,15 @@
         Remove
       </button>
     @endunless
+
+    @if($reg->status !== 'withdrawn')
+      <button type="button"
+              class="btn btn-outline-warning withdraw-player-btn"
+              data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
+              data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
+        Withdraw
+      </button>
+    @endif
   </div>
 </td>
 
@@ -584,6 +607,36 @@ document.addEventListener('click', function(e) {
     })
     .then(() => location.reload())
     .catch(() => alert('Remove failed'));
+});
+
+/* =====================
+   WITHDRAW PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.withdraw-player-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+
+    const playerName = btn.dataset.player || 'this player';
+    if (!confirm('Withdraw ' + playerName + ' from this event? This cannot be undone.')) return;
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(r => {
+        if (r.redirected) {
+            window.location.href = r.url;
+        } else {
+            location.reload();
+        }
+    })
+    .catch(() => alert('Withdraw failed'));
 });
 
 /* =====================

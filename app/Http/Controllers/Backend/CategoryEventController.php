@@ -41,19 +41,45 @@ class CategoryEventController extends Controller
   {
     $user = auth()->user();
 
-    $check = $registration->canWithdraw($user);
-
-    if (!$check['ok']) {
-      return back()->withErrors($check['message']);
+    if ($registration->status === 'withdrawn') {
+      return back()->withErrors('This registration is already withdrawn.');
     }
 
-    // For now, just mark withdrawn
+    $player = $registration->players->first();
+    $eventName = optional($registration->categoryEvent?->event)->name ?? 'Event';
+    $categoryName = optional($registration->categoryEvent?->category)->name ?? '';
+
     $registration->update([
-      'status' => 'withdrawn',
-      'withdrawn_at' => now(),
+      'status'        => 'withdrawn',
+      'withdrawn_at'  => now(),
+      'refund_status' => 'not_refunded',
+      'refund_method' => null,
+      'refund_gross'  => 0,
+      'refund_fee'    => 0,
+      'refund_net'    => 0,
+      'refunded_at'   => null,
     ]);
 
-    return back()->with('success', 'Registration withdrawn.');
+    activity('withdrawal')
+      ->performedOn($registration)
+      ->causedBy($user)
+      ->withProperties([
+        'registration_id' => $registration->id,
+        'event'           => $eventName,
+        'category'        => $categoryName,
+        'player'          => $player ? trim($player->name . ' ' . $player->surname) : '',
+        'initiated_by'    => 'admin',
+      ])
+      ->log("Admin withdrew {$eventName} ({$categoryName})");
+
+    if ($registration->is_paid) {
+      $event = $registration->categoryEvent->event;
+      return redirect()
+        ->route('admin.registration.refund.choose', [$event, $registration])
+        ->with('success', 'Registration withdrawn. Please choose a refund method.');
+    }
+
+    return back()->with('success', 'Registration withdrawn (not paid — no refund required).');
   }
 
 }
