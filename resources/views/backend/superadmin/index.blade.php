@@ -926,17 +926,31 @@
               <thead>
                 <tr>
                   <th>Last Active</th><th>User</th><th>Actions</th><th>Last Action</th>
-                  <th class="d-none">Log Names</th>
+                  <th class="d-none">Log Names</th><th class="no-sort"></th>
                 </tr>
               </thead>
               <tbody>
                 @foreach($activityByUser as $row)
+                  @php
+                    $showGrpBtn = in_array($row->last_log_name ?? '', ['withdrawal','refund','wallet']);
+                  @endphp
                   <tr>
                     <td>{{ optional($row->last_at)->format('d M Y H:i') ?? '—' }}</td>
                     <td>{{ $row->causer?->userName ?? $row->causer?->name ?? 'System' }}</td>
                     <td><span class="badge bg-label-primary">{{ $row->count }}</span></td>
                     <td>{{ $row->example_description ?? '—' }}</td>
                     <td class="d-none">{{ implode(',', $row->log_names ?? []) }}</td>
+                    <td class="text-center">
+                      @if($showGrpBtn)
+                        <button type="button" class="btn btn-sm btn-icon btn-outline-info btn-activity-detail"
+                          data-log="{{ $row->last_log_name }}"
+                          data-desc="{{ $row->example_description }}"
+                          data-user="{{ $row->causer?->userName ?? $row->causer?->name ?? 'System' }}"
+                          data-date="{{ optional($row->last_at)->format('d M Y H:i') }}"
+                          data-props='@json($row->last_properties ?? [])'
+                          title="View detail"><i class="ti ti-info-circle"></i></button>
+                      @endif
+                    </td>
                   </tr>
                 @endforeach
               </tbody>
@@ -945,15 +959,27 @@
           <div id="sa-activity-raw-wrap" class="table-responsive d-none">
             <table class="table table-hover table-striped w-100 mb-0" id="dt-activity-raw">
               <thead>
-                <tr><th>Date</th><th>User</th><th>Log</th><th>Action</th></tr>
+                <tr><th>Date</th><th>User</th><th>Log</th><th>Action</th><th class="no-sort"></th></tr>
               </thead>
               <tbody>
                 @foreach($activityLogs as $log)
+                  @php $showRawBtn = in_array($log->log_name, ['withdrawal','refund','wallet']); @endphp
                   <tr>
                     <td>{{ $log->created_at->format('d M Y H:i') }}</td>
                     <td>{{ $log->causer?->userName ?? $log->causer?->name ?? 'System' }}</td>
                     <td>{{ $log->log_name }}</td>
                     <td>{{ $log->description }}</td>
+                    <td class="text-center">
+                      @if($showRawBtn)
+                        <button type="button" class="btn btn-sm btn-icon btn-outline-info btn-activity-detail"
+                          data-log="{{ $log->log_name }}"
+                          data-desc="{{ $log->description }}"
+                          data-user="{{ $log->causer?->userName ?? $log->causer?->name ?? 'System' }}"
+                          data-date="{{ $log->created_at->format('d M Y H:i') }}"
+                          data-props='@json($log->properties)'
+                          title="View detail"><i class="ti ti-info-circle"></i></button>
+                      @endif
+                    </td>
                   </tr>
                 @endforeach
               </tbody>
@@ -962,6 +988,26 @@
         </div>
       </div>
     </div>{{-- /audit --}}
+
+{{-- ── Withdrawal / Refund Detail Modal ───────────────────────────── --}}
+<div class="modal fade" id="modal-activity-detail" tabindex="-1" aria-labelledby="modal-activity-detail-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-activity-detail-label">
+          <i class="ti ti-file-description me-1 text-info"></i> Activity Detail
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="modal-activity-detail-body">
+        {{-- populated via JS --}}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
   </div>{{-- /tab-content --}}
 </div>{{-- /main tabs card --}}
@@ -1010,15 +1056,76 @@ $(function () {
     if (!dtGrouped) {
       dtGrouped = $('#dt-activity').DataTable({
         ordering: true, order: [[0,'desc']], pageLength: 25,
-        columnDefs: [{ targets: 4, visible: false }]
+        columnDefs: [
+          { targets: 4, visible: false },
+          { targets: 5, orderable: false, searchable: false }
+        ]
       });
     } else { dtGrouped.columns.adjust().draw(false); }
   }
   function initRaw() {
     if (!dtRaw) {
-      dtRaw = $('#dt-activity-raw').DataTable({ ordering: true, order: [[0,'desc']], pageLength: 25 });
+      dtRaw = $('#dt-activity-raw').DataTable({
+        ordering: true, order: [[0,'desc']], pageLength: 25,
+        columnDefs: [{ targets: 4, orderable: false, searchable: false }]
+      });
     } else { dtRaw.columns.adjust().draw(false); }
   }
+
+  // ── Activity Detail Modal ───────────────────────────────────────
+  var $detailModal = new bootstrap.Modal(document.getElementById('modal-activity-detail'));
+  $(document).on('click', '.btn-activity-detail', function () {
+    var log   = $(this).data('log');
+    var desc  = $(this).data('desc');
+    var user  = $(this).data('user');
+    var date  = $(this).data('date');
+    var props = $(this).data('props') || {};
+
+    var labelMap = {
+      player: 'Player',
+      event: 'Event',
+      category: 'Category',
+      method: 'Refund Method',
+      refund_allowed: 'Refund Allowed',
+      gross: 'Gross',
+      fee: 'Fee',
+      net: 'Net',
+      bank: 'Bank Name',
+      pf_payment_id: 'PayFast Payment ID',
+      registration_id: 'Registration #',
+      order_id: 'Order #',
+      amount: 'Amount',
+      reference: 'Reference',
+      type: 'Type',
+    };
+
+    var badgeClass = { withdrawal: 'bg-label-warning', refund: 'bg-label-success', wallet: 'bg-label-info' };
+    var badge = '<span class="badge ' + (badgeClass[log] || 'bg-label-secondary') + ' me-1">' + log + '</span>';
+
+    var html = '<p class="mb-2">' + badge + '<strong>' + $('<span>').text(desc).html() + '</strong></p>';
+    html += '<table class="table table-sm table-bordered mb-0"><tbody>';
+    html += '<tr><th class="text-muted" style="width:40%">User</th><td>' + $('<span>').text(user).html() + '</td></tr>';
+    html += '<tr><th class="text-muted">Date</th><td>' + $('<span>').text(date).html() + '</td></tr>';
+
+    $.each(props, function (key, val) {
+      if (key === 'attributes' || key === 'old') return; // skip spatie internals
+      var label = labelMap[key] || key.replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+      var display = val;
+      if (key === 'method') {
+        var methodLabels = { wallet: 'Wallet', bank: 'Bank EFT', payfast: 'PayFast' };
+        display = methodLabels[val] || val;
+      }
+      if (typeof val === 'boolean') display = val ? 'Yes' : 'No';
+      if ((key === 'gross' || key === 'fee' || key === 'net' || key === 'amount') && val !== null && val !== undefined) {
+        display = 'R' + parseFloat(val).toFixed(2);
+      }
+      html += '<tr><th class="text-muted">' + $('<span>').text(label).html() + '</th><td>' + $('<span>').text(display).html() + '</td></tr>';
+    });
+
+    html += '</tbody></table>';
+    $('#modal-activity-detail-body').html(html);
+    $detailModal.show();
+  });
 
   $('#sa-tab-audit').on('shown.bs.tab', function () {
     if ($('#sa-pane-login').hasClass('active')) initLoginAudit();

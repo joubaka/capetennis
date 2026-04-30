@@ -153,14 +153,17 @@ class SuperAdminController extends Controller
             $activityByUser = $activityLogs
                 ->groupBy(fn ($a) => $a->causer_id ?? 'system')
                 ->map(function ($group) {
-                    $first = $group->first();
+                    $first  = $group->first();
+                    $latest = $group->sortByDesc('created_at')->first();
                     return (object) [
                         'causer'              => $first->causer,
                         'causer_id'           => $first->causer_id,
                         'count'               => $group->count(),
-                        'last_at'             => $group->sortByDesc('created_at')->first()->created_at,
-                        'example_description' => $group->sortByDesc('created_at')->first()->description,
+                        'last_at'             => $latest->created_at,
+                        'example_description' => $latest->description,
                         'log_names'           => $group->pluck('log_name')->unique()->values()->toArray(),
+                        'last_log_name'       => $latest->log_name,
+                        'last_properties'     => $latest->properties,
                     ];
                 })->values();
         }
