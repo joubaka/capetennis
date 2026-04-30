@@ -15,6 +15,8 @@ View Player Record
 
 Please review the player's disciplinary record and notify them of their suspension.
 
+If the player has any questions, they can contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
+
 Thanks,<br>
 {{ config('app.name') }}
 @endcomponent

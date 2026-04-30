@@ -182,11 +182,11 @@
                                            value="{{ $vt->description }}" maxlength="500">
                                 </td>
                                 <td>
+                                    <input type="hidden" name="active" value="0">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="active"
                                                value="1" {{ $vt->active ? 'checked' : '' }}>
                                     </div>
-                                    <input type="hidden" name="active" value="0">
                                 </td>
                             </form>
                             <td>
