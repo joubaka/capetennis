@@ -11,6 +11,9 @@ class CategoryEventRegistration extends Model
   public const REFUND_PENDING = 'pending';
   public const REFUND_COMPLETED = 'completed';
 
+  public const PAYMENT_PENDING = 0;
+  public const PAYMENT_PAID    = 1;
+
   use HasFactory;
 
   protected static function booted(): void
@@ -205,7 +208,7 @@ class CategoryEventRegistration extends Model
 
     // 🔹 Fallback for wallet-only payments (no PayFast Transaction record)
     // Derive payment info from the RegistrationOrder via RegistrationOrderItems.
-    if ((int) $this->payment_status_id === 1) {
+    if ((int) $this->payment_status_id === self::PAYMENT_PAID) {
       $orderItem = \App\Models\RegistrationOrderItems::where('registration_id', $this->registration_id)
         ->where('category_event_id', $this->category_event_id)
         ->first();
@@ -214,9 +217,9 @@ class CategoryEventRegistration extends Model
         $order = \App\Models\RegistrationOrder::find($orderItem->order_id);
 
         if ($order && $order->isFullyPaid()) {
-          $gross = round((float) $orderItem->item_price, 2);
-          $fee   = round($gross * 0.10, 2);
-          $net   = round($gross - $fee, 2);
+          $gross      = round((float) $orderItem->item_price, 2);
+          $fee        = round(SiteSetting::calculatePayfastFee($gross), 2);
+          $net        = round($gross - $fee, 2);
           $walletPaid = round((float) ($order->wallet_reserved ?? 0), 2);
 
           return [
@@ -318,7 +321,7 @@ class CategoryEventRegistration extends Model
 
   public function getIsPaidAttribute(): bool
   {
-    return (int) $this->payment_status_id === 1
+    return (int) $this->payment_status_id === self::PAYMENT_PAID
       || !empty($this->pf_transaction_id)
       || $this->payfastTransaction !== null;
   }

@@ -466,7 +466,7 @@ class RegistrationPaymentController extends Controller
         // Remove the unpaid pivot entry in category_event_registrations
         CategoryEventRegistration::where('registration_id', $item->registration_id)
           ->where('category_event_id', $item->category_event_id)
-          ->where('payment_status_id', 0)
+          ->where('payment_status_id', CategoryEventRegistration::PAYMENT_PENDING)
           ->delete();
 
         // Remove the bare Registration row if it has no remaining pivot entries
