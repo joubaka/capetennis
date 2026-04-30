@@ -2,8 +2,9 @@
 
 @section('title', 'Super Admin – Financial Dashboard')
 
-@section('page-style')
+@section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css') }}">
 <style>
   .balance-positive { color: #28a745; font-weight: 600; }
   .balance-negative { color: #dc3545; font-weight: 600; }
@@ -136,8 +137,11 @@
 </div>
 @endsection
 
-@section('page-script')
+@section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js') }}"></script>
+@endsection
+
+@section('page-script')
 <script>
 $(function () {
   $('#financeTable').DataTable({
