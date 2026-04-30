@@ -119,7 +119,7 @@ Route::get('register/search-players', [RegisterController::class, 'searchPlayers
 Route::post('register/player-details', [RegisterController::class, 'getPlayerDetails'])->middleware('auth')->name('register.player.details');
 Route::post('register/update-player-details', [RegisterController::class, 'updatePlayerDetails'])->middleware('auth')->name('register.update.player.details');
 Route::post('register/registerAdmin', [RegisterController::class, 'registerPlayerInCategoryFromAdmin'])->middleware('auth')->name('register.admin');
-Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware(['auth', 'agreement', 'profile.updated', 'throttle:10,1'])->name('pay.now.payfast');
+Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.now.payfast');
 Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.order.payfast');
 
 // Player Profile Update (frontend)
