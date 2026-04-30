@@ -8,6 +8,7 @@ use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\Transaction;
 use App\Models\CategoryEventRegistration;
+use Illuminate\Support\Facades\Log;
 
 class EventTransactionController extends Controller
 {
