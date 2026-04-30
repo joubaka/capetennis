@@ -1107,22 +1107,28 @@
                 @php
                   $playerEmailDefs = [
                     'registration' => [
-                      'toggle_key' => 'player_email_on_registration',
-                      'label'      => 'Registration Confirmation',
-                      'desc'       => 'Sent when the player\'s registration payment is confirmed.',
-                      'placeholders' => ['{user_name}', '{event_name}', '{app_name}'],
+                      'toggle_key'      => 'player_email_on_registration',
+                      'label'           => 'Registration Confirmation',
+                      'desc'            => 'Sent when the player\'s registration payment is confirmed.',
+                      'placeholders'    => ['{user_name}', '{event_name}', '{app_name}'],
+                      'default_subject' => 'Registration Confirmation – {event_name}',
+                      'default_body'    => "Hi {user_name},\n\nYour registration for **{event_name}** has been confirmed.\n\nIf you have any questions, please contact us at support@capetennis.co.za.",
                     ],
                     'withdrawal' => [
-                      'toggle_key' => 'player_email_on_withdrawal',
-                      'label'      => 'Withdrawal Confirmation',
-                      'desc'       => 'Sent when a player withdraws from an event.',
-                      'placeholders' => ['{player_name}', '{event_name}', '{category_name}', '{withdrawn_at}', '{initiated_by}', '{app_name}'],
+                      'toggle_key'      => 'player_email_on_withdrawal',
+                      'label'           => 'Withdrawal Confirmation',
+                      'desc'            => 'Sent when a player withdraws from an event.',
+                      'placeholders'    => ['{player_name}', '{event_name}', '{category_name}', '{withdrawn_at}', '{initiated_by}', '{app_name}'],
+                      'default_subject' => 'Withdrawal Confirmation – {event_name}',
+                      'default_body'    => "Hi {player_name},\n\nYour withdrawal from **{event_name}** ({category_name}) has been confirmed.\n\n**Withdrawn on:** {withdrawn_at}  \n**Initiated by:** {initiated_by}\n\nIf you have any questions, please contact us at support@capetennis.co.za.",
                     ],
                     'move' => [
-                      'toggle_key' => 'player_email_on_move',
-                      'label'      => 'Category Move Confirmation',
-                      'desc'       => 'Sent when a player\'s category is changed.',
-                      'placeholders' => ['{player_name}', '{event_name}', '{old_category}', '{new_category}', '{changed_by}', '{app_name}'],
+                      'toggle_key'      => 'player_email_on_move',
+                      'label'           => 'Category Move Confirmation',
+                      'desc'            => 'Sent when a player\'s category is changed.',
+                      'placeholders'    => ['{player_name}', '{event_name}', '{old_category}', '{new_category}', '{changed_by}', '{app_name}'],
+                      'default_subject' => 'Category Changed – {event_name}',
+                      'default_body'    => "Hi {player_name},\n\nYour category for **{event_name}** has been changed.\n\n- **Previous Category:** {old_category}\n- **New Category:** {new_category}\n\nThis change was made by {changed_by}.\n\nIf you did not request this change, please contact support at support@capetennis.co.za.",
                     ],
                   ];
                 @endphp
@@ -1164,7 +1170,7 @@
                         <label class="form-label" for="{{ $subjectKey }}">Subject</label>
                         <input type="text" class="form-control" id="{{ $subjectKey }}"
                                name="{{ $subjectKey }}" maxlength="255"
-                               value="{{ old($subjectKey, $emailSettings[$subjectKey] ?? '') }}"
+                               value="{{ old($subjectKey, $emailSettings[$subjectKey] ?? $def['default_subject']) }}"
                                placeholder="Email subject…">
                       </div>
 
@@ -1175,7 +1181,7 @@
                         </label>
                         <textarea class="form-control font-monospace" id="{{ $bodyKey }}"
                                   name="{{ $bodyKey }}" rows="8"
-                                  placeholder="Email body…">{{ old($bodyKey, $emailSettings[$bodyKey] ?? '') }}</textarea>
+                                  placeholder="Email body…">{{ old($bodyKey, $emailSettings[$bodyKey] ?? $def['default_body']) }}</textarea>
                       </div>
 
                       <div class="mb-3">
