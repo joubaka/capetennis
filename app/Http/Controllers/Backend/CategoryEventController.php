@@ -72,6 +72,9 @@ class CategoryEventController extends Controller
       ])
       ->log("Admin withdrew {$eventName} ({$categoryName})");
 
+    // Send notification emails (player confirmation + event admins)
+    $registration->sendWithdrawalEmails('admin');
+
     if ($registration->is_paid) {
       $event = $registration->categoryEvent->event;
 
