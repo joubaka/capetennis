@@ -1095,6 +1095,44 @@
                 </div>
               </div>
             </div>
+
+            {{-- Player confirmation emails card --}}
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-user-check me-1 text-success"></i> Player Confirmation Emails</h5>
+                <small class="text-muted">Control which events trigger a confirmation email sent directly to the player.</small>
+              </div>
+              <div class="card-body">
+                <div class="row g-3">
+
+                  @php
+                    $playerEmailToggles = [
+                      'player_email_on_registration' => ['label' => 'Registration Confirmation', 'desc' => 'Send player an email when their registration is confirmed after payment.'],
+                      'player_email_on_withdrawal'   => ['label' => 'Withdrawal Confirmation',   'desc' => 'Send player an email when they withdraw from an event.'],
+                      'player_email_on_move'         => ['label' => 'Category Move Confirmation', 'desc' => 'Send player an email when their category is changed.'],
+                    ];
+                  @endphp
+
+                  @foreach($playerEmailToggles as $key => $meta)
+                    <div class="col-md-6">
+                      <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                        <div>
+                          <label class="form-label mb-0" for="sa-{{ $key }}">{{ $meta['label'] }}</label>
+                          <br><small class="text-muted">{{ $meta['desc'] }}</small>
+                        </div>
+                        <div class="form-check form-switch ms-3">
+                          <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
+                                 id="sa-{{ $key }}" name="{{ $key }}" value="1"
+                                 data-setting-key="{{ $key }}"
+                                 {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
+                        </div>
+                      </div>
+                    </div>
+                  @endforeach
+
+                </div>
+              </div>
+            </div>
           </div>{{-- /email --}}
 
           {{-- ════ B: REGISTRATION & WITHDRAWAL ════ --}}

@@ -325,11 +325,11 @@ class CategoryEventRegistration extends Model
   {
     $this->loadMissing(['players', 'categoryEvent.event.admins', 'user']);
 
-    // --- Player email ---
+    // --- Player email (gated by player_email_on_withdrawal setting) ---
     $player       = $this->players->first();
     $playerEmail  = $player?->email ?? $this->user?->email ?? null;
 
-    if ($playerEmail) {
+    if ($playerEmail && SiteSetting::get('player_email_on_withdrawal', '1') === '1') {
       \Illuminate\Support\Facades\Mail::to($playerEmail)
         ->queue(new \App\Mail\WithdrawalPlayerMail($this, $initiatedBy));
     }

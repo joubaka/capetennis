@@ -127,8 +127,8 @@ class RegistrationCategoryMoveController extends Controller
             ])
             ->log("Moved entry from {$oldCategoryName} to {$newCategoryName}");
 
-        // Send email to the player
-        if ($player && $player->email) {
+        // Send email to the player (gated by player_email_on_move setting)
+        if ($player && $player->email && \App\Models\SiteSetting::get('player_email_on_move', '1') === '1') {
             try {
                 Mail::to($player->email)->send(new CategoryMovedMail([
                     'player_name' => trim($player->name . ' ' . $player->surname),

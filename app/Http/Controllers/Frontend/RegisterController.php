@@ -641,6 +641,21 @@ class RegisterController extends Controller
           ->log('Registration paid via PayFast hybrid');
       });
 
+      // Send registration confirmation email to the user (outside the DB transaction)
+      if (\App\Models\SiteSetting::get('player_email_on_registration', '1') === '1') {
+        try {
+          $confirmedOrder = \App\Models\RegistrationOrder::with('items.category_event.event', 'items.category_event.category', 'user')->find((int) ($data['custom_int5'] ?? 0));
+          if ($confirmedOrder && $confirmedOrder->user?->email) {
+            \Illuminate\Support\Facades\Mail::to($confirmedOrder->user->email)
+              ->queue(new \App\Mail\RegistrationConfirmationMail($confirmedOrder));
+          }
+        } catch (\Throwable $e) {
+          \Illuminate\Support\Facades\Log::warning('[HYBRID ITN] Registration confirmation email failed', [
+            'error' => $e->getMessage(),
+          ]);
+        }
+      }
+
     } catch (\Throwable $e) {
 
       Log::error('[HYBRID ITN FAILED]', [
@@ -1427,6 +1442,19 @@ class RegisterController extends Controller
       $regorder->payfast_paid = true;
       $regorder->wallet_debited = true;
       $regorder->save();
+
+      // Send confirmation email for free registration
+      if (\App\Models\SiteSetting::get('player_email_on_registration', '1') === '1') {
+        try {
+          $regorder->loadMissing('items.category_event.event', 'items.category_event.category', 'user');
+          if ($regorder->user?->email) {
+            \Illuminate\Support\Facades\Mail::to($regorder->user->email)
+              ->queue(new \App\Mail\RegistrationConfirmationMail($regorder));
+          }
+        } catch (\Throwable $e) {
+          \Illuminate\Support\Facades\Log::warning('[FREE REG] Confirmation email failed', ['error' => $e->getMessage()]);
+        }
+      }
 
       return redirect()
         ->route('frontend.registration.success', ['order' => $regorder->id])
