@@ -86,7 +86,12 @@
                    {{ old('method') === 'wallet' ? 'checked' : '' }} required>
             <label class="form-check-label" for="method_wallet">
               <i class="ti ti-wallet me-1 text-primary"></i>
-              <strong>Wallet</strong> — credit R{{ number_format($gross, 2) }} to the player's Cape Tennis wallet
+              <strong>Wallet</strong> — credit R{{ number_format($gross, 2) }} to
+              @if($payer)
+                <strong>{{ trim($payer->name . ' ' . $payer->surname) }}</strong>'s Cape Tennis wallet
+              @else
+                the payer's Cape Tennis wallet
+              @endif
             </label>
           </div>
 

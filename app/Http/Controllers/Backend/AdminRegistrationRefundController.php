@@ -41,8 +41,12 @@ class AdminRegistrationRefundController extends Controller
     $gross        = round($payfastGross + $walletPaid, 2);
     $pfPaymentId  = $payment['pf_payment_id'] ?? null;
 
-    $players = $registration->players;
+    $players  = $registration->players;
     $category = optional($registration->categoryEvent?->category)->name ?? '—';
+
+    // Determine who will receive the wallet credit (payer = order owner / parent)
+    $payer = optional($registration->payfastTransaction?->order)->user
+             ?? $registration->user;
 
     return view('backend.event.admin-refund', compact(
       'event',
@@ -52,7 +56,8 @@ class AdminRegistrationRefundController extends Controller
       'payfastGross',
       'pfPaymentId',
       'players',
-      'category'
+      'category',
+      'payer'
     ));
   }
 
@@ -110,12 +115,17 @@ class AdminRegistrationRefundController extends Controller
 
     // ── Wallet Refund ──────────────────────────────────────────────────────
     if ($method === 'wallet') {
-      $user   = $registration->user;
-      $wallet = $user?->wallet;
+      // Credit the wallet of the person who paid (order owner / parent),
+      // not the player — players are children who don't have wallets.
+      $payer  = optional($registration->payfastTransaction?->order)->user
+                ?? $registration->user;
+      $wallet = $payer?->wallet;
 
       if (!$wallet) {
-        return back()->withErrors('Player wallet not found.');
+        return back()->withErrors('Payer wallet not found. The person who placed the order does not have a wallet.');
       }
+
+      $user = $payer; // used in success message below
 
       try {
         DB::transaction(function () use ($registration, $wallet, $gross, $event) {
