@@ -9,6 +9,10 @@ class Transaction extends Model
 {
     use HasFactory;
     protected $table = 'transactions_pf';
+
+    protected $casts = [
+        'is_test' => 'boolean',
+    ];
     public function player()
     {
         return $this->belongsTo(Player::class, 'player_id', 'id');

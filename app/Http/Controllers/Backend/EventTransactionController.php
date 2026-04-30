@@ -51,6 +51,7 @@ class EventTransactionController extends Controller
       ->where('event_id', $event->id)
       ->where('transaction_type', 'Registration')
       ->where('amount_gross', '>', 0)
+      ->where('is_test', false)
       ->orderByDesc('created_at')
       ->get();
 
@@ -190,6 +191,7 @@ class EventTransactionController extends Controller
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
       ->where('refund_status', 'completed')
+      ->whereHas('payfastTransaction', fn($q) => $q->where('is_test', false))
       ->get();
 
     if ($STEP === 4) {

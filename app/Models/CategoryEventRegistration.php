@@ -122,7 +122,8 @@ class CategoryEventRegistration extends Model
       Transaction::class,
       'pf_transaction_id', // local key on this model
       'pf_payment_id'      // column on transactions table
-    )->where('transaction_type', 'Registration');
+    )->where('transaction_type', 'Registration')
+     ->where('is_test', false);
   }
 
   // --------------------------------------------------
