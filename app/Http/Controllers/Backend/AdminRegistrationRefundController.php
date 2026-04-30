@@ -76,6 +76,7 @@ class AdminRegistrationRefundController extends Controller
 
     $request->validate([
       'method' => 'required|in:wallet,payfast,none',
+      'reason' => 'nullable|string|max:255',
     ]);
 
     if ($registration->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
@@ -102,9 +103,10 @@ class AdminRegistrationRefundController extends Controller
         ->withProperties([
           'registration_id' => $registration->id,
           'method'          => 'none',
+          'reason'          => $request->input('reason') ?? '',
           'initiated_by'    => 'admin',
         ])
-        ->log('Admin marked no refund for registration');
+        ->log('Admin marked no refund for registration' . ($request->filled('reason') ? ': ' . $request->input('reason') : ''));
 
       return redirect()
         ->route('admin.events.entries.new', $event)

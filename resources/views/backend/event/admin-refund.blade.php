@@ -115,6 +115,18 @@
             </label>
           </div>
 
+          {{-- Reason (shown when "No Refund" selected) --}}
+          <div class="mt-3" id="no-refund-reason-block" style="display:none;">
+            <label for="reason" class="form-label fw-semibold">Reason for no refund <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="text"
+                   id="reason"
+                   name="reason"
+                   class="form-control"
+                   maxlength="255"
+                   placeholder="e.g. Late withdrawal, post-deadline, event already started"
+                   value="{{ old('reason') }}">
+          </div>
+
         </div>
 
         <div class="d-flex gap-2 mt-4">
@@ -150,5 +162,21 @@ document.getElementById('cancel-withdraw-btn').addEventListener('click', functio
     document.getElementById('cancel-withdraw-form').submit();
   }
 });
+
+// Show/hide reason field based on "No Refund" selection
+document.querySelectorAll('input[name="method"]').forEach(function (radio) {
+  radio.addEventListener('change', function () {
+    var block = document.getElementById('no-refund-reason-block');
+    block.style.display = this.value === 'none' ? 'block' : 'none';
+  });
+});
+
+// Show on page load if "none" already selected (e.g. validation error)
+(function () {
+  var selected = document.querySelector('input[name="method"]:checked');
+  if (selected && selected.value === 'none') {
+    document.getElementById('no-refund-reason-block').style.display = 'block';
+  }
+})();
 </script>
 @endsection

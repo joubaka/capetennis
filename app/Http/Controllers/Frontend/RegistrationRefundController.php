@@ -10,6 +10,7 @@ use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
+use App\Exceptions\RefundAlreadyProcessedException;
 
 class RegistrationRefundController extends Controller
 {
@@ -38,12 +39,14 @@ class RegistrationRefundController extends Controller
         ->with('success', 'Registration withdrawn (no payment to refund).');
     }
 
-    // Include wallet portion in total paid
-    $walletPaid = $payment['wallet_paid'] ?? 0;
+    // Include wallet portion in total paid.
+    // Fee applies only to the PayFast portion; wallet funds are refunded in full.
+    $walletPaid   = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'];
-    $gross = round($payfastGross + $walletPaid, 2);
-    $fee = round($gross * 0.10, 2);
-    $net = round($gross - $fee, 2);
+    $fee          = $payment['fee'];          // SiteSetting-based, PayFast portion only
+    $payfastNet   = $payment['net'];          // PayFast gross minus fee
+    $gross        = round($payfastGross + $walletPaid, 2);
+    $net          = round($payfastNet + $walletPaid, 2); // wallet refunded in full
 
     return view('frontend.registrations.choose-refund', compact(
       'registration',
@@ -108,12 +111,14 @@ class RegistrationRefundController extends Controller
       return back()->withErrors('Payment information not found.');
     }
 
-    // Include wallet portion in total paid
-    $walletPaid = $payment['wallet_paid'] ?? 0;
+    // Include wallet portion in total paid.
+    // Fee applies only to the PayFast portion; wallet funds are refunded in full.
+    $walletPaid   = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'];
-    $gross = round($payfastGross + $walletPaid, 2);
-    $fee = round($gross * 0.10, 2);
-    $net = round($gross - $fee, 2);
+    $fee          = $payment['fee'];          // SiteSetting-based, PayFast portion only
+    $payfastNet   = $payment['net'];          // PayFast gross minus fee
+    $gross        = round($payfastGross + $walletPaid, 2);
+    $net          = round($payfastNet + $walletPaid, 2); // wallet refunded in full
 
     Log::info('REFUND CALCULATED', [
       'registration_id' => $registration->id,
@@ -133,6 +138,12 @@ class RegistrationRefundController extends Controller
       try {
 
         \DB::transaction(function () use ($user, $registration, $gross, $fee, $net) {
+          // Pessimistic lock: prevents a concurrent request from issuing a second refund
+          // before this transaction commits.
+          $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
+          if ($locked->isRefundCompleted() || $locked->isRefundPending()) {
+            throw new DuplicateTransactionException('Refund already processed or pending.');
+          }
 
           app(WalletService::class)->credit(
             $user->wallet,
@@ -196,13 +207,13 @@ class RegistrationRefundController extends Controller
           ->route('events.show', $registration->categoryEvent->event_id)
           ->with('success', 'Refund credited to your wallet.');
 
-      } catch (DuplicateTransactionException $e) {
+      } catch (DuplicateTransactionException | RefundAlreadyProcessedException $e) {
 
         Log::warning('WALLET REFUND DUPLICATE — syncing registration', [
           'registration_id' => $registration->id,
         ]);
 
-        // 🔧 Sync model state with wallet reality
+        // Sync model state with wallet reality
         $registration->update([
           'refund_method' => 'wallet',
           'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
@@ -227,26 +238,36 @@ class RegistrationRefundController extends Controller
     // BANK REFUND
     // =====================================================
 
-    $registration->update([
-      'refund_method' => 'bank',
-      'refund_status' => CategoryEventRegistration::REFUND_PENDING,
-      'refund_gross' => $gross,
-      'refund_fee' => $fee,
-      'refund_net' => $net,
-      'refund_account_name' => $request->account_name,
-      'refund_bank_name' => $request->bank_name,
-      'refund_account_number' => $request->account_number,
-      'refund_branch_code' => $request->branch_code,
-      'refund_account_type' => $request->account_type,
-    ]);
+    // Wrap the initial status write in a transaction with pessimistic lock
+    // so that concurrent requests cannot both set the status to 'pending'.
+    \DB::transaction(function () use ($registration, $gross, $fee, $net, $request) {
+      $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
+      if ($locked->isRefundCompleted() || $locked->isRefundPending()) {
+        // Use a signal exception so the outer code can return the right response
+        throw new \App\Exceptions\RefundAlreadyProcessedException();
+      }
+
+      $registration->update([
+        'refund_method' => 'bank',
+        'refund_status' => CategoryEventRegistration::REFUND_PENDING,
+        'refund_gross' => $gross,
+        'refund_fee' => $fee,
+        'refund_net' => $net,
+        'refund_account_name' => $request->account_name,
+        'refund_bank_name' => $request->bank_name,
+        'refund_account_number' => $request->account_number,
+        'refund_branch_code' => $request->branch_code,
+        'refund_account_type' => $request->account_type,
+      ]);
+    });
 
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
 
     // For hybrid payments PayFast can only refund its own portion;
-    // the wallet contribution must be credited back to the wallet separately.
-    $payfastNet = round($payfastGross * 0.90, 2);
-    $walletNet  = round($walletPaid  * 0.90, 2);
+    // the wallet contribution is refunded in full (no fee) back to the wallet.
+    $payfastNet = $payment['net'];   // fee already deducted via SiteSetting
+    $walletNet  = $walletPaid;       // wallet portion has no fee — refund in full
 
     if (!empty($pfPaymentId) && $payfastGross > 0) {
       try {
@@ -261,8 +282,8 @@ class RegistrationRefundController extends Controller
         ]);
 
         if ($result['success']) {
-          // For hybrid payments, credit the wallet portion back to the user's wallet
-          // since it cannot be returned via the PayFast API.
+          // For hybrid payments, credit the wallet portion back in full —
+          // wallet funds carry no PayFast fee.
           if ($walletNet > 0) {
             try {
               app(WalletService::class)->credit(
@@ -274,7 +295,7 @@ class RegistrationRefundController extends Controller
                   'registration_id' => $registration->id,
                   'event_id' => $registration->categoryEvent->event_id,
                   'gross' => $walletPaid,
-                  'fee' => round($walletPaid * 0.10, 2),
+                  'fee' => 0,
                   'method' => 'hybrid_bank',
                   'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
                 ]
@@ -330,6 +351,8 @@ class RegistrationRefundController extends Controller
           'error' => $result['error'],
         ]);
 
+      } catch (\App\Exceptions\RefundAlreadyProcessedException $e) {
+        return back()->with('success', 'Refund already processed or pending.');
       } catch (\Throwable $e) {
         Log::error('PAYFAST AUTO REFUND EXCEPTION — falling back to manual', [
           'registration_id' => $registration->id,

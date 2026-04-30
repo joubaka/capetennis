@@ -129,8 +129,9 @@ class BankRefundController extends Controller
       // the wallet contribution is credited back to the user's wallet separately.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = round($payfastGross * 0.90, 2);
-      $walletNet    = round($walletPaid  * 0.90, 2);
+      // Use SiteSetting-based fee; wallet portion carries no fee.
+      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      $walletNet    = $walletPaid;
 
       try {
         $payfast = new \App\Services\Payfast();
@@ -165,7 +166,7 @@ class BankRefundController extends Controller
                 [
                   'registration_id' => $registration->id,
                   'gross' => $walletPaid,
-                  'fee' => round($walletPaid * 0.10, 2),
+                  'fee' => 0,   // wallet portion carries no fee
                   'method' => 'hybrid_bank',
                   'initiated_by' => 'admin',
                 ]

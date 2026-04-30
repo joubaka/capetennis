@@ -35,7 +35,7 @@ Your refund has been processed.
 
 - **Refund method:** {{ ucfirst($registration->refund_method) }}  
 - **Amount paid:** R{{ number_format($registration->refund_gross, 2) }}  
-- **Admin fee (10%):** R{{ number_format($registration->refund_fee, 2) }}  
+- **Refund fee (PayFast):** R{{ number_format($registration->refund_fee, 2) }}  
 - **Amount refunded:** R{{ number_format($registration->refund_net, 2) }}  
 - **Refunded on:** {{ $registration->refunded_at?->format('d M Y H:i') ?? '–' }}
 
@@ -44,7 +44,7 @@ Your refund is **pending** and will be processed shortly.
 
 - **Refund method:** {{ ucfirst($registration->refund_method) }}  
 - **Amount paid:** R{{ number_format($registration->refund_gross, 2) }}  
-- **Admin fee (10%):** R{{ number_format($registration->refund_fee, 2) }}  
+- **Refund fee (PayFast):** R{{ number_format($registration->refund_fee, 2) }}  
 - **Amount to be refunded:** R{{ number_format($registration->refund_net, 2) }}
 
 @else

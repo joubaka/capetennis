@@ -65,7 +65,7 @@
           </p>
         @endif
         <p class="mb-1 text-muted">
-          <strong>Refund fee (10%):</strong> R{{ number_format($fee, 2) }}
+          <strong>Refund fee (PayFast):</strong> R{{ number_format($fee, 2) }}
         </p>
         <p class="fs-5 mt-2">
           You will receive:
