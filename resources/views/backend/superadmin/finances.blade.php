@@ -91,20 +91,20 @@
                   {{ $row['event']->name }}
                 </a>
               </td>
-              <td>
+              <td data-order="{{ $row['event']->start_date ?? '0000-00-00' }}">
                 <small class="text-muted">
                   {{ $row['event']->start_date ? \Carbon\Carbon::parse($row['event']->start_date)->format('d M Y') : '—' }}
                 </small>
               </td>
-              <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
-              <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
-              <td class="text-end text-danger">
+              <td class="text-end text-success" data-order="{{ $row['total_gross'] }}">R {{ number_format($row['total_gross'], 2) }}</td>
+              <td class="text-end" data-order="{{ $row['total_income'] }}">R {{ number_format($row['total_income'], 2) }}</td>
+              <td class="text-end text-danger" data-order="{{ $row['total_paid_out'] }}">
                 {{ $row['total_paid_out'] > 0 ? 'R ' . number_format($row['total_paid_out'], 2) : '—' }}
               </td>
-              <td class="text-end {{ $row['balance'] < 0 ? 'balance-negative' : 'balance-positive' }}">
+              <td class="text-end {{ $row['balance'] < 0 ? 'balance-negative' : 'balance-positive' }}" data-order="{{ $row['balance'] }}">
                 R {{ number_format($row['balance'], 2) }}
               </td>
-              <td class="text-center">{{ number_format($row['total_entries']) }}</td>
+              <td class="text-center" data-order="{{ $row['total_entries'] }}">{{ number_format($row['total_entries']) }}</td>
               <td>
                 <a href="{{ route('superadmin.finances.event', $row['event']) }}"
                    class="btn btn-icon btn-sm btn-outline-warning" title="View Transactions & Payouts">
@@ -141,7 +141,7 @@
 <script>
 $(function () {
   $('#financeTable').DataTable({
-    order: [[1, 'desc']],
+    order: [[3, 'desc']],  // Net Income DESC — events with actual transactions appear first
     columnDefs: [{ orderable: false, targets: [7] }],
     pageLength: 25,
   });
