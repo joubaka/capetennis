@@ -9,10 +9,15 @@
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/katex.css') }}" />
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}" />
 @endsection
 
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/quill/katex.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
 @endsection
 
 @section('content')
@@ -1441,6 +1446,51 @@
                 </div>
               </div>
             </div>
+
+            {{-- ── Code of Conduct Content Editor ── --}}
+            <div class="card mb-3">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 class="mb-0"><i class="ti ti-file-text me-1 text-primary"></i> Code of Conduct Content</h6>
+                  <small class="text-muted">Edit the text shown to players when accepting the Code of Conduct.</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary sa-save-content-btn"
+                        data-key="code_of_conduct_content"
+                        data-editor="sa-coc-editor"
+                        data-textarea="sa-coc-textarea">
+                  <i class="ti ti-device-floppy me-1"></i> Save
+                </button>
+              </div>
+              <div class="card-body">
+                <div class="quill-wrapper border rounded" style="min-height:220px;">
+                  <div id="sa-coc-editor" style="min-height:200px;"></div>
+                </div>
+                <textarea id="sa-coc-textarea" class="d-none">{{ $generalSettings['code_of_conduct_content'] ?? '' }}</textarea>
+              </div>
+            </div>
+
+            {{-- ── Terms & Conditions Content Editor ── --}}
+            <div class="card mb-3">
+              <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 class="mb-0"><i class="ti ti-file-certificate me-1 text-primary"></i> Terms &amp; Conditions Content</h6>
+                  <small class="text-muted">Edit the text shown to players when accepting the Terms &amp; Conditions.</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary sa-save-content-btn"
+                        data-key="terms_conditions_content"
+                        data-editor="sa-terms-editor"
+                        data-textarea="sa-terms-textarea">
+                  <i class="ti ti-device-floppy me-1"></i> Save
+                </button>
+              </div>
+              <div class="card-body">
+                <div class="quill-wrapper border rounded" style="min-height:220px;">
+                  <div id="sa-terms-editor" style="min-height:200px;"></div>
+                </div>
+                <textarea id="sa-terms-textarea" class="d-none">{{ $generalSettings['terms_conditions_content'] ?? '' }}</textarea>
+              </div>
+            </div>
+
           </div>{{-- /access --}}
 
         </div>{{-- /settings tab-content --}}
@@ -1969,5 +2019,57 @@ $(function () {
   });
 
 });
+
+// ── Quill content editors (Code of Conduct & Terms) ──────────────
+(function () {
+  var quillToolbar = [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+    ['link'],
+    ['clean']
+  ];
+
+  function initContentEditor(editorId, textareaId) {
+    var editor   = new Quill('#' + editorId, { theme: 'snow', modules: { toolbar: quillToolbar } });
+    var textarea = document.getElementById(textareaId);
+    if (textarea && textarea.value) { editor.root.innerHTML = textarea.value; }
+    editor.on('text-change', function () { textarea.value = editor.root.innerHTML; });
+    return editor;
+  }
+
+  initContentEditor('sa-coc-editor',   'sa-coc-textarea');
+  initContentEditor('sa-terms-editor', 'sa-terms-textarea');
+
+  var saContentUrl   = '{{ route('settings.store.content') }}';
+  var saContentToken = $('meta[name="csrf-token"]').attr('content')
+                     || $('input[name="_token"]').first().val();
+
+  $(document).on('click', '.sa-save-content-btn', function () {
+    var $btn     = $(this);
+    var key      = $btn.data('key');
+    var textarea = document.getElementById($btn.data('textarea'));
+
+    $btn.prop('disabled', true).html('<i class="ti ti-loader me-1"></i> Saving...');
+
+    $.ajax({
+      url:         saContentUrl,
+      method:      'POST',
+      contentType: 'application/json',
+      data:        JSON.stringify({ key: key, content: textarea.value }),
+      headers:     { 'X-CSRF-TOKEN': saContentToken, 'X-Requested-With': 'XMLHttpRequest' },
+      success: function (res) {
+        saShowToast(res.message || 'Content saved.', false);
+        $btn.prop('disabled', false).html('<i class="ti ti-check me-1"></i> Saved');
+        setTimeout(function () { $btn.html('<i class="ti ti-device-floppy me-1"></i> Save'); }, 2000);
+      },
+      error: function (xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Save failed. Please try again.';
+        saShowToast(msg, true);
+        $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save');
+      }
+    });
+  });
+}());
 </script>
 @endsection

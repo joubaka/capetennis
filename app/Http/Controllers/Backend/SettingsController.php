@@ -61,6 +61,13 @@ class SettingsController extends Controller
         SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
 
+        if ($request->filled('code_of_conduct_content')) {
+            SiteSetting::set('code_of_conduct_content', $request->input('code_of_conduct_content'), SiteSetting::GROUP_GENERAL);
+        }
+        if ($request->filled('terms_conditions_content')) {
+            SiteSetting::set('terms_conditions_content', $request->input('terms_conditions_content'), SiteSetting::GROUP_GENERAL);
+        }
+
         // Email notifications (admin)
         SiteSetting::set('email_on_registration', $request->boolean('email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('email_on_withdrawal', $request->boolean('email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
@@ -148,6 +155,21 @@ class SettingsController extends Controller
         SiteSetting::set("player_email_body_{$type}",    $request->input('body'),    SiteSetting::GROUP_EMAIL);
 
         return response()->json(['success' => true, 'message' => 'Email template saved.']);
+    }
+
+    /**
+     * Save the content of Terms & Conditions or Code of Conduct via AJAX.
+     */
+    public function storeContent(Request $request)
+    {
+        $request->validate([
+            'key'     => 'required|in:code_of_conduct_content,terms_conditions_content',
+            'content' => 'required|string|max:65535',
+        ]);
+
+        SiteSetting::set($request->input('key'), $request->input('content'), SiteSetting::GROUP_GENERAL);
+
+        return response()->json(['success' => true, 'message' => 'Content saved successfully.']);
     }
 
     public function create() {}
