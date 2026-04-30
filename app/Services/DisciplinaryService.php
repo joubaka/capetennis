@@ -205,7 +205,9 @@ class DisciplinaryService
 
         $mailable = new ViolationNotificationMail($player, $violation, $recorder);
 
-        // Build the full CC list: extra TO addresses + admin/recorder CCs, passed in one call
+        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
+        // are folded in here because Laravel's PendingMail only supports a single primary TO
+        // address; everyone else is passed via CC so they all receive the message.
         $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
 
         $mailer = Mail::to($toAddresses->first());
@@ -257,6 +259,9 @@ class DisciplinaryService
 
         $mailable = new SuspensionAlertMail($player, $suspension);
 
+        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
+        // are folded in here because Laravel's PendingMail only supports a single primary TO
+        // address; everyone else is passed via CC so they all receive the message.
         $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
 
         $mailer = Mail::to($toAddresses->first());
