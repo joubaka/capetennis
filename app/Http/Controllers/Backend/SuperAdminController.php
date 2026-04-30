@@ -13,6 +13,8 @@ use App\Models\SiteSetting;
 use App\Models\TeamPaymentOrder;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Models\Withdrawals;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -290,6 +292,24 @@ class SuperAdminController extends Controller
             'total_entries' => $financeByEvent->sum('total_entries'),
         ];
 
+        // ── Wallet Management Data ────────────────────────────────────────────
+        $allWallets = Wallet::with('payable')
+            ->withCount('transactions')
+            ->addSelect([
+                'balance' => WalletTransaction::selectRaw(
+                    "COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE -amount END), 0)"
+                )->whereColumn('wallet_id', 'wallets.id'),
+            ])
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $walletStats = [
+            'total_wallets'   => $allWallets->count(),
+            'total_balance'   => round($allWallets->sum('balance'), 2),
+            'positive_wallets' => $allWallets->filter(fn ($w) => $w->balance > 0)->count(),
+            'zero_wallets'    => $allWallets->filter(fn ($w) => $w->balance == 0)->count(),
+        ];
+
         return view('backend.superadmin.index', compact(
             'totalUsers',
             'totalPlayers',
@@ -318,7 +338,9 @@ class SuperAdminController extends Controller
             'withdrawalCompletedRefunds',
             'withdrawalWalletRefunds',
             'withdrawalPendingTeamRefunds',
-            'withdrawalCompletedTeamRefunds'
+            'withdrawalCompletedTeamRefunds',
+            'allWallets',
+            'walletStats'
         ));
     }
 }

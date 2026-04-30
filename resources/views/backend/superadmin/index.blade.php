@@ -189,6 +189,15 @@
           <i class="ti ti-history me-1 text-secondary"></i>Audit &amp; Activity
         </button>
       </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-wallets" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-wallets" type="button" role="tab">
+          <i class="ti ti-wallet me-1 text-info"></i>Wallets
+          @if($walletStats['positive_wallets'] > 0)
+            <span class="badge bg-label-info ms-1">{{ $walletStats['positive_wallets'] }}</span>
+          @endif
+        </button>
+      </li>
     </ul>
   </div>
 
@@ -992,6 +1001,138 @@
       </div>
     </div>{{-- /audit --}}
 
+
+    {{-- ══ TAB: WALLETS ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-wallets" role="tabpanel">
+
+      @if(session('wallet_success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+          <i class="ti ti-check-circle me-1"></i>{{ session('wallet_success') }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
+      {{-- Wallet Stats --}}
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="card border-start border-info border-3 h-100">
+            <div class="card-body py-3">
+              <small class="text-muted d-block mb-1"><i class="ti ti-wallet me-1 text-info"></i>Total Wallets</small>
+              <h5 class="mb-0 text-info">{{ number_format($walletStats['total_wallets']) }}</h5>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-start border-success border-3 h-100">
+            <div class="card-body py-3">
+              <small class="text-muted d-block mb-1"><i class="ti ti-coins me-1 text-success"></i>Total Balance</small>
+              <h5 class="mb-0 text-success">R {{ number_format($walletStats['total_balance'], 2) }}</h5>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-start border-warning border-3 h-100">
+            <div class="card-body py-3">
+              <small class="text-muted d-block mb-1"><i class="ti ti-trending-up me-1 text-warning"></i>With Balance</small>
+              <h5 class="mb-0 text-warning">{{ number_format($walletStats['positive_wallets']) }}</h5>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-start border-secondary border-3 h-100">
+            <div class="card-body py-3">
+              <small class="text-muted d-block mb-1"><i class="ti ti-circle-minus me-1 text-secondary"></i>Zero Balance</small>
+              <h5 class="mb-0 text-secondary">{{ number_format($walletStats['zero_wallets']) }}</h5>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {{-- Wallet Table --}}
+      <div class="card mb-0">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="d-flex align-items-center">
+            <i class="ti ti-wallet me-2 text-info"></i>
+            <h5 class="mb-0">All User Wallets</h5>
+          </div>
+          <small class="text-muted">Click actions to manage transactions per wallet.</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="dt-wallets">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>User</th>
+                <th class="text-end">Balance</th>
+                <th class="text-center">Transactions</th>
+                <th>Last Updated</th>
+                <th class="text-center no-sort">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @forelse($allWallets as $wallet)
+                @php $payable = $wallet->payable; @endphp
+                <tr>
+                  <td>{{ $wallet->id }}</td>
+                  <td>
+                    @if($payable)
+                      <a href="{{ route('wallet.show', $payable->id) }}" class="fw-semibold text-primary">
+                        {{ $payable->name }}
+                      </a>
+                      <small class="d-block text-muted">{{ $payable->email ?? '' }}</small>
+                    @else
+                      <span class="text-muted fst-italic">Unknown user</span>
+                    @endif
+                  </td>
+                  <td class="text-end fw-bold {{ $wallet->balance > 0 ? 'text-success' : ($wallet->balance < 0 ? 'text-danger' : 'text-muted') }}">
+                    R {{ number_format($wallet->balance, 2) }}
+                  </td>
+                  <td class="text-center">
+                    <span class="badge bg-label-secondary">{{ $wallet->transactions_count }}</span>
+                  </td>
+                  <td>
+                    <small class="text-muted">{{ $wallet->updated_at?->format('d M Y H:i') ?? '—' }}</small>
+                  </td>
+                  <td class="text-center">
+                    <div class="d-flex gap-1 justify-content-center">
+                      @if($payable)
+                        <a href="{{ route('wallet.show', $payable->id) }}"
+                           class="btn btn-icon btn-sm btn-outline-info" title="View Wallet">
+                          <i class="ti ti-eye"></i>
+                        </a>
+                        <button type="button"
+                                class="btn btn-icon btn-sm btn-outline-success btn-wallet-add-tx"
+                                title="Add Transaction"
+                                data-user-id="{{ $payable->id }}"
+                                data-user-name="{{ $payable->name }}"
+                                data-wallet-balance="R{{ number_format($wallet->balance, 2) }}">
+                          <i class="ti ti-plus"></i>
+                        </button>
+                      @endif
+                      <form method="POST"
+                            action="{{ route('superadmin.wallets.destroy', $wallet) }}"
+                            onsubmit="return confirm('Delete entire wallet for {{ addslashes($payable->name ?? 'this user') }} and ALL its transactions? This cannot be undone.');">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete Wallet">
+                          <i class="ti ti-trash"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-4">No wallets found.</td>
+                </tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>{{-- /wallets --}}
+
 {{-- ── Withdrawal / Refund Detail Modal ───────────────────────────── --}}
 <div class="modal fade" id="modal-activity-detail" tabindex="-1" aria-labelledby="modal-activity-detail-label" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -1014,6 +1155,94 @@
 
   </div>{{-- /tab-content --}}
 </div>{{-- /main tabs card --}}
+
+{{-- ══════════════════════════════════════════════════════════════════════════ --}}
+{{-- WALLET MODALS (outside tabs so Bootstrap can find them by ID)             --}}
+{{-- ══════════════════════════════════════════════════════════════════════════ --}}
+
+{{-- Add Transaction Modal --}}
+<div class="modal fade" id="modal-wallet-add-tx" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form id="form-wallet-add-tx" method="POST" action="" class="modal-content">
+      @csrf
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-plus-circle me-1 text-success"></i>Add Transaction</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3" id="wallet-add-tx-user-label"></p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Type</label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="type" value="credit" id="tx-type-credit" checked>
+              <label class="form-check-label text-success" for="tx-type-credit"><i class="ti ti-arrow-up me-1"></i>Credit</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="type" value="debit" id="tx-type-debit">
+              <label class="form-check-label text-danger" for="tx-type-debit"><i class="ti ti-arrow-down me-1"></i>Debit</label>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Amount (R)</label>
+          <input type="number" name="amount" step="0.01" min="0.01" class="form-control" required placeholder="0.00">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Reference <small class="text-muted">(optional)</small></label>
+          <input type="text" name="reference" class="form-control" placeholder="e.g. Admin top-up">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success"><i class="ti ti-check me-1"></i>Save Transaction</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{-- Edit Transaction Modal --}}
+<div class="modal fade" id="modal-wallet-edit-tx" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form id="form-wallet-edit-tx" method="POST" action="" class="modal-content">
+      @csrf
+      @method('PUT')
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-pencil me-1 text-primary"></i>Edit Transaction</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3" id="wallet-edit-tx-label"></p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Type</label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="type" value="credit" id="edit-tx-type-credit">
+              <label class="form-check-label text-success" for="edit-tx-type-credit"><i class="ti ti-arrow-up me-1"></i>Credit</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="type" value="debit" id="edit-tx-type-debit">
+              <label class="form-check-label text-danger" for="edit-tx-type-debit"><i class="ti ti-arrow-down me-1"></i>Debit</label>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Amount (R)</label>
+          <input type="number" name="amount" id="edit-tx-amount" step="0.01" min="0.01" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Reference <small class="text-muted">(optional)</small></label>
+          <input type="text" name="reference" id="edit-tx-reference" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Update Transaction</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
 
 @endsection
@@ -1155,6 +1384,43 @@ $(function () {
     var val = $(this).val();
     if (dtGrouped) { val ? dtGrouped.column(4).search(val).draw() : dtGrouped.column(4).search('').draw(); }
     if (dtRaw)     { val ? dtRaw.column(2).search('^'+val+'$',true,false).draw() : dtRaw.column(2).search('').draw(); }
+  });
+
+  // ── Wallets DataTable (lazy init) ──────────────────────────────
+  var dtWallets = null;
+  $('#sa-tab-wallets').on('shown.bs.tab', function () {
+    if (!dtWallets) {
+      dtWallets = $('#dt-wallets').DataTable({
+        ordering: true,
+        order: [[2, 'desc']],
+        pageLength: 25,
+        columnDefs: [{ targets: 5, orderable: false, searchable: false }],
+        language: { emptyTable: 'No wallets found.' }
+      });
+    } else {
+      dtWallets.columns.adjust().draw(false);
+    }
+  });
+
+  // ── Add Transaction Modal ──────────────────────────────────────
+  var addTxModal  = new bootstrap.Modal(document.getElementById('modal-wallet-add-tx'));
+  var editTxModal = new bootstrap.Modal(document.getElementById('modal-wallet-edit-tx'));
+
+  $(document).on('click', '.btn-wallet-add-tx', function () {
+    var userId  = $(this).data('user-id');
+    var name    = $(this).data('user-name');
+    var balance = $(this).data('wallet-balance');
+    var url     = '{{ url("backend/superadmin/wallets/users") }}/' + userId + '/transaction';
+
+    $('#form-wallet-add-tx').attr('action', url);
+    $('#wallet-add-tx-user-label').html(
+      '<i class="ti ti-user me-1"></i><strong>' + $('<span>').text(name).html() + '</strong>' +
+      ' &mdash; Current balance: <span class="text-success fw-bold">' + $('<span>').text(balance).html() + '</span>'
+    );
+    $('#tx-type-credit').prop('checked', true);
+    $('#form-wallet-add-tx input[name="amount"]').val('');
+    $('#form-wallet-add-tx input[name="reference"]').val('');
+    addTxModal.show();
   });
 
 });
