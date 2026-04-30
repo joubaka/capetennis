@@ -365,6 +365,18 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
     Route::post('superadmin/finances/event/{event}/full-refund/team-order/{order}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storeFullRefundTeam'])
       ->name('superadmin.finances.full-refund.team');
+
+    Route::get('superadmin/orphaned-registrations', [\App\Http\Controllers\Backend\OrphanedRegistrationController::class, 'index'])
+      ->name('superadmin.orphans.index');
+
+    Route::post('superadmin/orphaned-registrations/{order}/repair', [\App\Http\Controllers\Backend\OrphanedRegistrationController::class, 'repair'])
+      ->name('superadmin.orphans.repair');
+
+    Route::delete('superadmin/orphaned-registrations/{order}/purge', [\App\Http\Controllers\Backend\OrphanedRegistrationController::class, 'purge'])
+      ->name('superadmin.orphans.purge');
+
+    Route::delete('superadmin/orphaned-registrations/{order}/delete-real', [\App\Http\Controllers\Backend\OrphanedRegistrationController::class, 'deleteReal'])
+      ->name('superadmin.orphans.delete-real');
   });
 
 
@@ -1561,6 +1573,10 @@ Route::get('/fixtures/{draw}', [TeamFixtureFrontendController::class, 'index'])
 // Public frontend ranking view
 Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController::class, 'ranking_frontend_show'])
   ->name('frontend.ranking.show');
+
+// Public player ranking detail view
+Route::get('ranking/{series}/player/{player}', [\App\Http\Controllers\Backend\RankingController::class, 'playerDetail'])
+  ->name('frontend.ranking.player-detail');
 
 // Public round-robin draw view
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])

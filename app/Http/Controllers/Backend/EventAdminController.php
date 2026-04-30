@@ -1111,7 +1111,7 @@ class EventAdminController extends Controller
     $categoryEvent->categoryEventRegistrations()
       ->where('registration_id', $registration->id)
       ->limit(1)
-      ->delete();
+      ->update(['withdrawn_at' => now()]);
 
     return response()->json([
       'success' => true,

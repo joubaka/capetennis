@@ -146,7 +146,7 @@ class EventEntryController extends Controller
 
     $categoryEvent->categoryEventRegistrations()
       ->where('registration_id', $registration->id)
-      ->delete();
+      ->update(['withdrawn_at' => now()]);
 
     return response()->json([
       'success' => true,
