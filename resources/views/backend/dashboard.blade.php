@@ -50,7 +50,7 @@
     <div class="card mb-4">
       <div class="card-body text-center">
 
-        <img src="{{ asset('assets/img/avatars/1.png') }}"
+        <img src="{{ $user->profile_photo_url ?? asset('assets/img/avatars/default.svg') }}"
              class="rounded-circle mb-3"
              width="100" height="100">
 
