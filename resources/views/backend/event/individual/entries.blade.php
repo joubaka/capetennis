@@ -94,7 +94,7 @@
   }
 
   .col-actions {
-    width: 200px;
+    width: 110px;
   }
 
   /* ============================
@@ -147,19 +147,8 @@
 
     /* Stack action buttons */
     .col-actions {
-      width: 120px;
+      width: 110px;
     }
-
-      .col-actions .btn-group {
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .col-actions .btn {
-        width: 100%;
-        font-size: 0.75rem;
-        padding: 4px 6px;
-      }
 
     /* Touch-friendly rows */
     .category-card tbody tr {
@@ -322,38 +311,56 @@
                   </span>
                 </td>
                <td class="col-actions text-end">
-  <div class="btn-group btn-group-sm">
+  <div class="dropdown">
     <button type="button"
-            class="btn btn-outline-secondary email-btn"
-            data-scope="player"
-            data-registration="{{ $reg->registration_id }}">
-      Email
+            class="btn btn-outline-secondary btn-sm dropdown-toggle"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+      Actions
     </button>
-   <button type="button"
-    class="btn btn-outline-info move-player-btn"
-    data-entry="{{ $reg->id }}"
-    data-player="{{ $player?->name }} {{ $player?->surname }}"
-    data-from-category="{{ $categoryEvent->category?->name }}">
-    Move
-</button>
+    <ul class="dropdown-menu dropdown-menu-end">
 
+      <li>
+        <button type="button"
+                class="dropdown-item email-btn"
+                data-scope="player"
+                data-registration="{{ $reg->registration_id }}">
+          <i class="ti ti-mail me-1"></i>Email
+        </button>
+      </li>
 
-    @unless($categoryEvent->isLocked())
-      <button type="button"
-              class="btn btn-outline-danger remove-player-btn"
-              data-url="{{ route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) }}">
-        Remove
-      </button>
-    @endunless
+      <li>
+        <button type="button"
+                class="dropdown-item move-player-btn"
+                data-entry="{{ $reg->id }}"
+                data-player="{{ $player?->name }} {{ $player?->surname }}"
+                data-from-category="{{ $categoryEvent->category?->name }}">
+          <i class="ti ti-arrows-transfer-up me-1"></i>Move
+        </button>
+      </li>
 
-    @if($reg->status !== 'withdrawn')
-      <button type="button"
-              class="btn btn-outline-warning withdraw-player-btn"
-              data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
-              data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
-        Withdraw
-      </button>
-    @endif
+      @unless($categoryEvent->isLocked())
+        <li>
+          <button type="button"
+                  class="dropdown-item text-danger remove-player-btn"
+                  data-url="{{ route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) }}">
+            <i class="ti ti-trash me-1"></i>Remove
+          </button>
+        </li>
+      @endunless
+
+      @if($reg->status !== 'withdrawn')
+        <li>
+          <button type="button"
+                  class="dropdown-item text-warning withdraw-player-btn"
+                  data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
+                  data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
+            <i class="ti ti-user-minus me-1"></i>Withdraw
+          </button>
+        </li>
+      @endif
+
+    </ul>
   </div>
 </td>
 
