@@ -2,6 +2,14 @@
 
 @section('title', 'Disciplinary Settings')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}" />
+@endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
 
@@ -112,7 +120,7 @@
                         </div>
                         <div class="col-md-2">
                             <label class="form-label fw-semibold">Category</label>
-                            <select name="category" class="form-select" required>
+                            <select name="category" class="form-select select2" required>
                                 @foreach(\App\Models\ViolationType::$categories as $key => $label)
                                     <option value="{{ $key }}" @selected(old('category') === $key)>{{ $label }}</option>
                                 @endforeach
@@ -167,7 +175,7 @@
                                            value="{{ $vt->name }}" required maxlength="100">
                                 </td>
                                 <td>
-                                    <select name="category" class="form-select form-select-sm">
+                                    <select name="category" class="form-select form-select-sm select2">
                                         @foreach(\App\Models\ViolationType::$categories as $key => $label)
                                             <option value="{{ $key }}" @selected($vt->category === $key)>{{ $label }}</option>
                                         @endforeach
@@ -264,4 +272,13 @@
     </div>
 
 </div>
+
+@section('page-script')
+<script>
+    $(function () {
+        $('.select2').select2();
+    });
+</script>
+@endsection
+
 @endsection

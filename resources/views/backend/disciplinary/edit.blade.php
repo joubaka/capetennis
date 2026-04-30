@@ -2,6 +2,14 @@
 
 @section('title', 'Edit Violation')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}" />
+@endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
 
@@ -39,7 +47,7 @@
                     <div class="col-md-6">
                         <label class="form-label fw-semibold">Violation Type <span class="text-danger">*</span></label>
                         <select name="violation_type_id" id="violation_type_id"
-                                class="form-select @error('violation_type_id') is-invalid @enderror" required>
+                                class="form-select select2 @error('violation_type_id') is-invalid @enderror" required>
                             <option value="">— Select Type —</option>
                             @foreach($violationTypes as $vt)
                                 <option value="{{ $vt->id }}"
@@ -75,7 +83,7 @@
                     {{-- Penalty Type --}}
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Penalty Type</label>
-                        <select name="penalty_type" class="form-select">
+                        <select name="penalty_type" class="form-select select2">
                             <option value="">— None —</option>
                             @foreach(['warning', 'point', 'game', 'default'] as $pt)
                                 <option value="{{ $pt }}"
@@ -89,7 +97,7 @@
                     {{-- Event --}}
                     <div class="col-md-8">
                         <label class="form-label fw-semibold">Related Event <small class="text-muted">(optional)</small></label>
-                        <select name="event_id" class="form-select">
+                        <select name="event_id" class="form-select select2">
                             <option value="">— None —</option>
                             @foreach($events as $e)
                                 <option value="{{ $e->id }}"
@@ -122,12 +130,16 @@
 
 @section('page-script')
 <script>
-    document.getElementById('violation_type_id').addEventListener('change', function () {
-        const selected = this.options[this.selectedIndex];
-        const pts = selected.dataset.points;
-        if (pts !== undefined) {
-            document.getElementById('points_assigned').value = pts;
-        }
+    $(function () {
+        $('.select2').select2();
+
+        $('#violation_type_id').on('change', function () {
+            const selected = this.options[this.selectedIndex];
+            const pts = selected.dataset.points;
+            if (pts !== undefined) {
+                document.getElementById('points_assigned').value = pts;
+            }
+        });
     });
 </script>
 @endsection

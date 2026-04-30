@@ -5,10 +5,12 @@
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}" />
 @endsection
 
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 @endsection
 
 @section('content')
@@ -42,7 +44,7 @@
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label">Player</label>
-                    <select name="player_id" class="form-select">
+                    <select name="player_id" class="form-select select2">
                         <option value="">All Players</option>
                         @foreach($players as $p)
                             <option value="{{ $p->id }}" @selected(request('player_id') == $p->id)>
@@ -53,7 +55,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Violation Type</label>
-                    <select name="violation_type_id" class="form-select">
+                    <select name="violation_type_id" class="form-select select2">
                         <option value="">All Types</option>
                         @foreach($violationTypes as $vt)
                             <option value="{{ $vt->id }}" @selected(request('violation_type_id') == $vt->id)>
@@ -157,4 +159,13 @@
     </div>
 
 </div>
+
+@section('page-script')
+<script>
+    $(function () {
+        $('.select2').select2();
+    });
+</script>
+@endsection
+
 @endsection
