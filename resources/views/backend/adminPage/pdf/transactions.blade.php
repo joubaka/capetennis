@@ -49,7 +49,7 @@
                             <li>
                                 {{ $item->player->name ?? '' }} {{ $item->player->surname ?? '' }}
                                 ({{ optional(optional($item->category_event)->category)->name ?? '-' }})
-                                — R{{ number_format($item->item_price ?? 0, 2) }}
+                                &mdash; R{{ number_format($item->item_price ?? 0, 2) }}
                             </li>
                             @endforeach
                         </ul>
@@ -58,20 +58,20 @@
                     @endif
                 </td>
                 <td>{{ $t->method ?? '-' }}</td>
-                <td>{{ in_array($t->type, ['refund', 'payout']) ? '−' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
+                <td>{{ in_array($t->type, ['refund', 'payout']) ? '-' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
                 <td>
                     @if($t->fee != 0)
-                        {{ $t->fee > 0 ? '+' : '−' }} R{{ number_format(abs($t->fee), 2) }}
-                    @else —
+                        {{ $t->fee > 0 ? '+' : '-' }} R{{ number_format(abs($t->fee), 2) }}
+                    @else &mdash;
                     @endif
                 </td>
                 <td>
                     @if($t->capeFee != 0)
-                        {{ $t->capeFee > 0 ? '+' : '−' }} R{{ number_format(abs($t->capeFee), 2) }}
-                    @else —
+                        {{ $t->capeFee > 0 ? '+' : '-' }} R{{ number_format(abs($t->capeFee), 2) }}
+                    @else &mdash;
                     @endif
                 </td>
-                <td>{{ $t->net < 0 ? '−' : '' }} R{{ number_format(abs($t->net), 2) }}</td>
+                <td>{{ $t->net < 0 ? '-' : '' }} R{{ number_format(abs($t->net), 2) }}</td>
                 <td>R{{ number_format($runningBalance, 2) }}</td>
             </tr>
             @endforeach
@@ -89,7 +89,7 @@
             @if($totalPayouts > 0)
             <tr>
                 <th colspan="9" style="text-align: right;">
-                    Payouts: − R{{ number_format($totalPayouts, 2) }}
+                    Payouts: - R{{ number_format($totalPayouts, 2) }}
                 </th>
                 <th></th>
             </tr>
