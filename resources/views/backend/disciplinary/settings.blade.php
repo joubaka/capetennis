@@ -2,6 +2,14 @@
 
 @section('title', 'Disciplinary Settings')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}" />
+@endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
 
@@ -112,7 +120,7 @@
                         </div>
                         <div class="col-md-2">
                             <label class="form-label fw-semibold">Category</label>
-                            <select name="category" class="form-select" required>
+                            <select name="category" class="form-select select2" required>
                                 @foreach(\App\Models\ViolationType::$categories as $key => $label)
                                     <option value="{{ $key }}" @selected(old('category') === $key)>{{ $label }}</option>
                                 @endforeach
@@ -167,7 +175,7 @@
                                            value="{{ $vt->name }}" required maxlength="100">
                                 </td>
                                 <td>
-                                    <select name="category" class="form-select form-select-sm">
+                                    <select name="category" class="form-select form-select-sm select2">
                                         @foreach(\App\Models\ViolationType::$categories as $key => $label)
                                             <option value="{{ $key }}" @selected($vt->category === $key)>{{ $label }}</option>
                                         @endforeach
@@ -222,40 +230,35 @@
             <h5 class="mb-0"><i class="ti ti-table me-2"></i>Code of Conduct Quick Reference</h5>
         </div>
         <div class="card-body">
-            <p class="text-muted mb-3">This table is displayed to players and coaches as a summary of the disciplinary system.</p>
+            <p class="text-muted mb-3">Summary of active violation types and their suspension-point values. Edit the violation types above to update this table.</p>
             <div class="table-responsive">
                 <table class="table table-bordered">
                     <thead class="table-dark">
                         <tr>
-                            <th>Violation Category</th>
-                            <th>Consequence</th>
+                            <th>Violation Type</th>
+                            <th>Category</th>
                             <th>Suspension Points</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td>On-Court Behaviour</td>
-                            <td>Warning → Point → Game</td>
-                            <td>2 Points</td>
+                        @foreach($violationTypes->sortBy(['category', 'default_points']) as $vt)
+                        <tr class="{{ $vt->active ? '' : 'text-muted' }}">
+                            <td>{{ $vt->name }}</td>
+                            <td>{{ $vt->category_label }}</td>
+                            <td><strong>{{ $vt->default_points }}</strong></td>
+                            <td>
+                                @if($vt->active)
+                                    <span class="badge bg-success">Active</span>
+                                @else
+                                    <span class="badge bg-secondary">Inactive</span>
+                                @endif
+                            </td>
                         </tr>
-                        <tr>
-                            <td>Late Withdrawal</td>
-                            <td>Admin Review</td>
-                            <td>3 Points</td>
-                        </tr>
-                        <tr>
-                            <td>No Show</td>
-                            <td>Automatic Entry Ban</td>
-                            <td>5 Points</td>
-                        </tr>
-                        <tr>
-                            <td>Aggressive Abuse</td>
-                            <td>Immediate Default</td>
-                            <td>8–12 Points</td>
-                        </tr>
+                        @endforeach
                         <tr class="table-warning">
-                            <td colspan="2"><strong>Cumulative Total</strong></td>
-                            <td><strong>{{ $settings['suspension_threshold']->value ?? 12 }} Points in {{ round(($settings['expiry_days']->value ?? 365) / 30) }} months → {{ $settings['first_suspension_months']->value ?? 3 }}-Month Suspension (1st offence)</strong></td>
+                            <td colspan="2"><strong>Cumulative Total → Suspension</strong></td>
+                            <td colspan="2"><strong>{{ $settings['suspension_threshold']->value ?? 12 }} points within {{ round(($settings['expiry_days']->value ?? 365) / 30) }} months → {{ $settings['first_suspension_months']->value ?? 3 }}-month suspension (1st offence), {{ $settings['second_suspension_months']->value ?? 6 }}-month suspension (2nd+ offence)</strong></td>
                         </tr>
                     </tbody>
                 </table>
@@ -264,4 +267,13 @@
     </div>
 
 </div>
+
+@section('page-script')
+<script>
+    $(function () {
+        $('.select2').select2();
+    });
+</script>
+@endsection
+
 @endsection

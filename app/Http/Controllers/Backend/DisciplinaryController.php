@@ -21,7 +21,7 @@ class DisciplinaryController extends Controller
      */
     public function index(Request $request)
     {
-        $query = PlayerViolation::with(['player', 'violationType', 'recorder'])
+        $query = PlayerViolation::with(['player', 'violationType', 'recorder', 'event'])
             ->withTrashed(false)
             ->orderByDesc('violation_date');
 

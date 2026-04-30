@@ -101,15 +101,44 @@
                 &mdash; {{ $activeSuspension->duration_months }} months.
                 Ends: <strong>{{ $activeSuspension->ends_at->format('d M Y') }}</strong>
             </div>
-            <form action="{{ route('backend.disciplinary.suspension.lift', $activeSuspension->id) }}"
-                  method="POST"
-                  onsubmit="return confirm('Lift this suspension? This cannot be undone.');">
-                @csrf
-                <input type="hidden" name="reason" value="">
-                <button type="submit" class="btn btn-sm btn-outline-light">
-                    <i class="ti ti-lock-open me-1"></i> Lift Suspension
-                </button>
-            </form>
+            <button type="button" class="btn btn-sm btn-outline-light"
+                    data-bs-toggle="modal" data-bs-target="#liftSuspensionModal">
+                <i class="ti ti-lock-open me-1"></i> Lift Suspension
+            </button>
+        </div>
+
+        {{-- Lift Suspension Modal --}}
+        <div class="modal fade" id="liftSuspensionModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="ti ti-lock-open me-2"></i>Lift Suspension</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form action="{{ route('backend.disciplinary.suspension.lift', $activeSuspension->id) }}" method="POST">
+                        @csrf
+                        <div class="modal-body">
+                            <p class="text-muted mb-3">
+                                You are about to lift the active suspension for <strong>{{ $player->full_name }}</strong>.
+                                This action cannot be undone.
+                            </p>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">
+                                    Reason for lifting <span class="text-danger">*</span>
+                                </label>
+                                <textarea name="reason" class="form-control" rows="3" required
+                                          placeholder="e.g. Suspension overturned on appeal — committee decision 30 Apr 2026"></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="ti ti-lock-open me-1"></i> Confirm Lift
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
         @endif
     @endif
@@ -202,6 +231,7 @@
                         <th>Starts</th>
                         <th>Ends</th>
                         <th>Status</th>
+                        <th>Lifted By</th>
                         <th>Notes</th>
                     </tr>
                 </thead>
@@ -220,6 +250,16 @@
                                     <span class="badge bg-danger">Active</span>
                                 @else
                                     <span class="badge bg-label-secondary">Served</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($s->lifted_at)
+                                    <span class="text-muted small">
+                                        {{ $s->liftedBy->name ?? '—' }}<br>
+                                        {{ $s->lifted_at->format('d M Y') }}
+                                    </span>
+                                @else
+                                    —
                                 @endif
                             </td>
                             <td>{{ Str::limit($s->notes, 60) }}</td>

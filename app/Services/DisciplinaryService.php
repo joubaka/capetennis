@@ -2,13 +2,18 @@
 
 namespace App\Services;
 
+use App\Mail\SuspensionAlertMail;
+use App\Mail\ViolationNotificationMail;
 use App\Models\DisciplineSetting;
 use App\Models\Player;
 use App\Models\PlayerSuspension;
 use App\Models\PlayerViolation;
+use App\Models\SiteSetting;
+use App\Models\User;
 use App\Models\ViolationType;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 class DisciplinaryService
 {
@@ -23,11 +28,13 @@ class DisciplinaryService
     }
 
     /**
-     * Total number of suspensions ever triggered for a player.
+     * Total number of suspensions a player has served or is serving.
+     * Lifted suspensions (i.e. overturned on appeal) are excluded so that
+     * a successful appeal does not escalate the penalty for the next offence.
      */
     public function getSuspensionCount(Player $player): int
     {
-        return $player->suspensions()->count();
+        return $player->suspensions()->whereNull('lifted_at')->count();
     }
 
     /**
@@ -64,6 +71,8 @@ class DisciplinaryService
             'starts_at'        => $startsAt->toDateString(),
             'ends_at'          => $endsAt->toDateString(),
         ]);
+
+        $this->sendSuspensionNotification($player, $suspension);
 
         return $suspension;
     }
@@ -126,7 +135,142 @@ class DisciplinaryService
 
         $this->checkAndTriggerSuspension($violation->player);
 
+        $this->sendViolationNotification($violation);
+
         return $violation;
+    }
+
+    /**
+     * Send violation notification emails if the setting is enabled.
+     * Recipients: player, guardian (if exists), event admins (CC), recorder (CC).
+     */
+    private function sendViolationNotification(PlayerViolation $violation): void
+    {
+        if (SiteSetting::get('email_on_violation', '1') !== '1') {
+            return;
+        }
+
+        $player   = $violation->player;
+        $recorder = $violation->recorded_by ? User::find($violation->recorded_by) : null;
+
+        // Build primary TO addresses: player email + guardian email
+        $toAddresses = collect();
+
+        if ($player->email) {
+            $toAddresses->push($player->email);
+        }
+
+        // Parent/guardian email from the most recent accepted agreement
+        $guardian = $player->agreements()
+            ->whereNotNull('guardian_email')
+            ->latest('accepted_at')
+            ->first();
+
+        if ($guardian && $guardian->guardian_email && $guardian->guardian_email !== $player->email) {
+            $toAddresses->push($guardian->guardian_email);
+        }
+
+        // Also include any linked user emails (account holders)
+        foreach ($player->users as $user) {
+            if ($user->email && !$toAddresses->contains($user->email)) {
+                $toAddresses->push($user->email);
+            }
+        }
+
+        if ($toAddresses->isEmpty()) {
+            return;
+        }
+
+        // Build CC: event admins + super-users + recorder
+        $ccAddresses = collect();
+
+        if ($violation->event_id) {
+            $violation->loadMissing('event');
+            $event = $violation->event;
+            if ($event) {
+                $event->admins->pluck('email')->filter()->each(fn ($e) => $ccAddresses->push($e));
+            }
+        }
+
+        // Super-users always get CC'd
+        User::role('super-user')->pluck('email')->filter()
+            ->each(fn ($e) => $ccAddresses->push($e));
+
+        if ($recorder?->email) {
+            $ccAddresses->push($recorder->email);
+        }
+
+        // Deduplicate and remove any CC that already appears in TO
+        $ccAddresses = $ccAddresses->unique()->filter()->diff($toAddresses)->values();
+
+        $mailable = new ViolationNotificationMail($player, $violation, $recorder);
+
+        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
+        // are folded in here because Laravel's PendingMail only supports a single primary TO
+        // address; everyone else is passed via CC so they all receive the message.
+        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+
+        $mailer = Mail::to($toAddresses->first());
+
+        if ($allCc->isNotEmpty()) {
+            $mailer = $mailer->cc($allCc->toArray());
+        }
+
+        $mailer->queue($mailable);
+    }
+
+    /**
+     * Send suspension notification to the player, guardian, and super-users.
+     */
+    private function sendSuspensionNotification(Player $player, PlayerSuspension $suspension): void
+    {
+        if (SiteSetting::get('email_on_violation', '1') !== '1') {
+            return;
+        }
+
+        $toAddresses = collect();
+
+        if ($player->email) {
+            $toAddresses->push($player->email);
+        }
+
+        $guardian = $player->agreements()
+            ->whereNotNull('guardian_email')
+            ->latest('accepted_at')
+            ->first();
+
+        if ($guardian && $guardian->guardian_email && $guardian->guardian_email !== $player->email) {
+            $toAddresses->push($guardian->guardian_email);
+        }
+
+        foreach ($player->users as $user) {
+            if ($user->email && !$toAddresses->contains($user->email)) {
+                $toAddresses->push($user->email);
+            }
+        }
+
+        if ($toAddresses->isEmpty()) {
+            return;
+        }
+
+        $ccAddresses = User::role('super-user')->pluck('email')->filter()
+            ->diff($toAddresses)
+            ->values();
+
+        $mailable = new SuspensionAlertMail($player, $suspension);
+
+        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
+        // are folded in here because Laravel's PendingMail only supports a single primary TO
+        // address; everyone else is passed via CC so they all receive the message.
+        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+
+        $mailer = Mail::to($toAddresses->first());
+
+        if ($allCc->isNotEmpty()) {
+            $mailer = $mailer->cc($allCc->toArray());
+        }
+
+        $mailer->queue($mailable);
     }
 
     /**

@@ -1103,6 +1103,7 @@
                       'email_on_team_withdrawal'     => 'Team Player Withdrawal',
                       'email_on_wallet_topup'        => 'Wallet Top-Up',
                       'email_on_bank_refund_request' => 'Bank Refund Request',
+                      'email_on_violation'           => 'Disciplinary Violation',
                     ];
                   @endphp
 

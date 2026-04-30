@@ -1,21 +1,23 @@
 @component('mail::message')
-# Suspension Triggered
+# Suspension Notice — {{ $player->full_name }}
 
-A player has accumulated enough suspension points to trigger an automatic suspension.
+Dear {{ $player->full_name }},
 
-**Player:** {{ $player->full_name }}
-**Suspension Number:** {{ $suspension->suspension_number }}
-**Duration:** {{ $suspension->duration_months }} months
-**Starts:** {{ $suspension->starts_at->format('d M Y') }}
-**Ends:** {{ $suspension->ends_at->format('d M Y') }}
+Your cumulative disciplinary points have reached the suspension threshold. The following suspension has been placed on your account.
 
-@component('mail::button', ['url' => url('/backend/disciplinary/player/' . $player->id), 'color' => 'red'])
-View Player Record
+@component('mail::table')
+| Field | Value |
+|:------|:------|
+| **Player** | {{ $player->full_name }} |
+| **Suspension #** | {{ $suspension->suspension_number }} |
+| **Duration** | {{ $suspension->duration_months }} months |
+| **Starts** | {{ $suspension->starts_at->format('d M Y') }} |
+| **Ends** | {{ $suspension->ends_at->format('d M Y') }} |
 @endcomponent
 
-Please review the player's disciplinary record and notify them of their suspension.
+During this period you are not permitted to participate in sanctioned Cape Tennis events. If you believe this suspension has been issued in error, please contact us.
 
-If the player has any questions, they can contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
+If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,<br>
 {{ config('app.name') }}

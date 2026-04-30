@@ -23,6 +23,14 @@
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="false" tabindex="-1">Registered Events</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-violations" aria-controls="navs-pills-top-violations" aria-selected="false" tabindex="-1">
+                    Violations
+                    @if(isset($violations) && $violations->where('is_expired', false)->count() > 0)
+                        <span class="badge bg-danger ms-1">{{ $violations->where('is_expired', false)->count() }}</span>
+                    @endif
+                </button>
+            </li>
         </ul>
         <div class="tab-content">
             <div class="tab-pane fade active show" id="navs-pills-top-home" role="tabpanel">
@@ -518,6 +526,101 @@
                 @endcan
 
             </div>
+
+            {{-- ── Violations Tab Pane ── --}}
+            <div class="tab-pane fade" id="navs-pills-top-violations" role="tabpanel">
+                <div class="col-lg-12 mb-4 col-md-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0"><i class="ti ti-gavel me-2"></i>Disciplinary Violations</h5>
+                            <a href="{{ route('backend.disciplinary.create', ['player_id' => $player->id]) }}"
+                               class="btn btn-sm btn-primary">
+                                <i class="ti ti-plus me-1"></i> Record Violation
+                            </a>
+                        </div>
+                        <div class="card-body pt-2">
+
+                            @if(isset($disciplinaryStatus))
+                                @php $pts = $disciplinaryStatus['active_points']; $threshold = $disciplinaryStatus['threshold']; @endphp
+                                <div class="d-flex align-items-center gap-3 mb-3">
+                                    <div>
+                                        <span class="fw-semibold">Active Points:</span>
+                                        <span class="badge bg-{{ $pts >= $threshold ? 'danger' : ($pts > 0 ? 'warning' : 'success') }} ms-1">
+                                            {{ $pts }} / {{ $threshold }}
+                                        </span>
+                                    </div>
+                                    @if($disciplinaryStatus['suspended'])
+                                        <span class="badge bg-danger">
+                                            <i class="ti ti-ban me-1"></i>Suspended until {{ $disciplinaryStatus['suspension_ends_at'] }}
+                                        </span>
+                                    @endif
+                                </div>
+                            @endif
+
+                            @if(isset($violations) && $violations->count() > 0)
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Type</th>
+                                                <th>Penalty</th>
+                                                <th>Points</th>
+                                                <th>Status</th>
+                                                <th>Notes</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($violations as $v)
+                                                <tr class="{{ $v->is_expired ? 'text-muted' : '' }}">
+                                                    <td>{{ $v->violation_date->format('d M Y') }}</td>
+                                                    <td>
+                                                        <span class="badge bg-label-{{ match($v->violationType->category ?? '') {
+                                                            'on_court'   => 'warning',
+                                                            'withdrawal' => 'info',
+                                                            'no_show'    => 'danger',
+                                                            'abuse'      => 'danger',
+                                                            default      => 'secondary'
+                                                        } }}">
+                                                            {{ $v->violationType->name ?? '—' }}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ $v->penalty_type ? ucfirst($v->penalty_type) : '—' }}</td>
+                                                    <td><strong>{{ $v->points_assigned }}</strong></td>
+                                                    <td>
+                                                        @if($v->is_expired)
+                                                            <span class="badge bg-secondary">Expired</span>
+                                                        @else
+                                                            <span class="badge bg-success">Active</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>
+                                                        <small>{{ $v->notes ? \Illuminate\Support\Str::limit($v->notes, 60) : '—' }}</small>
+                                                    </td>
+                                                    <td>
+                                                        <a href="{{ route('backend.disciplinary.violation.edit', $v->id) }}"
+                                                           class="btn btn-sm btn-outline-warning" title="Edit">
+                                                            <i class="ti ti-pencil"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @else
+                                <div class="text-center text-muted py-4">
+                                    <i class="ti ti-circle-check ti-lg d-block mb-2 text-success" style="font-size:2rem;"></i>
+                                    No violations recorded for this player.
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{-- /Violations Tab Pane --}}
+
         </div>
     </div>
 </div>
