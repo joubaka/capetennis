@@ -354,6 +354,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
     Route::delete('superadmin/finances/payout/{payout}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'destroyPayout'])
       ->name('superadmin.finances.payout.destroy');
+
+    Route::post('superadmin/finances/event/{event}/full-refund/registration/{registration}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storeFullRefund'])
+      ->name('superadmin.finances.full-refund.registration');
+
+    Route::post('superadmin/finances/event/{event}/full-refund/team-order/{order}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storeFullRefundTeam'])
+      ->name('superadmin.finances.full-refund.team');
   });
 
 

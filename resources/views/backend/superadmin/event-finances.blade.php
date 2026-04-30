@@ -355,6 +355,178 @@
     </div>
   </div>
 
+  {{-- FULL PLAYER REFUNDS SECTION --}}
+  @if($eligibleForRefund->count() || $eligibleTeamOrders->count())
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">
+        <i class="ti ti-receipt-refund me-2 text-warning"></i>
+        Full Player Refunds
+        <span class="badge bg-warning text-dark ms-2">{{ $eligibleForRefund->count() + $eligibleTeamOrders->count() }}</span>
+      </h5>
+      <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#fullRefundCollapse">
+        <i class="ti ti-chevron-down me-1"></i>Show / Hide
+      </button>
+    </div>
+
+    <div class="collapse show" id="fullRefundCollapse">
+      <div class="card-body pb-1">
+        <p class="text-muted small mb-3">
+          Issue a <strong>full refund (no handling fee deducted)</strong> to a player's wallet or via bank transfer.
+          Normal player-initiated refunds deduct a handling fee; this option bypasses that fee.
+        </p>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Player(s)</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th class="text-end">Amount Paid</th>
+              <th class="text-end">Refund Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+
+            {{-- Individual registrations --}}
+            @foreach($eligibleForRefund as $reg)
+              @php
+                $payment = $reg->paymentInfo();
+                $refundGross = round(($payment['gross'] ?? 0) + ($payment['wallet_paid'] ?? 0), 2);
+              @endphp
+              <tr>
+                <td class="fw-semibold">{{ $reg->display_name }}</td>
+                <td>{{ optional($reg->categoryEvent->category)->name ?? '—' }}</td>
+                <td>
+                  @if($reg->status === 'withdrawn')
+                    <span class="badge bg-secondary">Withdrawn</span>
+                  @else
+                    <span class="badge bg-success">Active</span>
+                  @endif
+                </td>
+                <td class="text-end">R {{ number_format($refundGross, 2) }}</td>
+                <td class="text-end">
+                  @if($reg->refund_status === 'pending')
+                    <span class="badge bg-warning text-dark">Pending</span>
+                  @else
+                    <span class="badge bg-light text-muted border">None</span>
+                  @endif
+                </td>
+                <td class="text-end">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-warning"
+                          data-bs-toggle="modal"
+                          data-bs-target="#fullRefundModal"
+                          data-player="{{ $reg->display_name }}"
+                          data-amount="{{ number_format($refundGross, 2) }}"
+                          data-route="{{ route('superadmin.finances.full-refund.registration', [$event, $reg]) }}">
+                    <i class="ti ti-cash-banknote me-1"></i>Full Refund
+                  </button>
+                </td>
+              </tr>
+            @endforeach
+
+            {{-- Team payment orders --}}
+            @foreach($eligibleTeamOrders as $order)
+              <tr>
+                <td class="fw-semibold">{{ optional($order->player)->full_name ?? '—' }}</td>
+                <td><span class="badge bg-info">Team</span></td>
+                <td><span class="badge bg-success">Active</span></td>
+                <td class="text-end">R {{ number_format($order->total_amount, 2) }}</td>
+                <td class="text-end">
+                  @if($order->refund_status === 'pending')
+                    <span class="badge bg-warning text-dark">Pending</span>
+                  @else
+                    <span class="badge bg-light text-muted border">None</span>
+                  @endif
+                </td>
+                <td class="text-end">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-warning"
+                          data-bs-toggle="modal"
+                          data-bs-target="#fullRefundModal"
+                          data-player="{{ optional($order->player)->full_name ?? '—' }}"
+                          data-amount="{{ number_format($order->total_amount, 2) }}"
+                          data-route="{{ route('superadmin.finances.full-refund.team', [$event, $order]) }}">
+                    <i class="ti ti-cash-banknote me-1"></i>Full Refund
+                  </button>
+                </td>
+              </tr>
+            @endforeach
+
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  @endif
+
+  {{-- FULL REFUND MODAL --}}
+  <div class="modal fade" id="fullRefundModal" tabindex="-1" aria-labelledby="fullRefundModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form id="fullRefundForm" method="POST" action="">
+          @csrf
+          <div class="modal-header">
+            <h5 class="modal-title" id="fullRefundModalLabel">
+              <i class="ti ti-receipt-refund me-2 text-warning"></i>Issue Full Refund
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+              <i class="ti ti-alert-triangle fs-5"></i>
+              <span>This will refund the <strong>full amount</strong> — no handling fee will be deducted.</span>
+            </div>
+
+            <dl class="row mb-3">
+              <dt class="col-sm-4">Player</dt>
+              <dd class="col-sm-8 fw-semibold" id="modalPlayerName">—</dd>
+              <dt class="col-sm-4">Refund Amount</dt>
+              <dd class="col-sm-8">
+                <span class="fs-5 text-success fw-bold">R <span id="modalAmount">0.00</span></span>
+                <small class="text-muted d-block">No handling fee deducted</small>
+              </dd>
+            </dl>
+
+            <hr>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Refund Method <span class="text-danger">*</span></label>
+
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="method" id="methodWallet" value="wallet" required>
+                <label class="form-check-label" for="methodWallet">
+                  <i class="ti ti-wallet me-1 text-success"></i>
+                  <strong>Wallet</strong> — instant credit to player's Cape Tennis wallet
+                </label>
+              </div>
+
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="method" id="methodBank" value="bank">
+                <label class="form-check-label" for="methodBank">
+                  <i class="ti ti-building-bank me-1 text-primary"></i>
+                  <strong>Bank Transfer</strong> — marked as pending; process payment manually (or via PayFast if applicable)
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" id="fullRefundSubmit" class="btn btn-warning fw-semibold">
+              <i class="ti ti-cash-banknote me-1"></i>Confirm Full Refund
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
 </div>
 @endsection
 
@@ -442,5 +614,25 @@ $(function () {
       : (row.child(renderItems(items)).show(), tr.addClass('shown'));
   });
 });
+
+// Full Refund Modal: populate form action and display fields from button data attributes
+const fullRefundModal = document.getElementById('fullRefundModal');
+if (fullRefundModal) {
+  fullRefundModal.addEventListener('show.bs.modal', function (event) {
+    const btn = event.relatedTarget;
+    document.getElementById('modalPlayerName').textContent = btn.dataset.player || '—';
+    document.getElementById('modalAmount').textContent = btn.dataset.amount || '0.00';
+    document.getElementById('fullRefundForm').action = btn.dataset.route || '';
+
+    // Reset radio buttons and re-enable submit button on each open
+    fullRefundModal.querySelectorAll('input[name="method"]').forEach(r => r.checked = false);
+    document.getElementById('fullRefundSubmit').disabled = false;
+  });
+
+  document.getElementById('fullRefundSubmit').addEventListener('click', function () {
+    this.disabled = true;
+    document.getElementById('fullRefundForm').submit();
+  });
+}
 </script>
 @endsection
