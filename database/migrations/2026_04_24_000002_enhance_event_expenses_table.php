@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasTable('event_expenses')) {
+            return;
+        }
+
         if (Schema::hasColumn('event_expenses', 'paid_by_convenor_id')) {
             return;
         }
@@ -15,9 +19,6 @@ return new class extends Migration
         Schema::table('event_expenses', function (Blueprint $table) {
             // Link expense to the convenor who paid it (replaces free-text convenor_name)
             $table->unsignedBigInteger('paid_by_convenor_id')->nullable()->after('convenor_name');
-            $table->foreign('paid_by_convenor_id')
-                  ->references('id')->on('event_convenors')
-                  ->nullOnDelete();
 
             // Itemised quantity/price (amount = quantity × unit_price when both set)
             $table->decimal('quantity', 10, 2)->nullable()->after('amount');
@@ -35,12 +36,23 @@ return new class extends Migration
             // Reimbursement tracking
             $table->timestamp('reimbursed_at')->nullable()->after('receipt_path');
             $table->unsignedBigInteger('reimbursed_by')->nullable()->after('reimbursed_at');
-            $table->foreign('reimbursed_by')->references('id')->on('users')->nullOnDelete();
 
             // Approval workflow
             $table->timestamp('approved_at')->nullable()->after('reimbursed_by');
             $table->unsignedBigInteger('approved_by')->nullable()->after('approved_at');
-            $table->foreign('approved_by')->references('id')->on('users')->nullOnDelete();
+        });
+
+        // Add foreign keys separately so constraint errors don't block column creation
+        Schema::table('event_expenses', function (Blueprint $table) {
+            $table->foreign('paid_by_convenor_id')
+                  ->references('id')->on('event_convenors')
+                  ->nullOnDelete();
+            $table->foreign('reimbursed_by')
+                  ->references('id')->on('users')
+                  ->nullOnDelete();
+            $table->foreign('approved_by')
+                  ->references('id')->on('users')
+                  ->nullOnDelete();
         });
     }
 
