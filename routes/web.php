@@ -292,6 +292,11 @@ Route::middleware(['auth', 'role:super-user'])
       App\Http\Controllers\Backend\BankRefundController::class,
       'completeTeam'
     ])->name('bank.complete.team');
+
+    Route::get('{registration}/payfast-query', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'queryPayfast'
+    ])->name('bank.payfast-query');
   });
 
 
@@ -1259,6 +1264,28 @@ Route::delete(
   //category Events
   Route::get('/admin/category/{category_event_id}/manage', [CategoryEventController::class, 'manage'])->name('category.manage');
   Route::get('/admin/category/{categoryEvent}/entries', [EventAdminController::class, 'showEntries'])->name('category.entries');
+
+  // Admin manual withdrawal for individual registration
+  Route::post(
+    '/admin/category-registration/{registration}/withdraw',
+    [CategoryEventController::class, 'withdraw']
+  )->name('admin.category.registration.withdraw');
+
+  // Admin refund chooser (after admin withdrawal)
+  Route::get(
+    '/admin/event/{event}/registration/{registration}/refund',
+    [\App\Http\Controllers\Backend\AdminRegistrationRefundController::class, 'chooseRefund']
+  )->name('admin.registration.refund.choose');
+
+  Route::post(
+    '/admin/event/{event}/registration/{registration}/refund',
+    [\App\Http\Controllers\Backend\AdminRegistrationRefundController::class, 'storeRefund']
+  )->name('admin.registration.refund.store');
+
+  Route::delete(
+    '/admin/event/{event}/registration/{registration}/refund/cancel',
+    [\App\Http\Controllers\Backend\AdminRegistrationRefundController::class, 'cancelWithdraw']
+  )->name('admin.registration.refund.cancel');
 
   Route::get('selection/index/{id}', [BackendTeamSelectionController::class, 'selection_index'])->name('selection.index');
 

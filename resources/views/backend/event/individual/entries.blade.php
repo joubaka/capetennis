@@ -94,7 +94,7 @@
   }
 
   .col-actions {
-    width: 200px;
+    width: 110px;
   }
 
   /* ============================
@@ -147,19 +147,8 @@
 
     /* Stack action buttons */
     .col-actions {
-      width: 120px;
+      width: 110px;
     }
-
-      .col-actions .btn-group {
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .col-actions .btn {
-        width: 100%;
-        font-size: 0.75rem;
-        padding: 4px 6px;
-      }
 
     /* Touch-friendly rows */
     .category-card tbody tr {
@@ -301,6 +290,20 @@
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
                     {{ ucfirst($reg->status ?? 'active') }}
                   </span>
+                  @if($reg->status === 'withdrawn' && $reg->refund_status)
+                    <br>
+                    @php
+                      $rsBadge = match($reg->refund_status) {
+                        'completed'    => 'bg-success',
+                        'pending'      => 'bg-warning text-dark',
+                        'not_refunded' => 'bg-secondary',
+                        default        => 'bg-light text-dark',
+                      };
+                    @endphp
+                    <span class="badge {{ $rsBadge }} mt-1" style="font-size:.65rem;">
+                      {{ str_replace('_', ' ', ucfirst($reg->refund_status)) }}
+                    </span>
+                  @endif
                 </td>
                 <td>
                   <span class="badge {{ $reg->payment_status_id == 1 ? 'bg-success' : 'bg-warning' }}">
@@ -308,29 +311,56 @@
                   </span>
                 </td>
                <td class="col-actions text-end">
-  <div class="btn-group btn-group-sm">
+  <div class="dropdown">
     <button type="button"
-            class="btn btn-outline-secondary email-btn"
-            data-scope="player"
-            data-registration="{{ $reg->registration_id }}">
-      Email
+            class="btn btn-outline-secondary btn-sm dropdown-toggle"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+      Actions
     </button>
-   <button type="button"
-    class="btn btn-outline-info move-player-btn"
-    data-entry="{{ $reg->id }}"
-    data-player="{{ $player?->name }} {{ $player?->surname }}"
-    data-from-category="{{ $categoryEvent->category?->name }}">
-    Move
-</button>
+    <ul class="dropdown-menu dropdown-menu-end">
 
+      <li>
+        <button type="button"
+                class="dropdown-item email-btn"
+                data-scope="player"
+                data-registration="{{ $reg->registration_id }}">
+          <i class="ti ti-mail me-1"></i>Email
+        </button>
+      </li>
 
-    @unless($categoryEvent->isLocked())
-      <button type="button"
-              class="btn btn-outline-danger remove-player-btn"
-              data-url="{{ route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) }}">
-        Remove
-      </button>
-    @endunless
+      <li>
+        <button type="button"
+                class="dropdown-item move-player-btn"
+                data-entry="{{ $reg->id }}"
+                data-player="{{ $player?->name }} {{ $player?->surname }}"
+                data-from-category="{{ $categoryEvent->category?->name }}">
+          <i class="ti ti-arrows-transfer-up me-1"></i>Move
+        </button>
+      </li>
+
+      @unless($categoryEvent->isLocked())
+        <li>
+          <button type="button"
+                  class="dropdown-item text-danger remove-player-btn"
+                  data-url="{{ route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) }}">
+            <i class="ti ti-trash me-1"></i>Remove
+          </button>
+        </li>
+      @endunless
+
+      @if($reg->status !== 'withdrawn')
+        <li>
+          <button type="button"
+                  class="dropdown-item text-warning withdraw-player-btn"
+                  data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
+                  data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
+            <i class="ti ti-user-minus me-1"></i>Withdraw
+          </button>
+        </li>
+      @endif
+
+    </ul>
   </div>
 </td>
 
@@ -584,6 +614,36 @@ document.addEventListener('click', function(e) {
     })
     .then(() => location.reload())
     .catch(() => alert('Remove failed'));
+});
+
+/* =====================
+   WITHDRAW PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.withdraw-player-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+
+    const playerName = btn.dataset.player || 'this player';
+    if (!confirm('Withdraw ' + playerName + ' from this event? This cannot be undone.')) return;
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(r => {
+        if (r.redirected) {
+            window.location.href = r.url;
+        } else {
+            location.reload();
+        }
+    })
+    .catch(() => alert('Withdraw failed'));
 });
 
 /* =====================

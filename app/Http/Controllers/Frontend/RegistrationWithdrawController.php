@@ -63,6 +63,9 @@ class RegistrationWithdrawController extends Controller
       ])
       ->log("Withdrew from {$eventName} ({$categoryName})");
 
+    // Send notification emails (player confirmation + event admins)
+    $registration->sendWithdrawalEmails('self');
+
     // -------------------------
     // REFUND DECISION
     // -------------------------

@@ -316,4 +316,42 @@ class CategoryEventRegistration extends Model
       && in_array($this->refund_status, [null, '', 'not_refunded']);
   }
 
+  /**
+   * Send withdrawal notification emails to the player, all event admins, and all super-users.
+   *
+   * @param  string  $initiatedBy  'self' when the player withdrew, 'admin' when an admin withdrew
+   */
+  public function sendWithdrawalEmails(string $initiatedBy = 'self'): void
+  {
+    $this->loadMissing(['players', 'categoryEvent.event.admins', 'user']);
+
+    // --- Player email ---
+    $player       = $this->players->first();
+    $playerEmail  = $player?->email ?? $this->user?->email ?? null;
+
+    if ($playerEmail) {
+      \Illuminate\Support\Facades\Mail::to($playerEmail)
+        ->queue(new \App\Mail\WithdrawalPlayerMail($this, $initiatedBy));
+    }
+
+    // --- Event admin emails + super-user emails (deduplicated) ---
+    $event = $this->categoryEvent?->event;
+
+    $eventAdminEmails = $event
+      ? $event->admins->pluck('email')->filter()->map('strtolower')
+      : collect();
+
+    $superUserEmails = \App\Models\User::role('super-user')
+      ->pluck('email')
+      ->filter()
+      ->map('strtolower');
+
+    $allAdminEmails = $eventAdminEmails->merge($superUserEmails)->unique()->values();
+
+    foreach ($allAdminEmails as $email) {
+      \Illuminate\Support\Facades\Mail::to($email)
+        ->queue(new \App\Mail\WithdrawalAdminMail($this, $initiatedBy));
+    }
+  }
+
 }
