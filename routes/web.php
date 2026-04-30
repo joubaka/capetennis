@@ -1570,6 +1570,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 Route::get('/fixtures/{draw}', [TeamFixtureFrontendController::class, 'index'])
   ->name('frontend.fixtures.draw');
 
+// Public rankings index (series selection)
+Route::get('rankings', [\App\Http\Controllers\Backend\RankingController::class, 'rankingsIndex'])
+  ->name('rankings.index');
+
 // Public frontend ranking view
 Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController::class, 'ranking_frontend_show'])
   ->name('frontend.ranking.show');

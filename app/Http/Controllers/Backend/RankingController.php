@@ -26,6 +26,16 @@ class RankingController extends Controller
     dd('index');
   }
 
+  public function rankingsIndex()
+  {
+    $series = Series::where('leaderboard_published', 1)
+      ->orderByDesc('year')
+      ->orderBy('name')
+      ->get();
+
+    return view('frontend.ranking.index', compact('series'));
+  }
+
   public function create()
   {
     dd('hallo');
