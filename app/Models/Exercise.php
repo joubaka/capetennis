@@ -9,7 +9,7 @@ class Exercise extends Model
 {
     use HasFactory;
 
-    protected $table = 'exersizes';
+    protected $table = 'exercises';
 
     public function player()
     {
