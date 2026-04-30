@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\Wallet;
 use App\Services\Wallet\WalletService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use Illuminate\Http\Request;
@@ -117,13 +118,19 @@ class AdminRegistrationRefundController extends Controller
     if ($method === 'wallet') {
       // Credit the wallet of the person who paid (order owner / parent),
       // not the player — players are children who don't have wallets.
-      $payer  = optional($registration->payfastTransaction?->order)->user
-                ?? $registration->user;
-      $wallet = $payer?->wallet;
+      $payer = optional($registration->payfastTransaction?->order)->user
+               ?? $registration->user;
 
-      if (!$wallet) {
-        return back()->withErrors('Payer wallet not found. The person who placed the order does not have a wallet.');
+      if (!$payer) {
+        return back()->withErrors('Payer not found for this registration.');
       }
+
+      // Auto-create wallet if the payer doesn't have one yet.
+      $wallet = $payer->wallet
+                ?? Wallet::create([
+                  'payable_type' => get_class($payer),
+                  'payable_id'   => $payer->id,
+                ]);
 
       $user = $payer; // used in success message below
 
