@@ -85,7 +85,13 @@
                                     
                                     </td>
                                     <td>
-                                      <div class="player-name">{{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}</div>
+                                      @if($row->player)
+                                        <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="player-name text-decoration-none">
+                                          {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
+                                        </a>
+                                      @else
+                                        <div class="player-name">Unknown Player</div>
+                                      @endif
                                       @if(!empty($row->meta_json['legs']))
                                         <div class="legs-badges mt-1">
                                           @foreach($row->meta_json['legs'] as $leg)
