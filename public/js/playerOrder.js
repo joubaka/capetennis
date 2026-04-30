@@ -1,1 +1,130 @@
-!function(e,t){if("object"==typeof exports&&"object"==typeof module)module.exports=t();else if("function"==typeof define&&define.amd)define([],t);else{var o=t();for(var r in o)("object"==typeof exports?exports:e)[r]=o[r]}}(self,(function(){return function(e,t,o){"use strict";console.log("↕️ playerOrder.js loaded");var r=t.APP_URL||t.location.origin;function n(){"undefined"!=typeof Sortable&&e("tbody.sortablePlayers").each((function(){var t=e(this);if(!t.data("init")){var o=t.data("team-id");o&&(console.log("↕️ Init order",o),t.data("init",!0),new Sortable(this,{animation:150,handle:".drag-handle",draggable:"tr.drag-item",onEnd:function(){var n=[],a=[];t.find("tr.drag-item").each((function(t){var o=e(this),r=t+1,i=o.data("playerteamid"),d=o.data("teamplayerid"),l=o.data("noprofileid"),s=o.data("type"),c=o.find("td"),f=c.eq(2).text().trim(),p=c.length>6?c.eq(3).text().trim():null,u=c.eq(1).find(".badge").first(),m=u.text().trim();u.text(r),("profile"!==s||i===d)&&("noprofile"!==s||i===l)||a.push({position:r,id:i,teamPlayerId:d,noProfileId:l,type:s}),n.push({position:r,id:i,teamPlayerId:d,noProfileId:l,type:s,profileName:f,noProfileName:p,badgeBefore:m})}));var i=n.map((function(e){return{id:e.id,team_player_id:e.teamPlayerId,no_profile_id:e.noProfileId,type:e.type,position:e.position}}));console.log("↕️ Drag debug rows",n),a.length&&console.warn("↕️ Drag ID mismatches",a),console.log("↕️ Save order",i),e.post("".concat(r,"/backend/team/orderPlayerList"),{team_id:o,order:i}).done((function(e){console.log("↕️ Save order response",e);var t=(null==e?void 0:e.players)||[],o=new Map(t.map((function(e){return["".concat(e.type,":").concat(Number(e.id)),Number(e.rank)]}))),r=i.map((function(e){var t="noprofile"===e.type?Number(e.no_profile_id||e.id):Number(e.team_player_id||e.id),r="".concat(e.type,":").concat(t);return{key:r,clientRank:Number(e.position),serverRank:o.get(r)}})),n=r.filter((function(e){return e.serverRank&&e.serverRank!==e.clientRank}));console.log("↕️ Drag compare (client vs server)",r),n.length&&console.warn("↕️ Rank mismatches",n),toastr.success("Order saved")})).fail((function(){return toastr.error("Failed to save order")}))}}))}}))}n(),o.addEventListener("shown.bs.tab",n)}(jQuery,window,document),{}}));
+(function webpackUniversalModuleDefinition(root, factory) {
+	if(typeof exports === 'object' && typeof module === 'object')
+		module.exports = factory();
+	else if(typeof define === 'function' && define.amd)
+		define([], factory);
+	else {
+		var a = factory();
+		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
+	}
+})(self, function() {
+return /******/ (function() { // webpackBootstrap
+var __webpack_exports__ = {};
+/*!*******************************************!*\
+  !*** ./resources/js/pages/playerOrder.js ***!
+  \*******************************************/
+/*
+ * Admin — Player Order (Sortable) JS
+ */
+
+(function ($, window, document) {
+  'use strict';
+
+  console.log('↕️ playerOrder.js loaded');
+  var APP_URL = window.APP_URL || window.location.origin;
+  function initPlayerOrder() {
+    if (typeof Sortable === 'undefined') return;
+    $('tbody.sortablePlayers').each(function () {
+      var $tbody = $(this);
+      if ($tbody.data('init')) return;
+      var teamId = $tbody.data('team-id');
+      if (!teamId) return;
+      console.log('↕️ Init order', teamId);
+      $tbody.data('init', true);
+      new Sortable(this, {
+        animation: 150,
+        handle: '.drag-handle',
+        draggable: 'tr.drag-item',
+        onEnd: function onEnd() {
+          var debugRows = [];
+          var mismatches = [];
+          $tbody.find('tr.drag-item').each(function (i) {
+            var $row = $(this);
+            var position = i + 1;
+            var id = $row.data('playerteamid');
+            var teamPlayerId = $row.data('teamplayerid');
+            var noProfileId = $row.data('noprofileid');
+            var type = $row.data('type');
+            var $cells = $row.find('td');
+            var profileName = $cells.eq(2).text().trim();
+            var hasNoProfileCol = $cells.length > 6;
+            var noProfileName = hasNoProfileCol ? $cells.eq(3).text().trim() : null;
+            var $rankBadge = $cells.eq(1).find('.badge').first();
+            var badgeBefore = $rankBadge.text().trim();
+            $rankBadge.text(position);
+            var profileOk = type === 'profile' ? id === teamPlayerId : true;
+            var noProfileOk = type === 'noprofile' ? id === noProfileId : true;
+            if (!profileOk || !noProfileOk) {
+              mismatches.push({
+                position: position,
+                id: id,
+                teamPlayerId: teamPlayerId,
+                noProfileId: noProfileId,
+                type: type
+              });
+            }
+            debugRows.push({
+              position: position,
+              id: id,
+              teamPlayerId: teamPlayerId,
+              noProfileId: noProfileId,
+              type: type,
+              profileName: profileName,
+              noProfileName: noProfileName,
+              badgeBefore: badgeBefore
+            });
+          });
+          var order = debugRows.map(function (row) {
+            return {
+              id: row.id,
+              team_player_id: row.teamPlayerId,
+              no_profile_id: row.noProfileId,
+              type: row.type,
+              position: row.position
+            };
+          });
+          console.log('↕️ Drag debug rows', debugRows);
+          if (mismatches.length) {
+            console.warn('↕️ Drag ID mismatches', mismatches);
+          }
+          console.log('↕️ Save order', order);
+          $.post("".concat(APP_URL, "/backend/team/orderPlayerList"), {
+            team_id: teamId,
+            order: order
+          }).done(function (res) {
+            console.log('↕️ Save order response', res);
+            var responsePlayers = (res === null || res === void 0 ? void 0 : res.players) || [];
+            var responseMap = new Map(responsePlayers.map(function (p) {
+              return ["".concat(p.type, ":").concat(Number(p.id)), Number(p.rank)];
+            }));
+            var compare = order.map(function (o) {
+              var entityId = o.type === 'noprofile' ? Number(o.no_profile_id || o.id) : Number(o.team_player_id || o.id);
+              var key = "".concat(o.type, ":").concat(entityId);
+              return {
+                key: key,
+                clientRank: Number(o.position),
+                serverRank: responseMap.get(key)
+              };
+            });
+            var rankMismatches = compare.filter(function (c) {
+              return c.serverRank && c.serverRank !== c.clientRank;
+            });
+            console.log('↕️ Drag compare (client vs server)', compare);
+            if (rankMismatches.length) {
+              console.warn('↕️ Rank mismatches', rankMismatches);
+            }
+            toastr.success('Order saved');
+          }).fail(function () {
+            return toastr.error('Failed to save order');
+          });
+        }
+      });
+    });
+  }
+  initPlayerOrder();
+  document.addEventListener('shown.bs.tab', initPlayerOrder);
+})(jQuery, window, document);
+/******/ 	return __webpack_exports__;
+/******/ })()
+;
+});

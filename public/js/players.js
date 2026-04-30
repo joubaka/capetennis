@@ -1,1 +1,414 @@
-!function(e,a){if("object"==typeof exports&&"object"==typeof module)module.exports=a();else if("function"==typeof define&&define.amd)define([],a);else{var t=a();for(var l in t)("object"==typeof exports?exports:e)[l]=t[l]}}(self,(function(){return function(e,a,t){"use strict";var l=e('meta[name="csrf-token"]').attr("content"),o=a.APP_URL||a.location.origin;function s(e,a){console.group("❌ ".concat(e)),console.log("status:",a.status),console.log("responseText:",a.responseText),console.log("responseJSON:",a.responseJSON),console.groupEnd()}e.ajaxSetup({headers:{"X-CSRF-TOKEN":l,Accept:"application/json"}}),console.log("🧍 players.js loaded");var n={sendMail:o+"/backend/email/send",loadRoster:o+"/backend/team/roster/edit",saveRoster:o+"/backend/team/roster/update",changePayStatus:o+"/backend/team/change/payStatus"};function i(){e("#sendMailForm")[0].reset(),e("#emailPlayerId, #emailTeamId, #catEvent, #emailToHidden").val(""),e("#emailSubject, #emailMessage").val(""),e("#emailRecipientSelect").closest(".mb-3").removeClass("d-none"),e("#regionSelectWrapper, #teamSelectWrapper, #categorySelectWrapper").addClass("d-none"),a.emailQuill&&a.emailQuill.setText("")}function r(){e("#emailRecipientSelect").closest(".mb-3").addClass("d-none")}e(t).on("click",".changePayStatus",(function(a){a.preventDefault();var t=e(this).data("pivot"),l=e(this).closest("tr").find(".payStatus .badge");console.log("🟡 ChangePayStatus clicked"),console.log("Pivot ID:",t),t?(toastr.info("Updating pay status…"),e.post(n.changePayStatus,{pivot_id:t}).done((function(e){if(console.log("🟢 Server response:",e),e.success){var a=1===Number(e.pay_status);l.removeClass("bg-label-success bg-label-danger").addClass(a?"bg-label-success":"bg-label-danger").text(a?"Paid":"Unpaid"),toastr.success(e.message)}else toastr.error(e.message||"Update failed")})).fail((function(e){toastr.error("Failed to update pay status"),s("Change pay failed",e)}))):toastr.error("Missing pivot ID")})),a.emailQuill=null,e("#sendMailModal").on("shown.bs.modal",(function(){a.emailQuill||(a.emailQuill=new Quill("#messageEditor",{theme:"snow",placeholder:"Type your message here…",modules:{toolbar:[["bold","italic","underline"],[{list:"ordered"},{list:"bullet"}],["link"],["clean"]]}})),setTimeout((function(){return a.emailQuill.focus()}),50)})),e(t).on("click",".emailPlayer",(function(){i(),r();var a=e(this).data("playerid"),t=e(this).data("name");e("#target_type").val("player"),e("#emailToHidden").val(a),e("#emailPlayerId").val(a),e("#sendMailLabel").html('<i class="ti ti-mail me-50"></i> Email Player: '.concat(t)),bootstrap.Modal.getOrCreateInstance("#sendMailModal").show()})),e(t).on("click",".emailTeamBtn",(function(){i(),r(),e("#target_type").val("team"),e("#emailToHidden").val("All players in team"),e("#emailTeamId").val(e(this).data("teamid")),e("#sendMailLabel").html('<i class="ti ti-mail me-50"></i> Email Team: '.concat(e(this).data("teamname"))),bootstrap.Modal.getOrCreateInstance("#sendMailModal").show()})),e(t).on("click",".emailRegionBtn",(function(){i(),r();var a=e(this).data("regionid"),t=e(this).data("regionname");e("#target_type").val("region"),e("#emailToHidden").val("All players in region"),e("#regionSelectWrapper").removeClass("d-none");var l=e("#emailRegionSelect");l.hasClass("select2-hidden-accessible")&&l.select2("destroy"),l.html('<option value="'.concat(a,'" selected>').concat(t,"</option>")).select2({width:"100%",dropdownParent:e("#sendMailModal")}),e("#sendMailLabel").html('<i class="ti ti-mail me-50"></i> Email Region: '.concat(t)),bootstrap.Modal.getOrCreateInstance("#sendMailModal").show()})),e(t).on("click",".emailUnpaidRegionBtn",(function(){i(),r();var a=e(this).data("regionid"),t=e(this).data("regionname");e("#emailToHidden").val("All Unregistered players in Region"),e("#regionSelectWrapper").removeClass("d-none");var l=e("#emailRegionSelect");l.hasClass("select2-hidden-accessible")&&l.select2("destroy"),l.html('<option value="'.concat(a,'" selected>').concat(t,"</option>")).select2({width:"100%",dropdownParent:e("#sendMailModal")}),e("#sendMailLabel").html('<i class="ti ti-mail me-50"></i> Email Unpaid Players — '.concat(t)),bootstrap.Modal.getOrCreateInstance("#sendMailModal").show()})),e("#sendMailForm").on("submit",(function(l){l.preventDefault(),a.emailQuill&&e("#emailMessage").val(a.emailQuill.root.innerHTML);var o=e(this).find('button[type="submit"]');o.prop("disabled",!0),toastr.info("Sending email…"),e.post(n.sendMail,e(this).serialize()).done((function(e){var a,l,o="";o=void 0!==e.count?"📬 ".concat(e.count," recipient(s)\nMailer: ").concat(e.mailer):null!==(a=e.result)&&void 0!==a&&a.message?"".concat(e.result.message,"\nMailer: ").concat(e.mailer):"Email queued successfully\nMailer: ".concat(e.mailer),toastr.success(o,"Email Queued",{timeOut:6e3,extendedTimeOut:2e3,closeButton:!0,progressBar:!0,escapeHtml:!1}),null===(l=bootstrap.Modal.getInstance(t.getElementById("sendMailModal")))||void 0===l||l.hide()})).fail((function(e){var a,t,l,o=(null===(a=e.responseJSON)||void 0===a?void 0:a.message)||(null===(t=e.responseJSON)||void 0===t||null===(l=t.result)||void 0===l?void 0:l.message)||"Failed to send email";toastr.error(o,"Email Failed",{timeOut:8e3,closeButton:!0,progressBar:!0}),s("Send email failed",e)})).always((function(){o.prop("disabled",!1)}))})),e(t).on("click",".editRosterBtn",(function(a){a.preventDefault();var t=e(this).data("teamid");if(!t)return toastr.error("Missing team ID");toastr.info("Loading roster…"),e.get(n.loadRoster,{team_id:t}).done((function(a){var t=a.team,l=a.slots,o=a.players,s='\n          <form id="editRosterForm">\n            <input type="hidden" name="team_id" value="'.concat(t.id,'">\n            <table class="table table-sm table-bordered align-middle">\n              <thead class="table-light">\n                <tr>\n                  <th style="width:60px">#</th>\n                  <th>Player</th>\n                  <th style="width:120px">Pay</th>\n                </tr>\n              </thead>\n              <tbody>\n        ');l.forEach((function(e){s+='\n            <tr>\n              <td class="text-center">\n                <span class="badge bg-label-primary">'.concat(e.rank,'</span>\n              </td>\n              <td>\n                <select class="form-select roster-player-select"\n                        name="slots[').concat(e.id,']">\n                  <option value="0">— Empty —</option>\n          '),o.forEach((function(a){var t=e.player_id===a.id?"selected":"";s+='<option value="'.concat(a.id,'" ').concat(t,">\n              ").concat(a.surname,", ").concat(a.name,"\n            </option>")})),s+='\n                </select>\n              </td>\n              <td class="text-center">\n                <span class="badge '.concat(e.pay_status?"bg-label-success":"bg-label-danger",'">\n                  ').concat(e.pay_status?"Paid":"Unpaid","\n                </span>\n              </td>\n            </tr>\n          ")})),s+='\n              </tbody>\n            </table>\n\n            <div class="form-check mt-2">\n              <input class="form-check-input" type="checkbox"\n                     name="preserve_payments" value="1" id="preservePayments">\n              <label class="form-check-label" for="preservePayments">\n                Preserve payment status\n              </label>\n            </div>\n\n            <div class="text-end mt-3">\n              <button type="submit" class="btn btn-primary">Save Roster</button>\n            </div>\n          </form>\n        ',e("#replaceRosterModalBody").html(s),e("#replaceRosterModalLabel").text("Edit Roster — ".concat(t.name)),e("#replaceRosterModalBody .roster-player-select").each((function(){var a=e(this);a.hasClass("select2-hidden-accessible")&&a.select2("destroy"),a.select2({width:"100%",dropdownParent:e("#replaceRosterModal"),placeholder:"Select player",allowClear:!0})})),bootstrap.Modal.getOrCreateInstance("#replaceRosterModal").show()})).fail((function(e){toastr.error("Failed to load roster"),s("Load roster failed",e)}))})),e(t).on("submit","#editRosterForm",(function(a){a.preventDefault();var l=e(this),o=l.find('button[type="submit"]');l.find('input[name="team_id"]').val(),o.prop("disabled",!0),toastr.info("Saving roster…"),e.post(n.saveRoster,l.serialize()).done((function(a){var l;toastr.success("Roster updated"),a.slots.forEach((function(a){var t,l,o=e('tr[data-playerteamid="'.concat(a.id,'"]'));if(o.length){var s=a.player?"".concat(a.player.name," ").concat(a.player.surname):"—";o.find("td:eq(1)").text(s),o.find("td:eq(2)").text((null===(t=a.player)||void 0===t?void 0:t.email)||"—"),o.find("td:eq(3)").text((null===(l=a.player)||void 0===l?void 0:l.cell)||"—"),o.find(".payStatus .badge").toggleClass("bg-label-success",1===a.pay_status).toggleClass("bg-label-danger",0===a.pay_status).text(a.pay_status?"Paid":"Unpaid")}})),null===(l=bootstrap.Modal.getInstance(t.getElementById("replaceRosterModal")))||void 0===l||l.hide()})).fail((function(e){toastr.error("Failed to save roster"),s("Save roster failed",e)})).always((function(){o.prop("disabled",!1)}))})),e(t).on("click",".replacePlayerBtn",(function(t){t.preventDefault();var l=e(this).data("slotid"),o=e(this).data("teamid");console.log("🔁 Replace Player clicked"),console.log("Pivot ID:",l),l?(toastr.info("Loading replace form…"),console.log("Requesting form with pivot_id:",l,"team_id:",o),console.log("Form URL:",a.routes.replaceForm),e.get(a.routes.replaceForm,{pivot_id:l,team_id:o}).done((function(a){var t=e("#replacePlayerModal"),l=e("#replacePlayerModalBody");l.html(a);var o=l.find(".select2ReplacePlayer");o.hasClass("select2-hidden-accessible")&&o.select2("destroy"),o.select2({dropdownParent:t,width:"100%",placeholder:"Search player...",allowClear:!0}),bootstrap.Modal.getOrCreateInstance(t[0]).show()})).fail((function(e){toastr.error("Failed to load replace form"),s("Replace form load failed",e)}))):toastr.error("Missing slot ID")})),e(t).on("submit","#replacePlayerForm",(function(l){l.preventDefault();var o=e(this);toastr.info("Replacing player…"),e.post(a.routes.replacePlayer,o.serialize()).done((function(a){var l;if(console.log("🔁 Replace response:",a),a.success){var o=a.slot,s=e('tr[data-playerteamid="'.concat(o.pivot_id,'"]'));if(s.length){s.find("td:eq(1)").text(o.player.name+" "+o.player.surname),s.find("td:eq(2)").text(o.player.email||"—"),s.find("td:eq(3)").text(o.player.cell||"—");var n=1===Number(o.pay_status);s.find(".payStatus .badge").removeClass("bg-label-success bg-label-danger").addClass(n?"bg-label-success":"bg-label-danger").text(n?"Paid":"Unpaid"),null===(l=bootstrap.Modal.getInstance(t.getElementById("replacePlayerModal")))||void 0===l||l.hide(),toastr.success(a.message)}else console.warn("Row not found for pivot:",o.pivot_id)}else toastr.error(a.message||"Replace failed")})).fail((function(e){toastr.error("Replace failed"),s("Replace save failed",e)}))}))}(jQuery,window,document),{}}));
+(function webpackUniversalModuleDefinition(root, factory) {
+	if(typeof exports === 'object' && typeof module === 'object')
+		module.exports = factory();
+	else if(typeof define === 'function' && define.amd)
+		define([], factory);
+	else {
+		var a = factory();
+		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
+	}
+})(self, function() {
+return /******/ (function() { // webpackBootstrap
+var __webpack_exports__ = {};
+/*!***************************************!*\
+  !*** ./resources/js/pages/players.js ***!
+  \***************************************/
+/*
+ * Admin — Players / Roster JS
+ * FINAL STABLE VERSION (EMAIL + ROSTER + QUILL + SELECT2 + ENHANCED TOAST)
+ */
+
+(function ($, window, document) {
+  'use strict';
+
+  // =====================================================
+  // GLOBAL SETUP
+  // =====================================================
+  var CSRF = $('meta[name="csrf-token"]').attr('content');
+  var APP_URL = window.APP_URL || window.location.origin;
+  $.ajaxSetup({
+    headers: {
+      'X-CSRF-TOKEN': CSRF,
+      'Accept': 'application/json'
+    }
+  });
+  console.log('🧍 players.js loaded');
+  function logXhrFail(label, xhr) {
+    console.group("\u274C ".concat(label));
+    console.log('status:', xhr.status);
+    console.log('responseText:', xhr.responseText);
+    console.log('responseJSON:', xhr.responseJSON);
+    console.groupEnd();
+  }
+  var api = {
+    sendMail: APP_URL + '/backend/email/send',
+    loadRoster: APP_URL + '/backend/team/roster/edit',
+    saveRoster: APP_URL + '/backend/team/roster/update',
+    changePayStatus: APP_URL + '/backend/team/change/payStatus'
+  };
+
+  // =====================================================
+  // PAY STATUS
+  // =====================================================
+  $(document).on('click', '.changePayStatus', function (e) {
+    e.preventDefault();
+    var pivotId = $(this).data('pivot');
+    var $row = $(this).closest('tr');
+    var $badge = $row.find('.payStatus .badge');
+    console.log('🟡 ChangePayStatus clicked');
+    console.log('Pivot ID:', pivotId);
+    if (!pivotId) {
+      toastr.error('Missing pivot ID');
+      return;
+    }
+    toastr.info('Updating pay status…');
+    $.post(api.changePayStatus, {
+      pivot_id: pivotId
+    }) // ✅ MATCH CONTROLLER
+    .done(function (res) {
+      console.log('🟢 Server response:', res);
+      if (!res.success) {
+        toastr.error(res.message || 'Update failed');
+        return;
+      }
+      var paid = Number(res.pay_status) === 1;
+      $badge.removeClass('bg-label-success bg-label-danger').addClass(paid ? 'bg-label-success' : 'bg-label-danger').text(paid ? 'Paid' : 'Unpaid');
+      toastr.success(res.message);
+    }).fail(function (xhr) {
+      toastr.error('Failed to update pay status');
+      logXhrFail('Change pay failed', xhr);
+    });
+  });
+
+  // =====================================================
+  // EMAIL HELPERS
+  // =====================================================
+  function resetEmailForm() {
+    $('#sendMailForm')[0].reset();
+    $('#emailPlayerId, #emailTeamId, #catEvent, #emailToHidden').val('');
+    $('#emailSubject, #emailMessage').val('');
+    $('#emailRecipientSelect').closest('.mb-3').removeClass('d-none');
+    $('#regionSelectWrapper, #teamSelectWrapper, #categorySelectWrapper').addClass('d-none');
+    if (window.emailQuill) {
+      window.emailQuill.setText('');
+    }
+  }
+  function hideRecipientSelector() {
+    $('#emailRecipientSelect').closest('.mb-3').addClass('d-none');
+  }
+
+  // =====================================================
+  // QUILL — INIT ONCE
+  // =====================================================
+  window.emailQuill = null;
+  function initQuillOnce() {
+    if (window.emailQuill) return;
+    window.emailQuill = new Quill('#messageEditor', {
+      theme: 'snow',
+      placeholder: 'Type your message here…',
+      modules: {
+        toolbar: [['bold', 'italic', 'underline'], [{
+          list: 'ordered'
+        }, {
+          list: 'bullet'
+        }], ['link'], ['clean']]
+      }
+    });
+  }
+  $('#sendMailModal').on('shown.bs.modal', function () {
+    initQuillOnce();
+    setTimeout(function () {
+      return window.emailQuill.focus();
+    }, 50);
+  });
+
+  // =====================================================
+  // EMAIL — SINGLE PLAYER
+  // =====================================================
+  $(document).on('click', '.emailPlayer', function () {
+    resetEmailForm();
+    hideRecipientSelector();
+    var playerId = $(this).data('playerid');
+    var name = $(this).data('name');
+    $('#target_type').val('player');
+    $('#emailToHidden').val(playerId);
+    $('#emailPlayerId').val(playerId);
+    $('#sendMailLabel').html("<i class=\"ti ti-mail me-50\"></i> Email Player: ".concat(name));
+    bootstrap.Modal.getOrCreateInstance('#sendMailModal').show();
+  });
+
+  // =====================================================
+  // EMAIL — TEAM
+  // =====================================================
+  $(document).on('click', '.emailTeamBtn', function () {
+    resetEmailForm();
+    hideRecipientSelector();
+    $('#target_type').val('team'); // ✅ FIX: Set target_type
+    $('#emailToHidden').val('All players in team');
+    $('#emailTeamId').val($(this).data('teamid'));
+    $('#sendMailLabel').html("<i class=\"ti ti-mail me-50\"></i> Email Team: ".concat($(this).data('teamname')));
+    bootstrap.Modal.getOrCreateInstance('#sendMailModal').show();
+  });
+
+  // =====================================================
+  // EMAIL — REGION
+  // =====================================================
+  $(document).on('click', '.emailRegionBtn', function () {
+    resetEmailForm();
+    hideRecipientSelector();
+    var regionId = $(this).data('regionid');
+    var regionName = $(this).data('regionname');
+    $('#target_type').val('region'); // ✅ ADD: Set target_type for explicit routing
+    $('#emailToHidden').val('All players in region');
+    $('#regionSelectWrapper').removeClass('d-none');
+    var $regionSelect = $('#emailRegionSelect');
+    if ($regionSelect.hasClass('select2-hidden-accessible')) {
+      $regionSelect.select2('destroy');
+    }
+    $regionSelect.html("<option value=\"".concat(regionId, "\" selected>").concat(regionName, "</option>")).select2({
+      width: '100%',
+      dropdownParent: $('#sendMailModal')
+    });
+    $('#sendMailLabel').html("<i class=\"ti ti-mail me-50\"></i> Email Region: ".concat(regionName));
+    bootstrap.Modal.getOrCreateInstance('#sendMailModal').show();
+  });
+
+  // =====================================================
+  // EMAIL — UNPAID PLAYERS IN REGION
+  // =====================================================
+  $(document).on('click', '.emailUnpaidRegionBtn', function () {
+    resetEmailForm();
+    hideRecipientSelector();
+    var regionId = $(this).data('regionid');
+    var regionName = $(this).data('regionname');
+    $('#emailToHidden').val('All Unregistered players in Region');
+    $('#regionSelectWrapper').removeClass('d-none');
+    var $regionSelect = $('#emailRegionSelect');
+    if ($regionSelect.hasClass('select2-hidden-accessible')) {
+      $regionSelect.select2('destroy');
+    }
+    $regionSelect.html("<option value=\"".concat(regionId, "\" selected>").concat(regionName, "</option>")).select2({
+      width: '100%',
+      dropdownParent: $('#sendMailModal')
+    });
+    $('#sendMailLabel').html("<i class=\"ti ti-mail me-50\"></i> Email Unpaid Players \u2014 ".concat(regionName));
+    bootstrap.Modal.getOrCreateInstance('#sendMailModal').show();
+  });
+
+  // =====================================================
+  // SEND EMAIL
+  // =====================================================
+  $('#sendMailForm').on('submit', function (e) {
+    e.preventDefault();
+    if (window.emailQuill) {
+      $('#emailMessage').val(window.emailQuill.root.innerHTML);
+    }
+    var $btn = $(this).find('button[type="submit"]');
+    $btn.prop('disabled', true);
+    toastr.info('Sending email…');
+    $.post(api.sendMail, $(this).serialize()).done(function (res) {
+      var _res$result, _bootstrap$Modal$getI;
+      var message = '';
+      var title = 'Email Queued';
+      if (res.count !== undefined) {
+        message = "\uD83D\uDCEC ".concat(res.count, " recipient(s)\nMailer: ").concat(res.mailer);
+      } else if ((_res$result = res.result) !== null && _res$result !== void 0 && _res$result.message) {
+        message = "".concat(res.result.message, "\nMailer: ").concat(res.mailer);
+      } else {
+        message = "Email queued successfully\nMailer: ".concat(res.mailer);
+      }
+      toastr.success(message, title, {
+        timeOut: 6000,
+        extendedTimeOut: 2000,
+        closeButton: true,
+        progressBar: true,
+        escapeHtml: false
+      });
+      (_bootstrap$Modal$getI = bootstrap.Modal.getInstance(document.getElementById('sendMailModal'))) === null || _bootstrap$Modal$getI === void 0 ? void 0 : _bootstrap$Modal$getI.hide();
+    }).fail(function (xhr) {
+      var _xhr$responseJSON, _xhr$responseJSON2, _xhr$responseJSON2$re;
+      var msg = ((_xhr$responseJSON = xhr.responseJSON) === null || _xhr$responseJSON === void 0 ? void 0 : _xhr$responseJSON.message) || ((_xhr$responseJSON2 = xhr.responseJSON) === null || _xhr$responseJSON2 === void 0 ? void 0 : (_xhr$responseJSON2$re = _xhr$responseJSON2.result) === null || _xhr$responseJSON2$re === void 0 ? void 0 : _xhr$responseJSON2$re.message) || 'Failed to send email';
+      toastr.error(msg, 'Email Failed', {
+        timeOut: 8000,
+        closeButton: true,
+        progressBar: true
+      });
+      logXhrFail('Send email failed', xhr);
+    }).always(function () {
+      $btn.prop('disabled', false);
+    });
+  });
+
+  // =====================================================
+  // ROSTER — EDIT
+  // =====================================================
+  $(document).on('click', '.editRosterBtn', function (e) {
+    e.preventDefault();
+    var teamId = $(this).data('teamid');
+    if (!teamId) return toastr.error('Missing team ID');
+    toastr.info('Loading roster…');
+    $.get(api.loadRoster, {
+      team_id: teamId
+    }).done(function (res) {
+      var team = res.team,
+        slots = res.slots,
+        players = res.players;
+      var html = "\n          <form id=\"editRosterForm\">\n            <input type=\"hidden\" name=\"team_id\" value=\"".concat(team.id, "\">\n            <table class=\"table table-sm table-bordered align-middle\">\n              <thead class=\"table-light\">\n                <tr>\n                  <th style=\"width:60px\">#</th>\n                  <th>Player</th>\n                  <th style=\"width:120px\">Pay</th>\n                </tr>\n              </thead>\n              <tbody>\n        ");
+      slots.forEach(function (slot) {
+        html += "\n            <tr>\n              <td class=\"text-center\">\n                <span class=\"badge bg-label-primary\">".concat(slot.rank, "</span>\n              </td>\n              <td>\n                <select class=\"form-select roster-player-select\"\n                        name=\"slots[").concat(slot.id, "]\">\n                  <option value=\"0\">\u2014 Empty \u2014</option>\n          ");
+        players.forEach(function (p) {
+          var selected = slot.player_id === p.id ? 'selected' : '';
+          html += "<option value=\"".concat(p.id, "\" ").concat(selected, ">\n              ").concat(p.surname, ", ").concat(p.name, "\n            </option>");
+        });
+        html += "\n                </select>\n              </td>\n              <td class=\"text-center\">\n                <span class=\"badge ".concat(slot.pay_status ? 'bg-label-success' : 'bg-label-danger', "\">\n                  ").concat(slot.pay_status ? 'Paid' : 'Unpaid', "\n                </span>\n              </td>\n            </tr>\n          ");
+      });
+      html += "\n              </tbody>\n            </table>\n\n            <div class=\"form-check mt-2\">\n              <input class=\"form-check-input\" type=\"checkbox\"\n                     name=\"preserve_payments\" value=\"1\" id=\"preservePayments\">\n              <label class=\"form-check-label\" for=\"preservePayments\">\n                Preserve payment status\n              </label>\n            </div>\n\n            <div class=\"text-end mt-3\">\n              <button type=\"submit\" class=\"btn btn-primary\">Save Roster</button>\n            </div>\n          </form>\n        ";
+      $('#replaceRosterModalBody').html(html);
+      $('#replaceRosterModalLabel').text("Edit Roster \u2014 ".concat(team.name));
+
+      // 🔥 INIT SELECT2 (ROSTER)
+      $('#replaceRosterModalBody .roster-player-select').each(function () {
+        var $sel = $(this);
+        if ($sel.hasClass('select2-hidden-accessible')) {
+          $sel.select2('destroy');
+        }
+        $sel.select2({
+          width: '100%',
+          dropdownParent: $('#replaceRosterModal'),
+          placeholder: 'Select player',
+          allowClear: true
+        });
+      });
+      bootstrap.Modal.getOrCreateInstance('#replaceRosterModal').show();
+    }).fail(function (xhr) {
+      toastr.error('Failed to load roster');
+      logXhrFail('Load roster failed', xhr);
+    });
+  });
+
+  // =====================================================
+  // ROSTER — SAVE
+  // =====================================================
+  $(document).on('submit', '#editRosterForm', function (e) {
+    e.preventDefault();
+    var $form = $(this);
+    var $btn = $form.find('button[type="submit"]');
+    var teamId = $form.find('input[name="team_id"]').val();
+    $btn.prop('disabled', true);
+    toastr.info('Saving roster…');
+    $.post(api.saveRoster, $form.serialize()).done(function (res) {
+      var _bootstrap$Modal$getI2;
+      toastr.success('Roster updated');
+
+      // 🔥 UPDATE TABLE INLINE
+      res.slots.forEach(function (slot) {
+        var _slot$player, _slot$player2;
+        var $row = $("tr[data-playerteamid=\"".concat(slot.id, "\"]"));
+        if (!$row.length) return;
+        var name = slot.player ? "".concat(slot.player.name, " ").concat(slot.player.surname) : '—';
+        $row.find('td:eq(1)').text(name);
+        $row.find('td:eq(2)').text(((_slot$player = slot.player) === null || _slot$player === void 0 ? void 0 : _slot$player.email) || '—');
+        $row.find('td:eq(3)').text(((_slot$player2 = slot.player) === null || _slot$player2 === void 0 ? void 0 : _slot$player2.cell) || '—');
+        var $badge = $row.find('.payStatus .badge');
+        $badge.toggleClass('bg-label-success', slot.pay_status === 1).toggleClass('bg-label-danger', slot.pay_status === 0).text(slot.pay_status ? 'Paid' : 'Unpaid');
+      });
+      (_bootstrap$Modal$getI2 = bootstrap.Modal.getInstance(document.getElementById('replaceRosterModal'))) === null || _bootstrap$Modal$getI2 === void 0 ? void 0 : _bootstrap$Modal$getI2.hide();
+    }).fail(function (xhr) {
+      toastr.error('Failed to save roster');
+      logXhrFail('Save roster failed', xhr);
+    }).always(function () {
+      $btn.prop('disabled', false);
+    });
+  });
+  // =====================================================
+  // REPLACE PLAYER — OPEN ROSTER MODAL
+  // =====================================================
+  // =====================================================
+  // REPLACE PLAYER — LOAD MODAL
+  // =====================================================
+  // =====================================================
+  // =====================================================
+  // REPLACE PLAYER — LOAD FORM
+  // =====================================================
+  $(document).on('click', '.replacePlayerBtn', function (e) {
+    e.preventDefault();
+    var pivotId = $(this).data('slotid');
+    var teamId = $(this).data('teamid');
+    console.log('🔁 Replace Player clicked');
+    console.log('Pivot ID:', pivotId);
+    if (!pivotId) {
+      toastr.error('Missing slot ID');
+      return;
+    }
+    toastr.info('Loading replace form…');
+    console.log('Requesting form with pivot_id:', pivotId, 'team_id:', teamId);
+    console.log('Form URL:', window.routes.replaceForm);
+    $.get(window.routes.replaceForm, {
+      pivot_id: pivotId,
+      team_id: teamId
+    }).done(function (html) {
+      var $modal = $('#replacePlayerModal');
+      var $body = $('#replacePlayerModalBody');
+      $body.html(html);
+      var $select = $body.find('.select2ReplacePlayer');
+
+      // Destroy if already initialized
+      if ($select.hasClass('select2-hidden-accessible')) {
+        $select.select2('destroy');
+      }
+      $select.select2({
+        dropdownParent: $modal,
+        width: '100%',
+        placeholder: 'Search player...',
+        allowClear: true
+      });
+      bootstrap.Modal.getOrCreateInstance($modal[0]).show();
+    }).fail(function (xhr) {
+      toastr.error('Failed to load replace form');
+      logXhrFail('Replace form load failed', xhr);
+    });
+  });
+
+  // =====================================================
+  // REPLACE PLAYER — SAVE
+  // =====================================================
+  $(document).on('submit', '#replacePlayerForm', function (e) {
+    e.preventDefault();
+    var $form = $(this);
+    toastr.info('Replacing player…');
+    $.post(window.routes.replacePlayer, $form.serialize()).done(function (res) {
+      var _bootstrap$Modal$getI3;
+      console.log('🔁 Replace response:', res);
+      if (!res.success) {
+        toastr.error(res.message || 'Replace failed');
+        return;
+      }
+      var slot = res.slot;
+      var $row = $("tr[data-playerteamid=\"".concat(slot.pivot_id, "\"]"));
+      if (!$row.length) {
+        console.warn('Row not found for pivot:', slot.pivot_id);
+        return;
+      }
+
+      // Update name
+      $row.find('td:eq(1)').text(slot.player.name + ' ' + slot.player.surname);
+
+      // Update email + cell
+      $row.find('td:eq(2)').text(slot.player.email || '—');
+      $row.find('td:eq(3)').text(slot.player.cell || '—');
+
+      // Reset pay badge (since controller sets pay_status null)
+      var paid = Number(slot.pay_status) === 1;
+      $row.find('.payStatus .badge').removeClass('bg-label-success bg-label-danger').addClass(paid ? 'bg-label-success' : 'bg-label-danger').text(paid ? 'Paid' : 'Unpaid');
+      (_bootstrap$Modal$getI3 = bootstrap.Modal.getInstance(document.getElementById('replacePlayerModal'))) === null || _bootstrap$Modal$getI3 === void 0 ? void 0 : _bootstrap$Modal$getI3.hide();
+      toastr.success(res.message);
+    }).fail(function (xhr) {
+      toastr.error('Replace failed');
+      logXhrFail('Replace save failed', xhr);
+    });
+  });
+})(jQuery, window, document);
+/******/ 	return __webpack_exports__;
+/******/ })()
+;
+});
