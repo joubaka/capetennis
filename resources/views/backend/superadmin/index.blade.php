@@ -1111,7 +1111,8 @@
                       @endif
                       <form method="POST"
                             action="{{ route('superadmin.wallets.destroy', $wallet) }}"
-                            onsubmit="return confirm('Delete entire wallet for {{ addslashes($payable->name ?? 'this user') }} and ALL its transactions? This cannot be undone.');">
+                            data-wallet-owner="{{ $payable->name ?? 'this user' }}"
+                            class="form-wallet-delete">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete Wallet">
@@ -1421,6 +1422,14 @@ $(function () {
     $('#form-wallet-add-tx input[name="amount"]').val('');
     $('#form-wallet-add-tx input[name="reference"]').val('');
     addTxModal.show();
+  });
+
+  // ── Wallet delete confirmation ─────────────────────────────────
+  $(document).on('submit', '.form-wallet-delete', function (e) {
+    var owner = $(this).data('wallet-owner') || 'this user';
+    if (!confirm('Delete entire wallet for "' + owner + '" and ALL its transactions? This cannot be undone.')) {
+      e.preventDefault();
+    }
   });
 
 });

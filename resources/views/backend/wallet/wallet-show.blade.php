@@ -111,7 +111,7 @@
                   </button>
                   <form method="POST"
                         action="{{ route('superadmin.wallets.transaction.destroy', $tx) }}"
-                        onsubmit="return confirm('Delete this transaction? The wallet balance will be recalculated.');">
+                        class="form-tx-delete">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete Transaction">
@@ -243,6 +243,12 @@ $(function () {
     $('#edit-tx-amount').val(amt);
     $('#edit-tx-reference').val(ref);
     editTxModal.show();
+  });
+
+  $(document).on('submit', '.form-tx-delete', function (e) {
+    if (!confirm('Delete this transaction? The wallet balance will be recalculated.')) {
+      e.preventDefault();
+    }
   });
 });
 </script>

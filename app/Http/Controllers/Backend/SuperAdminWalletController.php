@@ -70,7 +70,9 @@ class SuperAdminWalletController extends Controller
 
         // Check new balance would not go negative after edit
         if ($request->type === 'debit') {
-            // Remove old effect and apply new effect temporarily to check
+            // Reverse the current transaction's effect on the balance, then apply the new values.
+            // oldEffect: +amount for credit (increased balance), -amount for debit (decreased balance).
+            // newEffect: always negative since we're validating a debit change.
             $oldEffect = $oldType === 'credit' ? $oldAmount : -$oldAmount;
             $newEffect = -(float) $request->amount;
             $newBalance = $wallet->balance - $oldEffect + $newEffect;
