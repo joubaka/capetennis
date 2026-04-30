@@ -1100,37 +1100,102 @@
             <div class="card mb-3">
               <div class="card-header">
                 <h5 class="mb-0"><i class="ti ti-user-check me-1 text-success"></i> Player Confirmation Emails</h5>
-                <small class="text-muted">Control which events trigger a confirmation email sent directly to the player.</small>
+                <small class="text-muted">Control which events trigger a confirmation email sent directly to the player. Click <strong>Edit Template</strong> to customise the subject and body.</small>
               </div>
               <div class="card-body">
-                <div class="row g-3">
 
+                @php
+                  $playerEmailDefs = [
+                    'registration' => [
+                      'toggle_key' => 'player_email_on_registration',
+                      'label'      => 'Registration Confirmation',
+                      'desc'       => 'Sent when the player\'s registration payment is confirmed.',
+                      'placeholders' => ['{user_name}', '{event_name}', '{app_name}'],
+                    ],
+                    'withdrawal' => [
+                      'toggle_key' => 'player_email_on_withdrawal',
+                      'label'      => 'Withdrawal Confirmation',
+                      'desc'       => 'Sent when a player withdraws from an event.',
+                      'placeholders' => ['{player_name}', '{event_name}', '{category_name}', '{withdrawn_at}', '{initiated_by}', '{app_name}'],
+                    ],
+                    'move' => [
+                      'toggle_key' => 'player_email_on_move',
+                      'label'      => 'Category Move Confirmation',
+                      'desc'       => 'Sent when a player\'s category is changed.',
+                      'placeholders' => ['{player_name}', '{event_name}', '{old_category}', '{new_category}', '{changed_by}', '{app_name}'],
+                    ],
+                  ];
+                @endphp
+
+                @foreach($playerEmailDefs as $type => $def)
                   @php
-                    $playerEmailToggles = [
-                      'player_email_on_registration' => ['label' => 'Registration Confirmation', 'desc' => 'Send player an email when their registration is confirmed after payment.'],
-                      'player_email_on_withdrawal'   => ['label' => 'Withdrawal Confirmation',   'desc' => 'Send player an email when they withdraw from an event.'],
-                      'player_email_on_move'         => ['label' => 'Category Move Confirmation', 'desc' => 'Send player an email when their category is changed.'],
-                    ];
+                    $toggleKey   = $def['toggle_key'];
+                    $subjectKey  = "player_email_subject_{$type}";
+                    $bodyKey     = "player_email_body_{$type}";
+                    $collapseId  = "sa-template-{$type}";
                   @endphp
-
-                  @foreach($playerEmailToggles as $key => $meta)
-                    <div class="col-md-6">
-                      <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                        <div>
-                          <label class="form-label mb-0" for="sa-{{ $key }}">{{ $meta['label'] }}</label>
-                          <br><small class="text-muted">{{ $meta['desc'] }}</small>
-                        </div>
-                        <div class="form-check form-switch ms-3">
+                  <div class="border rounded p-3 mb-3">
+                    {{-- Toggle row --}}
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div>
+                        <label class="form-label mb-0 fw-semibold" for="sa-{{ $toggleKey }}">{{ $def['label'] }}</label>
+                        <br><small class="text-muted">{{ $def['desc'] }}</small>
+                      </div>
+                      <div class="d-flex align-items-center gap-2 ms-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-bs-toggle="collapse" data-bs-target="#{{ $collapseId }}"
+                                aria-expanded="false" aria-controls="{{ $collapseId }}">
+                          <i class="ti ti-pencil me-1"></i>Edit Template
+                        </button>
+                        <div class="form-check form-switch mb-0">
                           <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
-                                 id="sa-{{ $key }}" name="{{ $key }}" value="1"
-                                 data-setting-key="{{ $key }}"
-                                 {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
+                                 id="sa-{{ $toggleKey }}" name="{{ $toggleKey }}" value="1"
+                                 data-setting-key="{{ $toggleKey }}"
+                                 {{ old($toggleKey, $emailSettings[$toggleKey] ?? '1') == '1' ? 'checked' : '' }}>
                         </div>
                       </div>
                     </div>
-                  @endforeach
 
-                </div>
+                    {{-- Collapsible template editor --}}
+                    <div class="collapse mt-3" id="{{ $collapseId }}">
+                      <hr class="mt-0">
+
+                      <div class="mb-3">
+                        <label class="form-label" for="{{ $subjectKey }}">Subject</label>
+                        <input type="text" class="form-control" id="{{ $subjectKey }}"
+                               name="{{ $subjectKey }}" maxlength="255"
+                               value="{{ old($subjectKey, $emailSettings[$subjectKey] ?? '') }}"
+                               placeholder="Email subject…">
+                      </div>
+
+                      <div class="mb-2">
+                        <label class="form-label" for="{{ $bodyKey }}">
+                          Body
+                          <small class="text-muted fw-normal ms-1">(Markdown supported)</small>
+                        </label>
+                        <textarea class="form-control font-monospace" id="{{ $bodyKey }}"
+                                  name="{{ $bodyKey }}" rows="8"
+                                  placeholder="Email body…">{{ old($bodyKey, $emailSettings[$bodyKey] ?? '') }}</textarea>
+                      </div>
+
+                      <div class="mb-3">
+                        <small class="text-muted">Available placeholders (click to copy):</small><br>
+                        @foreach($def['placeholders'] as $ph)
+                          <code class="sa-placeholder-badge badge bg-light text-dark border me-1 mt-1"
+                                style="cursor:pointer" title="Click to copy">{{ $ph }}</code>
+                        @endforeach
+                      </div>
+
+                      <button type="button" class="btn btn-primary btn-sm sa-save-template"
+                              data-type="{{ $type }}"
+                              data-subject-id="{{ $subjectKey }}"
+                              data-body-id="{{ $bodyKey }}">
+                        <i class="ti ti-device-floppy me-1"></i>Save Template
+                      </button>
+                    </div>
+                  </div>
+                @endforeach
+
               </div>
             </div>
           </div>{{-- /email --}}
@@ -1731,6 +1796,67 @@ $(function () {
         $el.prop('disabled', false);
       }
     });
+  });
+
+  // ── Email template save ───────────────────────────────────────
+  var saTemplateUrl = '{{ route('settings.store.template') }}';
+
+  $(document).on('click', '.sa-save-template', function () {
+    var $btn       = $(this);
+    var type       = $btn.data('type');
+    var subjectId  = $btn.data('subject-id');
+    var bodyId     = $btn.data('body-id');
+    var subject    = $('#' + subjectId).val();
+    var body       = $('#' + bodyId).val();
+
+    $btn.prop('disabled', true).html('<i class="ti ti-loader ti-spin me-1"></i> Saving…');
+
+    $.ajax({
+      url:     saTemplateUrl,
+      method:  'POST',
+      data:    { _token: saToggleToken, type: type, subject: subject, body: body },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      success: function (res) {
+        saShowToast(res.message || 'Template saved.', false);
+      },
+      error: function (xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Save failed. Please try again.';
+        saShowToast(msg, true);
+      },
+      complete: function () {
+        $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save Template');
+      }
+    });
+  });
+
+  // ── Placeholder badges — click to insert at cursor ───────────
+  $(document).on('click', '.sa-placeholder-badge', function () {
+    var ph       = $(this).text().trim();
+    var $collapse = $(this).closest('.collapse');
+    var $textarea = $collapse.find('textarea');
+
+    if ($textarea.length) {
+      var el    = $textarea[0];
+      var start = el.selectionStart;
+      var end   = el.selectionEnd;
+      var val   = el.value;
+      el.value = val.substring(0, start) + ph + val.substring(end);
+      el.selectionStart = el.selectionEnd = start + ph.length;
+      el.focus();
+    } else {
+      // Subject field
+      var $input = $collapse.find('input[type="text"]:focus');
+      if (!$input.length) $input = $collapse.find('input[type="text"]');
+      if ($input.length) {
+        var iEl    = $input[0];
+        var iStart = iEl.selectionStart;
+        var iEnd   = iEl.selectionEnd;
+        var iVal   = iEl.value;
+        iEl.value = iVal.substring(0, iStart) + ph + iVal.substring(iEnd);
+        iEl.selectionStart = iEl.selectionEnd = iStart + ph.length;
+        iEl.focus();
+      }
+    }
   });
 
   // ── Settings form — AJAX save ─────────────────────────────────

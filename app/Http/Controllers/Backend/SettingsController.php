@@ -131,6 +131,25 @@ class SettingsController extends Controller
         return response()->json(['success' => true, 'message' => 'Setting saved.']);
     }
 
+    /**
+     * Save the subject and body for a player confirmation email template.
+     */
+    public function storeTemplate(Request $request)
+    {
+        $request->validate([
+            'type'    => 'required|in:registration,withdrawal,move',
+            'subject' => 'required|string|max:255',
+            'body'    => 'required|string|max:10000',
+        ]);
+
+        $type = $request->input('type');
+
+        SiteSetting::set("player_email_subject_{$type}", $request->input('subject'), SiteSetting::GROUP_EMAIL);
+        SiteSetting::set("player_email_body_{$type}",    $request->input('body'),    SiteSetting::GROUP_EMAIL);
+
+        return response()->json(['success' => true, 'message' => 'Email template saved.']);
+    }
+
     public function create() {}
     public function show($id) {}
     public function edit($id) {}
