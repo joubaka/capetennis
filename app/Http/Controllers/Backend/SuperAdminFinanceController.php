@@ -7,10 +7,14 @@ use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\EventPayout;
 use App\Models\SiteSetting;
+use App\Models\TeamPaymentOrder;
 use App\Models\Transaction;
+use App\Services\Wallet\Exceptions\DuplicateTransactionException;
+use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SuperAdminFinanceController extends Controller
 {
@@ -18,29 +22,13 @@ class SuperAdminFinanceController extends Controller
     /*  INDEX – All-events financial summary                               */
     /* ------------------------------------------------------------------ */
 
-    public function index(Request $request)
+    public function index()
     {
-        // ── Financial year helpers (SA: March 1 – last day of February) ──────
-        $availableFYs = $this->buildAvailableFinancialYears();
-        $currentFY    = $request->query('fy', $this->currentFinancialYear());
-
-        // Normalise: if the requested FY isn't in the list, fall back to current
-        if (! $availableFYs->contains($currentFY)) {
-            $currentFY = $this->currentFinancialYear();
-        }
-
-        [$fyStart, $fyEnd] = $this->financialYearDates($currentFY);
-
         $allEvents = Event::with(['incomeItems', 'convenors.user'])
-            ->whereBetween('start_date', [$fyStart, $fyEnd])
             ->orderByDesc('start_date')
             ->get();
 
-        // Load transactions only for events in the selected FY
-        $eventIds = $allEvents->pluck('id');
-
         $allTransactions = Transaction::with(['order.items'])
-            ->whereIn('event_id', $eventIds)
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
             ->where('is_test', false)
@@ -54,11 +42,10 @@ class SuperAdminFinanceController extends Controller
             ->where('status', 'withdrawn')
             ->where('refund_status', 'completed')
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
-            ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIds))
             ->get()
             ->groupBy(fn ($r) => $r->categoryEvent->event_id);
 
-        $allPayouts = EventPayout::whereIn('event_id', $eventIds)->get()->groupBy('event_id');
+        $allPayouts = EventPayout::all()->groupBy('event_id');
 
         $financeByEvent = $allEvents->map(function ($event) use ($allTransactions, $allRefunds, $allPayouts) {
             $feePerEntry = (float) $event->cape_tennis_fee;
@@ -110,13 +97,12 @@ class SuperAdminFinanceController extends Controller
                 : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
             return [
-                'event'            => $event,
-                'total_gross'      => $totalGross,
-                'total_income'     => $netIncome,
-                'total_entries'    => $totalEntries,
-                'total_paid_out'   => $totalPaidOut,
-                'balance'          => round($netIncome - $totalPaidOut, 2),
-                'has_transactions' => $txForEvent->isNotEmpty(),
+                'event'          => $event,
+                'total_gross'    => $totalGross,
+                'total_income'   => $netIncome,
+                'total_entries'  => $totalEntries,
+                'total_paid_out' => $totalPaidOut,
+                'balance'        => round($netIncome - $totalPaidOut, 2),
             ];
         });
 
@@ -128,7 +114,7 @@ class SuperAdminFinanceController extends Controller
             'balance'        => $financeByEvent->sum('balance'),
         ];
 
-        return view('backend.superadmin.finances', compact('financeByEvent', 'financeSummary', 'availableFYs', 'currentFY'));
+        return view('backend.superadmin.finances', compact('financeByEvent', 'financeSummary'));
     }
 
     /* ------------------------------------------------------------------ */
@@ -265,6 +251,33 @@ class SuperAdminFinanceController extends Controller
             ->orderByRaw("FIELD(role, 'hoof', 'hulp', 'admin')")
             ->get();
 
+        // ── Registrations eligible for super-admin full refund ─────────────
+        $eligibleForRefund = CategoryEventRegistration::with([
+                'players',
+                'user',
+                'categoryEvent.category',
+                'payfastTransaction',
+            ])
+            ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+            ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->where(fn ($q) => $q
+                ->whereNull('refund_status')
+                ->orWhere('refund_status', '!=', 'completed')
+            )
+            ->get();
+
+        $eligibleTeamOrders = collect();
+        if ($isTeamEvent) {
+            $eligibleTeamOrders = TeamPaymentOrder::with(['player', 'user'])
+                ->where('event_id', $event->id)
+                ->where(fn ($q) => $q->where('payfast_paid', true)->orWhere('wallet_debited', true))
+                ->where(fn ($q) => $q
+                    ->whereNull('refund_status')
+                    ->orWhere('refund_status', '!=', 'completed')
+                )
+                ->get();
+        }
+
         return view('backend.superadmin.event-finances', compact(
             'event',
             'transactions',
@@ -279,7 +292,9 @@ class SuperAdminFinanceController extends Controller
             'totalCapeTennisFees',
             'netTournamentIncome',
             'totalPaidOut',
-            'balance'
+            'balance',
+            'eligibleForRefund',
+            'eligibleTeamOrders'
         ));
     }
 
@@ -329,90 +344,323 @@ class SuperAdminFinanceController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
-    /*  FINANCIAL YEAR HELPERS (SA: March 1 – last day of February)       */
+    /*  FULL REFUND – single registration (individual event)               */
     /* ------------------------------------------------------------------ */
 
-    /**
-     * Returns the current SA financial year string, e.g. "2025/26".
-     */
-    private function currentFinancialYear(): string
+    public function storeFullRefund(Request $request, Event $event, CategoryEventRegistration $registration)
     {
-        $now = now();
-        return $now->month >= 3
-            ? $this->formatFY($now->year)
-            : $this->formatFY($now->year - 1);
-    }
+        $request->validate([
+            'method' => 'required|in:wallet,bank',
+        ]);
 
-    /**
-     * Converts a Carbon date into an SA financial year string.
-     */
-    private function dateToFinancialYear(Carbon $date): string
-    {
-        return $date->month >= 3
-            ? $this->formatFY($date->year)
-            : $this->formatFY($date->year - 1);
-    }
-
-    /**
-     * Formats a start year as an SA financial year string, e.g. 2025 → "2025/26".
-     */
-    private function formatFY(int $startYear): string
-    {
-        return $startYear . '/' . substr((string) ($startYear + 1), -2);
-    }
-
-    /**
-     * Extracts the start year integer from an FY string like "2025/26".
-     * Returns null if the string is not in the expected format.
-     */
-    private function fyStartYear(string $fy): ?int
-    {
-        if (! preg_match('/^(\d{4})\/\d{2}$/', $fy, $m)) {
-            return null;
-        }
-        return (int) $m[1];
-    }
-
-    /**
-     * Returns [start, end] Carbon dates for the given FY string (e.g. "2025/26").
-     */
-    private function financialYearDates(string $fy): array
-    {
-        $startYear = $this->fyStartYear($fy) ?? (int) explode('/', $fy)[0];
-        $endYear   = $startYear + 1;
-        $start = Carbon::create($startYear, 3, 1)->startOfDay();
-        $end   = Carbon::create($endYear, 2, 1)->endOfMonth()->endOfDay();
-        return [$start, $end];
-    }
-
-    /**
-     * Collects all SA financial years that have at least one event.
-     * Also always includes the current FY so the default selection is never empty.
-     */
-    private function buildAvailableFinancialYears(): \Illuminate\Support\Collection
-    {
-        $dates = Event::selectRaw('MIN(start_date) as min_date, MAX(start_date) as max_date')
-            ->whereNotNull('start_date')
-            ->first();
-
-        $currentFY = $this->currentFinancialYear();
-
-        if (! $dates || ! $dates->min_date) {
-            return collect([$currentFY]);
+        if ($registration->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
+            return back()->withErrors('This registration has already been fully refunded.');
         }
 
-        $startYear = $this->fyStartYear($this->dateToFinancialYear(Carbon::parse($dates->min_date)));
-        $endYear   = $this->fyStartYear($this->dateToFinancialYear(Carbon::parse($dates->max_date)));
-
-        // Also ensure the current FY is included even if no events exist in it yet
-        $currentYear = $this->fyStartYear($currentFY);
-        $endYear = max($endYear, $currentYear);
-
-        $years = collect();
-        for ($y = $startYear; $y <= $endYear; $y++) {
-            $years->push($this->formatFY($y));
+        $payment = $registration->paymentInfo();
+        if (empty($payment)) {
+            return back()->withErrors('Payment information not found for this registration.');
         }
 
-        return $years;
+        $walletPaid = $payment['wallet_paid'] ?? 0;
+        $gross      = round((float) $payment['gross'] + (float) $walletPaid, 2);
+
+        if ($gross <= 0) {
+            return back()->withErrors('No refundable amount found.');
+        }
+
+        // Full refund: fee is waived
+        $net    = $gross;
+        $method = $request->input('method');
+
+        $baseUpdate = [
+            'status'       => 'withdrawn',
+            'withdrawn_at' => $registration->withdrawn_at ?? now(),
+            'refund_method' => $method,
+            'refund_gross'  => $gross,
+            'refund_fee'    => 0,
+            'refund_net'    => $net,
+        ];
+
+        if ($method === 'wallet') {
+            $user   = $registration->user;
+            $wallet = $user?->wallet;
+
+            if (!$wallet) {
+                return back()->withErrors('Player wallet not found.');
+            }
+
+            try {
+                DB::transaction(function () use ($registration, $wallet, $gross, $net, $event, $baseUpdate) {
+                    app(WalletService::class)->credit(
+                        $wallet,
+                        $net,
+                        'admin_full_refund',
+                        $registration->id,
+                        [
+                            'registration_id' => $registration->id,
+                            'event_id'        => $event->id,
+                            'gross'           => $gross,
+                            'fee'             => 0,
+                            'method'          => 'wallet',
+                            'reference'       => $event->name,
+                            'initiated_by'    => 'super_admin',
+                        ]
+                    );
+
+                    $registration->update(array_merge($baseUpdate, [
+                        'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
+                        'refunded_at'   => now(),
+                    ]));
+                });
+
+                activity('refund')
+                    ->performedOn($registration)
+                    ->causedBy(Auth::user())
+                    ->withProperties([
+                        'registration_id' => $registration->id,
+                        'method'          => 'wallet',
+                        'gross'           => $gross,
+                        'net'             => $net,
+                        'event'           => $event->name,
+                        'initiated_by'    => 'super_admin',
+                    ])
+                    ->log("Super-admin full wallet refund R{$net}");
+
+                return back()->with('success', "Full refund of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
+
+            } catch (DuplicateTransactionException $e) {
+                $registration->update(array_merge($baseUpdate, [
+                    'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
+                    'refunded_at'   => now(),
+                ]));
+                return back()->with('success', 'Wallet refund already processed (state synced).');
+            } catch (\Throwable $e) {
+                Log::error('ADMIN FULL REFUND FAILED (wallet/registration)', [
+                    'registration_id' => $registration->id,
+                    'error'           => $e->getMessage(),
+                ]);
+                return back()->withErrors('Wallet refund failed: ' . $e->getMessage());
+            }
+        }
+
+        // ── Bank / PayFast path ───────────────────────────────────────────
+        $registration->update(array_merge($baseUpdate, [
+            'refund_status' => CategoryEventRegistration::REFUND_PENDING,
+        ]));
+
+        $pfPaymentId = $payment['pf_payment_id'] ?? null;
+
+        if (!empty($pfPaymentId)) {
+            try {
+                $payfast = new \App\Services\Payfast();
+                $result  = $payfast->refund($pfPaymentId, $net, 'Full event refund (admin)');
+
+                if ($result['success']) {
+                    $registration->update([
+                        'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
+                        'refunded_at'   => now(),
+                    ]);
+
+                    activity('refund')
+                        ->performedOn($registration)
+                        ->causedBy(Auth::user())
+                        ->withProperties([
+                            'registration_id' => $registration->id,
+                            'method'          => 'payfast',
+                            'pf_payment_id'   => $pfPaymentId,
+                            'gross'           => $gross,
+                            'net'             => $net,
+                            'event'           => $event->name,
+                            'initiated_by'    => 'super_admin',
+                        ])
+                        ->log("Super-admin full PayFast refund R{$net}");
+
+                    return back()->with('success', "Full refund of R" . number_format($net, 2) . " processed via PayFast.");
+                }
+
+                Log::warning('ADMIN FULL REFUND: PayFast failed — marked pending', [
+                    'registration_id' => $registration->id,
+                    'error'           => $result['error'] ?? 'unknown',
+                ]);
+
+            } catch (\Throwable $e) {
+                Log::error('ADMIN FULL REFUND: PayFast exception — marked pending', [
+                    'registration_id' => $registration->id,
+                    'error'           => $e->getMessage(),
+                ]);
+            }
+        }
+
+        activity('refund')
+            ->performedOn($registration)
+            ->causedBy(Auth::user())
+            ->withProperties([
+                'registration_id' => $registration->id,
+                'method'          => 'bank',
+                'gross'           => $gross,
+                'net'             => $net,
+                'event'           => $event->name,
+                'initiated_by'    => 'super_admin',
+            ])
+            ->log("Super-admin full bank refund R{$net} (pending)");
+
+        return back()->with('success', "Bank refund of R" . number_format($net, 2) . " marked as pending. Please process manually.");
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  FULL REFUND – team payment order                                   */
+    /* ------------------------------------------------------------------ */
+
+    public function storeFullRefundTeam(Request $request, Event $event, TeamPaymentOrder $order)
+    {
+        $request->validate([
+            'method' => 'required|in:wallet,bank',
+        ]);
+
+        if ($order->refund_status === 'completed') {
+            return back()->withErrors('This order has already been fully refunded.');
+        }
+
+        $gross = round((float) $order->total_amount, 2);
+
+        if ($gross <= 0) {
+            return back()->withErrors('No refundable amount found.');
+        }
+
+        $net    = $gross;
+        $method = $request->input('method');
+
+        $baseUpdate = [
+            'refund_method' => $method,
+            'refund_gross'  => $gross,
+            'refund_fee'    => 0,
+            'refund_net'    => $net,
+        ];
+
+        if ($method === 'wallet') {
+            $user   = $order->user;
+            $wallet = $user?->wallet;
+
+            if (!$wallet) {
+                return back()->withErrors('Player wallet not found.');
+            }
+
+            try {
+                DB::transaction(function () use ($order, $wallet, $gross, $net, $event, $baseUpdate) {
+                    app(WalletService::class)->credit(
+                        $wallet,
+                        $net,
+                        'admin_full_refund_team',
+                        $order->id,
+                        [
+                            'order_id'     => $order->id,
+                            'event_id'     => $event->id,
+                            'gross'        => $gross,
+                            'fee'          => 0,
+                            'method'       => 'wallet',
+                            'reference'    => $event->name,
+                            'initiated_by' => 'super_admin',
+                        ]
+                    );
+
+                    $order->update(array_merge($baseUpdate, [
+                        'refund_status' => 'completed',
+                        'refunded_at'   => now(),
+                    ]));
+                });
+
+                activity('refund')
+                    ->performedOn($order)
+                    ->causedBy(Auth::user())
+                    ->withProperties([
+                        'order_id'     => $order->id,
+                        'method'       => 'wallet',
+                        'gross'        => $gross,
+                        'net'          => $net,
+                        'event'        => $event->name,
+                        'initiated_by' => 'super_admin',
+                    ])
+                    ->log("Super-admin full wallet refund (team) R{$net}");
+
+                return back()->with('success', "Full refund of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
+
+            } catch (DuplicateTransactionException $e) {
+                $order->update(array_merge($baseUpdate, [
+                    'refund_status' => 'completed',
+                    'refunded_at'   => now(),
+                ]));
+                return back()->with('success', 'Wallet refund already processed (state synced).');
+            } catch (\Throwable $e) {
+                Log::error('ADMIN FULL REFUND FAILED (wallet/team)', [
+                    'order_id' => $order->id,
+                    'error'    => $e->getMessage(),
+                ]);
+                return back()->withErrors('Wallet refund failed: ' . $e->getMessage());
+            }
+        }
+
+        // ── Bank / PayFast path ───────────────────────────────────────────
+        $order->update(array_merge($baseUpdate, [
+            'refund_status' => 'pending',
+        ]));
+
+        $pfPaymentId = $order->payfast_pf_payment_id ?? null;
+
+        if (!empty($pfPaymentId)) {
+            try {
+                $payfast = new \App\Services\Payfast();
+                $result  = $payfast->refund($pfPaymentId, $net, 'Full team event refund (admin)');
+
+                if ($result['success']) {
+                    $order->update([
+                        'refund_status' => 'completed',
+                        'refunded_at'   => now(),
+                    ]);
+
+                    activity('refund')
+                        ->performedOn($order)
+                        ->causedBy(Auth::user())
+                        ->withProperties([
+                            'order_id'     => $order->id,
+                            'method'       => 'payfast',
+                            'pf_payment_id' => $pfPaymentId,
+                            'gross'        => $gross,
+                            'net'          => $net,
+                            'event'        => $event->name,
+                            'initiated_by' => 'super_admin',
+                        ])
+                        ->log("Super-admin full PayFast refund (team) R{$net}");
+
+                    return back()->with('success', "Full refund of R" . number_format($net, 2) . " processed via PayFast.");
+                }
+
+                Log::warning('ADMIN FULL REFUND (team): PayFast failed — marked pending', [
+                    'order_id' => $order->id,
+                    'error'    => $result['error'] ?? 'unknown',
+                ]);
+
+            } catch (\Throwable $e) {
+                Log::error('ADMIN FULL REFUND (team): PayFast exception — marked pending', [
+                    'order_id' => $order->id,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
+        }
+
+        activity('refund')
+            ->performedOn($order)
+            ->causedBy(Auth::user())
+            ->withProperties([
+                'order_id'     => $order->id,
+                'method'       => 'bank',
+                'gross'        => $gross,
+                'net'          => $net,
+                'event'        => $event->name,
+                'initiated_by' => 'super_admin',
+            ])
+            ->log("Super-admin full bank refund (team) R{$net} (pending)");
+
+        return back()->with('success', "Bank refund of R" . number_format($net, 2) . " marked as pending. Please process manually.");
     }
 }
