@@ -193,7 +193,7 @@ class RegistrationController extends Controller
     $user->deposit(($categoryEventRegistration->categoryEvent->entry_fee) - 10);
     $order = 'withdrawel_before_deadline';
     $trans = RegisterController::update_transaction($request, $order);
-    CategoryEventRegistration::where('id', $request->categoryEventRegistration)->delete();
+    $categoryEventRegistration->update(['withdrawn_at' => now()]);
 
     // have to send mail to admin and owner
 

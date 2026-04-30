@@ -62,6 +62,12 @@ class CategoryEvent extends Model
   // app/Models/CategoryEvent.php
   public function categoryEventRegistrations()
   {
+    return $this->hasMany(\App\Models\CategoryEventRegistration::class, 'category_event_id', 'id')
+      ->whereNull('withdrawn_at');
+  }
+
+  public function allCategoryEventRegistrations()
+  {
     return $this->hasMany(\App\Models\CategoryEventRegistration::class, 'category_event_id', 'id');
   }
 

@@ -517,20 +517,62 @@ class RegisterController extends Controller
           $registration = Registration::find($item->registration_id);
 
           if (!$registration) {
+            Log::error('[HYBRID ITN] Registration not found for order item', [
+              'order_id'         => $order->id,
+              'registration_id'  => $item->registration_id,
+              'player_id'        => $item->player_id,
+              'category_event_id'=> $item->category_event_id,
+            ]);
             continue;
           }
 
-          $registration->players()->syncWithoutDetaching([
-            $item->player_id
-          ]);
+          try {
+            $registration->players()->syncWithoutDetaching([
+              $item->player_id
+            ]);
+          } catch (\Throwable $e) {
+            Log::error('[HYBRID ITN] Failed to sync player to registration', [
+              'order_id'        => $order->id,
+              'registration_id' => $item->registration_id,
+              'player_id'       => $item->player_id,
+              'error'           => $e->getMessage(),
+            ]);
+          }
 
-          $registration->categoryEvents()->syncWithoutDetaching([
-            $item->category_event_id => [
-              'payment_status_id' => 1,
-              'user_id' => $order->user_id,
-              'pf_transaction_id' => $data['pf_payment_id'] ?? null,
-            ],
-          ]);
+          try {
+            // Check if CER already exists to avoid silent sync failure on unique constraint
+            $cerExists = \App\Models\CategoryEventRegistration::where('registration_id', $item->registration_id)
+              ->where('category_event_id', $item->category_event_id)
+              ->exists();
+
+            if ($cerExists) {
+              // Already exists – just update pf_transaction_id if missing
+              \App\Models\CategoryEventRegistration::where('registration_id', $item->registration_id)
+                ->where('category_event_id', $item->category_event_id)
+                ->whereNull('pf_transaction_id')
+                ->update([
+                  'pf_transaction_id'  => $data['pf_payment_id'] ?? null,
+                  'payment_status_id'  => 1,
+                  'user_id'            => $order->user_id,
+                ]);
+            } else {
+              $registration->categoryEvents()->syncWithoutDetaching([
+                $item->category_event_id => [
+                  'payment_status_id' => 1,
+                  'user_id'           => $order->user_id,
+                  'pf_transaction_id' => $data['pf_payment_id'] ?? null,
+                ],
+              ]);
+            }
+          } catch (\Throwable $e) {
+            Log::error('[HYBRID ITN] Failed to sync category event registration', [
+              'order_id'         => $order->id,
+              'registration_id'  => $item->registration_id,
+              'category_event_id'=> $item->category_event_id,
+              'pf_payment_id'    => $data['pf_payment_id'] ?? null,
+              'error'            => $e->getMessage(),
+            ]);
+          }
         }
 
         // 6️⃣ Create a Transaction record for this PayFast registration

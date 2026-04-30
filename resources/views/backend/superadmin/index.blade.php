@@ -477,6 +477,9 @@
         <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-sm btn-outline-secondary ms-auto">
           <i class="ti ti-external-link me-1"></i>Full Refunds Page
         </a>
+        <a href="{{ route('superadmin.orphans.index') }}" class="btn btn-sm btn-outline-danger ms-2">
+          <i class="ti ti-alert-triangle me-1"></i>Orphaned Registrations
+        </a>
       </div>
 
       <ul class="nav nav-pills mb-3" id="sa-withdrawal-tabs" role="tablist">
