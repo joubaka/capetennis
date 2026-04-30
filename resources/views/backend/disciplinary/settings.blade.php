@@ -230,40 +230,35 @@
             <h5 class="mb-0"><i class="ti ti-table me-2"></i>Code of Conduct Quick Reference</h5>
         </div>
         <div class="card-body">
-            <p class="text-muted mb-3">This table is displayed to players and coaches as a summary of the disciplinary system.</p>
+            <p class="text-muted mb-3">Summary of active violation types and their suspension-point values. Edit the violation types above to update this table.</p>
             <div class="table-responsive">
                 <table class="table table-bordered">
                     <thead class="table-dark">
                         <tr>
-                            <th>Violation Category</th>
-                            <th>Consequence</th>
+                            <th>Violation Type</th>
+                            <th>Category</th>
                             <th>Suspension Points</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td>On-Court Behaviour</td>
-                            <td>Warning → Point → Game</td>
-                            <td>2 Points</td>
+                        @foreach($violationTypes->sortBy(['category', 'default_points']) as $vt)
+                        <tr class="{{ $vt->active ? '' : 'text-muted' }}">
+                            <td>{{ $vt->name }}</td>
+                            <td>{{ $vt->category_label }}</td>
+                            <td><strong>{{ $vt->default_points }}</strong></td>
+                            <td>
+                                @if($vt->active)
+                                    <span class="badge bg-success">Active</span>
+                                @else
+                                    <span class="badge bg-secondary">Inactive</span>
+                                @endif
+                            </td>
                         </tr>
-                        <tr>
-                            <td>Late Withdrawal</td>
-                            <td>Admin Review</td>
-                            <td>3 Points</td>
-                        </tr>
-                        <tr>
-                            <td>No Show</td>
-                            <td>Automatic Entry Ban</td>
-                            <td>5 Points</td>
-                        </tr>
-                        <tr>
-                            <td>Aggressive Abuse</td>
-                            <td>Immediate Default</td>
-                            <td>8–12 Points</td>
-                        </tr>
+                        @endforeach
                         <tr class="table-warning">
-                            <td colspan="2"><strong>Cumulative Total</strong></td>
-                            <td><strong>{{ $settings['suspension_threshold']->value ?? 12 }} Points in {{ round(($settings['expiry_days']->value ?? 365) / 30) }} months → {{ $settings['first_suspension_months']->value ?? 3 }}-Month Suspension (1st offence)</strong></td>
+                            <td colspan="2"><strong>Cumulative Total → Suspension</strong></td>
+                            <td colspan="2"><strong>{{ $settings['suspension_threshold']->value ?? 12 }} points within {{ round(($settings['expiry_days']->value ?? 365) / 30) }} months → {{ $settings['first_suspension_months']->value ?? 3 }}-month suspension (1st offence), {{ $settings['second_suspension_months']->value ?? 6 }}-month suspension (2nd+ offence)</strong></td>
                         </tr>
                     </tbody>
                 </table>

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\SuspensionAlertMail;
 use App\Mail\ViolationNotificationMail;
 use App\Models\DisciplineSetting;
 use App\Models\Player;
@@ -27,11 +28,13 @@ class DisciplinaryService
     }
 
     /**
-     * Total number of suspensions ever triggered for a player.
+     * Total number of suspensions a player has served or is serving.
+     * Lifted suspensions (i.e. overturned on appeal) are excluded so that
+     * a successful appeal does not escalate the penalty for the next offence.
      */
     public function getSuspensionCount(Player $player): int
     {
-        return $player->suspensions()->count();
+        return $player->suspensions()->whereNull('lifted_at')->count();
     }
 
     /**
@@ -68,6 +71,8 @@ class DisciplinaryService
             'starts_at'        => $startsAt->toDateString(),
             'ends_at'          => $endsAt->toDateString(),
         ]);
+
+        $this->sendSuspensionNotification($player, $suspension);
 
         return $suspension;
     }
@@ -176,7 +181,7 @@ class DisciplinaryService
             return;
         }
 
-        // Build CC: event admins + recorder
+        // Build CC: event admins + super-users + recorder
         $ccAddresses = collect();
 
         if ($violation->event_id) {
@@ -195,21 +200,69 @@ class DisciplinaryService
             $ccAddresses->push($recorder->email);
         }
 
-        $ccAddresses = $ccAddresses->unique()->filter();
-
-        // Remove CC addresses that are already in TO (avoid duplicates)
-        $ccAddresses = $ccAddresses->diff($toAddresses)->values();
+        // Deduplicate and remove any CC that already appears in TO
+        $ccAddresses = $ccAddresses->unique()->filter()->diff($toAddresses)->values();
 
         $mailable = new ViolationNotificationMail($player, $violation, $recorder);
 
+        // Build the full CC list: extra TO addresses + admin/recorder CCs, passed in one call
+        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+
         $mailer = Mail::to($toAddresses->first());
 
-        if ($toAddresses->count() > 1) {
-            $mailer = $mailer->cc($toAddresses->slice(1)->values()->toArray());
+        if ($allCc->isNotEmpty()) {
+            $mailer = $mailer->cc($allCc->toArray());
         }
 
-        if ($ccAddresses->isNotEmpty()) {
-            $mailer = $mailer->cc($ccAddresses->toArray());
+        $mailer->queue($mailable);
+    }
+
+    /**
+     * Send suspension notification to the player, guardian, and super-users.
+     */
+    private function sendSuspensionNotification(Player $player, PlayerSuspension $suspension): void
+    {
+        if (SiteSetting::get('email_on_violation', '1') !== '1') {
+            return;
+        }
+
+        $toAddresses = collect();
+
+        if ($player->email) {
+            $toAddresses->push($player->email);
+        }
+
+        $guardian = $player->agreements()
+            ->whereNotNull('guardian_email')
+            ->latest('accepted_at')
+            ->first();
+
+        if ($guardian && $guardian->guardian_email && $guardian->guardian_email !== $player->email) {
+            $toAddresses->push($guardian->guardian_email);
+        }
+
+        foreach ($player->users as $user) {
+            if ($user->email && !$toAddresses->contains($user->email)) {
+                $toAddresses->push($user->email);
+            }
+        }
+
+        if ($toAddresses->isEmpty()) {
+            return;
+        }
+
+        $ccAddresses = User::role('super-user')->pluck('email')->filter()
+            ->diff($toAddresses)
+            ->values();
+
+        $mailable = new SuspensionAlertMail($player, $suspension);
+
+        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+
+        $mailer = Mail::to($toAddresses->first());
+
+        if ($allCc->isNotEmpty()) {
+            $mailer = $mailer->cc($allCc->toArray());
         }
 
         $mailer->queue($mailable);

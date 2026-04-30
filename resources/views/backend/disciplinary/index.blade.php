@@ -82,6 +82,11 @@
     </div>
 
     <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="text-muted small">
+                Showing {{ $violations->firstItem() ?? 0 }}–{{ $violations->lastItem() ?? 0 }} of {{ $violations->total() }} result(s)
+            </span>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead>
@@ -92,6 +97,7 @@
                         <th>Penalty</th>
                         <th>Points</th>
                         <th>Status</th>
+                        <th>Event</th>
                         <th>Recorded By</th>
                         <th>Actions</th>
                     </tr>
@@ -127,6 +133,7 @@
                                     <span class="badge bg-success">Active</span>
                                 @endif
                             </td>
+                            <td>{{ $v->event?->name ?? '—' }}</td>
                             <td>{{ $v->recorder->name ?? '—' }}</td>
                             <td>
                                 <div class="d-flex gap-1">
