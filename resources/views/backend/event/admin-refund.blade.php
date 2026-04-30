@@ -119,21 +119,34 @@
           <button type="submit" class="btn btn-warning">
             <i class="ti ti-check me-1"></i> Process Refund
           </button>
-          <form method="POST"
-                action="{{ route('admin.registration.refund.cancel', [$event, $registration]) }}"
-                onsubmit="return confirm('Cancel this withdrawal? The player will be restored to active status.');">
-            @csrf
-            @method('DELETE')
-            <button type="submit" class="btn btn-outline-secondary">
-              <i class="ti ti-x me-1"></i> Cancel
-            </button>
-          </form>
+          <button type="button" class="btn btn-outline-secondary" id="cancel-withdraw-btn">
+            <i class="ti ti-x me-1"></i> Cancel
+          </button>
         </div>
 
+      </form>
+
+      <form method="POST"
+            id="cancel-withdraw-form"
+            action="{{ route('admin.registration.refund.cancel', [$event, $registration]) }}"
+            style="display:none;">
+        @csrf
+        @method('DELETE')
       </form>
 
     </div>
   </div>
 
 </div>
+
+@push('scripts')
+<script>
+document.getElementById('cancel-withdraw-btn').addEventListener('click', function () {
+  if (confirm('Cancel this withdrawal? The player will be restored to active status.')) {
+    document.getElementById('cancel-withdraw-form').submit();
+  }
+});
+</script>
+@endpush
+
 @endsection
