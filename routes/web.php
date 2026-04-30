@@ -1337,6 +1337,7 @@ Route::delete(
   Route::resource('regionTeam', RegionTeamController::class);
 
   //settings
+  Route::post('settings/single', [SettingsController::class, 'storeSingle'])->name('settings.store.single');
   Route::resource('settings', SettingsController::class);
 
   //email

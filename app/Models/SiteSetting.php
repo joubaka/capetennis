@@ -51,14 +51,18 @@ class SiteSetting extends Model
     }
 
     /**
-     * Set a setting value by key.
+     * Set a setting value by key, optionally specifying the group.
+     * When the record already exists its group is preserved; when it is
+     * created for the first time the supplied group is stored.
      */
-    public static function set(string $key, $value): void
+    public static function set(string $key, $value, ?string $group = null): void
     {
-        static::updateOrCreate(
-            ['key' => $key],
-            ['value' => $value]
-        );
+        $data = ['value' => $value];
+        if ($group !== null) {
+            $data['group'] = $group;
+        }
+
+        static::updateOrCreate(['key' => $key], $data);
 
         Cache::forget("site_setting.{$key}");
     }

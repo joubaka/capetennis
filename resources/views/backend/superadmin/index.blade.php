@@ -1083,8 +1083,9 @@
                           <br><small class="text-muted">Send admin email when a {{ strtolower($label) }} occurs.</small>
                         </div>
                         <div class="form-check form-switch ms-3">
-                          <input class="form-check-input" type="checkbox" role="switch"
+                          <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                  id="sa-{{ $key }}" name="{{ $key }}" value="1"
+                                 data-setting-key="{{ $key }}"
                                  {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
                         </div>
                       </div>
@@ -1113,8 +1114,9 @@
                         <br><small class="text-muted">When off, all new event registrations are blocked site-wide.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-registration-open" name="registration_open" value="1"
+                               data-setting-key="registration_open"
                                {{ old('registration_open', $registrationSettings['registration_open'] ?? '1') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1127,8 +1129,9 @@
                         <br><small class="text-muted">When off, all withdrawal requests are blocked site-wide.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-withdrawal-allowed" name="withdrawal_allowed" value="1"
+                               data-setting-key="withdrawal_allowed"
                                {{ old('withdrawal_allowed', $registrationSettings['withdrawal_allowed'] ?? '1') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1152,8 +1155,9 @@
                         <br><small class="text-muted">Players must have a complete profile before registering for any event.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-profile-required" name="profile_required_for_registration" value="1"
+                               data-setting-key="profile_required_for_registration"
                                {{ old('profile_required_for_registration', $registrationSettings['profile_required_for_registration'] ?? '1') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1277,8 +1281,9 @@
                         <br><small class="text-muted">Players must accept the Code of Conduct.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-require-coc" name="require_code_of_conduct" value="1"
+                               data-setting-key="require_code_of_conduct"
                                {{ old('require_code_of_conduct', $generalSettings['require_code_of_conduct'] ?? '0') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1291,8 +1296,9 @@
                         <br><small class="text-muted">Players must accept the Terms &amp; Conditions.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-require-terms" name="require_terms" value="1"
+                               data-setting-key="require_terms"
                                {{ old('require_terms', $generalSettings['require_terms'] ?? '0') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1305,8 +1311,9 @@
                         <br><small class="text-muted">Players must update their profile details when logging in if incomplete or outdated.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
-                        <input class="form-check-input" type="checkbox" role="switch"
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
                                id="sa-require-profile-update" name="require_profile_update" value="1"
+                               data-setting-key="require_profile_update"
                                {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
                       </div>
                     </div>
@@ -1642,6 +1649,51 @@ $(function () {
 
   saUpdatePreviews();
   $(document).on('input', '.sa-method-pct-input, #sa-payfast-fee-flat, #sa-payfast-vat-rate', saUpdatePreviews);
+
+  // ── Settings toggles — auto-save on change ───────────────────
+  var saToggleUrl = '{{ route('settings.store.single') }}';
+  var saToggleToken = $('meta[name="csrf-token"]').attr('content')
+                   || $('input[name="_token"]').first().val();
+
+  function saShowToast(message, isError) {
+    var $toast = $('#sa-settings-toast');
+    var $msg   = $('#sa-settings-toast-msg');
+    $toast.removeClass('d-none alert-success alert-danger show');
+    $toast.addClass(isError ? 'alert-danger' : 'alert-success').addClass('show').removeClass('d-none');
+    $msg.text(message);
+    clearTimeout($toast.data('hideTimer'));
+    if (!isError) {
+      $toast.data('hideTimer', setTimeout(function () {
+        $toast.removeClass('show').addClass('d-none');
+      }, 3000));
+    }
+  }
+
+  $(document).on('change', '.sa-toggle-setting', function () {
+    var key   = $(this).data('setting-key');
+    var value = $(this).is(':checked') ? '1' : '0';
+    var $el   = $(this);
+
+    $el.prop('disabled', true);
+
+    $.ajax({
+      url:     saToggleUrl,
+      method:  'POST',
+      data:    { _token: saToggleToken, key: key, value: value },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      success: function (res) {
+        saShowToast(res.message || 'Setting saved.', false);
+      },
+      error: function (xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Save failed. Please try again.';
+        saShowToast(msg, true);
+        $el.prop('checked', value === '0');
+      },
+      complete: function () {
+        $el.prop('disabled', false);
+      }
+    });
+  });
 
   // ── Settings form — AJAX save ─────────────────────────────────
   $('#sa-settings-form').on('submit', function (e) {
