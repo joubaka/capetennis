@@ -194,6 +194,40 @@ class AdminRegistrationRefundTest extends TestCase
         ]);
     }
 
+    public function test_store_refund_none_accepts_optional_reason(): void
+    {
+        $admin = $this->adminUser();
+        $event = Event::factory()->create();
+        $reg   = $this->withdrawnRegistration();
+
+        $this->actingAs($admin);
+
+        $response = $this->post(
+            route('admin.registration.refund.store', [$event, $reg]),
+            ['method' => 'none', 'reason' => 'Late withdrawal — post-deadline']
+        );
+
+        $response->assertStatus(302);
+        $response->assertSessionHas('success');
+        $response->assertSessionHasNoErrors();
+    }
+
+    public function test_store_refund_none_rejects_too_long_reason(): void
+    {
+        $admin = $this->adminUser();
+        $event = Event::factory()->create();
+        $reg   = $this->withdrawnRegistration();
+
+        $this->actingAs($admin);
+
+        $response = $this->post(
+            route('admin.registration.refund.store', [$event, $reg]),
+            ['method' => 'none', 'reason' => str_repeat('x', 256)]
+        );
+
+        $response->assertSessionHasErrors(['reason']);
+    }
+
     // -----------------------------------------------------------------------
     // storeRefund — method=payfast without pf_payment_id → error
     // -----------------------------------------------------------------------

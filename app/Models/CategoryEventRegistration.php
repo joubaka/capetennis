@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CategoryEventRegistration extends Model
 {
@@ -12,6 +13,7 @@ class CategoryEventRegistration extends Model
   public const REFUND_COMPLETED = 'completed';
 
   use HasFactory;
+  use SoftDeletes;
 
   protected static function booted(): void
   {

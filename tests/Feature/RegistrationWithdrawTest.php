@@ -65,4 +65,20 @@ class RegistrationWithdrawTest extends TestCase
 
         $response->assertSessionHasErrors();
     }
+
+    public function test_withdraw_blocked_when_category_draw_is_locked(): void
+    {
+        $user = User::factory()->create();
+        $registration = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        // Lock the draw on the category event
+        $registration->categoryEvent->update(['locked_at' => now()]);
+        $registration->load('categoryEvent');
+
+        $result = $registration->canWithdraw($user);
+
+        $this->assertFalse($result['ok']);
+        $this->assertEquals('draw_locked', $result['reason']);
+    }
 }
