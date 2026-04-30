@@ -109,13 +109,39 @@
     </div>
   </div>
 
-  {{-- TRANSACTIONS TABLE --}}
-  <div class="card mb-4">
-    <div class="card-header">
-      <h5 class="mb-0">Transactions</h5>
-    </div>
-    <div class="card-body p-0">
-      <table id="txTable" class="table table-striped mb-0">
+  {{-- TABS --}}
+  <ul class="nav nav-tabs mb-0" id="financesTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-transactions" data-bs-toggle="tab" data-bs-target="#pane-transactions" type="button" role="tab">
+        <i class="ti ti-list me-1"></i>Transactions
+        <span class="badge bg-secondary ms-1">{{ $transactions->count() }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-payouts" data-bs-toggle="tab" data-bs-target="#pane-payouts" type="button" role="tab">
+        <i class="ti ti-cash-banknote me-1"></i>Payouts
+        @if($payoutModels->count())
+          <span class="badge bg-info ms-1">{{ $payoutModels->count() }}</span>
+        @endif
+      </button>
+    </li>
+    @if($eligibleForRefund->count() || $eligibleTeamOrders->count())
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-refunds" data-bs-toggle="tab" data-bs-target="#pane-refunds" type="button" role="tab">
+        <i class="ti ti-receipt-refund me-1"></i>Full Refunds
+        <span class="badge bg-warning text-dark ms-1">{{ $eligibleForRefund->count() + $eligibleTeamOrders->count() }}</span>
+      </button>
+    </li>
+    @endif
+  </ul>
+
+  <div class="tab-content border border-top-0 rounded-bottom mb-4">
+
+    {{-- TRANSACTIONS PANE --}}
+    <div class="tab-pane fade show active p-0" id="pane-transactions" role="tabpanel">
+      <div class="card border-0 mb-0 rounded-0">
+        <div class="card-body p-0">
+          <table id="txTable" class="table table-striped mb-0">
         <thead class="table-light">
           <tr>
             <th style="width:32px;"></th>
@@ -235,17 +261,19 @@
         @endforeach
         </tbody>
       </table>
-    </div>
-  </div>
+        </div>
+      </div>
+    </div>{{-- /pane-transactions --}}
 
-  {{-- PAYOUTS SECTION --}}
-  <div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0"><i class="ti ti-cash-banknote me-2 text-info"></i>Convenor Payouts</h5>
-      <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#payoutFormCollapse">
-        <i class="ti ti-plus me-1"></i>Add Payout
-      </button>
-    </div>
+    {{-- PAYOUTS PANE --}}
+    <div class="tab-pane fade" id="pane-payouts" role="tabpanel">
+      <div class="card border-0 mb-0 rounded-0">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="ti ti-cash-banknote me-2 text-info"></i>Convenor Payouts</h5>
+          <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#payoutFormCollapse">
+            <i class="ti ti-plus me-1"></i>Add Payout
+          </button>
+        </div>
 
     {{-- ADD PAYOUT FORM --}}
     <div class="collapse" id="payoutFormCollapse">
@@ -352,36 +380,38 @@
           </tfoot>
         @endif
       </table>
-    </div>
-  </div>
+      </div>{{-- /table-responsive --}}
+      </div>{{-- /card --}}
+    </div>{{-- /pane-payouts --}}
 
-  {{-- FULL PLAYER REFUNDS SECTION --}}
-  @if($eligibleForRefund->count() || $eligibleTeamOrders->count())
-  <div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">
-        <i class="ti ti-receipt-refund me-2 text-warning"></i>
-        Full Player Refunds
-        <span class="badge bg-warning text-dark ms-2">{{ $eligibleForRefund->count() + $eligibleTeamOrders->count() }}</span>
-      </h5>
-      <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#fullRefundCollapse">
-        <i class="ti ti-chevron-down me-1"></i>Show / Hide
-      </button>
-    </div>
-
-    <div class="collapse show" id="fullRefundCollapse">
-      <div class="card-body pb-1">
-        <p class="text-muted small mb-3">
-          Issue a <strong>full refund (no handling fee deducted)</strong> to a player's wallet or via bank transfer.
-          Normal player-initiated refunds deduct a handling fee; this option bypasses that fee.
-        </p>
-        <div class="input-group input-group-sm" style="max-width:320px;">
-          <span class="input-group-text"><i class="ti ti-search"></i></span>
-          <input type="text" id="fullRefundSearch" class="form-control" placeholder="Search player or category…">
+    {{-- REFUNDS PANE --}}
+    @if($eligibleForRefund->count() || $eligibleTeamOrders->count())
+    <div class="tab-pane fade" id="pane-refunds" role="tabpanel">
+      <div class="card border-0 mb-0 rounded-0">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="ti ti-receipt-refund me-2 text-warning"></i>
+            Full Player Refunds
+            <span class="badge bg-warning text-dark ms-2">{{ $eligibleForRefund->count() + $eligibleTeamOrders->count() }}</span>
+          </h5>
+          <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#fullRefundCollapse">
+            <i class="ti ti-chevron-down me-1"></i>Show / Hide
+          </button>
         </div>
-      </div>
 
-      <div class="table-responsive">
+        <div class="collapse show" id="fullRefundCollapse">
+          <div class="card-body pb-1">
+            <p class="text-muted small mb-3">
+              Issue a <strong>full refund (no handling fee deducted)</strong> to a player's wallet or via bank transfer.
+              Normal player-initiated refunds deduct a handling fee; this option bypasses that fee.
+            </p>
+            <div class="input-group input-group-sm" style="max-width:320px;">
+              <span class="input-group-text"><i class="ti ti-search"></i></span>
+              <input type="text" id="fullRefundSearch" class="form-control" placeholder="Search player or category…">
+            </div>
+          </div>
+
+          <div class="table-responsive">
         <table class="table table-sm mb-0" id="fullRefundTable">
           <thead class="table-light">
             <tr>
@@ -463,10 +493,13 @@
 
           </tbody>
         </table>
-      </div>
-    </div>
-  </div>
-  @endif
+          </div>{{-- /table-responsive --}}
+        </div>{{-- /collapse --}}
+      </div>{{-- /card --}}
+    </div>{{-- /pane-refunds --}}
+    @endif
+
+  </div>{{-- /tab-content --}}
 
   {{-- FULL REFUND MODAL --}}
   <div class="modal fade" id="fullRefundModal" tabindex="-1" aria-labelledby="fullRefundModalLabel" aria-hidden="true">
