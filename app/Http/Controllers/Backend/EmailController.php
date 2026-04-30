@@ -681,8 +681,8 @@ class EmailController extends Controller
       return;
     }
 
-    $adminEmail = SiteSetting::get('admin_notification_email', 'hermanustennisacademy@gmail.com');
-    $details['email'] = $adminEmail ?: 'hermanustennisacademy@gmail.com';
+    $adminEmail = SiteSetting::get('admin_notification_email', 'support@capetennis.co.za');
+    $details['email'] = $adminEmail ?: 'support@capetennis.co.za';
     $this->queueMail($details, $mailer);
   }
 
