@@ -1008,12 +1008,10 @@
     {{-- ══ TAB: SETTINGS ══ --}}
     <div class="tab-pane fade p-3" id="sa-pane-settings" role="tabpanel">
 
-      @if(session('success') && session('open_settings_tab'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-          {{ session('success') }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      @endif
+      <div id="sa-settings-toast" class="alert alert-dismissible fade d-none mb-3" role="alert">
+        <span id="sa-settings-toast-msg"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
 
       <form action="{{ route('settings.store') }}" method="POST" id="sa-settings-form">
         @csrf
@@ -1645,8 +1643,44 @@ $(function () {
   saUpdatePreviews();
   $(document).on('input', '.sa-method-pct-input, #sa-payfast-fee-flat, #sa-payfast-vat-rate', saUpdatePreviews);
 
-  // Open Settings tab if URL hash is #settings or after a save redirect
-  if (window.location.hash === '#settings' || {{ session('open_settings_tab') ? 'true' : 'false' }}) {
+  // ── Settings form — AJAX save ─────────────────────────────────
+  $('#sa-settings-form').on('submit', function (e) {
+    e.preventDefault();
+    var $form   = $(this);
+    var $btn    = $form.find('button[type="submit"]');
+    var $toast  = $('#sa-settings-toast');
+    var $msg    = $('#sa-settings-toast-msg');
+
+    $btn.prop('disabled', true).html('<i class="ti ti-loader ti-spin me-1"></i> Saving…');
+
+    $.ajax({
+      url:     $form.attr('action'),
+      method:  'POST',
+      data:    $form.serialize(),
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      success: function (res) {
+        $toast.removeClass('d-none alert-danger').addClass('alert-success show');
+        $msg.text(res.message || 'Settings saved successfully.');
+        setTimeout(function () { $toast.removeClass('show').addClass('d-none'); }, 4000);
+      },
+      error: function (xhr) {
+        var errs = '';
+        if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+          errs = Object.values(xhr.responseJSON.errors).flat().join(' ');
+        } else {
+          errs = (xhr.responseJSON && xhr.responseJSON.message) || 'An error occurred. Please try again.';
+        }
+        $toast.removeClass('d-none alert-success').addClass('alert-danger show');
+        $msg.text(errs);
+      },
+      complete: function () {
+        $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Settings');
+      }
+    });
+  });
+
+  // Open Settings tab if URL hash is #settings
+  if (window.location.hash === '#settings') {
     var el = document.getElementById('sa-tab-settings');
     if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   }
