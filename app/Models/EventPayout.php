@@ -10,20 +10,33 @@ class EventPayout extends Model
 
     protected $fillable = [
         'event_id',
+        'convenor_id',
+        'recipient_name',
         'amount',
-        'recipient',
-        'method',
         'description',
-        'payout_date',
+        'payment_method',
+        'reference',
+        'paid_by',
+        'paid_at',
     ];
 
     protected $casts = [
-        'amount' => 'float',
-        'payout_date' => 'date',
+        'amount'  => 'float',
+        'paid_at' => 'datetime',
     ];
 
     public function event()
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function convenor()
+    {
+        return $this->belongsTo(EventConvenor::class, 'convenor_id');
+    }
+
+    public function paidByUser()
+    {
+        return $this->belongsTo(User::class, 'paid_by');
     }
 }
