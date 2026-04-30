@@ -212,8 +212,7 @@ class CategoryEventRegistration extends Model
 
   public function isRefunded(): bool
   {
-   
-    return $this->status === 'completed';
+    return $this->refund_status === 'completed';
   }
 
   // --------------------------------------------------
@@ -222,9 +221,11 @@ class CategoryEventRegistration extends Model
 
   public function canWithdraw(User $user): array
   {
-    // Ownership
-    if ($this->user_id !== $user->id) {
-     //   if ((int) $this->user_id !== (int) $user->id) {
+    $isAdmin = method_exists($user, 'hasAnyRole')
+      && $user->hasAnyRole(['super-user', 'admin']);
+
+    // Ownership (admins bypass)
+    if ($this->user_id !== $user->id && !$isAdmin) {
       return [
         'ok' => false,
         'reason' => 'not_owner',
@@ -285,18 +286,17 @@ class CategoryEventRegistration extends Model
 
   public function isRefundPending(): bool
   {
-    return $this->status === 'pending';
+    return $this->refund_status === 'pending';
   }
 
   public function isRefundCompleted(): bool
   {
-   
-    return $this->status === 'completed';
+    return $this->refund_status === 'completed';
   }
 
   public function hasRefund(): bool
   {
-    return !empty($this->status);
+    return !in_array($this->refund_status, [null, '', 'not_refunded']);
   }
 
   public function isBankRefund(): bool
@@ -313,7 +313,7 @@ class CategoryEventRegistration extends Model
   {
     return $this->status === 'withdrawn'
       && $this->is_paid
-      && empty($this->refund_status);
+      && in_array($this->refund_status, [null, '', 'not_refunded']);
   }
 
 }

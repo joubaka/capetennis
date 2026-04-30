@@ -7,6 +7,7 @@ use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Carbon as IlluminateCarbon;
 use Mockery;
 use Tests\TestCase;
 
@@ -28,9 +29,11 @@ class CategoryEventRegistrationModelTest extends TestCase
         Carbon $withdrawalDeadline,
         ?string $pfTxId = null
     ): CategoryEventRegistration {
+        $illuminateDeadline = IlluminateCarbon::instance($withdrawalDeadline);
+
         $event = Mockery::mock(Event::class)->makePartial();
-        $event->withdrawal_deadline = $withdrawalDeadline;
-        $event->shouldReceive('withdrawalCloseAt')->andReturn($withdrawalDeadline);
+        $event->withdrawal_deadline = $illuminateDeadline;
+        $event->shouldReceive('withdrawalCloseAt')->andReturn($illuminateDeadline);
 
         $categoryEvent = Mockery::mock(CategoryEvent::class)->makePartial();
         $categoryEvent->shouldReceive('getAttribute')->with('event')->andReturn($event);
@@ -47,8 +50,9 @@ class CategoryEventRegistrationModelTest extends TestCase
 
     private function user(int $id): User
     {
-        $user = new User();
+        $user = Mockery::mock(User::class)->makePartial();
         $user->id = $id;
+        $user->shouldReceive('hasAnyRole')->andReturn(false);
         return $user;
     }
 
