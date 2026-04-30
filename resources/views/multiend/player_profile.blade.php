@@ -117,14 +117,14 @@
 
 
 
-                            @foreach($player->exersizes as $exersize)
+                            @foreach($player->exercises as $exersize)
 
                             <tr>
                                 <td>{{$exersize->created_at->format('d M Y')}}</td>
-                                <td>{{$exersize->exersizeName->name}}</td>
+                                <td>{{$exersize->exerciseName->name}}</td>
                                 <td>{{$exersize->score}}</td>
-                                <td>{{$exersize->exersizeName->max_score}}</td>
-                                <td>{{$exersize->exersizeName->exersize_type->name}}</td>
+                                <td>{{$exersize->exerciseName->max_score}}</td>
+                                <td>{{$exersize->exerciseName->exerciseType->name}}</td>
                             </tr>
 
                             @endforeach
