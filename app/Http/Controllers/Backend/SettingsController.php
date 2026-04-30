@@ -75,6 +75,12 @@ class SettingsController extends Controller
         SiteSetting::set('withdrawal_deadline_days', (string) max(0, (int) $request->input('withdrawal_deadline_days', 7)));
         SiteSetting::set('profile_required_for_registration', $request->boolean('profile_required_for_registration') ? '1' : '0');
 
+        if ($request->input('_settings_origin') === 'superadmin') {
+            return redirect()->route('backend.superadmin.index')
+                ->with('success', 'Settings updated successfully.')
+                ->with('open_settings_tab', true);
+        }
+
         return redirect()->route('settings.index')
             ->with('success', 'Settings updated successfully.');
     }

@@ -1008,7 +1008,7 @@
     {{-- ══ TAB: SETTINGS ══ --}}
     <div class="tab-pane fade p-3" id="sa-pane-settings" role="tabpanel">
 
-      @if(session('success') && request()->routeIs('backend.superadmin.index'))
+      @if(session('success') && session('open_settings_tab'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
           {{ session('success') }}
           <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -1017,270 +1017,311 @@
 
       <form action="{{ route('settings.store') }}" method="POST" id="sa-settings-form">
         @csrf
+        <input type="hidden" name="_settings_origin" value="superadmin">
 
-        {{-- ════ A: EMAIL NOTIFICATIONS ════ --}}
-        <div class="card mb-4">
-          <div class="card-header">
-            <h5 class="mb-0"><i class="ti ti-mail me-1 text-primary"></i> Email Notifications</h5>
-            <small class="text-muted">Control which events trigger an admin notification email.</small>
-          </div>
-          <div class="card-body">
-            <div class="row g-3">
+        {{-- ════ Settings sub-tabs ════ --}}
+        <ul class="nav nav-pills mb-3 gap-1" id="sa-settings-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="sa-stab-email" data-bs-toggle="pill"
+                    data-bs-target="#sa-spane-email" type="button" role="tab">
+              <i class="ti ti-mail me-1"></i>Email
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="sa-stab-registration" data-bs-toggle="pill"
+                    data-bs-target="#sa-spane-registration" type="button" role="tab">
+              <i class="ti ti-ticket me-1"></i>Registration
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="sa-stab-payfast" data-bs-toggle="pill"
+                    data-bs-target="#sa-spane-payfast" type="button" role="tab">
+              <i class="ti ti-credit-card me-1"></i>PayFast Fees
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="sa-stab-access" data-bs-toggle="pill"
+                    data-bs-target="#sa-spane-access" type="button" role="tab">
+              <i class="ti ti-file-check me-1"></i>Access &amp; Conduct
+            </button>
+          </li>
+        </ul>
 
-              <div class="col-md-12 mb-2">
-                <label class="form-label" for="sa-admin-notification-email">Admin Notification Email</label>
-                <input type="email" class="form-control" id="sa-admin-notification-email"
-                       name="admin_notification_email"
-                       value="{{ old('admin_notification_email', $emailSettings['admin_notification_email'] ?? 'support@capetennis.co.za') }}">
-                <small class="text-muted">All system notification emails are sent to this address.</small>
+        <div class="tab-content" id="sa-settings-tab-content">
+
+          {{-- ════ A: EMAIL NOTIFICATIONS ════ --}}
+          <div class="tab-pane fade show active" id="sa-spane-email" role="tabpanel">
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-mail me-1 text-primary"></i> Email Notifications</h5>
+                <small class="text-muted">Control which events trigger an admin notification email.</small>
               </div>
+              <div class="card-body">
+                <div class="row g-3">
 
-              @php
-                $emailToggles = [
-                  'email_on_registration'      => 'Player Registration',
-                  'email_on_withdrawal'        => 'Player Withdrawal',
-                  'email_on_team_withdrawal'   => 'Team Player Withdrawal',
-                  'email_on_wallet_topup'      => 'Wallet Top-Up',
-                  'email_on_bank_refund_request' => 'Bank Refund Request',
-                ];
-              @endphp
-
-              @foreach($emailToggles as $key => $label)
-                <div class="col-md-6">
-                  <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                    <div>
-                      <label class="form-label mb-0" for="sa-{{ $key }}">{{ $label }}</label>
-                      <br><small class="text-muted">Send admin email when a {{ strtolower($label) }} occurs.</small>
-                    </div>
-                    <div class="form-check form-switch ms-3">
-                      <input class="form-check-input" type="checkbox" role="switch"
-                             id="sa-{{ $key }}" name="{{ $key }}" value="1"
-                             {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
-                    </div>
+                  <div class="col-md-12 mb-2">
+                    <label class="form-label" for="sa-admin-notification-email">Admin Notification Email</label>
+                    <input type="email" class="form-control" id="sa-admin-notification-email"
+                           name="admin_notification_email"
+                           value="{{ old('admin_notification_email', $emailSettings['admin_notification_email'] ?? 'support@capetennis.co.za') }}">
+                    <small class="text-muted">All system notification emails are sent to this address.</small>
                   </div>
-                </div>
-              @endforeach
 
-            </div>
-          </div>
-        </div>
+                  @php
+                    $emailToggles = [
+                      'email_on_registration'        => 'Player Registration',
+                      'email_on_withdrawal'          => 'Player Withdrawal',
+                      'email_on_team_withdrawal'     => 'Team Player Withdrawal',
+                      'email_on_wallet_topup'        => 'Wallet Top-Up',
+                      'email_on_bank_refund_request' => 'Bank Refund Request',
+                    ];
+                  @endphp
 
-        {{-- ════ B: REGISTRATION & WITHDRAWAL BEHAVIOUR ════ --}}
-        <div class="card mb-4">
-          <div class="card-header">
-            <h5 class="mb-0"><i class="ti ti-ticket me-1 text-warning"></i> Registration &amp; Withdrawal</h5>
-            <small class="text-muted">Global switches that override per-event settings when disabled.</small>
-          </div>
-          <div class="card-body">
-            <div class="row g-3">
-
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-registration-open">Registrations Open</label>
-                    <br><small class="text-muted">When off, all new event registrations are blocked site-wide.</small>
-                  </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-registration-open" name="registration_open" value="1"
-                           {{ old('registration_open', $registrationSettings['registration_open'] ?? '1') == '1' ? 'checked' : '' }}>
-                  </div>
-                </div>
-              </div>
-
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-withdrawal-allowed">Withdrawals Allowed</label>
-                    <br><small class="text-muted">When off, all withdrawal requests are blocked site-wide.</small>
-                  </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-withdrawal-allowed" name="withdrawal_allowed" value="1"
-                           {{ old('withdrawal_allowed', $registrationSettings['withdrawal_allowed'] ?? '1') == '1' ? 'checked' : '' }}>
-                  </div>
-                </div>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label" for="sa-withdrawal-deadline-days">Withdrawal Deadline (days before event start)</label>
-                <div class="input-group">
-                  <input type="number" min="0" max="365" class="form-control"
-                         id="sa-withdrawal-deadline-days" name="withdrawal_deadline_days"
-                         value="{{ old('withdrawal_deadline_days', $registrationSettings['withdrawal_deadline_days'] ?? '7') }}">
-                  <span class="input-group-text">days</span>
-                </div>
-                <small class="text-muted">Players cannot withdraw after this many days before the event starts.</small>
-              </div>
-
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-profile-required">Require Complete Profile to Register</label>
-                    <br><small class="text-muted">Players must have a complete profile before registering for any event.</small>
-                  </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-profile-required" name="profile_required_for_registration" value="1"
-                           {{ old('profile_required_for_registration', $registrationSettings['profile_required_for_registration'] ?? '1') == '1' ? 'checked' : '' }}>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-
-        {{-- ════ C: PAYFAST FEE SETTINGS ════ --}}
-        <div class="card mb-4">
-          <div class="card-header">
-            <h5 class="mb-0"><i class="ti ti-credit-card me-1"></i> PayFast Fee Settings</h5>
-            <small class="text-muted">
-              These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the convenor is charged at the rates set below.
-            </small>
-          </div>
-          <div class="card-body">
-            <div class="row g-3 mb-3">
-
-              <div class="col-md-4">
-                <label class="form-label" for="sa-payfast-fee-percentage">Default Fee Percentage (%)</label>
-                <div class="input-group">
-                  <input type="number" step="0.01" min="0" max="100" class="form-control"
-                         id="sa-payfast-fee-percentage" name="payfast_fee_percentage"
-                         value="{{ old('payfast_fee_percentage', $payfastSettings['payfast_fee_percentage']->value ?? '3.2') }}">
-                  <span class="input-group-text">%</span>
-                </div>
-                <small class="text-muted">Fallback percentage when payment method is not detected.</small>
-              </div>
-
-              <div class="col-md-4">
-                <label class="form-label" for="sa-payfast-fee-flat">Flat Fee per Transaction (R)</label>
-                <div class="input-group">
-                  <span class="input-group-text">R</span>
-                  <input type="number" step="0.01" min="0" class="form-control"
-                         id="sa-payfast-fee-flat" name="payfast_fee_flat"
-                         value="{{ old('payfast_fee_flat', $payfastSettings['payfast_fee_flat']->value ?? '2.00') }}">
-                </div>
-                <small class="text-muted">Applied to all payment methods.</small>
-              </div>
-
-              <div class="col-md-4">
-                <label class="form-label" for="sa-payfast-vat-rate">VAT Rate (%)</label>
-                <div class="input-group">
-                  <input type="number" step="0.01" min="0" max="100" class="form-control"
-                         id="sa-payfast-vat-rate" name="payfast_vat_rate"
-                         value="{{ old('payfast_vat_rate', $payfastSettings['payfast_vat_rate']->value ?? '14') }}">
-                  <span class="input-group-text">%</span>
-                </div>
-                <small class="text-muted">VAT applied on top of the fee.</small>
-              </div>
-
-            </div>
-
-            <h6 class="text-muted mt-3 mb-2"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h6>
-            <div class="table-responsive">
-              <table class="table table-striped mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th style="width:200px;">Payment Method</th>
-                    <th style="width:180px;">Fee Percentage</th>
-                    <th>Example Fee on R200</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @foreach($paymentMethods as $methodKey => $methodLabel)
-                    @php
-                      $settingKey = "payfast_fee_pct_{$methodKey}";
-                      $currentPct = old($settingKey, $payfastSettings[$settingKey]->value ?? '3.20');
-                    @endphp
-                    <tr>
-                      <td class="align-middle fw-semibold">{{ $methodLabel }}</td>
-                      <td>
-                        <div class="input-group input-group-sm">
-                          <input type="number" step="0.01" min="0" max="100"
-                                 class="form-control sa-method-pct-input"
-                                 name="{{ $settingKey }}"
-                                 data-method="{{ $methodKey }}"
-                                 value="{{ $currentPct }}">
-                          <span class="input-group-text">%</span>
+                  @foreach($emailToggles as $key => $label)
+                    <div class="col-md-6">
+                      <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                        <div>
+                          <label class="form-label mb-0" for="sa-{{ $key }}">{{ $label }}</label>
+                          <br><small class="text-muted">Send admin email when a {{ strtolower($label) }} occurs.</small>
                         </div>
-                      </td>
-                      <td class="align-middle text-muted">
-                        R <span class="sa-method-preview" data-method="{{ $methodKey }}">—</span>
-                      </td>
-                    </tr>
+                        <div class="form-check form-switch ms-3">
+                          <input class="form-check-input" type="checkbox" role="switch"
+                                 id="sa-{{ $key }}" name="{{ $key }}" value="1"
+                                 {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
+                        </div>
+                      </div>
+                    </div>
                   @endforeach
-                </tbody>
-              </table>
-            </div>
 
-            <div class="card bg-light mt-3 mb-0">
-              <div class="card-body py-2">
-                <strong>Fee Formula:</strong>
-                <code>((amount × percentage%) + R<span id="sa-previewFlat">{{ $payfastSettings['payfast_fee_flat']->value ?? '2.00' }}</span>) × (1 + <span id="sa-previewVat">{{ $payfastSettings['payfast_vat_rate']->value ?? '14' }}</span>%)</code>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </div>{{-- /email --}}
 
-        {{-- ════ D: CODE OF CONDUCT & TERMS ════ --}}
-        <div class="card mb-4">
-          <div class="card-header">
-            <h5 class="mb-0"><i class="ti ti-file-check me-1 text-success"></i> Code of Conduct &amp; Terms</h5>
-            <small class="text-muted">
-              Enable or disable the Code of Conduct and Terms requirements site-wide. When enabled, players must accept these before registering.
-            </small>
-          </div>
-          <div class="card-body">
-            <div class="row g-3">
+          {{-- ════ B: REGISTRATION & WITHDRAWAL ════ --}}
+          <div class="tab-pane fade" id="sa-spane-registration" role="tabpanel">
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-ticket me-1 text-warning"></i> Registration &amp; Withdrawal</h5>
+                <small class="text-muted">Global switches that override per-event settings when disabled.</small>
+              </div>
+              <div class="card-body">
+                <div class="row g-3">
 
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-require-coc">Require Code of Conduct</label>
-                    <br><small class="text-muted">Players must accept the Code of Conduct.</small>
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-registration-open">Registrations Open</label>
+                        <br><small class="text-muted">When off, all new event registrations are blocked site-wide.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-registration-open" name="registration_open" value="1"
+                               {{ old('registration_open', $registrationSettings['registration_open'] ?? '1') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
                   </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-require-coc" name="require_code_of_conduct" value="1"
-                           {{ old('require_code_of_conduct', $generalSettings['require_code_of_conduct'] ?? '0') == '1' ? 'checked' : '' }}>
+
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-withdrawal-allowed">Withdrawals Allowed</label>
+                        <br><small class="text-muted">When off, all withdrawal requests are blocked site-wide.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-withdrawal-allowed" name="withdrawal_allowed" value="1"
+                               {{ old('withdrawal_allowed', $registrationSettings['withdrawal_allowed'] ?? '1') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label class="form-label" for="sa-withdrawal-deadline-days">Withdrawal Deadline (days before event start)</label>
+                    <div class="input-group">
+                      <input type="number" min="0" max="365" class="form-control"
+                             id="sa-withdrawal-deadline-days" name="withdrawal_deadline_days"
+                             value="{{ old('withdrawal_deadline_days', $registrationSettings['withdrawal_deadline_days'] ?? '7') }}">
+                      <span class="input-group-text">days</span>
+                    </div>
+                    <small class="text-muted">Players cannot withdraw after this many days before the event starts.</small>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-profile-required">Require Complete Profile to Register</label>
+                        <br><small class="text-muted">Players must have a complete profile before registering for any event.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-profile-required" name="profile_required_for_registration" value="1"
+                               {{ old('profile_required_for_registration', $registrationSettings['profile_required_for_registration'] ?? '1') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>{{-- /registration --}}
+
+          {{-- ════ C: PAYFAST FEE SETTINGS ════ --}}
+          <div class="tab-pane fade" id="sa-spane-payfast" role="tabpanel">
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-credit-card me-1"></i> PayFast Fee Settings</h5>
+                <small class="text-muted">
+                  These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the convenor is charged at the rates set below.
+                </small>
+              </div>
+              <div class="card-body">
+                <div class="row g-3 mb-3">
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="sa-payfast-fee-percentage">Default Fee Percentage (%)</label>
+                    <div class="input-group">
+                      <input type="number" step="0.01" min="0" max="100" class="form-control"
+                             id="sa-payfast-fee-percentage" name="payfast_fee_percentage"
+                             value="{{ old('payfast_fee_percentage', $payfastSettings['payfast_fee_percentage']->value ?? '3.2') }}">
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <small class="text-muted">Fallback percentage when payment method is not detected.</small>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="sa-payfast-fee-flat">Flat Fee per Transaction (R)</label>
+                    <div class="input-group">
+                      <span class="input-group-text">R</span>
+                      <input type="number" step="0.01" min="0" class="form-control"
+                             id="sa-payfast-fee-flat" name="payfast_fee_flat"
+                             value="{{ old('payfast_fee_flat', $payfastSettings['payfast_fee_flat']->value ?? '2.00') }}">
+                    </div>
+                    <small class="text-muted">Applied to all payment methods.</small>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label" for="sa-payfast-vat-rate">VAT Rate (%)</label>
+                    <div class="input-group">
+                      <input type="number" step="0.01" min="0" max="100" class="form-control"
+                             id="sa-payfast-vat-rate" name="payfast_vat_rate"
+                             value="{{ old('payfast_vat_rate', $payfastSettings['payfast_vat_rate']->value ?? '14') }}">
+                      <span class="input-group-text">%</span>
+                    </div>
+                    <small class="text-muted">VAT applied on top of the fee.</small>
+                  </div>
+
+                </div>
+
+                <h6 class="text-muted mt-3 mb-2"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h6>
+                <div class="table-responsive">
+                  <table class="table table-striped mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th style="width:200px;">Payment Method</th>
+                        <th style="width:180px;">Fee Percentage</th>
+                        <th>Example Fee on R200</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach($paymentMethods as $methodKey => $methodLabel)
+                        @php
+                          $settingKey = "payfast_fee_pct_{$methodKey}";
+                          $currentPct = old($settingKey, $payfastSettings[$settingKey]->value ?? '3.20');
+                        @endphp
+                        <tr>
+                          <td class="align-middle fw-semibold">{{ $methodLabel }}</td>
+                          <td>
+                            <div class="input-group input-group-sm">
+                              <input type="number" step="0.01" min="0" max="100"
+                                     class="form-control sa-method-pct-input"
+                                     name="{{ $settingKey }}"
+                                     data-method="{{ $methodKey }}"
+                                     value="{{ $currentPct }}">
+                              <span class="input-group-text">%</span>
+                            </div>
+                          </td>
+                          <td class="align-middle text-muted">
+                            R <span class="sa-method-preview" data-method="{{ $methodKey }}">—</span>
+                          </td>
+                        </tr>
+                      @endforeach
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="card bg-light mt-3 mb-0">
+                  <div class="card-body py-2">
+                    <strong>Fee Formula:</strong>
+                    <code>((amount × percentage%) + R<span id="sa-previewFlat">{{ $payfastSettings['payfast_fee_flat']->value ?? '2.00' }}</span>) × (1 + <span id="sa-previewVat">{{ $payfastSettings['payfast_vat_rate']->value ?? '14' }}</span>%)</code>
                   </div>
                 </div>
               </div>
-
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-require-terms">Require Terms &amp; Conditions</label>
-                    <br><small class="text-muted">Players must accept the Terms &amp; Conditions.</small>
-                  </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-require-terms" name="require_terms" value="1"
-                           {{ old('require_terms', $generalSettings['require_terms'] ?? '0') == '1' ? 'checked' : '' }}>
-                  </div>
-                </div>
-              </div>
-
-              <div class="col-md-6">
-                <div class="d-flex align-items-center justify-content-between border rounded p-3">
-                  <div>
-                    <label class="form-label mb-0" for="sa-require-profile-update">Require Profile Update on Login</label>
-                    <br><small class="text-muted">Players must update their profile details when logging in if incomplete or outdated.</small>
-                  </div>
-                  <div class="form-check form-switch ms-3">
-                    <input class="form-check-input" type="checkbox" role="switch"
-                           id="sa-require-profile-update" name="require_profile_update" value="1"
-                           {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
-                  </div>
-                </div>
-              </div>
-
             </div>
-          </div>
-        </div>
+          </div>{{-- /payfast --}}
 
-        <div class="mb-4">
+          {{-- ════ D: ACCESS & CONDUCT ════ --}}
+          <div class="tab-pane fade" id="sa-spane-access" role="tabpanel">
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-file-check me-1 text-success"></i> Code of Conduct &amp; Terms</h5>
+                <small class="text-muted">
+                  Enable or disable the Code of Conduct and Terms requirements site-wide. When enabled, players must accept these before registering.
+                </small>
+              </div>
+              <div class="card-body">
+                <div class="row g-3">
+
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-require-coc">Require Code of Conduct</label>
+                        <br><small class="text-muted">Players must accept the Code of Conduct.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-require-coc" name="require_code_of_conduct" value="1"
+                               {{ old('require_code_of_conduct', $generalSettings['require_code_of_conduct'] ?? '0') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-require-terms">Require Terms &amp; Conditions</label>
+                        <br><small class="text-muted">Players must accept the Terms &amp; Conditions.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-require-terms" name="require_terms" value="1"
+                               {{ old('require_terms', $generalSettings['require_terms'] ?? '0') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                      <div>
+                        <label class="form-label mb-0" for="sa-require-profile-update">Require Profile Update on Login</label>
+                        <br><small class="text-muted">Players must update their profile details when logging in if incomplete or outdated.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="sa-require-profile-update" name="require_profile_update" value="1"
+                               {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>{{-- /access --}}
+
+        </div>{{-- /settings tab-content --}}
+
+        <div class="mb-4 pt-2">
           <button type="submit" class="btn btn-primary">
             <i class="ti ti-device-floppy me-1"></i> Save All Settings
           </button>
@@ -1604,8 +1645,8 @@ $(function () {
   saUpdatePreviews();
   $(document).on('input', '.sa-method-pct-input, #sa-payfast-fee-flat, #sa-payfast-vat-rate', saUpdatePreviews);
 
-  // Open Settings tab if URL hash is #settings
-  if (window.location.hash === '#settings') {
+  // Open Settings tab if URL hash is #settings or after a save redirect
+  if (window.location.hash === '#settings' || {{ session('open_settings_tab') ? 'true' : 'false' }}) {
     var el = document.getElementById('sa-tab-settings');
     if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   }
