@@ -1339,6 +1339,7 @@ Route::delete(
   //settings
   Route::post('settings/single', [SettingsController::class, 'storeSingle'])->name('settings.store.single');
   Route::post('settings/template', [SettingsController::class, 'storeTemplate'])->name('settings.store.template');
+  Route::post('settings/content', [SettingsController::class, 'storeContent'])->name('settings.store.content');
   Route::resource('settings', SettingsController::class);
 
   //email
