@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Agreement;
+use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\PlayerAgreement;
 use App\Models\Registration;
+use App\Models\SiteSetting;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Withdrawals;
@@ -141,46 +143,96 @@ class SuperAdminController extends Controller
             ->count();
 
         // ── Financial Dashboard (all events) ─────────────────────────────────
-        $allEvents = Event::with(['incomeItems', 'expenses'])->orderByDesc('start_date')->get();
+        // Uses the same logic as EventTransactionController (source of truth):
+        //   - Excludes test transactions (is_test = false)
+        //   - Recalculates PayFast fee via SiteSetting::calculatePayfastFee()
+        //   - Adds wallet amounts to gross (order->wallet_reserved)
+        //   - Includes completed refunds as negative ledger entries
 
-        // Load all registration transactions with order items once, grouped by event_id.
-        // This replicates EventFinanceController's exact logic including the ?? 1 fallback
-        // for transactions that have no associated order.
+        $allEvents = Event::with(['incomeItems'])->orderByDesc('start_date')->get();
+
+        // All real payment transactions, eager-loaded with order items
         $allTransactions = Transaction::with(['order.items'])
             ->where('transaction_type', 'Registration')
             ->where('amount_gross', '>', 0)
+            ->where('is_test', false)
             ->get()
             ->groupBy('event_id');
 
-        $financeByEvent = $allEvents->map(function ($event) use ($allTransactions) {
-            $feePerEntry   = (float) $event->cape_tennis_fee;
-            $txForEvent    = $allTransactions->get($event->id, collect());
-            $totalGross    = (float) $txForEvent->sum('amount_gross');
-            $totalPfFee    = abs((float) $txForEvent->sum('amount_fee'));
-            $totalEntries  = $txForEvent->sum(fn ($t) => $t->order?->items?->count() ?? 1);
-            $ctFee         = $totalEntries * $feePerEntry;
-            $netReg        = $totalGross - $totalPfFee - $ctFee;
-            $incomeItems   = $event->incomeItems->sum(fn ($i) => $i->calculatedTotal());
-            $totalIncome   = $netReg + $incomeItems;
-            $totalExpenses = $event->expenses->sum(fn ($e) => $e->calculatedAmount());
-            $netProfit     = $totalIncome - $totalExpenses;
+        // All completed refunds across every event (grouped by event_id via categoryEvent)
+        $allRefunds = CategoryEventRegistration::with([
+                'categoryEvent',
+                'payfastTransaction.order.items',
+            ])
+            ->where('status', 'withdrawn')
+            ->where('refund_status', 'completed')
+            ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
+            ->get()
+            ->groupBy(fn ($r) => $r->categoryEvent->event_id);
+
+        $financeByEvent = $allEvents->map(function ($event) use ($allTransactions, $allRefunds) {
+            $feePerEntry = (float) $event->cape_tennis_fee;
+            $txForEvent  = $allTransactions->get($event->id, collect());
+
+            // ── Payment ledger rows (mirrors EventTransactionController) ──
+            $paymentLedger = $txForEvent->map(function ($tx) use ($feePerEntry) {
+                $payfastGross = round((float) $tx->amount_gross, 2);
+                $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
+                $entryCount   = max(1, $tx->order?->items?->count() ?? 0);
+                $pfFee        = SiteSetting::calculatePayfastFee($payfastGross);
+                $capeFee      = round($feePerEntry * $entryCount, 2);
+
+                return [
+                    'gross'   => $payfastGross + $walletUsed,
+                    'fee'     => -$pfFee,
+                    'capeFee' => -$capeFee,
+                    'net'     => round($payfastGross + $walletUsed - $pfFee - $capeFee, 2),
+                    'items'   => $tx->order?->items ?? collect(),
+                ];
+            });
+
+            // ── Refund ledger rows (mirrors EventTransactionController) ──
+            $refundLedger = $allRefunds->get($event->id, collect())
+                ->map(function ($reg) use ($feePerEntry) {
+                    $payment    = $reg->paymentInfo();
+                    if (empty($payment)) {
+                        return null;
+                    }
+                    $grossPaid  = (float) ($payment['gross'] ?? 0);
+                    $payfastFee = abs((float) ($payment['fee'] ?? 0));
+
+                    return [
+                        'gross'   => -$grossPaid,
+                        'fee'     => +$payfastFee,
+                        'capeFee' => +$feePerEntry,
+                        'net'     => round(-$grossPaid + $payfastFee + $feePerEntry, 2),
+                        'items'   => collect(),
+                    ];
+                })
+                ->filter();
+
+            $ledger = $paymentLedger->merge($refundLedger);
+
+            $totalGross   = round($ledger->sum('gross'), 2);
+            $netIncome    = round($ledger->sum('net'), 2);
+
+            // Entry count: same as EventTransactionController (items in payment rows only)
+            $totalEntries = $event->isTeam()
+                ? $txForEvent->count()
+                : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
             return [
-                'event'          => $event,
-                'total_gross'    => $totalGross,
-                'total_income'   => $totalIncome,
-                'total_expenses' => $totalExpenses,
-                'net_profit'     => $netProfit,
-                'total_entries'  => $totalEntries,
+                'event'         => $event,
+                'total_gross'   => $totalGross,
+                'total_income'  => $netIncome,
+                'total_entries' => $totalEntries,
             ];
         });
 
         $financeSummary = [
-            'total_gross'    => $financeByEvent->sum('total_gross'),
-            'total_income'   => $financeByEvent->sum('total_income'),
-            'total_expenses' => $financeByEvent->sum('total_expenses'),
-            'net_profit'     => $financeByEvent->sum('net_profit'),
-            'total_entries'  => $financeByEvent->sum('total_entries'),
+            'total_gross'   => $financeByEvent->sum('total_gross'),
+            'total_income'  => $financeByEvent->sum('total_income'),
+            'total_entries' => $financeByEvent->sum('total_entries'),
         ];
 
         return view('backend.superadmin.index', compact(
