@@ -58,14 +58,13 @@ class EventController extends Controller
 
   public function downloadTransactionsPDF($eventId)
   {
-    $event = Event::with(['transactions.user', 'transactions.order.items'])
-      ->findOrFail($eventId);
+    $event = Event::findOrFail($eventId);
 
-    $transactions = $event->transactions;
+    $data = EventTransactionController::buildLedger($event);
 
     $pdf = FacadePdf::loadView(
       'backend.adminPage.pdf.transactions',
-      compact('event', 'transactions')
+      array_merge(['event' => $event], $data)
     );
 
     return $pdf->download("transactions_{$event->id}.pdf");
