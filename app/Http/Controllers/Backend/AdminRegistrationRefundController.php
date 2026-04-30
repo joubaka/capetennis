@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
@@ -125,10 +126,14 @@ class AdminRegistrationRefundController extends Controller
         return back()->withErrors('Payer not found for this registration.');
       }
 
-      // Auto-create wallet if the payer doesn't have one yet.
+      if (!($payer instanceof User)) {
+        return back()->withErrors('Wallet refunds are only supported for registered users, not players.');
+      }
+
+      // Auto-create wallet if this user doesn't have one yet.
       $wallet = $payer->wallet
                 ?? Wallet::create([
-                  'payable_type' => get_class($payer),
+                  'payable_type' => User::class,
                   'payable_id'   => $payer->id,
                 ]);
 
