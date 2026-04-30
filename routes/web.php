@@ -377,6 +377,19 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
     Route::delete('superadmin/orphaned-registrations/{order}/delete-real', [\App\Http\Controllers\Backend\OrphanedRegistrationController::class, 'deleteReal'])
       ->name('superadmin.orphans.delete-real');
+
+    // Super Admin Wallet CRUD
+    Route::post('superadmin/wallets/users/{user}/transaction', [\App\Http\Controllers\Backend\SuperAdminWalletController::class, 'storeTransaction'])
+      ->name('superadmin.wallets.transaction.store');
+
+    Route::put('superadmin/wallets/transactions/{transaction}', [\App\Http\Controllers\Backend\SuperAdminWalletController::class, 'updateTransaction'])
+      ->name('superadmin.wallets.transaction.update');
+
+    Route::delete('superadmin/wallets/transactions/{transaction}', [\App\Http\Controllers\Backend\SuperAdminWalletController::class, 'destroyTransaction'])
+      ->name('superadmin.wallets.transaction.destroy');
+
+    Route::delete('superadmin/wallets/{wallet}', [\App\Http\Controllers\Backend\SuperAdminWalletController::class, 'destroyWallet'])
+      ->name('superadmin.wallets.destroy');
   });
 
 

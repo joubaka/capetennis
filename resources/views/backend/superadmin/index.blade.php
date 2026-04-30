@@ -860,6 +860,10 @@
       @endif
     </div>{{-- /players --}}
 
+{{-- ═══════════════ AUDIT & ACTIVITY (tabbed) ═══════════════ --}}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
 
     {{-- ══ TAB: AUDIT & ACTIVITY ══ --}}
     <div class="tab-pane fade" id="sa-pane-audit" role="tabpanel">
@@ -1478,6 +1482,43 @@ $(function () {
     var el = document.getElementById('sa-tab-settings');
     if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   }
+
+  // ── Wallets DataTable ──────────────────────────────────────────
+  $('#dt-wallets').DataTable({
+    ordering:    true,
+    order:       [[2, 'desc']],
+    pageLength:  25,
+    columnDefs:  [{ targets: 5, orderable: false, searchable: false }],
+    language:    { emptyTable: 'No wallets found.' }
+  });
+
+  // ── Add Transaction Modal ──────────────────────────────────────
+  var addTxModal = new bootstrap.Modal(document.getElementById('modal-wallet-add-tx'));
+
+  $(document).on('click', '.btn-wallet-add-tx', function () {
+    var userId  = $(this).data('user-id');
+    var name    = $(this).data('user-name');
+    var balance = $(this).data('wallet-balance');
+    var url     = '{{ url("backend/superadmin/wallets/users") }}/' + userId + '/transaction';
+
+    $('#form-wallet-add-tx').attr('action', url);
+    $('#wallet-add-tx-user-label').html(
+      '<i class="ti ti-user me-1"></i><strong>' + $('<span>').text(name).html() + '</strong>' +
+      ' &mdash; Current balance: <span class="text-success fw-bold">' + $('<span>').text(balance).html() + '</span>'
+    );
+    $('#tx-type-credit').prop('checked', true);
+    $('#form-wallet-add-tx input[name="amount"]').val('');
+    $('#form-wallet-add-tx input[name="reference"]').val('');
+    addTxModal.show();
+  });
+
+  // ── Wallet delete confirmation ──────────────────────────────────
+  $(document).on('submit', '.form-wallet-delete', function (e) {
+    var owner = $(this).data('wallet-owner') || 'this user';
+    if (!confirm('Delete entire wallet for "' + owner + '" and ALL its transactions? This cannot be undone.')) {
+      e.preventDefault();
+    }
+  });
 
 });
 </script>
