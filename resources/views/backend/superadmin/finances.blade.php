@@ -16,7 +16,7 @@
 
   {{-- HEADER --}}
   <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0">
         <i class="ti ti-report-money me-2 text-warning"></i>
         Financial Dashboard
@@ -27,6 +27,21 @@
     </div>
   </div>
 
+  {{-- FINANCIAL YEAR FILTER --}}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <span class="text-muted me-1 small fw-semibold">Financial Year:</span>
+        @foreach($availableFYs->reverse() as $fy)
+          <a href="{{ request()->fullUrlWithQuery(['fy' => $fy]) }}"
+             class="btn btn-sm {{ $fy === $currentFY ? 'btn-warning' : 'btn-outline-secondary' }}">
+            {{ $fy }}
+          </a>
+        @endforeach
+      </div>
+    </div>
+  </div>
+
   {{-- SUMMARY CARDS --}}
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
@@ -34,6 +49,7 @@
         <div class="card-body">
           <small class="text-muted">Total Gross Income</small>
           <h5 class="text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
+          <small class="text-muted">FY {{ $currentFY }}</small>
         </div>
       </div>
     </div>
@@ -42,6 +58,7 @@
         <div class="card-body">
           <small class="text-muted">Total Net Income</small>
           <h5>R {{ number_format($financeSummary['total_income'], 2) }}</h5>
+          <small class="text-muted">FY {{ $currentFY }}</small>
         </div>
       </div>
     </div>
@@ -50,6 +67,7 @@
         <div class="card-body">
           <small class="text-muted">Total Paid Out</small>
           <h5 class="text-danger">R {{ number_format($financeSummary['total_paid_out'], 2) }}</h5>
+          <small class="text-muted">FY {{ $currentFY }}</small>
         </div>
       </div>
     </div>
@@ -60,6 +78,7 @@
           <h5 class="{{ $financeSummary['balance'] < 0 ? 'text-danger' : 'text-success' }}">
             R {{ number_format($financeSummary['balance'], 2) }}
           </h5>
+          <small class="text-muted">FY {{ $currentFY }}</small>
         </div>
       </div>
     </div>
@@ -68,7 +87,7 @@
   {{-- EVENT TABLE --}}
   <div class="card">
     <div class="card-header">
-      <h5 class="mb-0">Per-Event Financial Summary</h5>
+      <h5 class="mb-0">Per-Event Financial Summary &mdash; FY {{ $currentFY }}</h5>
     </div>
     <div class="table-responsive">
       <table id="financeTable" class="table table-hover mb-0">
@@ -86,11 +105,23 @@
         </thead>
         <tbody>
           @forelse($financeByEvent as $row)
+            @php
+              $isPast    = $row['event']->start_date && $row['event']->start_date->isPast();
+              $noTx      = ! $row['has_transactions'];
+              $showAlert = $isPast && $noTx;
+            @endphp
             <tr>
               <td>
                 <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="fw-semibold text-primary">
                   {{ $row['event']->name }}
                 </a>
+                @if($showAlert)
+                  <span class="badge bg-label-secondary ms-1"
+                        title="No PayFast transactions found for this past event"
+                        aria-label="No PayFast transactions found for this past event">
+                    <i class="ti ti-alert-circle me-1"></i>No transactions
+                  </span>
+                @endif
               </td>
               <td data-order="{{ $row['event']->start_date ?? '0000-00-00' }}">
                 <small class="text-muted">
@@ -115,7 +146,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="8" class="text-center text-muted py-3">No events found.</td>
+              <td colspan="8" class="text-center text-muted py-3">No events found for FY {{ $currentFY }}.</td>
             </tr>
           @endforelse
         </tbody>
