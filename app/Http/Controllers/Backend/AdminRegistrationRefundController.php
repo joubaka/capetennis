@@ -15,9 +15,15 @@ class AdminRegistrationRefundController extends Controller
 {
   /**
    * Show the admin refund method chooser for a withdrawn (paid) registration.
+   * Only super-users may access this page.
    */
   public function chooseRefund(Event $event, CategoryEventRegistration $registration)
   {
+    $user = auth()->user();
+    if (! ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
+      abort(403, 'Only super-users can issue refunds.');
+    }
+
     if ($registration->status !== 'withdrawn') {
       return back()->withErrors('Registration must be withdrawn before issuing a refund.');
     }
@@ -52,9 +58,15 @@ class AdminRegistrationRefundController extends Controller
 
   /**
    * Process the admin-chosen refund method for a withdrawn registration.
+   * Only super-users may access this endpoint.
    */
   public function storeRefund(Request $request, Event $event, CategoryEventRegistration $registration)
   {
+    $user = auth()->user();
+    if (! ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
+      abort(403, 'Only super-users can issue refunds.');
+    }
+
     $request->validate([
       'method' => 'required|in:wallet,payfast,none',
     ]);

@@ -74,9 +74,15 @@ class CategoryEventController extends Controller
 
     if ($registration->is_paid) {
       $event = $registration->categoryEvent->event;
-      return redirect()
-        ->route('admin.registration.refund.choose', [$event, $registration])
-        ->with('success', 'Registration withdrawn. Please choose a refund method.');
+
+      // Only super-users may choose a refund method; event admins record a no-refund withdrawal.
+      if ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user'))) {
+        return redirect()
+          ->route('admin.registration.refund.choose', [$event, $registration])
+          ->with('success', 'Registration withdrawn. Please choose a refund method.');
+      }
+
+      return back()->with('success', 'Registration withdrawn (no refund issued).');
     }
 
     return back()->with('success', 'Registration withdrawn (not paid — no refund required).');
