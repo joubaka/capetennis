@@ -15,7 +15,7 @@ use App\Models\Series;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use App\Services\MailAccountManager;
+use App\Models\SiteSetting;
 
 
 class EmailController extends Controller
@@ -674,9 +674,15 @@ class EmailController extends Controller
   }
 
   /** ✅ Admin copy */
-  public function sendToOwner(array $details, string $mailer)
+  public function sendToOwner(array $details, string $mailer, string $settingKey = null)
   {
-    $details['email'] = 'hermanustennisacademy@gmail.com';
+    // Honour the email notification toggle when a specific key is provided
+    if ($settingKey !== null && SiteSetting::get($settingKey, '1') !== '1') {
+      return;
+    }
+
+    $adminEmail = SiteSetting::get('admin_notification_email', 'support@capetennis.co.za');
+    $details['email'] = $adminEmail ?: 'support@capetennis.co.za';
     $this->queueMail($details, $mailer);
   }
 

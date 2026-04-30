@@ -37,6 +37,7 @@
     </div>
   </div>
 </div>
+@php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
 
 {{-- ═══════════════ TOP 6 STAT CARDS ═══════════════ --}}
 <div class="row mb-4">
@@ -141,234 +142,598 @@
 
 </div>
 
-{{-- ═══════════════ PLAYER PROFILE STATUS ═══════════════ --}}
-<div class="mb-3">
-  <h6 class="text-muted d-flex align-items-center">
-    <i class="ti ti-user-circle me-1"></i> Player Profile Status
-  </h6>
-</div>
-<div class="row mb-4">
 
-  <div class="col-md-3 col-sm-6 mb-3">
-    <div class="card h-100" style="border:2px solid #28c76f;">
-      <div class="card-body d-flex align-items-center gap-3 py-3">
-        <span class="badge rounded-circle p-3" style="background-color:#e8f8f0;">
-          <i class="ti ti-circle-check" style="font-size:1.3rem;color:#28c76f;"></i>
-        </span>
-        <div>
-          <h4 class="mb-0">{{ number_format($profileStats['up_to_date']) }}</h4>
-          <small class="text-muted">Up to Date</small>
+{{-- ═══════════════ MAIN TABS ═══════════════ --}}
+<div class="card">
+  <div class="card-header p-0 border-bottom-0">
+    <ul class="nav nav-tabs card-header-tabs px-3 pt-2 flex-wrap" id="sa-main-tabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="sa-tab-overview" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-overview" type="button" role="tab">
+          <i class="ti ti-layout-dashboard me-1 text-primary"></i>Overview
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-finance" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-finance" type="button" role="tab">
+          <i class="ti ti-report-money me-1 text-warning"></i>Finance
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-withdrawals" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-withdrawals" type="button" role="tab">
+          <i class="ti ti-cash-banknote me-1 text-danger"></i>Withdrawals
+          @if($totalPending > 0)
+            <span class="badge bg-danger ms-1">{{ $totalPending }}</span>
+          @endif
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-agreements" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-agreements" type="button" role="tab">
+          <i class="ti ti-file-certificate me-1 text-primary"></i>Agreements
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-players" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-players" type="button" role="tab">
+          <i class="ti ti-alert-triangle me-1 text-warning"></i>Players
+          @if($playersNeedingAttention->count() > 0)
+            <span class="badge bg-warning text-dark ms-1">{{ $playersNeedingAttention->count() }}</span>
+          @endif
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-audit" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-audit" type="button" role="tab">
+          <i class="ti ti-history me-1 text-secondary"></i>Audit &amp; Activity
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-settings" data-bs-toggle="tab"
+                data-bs-target="#sa-pane-settings" type="button" role="tab">
+          <i class="ti ti-settings me-1 text-secondary"></i>Settings
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="tab-content">
+
+    {{-- ══ TAB: OVERVIEW ══ --}}
+    <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
+
+      <h6 class="text-muted d-flex align-items-center mb-3">
+        <i class="ti ti-user-circle me-1"></i> Player Profile Status
+      </h6>
+      <div class="row mb-4">
+        <div class="col-md-3 col-sm-6 mb-3">
+          <div class="card h-100" style="border:2px solid #28c76f;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#e8f8f0;">
+                <i class="ti ti-circle-check" style="font-size:1.3rem;color:#28c76f;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($profileStats['up_to_date']) }}</h4>
+                <small class="text-muted">Up to Date</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+          <div class="card h-100" style="border:2px solid #ff9f43;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#fff4e0;">
+                <i class="ti ti-clock" style="font-size:1.3rem;color:#ff9f43;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($profileStats['needs_update']) }}</h4>
+                <small class="text-muted">Needs Update</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+          <div class="card h-100" style="border:2px solid #ea5455;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#ffe0e0;">
+                <i class="ti ti-alert-circle" style="font-size:1.3rem;color:#ea5455;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($profileStats['incomplete']) }}</h4>
+                <small class="text-muted">Incomplete</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+          <div class="card h-100" style="border:2px solid #b0b8c1;">
+            <div class="card-body d-flex align-items-center gap-3 py-3">
+              <span class="badge rounded-circle p-3" style="background-color:#f0f0f0;">
+                <i class="ti ti-user-off" style="font-size:1.3rem;color:#a0aab4;"></i>
+              </span>
+              <div>
+                <h4 class="mb-0">{{ number_format($profileStats['never_updated']) }}</h4>
+                <small class="text-muted">Never Updated</small>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <div class="col-md-3 col-sm-6 mb-3">
-    <div class="card h-100" style="border:2px solid #ff9f43;">
-      <div class="card-body d-flex align-items-center gap-3 py-3">
-        <span class="badge rounded-circle p-3" style="background-color:#fff4e0;">
-          <i class="ti ti-clock" style="font-size:1.3rem;color:#ff9f43;"></i>
-        </span>
-        <div>
-          <h4 class="mb-0">{{ number_format($profileStats['needs_update']) }}</h4>
-          <small class="text-muted">Needs Update</small>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3 col-sm-6 mb-3">
-    <div class="card h-100" style="border:2px solid #ea5455;">
-      <div class="card-body d-flex align-items-center gap-3 py-3">
-        <span class="badge rounded-circle p-3" style="background-color:#ffe0e0;">
-          <i class="ti ti-alert-circle" style="font-size:1.3rem;color:#ea5455;"></i>
-        </span>
-        <div>
-          <h4 class="mb-0">{{ number_format($profileStats['incomplete']) }}</h4>
-          <small class="text-muted">Incomplete</small>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-3 col-sm-6 mb-3">
-    <div class="card h-100" style="border:2px solid #b0b8c1;">
-      <div class="card-body d-flex align-items-center gap-3 py-3">
-        <span class="badge rounded-circle p-3" style="background-color:#f0f0f0;">
-          <i class="ti ti-user-off" style="font-size:1.3rem;color:#a0aab4;"></i>
-        </span>
-        <div>
-          <h4 class="mb-0">{{ number_format($profileStats['never_updated']) }}</h4>
-          <small class="text-muted">Never Updated</small>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-{{-- ═══════════════ FINANCIAL DASHBOARD ═══════════════ --}}
-<div class="mb-3">
-  <h6 class="text-muted d-flex align-items-center">
-    <i class="ti ti-report-money me-1 text-warning"></i> Financial Dashboard — All Events
-  </h6>
-</div>
-
-{{-- Summary cards --}}
-<div class="row g-3 mb-3">
-  <div class="col-6 col-md-4">
-    <div class="card border-start border-success border-3 h-100">
-      <div class="card-body">
-        <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-success"></i>Total Gross Income</small>
-        <h5 class="mb-0 text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
-        <small class="text-muted">All registration payments</small>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-4">
-    <div class="card border-start border-primary border-3 h-100">
-      <div class="card-body">
-        <small class="text-muted d-block mb-1"><i class="ti ti-coin me-1 text-primary"></i>Net Income</small>
-        <h5 class="mb-0">R {{ number_format($financeSummary['total_income'], 2) }}</h5>
-        <small class="text-muted">After PayFast &amp; Cape Tennis fees</small>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-4">
-    <div class="card border-start border-secondary border-3 h-100">
-      <div class="card-body">
-        <small class="text-muted d-block mb-1"><i class="ti ti-users me-1 text-secondary"></i>Total Entries</small>
-        <h5 class="mb-0">{{ number_format($financeSummary['total_entries']) }}</h5>
-        <small class="text-muted">Across all events</small>
-      </div>
-    </div>
-  </div>
-</div>
-
-{{-- Per-event breakdown table --}}
-<div class="card mb-4">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="d-flex align-items-center">
-      <i class="ti ti-calendar-stats me-2 text-warning"></i>
-      <h5 class="mb-0">Per-Event Financial Summary</h5>
-    </div>
-    <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning">
-      <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
-    </a>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-hover mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Event</th>
-          <th>Date</th>
-          <th class="text-end">Gross Income</th>
-          <th class="text-end">Net Income</th>
-          <th class="text-center">Entries</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @forelse($financeByEvent as $row)
-          <tr>
-            <td>
-              <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="fw-semibold text-primary">
-                {{ $row['event']->name }}
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header d-flex align-items-center">
+              <i class="ti ti-bolt me-2 text-warning"></i>
+              <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+              <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url('backend/user') }}" class="btn btn-outline-primary btn-sm">
+                  <i class="ti ti-users me-1"></i>Manage Users
+                </a>
+                <a href="{{ url('backend/player') }}" class="btn btn-outline-success btn-sm">
+                  <i class="ti ti-user-check me-1"></i>Manage Players
+                </a>
+                <a href="{{ url('backend/event') }}" class="btn btn-outline-info btn-sm">
+                  <i class="ti ti-calendar-event me-1"></i>Events
+                </a>
+                <a href="{{ url('backend/series') }}" class="btn btn-outline-secondary btn-sm">
+                  <i class="ti ti-timeline me-1"></i>Series
+                </a>
+                <a href="{{ url('backend/league') }}" class="btn btn-outline-warning btn-sm">
+                  <i class="ti ti-trophy me-1"></i>League
+                </a>
+                <button type="button" class="btn btn-outline-dark btn-sm"
+                        onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-settings')).show()">
+                  <i class="ti ti-settings me-1"></i>Site Settings
+                </button>
+                <a href="{{ url('backend/eventPhoto') }}" class="btn btn-outline-secondary btn-sm">
+                  <i class="ti ti-photo me-1"></i>Photos
+                </a>
+                <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
+                  <i class="ti ti-cash-banknote me-1"></i>Refunds
+                </a>
+              </div>
+              <hr>
+              <div class="d-flex gap-3 mt-2 flex-wrap">
+                <div class="text-center">
+                  <div class="fw-bold text-success fs-5">{{ $loginAuditTodayCount }}</div>
+                  <small class="text-muted">Logins Today</small>
+                </div>
+                <div class="text-center">
+                  <div class="fw-bold text-danger fs-5">{{ $loginAuditFailedToday }}</div>
+                  <small class="text-muted">Failed Today</small>
+                </div>
+                <div class="text-center">
+                  <button type="button" class="btn btn-link p-0 text-decoration-none"
+                          onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
+                    <div class="fw-bold text-warning fs-5">{{ $totalPending }}</div>
+                    <small class="text-muted">Pending Withdrawals</small>
+                  </button>
+                </div>
+                <div class="text-center">
+                  <div class="fw-bold text-info fs-5">{{ $newUsersThisMonth }}</div>
+                  <small class="text-muted">New Users (mo.)</small>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <h6 class="mb-1"><i class="ti ti-headset me-2"></i>Support</h6>
+              <a href="mailto:support@capetennis.co.za" class="btn btn-sm btn-outline-primary">
+                <i class="ti ti-mail me-1"></i>support@capetennis.co.za
               </a>
-            </td>
-            <td>
-              <small class="text-muted">
-                {{ $row['event']->start_date ? \Carbon\Carbon::parse($row['event']->start_date)->format('d M Y') : '—' }}
-              </small>
-            </td>
-            <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
-            <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
-            <td class="text-center">{{ number_format($row['total_entries']) }}</td>
-            <td>
-              <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
-                <i class="ti ti-report-money"></i>
-              </a>
-            </td>
-          </tr>
-        @empty
-          <tr>
-            <td colspan="6" class="text-center text-muted py-3">No events found.</td>
-          </tr>
-        @endforelse
-      </tbody>
-      <tfoot class="table-light fw-bold">
-        <tr>
-          <td colspan="2">Totals</td>
-          <td class="text-end text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</td>
-          <td class="text-end">R {{ number_format($financeSummary['total_income'], 2) }}</td>
-          <td class="text-center">{{ number_format($financeSummary['total_entries']) }}</td>
-          <td></td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-</div>
-
-{{-- ═══════════════ COC AGREEMENTS + QUICK ACTIONS ═══════════════ --}}
-<div class="row mb-4">
-
-  {{-- CoC Agreements card --}}
-  <div class="col-md-8 mb-3">
-    <div class="card h-100">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <div class="d-flex align-items-center">
-          <i class="ti ti-file-certificate me-2 text-primary"></i>
-          <h5 class="mb-0">Code of Conduct Agreements</h5>
+            </div>
+          </div>
         </div>
+        <div class="col-md-6 mb-3">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div class="d-flex align-items-center">
+                <i class="ti ti-user-plus me-2"></i>
+                <h5 class="mb-0">Recent Users</h5>
+              </div>
+              <a href="{{ url('backend/user') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <ul class="list-group list-group-flush">
+              @forelse($recentUsers as $user)
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <div>
+                    <a href="{{ route('user.show', $user) }}" class="fw-bold text-primary">{{ $user->name }}</a>
+                    <small class="d-block text-muted">{{ $user->email }}</small>
+                  </div>
+                  <small class="text-muted text-nowrap">{{ $user->created_at->diffForHumans() }}</small>
+                </li>
+              @empty
+                <li class="list-group-item text-center text-muted py-3">No users yet.</li>
+              @endforelse
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>{{-- /overview --}}
+
+
+    {{-- ══ TAB: FINANCE ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-finance" role="tabpanel">
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-4">
+          <div class="card border-start border-success border-3 h-100">
+            <div class="card-body">
+              <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-success"></i>Total Gross Income</small>
+              <h5 class="mb-0 text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
+              <small class="text-muted">All registration payments</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="card border-start border-primary border-3 h-100">
+            <div class="card-body">
+              <small class="text-muted d-block mb-1"><i class="ti ti-coin me-1 text-primary"></i>Net Income</small>
+              <h5 class="mb-0">R {{ number_format($financeSummary['total_income'], 2) }}</h5>
+              <small class="text-muted">After PayFast &amp; Cape Tennis fees</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="card border-start border-secondary border-3 h-100">
+            <div class="card-body">
+              <small class="text-muted d-block mb-1"><i class="ti ti-users me-1 text-secondary"></i>Total Entries</small>
+              <h5 class="mb-0">{{ number_format($financeSummary['total_entries']) }}</h5>
+              <small class="text-muted">Across all events</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card mb-0">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="d-flex align-items-center">
+            <i class="ti ti-calendar-stats me-2 text-warning"></i>
+            <h5 class="mb-0">Per-Event Financial Summary</h5>
+          </div>
+          <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning">
+            <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
+          </a>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Event</th>
+                <th>Date</th>
+                <th class="text-end">Gross Income</th>
+                <th class="text-end">Net Income</th>
+                <th class="text-center">Entries</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @forelse($financeByEvent as $row)
+                <tr>
+                  <td>
+                    <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="fw-semibold text-primary">
+                      {{ $row['event']->name }}
+                    </a>
+                  </td>
+                  <td>
+                    <small class="text-muted">
+                      {{ $row['event']->start_date ? \Carbon\Carbon::parse($row['event']->start_date)->format('d M Y') : '—' }}
+                    </small>
+                  </td>
+                  <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
+                  <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
+                  <td class="text-center">{{ number_format($row['total_entries']) }}</td>
+                  <td>
+                    <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
+                      <i class="ti ti-report-money"></i>
+                    </a>
+                  </td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-3">No events found.</td>
+                </tr>
+              @endforelse
+            </tbody>
+            <tfoot class="table-light fw-bold">
+              <tr>
+                <td colspan="2">Totals</td>
+                <td class="text-end text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</td>
+                <td class="text-end">R {{ number_format($financeSummary['total_income'], 2) }}</td>
+                <td class="text-center">{{ number_format($financeSummary['total_entries']) }}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>{{-- /finance --}}
+
+
+    {{-- ══ TAB: WITHDRAWALS ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-withdrawals" role="tabpanel">
+
+      @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+          {{ session('success') }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+      @if($errors->any())
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+          @foreach($errors->all() as $error) {{ $error }}<br>@endforeach
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
+      <div class="d-flex gap-2 flex-wrap mb-4">
+        <span class="badge bg-danger fs-6 px-3 py-2">
+          <i class="ti ti-clock me-1"></i>
+          {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }} Pending Bank
+        </span>
+        <span class="badge bg-success fs-6 px-3 py-2">
+          <i class="ti ti-check me-1"></i>
+          {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }} Completed Bank
+        </span>
+        <span class="badge bg-info fs-6 px-3 py-2">
+          <i class="ti ti-wallet me-1"></i>
+          {{ $withdrawalWalletRefunds->count() }} Wallet Withdrawals
+        </span>
+        <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+          <i class="ti ti-external-link me-1"></i>Full Refunds Page
+        </a>
+        <a href="{{ route('superadmin.orphans.index') }}" class="btn btn-sm btn-outline-danger ms-2">
+          <i class="ti ti-alert-triangle me-1"></i>Orphaned Registrations
+        </a>
+      </div>
+
+      <ul class="nav nav-pills mb-3" id="sa-withdrawal-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="sa-wtab-pending" data-bs-toggle="pill"
+                  data-bs-target="#sa-wpane-pending" type="button" role="tab">
+            <i class="ti ti-clock me-1"></i>Pending Bank
+            @if($withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() > 0)
+              <span class="badge bg-danger ms-1">
+                {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }}
+              </span>
+            @endif
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="sa-wtab-completed" data-bs-toggle="pill"
+                  data-bs-target="#sa-wpane-completed" type="button" role="tab">
+            <i class="ti ti-check me-1"></i>Completed Bank
+            <span class="badge bg-label-success ms-1">
+              {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }}
+            </span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="sa-wtab-wallet" data-bs-toggle="pill"
+                  data-bs-target="#sa-wpane-wallet" type="button" role="tab">
+            <i class="ti ti-wallet me-1"></i>Wallet Withdrawals
+            <span class="badge bg-label-info ms-1">{{ $withdrawalWalletRefunds->count() }}</span>
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+
+        <div class="tab-pane fade show active" id="sa-wpane-pending" role="tabpanel">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="dt-w-pending">
+              <thead class="table-light">
+                <tr>
+                  <th>Ref</th>
+                  <th>Player</th>
+                  <th>Event</th>
+                  <th>Amount</th>
+                  <th>Account Name</th>
+                  <th>Bank</th>
+                  <th>Submitted</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($withdrawalPendingRefunds as $refund)
+                  <tr>
+                    <td><span class="badge bg-label-secondary">REG-{{ $refund->id }}</span></td>
+                    <td>{{ $refund->display_name }}</td>
+                    <td><small>{{ optional(optional($refund->categoryEvent)->event)->name ?? '—' }}</small></td>
+                    <td class="text-danger fw-semibold">R{{ number_format($refund->refund_net, 2) }}</td>
+                    <td>{{ $refund->refund_account_name ?? '—' }}</td>
+                    <td>{{ $refund->refund_bank_name ?? '—' }}</td>
+                    <td><small class="text-muted">{{ $refund->updated_at?->format('d M Y') }}</small></td>
+                    <td>
+                      <div class="d-flex gap-1">
+                        <a href="{{ route('admin.registration.refunds.bank.show', $refund) }}"
+                           class="btn btn-icon btn-sm btn-outline-primary" title="View">
+                          <i class="ti ti-eye"></i>
+                        </a>
+                        <form method="POST" action="{{ route('admin.refunds.bank.complete', $refund) }}"
+                              onsubmit="return confirm('Mark this bank refund as paid?');">
+                          @csrf
+                          <button class="btn btn-icon btn-sm btn-success" title="Mark Paid">
+                            <i class="ti ti-check"></i>
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                @empty
+                @endforelse
+                @foreach($withdrawalPendingTeamRefunds as $t)
+                  <tr>
+                    <td><span class="badge bg-label-warning">TEAM-{{ $t->id }}</span></td>
+                    <td>{{ optional($t->player)->name ?? 'Unknown Player' }}</td>
+                    <td><small>{{ optional($t->event)->name ?? '—' }}</small></td>
+                    <td class="text-danger fw-semibold">R{{ number_format($t->refund_net, 2) }}</td>
+                    <td>{{ $t->refund_account_name ?? '—' }}</td>
+                    <td>{{ $t->refund_bank_name ?? '—' }}</td>
+                    <td><small class="text-muted">{{ $t->updated_at?->format('d M Y') }}</small></td>
+                    <td>
+                      <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}"
+                            onsubmit="return confirm('Mark this team bank refund as paid?');">
+                        @csrf
+                        <button class="btn btn-icon btn-sm btn-success" title="Mark Paid">
+                          <i class="ti ti-check"></i>
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                @endforeach
+
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="sa-wpane-completed" role="tabpanel">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="dt-w-completed">
+              <thead class="table-light">
+                <tr>
+                  <th>Ref</th>
+                  <th>Player</th>
+                  <th>Event</th>
+                  <th>Amount</th>
+                  <th>Bank</th>
+                  <th>Completed</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($withdrawalCompletedRefunds as $refund)
+                  <tr>
+                    <td><span class="badge bg-label-secondary">REG-{{ $refund->id }}</span></td>
+                    <td>{{ $refund->display_name }}</td>
+                    <td><small>{{ optional(optional($refund->categoryEvent)->event)->name ?? '—' }}</small></td>
+                    <td class="text-success fw-semibold">R{{ number_format($refund->refund_net, 2) }}</td>
+                    <td>{{ $refund->refund_bank_name ?? '—' }}</td>
+                    <td><small class="text-muted">{{ $refund->refunded_at?->format('d M Y H:i') ?? '—' }}</small></td>
+                  </tr>
+                @empty
+                @endforelse
+                @foreach($withdrawalCompletedTeamRefunds as $t)
+                  <tr>
+                    <td><span class="badge bg-label-warning">TEAM-{{ $t->id }}</span></td>
+                    <td>{{ optional($t->player)->name ?? 'Unknown Player' }}</td>
+                    <td><small>{{ optional($t->event)->name ?? '—' }}</small></td>
+                    <td class="text-success fw-semibold">R{{ number_format($t->refund_net, 2) }}</td>
+                    <td>{{ $t->refund_bank_name ?? '—' }}</td>
+                    <td><small class="text-muted">{{ optional($t->refunded_at)->format('d M Y H:i') ?? '—' }}</small></td>
+                  </tr>
+                @endforeach
+
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="sa-wpane-wallet" role="tabpanel">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0" id="dt-w-wallet">
+              <thead class="table-light">
+                <tr>
+                  <th>Ref</th>
+                  <th>Player</th>
+                  <th>Event</th>
+                  <th>Refund Method</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Withdrawn At</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($withdrawalWalletRefunds as $refund)
+                  @php
+                    $refundEvent = optional($refund->categoryEvent)->event;
+                    $withdrawnAt = $refund->withdrawn_at;
+                    if ($refund->refund_status === 'completed') {
+                      $reason = '<span class="badge bg-success">Refunded to wallet</span>';
+                    } elseif (!$refund->is_paid) {
+                      $reason = '<span class="badge bg-label-secondary">Not paid</span>';
+                    } elseif ($refundEvent && $withdrawnAt && $withdrawnAt->gt($refundEvent->withdrawalCloseAt())) {
+                      $deadline = $refundEvent->withdrawalCloseAt()->format('d M Y H:i');
+                      $reason = '<span class="badge bg-danger" title="Deadline: ' . $deadline . '">Late withdrawal</span>';
+                    } elseif ($refund->refund_status === 'pending') {
+                      $reason = '<span class="badge bg-warning text-dark">Awaiting processing</span>';
+                    } elseif (in_array($refund->refund_status, [null, '', 'not_refunded'])) {
+                      $reason = '<span class="badge bg-label-warning">Refund not chosen</span>';
+                    } else {
+                      $reason = '—';
+                    }
+                  @endphp
+                  <tr>
+                    <td><span class="badge bg-label-info">REG-{{ $refund->id }}</span></td>
+                    <td>{{ $refund->display_name }}</td>
+                    <td><small>{{ $refundEvent->name ?? '—' }}</small></td>
+                    <td><span class="badge bg-label-info">{{ $refund->refund_method ?? 'wallet' }}</span></td>
+                    <td>
+                      @if($refund->refund_status === 'completed')
+                        <span class="badge bg-success">Completed</span>
+                      @elseif($refund->refund_status === 'pending')
+                        <span class="badge bg-warning text-dark">Pending</span>
+                      @else
+                        <span class="badge bg-label-secondary">{{ $refund->refund_status ?? 'N/A' }}</span>
+                      @endif
+                    </td>
+                    <td>{!! $reason !!}</td>
+                    <td><small class="text-muted">{{ $withdrawnAt?->format('d M Y H:i') ?? '—' }}</small></td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>{{-- /withdrawals --}}
+
+
+    {{-- ══ TAB: AGREEMENTS ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-agreements" role="tabpanel">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h5 class="mb-0"><i class="ti ti-file-certificate me-2 text-primary"></i>Code of Conduct Agreements</h5>
         <a href="{{ route('backend.agreements.create') }}" class="btn btn-primary btn-sm">
           <i class="ti ti-plus me-1"></i>New Agreement
         </a>
       </div>
-
-      {{-- Active agreement status banner --}}
       @if($agreementStats['active_agreement'])
-        <div class="card-body border-bottom py-3">
-          <div class="row align-items-center">
-            <div class="col-md-6">
-              <h6 class="text-primary mb-1">
-                <i class="ti ti-check-circle me-1"></i>Active Agreement
-              </h6>
-              <p class="mb-0">
-                <strong>{{ $agreementStats['active_agreement']->title }}</strong>
-                <span class="badge bg-success ms-2">{{ $agreementStats['active_agreement']->version }}</span>
-              </p>
-            </div>
-            <div class="col-md-6 text-md-end mt-2 mt-md-0">
-              <span class="badge bg-label-success me-2">
-                <i class="ti ti-check me-1"></i>{{ $agreementStats['total_acceptances'] }} Accepted
-              </span>
-              <span class="badge bg-label-warning">
-                <i class="ti ti-clock me-1"></i>{{ $agreementStats['pending_players'] }} Pending
-              </span>
+        <div class="card border-success mb-3">
+          <div class="card-body py-3">
+            <div class="row align-items-center">
+              <div class="col-md-6">
+                <h6 class="text-primary mb-1"><i class="ti ti-check-circle me-1"></i>Active Agreement</h6>
+                <p class="mb-0">
+                  <strong>{{ $agreementStats['active_agreement']->title }}</strong>
+                  <span class="badge bg-success ms-2">{{ $agreementStats['active_agreement']->version }}</span>
+                </p>
+              </div>
+              <div class="col-md-6 text-md-end mt-2 mt-md-0">
+                <span class="badge bg-label-success me-2">
+                  <i class="ti ti-check me-1"></i>{{ $agreementStats['total_acceptances'] }} Accepted
+                </span>
+                <span class="badge bg-label-warning">
+                  <i class="ti ti-clock me-1"></i>{{ $agreementStats['pending_players'] }} Pending
+                </span>
+              </div>
             </div>
           </div>
         </div>
       @else
-        <div class="card-body border-bottom py-3">
-          <div class="alert alert-warning mb-0">
-            <i class="ti ti-alert-triangle me-2"></i>
-            No active agreement. Players can register without accepting a Code of Conduct.
-            <a href="{{ route('backend.agreements.create') }}" class="alert-link">Create one now</a>.
-          </div>
+        <div class="alert alert-warning mb-3">
+          <i class="ti ti-alert-triangle me-2"></i>
+          No active agreement. Players can register without accepting a Code of Conduct.
+          <a href="{{ route('backend.agreements.create') }}" class="alert-link">Create one now</a>.
         </div>
       @endif
-
-      {{-- Agreements table --}}
       <div class="table-responsive">
         <table class="table table-hover mb-0">
-          <thead>
+          <thead class="table-light">
             <tr>
-              <th>Title</th>
-              <th>Version</th>
-              <th>Status</th>
-              <th>Acceptances</th>
-              <th>Created</th>
-              <th>Actions</th>
+              <th>Title</th><th>Version</th><th>Status</th><th>Acceptances</th><th>Created</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -412,408 +777,28 @@
               </tr>
             @empty
               <tr>
-                <td colspan="6" class="text-center text-muted py-3">No agreements found. <a href="{{ route('backend.agreements.create') }}">Create one</a>.</td>
+                <td colspan="6" class="text-center text-muted py-3">
+                  No agreements found. <a href="{{ route('backend.agreements.create') }}">Create one</a>.
+                </td>
               </tr>
             @endforelse
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
+    </div>{{-- /agreements --}}
 
-  {{-- Quick Actions card --}}
-  <div class="col-md-4 mb-3">
-    <div class="card h-100">
-      <div class="card-header d-flex align-items-center">
-        <i class="ti ti-bolt me-2 text-warning"></i>
-        <h5 class="mb-0">Quick Actions</h5>
-      </div>
-      <div class="card-body">
-        <div class="d-flex flex-wrap gap-2">
-          <a href="{{ url('backend/user') }}" class="btn btn-outline-primary btn-sm">
-            <i class="ti ti-users me-1"></i>Manage Users
-          </a>
-          <a href="{{ url('backend/player') }}" class="btn btn-outline-success btn-sm">
-            <i class="ti ti-user-check me-1"></i>Manage Players
-          </a>
-          <a href="{{ url('backend/event') }}" class="btn btn-outline-info btn-sm">
-            <i class="ti ti-calendar-event me-1"></i>Events
-          </a>
-          <a href="{{ url('backend/series') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="ti ti-timeline me-1"></i>Series
-          </a>
-          <a href="{{ url('backend/league') }}" class="btn btn-outline-warning btn-sm">
-            <i class="ti ti-trophy me-1"></i>League
-          </a>
-          <a href="{{ url('backend/settings') }}" class="btn btn-outline-dark btn-sm">
-            <i class="ti ti-settings me-1"></i>Site Settings
-          </a>
-          <a href="{{ url('backend/eventPhoto') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="ti ti-photo me-1"></i>Photos
-          </a>
-          <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
-            <i class="ti ti-cash-banknote me-1"></i>Refunds
-          </a>
-        </div>
 
-        <hr>
-
-        {{-- Live mini counters --}}
-        <div class="d-flex gap-3 mt-2 flex-wrap">
-          <div class="text-center">
-            <div class="fw-bold text-success fs-5">{{ $loginAuditTodayCount }}</div>
-            <small class="text-muted">Logins Today</small>
-          </div>
-          <div class="text-center">
-            <div class="fw-bold text-danger fs-5">{{ $loginAuditFailedToday }}</div>
-            <small class="text-muted">Failed Today</small>
-          </div>
-          <div class="text-center">
-            <a href="{{ route('admin.refunds.bank.index') }}" class="text-decoration-none">
-              <div class="fw-bold text-warning fs-5">{{ $pendingWithdrawals }}</div>
-              <small class="text-muted">Withdrawals</small>
-            </a>
-          </div>
-          <div class="text-center">
-            <a href="{{ route('admin.refunds.bank.index') }}" class="text-decoration-none">
-              <div class="fw-bold {{ $pendingBankRefunds->count() > 0 ? 'text-danger' : 'text-success' }} fs-5">
-                {{ $pendingBankRefunds->count() }}
-              </div>
-              <small class="text-muted">Bank Refunds</small>
-            </a>
-          </div>
-          <div class="text-center">
-            <div class="fw-bold text-info fs-5">{{ $newUsersThisMonth }}</div>
-            <small class="text-muted">New Users (mo.)</small>
-          </div>
-        </div>
-      </div>
-
-      {{-- Support info --}}
-      <div class="card-footer">
-        <h6 class="mb-1"><i class="ti ti-headset me-2"></i>Support</h6>
-        <a href="mailto:support@capetennis.co.za" class="btn btn-sm btn-outline-primary">
-          <i class="ti ti-mail me-1"></i>support@capetennis.co.za
-        </a>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-{{-- ═══════════════ PENDING BANK REFUNDS ═══════════════ --}}
-<div class="row mb-4">
-  <div class="col-12">
-    <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <div class="d-flex align-items-center">
-          <i class="ti ti-cash-banknote me-2 text-danger"></i>
-          <h5 class="mb-0">Pending Bank Refunds</h5>
-          @if($pendingBankRefunds->count() > 0)
-            <span class="badge bg-danger ms-2">{{ $pendingBankRefunds->count() }}</span>
-          @else
-            <span class="badge bg-success ms-2">All clear</span>
-          @endif
-        </div>
-        <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-sm btn-outline-danger">
-          View Full Refunds Page
-        </a>
-      </div>
-
-      @if(session('pf_query_result'))
-        <div class="alert alert-info alert-dismissible mx-3 mt-3 mb-0" role="alert">
-          <i class="ti ti-info-circle me-1"></i>{{ session('pf_query_result') }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      @endif
-
-      @if($errors->any())
-        <div class="alert alert-danger alert-dismissible mx-3 mt-3 mb-0" role="alert">
-          @foreach($errors->all() as $error)
-            <div><i class="ti ti-alert-triangle me-1"></i>{{ $error }}</div>
-          @endforeach
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      @endif
-
-      @if($pendingBankRefunds->isEmpty())
-        <div class="card-body text-center py-4 text-muted">
-          <i class="ti ti-check-circle ti-lg text-success d-block mb-2"></i>
-          No pending bank refunds.
-        </div>
-      @else
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead>
-              <tr>
-                <th>Registration</th>
-                <th>Event / Category</th>
-                <th>Player / User</th>
-                <th>Bank Details</th>
-                <th class="text-end">Refund (R)</th>
-                <th>Withdrawn</th>
-                <th class="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach($pendingBankRefunds as $refund)
-                <tr>
-                  <td>
-                    <small class="text-muted">#{{ $refund->id }}</small>
-                  </td>
-                  <td>
-                    <div class="fw-semibold">
-                      {{ optional(optional($refund->categoryEvent)->event)->name ?? '—' }}
-                    </div>
-                    <small class="text-muted">
-                      {{ optional($refund->categoryEvent)->category->name ?? '' }}
-                    </small>
-                  </td>
-                  <td>
-                    @if($refund->user)
-                      <a href="{{ route('user.show', $refund->user) }}" class="fw-bold text-primary">
-                        {{ $refund->user->name }}
-                      </a>
-                      <small class="d-block text-muted">{{ $refund->user->email }}</small>
-                    @else
-                      <span class="text-muted">—</span>
-                    @endif
-                  </td>
-                  <td>
-                    <small>
-                      <span class="fw-semibold">{{ $refund->refund_account_name ?? '—' }}</span><br>
-                      {{ $refund->refund_bank_name ?? '' }}
-                      @if($refund->refund_account_number)
-                        · Acc: {{ $refund->refund_account_number }}
-                      @endif
-                      @if($refund->refund_branch_code)
-                        · Branch: {{ $refund->refund_branch_code }}
-                      @endif
-                    </small>
-                  </td>
-                  <td class="text-end">
-                    <span class="fw-bold text-success">
-                      R {{ number_format($refund->refund_net ?? $refund->refund_gross ?? 0, 2) }}
-                    </span>
-                    @if($refund->refund_gross > 0 && $refund->refund_fee > 0)
-                      <small class="d-block text-muted">
-                        gross R{{ number_format($refund->refund_gross, 2) }}
-                        − fee R{{ number_format($refund->refund_fee, 2) }}
-                      </small>
-                    @endif
-                  </td>
-                  <td>
-                    @if($refund->withdrawn_at)
-                      {{ $refund->withdrawn_at->format('d M Y') }}
-                      <small class="d-block text-muted">{{ $refund->withdrawn_at->diffForHumans() }}</small>
-                    @else
-                      <span class="text-muted">—</span>
-                    @endif
-                  </td>
-                  <td class="text-center" style="white-space:nowrap;">
-                    {{-- Mark bank transfer complete --}}
-                    <form method="POST"
-                          action="{{ route('admin.refunds.bank.complete', $refund) }}"
-                          class="d-inline"
-                          onsubmit="return confirm('Mark this bank refund as completed?')">
-                      @csrf
-                      <button type="submit" class="btn btn-sm btn-success" title="Mark Complete">
-                        <i class="ti ti-check me-1"></i>Complete
-                      </button>
-                    </form>
-
-                    {{-- PayFast query (only when pf_transaction_id is present) --}}
-                    @if($refund->pf_transaction_id)
-                      <a href="{{ route('admin.refunds.bank.payfast-query', $refund) }}"
-                         class="btn btn-sm btn-outline-info ms-1"
-                         title="Query PayFast refund status">
-                        <i class="ti ti-search me-1"></i>PF Status
-                      </a>
-                    @endif
-
-                    {{-- View full refund record --}}
-                    @if(\Route::has('admin.registration.refunds.bank.show'))
-                      <a href="{{ route('admin.registration.refunds.bank.show', $refund) }}"
-                         class="btn btn-sm btn-outline-secondary ms-1"
-                         title="View details">
-                        <i class="ti ti-eye"></i>
-                      </a>
-                    @endif
-                  </td>
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
-        </div>
-      @endif
-    </div>
-  </div>
-</div>
-
-{{-- ═══════════════ AUDIT & ACTIVITY (tabbed) ═══════════════ --}}
-<div class="row mb-4">
-  <div class="col-12">
-    <div class="card">
-
-      <div class="card-header p-0 border-bottom-0">
-        <ul class="nav nav-tabs card-header-tabs px-3 pt-2" id="sa-audit-tabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="sa-tab-login" data-bs-toggle="tab"
-                    data-bs-target="#sa-pane-login" type="button" role="tab">
-              <i class="ti ti-lock me-1 text-danger"></i>Login Audit
-              <span class="badge bg-label-secondary ms-1">{{ count($loginAuditLogs) }}</span>
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="sa-tab-activity" data-bs-toggle="tab"
-                    data-bs-target="#sa-pane-activity" type="button" role="tab">
-              <i class="ti ti-history me-1 text-primary"></i>Activity Log
-              <span class="badge bg-label-secondary ms-1">{{ count($activityLogs) }}</span>
-            </button>
-          </li>
-        </ul>
-      </div>
-
-      <div class="tab-content">
-
-        {{-- ── LOGIN AUDIT pane ── --}}
-        <div class="tab-pane fade show active" id="sa-pane-login" role="tabpanel">
-          <div class="table-responsive">
-            <table class="table table-hover table-striped w-100 mb-0" id="dt-login-audit">
-              <thead>
-                <tr>
-                  <th>Date / Time</th>
-                  <th>User</th>
-                  <th>Email</th>
-                  <th>IP Address</th>
-                  <th>Status</th>
-                  <th>Logout At</th>
-                  <th>User Agent</th>
-                </tr>
-              </thead>
-              <tbody>
-                @forelse($loginAuditLogs as $log)
-                  <tr>
-                    <td>{{ $log->login_at ? \Carbon\Carbon::parse($log->login_at)->format('d M Y H:i') : '—' }}</td>
-                    <td>{{ $log->name ?? '—' }}</td>
-                    <td>{{ $log->email ?? '—' }}</td>
-                    <td><code>{{ $log->ip_address ?? '—' }}</code></td>
-                    <td>
-                      @if($log->login_successful)
-                        <span class="badge bg-success">Success</span>
-                      @else
-                        <span class="badge bg-danger">Failed</span>
-                      @endif
-                    </td>
-                    <td>{{ $log->logout_at ? \Carbon\Carbon::parse($log->logout_at)->format('d M Y H:i') : '—' }}</td>
-                    <td>
-                      <span class="text-truncate d-inline-block" style="max-width:180px;" title="{{ $log->user_agent }}">
-                        {{ $log->user_agent ?? '—' }}
-                      </span>
-                    </td>
-                  </tr>
-                @empty
-                  <tr><td colspan="7" class="text-center text-muted py-3">No login records found.</td></tr>
-                @endforelse
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {{-- ── ACTIVITY LOG pane ── --}}
-        <div class="tab-pane fade" id="sa-pane-activity" role="tabpanel">
-          <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom">
-            <label class="small mb-0">Filter</label>
-            <select id="sa-activity-filter" class="form-select form-select-sm" style="width:auto;">
-              <option value="">All</option>
-              @foreach($logNames as $ln)
-                <option value="{{ $ln }}">{{ $ln }}</option>
-              @endforeach
-            </select>
-            <div class="form-check form-switch mb-0 ms-2">
-              <input class="form-check-input" type="checkbox" id="sa-activity-toggle" checked>
-              <label class="form-check-label small" for="sa-activity-toggle">Grouped</label>
-            </div>
-          </div>
-
-          {{-- Grouped table --}}
-          <div id="sa-activity-grouped-wrap" class="table-responsive">
-            <table class="table table-hover table-striped w-100 mb-0" id="dt-activity">
-              <thead>
-                <tr>
-                  <th>Last Active</th>
-                  <th>User</th>
-                  <th>Actions</th>
-                  <th>Last Action</th>
-                  <th class="d-none">Log Names{{-- hidden; used by DataTables column(4) for log-name filter --}}</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach($activityByUser as $row)
-                  <tr>
-                    <td>{{ optional($row->last_at)->format('d M Y H:i') ?? '—' }}</td>
-                    <td>{{ $row->causer?->userName ?? $row->causer?->name ?? 'System' }}</td>
-                    <td><span class="badge bg-label-primary">{{ $row->count }}</span></td>
-                    <td>{{ $row->example_description ?? '—' }}</td>
-                    <td class="d-none">{{ implode(',', $row->log_names ?? []) }}</td>
-                  </tr>
-                @endforeach
-              </tbody>
-            </table>
-          </div>
-
-          {{-- Raw table (hidden until toggled) --}}
-          <div id="sa-activity-raw-wrap" class="table-responsive d-none">
-            <table class="table table-hover table-striped w-100 mb-0" id="dt-activity-raw">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>User</th>
-                  <th>Log</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach($activityLogs as $log)
-                  <tr>
-                    <td>{{ $log->created_at->format('d M Y H:i') }}</td>
-                    <td>{{ $log->causer?->userName ?? $log->causer?->name ?? 'System' }}</td>
-                    <td>{{ $log->log_name }}</td>
-                    <td>{{ $log->description }}</td>
-                  </tr>
-                @endforeach
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-</div>
-
-{{-- ═══════════════ PLAYERS NEEDING ATTENTION + RECENT USERS ═══════════════ --}}
-<div class="row mb-4">
-
-  {{-- Players needing profile attention --}}
-  <div class="col-xl-8 mb-3">
-    <div class="card h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="d-flex align-items-center">
-          <i class="ti ti-alert-triangle me-2 text-warning"></i>
-          <h5 class="mb-0">Players Needing Profile Update</h5>
-        </div>
+    {{-- ══ TAB: PLAYERS ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-players" role="tabpanel">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0"><i class="ti ti-alert-triangle me-2 text-warning"></i>Players Needing Profile Update</h5>
         <a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-warning">View All</a>
       </div>
       <div class="table-responsive">
         <table class="table table-hover mb-0">
-          <thead>
+          <thead class="table-light">
             <tr>
-              <th>Player</th>
-              <th>Parent / Guardian</th>
-              <th>Profile Status</th>
-              <th>Last Updated</th>
-              <th></th>
+              <th>Player</th><th>Parent / Guardian</th><th>Profile Status</th><th>Last Updated</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -830,9 +815,7 @@
                 </td>
                 <td>
                   @if($player->user)
-                    <a href="{{ route('user.show', $player->user->id) }}" class="text-muted">
-                      {{ $player->user->name }}
-                    </a>
+                    <a href="{{ route('user.show', $player->user->id) }}" class="text-muted">{{ $player->user->name }}</a>
                     <small class="d-block text-muted">{{ $player->user->email }}</small>
                   @else
                     <span class="text-muted">N/A</span>
@@ -869,44 +852,462 @@
         </table>
       </div>
       @if($playersNeedingAttention->count() >= 15)
-        <div class="card-footer text-center">
+        <div class="text-center mt-2">
           <a href="{{ url('backend/player') }}" class="text-warning">
             <i class="ti ti-alert-triangle me-1"></i>More players may need attention — View All
           </a>
         </div>
       @endif
-    </div>
-  </div>
+    </div>{{-- /players --}}
 
-  {{-- Recent users + support --}}
-  <div class="col-xl-4 mb-3">
 
-    <div class="card mb-3">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="d-flex align-items-center">
-          <i class="ti ti-user-plus me-2"></i>
-          <h5 class="mb-0">Recent Users</h5>
-        </div>
-        <a href="{{ url('backend/user') }}" class="btn btn-sm btn-outline-primary">View All</a>
-      </div>
-      <ul class="list-group list-group-flush">
-        @forelse($recentUsers as $user)
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <div>
-              <a href="{{ route('user.show', $user) }}" class="fw-bold text-primary">{{ $user->name }}</a>
-              <small class="d-block text-muted">{{ $user->email }}</small>
-            </div>
-            <small class="text-muted text-nowrap">{{ $user->created_at->diffForHumans() }}</small>
-          </li>
-        @empty
-          <li class="list-group-item text-center text-muted py-3">No users yet.</li>
-        @endforelse
+    {{-- ══ TAB: AUDIT & ACTIVITY ══ --}}
+    <div class="tab-pane fade" id="sa-pane-audit" role="tabpanel">
+      <ul class="nav nav-tabs px-3 pt-2" id="sa-audit-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="sa-tab-login" data-bs-toggle="tab"
+                  data-bs-target="#sa-pane-login" type="button" role="tab">
+            <i class="ti ti-lock me-1 text-danger"></i>Login Audit
+            <span class="badge bg-label-secondary ms-1">{{ count($loginAuditLogs) }}</span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="sa-tab-activity" data-bs-toggle="tab"
+                  data-bs-target="#sa-pane-activity" type="button" role="tab">
+            <i class="ti ti-history me-1 text-primary"></i>Activity Log
+            <span class="badge bg-label-secondary ms-1">{{ count($activityLogs) }}</span>
+          </button>
+        </li>
       </ul>
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="sa-pane-login" role="tabpanel">
+          <div class="table-responsive">
+            <table class="table table-hover table-striped w-100 mb-0" id="dt-login-audit">
+              <thead>
+                <tr>
+                  <th>Date / Time</th><th>User</th><th>Email</th>
+                  <th>IP Address</th><th>Status</th><th>Logout At</th><th>User Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($loginAuditLogs as $log)
+                  <tr>
+                    <td>{{ $log->login_at ? \Carbon\Carbon::parse($log->login_at)->format('d M Y H:i') : '—' }}</td>
+                    <td>{{ $log->name ?? '—' }}</td>
+                    <td>{{ $log->email ?? '—' }}</td>
+                    <td><code>{{ $log->ip_address ?? '—' }}</code></td>
+                    <td>
+                      @if($log->login_successful)
+                        <span class="badge bg-success">Success</span>
+                      @else
+                        <span class="badge bg-danger">Failed</span>
+                      @endif
+                    </td>
+                    <td>{{ $log->logout_at ? \Carbon\Carbon::parse($log->logout_at)->format('d M Y H:i') : '—' }}</td>
+                    <td>
+                      <span class="text-truncate d-inline-block" style="max-width:180px;" title="{{ $log->user_agent }}">
+                        {{ $log->user_agent ?? '—' }}
+                      </span>
+                    </td>
+                  </tr>
+                @empty
+                  <tr><td colspan="7" class="text-center text-muted py-3">No login records found.</td></tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="sa-pane-activity" role="tabpanel">
+          <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom">
+            <label class="small mb-0">Filter</label>
+            <select id="sa-activity-filter" class="form-select form-select-sm" style="width:auto;">
+              <option value="">All</option>
+              @foreach($logNames as $ln)
+                <option value="{{ $ln }}">{{ $ln }}</option>
+              @endforeach
+            </select>
+            <div class="form-check form-switch mb-0 ms-2">
+              <input class="form-check-input" type="checkbox" id="sa-activity-toggle" checked>
+              <label class="form-check-label small" for="sa-activity-toggle">Grouped</label>
+            </div>
+          </div>
+          <div id="sa-activity-grouped-wrap" class="table-responsive">
+            <table class="table table-hover table-striped w-100 mb-0" id="dt-activity">
+              <thead>
+                <tr>
+                  <th>Last Active</th><th>User</th><th>Actions</th><th>Last Action</th>
+                  <th class="d-none">Log Names</th><th class="no-sort"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($activityByUser as $row)
+                  @php
+                    $showGrpBtn = in_array($row->last_log_name ?? '', ['withdrawal','refund','wallet']);
+                  @endphp
+                  <tr>
+                    <td>{{ optional($row->last_at)->format('d M Y H:i') ?? '—' }}</td>
+                    <td>{{ $row->causer?->userName ?? $row->causer?->name ?? 'System' }}</td>
+                    <td><span class="badge bg-label-primary">{{ $row->count }}</span></td>
+                    <td>{{ $row->example_description ?? '—' }}</td>
+                    <td class="d-none">{{ implode(',', $row->log_names ?? []) }}</td>
+                    <td class="text-center">
+                      @if($showGrpBtn)
+                        <button type="button" class="btn btn-sm btn-icon btn-outline-info btn-activity-detail"
+                          data-log="{{ $row->last_log_name }}"
+                          data-desc="{{ $row->example_description }}"
+                          data-user="{{ $row->causer?->userName ?? $row->causer?->name ?? 'System' }}"
+                          data-date="{{ optional($row->last_at)->format('d M Y H:i') }}"
+                          data-props='@json($row->last_properties ?? [])'
+                          title="View detail"><i class="ti ti-info-circle"></i></button>
+                      @endif
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+          <div id="sa-activity-raw-wrap" class="table-responsive d-none">
+            <table class="table table-hover table-striped w-100 mb-0" id="dt-activity-raw">
+              <thead>
+                <tr><th>Date</th><th>User</th><th>Log</th><th>Action</th><th class="no-sort"></th></tr>
+              </thead>
+              <tbody>
+                @foreach($activityLogs as $log)
+                  @php $showRawBtn = in_array($log->log_name, ['withdrawal','refund','wallet']); @endphp
+                  <tr>
+                    <td>{{ $log->created_at->format('d M Y H:i') }}</td>
+                    <td>{{ $log->causer?->userName ?? $log->causer?->name ?? 'System' }}</td>
+                    <td>{{ $log->log_name }}</td>
+                    <td>{{ $log->description }}</td>
+                    <td class="text-center">
+                      @if($showRawBtn)
+                        <button type="button" class="btn btn-sm btn-icon btn-outline-info btn-activity-detail"
+                          data-log="{{ $log->log_name }}"
+                          data-desc="{{ $log->description }}"
+                          data-user="{{ $log->causer?->userName ?? $log->causer?->name ?? 'System' }}"
+                          data-date="{{ $log->created_at->format('d M Y H:i') }}"
+                          data-props='@json($log->properties)'
+                          title="View detail"><i class="ti ti-info-circle"></i></button>
+                      @endif
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>{{-- /audit --}}
+
+
+    {{-- ══ TAB: SETTINGS ══ --}}
+    <div class="tab-pane fade p-3" id="sa-pane-settings" role="tabpanel">
+
+      @if(session('success') && request()->routeIs('backend.superadmin.index'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+          {{ session('success') }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
+      <form action="{{ route('settings.store') }}" method="POST" id="sa-settings-form">
+        @csrf
+
+        {{-- ════ A: EMAIL NOTIFICATIONS ════ --}}
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="ti ti-mail me-1 text-primary"></i> Email Notifications</h5>
+            <small class="text-muted">Control which events trigger an admin notification email.</small>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+
+              <div class="col-md-12 mb-2">
+                <label class="form-label" for="sa-admin-notification-email">Admin Notification Email</label>
+                <input type="email" class="form-control" id="sa-admin-notification-email"
+                       name="admin_notification_email"
+                       value="{{ old('admin_notification_email', $emailSettings['admin_notification_email'] ?? 'support@capetennis.co.za') }}">
+                <small class="text-muted">All system notification emails are sent to this address.</small>
+              </div>
+
+              @php
+                $emailToggles = [
+                  'email_on_registration'      => 'Player Registration',
+                  'email_on_withdrawal'        => 'Player Withdrawal',
+                  'email_on_team_withdrawal'   => 'Team Player Withdrawal',
+                  'email_on_wallet_topup'      => 'Wallet Top-Up',
+                  'email_on_bank_refund_request' => 'Bank Refund Request',
+                ];
+              @endphp
+
+              @foreach($emailToggles as $key => $label)
+                <div class="col-md-6">
+                  <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                    <div>
+                      <label class="form-label mb-0" for="sa-{{ $key }}">{{ $label }}</label>
+                      <br><small class="text-muted">Send admin email when a {{ strtolower($label) }} occurs.</small>
+                    </div>
+                    <div class="form-check form-switch ms-3">
+                      <input class="form-check-input" type="checkbox" role="switch"
+                             id="sa-{{ $key }}" name="{{ $key }}" value="1"
+                             {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
+                    </div>
+                  </div>
+                </div>
+              @endforeach
+
+            </div>
+          </div>
+        </div>
+
+        {{-- ════ B: REGISTRATION & WITHDRAWAL BEHAVIOUR ════ --}}
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="ti ti-ticket me-1 text-warning"></i> Registration &amp; Withdrawal</h5>
+            <small class="text-muted">Global switches that override per-event settings when disabled.</small>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-registration-open">Registrations Open</label>
+                    <br><small class="text-muted">When off, all new event registrations are blocked site-wide.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-registration-open" name="registration_open" value="1"
+                           {{ old('registration_open', $registrationSettings['registration_open'] ?? '1') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-withdrawal-allowed">Withdrawals Allowed</label>
+                    <br><small class="text-muted">When off, all withdrawal requests are blocked site-wide.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-withdrawal-allowed" name="withdrawal_allowed" value="1"
+                           {{ old('withdrawal_allowed', $registrationSettings['withdrawal_allowed'] ?? '1') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label" for="sa-withdrawal-deadline-days">Withdrawal Deadline (days before event start)</label>
+                <div class="input-group">
+                  <input type="number" min="0" max="365" class="form-control"
+                         id="sa-withdrawal-deadline-days" name="withdrawal_deadline_days"
+                         value="{{ old('withdrawal_deadline_days', $registrationSettings['withdrawal_deadline_days'] ?? '7') }}">
+                  <span class="input-group-text">days</span>
+                </div>
+                <small class="text-muted">Players cannot withdraw after this many days before the event starts.</small>
+              </div>
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-profile-required">Require Complete Profile to Register</label>
+                    <br><small class="text-muted">Players must have a complete profile before registering for any event.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-profile-required" name="profile_required_for_registration" value="1"
+                           {{ old('profile_required_for_registration', $registrationSettings['profile_required_for_registration'] ?? '1') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {{-- ════ C: PAYFAST FEE SETTINGS ════ --}}
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="ti ti-credit-card me-1"></i> PayFast Fee Settings</h5>
+            <small class="text-muted">
+              These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the convenor is charged at the rates set below.
+            </small>
+          </div>
+          <div class="card-body">
+            <div class="row g-3 mb-3">
+
+              <div class="col-md-4">
+                <label class="form-label" for="sa-payfast-fee-percentage">Default Fee Percentage (%)</label>
+                <div class="input-group">
+                  <input type="number" step="0.01" min="0" max="100" class="form-control"
+                         id="sa-payfast-fee-percentage" name="payfast_fee_percentage"
+                         value="{{ old('payfast_fee_percentage', $payfastSettings['payfast_fee_percentage']->value ?? '3.2') }}">
+                  <span class="input-group-text">%</span>
+                </div>
+                <small class="text-muted">Fallback percentage when payment method is not detected.</small>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label" for="sa-payfast-fee-flat">Flat Fee per Transaction (R)</label>
+                <div class="input-group">
+                  <span class="input-group-text">R</span>
+                  <input type="number" step="0.01" min="0" class="form-control"
+                         id="sa-payfast-fee-flat" name="payfast_fee_flat"
+                         value="{{ old('payfast_fee_flat', $payfastSettings['payfast_fee_flat']->value ?? '2.00') }}">
+                </div>
+                <small class="text-muted">Applied to all payment methods.</small>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label" for="sa-payfast-vat-rate">VAT Rate (%)</label>
+                <div class="input-group">
+                  <input type="number" step="0.01" min="0" max="100" class="form-control"
+                         id="sa-payfast-vat-rate" name="payfast_vat_rate"
+                         value="{{ old('payfast_vat_rate', $payfastSettings['payfast_vat_rate']->value ?? '14') }}">
+                  <span class="input-group-text">%</span>
+                </div>
+                <small class="text-muted">VAT applied on top of the fee.</small>
+              </div>
+
+            </div>
+
+            <h6 class="text-muted mt-3 mb-2"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h6>
+            <div class="table-responsive">
+              <table class="table table-striped mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width:200px;">Payment Method</th>
+                    <th style="width:180px;">Fee Percentage</th>
+                    <th>Example Fee on R200</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach($paymentMethods as $methodKey => $methodLabel)
+                    @php
+                      $settingKey = "payfast_fee_pct_{$methodKey}";
+                      $currentPct = old($settingKey, $payfastSettings[$settingKey]->value ?? '3.20');
+                    @endphp
+                    <tr>
+                      <td class="align-middle fw-semibold">{{ $methodLabel }}</td>
+                      <td>
+                        <div class="input-group input-group-sm">
+                          <input type="number" step="0.01" min="0" max="100"
+                                 class="form-control sa-method-pct-input"
+                                 name="{{ $settingKey }}"
+                                 data-method="{{ $methodKey }}"
+                                 value="{{ $currentPct }}">
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </td>
+                      <td class="align-middle text-muted">
+                        R <span class="sa-method-preview" data-method="{{ $methodKey }}">—</span>
+                      </td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+
+            <div class="card bg-light mt-3 mb-0">
+              <div class="card-body py-2">
+                <strong>Fee Formula:</strong>
+                <code>((amount × percentage%) + R<span id="sa-previewFlat">{{ $payfastSettings['payfast_fee_flat']->value ?? '2.00' }}</span>) × (1 + <span id="sa-previewVat">{{ $payfastSettings['payfast_vat_rate']->value ?? '14' }}</span>%)</code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {{-- ════ D: CODE OF CONDUCT & TERMS ════ --}}
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="ti ti-file-check me-1 text-success"></i> Code of Conduct &amp; Terms</h5>
+            <small class="text-muted">
+              Enable or disable the Code of Conduct and Terms requirements site-wide. When enabled, players must accept these before registering.
+            </small>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-require-coc">Require Code of Conduct</label>
+                    <br><small class="text-muted">Players must accept the Code of Conduct.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-require-coc" name="require_code_of_conduct" value="1"
+                           {{ old('require_code_of_conduct', $generalSettings['require_code_of_conduct'] ?? '0') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-require-terms">Require Terms &amp; Conditions</label>
+                    <br><small class="text-muted">Players must accept the Terms &amp; Conditions.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-require-terms" name="require_terms" value="1"
+                           {{ old('require_terms', $generalSettings['require_terms'] ?? '0') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="d-flex align-items-center justify-content-between border rounded p-3">
+                  <div>
+                    <label class="form-label mb-0" for="sa-require-profile-update">Require Profile Update on Login</label>
+                    <br><small class="text-muted">Players must update their profile details when logging in if incomplete or outdated.</small>
+                  </div>
+                  <div class="form-check form-switch ms-3">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="sa-require-profile-update" name="require_profile_update" value="1"
+                           {{ old('require_profile_update', $generalSettings['require_profile_update'] ?? '1') == '1' ? 'checked' : '' }}>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <button type="submit" class="btn btn-primary">
+            <i class="ti ti-device-floppy me-1"></i> Save All Settings
+          </button>
+        </div>
+
+      </form>
+
+    </div>{{-- /settings --}}
+
+{{-- ── Withdrawal / Refund Detail Modal ───────────────────────────── --}}
+<div class="modal fade" id="modal-activity-detail" tabindex="-1" aria-labelledby="modal-activity-detail-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-activity-detail-label">
+          <i class="ti ti-file-description me-1 text-info"></i> Activity Detail
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="modal-activity-detail-body">
+        {{-- populated via JS --}}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
     </div>
-
   </div>
-
 </div>
+
+  </div>{{-- /tab-content --}}
+</div>{{-- /main tabs card --}}
+
 
 @endsection
 
@@ -914,70 +1315,169 @@
 <script>
 $(function () {
 
-  // ── Login Audit DataTable ──────────────────────────────────────
-  $('#dt-login-audit').DataTable({
-    ordering:   true,
-    order:      [[0, 'desc']],
-    pageLength: 25,
-    columnDefs: [{ targets: 6, orderable: false }]
+  // ── Withdrawal DataTables (lazy init on tab show) ──────────────
+  var dtWPending = null, dtWCompleted = null, dtWWallet = null;
+
+  $('#sa-tab-withdrawals').on('shown.bs.tab', function () {
+    if (!dtWPending) {
+      dtWPending = $('#dt-w-pending').DataTable({ ordering: true, order: [[6,'asc']], pageLength: 25, language: { emptyTable: '<i class="ti ti-check-circle text-success me-1"></i> No pending bank refunds.' } });
+    }
+  });
+  $('#sa-wtab-completed').on('shown.bs.tab', function () {
+    if (!dtWCompleted) {
+      dtWCompleted = $('#dt-w-completed').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No completed bank refunds.' } });
+    } else { dtWCompleted.columns.adjust().draw(false); }
+  });
+  $('#sa-wtab-wallet').on('shown.bs.tab', function () {
+    if (!dtWWallet) {
+      dtWWallet = $('#dt-w-wallet').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No wallet withdrawals found.' } });
+    } else { dtWWallet.columns.adjust().draw(false); }
   });
 
-  $('#sa-tab-login').on('shown.bs.tab', function () {
-    var t = $.fn.dataTable.isDataTable('#dt-login-audit')
-              ? $('#dt-login-audit').DataTable() : null;
-    if (t) t.columns.adjust().draw(false);
-  });
-
-  // ── Activity Log: Grouped DataTable ────────────────────────────
-  var dtGrouped = $('#dt-activity').DataTable({
-    ordering:   true,
-    order:      [[0, 'desc']],
-    pageLength: 25,
-    columnDefs: [{ targets: 4, visible: false }]
-  });
-
-  $('#sa-tab-activity').on('shown.bs.tab', function () {
-    dtGrouped.columns.adjust().draw(false);
-  });
-
-  // ── Raw DataTable: lazy-init on first toggle ────────────────────
-  var dtRaw = null;
-
-  function initRawIfNeeded() {
-    if (!dtRaw) {
-      dtRaw = $('#dt-activity-raw').DataTable({
-        ordering:   true,
-        order:      [[0, 'desc']],
-        pageLength: 25
+  // ── Login Audit DataTable (lazy init) ──────────────────────────
+  var dtLoginInit = false;
+  function initLoginAudit() {
+    if (!dtLoginInit && !$.fn.DataTable.isDataTable('#dt-login-audit')) {
+      $('#dt-login-audit').DataTable({
+        ordering: true, order: [[0,'desc']], pageLength: 25,
+        columnDefs: [{ targets: 6, orderable: false }]
       });
-    } else {
-      dtRaw.columns.adjust().draw(false);
+      dtLoginInit = true;
     }
   }
+
+  // ── Activity Log DataTables ────────────────────────────────────
+  var dtGrouped = null, dtRaw = null;
+  function initGrouped() {
+    if (!dtGrouped) {
+      dtGrouped = $('#dt-activity').DataTable({
+        ordering: true, order: [[0,'desc']], pageLength: 25,
+        columnDefs: [
+          { targets: 4, visible: false },
+          { targets: 5, orderable: false, searchable: false }
+        ]
+      });
+    } else { dtGrouped.columns.adjust().draw(false); }
+  }
+  function initRaw() {
+    if (!dtRaw) {
+      dtRaw = $('#dt-activity-raw').DataTable({
+        ordering: true, order: [[0,'desc']], pageLength: 25,
+        columnDefs: [{ targets: 4, orderable: false, searchable: false }]
+      });
+    } else { dtRaw.columns.adjust().draw(false); }
+  }
+
+  // ── Activity Detail Modal ───────────────────────────────────────
+  var $detailModal = new bootstrap.Modal(document.getElementById('modal-activity-detail'));
+  $(document).on('click', '.btn-activity-detail', function () {
+    var log   = $(this).data('log');
+    var desc  = $(this).data('desc');
+    var user  = $(this).data('user');
+    var date  = $(this).data('date');
+    var props = $(this).data('props') || {};
+
+    var labelMap = {
+      player: 'Player',
+      event: 'Event',
+      category: 'Category',
+      method: 'Refund Method',
+      refund_allowed: 'Refund Allowed',
+      gross: 'Gross',
+      fee: 'Fee',
+      net: 'Net',
+      bank: 'Bank Name',
+      pf_payment_id: 'PayFast Payment ID',
+      registration_id: 'Registration #',
+      order_id: 'Order #',
+      amount: 'Amount',
+      reference: 'Reference',
+      type: 'Type',
+    };
+
+    var badgeClass = { withdrawal: 'bg-label-warning', refund: 'bg-label-success', wallet: 'bg-label-info' };
+    var badge = '<span class="badge ' + (badgeClass[log] || 'bg-label-secondary') + ' me-1">' + log + '</span>';
+
+    var html = '<p class="mb-2">' + badge + '<strong>' + $('<span>').text(desc).html() + '</strong></p>';
+    html += '<table class="table table-sm table-bordered mb-0"><tbody>';
+    html += '<tr><th class="text-muted" style="width:40%">User</th><td>' + $('<span>').text(user).html() + '</td></tr>';
+    html += '<tr><th class="text-muted">Date</th><td>' + $('<span>').text(date).html() + '</td></tr>';
+
+    $.each(props, function (key, val) {
+      if (key === 'attributes' || key === 'old') return; // skip spatie internals
+      var label = labelMap[key] || key.replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+      var display = val;
+      if (key === 'method') {
+        var methodLabels = { wallet: 'Wallet', bank: 'Bank EFT', payfast: 'PayFast' };
+        display = methodLabels[val] || val;
+      }
+      if (typeof val === 'boolean') display = val ? 'Yes' : 'No';
+      if ((key === 'gross' || key === 'fee' || key === 'net' || key === 'amount') && val !== null && val !== undefined) {
+        display = 'R' + parseFloat(val).toFixed(2);
+      }
+      html += '<tr><th class="text-muted">' + $('<span>').text(label).html() + '</th><td>' + $('<span>').text(display).html() + '</td></tr>';
+    });
+
+    html += '</tbody></table>';
+    $('#modal-activity-detail-body').html(html);
+    $detailModal.show();
+  });
+
+  $('#sa-tab-audit').on('shown.bs.tab', function () {
+    if ($('#sa-pane-login').hasClass('active')) initLoginAudit();
+    if ($('#sa-pane-activity').hasClass('active')) initGrouped();
+  });
+  $('#sa-tab-login').on('shown.bs.tab', function () { initLoginAudit(); });
+  $('#sa-tab-activity').on('shown.bs.tab', function () { initGrouped(); });
 
   // ── Grouped / Raw toggle ────────────────────────────────────────
   $('#sa-activity-toggle').on('change', function () {
     if ($(this).is(':checked')) {
       $('#sa-activity-raw-wrap').addClass('d-none');
       $('#sa-activity-grouped-wrap').removeClass('d-none');
-      dtGrouped.columns.adjust().draw(false);
+      if (dtGrouped) dtGrouped.columns.adjust().draw(false);
     } else {
       $('#sa-activity-grouped-wrap').addClass('d-none');
       $('#sa-activity-raw-wrap').removeClass('d-none');
-      initRawIfNeeded();
+      initRaw();
     }
   });
 
   // ── Filter by log name ──────────────────────────────────────────
   $('#sa-activity-filter').on('change', function () {
     var val = $(this).val();
-    val ? dtGrouped.column(4).search(val).draw()
-        : dtGrouped.column(4).search('').draw();
-    if (dtRaw) {
-      val ? dtRaw.column(2).search('^' + val + '$', true, false).draw()
-          : dtRaw.column(2).search('').draw();
-    }
+    if (dtGrouped) { val ? dtGrouped.column(4).search(val).draw() : dtGrouped.column(4).search('').draw(); }
+    if (dtRaw)     { val ? dtRaw.column(2).search('^'+val+'$',true,false).draw() : dtRaw.column(2).search('').draw(); }
   });
+
+  // ── PayFast live fee preview (Settings tab) ──────────────────────
+  function saCalcFee(pct, flat, vat, amount) {
+    return ((amount * pct / 100) + flat) * (1 + vat / 100);
+  }
+
+  function saUpdatePreviews() {
+    var flat = parseFloat($('#sa-payfast-fee-flat').val()) || 0;
+    var vat  = parseFloat($('#sa-payfast-vat-rate').val()) || 0;
+
+    $('#sa-previewFlat').text(flat.toFixed(2));
+    $('#sa-previewVat').text(vat);
+
+    $('.sa-method-pct-input').each(function () {
+      var method = $(this).data('method');
+      var pct    = parseFloat($(this).val()) || 0;
+      var fee    = saCalcFee(pct, flat, vat, 200);
+      $('.sa-method-preview[data-method="' + method + '"]').text(fee.toFixed(2));
+    });
+  }
+
+  saUpdatePreviews();
+  $(document).on('input', '.sa-method-pct-input, #sa-payfast-fee-flat, #sa-payfast-vat-rate', saUpdatePreviews);
+
+  // Open Settings tab if URL hash is #settings
+  if (window.location.hash === '#settings') {
+    var el = document.getElementById('sa-tab-settings');
+    if (el) bootstrap.Tab.getOrCreateInstance(el).show();
+  }
 
 });
 </script>

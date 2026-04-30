@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Player;
+use App\Models\SiteSetting;
 use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\TeamPaymentOrder;
@@ -22,6 +23,11 @@ class TeamPlayerWithdrawController extends Controller
     $user = Auth::user();
     if (!$user) {
       return redirect()->route('login');
+    }
+
+    // Global withdrawal switch
+    if (SiteSetting::get('withdrawal_allowed', '1') !== '1') {
+      return back()->withErrors('Withdrawals are currently disabled. Please contact support@capetennis.co.za for assistance.');
     }
 
     // allow profile owner OR super-user id 584 OR role 'super-user'
@@ -360,7 +366,7 @@ class TeamPlayerWithdrawController extends Controller
         'replyTo' => $order->user?->email ?? null,
       ];
 
-      app(\App\Http\Controllers\Backend\EmailController::class)->sendToOwner($details, 'smtp');
+      app(\App\Http\Controllers\Backend\EmailController::class)->sendToOwner($details, 'smtp', 'email_on_bank_refund_request');
     } catch (\Throwable $e) {
       Log::error('Failed to send bank refund notification', ['error' => $e->getMessage()]);
     }

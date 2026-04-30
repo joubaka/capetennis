@@ -11,6 +11,11 @@ class SiteSetting extends Model
 
     protected $fillable = ['key', 'value', 'label', 'group'];
 
+    public const GROUP_GENERAL      = 'general';
+    public const GROUP_PAYFAST      = 'payfast';
+    public const GROUP_EMAIL        = 'email';
+    public const GROUP_REGISTRATION = 'registration';
+
     /**
      * PayFast payment method mapping.
      * Keys = what PayFast sends in ITN, Values = our setting key suffix.

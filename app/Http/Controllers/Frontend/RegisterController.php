@@ -285,6 +285,12 @@ class RegisterController extends Controller
   {
     $user = Auth::user();
 
+    // Global registration switch
+    if (SiteSetting::get('registration_open', '1') !== '1') {
+      return redirect()->route('events.show', $id)
+        ->withErrors('Registrations are currently closed. Please check back later or contact support@capetennis.co.za.');
+    }
+
     // ✅ FIX 1: assign the event properly
     $event = Event::with('eventTypeModel')->findOrFail($id);
 
