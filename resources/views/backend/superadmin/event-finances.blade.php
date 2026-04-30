@@ -375,10 +375,14 @@
           Issue a <strong>full refund (no handling fee deducted)</strong> to a player's wallet or via bank transfer.
           Normal player-initiated refunds deduct a handling fee; this option bypasses that fee.
         </p>
+        <div class="input-group input-group-sm" style="max-width:320px;">
+          <span class="input-group-text"><i class="ti ti-search"></i></span>
+          <input type="text" id="fullRefundSearch" class="form-control" placeholder="Search player or category…">
+        </div>
       </div>
 
       <div class="table-responsive">
-        <table class="table table-sm mb-0">
+        <table class="table table-sm mb-0" id="fullRefundTable">
           <thead class="table-light">
             <tr>
               <th>Player(s)</th>
@@ -614,6 +618,18 @@ $(function () {
       : (row.child(renderItems(items)).show(), tr.addClass('shown'));
   });
 });
+
+// Full Player Refunds search filter
+const fullRefundSearch = document.getElementById('fullRefundSearch');
+if (fullRefundSearch) {
+  fullRefundSearch.addEventListener('input', function () {
+    const term = this.value.toLowerCase().trim();
+    document.querySelectorAll('#fullRefundTable tbody tr').forEach(function (row) {
+      const text = row.textContent.toLowerCase();
+      row.style.display = term === '' || text.includes(term) ? '' : 'none';
+    });
+  });
+}
 
 // Full Refund Modal: populate form action and display fields from button data attributes
 const fullRefundModal = document.getElementById('fullRefundModal');
