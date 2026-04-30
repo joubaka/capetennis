@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Agreement;
 use App\Models\Event;
+use App\Models\EventExpense;
+use App\Models\EventIncomeItem;
 use App\Models\Player;
 use App\Models\PlayerAgreement;
 use App\Models\Registration;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Withdrawals;
 use Illuminate\Support\Facades\DB;
@@ -139,6 +142,56 @@ class SuperAdminController extends Controller
             ->where('login_successful', false)
             ->count();
 
+        // ── Financial Dashboard (all events) ─────────────────────────────────
+        $allEvents = Event::with(['incomeItems', 'expenses'])->orderByDesc('start_date')->get();
+
+        $feesByEvent = Transaction::where('transaction_type', 'Registration')
+            ->where('amount_gross', '>', 0)
+            ->selectRaw('event_id, SUM(amount_gross) as total_gross, SUM(amount_fee) as total_fee')
+            ->groupBy('event_id')
+            ->get()
+            ->keyBy('event_id');
+
+        $entriesByEvent = Transaction::where('transaction_type', 'Registration')
+            ->where('amount_gross', '>', 0)
+            ->join('registration_orders', 'transactions_pf.custom_int5', '=', 'registration_orders.id')
+            ->join('registration_order_items', 'registration_orders.id', '=', 'registration_order_items.order_id')
+            ->selectRaw('transactions_pf.event_id, COUNT(registration_order_items.id) as total_entries')
+            ->groupBy('transactions_pf.event_id')
+            ->get()
+            ->keyBy('event_id');
+
+        $financeByEvent = $allEvents->map(function ($event) use ($feesByEvent, $entriesByEvent) {
+            $feePerEntry   = (float) $event->cape_tennis_fee;
+            $txRow         = $feesByEvent->get($event->id);
+            $totalGross    = $txRow ? (float) $txRow->total_gross : 0;
+            $totalPfFee    = $txRow ? abs((float) $txRow->total_fee) : 0;
+            $totalEntries  = $entriesByEvent->get($event->id)?->total_entries ?? 0;
+            $ctFee         = $totalEntries * $feePerEntry;
+            $netReg        = $totalGross - $totalPfFee - $ctFee;
+            $incomeItems   = $event->incomeItems->sum(fn ($i) => $i->calculatedTotal());
+            $totalIncome   = $netReg + $incomeItems;
+            $totalExpenses = $event->expenses->sum(fn ($e) => $e->calculatedAmount());
+            $netProfit     = $totalIncome - $totalExpenses;
+
+            return [
+                'event'         => $event,
+                'total_gross'   => $totalGross,
+                'total_income'  => $totalIncome,
+                'total_expenses'=> $totalExpenses,
+                'net_profit'    => $netProfit,
+                'total_entries' => $totalEntries,
+            ];
+        });
+
+        $financeSummary = [
+            'total_gross'    => $financeByEvent->sum('total_gross'),
+            'total_income'   => $financeByEvent->sum('total_income'),
+            'total_expenses' => $financeByEvent->sum('total_expenses'),
+            'net_profit'     => $financeByEvent->sum('net_profit'),
+            'total_entries'  => $financeByEvent->sum('total_entries'),
+        ];
+
         return view('backend.superadmin.index', compact(
             'totalUsers',
             'totalPlayers',
@@ -160,7 +213,9 @@ class SuperAdminController extends Controller
             'logNames',
             'loginAuditLogs',
             'loginAuditTodayCount',
-            'loginAuditFailedToday'
+            'loginAuditFailedToday',
+            'financeByEvent',
+            'financeSummary'
         ));
     }
 }

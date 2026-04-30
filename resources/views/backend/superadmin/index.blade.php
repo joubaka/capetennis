@@ -207,6 +207,133 @@
 
 </div>
 
+{{-- ═══════════════ FINANCIAL DASHBOARD ═══════════════ --}}
+<div class="mb-3">
+  <h6 class="text-muted d-flex align-items-center">
+    <i class="ti ti-report-money me-1 text-warning"></i> Financial Dashboard — All Events
+  </h6>
+</div>
+
+{{-- Summary cards --}}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card border-start border-success border-3 h-100">
+      <div class="card-body">
+        <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-success"></i>Total Gross Income</small>
+        <h5 class="mb-0 text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
+        <small class="text-muted">All registration payments</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-start border-primary border-3 h-100">
+      <div class="card-body">
+        <small class="text-muted d-block mb-1"><i class="ti ti-coin me-1 text-primary"></i>Net Income</small>
+        <h5 class="mb-0">R {{ number_format($financeSummary['total_income'], 2) }}</h5>
+        <small class="text-muted">After fees & deductions</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-start border-danger border-3 h-100">
+      <div class="card-body">
+        <small class="text-muted d-block mb-1"><i class="ti ti-shopping-cart me-1 text-danger"></i>Total Expenses</small>
+        <h5 class="mb-0 text-danger">R {{ number_format($financeSummary['total_expenses'], 2) }}</h5>
+        <small class="text-muted">Across all events</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    @php $netIsPositive = $financeSummary['net_profit'] >= 0; @endphp
+    <div class="card border-start border-{{ $netIsPositive ? 'success' : 'danger' }} border-3 h-100">
+      <div class="card-body">
+        <small class="text-muted d-block mb-1">
+          <i class="ti ti-trending-{{ $netIsPositive ? 'up text-success' : 'down text-danger' }} me-1"></i>
+          Net {{ $netIsPositive ? 'Profit' : 'Loss' }}
+        </small>
+        <h5 class="mb-0 {{ $netIsPositive ? 'text-success' : 'text-danger' }}">
+          R {{ number_format(abs($financeSummary['net_profit']), 2) }}
+        </h5>
+        <small class="text-muted">{{ number_format($financeSummary['total_entries']) }} total entries</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Per-event breakdown table --}}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center">
+      <i class="ti ti-calendar-stats me-2 text-warning"></i>
+      <h5 class="mb-0">Per-Event Financial Summary</h5>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Event</th>
+          <th>Date</th>
+          <th class="text-end">Gross Income</th>
+          <th class="text-end">Net Income</th>
+          <th class="text-end">Expenses</th>
+          <th class="text-end">Net Profit / Loss</th>
+          <th class="text-center">Entries</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @forelse($financeByEvent as $row)
+          @php $profit = $row['net_profit']; @endphp
+          <tr>
+            <td>
+              <a href="{{ route('admin.events.finances', $row['event']) }}" class="fw-semibold text-primary">
+                {{ $row['event']->name }}
+              </a>
+            </td>
+            <td>
+              <small class="text-muted">
+                {{ $row['event']->start_date ? \Carbon\Carbon::parse($row['event']->start_date)->format('d M Y') : '—' }}
+              </small>
+            </td>
+            <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
+            <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
+            <td class="text-end text-danger">R {{ number_format($row['total_expenses'], 2) }}</td>
+            <td class="text-end">
+              <span class="fw-semibold {{ $profit >= 0 ? 'text-success' : 'text-danger' }}">
+                {{ $profit >= 0 ? '' : '-' }}R {{ number_format(abs($profit), 2) }}
+              </span>
+            </td>
+            <td class="text-center">{{ number_format($row['total_entries']) }}</td>
+            <td>
+              <a href="{{ route('admin.events.finances', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
+                <i class="ti ti-report-money"></i>
+              </a>
+            </td>
+          </tr>
+        @empty
+          <tr>
+            <td colspan="8" class="text-center text-muted py-3">No events found.</td>
+          </tr>
+        @endforelse
+      </tbody>
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td colspan="2">Totals</td>
+          <td class="text-end text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</td>
+          <td class="text-end">R {{ number_format($financeSummary['total_income'], 2) }}</td>
+          <td class="text-end text-danger">R {{ number_format($financeSummary['total_expenses'], 2) }}</td>
+          <td class="text-end {{ $financeSummary['net_profit'] >= 0 ? 'text-success' : 'text-danger' }}">
+            {{ $financeSummary['net_profit'] >= 0 ? '' : '-' }}R {{ number_format(abs($financeSummary['net_profit']), 2) }}
+          </td>
+          <td class="text-center">{{ number_format($financeSummary['total_entries']) }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
 {{-- ═══════════════ COC AGREEMENTS + QUICK ACTIONS ═══════════════ --}}
 <div class="row mb-4">
 
