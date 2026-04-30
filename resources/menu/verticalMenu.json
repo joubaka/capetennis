@@ -45,6 +45,12 @@
           "slug": "backend.agreements.index"
         },
         {
+          "url": "backend/disciplinary",
+          "name": "Disciplinary",
+          "icon": "circle",
+          "slug": "backend.disciplinary.index"
+        },
+        {
           "url": "backend/settings",
           "name": "Site Settings",
           "icon": "circle",
