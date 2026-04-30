@@ -211,14 +211,19 @@ class AdminRegistrationRefundController extends Controller
         return back()->withErrors('No PayFast payment ID found — cannot issue PayFast refund.');
       }
 
+      if ($payfastGross <= 0) {
+        return back()->withErrors('No PayFast amount to refund — payment was funded entirely by wallet.');
+      }
+
       try {
         $payfast = new \App\Services\Payfast();
-        $result  = $payfast->refund($pfPaymentId, $gross, 'Admin withdrawal refund');
+        // Only refund the PayFast portion — PayFast cannot refund wallet contributions.
+        $result  = $payfast->refund($pfPaymentId, $payfastGross, 'Admin withdrawal refund');
 
         Log::info('ADMIN PAYFAST REFUND ATTEMPT', [
           'registration_id' => $registration->id,
           'pf_payment_id'   => $pfPaymentId,
-          'amount'          => $gross,
+          'amount'          => $payfastGross,
           'result'          => $result,
         ]);
 
@@ -247,15 +252,22 @@ class AdminRegistrationRefundController extends Controller
             'registration_id' => $registration->id,
             'method'          => 'payfast',
             'pf_payment_id'   => $pfPaymentId,
+            'payfast_gross'   => $payfastGross,
+            'wallet_paid'     => $walletPaid,
             'gross'           => $gross,
             'event'           => $event->name,
             'initiated_by'    => 'admin',
           ])
-          ->log("Admin PayFast refund R{$gross} processed");
+          ->log("Admin PayFast refund R{$payfastGross} processed");
+
+        $successMsg = 'PayFast refund of R' . number_format($payfastGross, 2) . ' processed successfully.';
+        if ($walletPaid > 0) {
+          $successMsg .= ' Note: wallet contribution of R' . number_format($walletPaid, 2) . ' was not refunded via PayFast — issue a wallet refund separately if required.';
+        }
 
         return redirect()
           ->route('admin.events.entries.new', $event)
-          ->with('success', 'PayFast refund of R' . number_format($gross, 2) . ' processed successfully.');
+          ->with('success', $successMsg);
 
       } catch (\Throwable $e) {
         Log::error('ADMIN PAYFAST REFUND EXCEPTION', [

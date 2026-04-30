@@ -243,19 +243,56 @@ class RegistrationRefundController extends Controller
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
 
-    if (!empty($pfPaymentId)) {
+    // For hybrid payments PayFast can only refund its own portion;
+    // the wallet contribution must be credited back to the wallet separately.
+    $payfastNet = round($payfastGross * 0.90, 2);
+    $walletNet  = round($walletPaid  * 0.90, 2);
+
+    if (!empty($pfPaymentId) && $payfastGross > 0) {
       try {
         $payfast = new \App\Services\Payfast();
-        $result = $payfast->refund($pfPaymentId, $net, 'Event withdrawal refund');
+        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
 
         Log::info('PAYFAST AUTO REFUND ATTEMPT', [
           'registration_id' => $registration->id,
           'pf_payment_id' => $pfPaymentId,
-          'amount' => $net,
+          'amount' => $payfastNet,
           'result' => $result,
         ]);
 
         if ($result['success']) {
+          // For hybrid payments, credit the wallet portion back to the user's wallet
+          // since it cannot be returned via the PayFast API.
+          if ($walletNet > 0) {
+            try {
+              app(WalletService::class)->credit(
+                $user->wallet,
+                $walletNet,
+                'event_registration_bank_wallet_refund',
+                $registration->id,
+                [
+                  'registration_id' => $registration->id,
+                  'event_id' => $registration->categoryEvent->event_id,
+                  'gross' => $walletPaid,
+                  'fee' => round($walletPaid * 0.10, 2),
+                  'method' => 'hybrid_bank',
+                  'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
+                ]
+              );
+
+              Log::info('HYBRID BANK REFUND: wallet portion credited', [
+                'registration_id' => $registration->id,
+                'wallet_net' => $walletNet,
+              ]);
+            } catch (\Throwable $walletEx) {
+              Log::warning('HYBRID BANK REFUND: wallet credit failed — manual follow-up required', [
+                'registration_id' => $registration->id,
+                'wallet_net' => $walletNet,
+                'error' => $walletEx->getMessage(),
+              ]);
+            }
+          }
+
           $registration->update([
             'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refunded_at' => now(),
@@ -271,13 +308,20 @@ class RegistrationRefundController extends Controller
               'gross' => $gross,
               'fee' => $fee,
               'net' => $net,
+              'payfast_net' => $payfastNet,
+              'wallet_net' => $walletNet,
               'event' => optional($registration->categoryEvent?->event)->name ?? '',
             ])
-            ->log("PayFast auto refund R{$net} processed");
+            ->log("PayFast auto refund R{$payfastNet} processed" . ($walletNet > 0 ? ", wallet credited R{$walletNet}" : ''));
+
+          $successMsg = 'Refund of R' . number_format($payfastNet, 2) . ' processed via PayFast. It may take 3–5 business days to reflect.';
+          if ($walletNet > 0) {
+            $successMsg .= ' R' . number_format($walletNet, 2) . ' has been credited to your wallet.';
+          }
 
           return redirect()
             ->route('events.show', $registration->categoryEvent->event_id)
-            ->with('success', 'Refund of R' . number_format($net, 2) . ' processed via PayFast. It may take 3–5 business days to reflect.');
+            ->with('success', $successMsg);
         }
 
         // PayFast returned error — leave pending for admin
@@ -556,16 +600,22 @@ class RegistrationRefundController extends Controller
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
 
     if (!empty($pfPaymentId)) {
+      // For hybrid payments PayFast can only refund its own portion;
+      // the wallet contribution is credited back to the user's wallet separately.
+      $payfastGross = $payment['gross'] ?? 0;
+      $walletPaid   = $payment['wallet_paid'] ?? 0;
+      $payfastNet   = round($payfastGross * 0.90, 2);
+      $walletNet    = round($walletPaid  * 0.90, 2);
+
       try {
         $payfast = new \App\Services\Payfast();
-        $amount = $registration->refund_net ?? $registration->refund_gross ?? 0;
 
-        $result = $payfast->refund($pfPaymentId, $amount, 'Event withdrawal refund');
+        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
 
         Log::info('PAYFAST REFUND ATTEMPT (registration)', [
           'registration_id' => $registration->id,
           'pf_payment_id' => $pfPaymentId,
-          'amount' => $amount,
+          'amount' => $payfastNet,
           'result' => $result,
         ]);
 
@@ -575,6 +625,34 @@ class RegistrationRefundController extends Controller
             'error' => $result['error'],
           ]);
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
+        }
+
+        // For hybrid payments, credit the wallet portion back to the user's wallet.
+        if ($walletNet > 0) {
+          $refundUser = $registration->user;
+          if ($refundUser && $refundUser->wallet) {
+            try {
+              app(WalletService::class)->credit(
+                $refundUser->wallet,
+                $walletNet,
+                'event_registration_bank_wallet_refund',
+                $registration->id,
+                [
+                  'registration_id' => $registration->id,
+                  'gross' => $walletPaid,
+                  'fee' => round($walletPaid * 0.10, 2),
+                  'method' => 'hybrid_bank',
+                  'initiated_by' => 'admin',
+                ]
+              );
+            } catch (\Throwable $walletEx) {
+              Log::warning('HYBRID BANK REFUND: wallet credit failed — manual follow-up required', [
+                'registration_id' => $registration->id,
+                'wallet_net' => $walletNet,
+                'error' => $walletEx->getMessage(),
+              ]);
+            }
+          }
         }
 
         $registration->update([
@@ -589,11 +667,12 @@ class RegistrationRefundController extends Controller
             'registration_id' => $registration->id,
             'method' => 'payfast',
             'pf_payment_id' => $pfPaymentId,
-            'amount' => $amount,
+            'payfast_net' => $payfastNet,
+            'wallet_net' => $walletNet,
           ])
-          ->log("PayFast refund R{$amount} processed");
+          ->log("PayFast refund R{$payfastNet} processed" . ($walletNet > 0 ? ", wallet credited R{$walletNet}" : ''));
 
-        return back()->with('success', 'Refund processed via PayFast.');
+        return back()->with('success', 'Refund processed via PayFast.' . ($walletNet > 0 ? ' Wallet portion of R' . number_format($walletNet, 2) . ' credited.' : ''));
 
       } catch (\Throwable $e) {
         Log::error('PAYFAST REFUND EXCEPTION (registration)', [
