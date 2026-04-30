@@ -317,7 +317,7 @@ class CategoryEventRegistration extends Model
   }
 
   /**
-   * Send withdrawal notification emails to the player and all event admins.
+   * Send withdrawal notification emails to the player, all event admins, and all super-users.
    *
    * @param  string  $initiatedBy  'self' when the player withdrew, 'admin' when an admin withdrew
    */
@@ -334,16 +334,23 @@ class CategoryEventRegistration extends Model
         ->queue(new \App\Mail\WithdrawalPlayerMail($this, $initiatedBy));
     }
 
-    // --- Event admin emails ---
+    // --- Event admin emails + super-user emails (deduplicated) ---
     $event = $this->categoryEvent?->event;
 
-    if ($event) {
-      $adminEmails = $event->admins->pluck('email')->filter()->unique()->values();
+    $eventAdminEmails = $event
+      ? $event->admins->pluck('email')->filter()->map('strtolower')
+      : collect();
 
-      foreach ($adminEmails as $email) {
-        \Illuminate\Support\Facades\Mail::to($email)
-          ->queue(new \App\Mail\WithdrawalAdminMail($this, $initiatedBy));
-      }
+    $superUserEmails = \App\Models\User::role('super-user')
+      ->pluck('email')
+      ->filter()
+      ->map('strtolower');
+
+    $allAdminEmails = $eventAdminEmails->merge($superUserEmails)->unique()->values();
+
+    foreach ($allAdminEmails as $email) {
+      \Illuminate\Support\Facades\Mail::to($email)
+        ->queue(new \App\Mail\WithdrawalAdminMail($this, $initiatedBy));
     }
   }
 
