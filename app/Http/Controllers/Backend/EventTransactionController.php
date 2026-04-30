@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
+use App\Models\SiteSetting;
 use App\Models\Transaction;
 use App\Models\CategoryEventRegistration;
 use Illuminate\Support\Facades\Log;
@@ -117,8 +118,8 @@ class EventTransactionController extends Controller
       // Full gross = what PayFast charged + what wallet covered
       $grossTx = $payfastGross + $walletUsed;
 
-      // Ledger convention: costs are negative
-      $pfFeeTx = -1 * round(abs((float) $tx->amount_fee), 2);
+      // PayFast fee recalculated using current custom rates (applies to PayFast portion only, not wallet)
+      $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
 
       // ✅ Cape Tennis fee is PER PLAYER (per entry), so multiply by entry count
       $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
