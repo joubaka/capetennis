@@ -419,12 +419,13 @@ class SuperAdminFinanceController extends Controller
             : 'Full refund';
 
         if ($method === 'wallet') {
-            $user   = $registration->user;
-            $wallet = $user?->wallet;
+            $user = $registration->user;
 
-            if (!$wallet) {
-                return back()->withErrors('Player wallet not found.');
+            if (!$user) {
+                return back()->withErrors('User not found for this registration.');
             }
+
+            $wallet = $user->wallet ?? $user->wallet()->create([]);
 
             try {
                 DB::transaction(function () use ($registration, $wallet, $gross, $fee, $net, $percentage, $event, $baseUpdate) {
@@ -589,12 +590,13 @@ class SuperAdminFinanceController extends Controller
         ];
 
         if ($method === 'wallet') {
-            $user   = $order->user;
-            $wallet = $user?->wallet;
+            $user = $order->user;
 
-            if (!$wallet) {
-                return back()->withErrors('Player wallet not found.');
+            if (!$user) {
+                return back()->withErrors('User not found for this order.');
             }
+
+            $wallet = $user->wallet ?? $user->wallet()->create([]);
 
             try {
                 DB::transaction(function () use ($order, $wallet, $gross, $fee, $net, $percentage, $event, $baseUpdate) {
