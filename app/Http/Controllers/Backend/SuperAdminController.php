@@ -44,6 +44,17 @@ class SuperAdminController extends Controller
         // ── Pending withdrawals ──────────────────────────────────────────────
         $pendingWithdrawals = Withdrawals::count();
 
+        // ── Pending bank refunds (registration-level) ────────────────────────
+        $pendingBankRefunds = CategoryEventRegistration::with([
+                'categoryEvent.event',
+                'user',
+            ])
+            ->where('status', 'withdrawn')
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->orderBy('updated_at')
+            ->get();
+
         // ── Agreement statistics ─────────────────────────────────────────────
         $activeAgreement = Agreement::where('is_active', 1)->latest()->first();
         $agreementStats  = [
@@ -246,6 +257,7 @@ class SuperAdminController extends Controller
             'newUsersThisMonth',
             'newPlayersThisWeek',
             'pendingWithdrawals',
+            'pendingBankRefunds',
             'agreementStats',
             'profileStats',
             'playersNeedingAttention',

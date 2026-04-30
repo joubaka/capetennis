@@ -475,6 +475,14 @@
             </a>
           </div>
           <div class="text-center">
+            <a href="{{ route('admin.refunds.bank.index') }}" class="text-decoration-none">
+              <div class="fw-bold {{ $pendingBankRefunds->count() > 0 ? 'text-danger' : 'text-success' }} fs-5">
+                {{ $pendingBankRefunds->count() }}
+              </div>
+              <small class="text-muted">Bank Refunds</small>
+            </a>
+          </div>
+          <div class="text-center">
             <div class="fw-bold text-info fs-5">{{ $newUsersThisMonth }}</div>
             <small class="text-muted">New Users (mo.)</small>
           </div>
@@ -491,6 +499,155 @@
     </div>
   </div>
 
+</div>
+
+{{-- ═══════════════ PENDING BANK REFUNDS ═══════════════ --}}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+          <i class="ti ti-cash-banknote me-2 text-danger"></i>
+          <h5 class="mb-0">Pending Bank Refunds</h5>
+          @if($pendingBankRefunds->count() > 0)
+            <span class="badge bg-danger ms-2">{{ $pendingBankRefunds->count() }}</span>
+          @else
+            <span class="badge bg-success ms-2">All clear</span>
+          @endif
+        </div>
+        <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-sm btn-outline-danger">
+          View Full Refunds Page
+        </a>
+      </div>
+
+      @if(session('pf_query_result'))
+        <div class="alert alert-info alert-dismissible mx-3 mt-3 mb-0" role="alert">
+          <i class="ti ti-info-circle me-1"></i>{{ session('pf_query_result') }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
+      @if($errors->any())
+        <div class="alert alert-danger alert-dismissible mx-3 mt-3 mb-0" role="alert">
+          @foreach($errors->all() as $error)
+            <div><i class="ti ti-alert-triangle me-1"></i>{{ $error }}</div>
+          @endforeach
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
+      @if($pendingBankRefunds->isEmpty())
+        <div class="card-body text-center py-4 text-muted">
+          <i class="ti ti-check-circle ti-lg text-success d-block mb-2"></i>
+          No pending bank refunds.
+        </div>
+      @else
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Registration</th>
+                <th>Event / Category</th>
+                <th>Player / User</th>
+                <th>Bank Details</th>
+                <th class="text-end">Refund (R)</th>
+                <th>Withdrawn</th>
+                <th class="text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach($pendingBankRefunds as $refund)
+                <tr>
+                  <td>
+                    <small class="text-muted">#{{ $refund->id }}</small>
+                  </td>
+                  <td>
+                    <div class="fw-semibold">
+                      {{ optional(optional($refund->categoryEvent)->event)->name ?? '—' }}
+                    </div>
+                    <small class="text-muted">
+                      {{ optional($refund->categoryEvent)->category->name ?? '' }}
+                    </small>
+                  </td>
+                  <td>
+                    @if($refund->user)
+                      <a href="{{ route('user.show', $refund->user) }}" class="fw-bold text-primary">
+                        {{ $refund->user->name }}
+                      </a>
+                      <small class="d-block text-muted">{{ $refund->user->email }}</small>
+                    @else
+                      <span class="text-muted">—</span>
+                    @endif
+                  </td>
+                  <td>
+                    <small>
+                      <span class="fw-semibold">{{ $refund->refund_account_name ?? '—' }}</span><br>
+                      {{ $refund->refund_bank_name ?? '' }}
+                      @if($refund->refund_account_number)
+                        · Acc: {{ $refund->refund_account_number }}
+                      @endif
+                      @if($refund->refund_branch_code)
+                        · Branch: {{ $refund->refund_branch_code }}
+                      @endif
+                    </small>
+                  </td>
+                  <td class="text-end">
+                    <span class="fw-bold text-success">
+                      R {{ number_format($refund->refund_net ?? $refund->refund_gross ?? 0, 2) }}
+                    </span>
+                    @if($refund->refund_gross > 0 && $refund->refund_fee > 0)
+                      <small class="d-block text-muted">
+                        gross R{{ number_format($refund->refund_gross, 2) }}
+                        − fee R{{ number_format($refund->refund_fee, 2) }}
+                      </small>
+                    @endif
+                  </td>
+                  <td>
+                    @if($refund->withdrawn_at)
+                      {{ $refund->withdrawn_at->format('d M Y') }}
+                      <small class="d-block text-muted">{{ $refund->withdrawn_at->diffForHumans() }}</small>
+                    @else
+                      <span class="text-muted">—</span>
+                    @endif
+                  </td>
+                  <td class="text-center" style="white-space:nowrap;">
+                    {{-- Mark bank transfer complete --}}
+                    <form method="POST"
+                          action="{{ route('admin.refunds.bank.complete', $refund) }}"
+                          class="d-inline"
+                          onsubmit="return confirm('Mark this bank refund as completed?')">
+                      @csrf
+                      <button type="submit" class="btn btn-sm btn-success" title="Mark Complete">
+                        <i class="ti ti-check me-1"></i>Complete
+                      </button>
+                    </form>
+
+                    {{-- PayFast query (only when pf_transaction_id is present) --}}
+                    @if($refund->pf_transaction_id)
+                      <a href="{{ route('admin.refunds.bank.payfast-query', $refund) }}"
+                         class="btn btn-sm btn-outline-info ms-1"
+                         title="Query PayFast refund status">
+                        <i class="ti ti-search me-1"></i>PF Status
+                      </a>
+                    @endif
+
+                    {{-- View full refund record --}}
+                    @if(\Route::has('admin.registration.refunds.bank.show'))
+                      <a href="{{ route('admin.registration.refunds.bank.show', $refund) }}"
+                         class="btn btn-sm btn-outline-secondary ms-1"
+                         title="View details">
+                        <i class="ti ti-eye"></i>
+                      </a>
+                    @endif
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+      @endif
+    </div>
+  </div>
 </div>
 
 {{-- ═══════════════ AUDIT & ACTIVITY (tabbed) ═══════════════ --}}
