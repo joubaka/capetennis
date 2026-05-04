@@ -55,6 +55,7 @@ class EventFinanceController extends Controller
                 'payfast_fee' => $pfFee,
                 'cape_fee'    => $capeFee,
                 'net'         => round($payfastGross + $walletUsed - $pfFee - $capeFee, 2),
+                'entryCount'  => $entryCount,
                 'items'       => $tx->order?->items ?? collect(),
             ];
         });
@@ -99,7 +100,7 @@ class EventFinanceController extends Controller
         // Entry count: payments only, same as EventTransactionController
         $totalEntries = $isTeamEvent
             ? $transactions->count()
-            : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
+            : $paymentLedger->sum('entryCount');
 
         // ── Manual income items ───────────────────────────────────────────
         $incomeItems     = $event->incomeItems()->get();
