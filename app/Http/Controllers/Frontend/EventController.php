@@ -181,11 +181,13 @@ class EventController extends Controller
 
 
     // FLAGS
-    $signUp = (now()->lte($entryCloseAt) && $event->signUp == 1)
+    $eventClosed = in_array($event->status, ['closed', 'draft']);
+
+    $signUp = (!$eventClosed && now()->lte($entryCloseAt) && $event->signUp == 1)
       ? 'open'
       : 'closed';
 
-    $canEnter = now()->lte($entryCloseAt);
+    $canEnter = !$eventClosed && now()->lte($entryCloseAt);
     $canWithdraw = now()->lte($withdrawalCloseAt);
 
     // FORMATTED OUTPUT
@@ -423,6 +425,7 @@ return view('frontend.event.show', compact(
       'nomRegisteredLookup',
       'canEnter',
       'canWithdraw',
+      'entryCloseAt',
       'venues',
       'categoryResults'
     ));
