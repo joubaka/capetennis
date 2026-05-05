@@ -8,6 +8,7 @@ use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class BankRefundController extends Controller
 {
@@ -198,6 +199,13 @@ class BankRefundController extends Controller
           ])
           ->log("PayFast refund R{$payfastNet} processed" . ($walletNet > 0 ? ", wallet credited R{$walletNet}" : ''));
 
+        // Notify the player that their refund has been processed
+        $playerEmail = optional($registration->players->first())->email
+                    ?? optional($registration->user)->email;
+        if ($playerEmail) {
+          Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
+        }
+
         return back()->with('success', 'Refund processed via PayFast.' . ($walletNet > 0 ? ' Wallet portion of R' . number_format($walletNet, 2) . ' credited.' : ''));
 
       } catch (\Throwable $e) {
@@ -214,6 +222,13 @@ class BankRefundController extends Controller
       'refund_status' => 'completed',
       'refunded_at' => now(),
     ]);
+
+    // Notify the player that their bank refund has been processed
+    $playerEmail = optional($registration->players->first())->email
+                ?? optional($registration->user)->email;
+    if ($playerEmail) {
+      Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
+    }
 
     return back()->with('success', 'Bank refund marked as completed.');
   }
@@ -293,7 +308,9 @@ class BankRefundController extends Controller
   }
 
   /**
-   * Bulk-complete: mark a set of selected pending bank refunds as completed (manual).
+   * Bulk-complete: mark a set of selected pending bank refunds as completed.
+   * For each registration that has a PayFast payment ID, a PayFast refund is
+   * attempted automatically. Failures are logged but do not stop other items.
    *
    * Expects POST body: registration_ids[] (array of CategoryEventRegistration IDs)
    */
@@ -306,13 +323,79 @@ class BankRefundController extends Controller
 
     $ids = $request->input('registration_ids');
 
-    $updated = CategoryEventRegistration::whereIn('id', $ids)
+    $registrations = CategoryEventRegistration::with(['players', 'user'])
+      ->whereIn('id', $ids)
       ->where('refund_method', 'bank')
       ->where('refund_status', 'pending')
       ->get();
 
     $count = 0;
-    foreach ($updated as $registration) {
+    foreach ($registrations as $registration) {
+      $payment      = $registration->paymentInfo();
+      $pfPaymentId  = $payment['pf_payment_id'] ?? null;
+      $payfastGross = $payment['gross'] ?? 0;
+      $walletPaid   = $payment['wallet_paid'] ?? 0;
+      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      $walletNet    = $walletPaid;
+
+      $refundedViaPayfast = false;
+
+      if (!empty($pfPaymentId) && $payfastGross > 0) {
+        try {
+          $payfast = new \App\Services\Payfast();
+          $result  = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund (bulk)');
+
+          Log::info('BULK PAYFAST REFUND ATTEMPT', [
+            'registration_id' => $registration->id,
+            'pf_payment_id'   => $pfPaymentId,
+            'amount'          => $payfastNet,
+            'result'          => $result,
+          ]);
+
+          if ($result['success']) {
+            $refundedViaPayfast = true;
+
+            // For hybrid payments, credit the wallet portion back
+            if ($walletNet > 0) {
+              $refundUser = $registration->user;
+              if ($refundUser && $refundUser->wallet) {
+                try {
+                  app(WalletService::class)->credit(
+                    $refundUser->wallet,
+                    $walletNet,
+                    'event_registration_bank_wallet_refund',
+                    $registration->id,
+                    [
+                      'registration_id' => $registration->id,
+                      'gross'           => $walletPaid,
+                      'fee'             => 0,
+                      'method'          => 'hybrid_bank',
+                      'initiated_by'    => 'admin_bulk',
+                    ]
+                  );
+                } catch (\Throwable $walletEx) {
+                  Log::warning('BULK: hybrid wallet credit failed — manual follow-up required', [
+                    'registration_id' => $registration->id,
+                    'wallet_net'      => $walletNet,
+                    'error'           => $walletEx->getMessage(),
+                  ]);
+                }
+              }
+            }
+          } else {
+            Log::warning('BULK PAYFAST REFUND FAILED — marking completed for manual processing', [
+              'registration_id' => $registration->id,
+              'error'           => $result['error'] ?? 'unknown',
+            ]);
+          }
+        } catch (\Throwable $e) {
+          Log::error('BULK PAYFAST REFUND EXCEPTION', [
+            'registration_id' => $registration->id,
+            'error'           => $e->getMessage(),
+          ]);
+        }
+      }
+
       $registration->update([
         'refund_status' => 'completed',
         'refunded_at'   => now(),
@@ -322,12 +405,22 @@ class BankRefundController extends Controller
         ->performedOn($registration)
         ->causedBy(auth()->user())
         ->withProperties([
-          'registration_id' => $registration->id,
-          'method'          => 'bank',
-          'initiated_by'    => 'admin',
-          'bulk'            => true,
+          'registration_id'    => $registration->id,
+          'method'             => $refundedViaPayfast ? 'payfast' : 'bank',
+          'pf_payment_id'      => $pfPaymentId,
+          'initiated_by'       => 'admin',
+          'bulk'               => true,
+          'payfast_attempted'  => !empty($pfPaymentId) && $payfastGross > 0,
+          'payfast_succeeded'  => $refundedViaPayfast,
         ])
-        ->log('Bank refund marked completed (bulk)');
+        ->log('Bank refund marked completed (bulk)' . ($refundedViaPayfast ? ' — PayFast auto-refund processed' : ''));
+
+      // Notify the player
+      $playerEmail = optional($registration->players->first())->email
+                  ?? optional($registration->user)->email;
+      if ($playerEmail) {
+        Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
+      }
 
       $count++;
     }
