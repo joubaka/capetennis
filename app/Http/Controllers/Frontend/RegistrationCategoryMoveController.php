@@ -8,7 +8,6 @@ use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\Registration;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -40,13 +39,7 @@ class RegistrationCategoryMoveController extends Controller
         $event = $currentCategory->event;
 
         // Enforce withdrawal deadline
-        $withdrawalDeadline = $event->withdrawal_deadline
-            ? Carbon::parse($event->withdrawal_deadline)
-            : ($event->entry_deadline
-                ? Carbon::parse($event->entry_deadline)
-                : Carbon::parse($event->start_date));
-
-        if (now()->gt($withdrawalDeadline)) {
+        if (now()->gt($event->withdrawalCloseAt())) {
             return response()->json([
                 'success' => false,
                 'message' => 'The deadline for category changes has passed.',
