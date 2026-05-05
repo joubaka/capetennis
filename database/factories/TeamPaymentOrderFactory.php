@@ -23,9 +23,9 @@ class TeamPaymentOrderFactory extends Factory
             'total_amount' => $this->faker->randomFloat(2, 50, 500),
             'wallet_reserved' => 0,
             'payfast_amount_due' => 0,
-            'wallet_debited' => false,
-            'payfast_paid' => true,
-            'pay_status' => true,
+            'wallet_debited' => 0,
+            'payfast_paid' => 1,
+            'pay_status' => 1,
             'payfast_pf_payment_id' => null,
             'payfast_raw_data' => null,
             'refund_method' => null,
@@ -45,9 +45,9 @@ class TeamPaymentOrderFactory extends Factory
     public function unpaid(): static
     {
         return $this->state([
-            'payfast_paid' => false,
-            'wallet_debited' => false,
-            'pay_status' => false,
+            'payfast_paid' => 0,
+            'wallet_debited' => 0,
+            'pay_status' => 0,
         ]);
     }
 }
