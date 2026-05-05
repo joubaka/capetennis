@@ -9,6 +9,7 @@ use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use App\Exceptions\RefundAlreadyProcessedException;
 
@@ -343,6 +344,13 @@ class RegistrationRefundController extends Controller
             ])
             ->log("PayFast auto refund R{$payfastNet} processed" . ($walletNet > 0 ? ", wallet credited R{$walletNet}" : ''));
 
+          // Notify the player that their PayFast refund has been processed
+          $playerEmail = optional($registration->players->first())->email
+                      ?? $registration->user?->email;
+          if ($playerEmail) {
+            Mail::to($playerEmail)->queue(new \App\Mail\PayFastRefundConfirmationMail($registration));
+          }
+
           $successMsg = 'Refund of R' . number_format($payfastNet, 2) . ' processed via PayFast. It may take 3–5 business days to reflect.';
           if ($walletNet > 0) {
             $successMsg .= ' R' . number_format($walletNet, 2) . ' has been credited to your wallet.';
@@ -388,6 +396,9 @@ class RegistrationRefundController extends Controller
         'event' => optional($registration->categoryEvent?->event)->name ?? '',
       ])
       ->log("Bank refund R{$net} requested");
+
+    // Notify all super-users and event admins that a bank refund has been requested
+    $this->notifyAdminsOfBankRefundRequest($registration);
 
     return redirect()
       ->route('events.show', $registration->categoryEvent->event_id)
@@ -703,6 +714,13 @@ class RegistrationRefundController extends Controller
           ])
           ->log("PayFast refund R{$payfastNet} processed" . ($walletNet > 0 ? ", wallet credited R{$walletNet}" : ''));
 
+        // Notify the player that their refund has been processed
+        $playerEmail = optional($registration->players->first())->email
+                    ?? optional($registration->user)->email;
+        if ($playerEmail) {
+          Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
+        }
+
         return back()->with('success', 'Refund processed via PayFast.' . ($walletNet > 0 ? ' Wallet portion of R' . number_format($walletNet, 2) . ' credited.' : ''));
 
       } catch (\Throwable $e) {
@@ -724,6 +742,13 @@ class RegistrationRefundController extends Controller
       'registration_id' => $registration->id,
       'amount' => $registration->refund_net,
     ]);
+
+    // Notify the player that their bank refund has been processed
+    $playerEmail = optional($registration->players->first())->email
+                ?? optional($registration->user)->email;
+    if ($playerEmail) {
+      Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
+    }
 
     return back()->with('success', 'Bank refund marked as completed.');
   }
@@ -749,5 +774,36 @@ class RegistrationRefundController extends Controller
     return view('frontend.registrations.refund-status', compact('registrations'));
   }
 
+  /**
+   * Notify the site admin that a bank refund has been requested.
+   * Uses sendToOwner() to honour the admin_notification_email setting,
+   * matching the pattern used in TeamPlayerWithdrawController.
+   */
+  private function notifyAdminsOfBankRefundRequest(CategoryEventRegistration $registration): void
+  {
+    try {
+      $registration->loadMissing(['players', 'categoryEvent.event']);
+
+      $event = $registration->categoryEvent?->event;
+      $player = $registration->players->first();
+      $playerName = $player ? trim($player->name . ' ' . $player->surname) : 'A player';
+      $eventName = $event?->name ?? 'Event';
+      $amount = number_format((float) $registration->refund_net, 2);
+
+      $details = [
+        'subject' => "Bank refund requested: {$playerName} ({$eventName})",
+        'body'    => "A bank refund of R{$amount} has been requested by {$playerName} for {$eventName}.\n\nRegistration ID: #{$registration->id}\nBank: {$registration->refund_bank_name}\nAccount name: {$registration->refund_account_name}",
+        'replyTo' => optional($registration->user)->email,
+      ];
+
+      app(\App\Http\Controllers\Backend\EmailController::class)
+        ->sendToOwner($details, 'smtp', 'email_on_bank_refund_request');
+    } catch (\Throwable $e) {
+      Log::error('Failed to send bank refund admin notification', [
+        'registration_id' => $registration->id,
+        'error' => $e->getMessage(),
+      ]);
+    }
+  }
 
 }

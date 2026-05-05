@@ -345,21 +345,15 @@ class CategoryEventRegistration extends Model
         ->queue(new \App\Mail\WithdrawalPlayerMail($this, $initiatedBy));
     }
 
-    // --- Event admin emails + super-user emails (deduplicated) ---
-    $event = $this->categoryEvent?->event;
-
-    $eventAdminEmails = $event
-      ? $event->admins->pluck('email')->filter()->map('strtolower')
-      : collect();
-
+    // --- Admin email: refund details go to super-users only (not event admins) ---
     $superUserEmails = \App\Models\User::role('super-user')
       ->pluck('email')
       ->filter()
-      ->map('strtolower');
+      ->map('strtolower')
+      ->unique()
+      ->values();
 
-    $allAdminEmails = $eventAdminEmails->merge($superUserEmails)->unique()->values();
-
-    foreach ($allAdminEmails as $email) {
+    foreach ($superUserEmails as $email) {
       \Illuminate\Support\Facades\Mail::to($email)
         ->queue(new \App\Mail\WithdrawalAdminMail($this, $initiatedBy));
     }

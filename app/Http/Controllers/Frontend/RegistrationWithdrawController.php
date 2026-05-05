@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
+use App\Models\SiteSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,11 @@ class RegistrationWithdrawController extends Controller
 
     if (!$user) {
       return redirect()->route('login');
+    }
+
+    // Respect the global withdrawal switch (admins bypass via CategoryEventController)
+    if (SiteSetting::get('withdrawal_allowed', '1') !== '1') {
+      return back()->withErrors('Withdrawals are currently disabled. Please contact support@capetennis.co.za for assistance.');
     }
 
     $check = $registration->canWithdraw($user);
