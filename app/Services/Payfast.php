@@ -261,18 +261,14 @@ class Payfast
       'version'     => 'v1',
     ];
 
-    ksort($headerParams);
-    // Build the signature string manually (not via http_build_query) so that values
-    // like the ISO 8601 timestamp are NOT URL-encoded. PayFast verifies the signature
-    // against raw unencoded values and will return 401 if the string is URL-encoded.
-    $signatureParts = [];
-    foreach ($headerParams as $k => $v) {
-      $signatureParts[] = $k . '=' . $v;
-    }
-    $signatureString = implode('&', $signatureParts);
+    // Match PayFast's own signature sample exactly:
+    // add passphrase into the array first, then ksort, then http_build_query + md5.
     if (!empty($passphrase)) {
-      $signatureString .= '&passphrase=' . $passphrase;
+      $headerParams['passphrase'] = $passphrase;
     }
+
+    ksort($headerParams);
+    $signatureString = http_build_query($headerParams);
     $signature = md5($signatureString);
 
     \Log::debug('PayFast buildApiHeaders', [
