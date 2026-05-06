@@ -227,7 +227,7 @@
               <input type="hidden" name="custom_str3" value="{{ $event ? $event->name : '' }}">
               <input type="hidden" name="custom_str4" value="{{ auth()->user()->name }}">
 
-              <input type="hidden" name="custom_wallet_reserved" value="{{ $walletReserved }}">
+              {{-- NOTE: custom_wallet_reserved is NOT sent to PayFast (not a PayFast field) --}}
 
               @php
                 $formFields = array_filter([
