@@ -64,7 +64,9 @@ class CategoryEventController extends Controller
         'refund_net'    => 0,
         'refunded_at'   => null,
       ]);
+    });
 
+    try {
       activity('withdrawal')
         ->performedOn($registration)
         ->causedBy($user)
@@ -77,7 +79,12 @@ class CategoryEventController extends Controller
           'bypass_reason'   => 'admin override — deadline/lock rules do not apply',
         ])
         ->log("Admin withdrew {$eventName} ({$categoryName})");
-    });
+    } catch (\Throwable $e) {
+      \Log::warning('Admin withdraw: activity log failed', [
+        'registration_id' => $registration->id,
+        'error'           => $e->getMessage(),
+      ]);
+    }
 
     // Send notification emails outside the transaction
     $registration->sendWithdrawalEmails('admin');
