@@ -157,6 +157,39 @@ class BankRefundController extends Controller
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
 
     if (!empty($pfPaymentId)) {
+      // Query PayFast first to determine the available refund method
+      $payfast = new \App\Services\Payfast();
+      if (config('services.payfast.sandbox')) {
+        $payfast->setMode(0);
+      }
+
+      $query = $payfast->refundQuery($pfPaymentId);
+      if (!$query['success']) {
+        return back()->withErrors('PayFast query failed before refund: ' . ($query['error'] ?? 'Unknown error') . '. Please process manually.');
+      }
+
+      $queryData   = $query['data'] ?? [];
+      $pfStatus    = $queryData['status'] ?? 'NOT_AVAILABLE';
+      $fullMethod  = $queryData['refund_full']['method']    ?? 'NOT_AVAILABLE';
+      $partMethod  = $queryData['refund_partial']['method'] ?? 'NOT_AVAILABLE';
+      $refundMethod = ($fullMethod !== 'NOT_AVAILABLE') ? $fullMethod : $partMethod;
+
+      Log::info('PAYFAST REFUND QUERY BEFORE COMPLETE', [
+        'registration_id' => $registration->id,
+        'pf_payment_id'   => $pfPaymentId,
+        'status'          => $pfStatus,
+        'full_method'     => $fullMethod,
+        'partial_method'  => $partMethod,
+      ]);
+
+      if ($pfStatus === 'NOT_AVAILABLE') {
+        return back()->withErrors("PayFast refund not available for this transaction (status: {$pfStatus}). Please process manually.");
+      }
+
+      if ($refundMethod === 'BANK_PAYOUT') {
+        return back()->withErrors('PayFast can only refund this transaction via bank payout — bank account details are required. Please process the refund manually via the PayFast merchant dashboard.');
+      }
+
       // For hybrid payments PayFast can only refund its own portion;
       // the wallet contribution is credited back to the user's wallet separately.
       $payfastGross = $payment['gross'] ?? 0;
@@ -166,11 +199,6 @@ class BankRefundController extends Controller
       $walletNet    = $walletPaid;
 
       try {
-        $payfast = new \App\Services\Payfast();
-        if (config('services.payfast.sandbox')) {
-          $payfast->setMode(0);
-        }
-
         $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
 
         Log::info('PAYFAST REFUND ATTEMPT (backend registration)', [
@@ -289,8 +317,36 @@ class BankRefundController extends Controller
         if (config('services.payfast.sandbox')) {
           $payfast->setMode(0);
         }
-        $amount = $order->refund_net ?? $order->refund_gross ?? 0;
 
+        // Query first to determine available refund method
+        $query = $payfast->refundQuery($pfPaymentId);
+        if (!$query['success']) {
+          return back()->withErrors('PayFast query failed before refund: ' . ($query['error'] ?? 'Unknown error') . '. Please process manually.');
+        }
+
+        $queryData   = $query['data'] ?? [];
+        $pfStatus    = $queryData['status'] ?? 'NOT_AVAILABLE';
+        $fullMethod  = $queryData['refund_full']['method']    ?? 'NOT_AVAILABLE';
+        $partMethod  = $queryData['refund_partial']['method'] ?? 'NOT_AVAILABLE';
+        $refundMethod = ($fullMethod !== 'NOT_AVAILABLE') ? $fullMethod : $partMethod;
+
+        Log::info('PAYFAST REFUND QUERY BEFORE COMPLETE TEAM', [
+          'order_id'      => $order->id,
+          'pf_payment_id' => $pfPaymentId,
+          'status'        => $pfStatus,
+          'full_method'   => $fullMethod,
+          'partial_method'=> $partMethod,
+        ]);
+
+        if ($pfStatus === 'NOT_AVAILABLE') {
+          return back()->withErrors("PayFast refund not available for this transaction (status: {$pfStatus}). Please process manually.");
+        }
+
+        if ($refundMethod === 'BANK_PAYOUT') {
+          return back()->withErrors('PayFast can only refund this transaction via bank payout — bank account details are required. Please process the refund manually via the PayFast merchant dashboard.');
+        }
+
+        $amount = $order->refund_net ?? $order->refund_gross ?? 0;
         $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
 
         Log::info('PAYFAST REFUND ATTEMPT (backend team)', [
