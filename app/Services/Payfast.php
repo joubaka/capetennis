@@ -262,9 +262,16 @@ class Payfast
     ];
 
     ksort($headerParams);
-    $signatureString = http_build_query($headerParams);
+    // Build the signature string manually (not via http_build_query) so that values
+    // like the ISO 8601 timestamp are NOT URL-encoded. PayFast verifies the signature
+    // against raw unencoded values and will return 401 if the string is URL-encoded.
+    $signatureParts = [];
+    foreach ($headerParams as $k => $v) {
+      $signatureParts[] = $k . '=' . $v;
+    }
+    $signatureString = implode('&', $signatureParts);
     if (!empty($passphrase)) {
-      $signatureString .= '&passphrase=' . urlencode($passphrase);
+      $signatureString .= '&passphrase=' . $passphrase;
     }
     $signature = md5($signatureString);
 
