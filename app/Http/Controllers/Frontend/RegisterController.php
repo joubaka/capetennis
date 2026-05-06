@@ -1500,7 +1500,7 @@ class RegisterController extends Controller
     // -----------------------------------
 
     $payfast = new Payfast();
-    $payfast->setMode(Auth::id() == 584 ? 0 : 1);
+    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
 
     $request['amount'] = $totalFee;
     $request['custom_int5'] = $regorder->id;

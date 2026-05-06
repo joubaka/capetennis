@@ -93,7 +93,7 @@ class RegistrationPaymentController extends Controller
 
     // 🔁 Send to PayFast
     $payfast = new \App\Services\Payfast();
-    $payfast->setMode($user->id == 584 ? 0 : 1);
+    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
 
     return view('frontend.payfast.pay_now', [
       'payfast' => $payfast,
