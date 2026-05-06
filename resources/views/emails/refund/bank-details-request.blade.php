@@ -1,18 +1,11 @@
 <x-mail::message>
-# Bank Details Required for Your Refund
+# Bank Details Required for Your Refund{{ $registrations->count() > 1 ? 's' : '' }}
 
-@php
-    $player     = $registration->players->first();
-    $playerName = $player ? trim($player->name . ' ' . $player->surname) : 'Player';
-    $event      = $registration->categoryEvent?->event;
-    $eventName  = $event?->name ?? 'the event';
-@endphp
+Hi {{ $userName }},
 
-Hi {{ $playerName }},
+We need your bank account details to process {{ $registrations->count() === 1 ? 'a refund' : $registrations->count() . ' refunds' }} owed to you.
 
-We need your bank account details to process your refund of **R{{ number_format($registration->refund_net, 2) }}** for **{{ $eventName }}**.
-
-Please click the button below to securely submit your bank details. This link is valid for **7 days**.
+Please click the button below to securely submit your bank details. This link is valid for **7 days** and covers all the refunds listed below.
 
 <x-mail::button :url="$signedUrl" color="primary">
 Submit My Bank Details
@@ -20,14 +13,23 @@ Submit My Bank Details
 
 ---
 
-**Refund summary:**
-- **Event:** {{ $eventName }}
-- **Amount to refund:** R{{ number_format($registration->refund_net, 2) }}
-- **Registration ID:** #{{ $registration->id }}
+**Pending refunds:**
+
+@foreach($registrations as $reg)
+@php
+    $player    = $reg->players->first();
+    $playerName = $player ? trim($player->name . ' ' . $player->surname) : 'Player';
+    $eventName  = optional($reg->categoryEvent?->event)->name ?? 'Event';
+    $category   = optional($reg->categoryEvent?->category)->name ?? '';
+@endphp
+- **{{ $playerName }}** — {{ $eventName }}{{ $category ? ' (' . $category . ')' : '' }} — **R{{ number_format($reg->refund_net, 2) }}**
+@endforeach
+
+**Total: R{{ number_format($registrations->sum('refund_net'), 2) }}**
 
 ---
 
-Once you submit your details, our team will process the refund within 1–3 business days.
+Once you submit your details, our team will process the refund(s) within 1–3 business days.
 
 If you have any questions, contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
