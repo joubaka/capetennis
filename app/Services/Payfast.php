@@ -283,37 +283,33 @@ class Payfast
   /* =====================================================
    * SIGNED HEADER BUILDER (shared by refund + refundQuery)
    * ===================================================== */
-  private function buildApiHeaders(): array
+  private function buildApiHeaders(array $bodyParams = []): array
   {
-    // Use config() so this works correctly when the config cache is active in production.
-    // env() returns null after `php artisan config:cache` which causes 401 from PayFast.
     $passphrase = $this->mode === 'sandbox'
       ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
       : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
     $timestamp = now()->toIso8601String();
 
-    $headerParams = [
+    // Combine header params + body params for signing (PayFast requires both)
+    $allParams = array_merge([
       'merchant-id' => $this->id,
       'timestamp'   => $timestamp,
       'version'     => 'v1',
-    ];
+    ], $bodyParams);
 
-    // Match PayFast's own signature sample exactly:
-    // add passphrase into the array first, then ksort, then http_build_query + md5.
     if (!empty($passphrase)) {
-      $headerParams['passphrase'] = $passphrase;
+      $allParams['passphrase'] = $passphrase;
     }
 
-    ksort($headerParams);
-    $signatureString = http_build_query($headerParams);
+    ksort($allParams);
+    $signatureString = http_build_query($allParams);
     $signature = md5($signatureString);
 
     \Log::debug('PayFast buildApiHeaders', [
       'mode'             => $this->mode,
       'merchant_id'      => $this->id,
       'passphrase_set'   => !empty($passphrase),
-      'passphrase_len'   => strlen((string) $passphrase),
       'timestamp'        => $timestamp,
       'signature_string' => $signatureString,
       'signature'        => $signature,
@@ -405,21 +401,23 @@ class Payfast
    */
   public function refund(string $pf_payment_id, $amount, string $reason = 'Event withdrawal refund'): array
   {
-    $amount = number_format((float) $amount, 2, '.', '');
+    // PayFast requires amount in CENTS (integer), not rands
+    $amountCents = (int) round((float) $amount * 100);
 
     $testing = $this->mode === 'sandbox';
-    $apiUrl = 'https://api.payfast.co.za/refunds' . ($testing ? '?testing=true' : '');
+    // pf_payment_id goes in the URL path: POST /refunds/{id}
+    $apiUrl = 'https://api.payfast.co.za/refunds/' . urlencode($pf_payment_id)
+      . ($testing ? '?testing=true' : '');
 
-    // Build request body
+    // Body must NOT include merchant_id/merchant_key (those go in headers only)
     $body = [
-      'merchant_id'   => $this->id,
-      'merchant_key'  => $this->key,
-      'pf_payment_id' => $pf_payment_id,
-      'amount'        => $amount,
+      'amount'        => $amountCents,
       'reason'        => $reason,
+      'notify_buyer'  => 1,
     ];
 
-    $headers = $this->buildApiHeaders();
+    // Signature must cover both headers AND body params (alphabetically sorted)
+    $headers = $this->buildApiHeaders($body);
 
     try {
       $response = Http::timeout(15)
@@ -428,7 +426,7 @@ class Payfast
 
       \Log::info('PayFast refund response', [
         'pf_payment_id' => $pf_payment_id,
-        'amount'        => $amount,
+        'amount_cents'  => $amountCents,
         'status'        => $response->status(),
         'body'          => $response->body(),
       ]);
@@ -450,7 +448,7 @@ class Payfast
     } catch (\Throwable $e) {
       \Log::error('PayFast refund exception', [
         'pf_payment_id' => $pf_payment_id,
-        'amount'        => $amount,
+        'amount_cents'  => $amountCents,
         'error'         => $e->getMessage(),
       ]);
 
