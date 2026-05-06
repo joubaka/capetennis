@@ -81,6 +81,15 @@ class BankRefundController extends Controller
   }
 
   /**
+   * Show details for a single bank refund.
+   */
+  public function show(CategoryEventRegistration $registration)
+  {
+    $registration->load(['categoryEvent.event', 'players', 'registration', 'user']);
+    return view('backend.refunds.bank-show', compact('registration'));
+  }
+
+  /**
    * Query the PayFast status of a previously issued refund.
    */
   public function queryPayfast(CategoryEventRegistration $registration)

@@ -290,6 +290,11 @@ Route::middleware(['auth', 'role:super-user'])
       'index'
     ])->name('bank.index');
 
+    Route::get('bank/{registration}', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'show'
+    ])->name('bank.show');
+
     Route::post('{registration}/complete', [
       App\Http\Controllers\Backend\BankRefundController::class,
       'complete'
