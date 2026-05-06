@@ -427,34 +427,40 @@ class SuperAdminController extends Controller
             'item_name'    => 'Test Registration',
         ], fn($v) => $v !== null && $v !== '');
 
-        // Replicate exact signature logic so you can see every step
+        // Replicate exact signature logic — passphrase appended LAST, not sorted in
         $passphrase = $isSandbox
             ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
             : (config('services.payfast.passphrase_live')    ?: config('services.payfast.passphrase'));
 
         $dataForSig = $sampleFields;
-        if (!empty($passphrase)) {
-            $dataForSig['passphrase'] = $passphrase;
-        }
+        unset($dataForSig['passphrase']);
         ksort($dataForSig);
-        $signatureString = http_build_query($dataForSig);
-        $signature       = md5($signatureString);
+
+        $pfOutput = '';
+        foreach ($dataForSig as $key => $val) {
+            $pfOutput .= $key . '=' . urlencode(trim((string)$val)) . '&';
+        }
+        $pfOutput = rtrim($pfOutput, '&');
+        if (!empty($passphrase)) {
+            $pfOutput .= '&passphrase=' . urlencode(trim($passphrase));
+        }
+
+        $signature = md5($pfOutput);
 
         return response()->json([
             'mode'             => $isSandbox ? 'sandbox' : 'live',
             'merchant_id'      => $payfast->id,
             'passphrase_set'   => !empty($passphrase),
             'passphrase_len'   => strlen($passphrase ?? ''),
-            'fields_used'      => $sampleFields,
-            'sorted_keys'      => array_keys($dataForSig),
-            'signature_string' => $signatureString,
+            'fields_used'      => array_keys($dataForSig),
+            'signature_string' => $pfOutput,
             'signature'        => $signature,
             'instructions'     => [
                 '1' => 'Copy "signature_string" value above.',
-                '2' => 'Go to https://sandbox.payfast.co.za/eng/process and use browser dev-tools, OR',
-                '3' => 'Use https://www.onlinehashtools.com/hash-string-with-md5 to MD5 the "signature_string".',
-                '4' => 'The result must match "signature" above.',
-                '5' => 'On live: change PAYFAST_SANDBOX=false in .env and re-visit this page to check live signature.',
+                '2' => 'MD5 hash it at https://www.md5hashgenerator.com',
+                '3' => 'Result must match "signature" above.',
+                '4' => 'passphrase appears LAST in signature_string — this is correct PayFast format.',
+                '5' => 'On live: set PAYFAST_SANDBOX=false in .env, run config:clear, then re-visit.',
             ],
         ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }

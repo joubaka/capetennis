@@ -202,8 +202,11 @@ class Payfast
 
   /* =====================================================
    * FORM SIGNATURE GENERATOR
-   * Generates the MD5 signature for a checkout form POST.
-   * Follows PayFast spec: add passphrase into array, ksort, http_build_query, md5.
+   * PayFast spec:
+   *   1. Remove empty fields
+   *   2. ksort real fields only
+   *   3. Build query string using urlencode (NOT http_build_query)
+   *   4. Append passphrase LAST — NOT sorted with the other fields
    * ===================================================== */
   public function generateFormSignature(array $fields): string
   {
@@ -211,17 +214,28 @@ class Payfast
       ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
       : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
-    // Remove empty values and the signature field itself
+    // Remove empty values and signature field
     $data = array_filter($fields, fn($v) => $v !== null && $v !== '');
-    unset($data['signature']);
+    unset($data['signature'], $data['passphrase']);
 
+    // Sort ONLY the real fields alphabetically
+    ksort($data);
+
+    // Build query string manually so passphrase is appended last
+    $pfOutput = '';
+    foreach ($data as $key => $val) {
+      $pfOutput .= $key . '=' . urlencode(trim((string)$val)) . '&';
+    }
+    $pfOutput = rtrim($pfOutput, '&');
+
+    // Append passphrase LAST — after all sorted fields
     if (!empty($passphrase)) {
-      $data['passphrase'] = $passphrase;
+      $pfOutput .= '&passphrase=' . urlencode(trim($passphrase));
     }
 
-    ksort($data);
-    return md5(http_build_query($data));
+    return md5($pfOutput);
   }
+
 
   /* =====================================================
    * BUILD FORM

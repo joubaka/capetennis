@@ -146,17 +146,24 @@ class RegisterController extends Controller
       'string_length' => strlen($string),
     ]);
 
-    // Try each passphrase — match PayFast spec: add passphrase into sorted array,
-    // then http_build_query + md5 (same as generateApiSignature in PayFast docs).
+    // Try each passphrase — PayFast spec:
+    // sort real fields, build query string manually, THEN append passphrase last.
     foreach ($passphrases as $i => $pf) {
       if (empty($pf)) {
         continue;
       }
-      $fieldsWithPass = array_filter($fields, fn($v) => $v !== '' && $v !== null);
-      unset($fieldsWithPass['signature']);
-      $fieldsWithPass['passphrase'] = $pf;
-      ksort($fieldsWithPass);
-      $calc = md5(http_build_query($fieldsWithPass));
+      $fieldsForSig = array_filter($fields, fn($v) => $v !== '' && $v !== null);
+      unset($fieldsForSig['signature'], $fieldsForSig['passphrase']);
+      ksort($fieldsForSig);
+
+      $pfOutput = '';
+      foreach ($fieldsForSig as $k => $v) {
+        $pfOutput .= $k . '=' . urlencode(trim((string)$v)) . '&';
+      }
+      $pfOutput = rtrim($pfOutput, '&');
+      $pfOutput .= '&passphrase=' . urlencode(trim($pf));
+
+      $calc = md5($pfOutput);
       if ($calc === $incoming) {
         Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
         return true;
@@ -165,9 +172,14 @@ class RegisterController extends Controller
 
     // Fallback: try without passphrase
     $fieldsNoPass = array_filter($fields, fn($v) => $v !== '' && $v !== null);
-    unset($fieldsNoPass['signature']);
+    unset($fieldsNoPass['signature'], $fieldsNoPass['passphrase']);
     ksort($fieldsNoPass);
-    if (md5(http_build_query($fieldsNoPass)) === $incoming) {
+    $pfOutputNoPass = '';
+    foreach ($fieldsNoPass as $k => $v) {
+      $pfOutputNoPass .= $k . '=' . urlencode(trim((string)$v)) . '&';
+    }
+    $pfOutputNoPass = rtrim($pfOutputNoPass, '&');
+    if (md5($pfOutputNoPass) === $incoming) {
       Log::info('[PAYFAST SIG] ✓ Valid signature (no passphrase)');
       return true;
     }
