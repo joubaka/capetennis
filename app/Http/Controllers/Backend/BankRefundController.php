@@ -98,17 +98,35 @@ class BankRefundController extends Controller
     $payment = $registration->paymentInfo();
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
 
+    Log::info('PAYFAST REFUND QUERY — start', [
+      'registration_id'  => $registration->id,
+      'status'           => $registration->status,
+      'refund_method'    => $registration->refund_method,
+      'refund_status'    => $registration->refund_status,
+      'pf_payment_id'    => $pfPaymentId,
+      'paymentInfo'      => $payment,
+      'app_env'          => config('app.env'),
+      'passphrase_set'   => !empty(config('services.payfast.passphrase')),
+      'passphrase_live_set' => !empty(config('services.payfast.passphrase_live')),
+    ]);
+
     if (empty($pfPaymentId)) {
+      Log::warning('PAYFAST REFUND QUERY — no pf_payment_id', [
+        'registration_id' => $registration->id,
+        'paymentInfo'     => $payment,
+      ]);
       return back()->withErrors('No PayFast payment ID found for this registration.');
     }
 
     $payfast = new \App\Services\Payfast();
     $result = $payfast->refundQuery($pfPaymentId);
 
-    Log::info('PAYFAST REFUND QUERY (backend registration)', [
+    Log::info('PAYFAST REFUND QUERY — result', [
       'registration_id' => $registration->id,
       'pf_payment_id'   => $pfPaymentId,
-      'result'          => $result,
+      'success'         => $result['success'],
+      'data'            => $result['data'],
+      'error'           => $result['error'],
     ]);
 
     if ($result['success']) {

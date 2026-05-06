@@ -268,6 +268,16 @@ class Payfast
     }
     $signature = md5($signatureString);
 
+    \Log::debug('PayFast buildApiHeaders', [
+      'mode'             => $this->mode,
+      'merchant_id'      => $this->id,
+      'passphrase_set'   => !empty($passphrase),
+      'passphrase_len'   => strlen((string) $passphrase),
+      'timestamp'        => $timestamp,
+      'signature_string' => $signatureString,
+      'signature'        => $signature,
+    ]);
+
     return [
       'merchant-id' => $this->id,
       'version'     => 'v1',
@@ -288,15 +298,27 @@ class Payfast
 
     $headers = $this->buildApiHeaders();
 
+    \Log::info('PayFast refund query request', [
+      'pf_payment_id' => $pf_payment_id,
+      'api_url'       => $apiUrl,
+      'headers_sent'  => [
+        'merchant-id' => $headers['merchant-id'],
+        'version'     => $headers['version'],
+        'timestamp'   => $headers['timestamp'],
+        'signature'   => $headers['signature'],
+      ],
+    ]);
+
     try {
       $response = Http::timeout(15)
         ->withHeaders($headers)
         ->get($apiUrl);
 
       \Log::info('PayFast refund query response', [
-        'pf_payment_id' => $pf_payment_id,
-        'status'        => $response->status(),
-        'body'          => $response->body(),
+        'pf_payment_id'  => $pf_payment_id,
+        'http_status'    => $response->status(),
+        'response_body'  => $response->body(),
+        'response_json'  => $response->json(),
       ]);
 
       if ($response->successful()) {
@@ -316,7 +338,10 @@ class Payfast
     } catch (\Throwable $e) {
       \Log::error('PayFast refund query exception', [
         'pf_payment_id' => $pf_payment_id,
-        'error'         => $e->getMessage(),
+        'exception'     => get_class($e),
+        'message'       => $e->getMessage(),
+        'file'          => $e->getFile(),
+        'line'          => $e->getLine(),
       ]);
 
       return [
