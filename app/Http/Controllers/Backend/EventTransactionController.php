@@ -8,6 +8,8 @@ use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\Transaction;
 use App\Models\CategoryEventRegistration;
+use App\Models\WalletTransaction;
+use App\Models\RegistrationOrder;
 use Illuminate\Support\Facades\Log;
 
 class EventTransactionController extends Controller
@@ -313,10 +315,57 @@ class EventTransactionController extends Controller
     }
 
     // =========================
+    // STEP 5b: WALLET-ONLY PAYMENT ROWS
+    // Orders paid entirely by wallet (no PayFast transaction)
+    // =========================
+    $walletOnlyOrderIds = RegistrationOrder::whereHas('items', function ($q) use ($event) {
+        $q->whereHas('category_event', fn($q2) => $q2->where('event_id', $event->id));
+      })
+      ->where('wallet_reserved', '>', 0)
+      ->where(function ($q) {
+        $q->whereNull('payfast_amount_due')
+          ->orWhere('payfast_amount_due', 0);
+      })
+      ->pluck('id');
+
+    $walletOnlyRows = WalletTransaction::with(['wallet.payable'])
+      ->whereIn('source_id', $walletOnlyOrderIds)
+      ->where('source_type', 'event_registration_wallet_payment')
+      ->where('type', 'debit')
+      ->get()
+      ->map(function ($wt) use ($feePerEntry) {
+        $order = RegistrationOrder::with('items')->find($wt->source_id);
+        $entryCount = max(1, $order?->items?->count() ?? 1);
+        $gross = round((float) $wt->amount, 2);
+        $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
+        $netTx = round($gross + $capeFeeTx, 2);
+        $user = $wt->wallet?->payable;
+
+        return (object) [
+          'type'       => 'payment',
+          'created_at' => $wt->created_at,
+          'player'     => $user?->name ?? '—',
+          'method'     => 'Wallet',
+          'gross'      => $gross,
+          'fee'        => 0,
+          'capeFee'    => $capeFeeTx,
+          'net'        => $netTx,
+          'pf_payment_id' => null,
+          'tx_id'      => null,
+          'paid_at'    => $wt->created_at,
+          'order'      => $order,
+          'entryCount' => $entryCount,
+          'payfastGross' => 0,
+          'walletUsed' => $gross,
+        ];
+      });
+
+    // =========================
     // STEP 6: MERGE LEDGER
     // =========================
     $ledger = collect()
       ->merge($paymentRows)
+      ->merge($walletOnlyRows)
       ->merge($refundRows)
       ->sortByDesc('created_at')
       ->values();
@@ -363,8 +412,9 @@ class EventTransactionController extends Controller
     // Merge payouts into ledger
     $ledger = $ledger->merge($payoutRows)->sortByDesc('created_at')->values();
 
-    // ✅ Gross = payments only (not reduced by refunds or payouts)
-    $totalGross = $paymentRows->sum('gross');
+    // ✅ Gross = payments only (not reduced by refunds or payouts), including wallet-only
+    $allPaymentRows = collect()->merge($paymentRows)->merge($walletOnlyRows);
+    $totalGross = $allPaymentRows->sum('gross');
 
     // Fees are net of refund recoveries
     $totalPayfastFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
@@ -376,10 +426,10 @@ class EventTransactionController extends Controller
     // Net = gross + fees (negative) + refund impact + payouts (negative)
     $netTournamentIncome = $ledger->sum('net');
 
-    // Entry count for display (payments only - refunds don't add entries)
+    // Entry count for display (payments only - refunds don't add entries), including wallet-only
     $totalEntries = $isTeamEvent
-      ? $paymentRows->count()
-      : $paymentRows->flatMap(fn($t) => optional($t->order)->items ?? collect())->count();
+      ? $allPaymentRows->count()
+      : $allPaymentRows->flatMap(fn($t) => optional($t->order)->items ?? collect())->count();
 
     // Refund count for display
     $refundCount = $refundRows->count();

@@ -339,7 +339,7 @@ $(function () {
       let html = `
         <table class="table table-sm mb-0 child-table">
           <tbody>
-            <tr><th>PayFast Reference</th><td><code>${s.pf_payment_id}</code></td></tr>
+            ${s.pf_payment_id ? `<tr><th>PayFast Reference</th><td><code>${s.pf_payment_id}</code></td></tr>` : ''}
             <tr><th>Entries</th><td>${s.entries}</td></tr>
             <tr><th>Gross Paid</th><td>R ${s.gross}</td></tr>
             ${walletRow}

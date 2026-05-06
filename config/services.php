@@ -30,7 +30,9 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
   'payfast' => [
-    'passphrase' => env('PAYFAST_PASSPHRASE'),
+    'passphrase'         => env('PAYFAST_PASSPHRASE'),
+    'passphrase_live'    => env('PAYFAST_PASSPHRASE_LIVE'),
+    'passphrase_sandbox' => env('PAYFAST_PASSPHRASE_SANDBOX'),
   ],
 
 ];

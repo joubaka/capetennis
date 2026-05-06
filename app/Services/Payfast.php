@@ -247,9 +247,11 @@ class Payfast
    * ===================================================== */
   private function buildApiHeaders(): array
   {
+    // Use config() so this works correctly when the config cache is active in production.
+    // env() returns null after `php artisan config:cache` which causes 401 from PayFast.
     $passphrase = $this->mode === 'sandbox'
-      ? (env('PAYFAST_PASSPHRASE_SANDBOX') ?: env('PAYFAST_PASSPHRASE'))
-      : (env('PAYFAST_PASSPHRASE_LIVE') ?: env('PAYFAST_PASSPHRASE'));
+      ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
+      : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
     $timestamp = now()->toIso8601String();
 
