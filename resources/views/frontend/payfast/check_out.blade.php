@@ -233,9 +233,9 @@
                 $formFields = array_filter([
                   'merchant_id'  => $payfast->id,
                   'merchant_key' => $payfast->key,
-                  'return_url'   => route('frontend.registration.success', $orderId),
-                  'cancel_url'   => route('registration.hybrid.cancel', $orderId),
-                  'notify_url'   => route('notify'),
+                  'return_url'   => $returnUrl,
+                  'cancel_url'   => $cancelUrl,
+                  'notify_url'   => $notifyUrl,
                   'amount'       => number_format($payfastDue, 2, '.', ''),
                   'item_name'    => $event ? $event->name : 'Event Registration',
                   'custom_int1'  => $categoryEvent ? (string)$categoryEvent->id : null,

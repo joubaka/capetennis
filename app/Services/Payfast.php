@@ -202,11 +202,9 @@ class Payfast
 
   /* =====================================================
    * FORM SIGNATURE GENERATOR
-   * PayFast spec:
-   *   1. Remove empty fields
-   *   2. ksort real fields only
-   *   3. Build query string using urlencode (NOT http_build_query)
-   *   4. Append passphrase LAST — NOT sorted with the other fields
+   * PayFast validates the checkout form signature using the fields
+   * in the EXACT ORDER they are posted — NOT alphabetically sorted.
+   * Passphrase is appended last after all real fields.
    * ===================================================== */
   public function generateFormSignature(array $fields): string
   {
@@ -214,21 +212,18 @@ class Payfast
       ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
       : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
-    // Remove empty values and signature field
+    // Remove empty values and signature/passphrase — do NOT sort
     $data = array_filter($fields, fn($v) => $v !== null && $v !== '');
     unset($data['signature'], $data['passphrase']);
 
-    // Sort ONLY the real fields alphabetically
-    ksort($data);
-
-    // Build query string manually so passphrase is appended last
+    // Build query string in the same order fields appear (no ksort)
     $pfOutput = '';
     foreach ($data as $key => $val) {
       $pfOutput .= $key . '=' . urlencode(trim((string)$val)) . '&';
     }
     $pfOutput = rtrim($pfOutput, '&');
 
-    // Append passphrase LAST — after all sorted fields
+    // Append passphrase LAST
     if (!empty($passphrase)) {
       $pfOutput .= '&passphrase=' . urlencode(trim($passphrase));
     }

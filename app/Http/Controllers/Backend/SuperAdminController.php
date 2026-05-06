@@ -403,9 +403,7 @@ class SuperAdminController extends Controller
     }
 
     /**
-     * PayFast signature debug tool.
-     * Generates a sample signature with the current config so you can
-     * compare it against PayFast's online signature tool.
+     * PayFast signature debug tool — shows field-by-field breakdown for comparison.
      */
     public function payfastSignatureCheck()
     {
@@ -416,8 +414,12 @@ class SuperAdminController extends Controller
             $payfast->setMode(0);
         }
 
-        // Build a representative sample form payload (same structure as real checkout)
-        $sampleFields = array_filter([
+        $passphrase = $isSandbox
+            ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
+            : (config('services.payfast.passphrase_live')    ?: config('services.payfast.passphrase'));
+
+        // Use exact same fields a real checkout would send
+        $rawFields = [
             'merchant_id'  => $payfast->id,
             'merchant_key' => $payfast->key,
             'return_url'   => $payfast->return_url,
@@ -425,42 +427,57 @@ class SuperAdminController extends Controller
             'notify_url'   => $payfast->notify_url,
             'amount'       => '100.00',
             'item_name'    => 'Test Registration',
-        ], fn($v) => $v !== null && $v !== '');
+        ];
 
-        // Replicate exact signature logic — passphrase appended LAST, not sorted in
-        $passphrase = $isSandbox
-            ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
-            : (config('services.payfast.passphrase_live')    ?: config('services.payfast.passphrase'));
+        // Remove empty values (no passphrase in here)
+        $data = array_filter($rawFields, fn($v) => $v !== null && $v !== '');
+        ksort($data);
 
-        $dataForSig = $sampleFields;
-        unset($dataForSig['passphrase']);
-        ksort($dataForSig);
-
+        // Build string manually — each field shown individually for debugging
+        $fieldBreakdown = [];
         $pfOutput = '';
-        foreach ($dataForSig as $key => $val) {
-            $pfOutput .= $key . '=' . urlencode(trim((string)$val)) . '&';
+        foreach ($data as $key => $val) {
+            $encoded = urlencode(trim((string)$val));
+            $fieldBreakdown[] = [
+                'key'           => $key,
+                'raw_value'     => $val,
+                'encoded_value' => $encoded,
+                'pair'          => $key . '=' . $encoded,
+            ];
+            $pfOutput .= $key . '=' . $encoded . '&';
         }
         $pfOutput = rtrim($pfOutput, '&');
+
+        // Append passphrase last
+        $passphraseEncoded = '';
         if (!empty($passphrase)) {
-            $pfOutput .= '&passphrase=' . urlencode(trim($passphrase));
+            $passphraseEncoded = urlencode(trim($passphrase));
+            $pfOutput .= '&passphrase=' . $passphraseEncoded;
+            $fieldBreakdown[] = [
+                'key'           => 'passphrase',
+                'raw_value'     => str_repeat('*', strlen($passphrase)) . ' (' . strlen($passphrase) . ' chars)',
+                'encoded_value' => $passphraseEncoded,
+                'pair'          => 'passphrase=' . $passphraseEncoded,
+                'note'          => 'APPENDED LAST — not sorted',
+            ];
         }
 
         $signature = md5($pfOutput);
 
         return response()->json([
-            'mode'             => $isSandbox ? 'sandbox' : 'live',
-            'merchant_id'      => $payfast->id,
-            'passphrase_set'   => !empty($passphrase),
-            'passphrase_len'   => strlen($passphrase ?? ''),
-            'fields_used'      => array_keys($dataForSig),
-            'signature_string' => $pfOutput,
-            'signature'        => $signature,
-            'instructions'     => [
-                '1' => 'Copy "signature_string" value above.',
-                '2' => 'MD5 hash it at https://www.md5hashgenerator.com',
-                '3' => 'Result must match "signature" above.',
-                '4' => 'passphrase appears LAST in signature_string — this is correct PayFast format.',
-                '5' => 'On live: set PAYFAST_SANDBOX=false in .env, run config:clear, then re-visit.',
+            'step1_mode'              => $isSandbox ? 'sandbox' : 'live',
+            'step2_merchant_id'       => $payfast->id,
+            'step3_passphrase_set'    => !empty($passphrase),
+            'step3_passphrase_len'    => strlen($passphrase ?? ''),
+            'step4_sorted_field_keys' => array_keys($data),
+            'step5_field_breakdown'   => $fieldBreakdown,
+            'step6_full_string'       => $pfOutput,
+            'step7_signature_md5'     => $signature,
+            'HOW_TO_VERIFY'           => [
+                '1_copy_string'  => 'Copy step6_full_string exactly',
+                '2_md5_it'       => 'Paste into https://www.md5hashgenerator.com — result must match step7_signature_md5',
+                '3_payfast_tool' => 'Or use https://developers.payfast.co.za/api — Signature Generator section',
+                '4_compare'      => 'If PayFast generates a different MD5, check step5_field_breakdown for encoding differences',
             ],
         ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
