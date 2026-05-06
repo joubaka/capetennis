@@ -12,6 +12,7 @@ use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class AdminRegistrationRefundController extends Controller
 {
@@ -270,6 +271,13 @@ class AdminRegistrationRefundController extends Controller
           ])
           ->log("Admin PayFast refund R{$payfastGross} processed");
 
+        // Notify the player that their PayFast refund has been processed
+        $playerEmail = optional($registration->players->first())->email
+                    ?? optional($registration->user)->email;
+        if ($playerEmail) {
+          Mail::to($playerEmail)->queue(new \App\Mail\PayFastRefundConfirmationMail($registration));
+        }
+
         $successMsg = 'PayFast refund of R' . number_format($payfastGross, 2) . ' processed successfully.';
         if ($walletPaid > 0) {
           $successMsg .= ' Note: wallet contribution of R' . number_format($walletPaid, 2) . ' was not refunded via PayFast — issue a wallet refund separately if required.';
@@ -329,6 +337,13 @@ class AdminRegistrationRefundController extends Controller
         'initiated_by'    => 'admin',
       ])
       ->log('Admin cancelled withdrawal — registration reverted to active');
+
+    // Notify the player that their registration has been reinstated
+    $playerEmail = optional($registration->players->first())->email
+                ?? optional($registration->user)->email;
+    if ($playerEmail) {
+      Mail::to($playerEmail)->queue(new \App\Mail\RegistrationReinstatedMail($registration));
+    }
 
     return redirect()
       ->route('admin.events.entries.new', $event)

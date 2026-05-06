@@ -109,7 +109,7 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     $gross = (float) $order->total_amount;
-    $fee = round($gross * 0.10, 2);
+    $fee = SiteSetting::calculatePayfastFee($gross);
     $net = round($gross - $fee, 2);
 
     return view('frontend.team.choose-refund', compact('team', 'player', 'eventId', 'order', 'gross', 'fee', 'net'));
@@ -171,7 +171,7 @@ class TeamPlayerWithdrawController extends Controller
     ]);
 
     $gross = (float) $order->total_amount;
-    $fee = round($gross * 0.10, 2);
+    $fee = SiteSetting::calculatePayfastFee($gross);
     $net = round($gross - $fee, 2);
 
     // WALLET

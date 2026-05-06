@@ -188,7 +188,7 @@ window.EVENT_DATA = {
   id: {{ $event->id }},
   start_date: @json(optional($event->start_date)?->toDateTimeString()),
   end_date: @json(optional($event->end_date)?->toDateTimeString()),
-  entry_deadline: @json(optional($event->entry_deadline)?->toDateTimeString()),
+  entry_deadline: @json(optional($entryCloseAt)->toDateTimeString()),
   withdrawal_deadline: @json(optional($event->withdrawal_deadline)?->toDateTimeString()),
 };
 
