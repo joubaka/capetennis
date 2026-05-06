@@ -343,7 +343,7 @@
         <li>
           <button type="button"
                   class="dropdown-item text-danger remove-player-btn"
-                  data-url="{{ route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) }}">
+                  data-url="{{ $reg->registration ? route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) : '#' }}"
             <i class="ti ti-trash me-1"></i>Remove
           </button>
         </li>
