@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -22,26 +23,42 @@ class BankDetailsController extends Controller
         'Bidvest'       => 'Bidvest Bank',
     ];
 
-    public function show(Request $request, CategoryEventRegistration $registration)
+    /**
+     * Show the bank details form for all pending bank refunds of this user.
+     */
+    public function show(Request $request, User $user)
     {
         abort_unless($request->hasValidSignature(), 403, 'This link has expired or is invalid.');
-        abort_if($registration->refund_status === 'completed', 410, 'This refund has already been processed.');
 
-        $event         = $registration->categoryEvent?->event;
-        $player        = $registration->players->first();
-        $playerName    = $player ? trim($player->name . ' ' . $player->surname) : 'Player';
-        $alreadyFilled = !empty($registration->refund_account_name);
+        $registrations = CategoryEventRegistration::with('categoryEvent.event', 'categoryEvent.category', 'players')
+            ->where('user_id', $user->id)
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->get();
+
+        abort_if($registrations->isEmpty(), 410, 'No pending bank refunds found.');
+
+        $alreadyFilled = !empty($registrations->first()->refund_account_name);
         $bankNames     = self::BANK_NAMES;
 
         return view('frontend.refund.bank-details', compact(
-            'registration', 'event', 'playerName', 'alreadyFilled', 'bankNames'
+            'user', 'registrations', 'alreadyFilled', 'bankNames'
         ));
     }
 
-    public function store(Request $request, CategoryEventRegistration $registration)
+    /**
+     * Save bank details and apply to ALL pending bank refund registrations for this user.
+     */
+    public function store(Request $request, User $user)
     {
         abort_unless($request->hasValidSignature(), 403, 'This link has expired or is invalid.');
-        abort_if($registration->refund_status === 'completed', 410, 'This refund has already been processed.');
+
+        $registrations = CategoryEventRegistration::where('user_id', $user->id)
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->get();
+
+        abort_if($registrations->isEmpty(), 410, 'No pending bank refunds found.');
 
         $validated = $request->validate([
             'refund_account_name'   => ['required', 'string', 'max:255'],
@@ -51,14 +68,19 @@ class BankDetailsController extends Controller
             'refund_account_type'   => ['required', 'in:current,savings'],
         ]);
 
-        $registration->update($validated);
+        // Apply the same bank details to every pending registration for this user
+        foreach ($registrations as $registration) {
+            $registration->update($validated);
+        }
 
-        Log::info('BANK DETAILS SUBMITTED BY USER', [
-            'registration_id' => $registration->id,
-            'bank_name'       => $validated['refund_bank_name'],
-            'account_type'    => $validated['refund_account_type'],
+        Log::info('BANK DETAILS SUBMITTED BY USER (multi-registration)', [
+            'user_id'          => $user->id,
+            'registration_ids' => $registrations->pluck('id')->toArray(),
+            'bank_name'        => $validated['refund_bank_name'],
+            'account_type'     => $validated['refund_account_type'],
+            'count'            => $registrations->count(),
         ]);
 
-        return view('frontend.refund.bank-details-submitted', compact('registration'));
+        return view('frontend.refund.bank-details-submitted', compact('user', 'registrations'));
     }
 }

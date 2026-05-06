@@ -143,25 +143,34 @@ class BankRefundController extends Controller
   }
 
   /**
-   * Send the player an email with a signed link to submit their bank details.
+   * Send one email per user listing ALL their pending bank refunds,
+   * with a single signed link to submit bank details for all of them.
    */
   public function requestBankDetails(CategoryEventRegistration $registration)
   {
-    $email = optional($registration->user)->email
-          ?? optional($registration->players->first())->email;
+    $user = $registration->user;
 
-    if (!$email) {
+    if (!$user || !$user->email) {
       return back()->withErrors('No email address found for this registration.');
     }
 
-    Mail::to($email)->queue(new BankDetailsRequestMail($registration));
+    // Find ALL pending bank refunds for this user — send one email covering all
+    $pendingRegistrations = CategoryEventRegistration::with('categoryEvent.event', 'players')
+      ->where('user_id', $user->id)
+      ->where('refund_method', 'bank')
+      ->where('refund_status', 'pending')
+      ->get();
+
+    Mail::to($user->email)->queue(new BankDetailsRequestMail($user, $pendingRegistrations));
 
     Log::info('BANK DETAILS REQUEST EMAIL SENT', [
-      'registration_id' => $registration->id,
-      'email'           => $email,
+      'user_id'          => $user->id,
+      'email'            => $user->email,
+      'registration_ids' => $pendingRegistrations->pluck('id')->toArray(),
     ]);
 
-    return back()->with('success', "Bank details request sent to {$email}.");
+    $count = $pendingRegistrations->count();
+    return back()->with('success', "Bank details request sent to {$user->email} covering {$count} pending refund(s).");
   }
 
 

@@ -164,11 +164,11 @@ Route::get(
 
 // Bank details submission (signed URL — no auth required, link sent by email)
 Route::get(
-  '/refund/bank-details/{registration}',
+  '/refund/bank-details/{user}',
   [\App\Http\Controllers\Frontend\BankDetailsController::class, 'show']
 )->name('refund.bank-details.show');
 Route::post(
-  '/refund/bank-details/{registration}',
+  '/refund/bank-details/{user}',
   [\App\Http\Controllers\Frontend\BankDetailsController::class, 'store']
 )->name('refund.bank-details.store');
 
