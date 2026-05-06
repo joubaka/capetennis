@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
+use App\Mail\BankDetailsRequestMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -141,6 +142,28 @@ class BankRefundController extends Controller
     return back()->withErrors('PayFast query failed: ' . ($result['error'] ?? 'Unknown error'));
   }
 
+  /**
+   * Send the player an email with a signed link to submit their bank details.
+   */
+  public function requestBankDetails(CategoryEventRegistration $registration)
+  {
+    $email = optional($registration->user)->email
+          ?? optional($registration->players->first())->email;
+
+    if (!$email) {
+      return back()->withErrors('No email address found for this registration.');
+    }
+
+    Mail::to($email)->queue(new BankDetailsRequestMail($registration));
+
+    Log::info('BANK DETAILS REQUEST EMAIL SENT', [
+      'registration_id' => $registration->id,
+      'email'           => $email,
+    ]);
+
+    return back()->with('success', "Bank details request sent to {$email}.");
+  }
+
 
   public function complete(CategoryEventRegistration $registration)
   {
@@ -187,7 +210,21 @@ class BankRefundController extends Controller
       }
 
       if ($refundMethod === 'BANK_PAYOUT') {
-        return back()->withErrors('PayFast can only refund this transaction via bank payout — bank account details are required. Please process the refund manually via the PayFast merchant dashboard.');
+        // Check if user has submitted bank details
+        if (empty($registration->refund_account_name) || empty($registration->refund_bank_name) || empty($registration->refund_account_number)) {
+          return back()->withErrors('PayFast requires bank account details for this refund. Use "Request Bank Details" to email the player, then try again once they have submitted their details.');
+        }
+
+        // User has provided bank details — include them in the refund body
+        $bankBody = [
+          'bank_account_holder' => $registration->refund_account_name,
+          'bank_name'           => $registration->refund_bank_name,
+          'bank_branch_code'    => (int) $registration->refund_branch_code,
+          'bank_account_number' => (string) $registration->refund_account_number,
+          'bank_account_type'   => $registration->refund_account_type ?? 'current',
+        ];
+      } else {
+        $bankBody = [];
       }
 
       // For hybrid payments PayFast can only refund its own portion;
@@ -199,7 +236,7 @@ class BankRefundController extends Controller
       $walletNet    = $walletPaid;
 
       try {
-        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
+        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund', $bankBody);
 
         Log::info('PAYFAST REFUND ATTEMPT (backend registration)', [
           'registration_id' => $registration->id,

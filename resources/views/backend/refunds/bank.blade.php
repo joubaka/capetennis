@@ -79,7 +79,14 @@
               </small>
             </td>
 
-            <td><code>{{ $reg->pf_transaction_id ?? '—' }}</code></td>
+            <td>
+              <code>{{ $reg->pf_transaction_id ?? '—' }}</code>
+              @if($reg->pf_transaction_id && $reg->refund_account_name)
+                <br><small class="text-success"><i class="ti ti-building-bank"></i> Bank details ✓</small>
+              @elseif($reg->pf_transaction_id)
+                <br><small class="text-warning"><i class="ti ti-alert-triangle"></i> No bank details</small>
+              @endif
+            </td>
 
             <td>R{{ number_format($reg->refund_gross, 2) }}</td>
             <td class="text-danger">
@@ -103,6 +110,16 @@
                    title="Query PayFast refund status">
                   🔍 PF Status
                 </a>
+                {{-- Request bank details from player --}}
+                <form method="POST"
+                      action="{{ route('admin.refunds.bank.request-bank-details', $reg) }}"
+                      onsubmit="return confirm('Send bank details request email to {{ $reg->user->email ?? 'the player' }}?');"
+                      class="d-inline me-1">
+                  @csrf
+                  <button class="btn btn-sm btn-outline-info" title="Email player to submit bank details">
+                    ✉ Bank Details
+                  </button>
+                </form>
                 <form method="POST"
                       action="{{ route('admin.refunds.bank.complete', $reg) }}"
                       onsubmit="return confirm('Process PayFast refund of R{{ number_format($reg->refund_net, 2) }} for {{ $reg->display_name }}? This will submit the refund to PayFast.');"

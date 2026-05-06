@@ -399,7 +399,7 @@ class Payfast
    * @param string $reason
    * @return array{success: bool, data: array|null, error: string|null}
    */
-  public function refund(string $pf_payment_id, $amount, string $reason = 'Event withdrawal refund'): array
+  public function refund(string $pf_payment_id, $amount, string $reason = 'Event withdrawal refund', array $extraBody = []): array
   {
     // PayFast requires amount in CENTS (integer), not rands
     $amountCents = (int) round((float) $amount * 100);
@@ -410,11 +410,11 @@ class Payfast
       . ($testing ? '?testing=true' : '');
 
     // Body must NOT include merchant_id/merchant_key (those go in headers only)
-    $body = [
-      'amount'        => $amountCents,
-      'reason'        => $reason,
-      'notify_buyer'  => 1,
-    ];
+    $body = array_merge([
+      'amount'       => $amountCents,
+      'reason'       => $reason,
+      'notify_buyer' => 1,
+    ], $extraBody);
 
     // Signature must cover both headers AND body params (alphabetically sorted)
     $headers = $this->buildApiHeaders($body);

@@ -162,6 +162,16 @@ Route::get(
   [RegistrationPaymentController::class, 'hybridCancel']
 )->name('registration.hybrid.cancel');
 
+// Bank details submission (signed URL — no auth required, link sent by email)
+Route::get(
+  '/refund/bank-details/{registration}',
+  [\App\Http\Controllers\Frontend\BankDetailsController::class, 'show']
+)->name('refund.bank-details.show');
+Route::post(
+  '/refund/bank-details/{registration}',
+  [\App\Http\Controllers\Frontend\BankDetailsController::class, 'store']
+)->name('refund.bank-details.store');
+
 Route::get(
   '/team/checkout/{order}',
   [TeamController::class, 'checkout']
@@ -310,6 +320,11 @@ Route::middleware(['auth', 'role:super-user'])
       App\Http\Controllers\Backend\BankRefundController::class,
       'queryPayfast'
     ])->name('bank.payfast-query');
+
+    Route::post('{registration}/request-bank-details', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'requestBankDetails'
+    ])->name('bank.request-bank-details');
 
     // Bulk: mark all selected pending bank refunds as completed (manual)
     Route::post('bulk-complete', [
