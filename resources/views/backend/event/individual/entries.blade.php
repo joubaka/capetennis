@@ -200,8 +200,11 @@
   <div class="category-meta">
     <h5 class="mb-0">{{ $categoryEvent->category?->name }}</h5>
     <small class="text-muted">
-      {{ $categoryEvent->categoryEventRegistrations->count() }} entries
-    </small>
+        {{ $categoryEvent->allCategoryEventRegistrations->where('status', '!=', 'withdrawn')->count() }} entries
+        @if($categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() > 0)
+          &nbsp;<span class="text-danger">({{ $categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() }} withdrawn)</span>
+        @endif
+      </small>
   </div>
 
 <div class="category-actions d-flex gap-2">
@@ -265,11 +268,11 @@
 
 
           <tbody>
-            @foreach($categoryEvent->categoryEventRegistrations as $reg)
+            @foreach($categoryEvent->allCategoryEventRegistrations as $reg)
 
               @php $player = optional($reg->registration?->players)->first(); @endphp
-              <tr>
-                <td>{{ $loop->iteration }}</td>
+              <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}">
+                <td>{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
                 <td>{{ $player?->name }} {{ $player?->surname }}</td>
                 <td class="col-email">
   @if($player?->email)
