@@ -103,16 +103,26 @@
                    title="Query PayFast refund status">
                   🔍 PF Status
                 </a>
+                <form method="POST"
+                      action="{{ route('admin.refunds.bank.complete', $reg) }}"
+                      onsubmit="return confirm('Process PayFast refund of R{{ number_format($reg->refund_net, 2) }} for {{ $reg->display_name }}? This will submit the refund to PayFast.');"
+                      class="d-inline me-1">
+                  @csrf
+                  <button class="btn btn-sm btn-warning text-dark" title="Submit refund via PayFast API">
+                    💳 PayFast Refund
+                  </button>
+                </form>
+              @else
+                <form method="POST"
+                      action="{{ route('admin.refunds.bank.complete', $reg) }}"
+                      onsubmit="return confirm('Mark this bank refund as manually paid?');"
+                      class="d-inline">
+                  @csrf
+                  <button class="btn btn-sm btn-success">
+                    ✔ Mark Paid
+                  </button>
+                </form>
               @endif
-              <form method="POST"
-                    action="{{ route('admin.refunds.bank.complete', $reg) }}"
-                    onsubmit="return confirm('Mark this bank refund as paid?');"
-                    class="d-inline">
-                @csrf
-                <button class="btn btn-sm btn-success">
-                  ✔ Mark Paid
-                </button>
-              </form>
             </td>
           </tr>
         @endforeach
@@ -139,10 +149,19 @@
               <td class="fw-bold text-success">R{{ number_format($t->refund_net, 2) }}</td>
               <td>{{ optional($t->updated_at)->format('Y-m-d') }}</td>
               <td class="text-end">
-                <form method="POST" action="{{ route('bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
-                  @csrf
-                  <button class="btn btn-sm btn-success">✔ Mark Paid</button>
-                </form>
+                @if($t->payfast_pf_payment_id)
+                  <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Process PayFast refund of R{{ number_format($t->refund_net, 2) }}? This will submit to PayFast.');" class="d-inline me-1">
+                    @csrf
+                    <button class="btn btn-sm btn-warning text-dark" title="Submit refund via PayFast API">
+                      💳 PayFast Refund
+                    </button>
+                  </form>
+                @else
+                  <form method="POST" action="{{ route('bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
+                    @csrf
+                    <button class="btn btn-sm btn-success">✔ Mark Paid</button>
+                  </form>
+                @endif
               </td>
             </tr>
           @endforeach
