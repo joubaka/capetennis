@@ -49,33 +49,3 @@ class BankDetailsRequestMail extends Mailable implements ShouldQueue
         return [];
     }
 }
-
-    public function envelope()
-    {
-        return new Envelope(
-            subject: 'Bank Details Request Mail',
-        );
-    }
-
-    /**
-     * Get the message content definition.
-     *
-     * @return \Illuminate\Mail\Mailables\Content
-     */
-    public function content()
-    {
-        return new Content(
-            markdown: 'emails.refund.bank-details-request',
-        );
-    }
-
-    /**
-     * Get the attachments for the message.
-     *
-     * @return array
-     */
-    public function attachments()
-    {
-        return [];
-    }
-}
