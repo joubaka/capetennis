@@ -383,6 +383,11 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')
     ->name('backend.superadmin.index');
 
+  // PayFast signature debug tool (super-user only)
+  Route::get('superadmin/payfast-signature-check', [\App\Http\Controllers\Backend\SuperAdminController::class, 'payfastSignatureCheck'])
+    ->middleware('role:super-user')
+    ->name('backend.superadmin.payfast-signature-check');
+
   // Super Admin Financial Dashboard
   Route::middleware('role:super-user')->group(function () {
     Route::get('superadmin/finances', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'index'])

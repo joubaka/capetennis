@@ -401,4 +401,61 @@ class SuperAdminController extends Controller
             'activeSuspensions'
         ));
     }
+
+    /**
+     * PayFast signature debug tool.
+     * Generates a sample signature with the current config so you can
+     * compare it against PayFast's online signature tool.
+     */
+    public function payfastSignatureCheck()
+    {
+        $payfast = new \App\Services\Payfast();
+
+        $isSandbox = config('services.payfast.sandbox', false);
+        if ($isSandbox) {
+            $payfast->setMode(0);
+        }
+
+        // Build a representative sample form payload (same structure as real checkout)
+        $sampleFields = array_filter([
+            'merchant_id'  => $payfast->id,
+            'merchant_key' => $payfast->key,
+            'return_url'   => $payfast->return_url,
+            'cancel_url'   => $payfast->cancel_url,
+            'notify_url'   => $payfast->notify_url,
+            'amount'       => '100.00',
+            'item_name'    => 'Test Registration',
+        ], fn($v) => $v !== null && $v !== '');
+
+        // Replicate exact signature logic so you can see every step
+        $passphrase = $isSandbox
+            ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
+            : (config('services.payfast.passphrase_live')    ?: config('services.payfast.passphrase'));
+
+        $dataForSig = $sampleFields;
+        if (!empty($passphrase)) {
+            $dataForSig['passphrase'] = $passphrase;
+        }
+        ksort($dataForSig);
+        $signatureString = http_build_query($dataForSig);
+        $signature       = md5($signatureString);
+
+        return response()->json([
+            'mode'             => $isSandbox ? 'sandbox' : 'live',
+            'merchant_id'      => $payfast->id,
+            'passphrase_set'   => !empty($passphrase),
+            'passphrase_len'   => strlen($passphrase ?? ''),
+            'fields_used'      => $sampleFields,
+            'sorted_keys'      => array_keys($dataForSig),
+            'signature_string' => $signatureString,
+            'signature'        => $signature,
+            'instructions'     => [
+                '1' => 'Copy "signature_string" value above.',
+                '2' => 'Go to https://sandbox.payfast.co.za/eng/process and use browser dev-tools, OR',
+                '3' => 'Use https://www.onlinehashtools.com/hash-string-with-md5 to MD5 the "signature_string".',
+                '4' => 'The result must match "signature" above.',
+                '5' => 'On live: change PAYFAST_SANDBOX=false in .env and re-visit this page to check live signature.',
+            ],
+        ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
 }

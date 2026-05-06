@@ -119,6 +119,10 @@ class BankRefundController extends Controller
     }
 
     $payfast = new \App\Services\Payfast();
+    // Use sandbox mode when PAYFAST_SANDBOX=true in .env (for testing API without live transactions)
+    if (config('services.payfast.sandbox')) {
+      $payfast->setMode(0);
+    }
     $result = $payfast->refundQuery($pfPaymentId);
 
     Log::info('PAYFAST REFUND QUERY — result', [
@@ -163,6 +167,9 @@ class BankRefundController extends Controller
 
       try {
         $payfast = new \App\Services\Payfast();
+        if (config('services.payfast.sandbox')) {
+          $payfast->setMode(0);
+        }
 
         $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
 
@@ -279,6 +286,9 @@ class BankRefundController extends Controller
     if (!empty($pfPaymentId)) {
       try {
         $payfast = new \App\Services\Payfast();
+        if (config('services.payfast.sandbox')) {
+          $payfast->setMode(0);
+        }
         $amount = $order->refund_net ?? $order->refund_gross ?? 0;
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');

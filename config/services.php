@@ -33,6 +33,7 @@ return [
     'passphrase'         => env('PAYFAST_PASSPHRASE'),
     'passphrase_live'    => env('PAYFAST_PASSPHRASE_LIVE'),
     'passphrase_sandbox' => env('PAYFAST_PASSPHRASE_SANDBOX'),
+    'sandbox'            => env('PAYFAST_SANDBOX', false),
   ],
 
 ];

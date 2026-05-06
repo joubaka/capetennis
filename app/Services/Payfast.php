@@ -38,6 +38,9 @@ class Payfast
   public $payfast_url;
   public $sandbox_url;
 
+  public $api_url = 'https://api.payfast.co.za';
+  public $api_sandbox_url = 'https://api.payfast.co.za';  // same host, testing=true param used
+
   public $payfast_id;
   public $sandbox_id;
 
@@ -198,6 +201,29 @@ class Payfast
   }
 
   /* =====================================================
+   * FORM SIGNATURE GENERATOR
+   * Generates the MD5 signature for a checkout form POST.
+   * Follows PayFast spec: add passphrase into array, ksort, http_build_query, md5.
+   * ===================================================== */
+  public function generateFormSignature(array $fields): string
+  {
+    $passphrase = $this->mode === 'sandbox'
+      ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
+      : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
+
+    // Remove empty values and the signature field itself
+    $data = array_filter($fields, fn($v) => $v !== null && $v !== '');
+    unset($data['signature']);
+
+    if (!empty($passphrase)) {
+      $data['passphrase'] = $passphrase;
+    }
+
+    ksort($data);
+    return md5(http_build_query($data));
+  }
+
+  /* =====================================================
    * BUILD FORM
    * ===================================================== */
   public function getForm(): string
@@ -229,6 +255,8 @@ class Payfast
       'custom_str5' => $this->custom_str5,
     ];
 
+    $signature = $this->generateFormSignature($fields);
+
     $html = '<form id="payfastForm" action="' . $this->url . '" method="post">';
 
     foreach ($fields as $name => $value) {
@@ -237,6 +265,7 @@ class Payfast
       }
     }
 
+    $html .= '<input type="hidden" name="signature" value="' . $signature . '">';
     $html .= '</form>';
 
     return $html;
@@ -297,7 +326,9 @@ class Payfast
    */
   public function refundQuery(string $pf_payment_id): array
   {
-    $apiUrl = 'https://api.payfast.co.za/refunds/query/' . urlencode($pf_payment_id);
+    $testing = $this->mode === 'sandbox';
+    $apiUrl = 'https://api.payfast.co.za/refunds/query/' . urlencode($pf_payment_id)
+      . ($testing ? '?testing=true' : '');
 
     $headers = $this->buildApiHeaders();
 
@@ -367,7 +398,8 @@ class Payfast
   {
     $amount = number_format((float) $amount, 2, '.', '');
 
-    $apiUrl = 'https://api.payfast.co.za/refunds';
+    $testing = $this->mode === 'sandbox';
+    $apiUrl = 'https://api.payfast.co.za/refunds' . ($testing ? '?testing=true' : '');
 
     // Build request body
     $body = [

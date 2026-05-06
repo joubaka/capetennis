@@ -67,9 +67,9 @@ class RegisterController extends Controller
     $merchantId = $data['merchant_id'] ?? null;
 
     // Check if any passphrase is configured
-    $hasPassphrase = !empty(env('PAYFAST_PASSPHRASE_LIVE')) 
-                  || !empty(env('PAYFAST_PASSPHRASE_SANDBOX'))
-                  || !empty(env('PAYFAST_PASSPHRASE'));
+    $hasPassphrase = !empty(config('services.payfast.passphrase_live'))
+                  || !empty(config('services.payfast.passphrase_sandbox'))
+                  || !empty(config('services.payfast.passphrase'));
 
     Log::info('[PAYFAST SIG] Start validation', [
       'merchant_id' => $merchantId,
@@ -110,7 +110,7 @@ class RegisterController extends Controller
 
     // If merchant_id matches sandbox config, try sandbox passphrase first
     if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
-      $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+      $sandboxPass = config('services.payfast.passphrase_sandbox');
       if ($sandboxPass) {
         $passphrases[] = $sandboxPass;
         Log::info('[PAYFAST SIG] Trying sandbox passphrase for merchant', ['merchant_id' => $merchantId]);
@@ -118,7 +118,7 @@ class RegisterController extends Controller
     }
     // If merchant_id matches live config, try live passphrase first
     elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
-      $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+      $livePass = config('services.payfast.passphrase_live');
       if ($livePass) {
         $passphrases[] = $livePass;
         Log::info('[PAYFAST SIG] Trying live passphrase for merchant', ['merchant_id' => $merchantId]);
@@ -126,17 +126,17 @@ class RegisterController extends Controller
     }
 
     // Add all other configured passphrases as fallback
-    $livePass = env('PAYFAST_PASSPHRASE_LIVE');
+    $livePass = config('services.payfast.passphrase_live');
     if ($livePass && !in_array($livePass, $passphrases)) {
       $passphrases[] = $livePass;
     }
 
-    $sandboxPass = env('PAYFAST_PASSPHRASE_SANDBOX');
+    $sandboxPass = config('services.payfast.passphrase_sandbox');
     if ($sandboxPass && !in_array($sandboxPass, $passphrases)) {
       $passphrases[] = $sandboxPass;
     }
 
-    $genericPass = env('PAYFAST_PASSPHRASE');
+    $genericPass = config('services.payfast.passphrase');
     if ($genericPass && !in_array($genericPass, $passphrases)) {
       $passphrases[] = $genericPass;
     }
@@ -146,12 +146,17 @@ class RegisterController extends Controller
       'string_length' => strlen($string),
     ]);
 
-    // Try each passphrase
+    // Try each passphrase — match PayFast spec: add passphrase into sorted array,
+    // then http_build_query + md5 (same as generateApiSignature in PayFast docs).
     foreach ($passphrases as $i => $pf) {
       if (empty($pf)) {
         continue;
       }
-      $calc = md5($string . '&passphrase=' . urlencode($pf));
+      $fieldsWithPass = array_filter($fields, fn($v) => $v !== '' && $v !== null);
+      unset($fieldsWithPass['signature']);
+      $fieldsWithPass['passphrase'] = $pf;
+      ksort($fieldsWithPass);
+      $calc = md5(http_build_query($fieldsWithPass));
       if ($calc === $incoming) {
         Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
         return true;
@@ -159,7 +164,10 @@ class RegisterController extends Controller
     }
 
     // Fallback: try without passphrase
-    if (md5($string) === $incoming) {
+    $fieldsNoPass = array_filter($fields, fn($v) => $v !== '' && $v !== null);
+    unset($fieldsNoPass['signature']);
+    ksort($fieldsNoPass);
+    if (md5(http_build_query($fieldsNoPass)) === $incoming) {
       Log::info('[PAYFAST SIG] ✓ Valid signature (no passphrase)');
       return true;
     }

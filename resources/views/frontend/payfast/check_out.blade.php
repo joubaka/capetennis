@@ -229,6 +229,28 @@
 
               <input type="hidden" name="custom_wallet_reserved" value="{{ $walletReserved }}">
 
+              @php
+                $formFields = array_filter([
+                  'merchant_id'  => $payfast->id,
+                  'merchant_key' => $payfast->key,
+                  'return_url'   => route('frontend.registration.success', $orderId),
+                  'cancel_url'   => route('registration.hybrid.cancel', $orderId),
+                  'notify_url'   => route('notify'),
+                  'amount'       => number_format($payfastDue, 2, '.', ''),
+                  'item_name'    => $event ? $event->name : 'Event Registration',
+                  'custom_int1'  => $categoryEvent ? (string)$categoryEvent->id : null,
+                  'custom_int2'  => $player ? (string)$player->id : null,
+                  'custom_int3'  => $event ? (string)$event->id : null,
+                  'custom_int4'  => (string)auth()->id(),
+                  'custom_int5'  => (string)$orderId,
+                  'custom_str1'  => $category ? $category->name : null,
+                  'custom_str2'  => $player ? trim($player->name . ' ' . $player->surname) : null,
+                  'custom_str3'  => $event ? $event->name : null,
+                  'custom_str4'  => auth()->user()->name,
+                ], fn($v) => $v !== null && $v !== '');
+              @endphp
+              <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
+
               <button class="btn btn-danger btn-lg w-100" onclick="this.disabled=true; this.form.submit();">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
