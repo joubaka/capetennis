@@ -1104,6 +1104,7 @@ class EventAdminController extends Controller
       ->create([
         'registration_id' => $request->registration_id,
         'status' => 'active',
+        'payment_status_id' => 1,
       ]);
 
     return response()->json([

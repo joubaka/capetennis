@@ -327,6 +327,11 @@ Route::middleware(['auth', 'role:super-user'])
       'requestBankDetails'
     ])->name('bank.request-bank-details');
 
+    Route::post('{registration}/save-bank-details', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'saveBankDetails'
+    ])->name('bank.save-bank-details');
+
     // Bulk: mark all selected pending bank refunds as completed (manual)
     Route::post('bulk-complete', [
       App\Http\Controllers\Backend\BankRefundController::class,
@@ -717,6 +722,11 @@ Route::delete(
   )->name('admin.events.categories.results.store');
 
   /////////////////////
+
+  Route::get(
+    'event/entry/{entry}/details',
+    [EventEntryController::class, 'entryDetails']
+  )->name('admin.entry.details');
 
   // =========================
   // EVENT ENTRIES (PAGE)

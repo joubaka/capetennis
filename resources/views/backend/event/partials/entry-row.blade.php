@@ -2,7 +2,7 @@
   $player = optional($reg->registration?->players)->first();
 @endphp
 
-<tr data-row>
+<tr data-row data-entry-id="{{ $reg->id }}">
   <td>—</td>
   <td>{{ $player?->name }} {{ $player?->surname }}</td>
 
