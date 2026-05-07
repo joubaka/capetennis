@@ -147,6 +147,15 @@ $navbarDetached = ($navbarDetached ?? '');
             </a>
           </li>
 
+          @auth
+          <li>
+            <a class="dropdown-item" href="{{ route('player.profile.create') }}">
+              <i class="ti ti-user-plus me-2"></i>
+              Add Player Profile
+            </a>
+          </li>
+          @endauth
+
           {{-- Wallet --}}
           @auth
           <li>

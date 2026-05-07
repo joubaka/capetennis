@@ -10,6 +10,52 @@ use Carbon\Carbon;
 class PlayerProfileController extends Controller
 {
     /**
+     * Show the form to create a new player profile.
+     */
+    public function create()
+    {
+        return view('frontend.player.create-profile');
+    }
+
+    /**
+     * Store a newly created player profile and attach it to the logged-in user.
+     */
+    public function storeNew(Request $request)
+    {
+        $validated = $request->validate([
+            'name'        => 'required|string|max:255',
+            'surname'     => 'required|string|max:255',
+            'dateOfBirth' => 'required|date|before:today',
+            'gender'      => 'required|in:1,2',
+            'cellNr'      => 'nullable|string|max:50',
+            'email'       => 'nullable|email|max:255',
+        ], [
+            'dateOfBirth.required' => 'Date of birth is required.',
+            'dateOfBirth.before'   => 'Date of birth must be in the past.',
+            'gender.required'      => 'Please select a gender.',
+            'gender.in'            => 'Gender must be Male or Female.',
+        ]);
+
+        $user = auth()->user();
+
+        $player = Player::create([
+            'name'        => $validated['name'],
+            'surname'     => $validated['surname'],
+            'dateOfBirth' => $validated['dateOfBirth'],
+            'gender'      => (int) $validated['gender'],
+            'cellNr'      => $validated['cellNr'] ?? null,
+            'email'       => $validated['email'] ?? null,
+            'userId'      => $user->id,
+        ]);
+
+        // Auto-attach to the user
+        $user->players()->syncWithoutDetaching($player->id);
+
+        return redirect()->route('backend.dashboard')
+            ->with('success', "Player profile for \"{$player->name} {$player->surname}\" created successfully.");
+    }
+
+    /**
      * Show all pending player profiles that need updating.
      */
     public function pending()

@@ -127,6 +127,8 @@ Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrder
 // Player Profile Update (frontend)
 Route::middleware('auth')->group(function () {
   Route::get('/player/profiles/pending', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'pending'])->name('player.profiles.pending');
+  Route::get('/player/profile/create', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'create'])->name('player.profile.create');
+  Route::post('/player/profile/create', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'storeNew'])->name('player.profile.store');
   Route::get('/player/{player}/profile/edit', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'edit'])->name('player.profile.edit');
   Route::put('/player/{player}/profile', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'update'])->name('player.profile.update');
   Route::post('/player/{player}/profile/confirm', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'confirm'])->name('player.profile.confirm');
