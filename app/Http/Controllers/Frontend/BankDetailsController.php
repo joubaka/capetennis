@@ -10,17 +10,18 @@ use Illuminate\Support\Facades\Log;
 
 class BankDetailsController extends Controller
 {
+    // Keys MUST match PayFast's exact bank_name codes (see /refunds/query response → bank_names[])
     const BANK_NAMES = [
-        'ABSA'          => 'ABSA',
-        'Capitec'       => 'Capitec',
-        'FNB'           => 'FNB',
-        'Nedbank'       => 'Nedbank',
-        'Standard Bank' => 'Standard Bank',
-        'Investec'      => 'Investec',
-        'African Bank'  => 'African Bank',
-        'TymeBank'      => 'TymeBank',
-        'Discovery'     => 'Discovery Bank',
-        'Bidvest'       => 'Bidvest Bank',
+        'ABSA'       => 'Absa',
+        'STANDARD'   => 'Standard Bank',
+        'FNB'        => 'FNB',
+        'NEDBANK'    => 'Nedbank',
+        'INVESTEC'   => 'Investec',
+        'CAPITEC'    => 'Capitec Bank',
+        'AFRICAN'    => 'African Bank',
+        'TYME'       => 'Tyme Bank',
+        'DISCOVERY'  => 'Discovery Bank',
+        'BIDVEST'    => 'Bidvest Bank',
     ];
 
     /**

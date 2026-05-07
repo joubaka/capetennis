@@ -224,10 +224,12 @@ class BankRefundController extends Controller
           return back()->withErrors('PayFast requires bank account details for this refund. Use "Request Bank Details" to email the player, then try again once they have submitted their details.');
         }
 
-        // User has provided bank details — include them in the refund body
+        // User has provided bank details — include them in the refund body.
+        // bank_name must be PayFast's exact uppercase code (e.g. FNB, STANDARD, CAPITEC).
+        // bank_account_number must be an integer per PayFast docs.
         $bankBody = [
           'bank_account_holder' => $registration->refund_account_name,
-          'bank_name'           => $registration->refund_bank_name,
+          'bank_name'           => strtoupper($registration->refund_bank_name),
           'bank_branch_code'    => (int) $registration->refund_branch_code,
           'bank_account_number' => (int) $registration->refund_account_number,
           'bank_account_type'   => $registration->refund_account_type ?? 'current',
