@@ -27,6 +27,8 @@
     background:#fff4f4 !important;
   }
 
+
+
   #transactionsTable td.text-end {
     font-variant-numeric: tabular-nums;
   }
@@ -76,9 +78,26 @@
       <div class="card border-start border-primary">
         <div class="card-body">
           <small class="text-muted">
-            Gross Income ({{ $totalEntries }} entries{{ isset($refundCount) && $refundCount > 0 ? ", {$refundCount} refunds" : '' }})
+            Gross Income ({{ $totalEntries }} entries{{ $refundCount > 0 ? ", {$refundCount} refund" . ($refundCount > 1 ? 's' : '') : '' }})
           </small>
           <h4>R {{ number_format($totalGross, 2) }}</h4>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-2">
+      <div class="card border-start border-danger">
+        <div class="card-body">
+          <small class="text-muted d-block">
+            Withdrawals ({{ $refundCount }})
+            @if($pendingRefundCount > 0)
+              <span class="badge bg-warning text-dark ms-1">{{ $pendingRefundCount }} pending</span>
+            @endif
+          </small>
+          <h4 class="text-danger">− R {{ number_format($totalWithdrawals, 2) }}</h4>
+          @if($pendingRefundCount > 0)
+            <small class="text-muted">R {{ number_format($completedWithdrawalsTotal, 2) }} refunded · R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+          @endif
         </div>
       </div>
     </div>
@@ -103,7 +122,7 @@
       </div>
     </div>
 
-    <div class="col-md-3">
+    <div class="col-md-2">
       <div class="card border-start border-secondary">
         <div class="card-body">
           <small class="text-muted">Payouts</small>
@@ -112,8 +131,8 @@
       </div>
     </div>
 
-    <div class="col-md-3">
-      <div class="card border-start border-success">
+    <div class="col-md-2">
+        <div class="card border-start border-success">
         <div class="card-body">
           <small class="text-muted">Net Tournament Income</small>
           <h4 class="text-success">R {{ number_format($netTournamentIncome, 2) }}</h4>

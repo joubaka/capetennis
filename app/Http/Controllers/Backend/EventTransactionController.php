@@ -194,7 +194,8 @@ class EventTransactionController extends Controller
     ])
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
-      ->where('refund_status', 'completed')
+      ->whereIn('refund_status', ['completed', 'pending'])
+      ->whereNotNull('pf_transaction_id')
       ->whereHas('payfastTransaction', fn($q) => $q->where('is_test', false))
       ->get();
 
@@ -272,7 +273,8 @@ class EventTransactionController extends Controller
 
       return (object) [
         'type' => 'refund',
-        'created_at' => $reg->refunded_at ?? $reg->updated_at,
+        'refund_status' => $reg->refund_status,
+        'created_at' => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
 
         'player' => $reg->display_name,
         'category' => optional($reg->categoryEvent->category)->name,
@@ -432,7 +434,14 @@ class EventTransactionController extends Controller
       : $allPaymentRows->flatMap(fn($t) => optional($t->order)->items ?? collect())->count();
 
     // Refund count for display
-    $refundCount = $refundRows->count();
+    $refundCount          = $refundRows->count();
+    $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
+    $pendingRefundCount   = $refundRows->where('refund_status', 'pending')->count();
+
+    // Withdrawal totals (gross amount refunded back to players)
+    $totalWithdrawals          = abs($refundRows->sum('gross'));
+    $completedWithdrawalsTotal = abs($refundRows->where('refund_status', 'completed')->sum('gross'));
+    $pendingWithdrawalsTotal   = abs($refundRows->where('refund_status', 'pending')->sum('gross'));
 
     if ($STEP === 7) {
       dd([
@@ -465,7 +474,12 @@ class EventTransactionController extends Controller
       'isTeamEvent' => $isTeamEvent,
 
       'totalEntries' => $totalEntries,
-      'refundCount' => $refundCount,
+      'refundCount'              => $refundCount,
+      'completedRefundCount'     => $completedRefundCount,
+      'pendingRefundCount'       => $pendingRefundCount,
+      'totalWithdrawals'         => $totalWithdrawals,
+      'completedWithdrawalsTotal'=> $completedWithdrawalsTotal,
+      'pendingWithdrawalsTotal'  => $pendingWithdrawalsTotal,
       'totalGross' => $totalGross,
       'totalPayfastFees' => $totalPayfastFees,
       'totalCapeTennisFees' => $totalCapeTennisFees,
@@ -534,7 +548,8 @@ class EventTransactionController extends Controller
     ])
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
-      ->where('refund_status', 'completed')
+      ->whereIn('refund_status', ['completed', 'pending'])
+      ->whereNotNull('pf_transaction_id')
       ->whereHas('payfastTransaction', fn($q) => $q->where('is_test', false))
       ->get();
 
@@ -545,7 +560,8 @@ class EventTransactionController extends Controller
 
       return (object) [
         'type'          => 'refund',
-        'created_at'    => $reg->refunded_at ?? $reg->updated_at,
+        'refund_status' => $reg->refund_status,
+        'created_at'    => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
         'player'        => $reg->display_name,
         'category'      => optional($reg->categoryEvent->category)->name,
         'method'        => ucfirst($reg->refund_method),
