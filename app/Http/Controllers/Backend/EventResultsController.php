@@ -16,11 +16,17 @@ class EventResultsController extends Controller
       ->get()
       ->map(function ($category) use ($event) {
 
-        // Load registrations for this category
+        // Load registrations for this category, excluding withdrawn players
         $registrations = Registration::whereHas(
           'categoryEvents',
           fn($q) => $q->where('category_events.id', $category->id)
         )
+          ->whereHas(
+            'categoryEventRegistrations',
+            fn($q) => $q->where('category_event_id', $category->id)
+              ->where('status', '!=', 'withdrawn')
+              ->whereDoesntHave('payfastTransaction', fn($tq) => $tq->where('is_test', true))
+          )
           ->leftJoin('category_results as cr', function ($join) use ($event, $category) {
           $join->on('registrations.id', '=', 'cr.registration_id')
             ->where('cr.event_id', $event->id)

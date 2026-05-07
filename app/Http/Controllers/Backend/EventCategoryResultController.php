@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\CategoryResult;
+use App\Models\CategoryEventRegistration;
 
 class EventCategoryResultController extends Controller
 {
@@ -41,14 +42,22 @@ class EventCategoryResultController extends Controller
       ], 422);
     }
 
-    $rows = collect($request->positions)->map(fn($row) => [
-      'event_id' => $event->id,
-      'category_id' => $categoryEvent->category_id,
-      'registration_id' => $row['registration_id'],
-      'position' => $row['position'],
-      'updated_at' => now(),
-      'created_at' => now(),
-    ])->values()->all();
+    // Get IDs of withdrawn registrations so they are excluded from results/points
+    $withdrawnIds = CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
+      ->where('status', 'withdrawn')
+      ->pluck('registration_id')
+      ->flip();
+
+    $rows = collect($request->positions)
+      ->reject(fn($row) => isset($withdrawnIds[$row['registration_id']]))
+      ->map(fn($row) => [
+        'event_id' => $event->id,
+        'category_id' => $categoryEvent->category_id,
+        'registration_id' => $row['registration_id'],
+        'position' => $row['position'],
+        'updated_at' => now(),
+        'created_at' => now(),
+      ])->values()->all();
 
     DB::transaction(function () use ($event, $categoryEvent, $rows) {
       // 🧹 Delete old results for this event+category first (clean slate)
