@@ -16,7 +16,7 @@ class EventResultsController extends Controller
       ->get()
       ->map(function ($category) use ($event) {
 
-        // Load registrations for this category, excluding withdrawn players
+        // Load registrations for this category, excluding withdrawn/unpaid/test players
         $registrations = Registration::whereHas(
           'categoryEvents',
           fn($q) => $q->where('category_events.id', $category->id)
@@ -26,6 +26,16 @@ class EventResultsController extends Controller
             fn($q) => $q->where('category_event_id', $category->id)
               ->where('status', '!=', 'withdrawn')
               ->whereDoesntHave('payfastTransaction', fn($tq) => $tq->where('is_test', true))
+          )
+          ->whereHas(
+            'orderItems',
+            fn($q) => $q->whereHas(
+              'order',
+              fn($oq) => $oq->where(function ($w) {
+                $w->where('payfast_paid', 1)
+                  ->orWhere('wallet_debited', '>', 0);
+              })
+            )
           )
           ->leftJoin('category_results as cr', function ($join) use ($event, $category) {
           $join->on('registrations.id', '=', 'cr.registration_id')
