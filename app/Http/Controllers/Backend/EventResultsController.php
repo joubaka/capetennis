@@ -26,8 +26,9 @@ class EventResultsController extends Controller
 
     $categoryEventIds = $categoryEvents->pluck('id')->all();
 
-    // ── 2. Qualifying registration IDs — single JOIN query (~130ms vs 17s with whereHas) ──
-    $qualifyingIds = DB::table('registrations')
+    // ── 2. Qualifying registration IDs ───────────────────────────────────────
+    // Path A: paid via order (payfast or wallet)
+    $paidViaOrder = DB::table('registrations')
       ->join('category_event_registrations as cer', 'registrations.id', '=', 'cer.registration_id')
       ->join('registration_order_items as roi', 'registrations.id', '=', 'roi.registration_id')
       ->join('registration_orders as ro', 'roi.order_id', '=', 'ro.id')
@@ -45,8 +46,21 @@ class EventResultsController extends Controller
       })
       ->select('registrations.id')
       ->distinct()
-      ->pluck('id')
-      ->all();
+      ->pluck('id');
+
+    // Path B: admin-added entries (payment_status_id = 1 but no order row)
+    $paidByAdmin = DB::table('registrations')
+      ->join('category_event_registrations as cer', 'registrations.id', '=', 'cer.registration_id')
+      ->leftJoin('registration_order_items as roi', 'registrations.id', '=', 'roi.registration_id')
+      ->whereIn('cer.category_event_id', $categoryEventIds)
+      ->where('cer.status', '!=', 'withdrawn')
+      ->where('cer.payment_status_id', 1)
+      ->whereNull('roi.id')
+      ->select('registrations.id')
+      ->distinct()
+      ->pluck('id');
+
+    $qualifyingIds = $paidViaOrder->merge($paidByAdmin)->unique()->values()->all();
 
     if (empty($qualifyingIds)) {
       $categories = $categoryEvents->map(function ($cat) {
