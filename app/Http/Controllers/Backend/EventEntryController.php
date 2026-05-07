@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Models\Player;
+use App\Models\PlayerRegistration;
 use Maatwebsite\Excel\Facades\Excel;
 
 use App\Mail\BulkEventMail;

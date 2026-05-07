@@ -27,6 +27,18 @@
         </div>
       @endif
 
+      {{-- Info box --}}
+      <div class="alert alert-info mb-4" role="alert">
+        <h6 class="alert-heading mb-1"><i class="ti ti-info-circle me-1"></i> What is a Player Profile?</h6>
+        <p class="mb-2">A <strong>Player Profile</strong> stores the personal details of a tennis player — such as their name, date of birth, gender, and contact information. You need a profile for each player before they can enter any events.</p>
+        <ul class="mb-2">
+          <li>If you are entering <strong>yourself</strong>, create a profile with your own details.</li>
+          <li>If you are a <strong>parent or guardian</strong>, create a separate profile for each child you manage.</li>
+          <li>You can have <strong>multiple profiles</strong> linked to your account (e.g. two children).</li>
+        </ul>
+        <p class="mb-0">Once saved, the profile will appear on your dashboard and can be used when entering events.</p>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <h5 class="mb-0"><i class="ti ti-user-plus me-2"></i>Add Player Profile</h5>
