@@ -48,7 +48,7 @@ class RegisterController extends Controller
    * Validate PayFast ITN signature.
    * Accepts optional Request because some callers pass it and some call without.
    */
-  private function validatePayfastSignature(Request $request = null)
+  private function validatePayfastSignature(Request $request = null): bool
   {
     // Support both direct $_POST and injected Request
     $data = [];
@@ -66,128 +66,82 @@ class RegisterController extends Controller
 
     $merchantId = $data['merchant_id'] ?? null;
 
-    // Check if any passphrase is configured
+    // Fail CLOSED — if no passphrase is configured, reject all ITNs.
+    // A misconfigured .env must never silently accept unauthenticated callbacks.
     $hasPassphrase = !empty(config('services.payfast.passphrase_live'))
                   || !empty(config('services.payfast.passphrase_sandbox'))
                   || !empty(config('services.payfast.passphrase'));
 
+    if (!$hasPassphrase) {
+      Log::critical('[PAYFAST SIG] FATAL: No passphrase configured — rejecting ITN. Set PAYFAST_PASSPHRASE_LIVE in .env.', [
+        'merchant_id'   => $merchantId,
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+        'ip'            => request()->ip(),
+      ]);
+      return false;
+    }
+
     Log::info('[PAYFAST SIG] Start validation', [
       'merchant_id' => $merchantId,
-      'has_passphrase' => $hasPassphrase,
     ]);
 
-    // Build signature string according to PayFast spec: sort fields, exclude signature
-    $fields = $data;
-    unset($fields['signature']);
-
-    ksort($fields);
-
-    $parts = [];
-    foreach ($fields as $k => $v) {
-      if ($v === '' || $v === null) {
-        continue;
-      }
-      $parts[] = $k . '=' . urlencode($v);
-    }
-
-    $string = implode('&', $parts);
-
-    // If no passphrases configured, accept ITN without signature validation
-    // (This is a fallback for production environments where passphrase wasn't configured)
-    if (!$hasPassphrase) {
-      Log::warning('[PAYFAST SIG] No passphrase configured - accepting ITN without validation', [
-        'merchant_id' => $merchantId,
-        'pf_payment_id' => $data['pf_payment_id'] ?? null,
-      ]);
-      return true;
-    }
-
     // Determine which passphrase to try based on merchant_id
-    $sandboxMerchantId = '10008657'; // From Payfast.php
-    $liveMerchantId = '11307280';     // From Payfast.php
+    $sandboxMerchantId = config('services.payfast.sandbox_merchant_id', '10008657');
+    $liveMerchantId    = config('services.payfast.merchant_id', '11307280');
 
     $passphrases = [];
 
-    // If merchant_id matches sandbox config, try sandbox passphrase first
     if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
       $sandboxPass = config('services.payfast.passphrase_sandbox');
       if ($sandboxPass) {
         $passphrases[] = $sandboxPass;
-        Log::info('[PAYFAST SIG] Trying sandbox passphrase for merchant', ['merchant_id' => $merchantId]);
       }
-    }
-    // If merchant_id matches live config, try live passphrase first
-    elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
+    } elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
       $livePass = config('services.payfast.passphrase_live');
       if ($livePass) {
         $passphrases[] = $livePass;
-        Log::info('[PAYFAST SIG] Trying live passphrase for merchant', ['merchant_id' => $merchantId]);
       }
     }
 
     // Add all other configured passphrases as fallback
-    $livePass = config('services.payfast.passphrase_live');
-    if ($livePass && !in_array($livePass, $passphrases)) {
-      $passphrases[] = $livePass;
+    foreach (['passphrase_live', 'passphrase_sandbox', 'passphrase'] as $key) {
+      $p = config("services.payfast.{$key}");
+      if ($p && !in_array($p, $passphrases, true)) {
+        $passphrases[] = $p;
+      }
     }
 
-    $sandboxPass = config('services.payfast.passphrase_sandbox');
-    if ($sandboxPass && !in_array($sandboxPass, $passphrases)) {
-      $passphrases[] = $sandboxPass;
-    }
+    // Build the fields array once (exclude signature and passphrase)
+    $fields = array_filter($data, fn($v) => $v !== '' && $v !== null);
+    unset($fields['signature'], $fields['passphrase']);
+    ksort($fields);
 
-    $genericPass = config('services.payfast.passphrase');
-    if ($genericPass && !in_array($genericPass, $passphrases)) {
-      $passphrases[] = $genericPass;
-    }
-
-    Log::info('[PAYFAST SIG] Attempting signature validation', [
-      'passphrases_count' => count($passphrases),
-      'string_length' => strlen($string),
-    ]);
-
-    // Try each passphrase — PayFast spec:
-    // sort real fields, build query string manually, THEN append passphrase last.
     foreach ($passphrases as $i => $pf) {
       if (empty($pf)) {
         continue;
       }
-      $fieldsForSig = array_filter($fields, fn($v) => $v !== '' && $v !== null);
-      unset($fieldsForSig['signature'], $fieldsForSig['passphrase']);
-      ksort($fieldsForSig);
 
       $pfOutput = '';
-      foreach ($fieldsForSig as $k => $v) {
-        $pfOutput .= $k . '=' . urlencode(trim((string)$v)) . '&';
+      foreach ($fields as $k => $v) {
+        $pfOutput .= $k . '=' . urlencode(trim((string) $v)) . '&';
       }
-      $pfOutput = rtrim($pfOutput, '&');
+      $pfOutput  = rtrim($pfOutput, '&');
       $pfOutput .= '&passphrase=' . urlencode(trim($pf));
 
-      $calc = md5($pfOutput);
-      if ($calc === $incoming) {
+      if (md5($pfOutput) === $incoming) {
         Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
         return true;
       }
     }
 
-    // Fallback: try without passphrase
-    $fieldsNoPass = array_filter($fields, fn($v) => $v !== '' && $v !== null);
-    unset($fieldsNoPass['signature'], $fieldsNoPass['passphrase']);
-    ksort($fieldsNoPass);
-    $pfOutputNoPass = '';
-    foreach ($fieldsNoPass as $k => $v) {
-      $pfOutputNoPass .= $k . '=' . urlencode(trim((string)$v)) . '&';
-    }
-    $pfOutputNoPass = rtrim($pfOutputNoPass, '&');
-    if (md5($pfOutputNoPass) === $incoming) {
-      Log::info('[PAYFAST SIG] ✓ Valid signature (no passphrase)');
-      return true;
-    }
+    // NOTE: No-passphrase fallback has been intentionally removed.
+    // Signatures MUST match with a configured passphrase.
 
     Log::error('[PAYFAST SIG] ✗ Signature validation failed', [
-      'merchant_id' => $merchantId,
+      'merchant_id'      => $merchantId,
       'passphrases_tried' => count($passphrases),
-      'received_sig' => substr($incoming, 0, 8) . '...',
+      'received_sig'      => substr($incoming, 0, 8) . '...',
+      'ip'                => request()->ip(),
     ]);
 
     return false;

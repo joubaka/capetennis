@@ -141,6 +141,7 @@ Route::middleware('auth')->group(function () {
   Route::post('/agreements/check', [FrontendAgreementController::class, 'check'])->name('agreements.check');
 });
 Route::get('/register/success/{order}', [RegisterController::class, 'registrationSuccess'])
+  ->middleware('auth')
   ->name('frontend.registration.success');
 Route::post(
   '/registration/hybrid/pay',
@@ -155,12 +156,12 @@ Route::post(
 Route::get(
   '/registration/hybrid/complete/{orderId}',
   [RegistrationPaymentController::class, 'hybridComplete']
-)->name('registration.hybrid.complete');
+)->middleware('auth')->name('registration.hybrid.complete');
 
 Route::get(
   '/registration/hybrid/cancel/{orderId}',
   [RegistrationPaymentController::class, 'hybridCancel']
-)->name('registration.hybrid.cancel');
+)->middleware('auth')->name('registration.hybrid.cancel');
 
 // Bank details submission (signed URL — no auth required, link sent by email)
 Route::get(
@@ -176,7 +177,7 @@ Route::get(
   '/team/checkout/{order}',
   [TeamController::class, 'checkout']
 )->name('team.checkout')->middleware('auth');
-Route::prefix('team')->group(function () {
+Route::prefix('team')->middleware('auth')->group(function () {
 
   Route::post(
     '/hybrid/pay',

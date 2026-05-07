@@ -26,6 +26,9 @@ class WalletService
 
     return DB::transaction(function () use ($wallet, $amount, $sourceType, $sourceId, $meta) {
 
+      // 🔒 Pessimistic lock — ensures balance is consistent for the insert
+      Wallet::lockForUpdate()->findOrFail($wallet->id);
+
       // 🔒 Idempotency check
       if (
         WalletTransaction::where('wallet_id', $wallet->id)
@@ -65,10 +68,10 @@ class WalletService
 
     return DB::transaction(function () use ($wallet, $amount, $sourceType, $sourceId, $meta) {
 
-      // 🔒 Lock wallet row
-      $wallet->refresh();
+      // 🔒 Pessimistic lock — prevents concurrent double-spend
+      $lockedWallet = Wallet::lockForUpdate()->findOrFail($wallet->id);
 
-      if ($wallet->balance < $amount) {
+      if ($lockedWallet->balance < $amount) {
         throw new InsufficientFundsException(
           "Wallet {$wallet->id} has insufficient funds"
         );
@@ -86,12 +89,12 @@ class WalletService
       }
 
       return WalletTransaction::create([
-        'wallet_id' => $wallet->id,
-        'type' => 'debit',
-        'amount' => $amount,
+        'wallet_id'   => $wallet->id,
+        'type'        => 'debit',
+        'amount'      => $amount,
         'source_type' => $sourceType,
-        'source_id' => $sourceId,
-        'meta' => $meta,
+        'source_id'   => $sourceId,
+        'meta'        => $meta,
       ]);
     });
   }
