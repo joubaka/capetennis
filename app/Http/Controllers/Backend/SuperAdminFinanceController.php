@@ -65,7 +65,7 @@ class SuperAdminFinanceController extends Controller
                 'payfastTransaction.order.items',
             ])
             ->where('status', 'withdrawn')
-            ->where('refund_status', 'completed')
+            ->whereIn('refund_status', ['completed', 'pending'])
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIds))
             ->get()
@@ -266,7 +266,7 @@ class SuperAdminFinanceController extends Controller
         ])
             ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
             ->where('status', 'withdrawn')
-            ->where('refund_status', 'completed')
+            ->whereIn('refund_status', ['completed', 'pending'])
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->get();
 

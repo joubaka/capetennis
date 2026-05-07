@@ -122,6 +122,7 @@
         <i class="ti ti-cash-banknote me-1"></i>Payouts
         @if($payoutModels->count())
           <span class="badge bg-info ms-1">{{ $payoutModels->count() }}</span>
+          <span class="badge bg-danger ms-1">R {{ number_format($totalPaidOut, 2) }}</span>
         @endif
       </button>
     </li>
@@ -260,6 +261,26 @@
           </tr>
         @endforeach
         </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="5" class="text-end">Totals</td>
+            <td class="text-end">R {{ number_format($totalGross, 2) }}</td>
+            <td class="text-end text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</td>
+            <td class="text-end text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</td>
+            <td class="text-end {{ $netTournamentIncome < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($netTournamentIncome, 2) }}</td>
+          </tr>
+          @if($totalPaidOut > 0)
+          <tr class="payout-row">
+            <td colspan="5" class="text-end">Total Paid Out to Convenors</td>
+            <td class="text-end text-danger" colspan="3">− R {{ number_format($totalPaidOut, 2) }}</td>
+            <td class="text-end text-danger">− R {{ number_format($totalPaidOut, 2) }}</td>
+          </tr>
+          <tr>
+            <td colspan="5" class="text-end fw-bold">Balance</td>
+            <td colspan="4" class="text-end fw-bold {{ $balance < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($balance, 2) }}</td>
+          </tr>
+          @endif
+        </tfoot>
       </table>
         </div>
       </div>
