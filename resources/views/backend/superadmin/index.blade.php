@@ -423,6 +423,24 @@
             </div>
           </div>
         </div>
+        <div class="col-6 col-md-4">
+          <div class="card border-start border-danger border-3 h-100">
+            <div class="card-body">
+              <small class="text-muted d-block mb-1"><i class="ti ti-cash-banknote me-1 text-danger"></i>Total Paid Out</small>
+              <h5 class="mb-0 text-danger">R {{ number_format($financeSummary['total_paid_out'], 2) }}</h5>
+              <small class="text-muted">Convenor payouts in {{ $financeYear }}</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="card border-start border-info border-3 h-100">
+            <div class="card-body">
+              <small class="text-muted d-block mb-1"><i class="ti ti-scale me-1 text-info"></i>Balance (unpaid)</small>
+              <h5 class="mb-0 {{ ($financeSummary['balance'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($financeSummary['balance'] ?? 0, 2) }}</h5>
+              <small class="text-muted">Net income minus payouts</small>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="card mb-0">
         <div class="card-header d-flex align-items-center justify-content-between">
@@ -442,6 +460,8 @@
                 <th>Date</th>
                 <th class="text-end">Gross Income</th>
                 <th class="text-end">Net Income</th>
+                <th class="text-end">Paid Out</th>
+                <th class="text-end">Balance</th>
                 <th class="text-center">Entries</th>
                 <th></th>
               </tr>
@@ -461,6 +481,12 @@
                   </td>
                   <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
                   <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
+                  <td class="text-end text-danger">
+                    {{ ($row['total_paid_out'] ?? 0) > 0 ? 'R ' . number_format($row['total_paid_out'], 2) : '—' }}
+                  </td>
+                  <td class="text-end {{ ($row['balance'] ?? 0) < 0 ? 'balance-negative' : 'balance-positive' }}">
+                    R {{ number_format($row['balance'] ?? 0, 2) }}
+                  </td>
                   <td class="text-center">{{ number_format($row['total_entries']) }}</td>
                   <td>
                     <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
@@ -470,7 +496,7 @@
                 </tr>
               @empty
                 <tr>
-                  <td colspan="6" class="text-center text-muted py-3">No events found.</td>
+                  <td colspan="8" class="text-center text-muted py-3">No events found.</td>
                 </tr>
               @endforelse
             </tbody>
@@ -479,6 +505,8 @@
                 <td colspan="2">Totals</td>
                 <td class="text-end text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</td>
                 <td class="text-end">R {{ number_format($financeSummary['total_income'], 2) }}</td>
+                <td class="text-end text-danger">R {{ number_format($financeSummary['total_paid_out'] ?? 0, 2) }}</td>
+                <td class="text-end">R {{ number_format($financeSummary['balance'] ?? 0, 2) }}</td>
                 <td class="text-center">{{ number_format($financeSummary['total_entries']) }}</td>
                 <td></td>
               </tr>
