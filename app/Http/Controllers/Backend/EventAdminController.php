@@ -960,7 +960,7 @@ class EventAdminController extends Controller
   protected function buildEventTransactions(Event $event): array
   {
     $runningBalance = 0;
-    $capeTennisFeeSet = 15;
+    $capeTennisFeeSet = (float) $event->cape_tennis_fee;
 
     $transactions = $event->transactions->map(function ($transaction) use (&$runningBalance, $capeTennisFeeSet) {
 
