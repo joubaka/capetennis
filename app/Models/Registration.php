@@ -64,7 +64,7 @@ class Registration extends Model
   public function orderItems()
   {
     // table: registration_order_items (id, player_id, order_id, category_event_id, registration_id, ...)
-    return $this->hasMany(RegistrationOrderItem::class, 'registration_id', 'id');
+    return $this->hasMany(RegistrationOrderItems::class, 'registration_id', 'id');
   }
 
   /* ---------- Fixtures / Results convenience ---------- */
