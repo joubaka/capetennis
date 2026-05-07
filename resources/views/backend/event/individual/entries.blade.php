@@ -348,7 +348,6 @@
     <button type="button"
             class="btn btn-outline-secondary btn-sm dropdown-toggle"
             data-bs-toggle="dropdown"
-            data-bs-strategy="fixed"
             aria-expanded="false">
       Actions
     </button>
@@ -524,6 +523,21 @@ const movePlayerEl = document.getElementById('movePlayerModal');
 const sendMailModal  = sendMailEl  ? new bootstrap.Modal(sendMailEl)  : null;
 const addPlayerModal = addPlayerEl ? new bootstrap.Modal(addPlayerEl) : null;
 const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
+
+/* =====================
+   DROPDOWN FIXED STRATEGY
+   Forces all action dropdowns to render
+   relative to viewport so they escape
+   overflow:auto scroll wrappers
+===================== */
+document.querySelectorAll('.col-actions .dropdown-toggle').forEach(function(toggleEl) {
+    new bootstrap.Dropdown(toggleEl, {
+        popperConfig: function(defaultConfig) {
+            defaultConfig.strategy = 'fixed';
+            return defaultConfig;
+        }
+    });
+});
 
 /* =====================
    QUILL INIT
