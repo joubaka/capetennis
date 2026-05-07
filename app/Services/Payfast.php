@@ -411,9 +411,10 @@ class Payfast
 
     // Body must NOT include merchant_id/merchant_key (those go in headers only)
     $body = array_merge([
-      'amount'       => $amountCents,
-      'reason'       => $reason,
-      'notify_buyer' => 1,
+      'amount'           => $amountCents,
+      'reason'           => $reason,
+      'notify_buyer'     => 1,
+      'notify_merchant'  => 0,
     ], $extraBody);
 
     // Signature must cover both headers AND body params (alphabetically sorted)

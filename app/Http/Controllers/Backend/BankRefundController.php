@@ -229,7 +229,7 @@ class BankRefundController extends Controller
           'bank_account_holder' => $registration->refund_account_name,
           'bank_name'           => $registration->refund_bank_name,
           'bank_branch_code'    => (int) $registration->refund_branch_code,
-          'bank_account_number' => (string) $registration->refund_account_number,
+          'bank_account_number' => (int) $registration->refund_account_number,
           'bank_account_type'   => $registration->refund_account_type ?? 'current',
         ];
       } else {
