@@ -6,57 +6,107 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\Registration;
+use Illuminate\Support\Facades\DB;
 
 class EventResultsController extends Controller
 {
   public function individual(Event $event)
   {
-    // Load category events for this event
-    $categories = CategoryEvent::where('event_id', $event->id)
-      ->get()
-      ->map(function ($category) use ($event) {
+    // ── 1. All categories + their category name (2 queries) ──────────────────
+    $categoryEvents = CategoryEvent::where('event_id', $event->id)
+      ->with('category')
+      ->get();
 
-        // Load registrations for this category, excluding withdrawn/unpaid/test players
-        $registrations = Registration::whereHas(
-          'categoryEvents',
-          fn($q) => $q->where('category_events.id', $category->id)
-        )
-          ->whereHas(
-            'categoryEventRegistrations',
-            fn($q) => $q->where('category_event_id', $category->id)
-              ->where('status', '!=', 'withdrawn')
-              ->whereDoesntHave('payfastTransaction', fn($tq) => $tq->where('is_test', true))
-          )
-          ->whereHas(
-            'orderItems',
-            fn($q) => $q->whereHas(
-              'order',
-              fn($oq) => $oq->where(function ($w) {
-                $w->where('payfast_paid', 1)
-                  ->orWhere('wallet_debited', '>', 0);
-              })
-            )
-          )
-          ->leftJoin('category_results as cr', function ($join) use ($event, $category) {
-          $join->on('registrations.id', '=', 'cr.registration_id')
-            ->where('cr.event_id', $event->id)
-            ->where('cr.category_id', $category->category_id);
-        })
-          ->select('registrations.*', 'cr.position')
-          ->orderByRaw('cr.position IS NULL') // saved results first
-          ->orderBy('cr.position')            // then by position
-          ->orderBy('registrations.id')       // stable fallback
-          ->get();
+    if ($categoryEvents->isEmpty()) {
+      return view('backend.event.results.individual', [
+        'event'      => $event,
+        'categories' => collect(),
+      ]);
+    }
 
-        // Inject registrations relation manually
-        $category->setRelation('registrations', $registrations);
+    $categoryEventIds = $categoryEvents->pluck('id')->all();
 
-        return $category;
+    // ── 2. Qualifying registration IDs — single JOIN query (~130ms vs 17s with whereHas) ──
+    $qualifyingIds = DB::table('registrations')
+      ->join('category_event_registrations as cer', 'registrations.id', '=', 'cer.registration_id')
+      ->join('registration_order_items as roi', 'registrations.id', '=', 'roi.registration_id')
+      ->join('registration_orders as ro', 'roi.order_id', '=', 'ro.id')
+      ->leftJoin('transactions_pf as tpf', 'cer.pf_transaction_id', '=', 'tpf.id')
+      ->whereIn('cer.category_event_id', $categoryEventIds)
+      ->where('cer.status', '!=', 'withdrawn')
+      ->where(function ($w) {
+        $w->where('ro.payfast_paid', 1)
+          ->orWhere('ro.wallet_debited', '>', 0);
+      })
+      ->where(function ($w) {
+        // exclude registrations whose payfast transaction is a test
+        $w->whereNull('tpf.id')
+          ->orWhere('tpf.is_test', '!=', 1);
+      })
+      ->select('registrations.id')
+      ->distinct()
+      ->pluck('id')
+      ->all();
+
+    if (empty($qualifyingIds)) {
+      $categories = $categoryEvents->map(function ($cat) {
+        $cat->setRelation('registrations', collect());
+        return $cat;
       });
 
-    return view(
-      'backend.event.results.individual',
-      compact('event', 'categories')
-    );
+      return view('backend.event.results.individual', compact('event', 'categories'));
+    }
+
+    // ── 3. All saved positions for this event (1 query) ───────────────────────
+    $savedPositions = DB::table('category_results')
+      ->where('event_id', $event->id)
+      ->whereIn('registration_id', $qualifyingIds)
+      ->select('category_id', 'registration_id', 'position')
+      ->get()
+      ->groupBy('category_id')           // keyed by category_id
+      ->map(fn($rows) => $rows->keyBy('registration_id'));
+
+    // ── 4. All registrations with players eager-loaded (2 queries) ────────────
+    $registrations = Registration::whereIn('id', $qualifyingIds)
+      ->with('players')
+      ->get()
+      ->keyBy('id');
+
+    // ── 5. Per-category pivot: which registration belongs to which category,
+    //       excluding withdrawn rows (1 query) ─────────────────────────────────
+    $pivotRows = DB::table('category_event_registrations')
+      ->whereIn('category_event_id', $categoryEventIds)
+      ->whereIn('registration_id', $qualifyingIds)
+      ->where('status', '!=', 'withdrawn')
+      ->select('category_event_id', 'registration_id')
+      ->get()
+      ->groupBy('category_event_id');
+
+    // ── 6. Assemble per-category in PHP (no more queries) ────────────────────
+    $categories = $categoryEvents->map(function ($category) use ($registrations, $savedPositions, $pivotRows) {
+      $categoryResults = $savedPositions->get($category->category_id, collect());
+
+      $catRegistrations = $pivotRows
+        ->get($category->id, collect())
+        ->pluck('registration_id')
+        ->map(fn($id) => $registrations->get($id))
+        ->filter()
+        ->map(function ($reg) use ($categoryResults) {
+          $reg->position = $categoryResults->get($reg->id)?->position ?? null;
+          return $reg;
+        })
+        ->sortBy([
+          fn($a, $b) => (int) ($a->position === null) - (int) ($b->position === null),
+          fn($a, $b) => ($a->position ?? PHP_INT_MAX) <=> ($b->position ?? PHP_INT_MAX),
+          fn($a, $b) => $a->id <=> $b->id,
+        ])
+        ->values();
+
+      $category->setRelation('registrations', $catRegistrations);
+
+      return $category;
+    });
+
+    return view('backend.event.results.individual', compact('event', 'categories'));
   }
 }
