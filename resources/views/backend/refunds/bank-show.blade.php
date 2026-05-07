@@ -74,7 +74,15 @@
   </div>
 
   <div class="card mb-4">
-    <div class="card-header"><h6 class="mb-0">Banking Details</h6></div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h6 class="mb-0">Banking Details</h6>
+      @if(auth()->user()->hasRole('super-user') && $registration->refund_status === 'pending')
+        <button class="btn btn-sm btn-outline-primary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#editBankForm">
+          <i class="ti ti-pencil me-1"></i>Edit / Enter Details
+        </button>
+      @endif
+    </div>
     <div class="card-body">
       <dl class="row mb-0">
         <dt class="col-sm-3">Account Name</dt>
@@ -92,6 +100,83 @@
         <dt class="col-sm-3">Account Type</dt>
         <dd class="col-sm-9">{{ ucfirst($registration->refund_account_type ?? '—') }}</dd>
       </dl>
+
+      @if(auth()->user()->hasRole('super-user') && $registration->refund_status === 'pending')
+        @php
+          $bankNames = [
+            'absa'         => 'ABSA',
+            'capitec'      => 'Capitec',
+            'fnb'          => 'FNB',
+            'investec'     => 'Investec',
+            'nedbank'      => 'Nedbank',
+            'standard'     => 'Standard Bank',
+            'african'      => 'African Bank',
+            'discovery'    => 'Discovery Bank',
+            'sasfin'       => 'Sasfin',
+            'tyme'         => 'TymeBank',
+            'other'        => 'Other',
+          ];
+        @endphp
+        <div class="collapse mt-4 {{ $registration->refund_account_name ? '' : 'show' }}" id="editBankForm">
+          <hr>
+          <h6 class="text-muted mb-3"><i class="ti ti-shield-lock me-1"></i>Superadmin — Enter Bank Details on Behalf of User</h6>
+          <form method="POST" action="{{ route('admin.refunds.bank.save-bank-details', $registration) }}">
+            @csrf
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Account Holder Name <span class="text-danger">*</span></label>
+                <input type="text" name="refund_account_name"
+                       class="form-control @error('refund_account_name') is-invalid @enderror"
+                       value="{{ old('refund_account_name', $registration->refund_account_name) }}"
+                       placeholder="Name exactly as on bank account" required>
+                @error('refund_account_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Bank <span class="text-danger">*</span></label>
+                <select name="refund_bank_name" class="form-select @error('refund_bank_name') is-invalid @enderror" required>
+                  <option value="">— Select bank —</option>
+                  @foreach($bankNames as $val => $label)
+                    <option value="{{ $val }}" {{ old('refund_bank_name', $registration->refund_bank_name) === $val ? 'selected' : '' }}>
+                      {{ $label }}
+                    </option>
+                  @endforeach
+                </select>
+                @error('refund_bank_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Account Number <span class="text-danger">*</span></label>
+                <input type="text" name="refund_account_number"
+                       class="form-control @error('refund_account_number') is-invalid @enderror"
+                       value="{{ old('refund_account_number', $registration->refund_account_number) }}"
+                       placeholder="e.g. 1234567890" required maxlength="30">
+                @error('refund_account_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Branch Code <span class="text-danger">*</span></label>
+                <input type="text" name="refund_branch_code"
+                       class="form-control @error('refund_branch_code') is-invalid @enderror"
+                       value="{{ old('refund_branch_code', $registration->refund_branch_code) }}"
+                       placeholder="e.g. 632005" required maxlength="20" inputmode="numeric">
+                @error('refund_branch_code')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Account Type <span class="text-danger">*</span></label>
+                <select name="refund_account_type" class="form-select @error('refund_account_type') is-invalid @enderror" required>
+                  <option value="">— Select —</option>
+                  <option value="current" {{ old('refund_account_type', $registration->refund_account_type) === 'current' ? 'selected' : '' }}>Current</option>
+                  <option value="savings" {{ old('refund_account_type', $registration->refund_account_type) === 'savings' ? 'selected' : '' }}>Savings</option>
+                </select>
+                @error('refund_account_type')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              </div>
+              <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                  <i class="ti ti-device-floppy me-1"></i>Save Bank Details
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      @endif
     </div>
   </div>
 
