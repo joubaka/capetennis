@@ -234,25 +234,29 @@ class SuperAdminController extends Controller
 
         $allTransactions = Transaction::with(['order.items'])
             ->where('transaction_type', 'Registration')
-            ->where('amount_gross', '>', 0)
+            ->where('amount_gross', '>=', 0)
             ->where('is_test', false)
             ->whereIn('event_id', $eventIdsForYear)
             ->get()
             ->groupBy('event_id');
 
-        // All completed refunds across every event (grouped by event_id via categoryEvent)
+        // All completed + pending refunds across every event (grouped by event_id via categoryEvent)
         $allRefunds = CategoryEventRegistration::with([
                 'categoryEvent',
                 'payfastTransaction.order.items',
             ])
             ->where('status', 'withdrawn')
-            ->where('refund_status', 'completed')
+            ->whereIn('refund_status', ['completed', 'pending'])
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIdsForYear))
             ->get()
             ->groupBy(fn ($r) => $r->categoryEvent->event_id);
 
-        $financeByEvent = $eventsForYear->map(function ($event) use ($allTransactions, $allRefunds) {
+        $allPayouts = \App\Models\EventPayout::whereIn('event_id', $eventIdsForYear)
+            ->get()
+            ->groupBy('event_id');
+
+        $financeByEvent = $eventsForYear->map(function ($event) use ($allTransactions, $allRefunds, $allPayouts) {
             $feePerEntry = (float) $event->cape_tennis_fee;
             $txForEvent  = $allTransactions->get($event->id, collect());
 
@@ -295,8 +299,9 @@ class SuperAdminController extends Controller
 
             $ledger = $paymentLedger->merge($refundLedger);
 
-            $totalGross   = round($ledger->sum('gross'), 2);
-            $netIncome    = round($ledger->sum('net'), 2);
+            $totalGross    = round($ledger->sum('gross'), 2);
+            $netIncome     = round($ledger->sum('net'), 2);
+            $totalPaidOut  = $allPayouts->get($event->id, collect())->sum('amount');
 
             // Entry count: same as EventTransactionController (items in payment rows only)
             $totalEntries = $event->isTeam()
@@ -304,17 +309,22 @@ class SuperAdminController extends Controller
                 : $paymentLedger->flatMap(fn ($r) => $r['items'])->count();
 
             return [
-                'event'         => $event,
-                'total_gross'   => $totalGross,
-                'total_income'  => $netIncome,
-                'total_entries' => $totalEntries,
+                'event'          => $event,
+                'total_gross'    => $totalGross,
+                'total_income'   => $netIncome,
+                'total_entries'  => $totalEntries,
+                'total_paid_out' => round($totalPaidOut, 2),
+                'balance'        => round($netIncome - $totalPaidOut, 2),
+                'has_transactions' => $txForEvent->isNotEmpty(),
             ];
         });
 
         $financeSummary = [
-            'total_gross'   => $financeByEvent->sum('total_gross'),
-            'total_income'  => $financeByEvent->sum('total_income'),
-            'total_entries' => $financeByEvent->sum('total_entries'),
+            'total_gross'    => $financeByEvent->sum('total_gross'),
+            'total_income'   => $financeByEvent->sum('total_income'),
+            'total_entries'  => $financeByEvent->sum('total_entries'),
+            'total_paid_out' => $financeByEvent->sum('total_paid_out'),
+            'balance'        => $financeByEvent->sum('balance'),
         ];
 
         // ── Settings variables (for the embedded Settings tab) ──────────────

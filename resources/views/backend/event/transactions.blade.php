@@ -27,6 +27,18 @@
     background:#fff4f4 !important;
   }
 
+  tr.admin-entry-row {
+    background:#fffbf0 !important;
+    opacity: 0.85;
+  }
+  tr.admin-entry-row td {
+    color: #888 !important;
+  }
+  tr.admin-entry-row td.text-warning,
+  tr.admin-entry-row td.text-danger {
+    color: #aaa !important;
+  }
+
 
 
   #transactionsTable td.text-end {
@@ -74,71 +86,113 @@
 
   {{-- SUMMARY --}}
   <div class="row g-3 mb-4">
-    <div class="col-md-2">
-      <div class="card border-start border-primary">
-        <div class="card-body">
-          <small class="text-muted">
-            Gross Income ({{ $totalEntries }} entries{{ $refundCount > 0 ? ", {$refundCount} refund" . ($refundCount > 1 ? 's' : '') : '' }})
-          </small>
-          <h4>R {{ number_format($totalGross, 2) }}</h4>
-        </div>
-      </div>
-    </div>
 
+    {{-- 1. GROSS INCOME --}}
     <div class="col-md-2">
-      <div class="card border-start border-danger">
+      <div class="card border-start border-primary h-100">
         <div class="card-body">
+          <small class="text-muted d-block mb-1">Gross Income</small>
+          <h4 class="mb-1">R {{ number_format($totalGross, 2) }}</h4>
           <small class="text-muted d-block">
-            Withdrawals ({{ $refundCount }})
-            @if($pendingRefundCount > 0)
-              <span class="badge bg-warning text-dark ms-1">{{ $pendingRefundCount }} pending</span>
-            @endif
+            {{ $totalEntries }} total {{ $totalEntries === 1 ? 'entry' : 'entries' }}
+            @if($refundCount > 0) · {{ $refundCount }} {{ $refundCount === 1 ? 'refund' : 'refunds' }} @endif
           </small>
-          <h4 class="text-danger">− R {{ number_format($totalWithdrawals, 2) }}</h4>
-          @if($pendingRefundCount > 0)
-            <small class="text-muted">R {{ number_format($completedWithdrawalsTotal, 2) }} refunded · R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+          @php $payfastEntries = $totalEntries - $adminEntriesCount; @endphp
+          @if($adminEntriesCount > 0)
+            <hr class="my-2">
+            <small class="text-muted d-block">
+              <i class="ti ti-credit-card text-primary me-1"></i>
+              {{ $payfastEntries }} via PayFast · <strong>R {{ number_format($totalGross, 2) }}</strong>
+            </small>
+            <small class="text-warning d-block mt-1">
+              <i class="ti ti-cash text-warning me-1"></i>
+              {{ $adminEntriesCount }} collected privately · <strong>R 0.00 to event</strong>
+            </small>
           @endif
         </div>
       </div>
     </div>
 
+    {{-- 2. WITHDRAWALS --}}
     <div class="col-md-2">
-      <div class="card border-start border-warning">
+      <div class="card border-start border-danger h-100">
         <div class="card-body">
-          <small class="text-muted">PayFast Fees (net)</small>
-          <h4 class="text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-2">
-      <div class="card border-start border-danger">
-        <div class="card-body">
-          <small class="text-muted">
-            Cape Tennis Fees (net)
+          <small class="text-muted d-block mb-1">
+            Withdrawals ({{ $refundCount }})
+            @if($pendingRefundCount > 0)
+              <span class="badge bg-warning text-dark ms-1">{{ $pendingRefundCount }} pending</span>
+            @endif
           </small>
-          <h4 class="text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
+          <h4 class="text-danger mb-1">− R {{ number_format($totalWithdrawals, 2) }}</h4>
+          @if($refundCount > 0)
+            <small class="text-muted d-block">R {{ number_format($completedWithdrawalsTotal, 2) }} refunded</small>
+            <small class="text-muted d-block">R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+          @endif
         </div>
       </div>
     </div>
 
+    {{-- 3. PAYFAST FEES --}}
     <div class="col-md-2">
-      <div class="card border-start border-secondary">
+      <div class="card border-start border-warning h-100">
         <div class="card-body">
-          <small class="text-muted">Payouts</small>
-          <h4 class="text-secondary">{{ $totalPayouts > 0 ? '− ' : '' }}R {{ number_format(abs($totalPayouts), 2) }}</h4>
+          <small class="text-muted d-block mb-1">PayFast Fees (net)</small>
+          <h4 class="text-warning mb-1">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
+          @if($adminEntriesCount > 0)
+            <small class="text-muted d-block">{{ $payfastEntries }} PayFast {{ $payfastEntries === 1 ? 'entry' : 'entries' }}</small>
+            <small class="text-muted d-block">{{ $adminEntriesCount }} admin = R 0.00 fee</small>
+          @else
+            <small class="text-muted d-block">{{ $totalEntries }} {{ $totalEntries === 1 ? 'entry' : 'entries' }}</small>
+          @endif
         </div>
       </div>
     </div>
 
+    {{-- 4. CAPE TENNIS FEES --}}
     <div class="col-md-2">
-        <div class="card border-start border-success">
+      <div class="card border-start border-danger h-100">
         <div class="card-body">
-          <small class="text-muted">Net Tournament Income</small>
-          <h4 class="text-success">R {{ number_format($netTournamentIncome, 2) }}</h4>
+          <small class="text-muted d-block mb-1">Cape Tennis Fees (net)</small>
+          <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
+          <small class="text-muted d-block">{{ $totalEntries }} {{ $totalEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}</small>
+          @if($adminEntriesCount > 0)
+            <small class="text-warning d-block mt-1">
+              <i class="ti ti-alert-triangle me-1"></i>
+              R {{ number_format($adminEntriesCapeFee, 2) }} owed from {{ $adminEntriesCount }} private {{ $adminEntriesCount === 1 ? 'entry' : 'entries' }}
+            </small>
+          @endif
         </div>
       </div>
     </div>
+
+    {{-- 5. PAYOUTS --}}
+    <div class="col-md-2">
+      <div class="card border-start border-secondary h-100">
+        <div class="card-body">
+          <small class="text-muted d-block mb-1">Payouts</small>
+          <h4 class="text-secondary mb-1">{{ $totalPayouts > 0 ? '− ' : '' }}R {{ number_format(abs($totalPayouts), 2) }}</h4>
+          <small class="text-muted d-block">Paid to organiser</small>
+        </div>
+      </div>
+    </div>
+
+    {{-- 6. NET TOURNAMENT INCOME --}}
+    <div class="col-md-2">
+      <div class="card border-start border-success h-100">
+        <div class="card-body">
+          <small class="text-muted d-block mb-1">Net Tournament Income</small>
+          <h4 class="{{ $netTournamentIncome >= 0 ? 'text-success' : 'text-danger' }} mb-1">R {{ number_format($netTournamentIncome, 2) }}</h4>
+          @if($adminEntriesCount > 0)
+            <small class="text-warning d-block">
+              <i class="ti ti-alert-triangle me-1"></i>
+              Excludes R {{ number_format($totalGross + $adminEntriesCount * 285, 2) }} privately collected
+            </small>
+          @endif
+          <small class="text-muted d-block">After all fees &amp; payouts</small>
+        </div>
+      </div>
+    </div>
+
   </div>
 
 
@@ -213,8 +267,9 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             }
           @endphp
 
-          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : '' }}"
-              @if($payload->count()) data-items='@json($payload)' @endif>
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->method === 'Admin Entry' ? 'admin-entry-row' : '') }}"
+              @if($payload->count()) data-items='@json($payload)' @endif
+              @if($tx->method === 'Admin Entry') title="Collected privately — no refund possible" @endif>
 
             <td class="dt-toggle">
               @if($payload->count())
@@ -225,7 +280,9 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             <td>{{ \Carbon\Carbon::parse($tx->created_at)->format('Y-m-d') }}</td>
 
             <td>
-              @if($tx->type === 'payment')
+              @if($tx->type === 'payment' && $tx->method === 'Admin Entry')
+                <span class="badge bg-secondary">Admin</span>
+              @elseif($tx->type === 'payment')
                 <span class="badge bg-success">Payment</span>
               @elseif($tx->type === 'refund')
                 <span class="badge bg-danger">Refund</span>
@@ -237,7 +294,25 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             </td>
 
             <td>{{ $tx->player ?? '—' }}</td>
-            <td>{{ $tx->method }}</td>
+            <td>
+              @php
+                $m = $tx->method ?? '';
+              @endphp
+              @if($m === 'PayFast')
+                <span class="badge bg-success">PayFast</span>
+              @elseif($m === 'Wallet')
+                <span class="badge bg-info text-dark">Wallet</span>
+              @elseif(str_contains($m, 'Wallet'))
+                <span class="badge bg-success">PayFast</span>
+                <span class="badge bg-info text-dark">+ Wallet</span>
+              @elseif($m === 'Admin Entry')
+                <span class="badge bg-secondary">Admin</span>
+              @elseif($m)
+                <span class="badge bg-light text-dark border">{{ $m }}</span>
+              @else
+                —
+              @endif
+            </td>
 
             {{-- Gross --}}
             <td class="text-end {{ $tx->type === 'payout' ? 'text-secondary' : '' }}">

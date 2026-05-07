@@ -571,4 +571,28 @@ class BankRefundController extends Controller
 
     return back()->with('success', "{$count} bank refund(s) marked as completed.");
   }
+
+  /**
+   * Superadmin manually saves bank details on behalf of the user.
+   */
+  public function saveBankDetails(Request $request, CategoryEventRegistration $registration)
+  {
+    $data = $request->validate([
+      'refund_account_name'   => ['required', 'string', 'max:100'],
+      'refund_bank_name'      => ['required', 'string', 'max:100'],
+      'refund_account_number' => ['required', 'string', 'max:30'],
+      'refund_branch_code'    => ['required', 'string', 'max:20'],
+      'refund_account_type'   => ['required', 'in:current,savings'],
+    ]);
+
+    $registration->update($data);
+
+    Log::info('BANK DETAILS SAVED BY SUPERADMIN', [
+      'registration_id' => $registration->id,
+      'saved_by'        => auth()->id(),
+      'data'            => $data,
+    ]);
+
+    return back()->with('success', 'Bank details saved successfully.');
+  }
 }

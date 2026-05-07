@@ -94,7 +94,11 @@ class Registration extends Model
   /* ---------- Display helpers ---------- */
   public function displayName(): string
   {
-    $players = $this->playersOrdered()->get(['name', 'surname']);
+    // Use already-loaded relation if available to avoid extra queries
+    $players = $this->relationLoaded('players')
+      ? $this->players->sortBy('surname')->sortBy('name')
+      : $this->playersOrdered()->get(['name', 'surname']);
+
     if ($players->isEmpty())
       return 'Unassigned';
     return $players->map(fn($p) => trim("{$p->name} {$p->surname}"))->join(' / ');

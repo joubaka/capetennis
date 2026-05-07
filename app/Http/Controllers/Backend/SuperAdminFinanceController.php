@@ -9,6 +9,8 @@ use App\Models\EventPayout;
 use App\Models\SiteSetting;
 use App\Models\TeamPaymentOrder;
 use App\Models\Transaction;
+use App\Models\WalletTransaction;
+use App\Models\RegistrationOrder;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
@@ -52,7 +54,7 @@ class SuperAdminFinanceController extends Controller
 
         $allTransactions = Transaction::with(['order.items'])
             ->where('transaction_type', 'Registration')
-            ->where('amount_gross', '>', 0)
+            ->where('amount_gross', '>=', 0)
             ->where('is_test', false)
             ->whereIn('event_id', $eventIds)
             ->get()
@@ -63,7 +65,7 @@ class SuperAdminFinanceController extends Controller
                 'payfastTransaction.order.items',
             ])
             ->where('status', 'withdrawn')
-            ->where('refund_status', 'completed')
+            ->whereIn('refund_status', ['completed', 'pending'])
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->whereHas('categoryEvent', fn ($q) => $q->whereIn('event_id', $eventIds))
             ->get()
@@ -79,7 +81,7 @@ class SuperAdminFinanceController extends Controller
                 $payfastGross = round((float) $tx->amount_gross, 2);
                 $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
                 $entryCount   = max(1, $tx->order?->items?->count() ?? 0);
-                $pfFee        = SiteSetting::calculatePayfastFee($payfastGross);
+                $pfFee        = ($tx->pf_payment_id === null) ? 0 : SiteSetting::calculatePayfastFee($payfastGross);
                 $capeFee      = round($feePerEntry * $entryCount, 2);
 
                 return [
@@ -159,12 +161,13 @@ class SuperAdminFinanceController extends Controller
         // ── Payment rows ─────────────────────────────────────────────────
         $rawTransactions = Transaction::with([
             'user',
+            'player',
             'order.items.player',
             'order.items.category_event.category',
         ])
             ->where('event_id', $event->id)
             ->where('transaction_type', 'Registration')
-            ->where('amount_gross', '>', 0)
+            ->where('amount_gross', '>=', 0)   // include R0 admin entries
             ->where('is_test', false)
             ->orderByDesc('created_at')
             ->get();
@@ -175,15 +178,30 @@ class SuperAdminFinanceController extends Controller
             $payfastGross = round((float) $tx->amount_gross, 2);
             $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
             $grossTx      = $payfastGross + $walletUsed;
-            $pfFeeTx      = -1 * SiteSetting::calculatePayfastFee($payfastGross);
-            $capeFeeTx    = -1 * round($feePerEntry * $entryCount, 2);
-            $netTx        = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
-            $method       = $walletUsed > 0 ? 'PayFast + Wallet' : 'PayFast';
+
+            if ($tx->pf_payment_id === null && $walletUsed == 0) {
+                $pfFeeTx = 0;
+                $method  = 'Admin Entry';
+            } elseif ($walletUsed > 0) {
+                $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+                $method  = 'PayFast + Wallet';
+            } else {
+                $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+                $method  = 'PayFast';
+            }
+
+            $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
+            $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
+
+            // Admin entry: show the player name; PayFast: show account holder
+            $playerName = ($tx->pf_payment_id === null)
+                ? trim(optional($tx->player)->name . ' ' . optional($tx->player)->surname)
+                : optional($tx->user)->name;
 
             return (object) [
                 'type'          => 'payment',
                 'created_at'    => $tx->created_at,
-                'player'        => optional($tx->user)->name,
+                'player'        => $playerName ?: optional($tx->user)->name,
                 'method'        => $method,
                 'gross'         => $grossTx,
                 'fee'           => $pfFeeTx,
@@ -199,6 +217,47 @@ class SuperAdminFinanceController extends Controller
             ];
         });
 
+        // ── Wallet-only payment rows (no PayFast tx) ─────────────────────
+        $walletOnlyOrderIds = RegistrationOrder::whereHas('items', function ($q) use ($event) {
+                $q->whereHas('category_event', fn ($q2) => $q2->where('event_id', $event->id));
+            })
+            ->where('wallet_reserved', '>', 0)
+            ->where(function ($q) {
+                $q->whereNull('payfast_amount_due')->orWhere('payfast_amount_due', 0);
+            })
+            ->pluck('id');
+
+        $walletOnlyRows = WalletTransaction::with(['wallet.payable'])
+            ->whereIn('source_id', $walletOnlyOrderIds)
+            ->where('source_type', 'event_registration_wallet_payment')
+            ->where('type', 'debit')
+            ->get()
+            ->map(function ($wt) use ($feePerEntry) {
+                $order      = RegistrationOrder::with('items')->find($wt->source_id);
+                $entryCount = max(1, $order?->items?->count() ?? 1);
+                $gross      = round((float) $wt->amount, 2);
+                $capeFeeTx  = -1 * round($feePerEntry * $entryCount, 2);
+                $user       = $wt->wallet?->payable;
+
+                return (object) [
+                    'type'          => 'payment',
+                    'created_at'    => $wt->created_at,
+                    'player'        => $user?->name ?? '—',
+                    'method'        => 'Wallet',
+                    'gross'         => $gross,
+                    'fee'           => 0,
+                    'capeFee'       => $capeFeeTx,
+                    'net'           => round($gross + $capeFeeTx, 2),
+                    'pf_payment_id' => null,
+                    'tx_id'         => null,
+                    'paid_at'       => $wt->created_at,
+                    'order'         => $order,
+                    'entryCount'    => $entryCount,
+                    'payfastGross'  => 0,
+                    'walletUsed'    => $gross,
+                ];
+            });
+
         // ── Refund rows ───────────────────────────────────────────────────
         $refundRegs = CategoryEventRegistration::with([
             'players',
@@ -207,7 +266,7 @@ class SuperAdminFinanceController extends Controller
         ])
             ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
             ->where('status', 'withdrawn')
-            ->where('refund_status', 'completed')
+            ->whereIn('refund_status', ['completed', 'pending'])
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->get();
 
@@ -257,22 +316,24 @@ class SuperAdminFinanceController extends Controller
         // ── Merged ledger ─────────────────────────────────────────────────
         $transactions = collect()
             ->merge($paymentRows)
+            ->merge($walletOnlyRows)
             ->merge($refundRows)
             ->merge($payoutRows)
             ->sortByDesc('created_at')
             ->values();
 
         // ── Totals ────────────────────────────────────────────────────────
-        $totalGross          = $paymentRows->sum('gross') + $refundRows->sum('gross');
-        $totalPayfastFees    = $paymentRows->sum('fee') + $refundRows->sum('fee');
-        $totalCapeTennisFees = $paymentRows->sum('capeFee') + $refundRows->sum('capeFee');
+        $allPaymentRows      = collect()->merge($paymentRows)->merge($walletOnlyRows);
+        $totalGross          = $allPaymentRows->sum('gross') + $refundRows->sum('gross');
+        $totalPayfastFees    = $allPaymentRows->sum('fee') + $refundRows->sum('fee');
+        $totalCapeTennisFees = $allPaymentRows->sum('capeFee') + $refundRows->sum('capeFee');
         $netTournamentIncome = $totalGross + $totalPayfastFees + $totalCapeTennisFees;
         $totalPaidOut        = $payoutModels->sum('amount');
         $balance             = round($netTournamentIncome - $totalPaidOut, 2);
 
         $totalEntries = $isTeamEvent
-            ? $paymentRows->count()
-            : $paymentRows->flatMap(fn ($t) => optional($t->order)->items ?? collect())->count();
+            ? $allPaymentRows->count()
+            : $allPaymentRows->flatMap(fn ($t) => optional($t->order)->items ?? collect())->count();
 
         $refundCount = $refundRows->count();
 
