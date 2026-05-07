@@ -49,12 +49,13 @@ class EventTransactionController extends Controller
     // =========================
     $transactions = Transaction::with([
       'user',
+      'player',
       'order.items.player',
       'order.items.category_event.category',
     ])
       ->where('event_id', $event->id)
       ->where('transaction_type', 'Registration')
-      ->where('amount_gross', '>', 0)
+      ->where('amount_gross', '>=', 0)
       ->where('is_test', false)
       ->orderByDesc('created_at')
       ->get();
@@ -122,7 +123,7 @@ class EventTransactionController extends Controller
       $grossTx = $payfastGross + $walletUsed;
 
       // PayFast fee recalculated using current custom rates (applies to PayFast portion only, not wallet)
-      $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+      $pfFeeTx = $tx->pf_payment_id === null ? 0 : (-1 * SiteSetting::calculatePayfastFee($payfastGross));
 
       // ✅ Cape Tennis fee is PER PLAYER (per entry), so multiply by entry count
       $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
@@ -131,14 +132,25 @@ class EventTransactionController extends Controller
       $netTx = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
       // Method label
-      $method = $walletUsed > 0 ? 'PayFast + Wallet' : 'PayFast';
+      if ($tx->pf_payment_id === null && $walletUsed == 0) {
+        $method = 'Admin Entry';
+      } elseif ($walletUsed > 0) {
+        $method = 'PayFast + Wallet';
+      } else {
+        $method = 'PayFast';
+      }
+
+      // For admin entries use the player name; for PayFast use the account holder
+      $playerName = $tx->pf_payment_id === null
+        ? trim(optional($tx->player)->name . ' ' . optional($tx->player)->surname)
+        : optional($tx->user)->name;
 
       return (object) [
         'type' => 'payment',
         'created_at' => $tx->created_at,
 
         // display
-        'player' => optional($tx->user)->name,   // payer
+        'player' => $playerName ?: optional($tx->user)->name,
         'method' => $method,
 
         // ledger (ONE ROW PER TRANSACTION)
@@ -463,6 +475,17 @@ class EventTransactionController extends Controller
       ]);
     }
 
+    // Admin entry breakdown (privately collected)
+    $adminPaymentRows    = $paymentRows->filter(fn($r) => $r->method === 'Admin Entry');
+    $adminEntriesCount   = $adminPaymentRows->count();
+    $adminEntriesCapeFee = abs($adminPaymentRows->sum('capeFee'));
+    $adminGrossPrivate   = $adminEntriesCount * (float) $event->entryFee; // cash collected privately
+
+    // PayFast breakdown
+    $payfastPaymentRows  = $paymentRows->filter(fn($r) => $r->method !== 'Admin Entry');
+    $payfastEntriesCount = $totalEntries - $adminEntriesCount;
+    $payfastGrossTotal   = $payfastPaymentRows->sum('gross');
+
     // =========================
     // STEP 8: RETURN VIEW
     // =========================
@@ -485,6 +508,11 @@ class EventTransactionController extends Controller
       'totalCapeTennisFees' => $totalCapeTennisFees,
       'totalPayouts' => $totalPayouts,
       'netTournamentIncome' => $netTournamentIncome,
+      'adminEntriesCount'   => $adminEntriesCount,
+      'adminEntriesCapeFee' => $adminEntriesCapeFee,
+      'adminGrossPrivate'   => $adminGrossPrivate,
+      'payfastEntriesCount' => $payfastEntriesCount,
+      'payfastGrossTotal'   => $payfastGrossTotal,
     ]);
   }
 
@@ -505,7 +533,7 @@ class EventTransactionController extends Controller
     ])
       ->where('event_id', $event->id)
       ->where('transaction_type', 'Registration')
-      ->where('amount_gross', '>', 0)
+      ->where('amount_gross', '>=', 0)
       ->where('is_test', false)
       ->orderByDesc('created_at')
       ->get();
@@ -516,10 +544,16 @@ class EventTransactionController extends Controller
       $payfastGross = round((float) $tx->amount_gross, 2);
       $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
       $grossTx      = $payfastGross + $walletUsed;
-      $pfFeeTx      = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+      $pfFeeTx      = $tx->pf_payment_id === null ? 0 : (-1 * SiteSetting::calculatePayfastFee($payfastGross));
       $capeFeeTx    = -1 * round($feePerEntry * $entryCount, 2);
       $netTx        = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
-      $method       = $walletUsed > 0 ? 'PayFast + Wallet' : 'PayFast';
+      if ($tx->pf_payment_id === null && $walletUsed == 0) {
+        $method = 'Admin Entry';
+      } elseif ($walletUsed > 0) {
+        $method = 'PayFast + Wallet';
+      } else {
+        $method = 'PayFast';
+      }
 
       return (object) [
         'type'          => 'payment',

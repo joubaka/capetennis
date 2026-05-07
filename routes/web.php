@@ -670,6 +670,11 @@ Route::delete(
 
   /////////////////////
 
+  Route::get(
+    'event/entry/{entry}/details',
+    [EventEntryController::class, 'entryDetails']
+  )->name('admin.entry.details');
+
   // =========================
   // EVENT ENTRIES (PAGE)
   // =========================

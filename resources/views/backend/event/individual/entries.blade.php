@@ -372,16 +372,6 @@
         </button>
       </li>
 
-      @unless($categoryEvent->isLocked())
-        <li>
-          <button type="button"
-                  class="dropdown-item text-danger remove-player-btn"
-                  data-url="{{ $reg->registration ? route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) : '#' }}">
-            <i class="ti ti-trash me-1"></i>Remove
-          </button>
-        </li>
-      @endunless
-
       @if($reg->status !== 'withdrawn')
         <li>
           <button type="button"
@@ -389,6 +379,17 @@
                   data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                   data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
             <i class="ti ti-user-minus me-1"></i>Withdraw
+          </button>
+        </li>
+      @endif
+
+      @if(auth()->user()->hasRole('super-user'))
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <button type="button"
+                  class="dropdown-item text-info view-entry-details-btn"
+                  data-url="{{ route('admin.entry.details', $reg) }}">
+            <i class="ti ti-info-circle me-1"></i>View Details
           </button>
         </li>
       @endif
@@ -504,7 +505,23 @@ window.routes = {
 
 @endsection
 
-
+{{-- ENTRY DETAILS MODAL (Super Admin only) --}}
+<div class="modal fade" id="entryDetailsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title"><i class="ti ti-search me-2"></i>Entry Provenance Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="entryDetailsBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 @section('page-script')
 <script>
@@ -998,6 +1015,158 @@ function updateWithdrawnCount(card, delta) {
         }
     }
 }
+
+// ============================
+//  ENTRY DETAILS (Super Admin)
+// ============================
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.view-entry-details-btn');
+    if (!btn) return;
+
+    const url = btn.dataset.url;
+    const modal = new bootstrap.Modal(document.getElementById('entryDetailsModal'));
+    document.getElementById('entryDetailsBody').innerHTML =
+        '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    modal.show();
+
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                document.getElementById('entryDetailsBody').innerHTML =
+                    `<div class="alert alert-danger">${d.error}</div>`;
+                return;
+            }
+            const na = v => v ?? '—';
+            const badge = (label, cls) => `<span class="badge ${cls} me-1">${label}</span>`;
+
+            let txHtml = '';
+            if (d.transactions && d.transactions.length) {
+                txHtml = `<table class="table table-sm table-bordered mt-2 mb-0">
+                  <thead class="table-light"><tr>
+                    <th>TX ID</th><th>PayFast ID</th><th>Gross</th><th>Fee</th><th>Net</th>
+                    <th>CT Fee</th><th>Item</th><th>Payer Name</th><th>Test</th><th>Date</th>
+                  </tr></thead><tbody>`;
+                d.transactions.forEach(t => {
+                    txHtml += `<tr>
+                      <td>${na(t.id)}</td>
+                      <td>${na(t.pf_payment_id)}</td>
+                      <td>R${parseFloat(t.amount_gross||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.amount_fee||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.amount_net||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.cape_tennis_fee||0).toFixed(2)}</td>
+                      <td>${na(t.item_name)}</td>
+                      <td>${na(t.payer_name)}</td>
+                      <td>${t.is_test ? badge('TEST','bg-danger') : badge('Live','bg-success')}</td>
+                      <td style="white-space:nowrap">${na(t.created_at)}</td>
+                    </tr>`;
+                });
+                txHtml += '</tbody></table>';
+            } else {
+                txHtml = '<em class="text-muted">No transactions found for this entry.</em>';
+            }
+
+            let addedByHtml = '—';
+            if (d.added_by) {
+                const roleClass = d.added_by.role === 'Super Admin' ? 'bg-danger' : 'bg-secondary';
+                addedByHtml = `
+                  <strong>${na(d.added_by.name)}</strong>
+                  ${badge(d.added_by.role, roleClass)}
+                  <br><small class="text-muted">ID: ${d.added_by.id} &nbsp;|&nbsp; ${na(d.added_by.email)} &nbsp;|&nbsp; userType: ${na(d.added_by.userType)}</small>`;
+            }
+
+            const pmClass = d.payment_method?.includes('PayFast') && d.payment_method?.includes('Wallet') ? 'bg-success'
+                          : d.payment_method?.includes('PayFast') ? 'bg-success'
+                          : d.payment_method?.includes('Wallet') ? 'bg-info text-dark'
+                          : d.payment_method?.includes('Admin') ? 'bg-warning text-dark'
+                          : 'bg-secondary';
+
+            const pmBadge = d.payment_method?.includes('Wallet') && d.payment_method?.includes('PayFast')
+                ? `<span class="badge bg-success me-1">PayFast</span><span class="badge bg-info text-dark">+ Wallet</span>`
+                : `<span class="badge ${pmClass}">${na(d.payment_method)}</span>`;
+
+            // Wallet section
+            let walletHtml = '';
+            if (d.wallet_payment || d.wallet_refund) {
+                walletHtml = `<div class="col-12"><div class="card border-0 bg-light"><div class="card-body">
+                  <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Wallet</h6>`;
+                if (d.wallet_payment) {
+                    const meta = (() => { try { return JSON.parse(d.wallet_payment.meta); } catch(e) { return {}; } })();
+                    walletHtml += `<p class="mb-1"><strong>Payment:</strong> R${parseFloat(d.wallet_payment.amount||0).toFixed(2)}
+                      &nbsp;<span class="badge bg-info text-dark">Wallet debit</span>
+                      &nbsp;<small class="text-muted">${na(d.wallet_payment.created_at)}</small></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">WT ID: ${d.wallet_payment.wt_id} &nbsp;|&nbsp; Payable: ${na(d.wallet_payment.payable)}</p>
+                      ${meta.reference ? `<p class="mb-0 text-muted" style="font-size:.82rem">Ref: ${meta.reference}</p>` : ''}`;
+                }
+                if (d.wallet_refund) {
+                    const meta2 = (() => { try { return JSON.parse(d.wallet_refund.meta); } catch(e) { return {}; } })();
+                    walletHtml += `<p class="mb-1 mt-2"><strong>Refund credited to wallet:</strong> R${parseFloat(d.wallet_refund.amount||0).toFixed(2)}
+                      &nbsp;<span class="badge bg-success">Wallet credit</span>
+                      &nbsp;<small class="text-muted">${na(d.wallet_refund.created_at)}</small></p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">WT ID: ${d.wallet_refund.wt_id}${meta2.gross ? ' &nbsp;|&nbsp; Gross: R'+meta2.gross : ''}</p>`;
+                }
+                walletHtml += `</div></div></div>`;
+            }
+
+            document.getElementById('entryDetailsBody').innerHTML = `
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-3" style="font-size:.7rem;letter-spacing:.08em">Player</h6>
+                      <p class="mb-1"><strong>${na(d.player)}</strong></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">${na(d.player_email)}</p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">Cell: ${na(d.player_cell)}</p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">Player ID: ${na(d.player_id)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-3" style="font-size:.7rem;letter-spacing:.08em">Entry Info</h6>
+                      <p class="mb-1"><strong>${na(d.category)}</strong></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">${na(d.event)}</p>
+                      <p class="mb-1">
+                        Status: ${badge(d.entry_status ?? '—', d.entry_status === 'withdrawn' ? 'bg-danger' : 'bg-success')}
+                        ${badge(d.payment_status ?? '—', d.payment_status === 'Paid' ? 'bg-success' : 'bg-warning text-dark')}
+                      </p>
+                      <p class="mb-1">Payment: ${pmBadge}</p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">PF Transaction ID: ${na(d.pf_transaction_id)}</p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">CER ID: ${na(d.entry_id)} &nbsp;|&nbsp; Created: ${na(d.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="card border-0 bg-light">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Added By</h6>
+                      ${addedByHtml}
+                    </div>
+                  </div>
+                </div>
+                ${d.entry_status === 'withdrawn' ? `                <div class="col-12">
+                  <div class="card border-0 bg-light">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Withdrawal / Refund</h6>
+                      <p class="mb-1">Withdrawn at: ${na(d.withdrawn_at)}</p>
+                      <p class="mb-1">Refund status: ${na(d.refund_status)} &nbsp;|&nbsp; Method: ${na(d.refund_method)}</p>
+                      <p class="mb-0">Refund gross: R${parseFloat(d.refund_gross||0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>` : ''}
+                ${walletHtml}
+                <div class="col-12">
+                  <h6 class="text-uppercase text-muted mb-1" style="font-size:.7rem;letter-spacing:.08em">Transactions (transactions_pf)</h6>
+                  <div class="table-responsive">${txHtml}</div>
+                </div>
+              </div>`;
+        })
+        .catch(() => {
+            document.getElementById('entryDetailsBody').innerHTML =
+                '<div class="alert alert-danger">Failed to load entry details.</div>';
+        });
+});
 
 </script>
 @endsection
