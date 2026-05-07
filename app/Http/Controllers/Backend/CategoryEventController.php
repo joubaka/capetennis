@@ -94,14 +94,22 @@ class CategoryEventController extends Controller
 
       // Only super-users may choose a refund method; event admins record a no-refund withdrawal.
       if ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user'))) {
-        return redirect()
-          ->route('admin.registration.refund.choose', [$event, $registration])
-          ->with('success', 'Registration withdrawn. Please choose a refund method.');
+        $refundUrl = route('admin.registration.refund.choose', [$event, $registration]);
+        if (request()->ajax() || request()->wantsJson()) {
+          return response()->json(['success' => true, 'redirect' => $refundUrl]);
+        }
+        return redirect()->to($refundUrl)->with('success', 'Registration withdrawn. Please choose a refund method.');
       }
 
+      if (request()->ajax() || request()->wantsJson()) {
+        return response()->json(['success' => true]);
+      }
       return back()->with('success', 'Registration withdrawn (no refund issued).');
     }
 
+    if (request()->ajax() || request()->wantsJson()) {
+      return response()->json(['success' => true]);
+    }
     return back()->with('success', 'Registration withdrawn (not paid — no refund required).');
   }
 

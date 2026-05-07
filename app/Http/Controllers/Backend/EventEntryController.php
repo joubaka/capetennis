@@ -356,8 +356,13 @@ class EventEntryController extends Controller
       'category_event_id' => $newCategory->id
     ]);
 
+    $entry->load('registration.players');
+
     return response()->json([
-      'success' => true
+      'success' => true,
+      'row' => view('backend.event.partials.entry-row', [
+        'reg' => $entry,
+      ])->render(),
     ]);
   }
 

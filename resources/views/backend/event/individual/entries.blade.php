@@ -156,6 +156,34 @@
     }
   }
 
+  /* ============================
+   DROPDOWN OVERFLOW FIX
+   Ensures action menus are always
+   visible even on small/narrow cards
+============================ */
+  .category-card {
+    overflow: visible !important;
+  }
+
+  .category-card .card-body {
+    overflow: visible !important;
+  }
+
+  .category-card .table-responsive {
+    overflow: visible !important;
+  }
+
+  /* Keep the horizontal scroll only via the wrapper */
+  .table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Dropdowns escape the card/table stacking context */
+  .dropdown-menu {
+    z-index: 1055;
+  }
+
 </style>
 @endsection
 
@@ -195,14 +223,16 @@
 
   {{-- CATEGORY LIST --}}
   @foreach($categoryEvents as $categoryEvent)
-    <div class="card mb-4 category-card">
+    <div class="card mb-4 category-card"
+         data-category-id="{{ $categoryEvent->id }}"
+         data-locked="{{ $categoryEvent->isLocked() ? '1' : '0' }}">
 <div class="card-header d-flex justify-content-between align-items-center">
   <div class="category-meta">
     <h5 class="mb-0">{{ $categoryEvent->category?->name }}</h5>
     <small class="text-muted">
-        {{ $categoryEvent->allCategoryEventRegistrations->where('status', '!=', 'withdrawn')->count() }} entries
+        <span class="entry-count">{{ $categoryEvent->allCategoryEventRegistrations->where('status', '!=', 'withdrawn')->count() }}</span> entries
         @if($categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() > 0)
-          &nbsp;<span class="text-danger">({{ $categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() }} withdrawn)</span>
+          &nbsp;<span class="text-danger withdrawn-count">({{ $categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() }} withdrawn)</span>
         @endif
       </small>
   </div>
@@ -250,7 +280,7 @@
 </div>
 
      <div class="card-body p-0">
-  <div class="table-responsive">
+  <div class="table-scroll-wrapper">
     <table class="table table-striped mb-0">
 
    <thead class="table-light">
@@ -271,7 +301,7 @@
             @foreach($categoryEvent->allCategoryEventRegistrations as $reg)
 
               @php $player = optional($reg->registration?->players)->first(); @endphp
-              <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}">
+              <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}" data-entry-id="{{ $reg->id }}">
                 <td>{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
                 <td>{{ $player?->name }} {{ $player?->surname }}</td>
                 <td class="col-email">
@@ -346,7 +376,7 @@
         <li>
           <button type="button"
                   class="dropdown-item text-danger remove-player-btn"
-                  data-url="{{ $reg->registration ? route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) : '#' }}"
+                  data-url="{{ $reg->registration ? route('admin.category.removePlayer', [$categoryEvent, $reg->registration]) : '#' }}">
             <i class="ti ti-trash me-1"></i>Remove
           </button>
         </li>
@@ -592,7 +622,47 @@ document.addEventListener('click', function(e) {
             'Accept': 'application/json'
         }
     })
-    .then(() => location.reload())
+    .then(r => r.json())
+    .then(res => {
+        const card = btn.closest('.category-card');
+        const nowLocked = res.locked;
+
+        // Update card data attribute
+        if (card) card.dataset.locked = nowLocked ? '1' : '0';
+
+        // Toggle button appearance
+        if (nowLocked) {
+            btn.dataset.locked = '1';
+            btn.className = 'btn btn-outline-warning btn-sm category-lock-btn';
+            btn.innerHTML = '<i class="ti ti-lock-open me-1"></i>Unlock';
+            // Swap data-url attributes
+            btn.dataset.urlUnlock = url;
+            delete btn.dataset.urlLock;
+            // Hide Add Player button
+            if (card) card.querySelectorAll('.add-player-btn').forEach(b => b.style.display = 'none');
+        } else {
+            btn.dataset.locked = '0';
+            btn.className = 'btn btn-outline-secondary btn-sm category-lock-btn';
+            btn.innerHTML = '<i class="ti ti-lock me-1"></i>Lock';
+            btn.dataset.urlLock = url;
+            delete btn.dataset.urlUnlock;
+            // Show Add Player button (or create one if missing)
+            if (card) {
+                let addBtn = card.querySelector('.add-player-btn');
+                if (addBtn) {
+                    addBtn.style.display = '';
+                } else {
+                    const newBtn = document.createElement('button');
+                    newBtn.type = 'button';
+                    newBtn.className = 'btn btn-outline-success btn-sm add-player-btn';
+                    newBtn.dataset.category = card.dataset.categoryId;
+                    newBtn.dataset.locked = '0';
+                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>Add Player';
+                    btn.parentElement.appendChild(newBtn);
+                }
+            }
+        }
+    })
     .catch(() => alert('Lock / unlock failed'));
 });
 
@@ -615,7 +685,15 @@ document.addEventListener('click', function(e) {
             'Accept': 'application/json'
         }
     })
-    .then(() => location.reload())
+    .then(r => r.json())
+    .then(() => {
+        const row = btn.closest('tr');
+        const card = btn.closest('.category-card');
+        if (row) row.remove();
+        // Reindex row numbers
+        if (card) reindexRows(card);
+        updateEntryCount(card, -1);
+    })
     .catch(() => alert('Remove failed'));
 });
 
@@ -636,14 +714,46 @@ document.addEventListener('click', function(e) {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': csrf,
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
         }
     })
     .then(r => {
-        if (r.redirected) {
-            window.location.href = r.url;
+        if (!r.ok && r.status !== 200) throw new Error('Withdraw failed');
+        // If JSON response, update DOM; if redirect (non-JSON), reload
+        const ct = r.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+            return r.json().then(res => {
+                // If a redirect URL is returned (e.g. refund page for paid super-users), follow it
+                if (res.redirect) {
+                    window.location.href = res.redirect;
+                    return;
+                }
+                const row = btn.closest('tr');
+                const card = btn.closest('.category-card');
+                if (row) {
+                    row.classList.add('table-danger', 'text-muted');
+                    // Update status badge cell
+                    const statusCell = row.querySelector('.col-status, td:nth-child(5)');
+                    if (statusCell) {
+                        statusCell.innerHTML = '<span class="badge bg-danger">Withdrawn</span>';
+                    }
+                    // Update index cell to dash
+                    const idxCell = row.querySelector('td:first-child');
+                    if (idxCell) idxCell.textContent = '—';
+                    // Remove the withdraw button from the dropdown
+                    btn.closest('li')?.remove();
+                }
+                updateWithdrawnCount(card, +1);
+                reindexRows(card);
+            });
         } else {
-            location.reload();
+            // Controller returned a redirect (e.g. refund page) – follow it
+            if (r.redirected) {
+                window.location.href = r.url;
+            } else {
+                location.reload();
+            }
         }
     })
     .catch(() => alert('Withdraw failed'));
@@ -716,7 +826,25 @@ if (addForm) {
             },
             body: new FormData(addForm)
         })
-        .then(() => location.reload())
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                alert(res.message || 'Add player failed');
+                return;
+            }
+            addPlayerModal.hide();
+            // Find the category card
+            const categoryId = document.getElementById('add_player_category_id').value;
+            const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
+            if (card && res.row) {
+                const tbody = card.querySelector('tbody');
+                if (tbody) {
+                    tbody.insertAdjacentHTML('beforeend', res.row);
+                    reindexRows(card);
+                    updateEntryCount(card, +1);
+                }
+            }
+        })
         .catch(() => alert('Add player failed'));
     });
 }
@@ -781,9 +909,79 @@ if (moveForm) {
             },
             body: new FormData(moveForm)
         })
-        .then(() => location.reload())
+        .then(r => r.json())
+        .then(res => {
+            if (res && res.success === false) {
+                alert(res.message || 'Move failed');
+                return;
+            }
+            movePlayerModal.hide();
+            // Remove row from current card
+            const entryId = document.getElementById('move_entry_id').value;
+            const row = document.querySelector(`[data-entry-id="${entryId}"]`);
+            if (row) {
+                const card = row.closest('.category-card');
+                row.remove();
+                reindexRows(card);
+                updateEntryCount(card, -1);
+            }
+            // If new row HTML is returned, append to destination card
+            const newCatId = document.getElementById('moveCategorySelect').value;
+            const destCard = document.querySelector(`.category-card[data-category-id="${newCatId}"]`);
+            if (destCard && res && res.row) {
+                const tbody = destCard.querySelector('tbody');
+                if (tbody) {
+                    tbody.insertAdjacentHTML('beforeend', res.row);
+                    reindexRows(destCard);
+                    updateEntryCount(destCard, +1);
+                }
+            }
+        })
         .catch(() => alert('Move failed'));
     });
+}
+
+/* =====================
+   DOM HELPER FUNCTIONS
+===================== */
+function reindexRows(card) {
+    if (!card) return;
+    let idx = 1;
+    card.querySelectorAll('tbody tr').forEach(row => {
+        const idxCell = row.querySelector('td:first-child');
+        if (!idxCell) return;
+        if (row.classList.contains('table-danger')) {
+            idxCell.textContent = '—';
+        } else {
+            idxCell.textContent = idx++;
+        }
+    });
+}
+
+function updateEntryCount(card, delta) {
+    if (!card) return;
+    const countEl = card.querySelector('.entry-count');
+    if (countEl) {
+        const current = parseInt(countEl.textContent, 10) || 0;
+        countEl.textContent = Math.max(0, current + delta);
+    }
+}
+
+function updateWithdrawnCount(card, delta) {
+    if (!card) return;
+    let wEl = card.querySelector('.withdrawn-count');
+    const current = wEl ? (parseInt(wEl.textContent, 10) || 0) : 0;
+    const newVal = current + delta;
+    if (newVal <= 0) {
+        if (wEl) wEl.remove();
+    } else if (wEl) {
+        wEl.textContent = `(${newVal} withdrawn)`;
+    } else {
+        const meta = card.querySelector('.category-meta small');
+        if (meta) {
+            meta.insertAdjacentHTML('beforeend', ` &nbsp;<span class="text-danger withdrawn-count">(${newVal} withdrawn)</span>`);
+        }
+    }
 }
 
 </script>
