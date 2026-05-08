@@ -1038,6 +1038,30 @@ class RegisterController extends Controller
         $teamEventName = optional($order->event)->name ?? 'Team Event';
         $teamPlayerObj = \App\Models\Player::find($order->player_id);
 
+        /*
+        |--------------------------------------------------------------------------
+        | WRITE transactions_pf RECORD (so event transaction page shows this payment)
+        |--------------------------------------------------------------------------
+        */
+        try {
+          $txData = array_merge($data, [
+            'custom_int5'  => $order->id,
+            'custom_int4'  => $order->user_id,
+            'custom_int3'  => $order->event_id,
+            'custom_str3'  => $teamEventName,
+            'item_name'    => $teamEventName,
+            'custom_int2'  => $teamPlayerObj ? $teamPlayerObj->id : null,
+            'custom_str2'  => $teamPlayerObj ? trim($teamPlayerObj->name . ' ' . $teamPlayerObj->surname) : null,
+          ]);
+          self::update_transaction($txData, $order);
+          Log::info('🟢 TEAM ITN STEP 14b: TRANSACTION RECORD WRITTEN');
+        } catch (\Throwable $e) {
+          Log::error('🔴 TEAM ITN TRANSACTION WRITE FAILED', [
+            'order_id' => $order->id,
+            'message'  => $e->getMessage(),
+          ]);
+        }
+
         activity('registration')
           ->performedOn($order)
           ->causedBy($order->user)
