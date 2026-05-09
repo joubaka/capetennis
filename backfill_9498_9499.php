@@ -113,28 +113,27 @@ foreach ($rows as $row) {
                     ->update(['payment_status_id' => 1]);
             }
 
-            // Insert transactions_pf row
+            // Insert transactions_pf row — only columns that exist in the table
             $t = new Transaction();
-            $t->pf_payment_id   = $pfPaymentId;
-            $t->payment_status  = 'COMPLETE';
-            $t->amount_gross    = $grossAmount;
-            $t->amount_fee      = $feeAmount;
-            $t->amount_net      = $netAmount;
-            $t->item_name       = $row['item_name'];
-            $t->custom_int1     = $row['custom_int1'];
-            $t->custom_int2     = $row['custom_int2'];
-            $t->custom_int3     = $row['custom_int3'];
-            $t->custom_int4     = $row['custom_int4'];
-            $t->custom_int5     = $order->id;
-            $t->custom_str1     = $row['custom_str1'];
-            $t->custom_str2     = $row['custom_str2'];
-            $t->custom_str3     = $row['custom_str3'];
-            $t->custom_str4     = $row['custom_str4'];
-            $t->merchant_id     = '11307280';
+            $t->pf_payment_id    = $pfPaymentId;
+            $t->amount_gross     = $grossAmount;
+            $t->amount_fee       = $feeAmount;
+            $t->amount_net       = $netAmount;
+            $t->item_name        = $row['item_name'];
+            $t->custom_int1      = $row['custom_int1'];
+            $t->custom_int2      = $row['custom_int2'];
+            $t->custom_int3      = $row['custom_int3'];
+            $t->custom_int4      = $row['custom_int4'];
+            $t->custom_int5      = $order->id;
+            $t->custom_str1      = $row['custom_str1'];
+            $t->custom_str2      = $row['custom_str2'];
+            $t->custom_str3      = $row['custom_str3'];
+            $t->custom_str4      = $row['custom_str4'];
             $t->transaction_type = 'Registration';
-            $t->is_test         = false;
-            $t->created_at      = $row['paid_at'];
-            $t->updated_at      = $row['paid_at'];
+            $t->is_test          = false;
+            $t->event_id         = $row['event_id'];
+            $t->created_at       = $row['paid_at'];
+            $t->updated_at       = $row['paid_at'];
             $t->save();
 
             echo "  ✅ Done — transactions_pf id={$t->id}\n";
