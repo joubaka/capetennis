@@ -386,8 +386,7 @@ class RegisterController extends Controller
     //for individual event
   public function notify(Request $request)
   {
-     return response('OK', 200)
-      ->header('Content-Type', 'text/plain');
+    
     $data = $request->all();
 
     Log::info('[HYBRID ITN RECEIVED]', $data);

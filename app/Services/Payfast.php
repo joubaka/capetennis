@@ -212,23 +212,18 @@ class Payfast
       ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
       : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
-    // Remove empty values and signature/passphrase — do NOT sort
+    // Remove empty values and signature/passphrase
     $data = array_filter($fields, fn($v) => $v !== null && $v !== '');
     unset($data['signature'], $data['passphrase']);
 
-    // Build query string in the same order fields appear (no ksort)
-    $pfOutput = '';
-    foreach ($data as $key => $val) {
-      $pfOutput .= $key . '=' . urlencode(trim((string)$val)) . '&';
-    }
-    $pfOutput = rtrim($pfOutput, '&');
-
-    // Append passphrase LAST
+    // Add passphrase into the array, sort alphabetically, then http_build_query
+    // per PayFast docs: sort all variables alphabetically before hashing
     if (!empty($passphrase)) {
-      $pfOutput .= '&passphrase=' . urlencode(trim($passphrase));
+      $data['passphrase'] = trim($passphrase);
     }
+    ksort($data);
 
-    return md5($pfOutput);
+    return md5(http_build_query($data));
   }
 
 
