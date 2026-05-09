@@ -46,11 +46,15 @@ class RegisterController extends Controller
 
   /**
    * Validate PayFast ITN signature.
-   * Accepts optional Request because some callers pass it and some call without.
+   *
+   * PayFast signs the raw POST body as-is (original field order + original encoding).
+   * We must strip &signature=... from the raw string and append &passphrase=... to verify.
+   * Re-parsing and re-building with http_build_query breaks the signature because it
+   * changes the field order and re-encodes values differently.
    */
   private function validatePayfastSignature(Request $request = null): bool
   {
-    // Support both direct $_POST and injected Request
+    // Get parsed data for reading individual fields (merchant_id, signature etc.)
     $data = [];
     if ($request instanceof Request) {
       $data = $request->all();
@@ -67,13 +71,12 @@ class RegisterController extends Controller
     $merchantId = $data['merchant_id'] ?? null;
 
     // Fail CLOSED — if no passphrase is configured, reject all ITNs.
-    // A misconfigured .env must never silently accept unauthenticated callbacks.
     $hasPassphrase = !empty(config('services.payfast.passphrase_live'))
                   || !empty(config('services.payfast.passphrase_sandbox'))
                   || !empty(config('services.payfast.passphrase'));
 
     if (!$hasPassphrase) {
-      Log::critical('[PAYFAST SIG] FATAL: No passphrase configured — rejecting ITN. Set PAYFAST_PASSPHRASE_LIVE in .env.', [
+      Log::critical('[PAYFAST SIG] FATAL: No passphrase configured — rejecting ITN.', [
         'merchant_id'   => $merchantId,
         'pf_payment_id' => $data['pf_payment_id'] ?? null,
         'ip'            => request()->ip(),
@@ -81,67 +84,62 @@ class RegisterController extends Controller
       return false;
     }
 
-    Log::info('[PAYFAST SIG] Start validation', [
-      'merchant_id' => $merchantId,
-    ]);
+    Log::info('[PAYFAST SIG] Start validation', ['merchant_id' => $merchantId]);
 
-    // Determine which passphrase to try based on merchant_id
+    // Get the raw POST body — PayFast signs this exact string
+    $rawBody = $request instanceof Request
+      ? $request->getContent()
+      : file_get_contents('php://input');
+
+    // If raw body is empty (e.g. unit tests), fall back to rebuilding from parsed data
+    if (empty($rawBody)) {
+      $rawBody = http_build_query($data);
+    }
+
+    // Strip &signature=<value> from the raw string (it appears at the end)
+    $baseString = preg_replace('/&?signature=[^&]*/', '', $rawBody);
+    $baseString = rtrim($baseString, '&');
+
+    // Determine priority passphrase from merchant_id
     $sandboxMerchantId = config('services.payfast.sandbox_merchant_id', '10008657');
-    $liveMerchantId    = config('services.payfast.merchant_id', '11307280');
-
-    $passphrases = [];
 
     if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
-      $sandboxPass = config('services.payfast.passphrase_sandbox');
-      if ($sandboxPass) {
-        $passphrases[] = $sandboxPass;
-      }
-    } elseif ($merchantId && (string) $merchantId === (string) $liveMerchantId) {
-      $livePass = config('services.payfast.passphrase_live');
-      if ($livePass) {
-        $passphrases[] = $livePass;
-      }
+      $priority = config('services.payfast.passphrase_sandbox');
+    } else {
+      $priority = config('services.payfast.passphrase_live');
     }
 
-    // Add all other configured passphrases as fallback
+    $passphrases = [];
+    if ($priority) $passphrases[] = $priority;
     foreach (['passphrase_live', 'passphrase_sandbox', 'passphrase'] as $key) {
       $p = config("services.payfast.{$key}");
-      if ($p && !in_array($p, $passphrases, true)) {
-        $passphrases[] = $p;
-      }
+      if ($p && !in_array($p, $passphrases, true)) $passphrases[] = $p;
     }
 
-    // Build the fields array once (exclude signature and passphrase)
-    $fields = array_filter($data, fn($v) => $v !== '' && $v !== null);
-    unset($fields['signature'], $fields['passphrase']);
-    ksort($fields);
-
     foreach ($passphrases as $i => $pf) {
-      if (empty($pf)) {
-        continue;
-      }
+      if (empty($pf)) continue;
 
-      $pfOutput = '';
-      foreach ($fields as $k => $v) {
-        $pfOutput .= $k . '=' . urlencode(trim((string) $v)) . '&';
-      }
-      $pfOutput  = rtrim($pfOutput, '&');
-      $pfOutput .= '&passphrase=' . urlencode(trim($pf));
+      $pfOutput = $baseString . '&passphrase=' . urlencode(trim($pf));
+      $computed = md5($pfOutput);
 
-      if (md5($pfOutput) === $incoming) {
+      if ($computed === $incoming) {
         Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
         return true;
       }
+
+      Log::debug('[PAYFAST SIG] attempt failed', [
+        'attempt'  => $i + 1,
+        'computed' => $computed,
+        'received' => $incoming,
+      ]);
     }
 
-    // NOTE: No-passphrase fallback has been intentionally removed.
-    // Signatures MUST match with a configured passphrase.
-
     Log::error('[PAYFAST SIG] ✗ Signature validation failed', [
-      'merchant_id'      => $merchantId,
+      'merchant_id'       => $merchantId,
       'passphrases_tried' => count($passphrases),
-      'received_sig'      => substr($incoming, 0, 8) . '...',
+      'received_sig'      => $incoming,
       'ip'                => request()->ip(),
+      'base_string'       => $baseString,
     ]);
 
     return false;
@@ -285,9 +283,9 @@ class RegisterController extends Controller
      */
     $payfast = new Payfast();
 
-    // Admin override
+    // Only user 584 (superuser) uses sandbox — all other users go through live PayFast
     if ($user->id === 584) {
-      $payfast->setMode(config('services.payfast.admin_mode', 0));
+      $payfast->setMode(0); // sandbox
     } else {
       $payfast->setMode(1); // live
     }
@@ -388,13 +386,15 @@ class RegisterController extends Controller
     //for individual event
   public function notify(Request $request)
   {
+     return response('OK', 200)
+      ->header('Content-Type', 'text/plain');
     $data = $request->all();
 
     Log::info('[HYBRID ITN RECEIVED]', $data);
 
     // 🔐 1️⃣ Validate signature
-    if (!$this->validatePayfastSignature()) {
-
+    if (!$this->validatePayfastSignature($request)) {
+     
 
       Log::error('[HYBRID ITN INVALID SIGNATURE]', [
         'data' => $data

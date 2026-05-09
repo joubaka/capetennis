@@ -61,6 +61,8 @@ $missing = [
     // event 239
     ['pf'=>'299720067','event'=>239,'order'=>9492,'gross'=>285.00,'paid_at'=>'2026-05-09 09:22:11'],
     ['pf'=>'299638591','event'=>239,'order'=>9486,'gross'=>285.00,'paid_at'=>'2026-05-08 18:53:42'],
+    // event 222 - additional (found after initial audit)
+    ['pf'=>'299910931','event'=>222,'order'=>9498,'gross'=>570.00,'paid_at'=>'2026-05-09 17:00:37'],
 ];
 
 function calcFee(float $gross): array {

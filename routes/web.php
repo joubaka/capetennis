@@ -215,7 +215,10 @@ Route::resource('reg', RegisterController::class);
 
 //event
 Route::get('events/success/{id}', [EventController::class, 'success'])->name('event.success');
+
+
 Route::post('notify', [RegisterController::class, 'notify'])->name('notify');
+
 Route::post('notifyClothing', [RegisterController::class, 'notifyClothing'])->name('notify.clothing');
 Route::post('notify_order', [RegisterController::class, 'notify_order'])->name('notify_order');
 Route::post('notify_team', [RegisterController::class, 'notify_team'])->name('notify.team');
