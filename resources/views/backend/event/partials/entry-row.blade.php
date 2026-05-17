@@ -11,7 +11,8 @@
   </td>
 
   <td>
-    <span class="badge bg-warning">Unpaid</span>
+    <span class="badge bg-success">Paid</span>
+    <br><span class="badge bg-info text-dark mt-1" style="font-size:.65rem;">Admin Added</span>
   </td>
 
   <td class="text-end">

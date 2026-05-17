@@ -342,6 +342,9 @@
                   <span class="badge {{ $reg->payment_status_id == 1 ? 'bg-success' : 'bg-warning' }}">
                     {{ $reg->payment_status_id == 1 ? 'Paid' : 'Unpaid' }}
                   </span>
+                  @if($reg->payfast_id === 'Admin')
+                    <br><span class="badge bg-info text-dark mt-1" style="font-size:.65rem;">Admin Added</span>
+                  @endif
                 </td>
                <td class="col-actions text-end">
   <div class="dropdown">

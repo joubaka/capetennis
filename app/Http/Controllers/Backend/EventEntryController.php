@@ -126,6 +126,7 @@ class EventEntryController extends Controller
       'user_id'         => auth()->id(),
       'status'          => 'active',
       'payment_status_id' => 1,
+      'payfast_id'      => 'Admin',
     ]);
 
     $entry->load('registration.players');
