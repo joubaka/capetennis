@@ -94,7 +94,11 @@ class EventEntryController extends Controller
     $playerId = $data['registration_id'];
 
     // 1️⃣ Prevent duplicate player in this category
+    // Only block if the player has an active, paid entry (payment_status_id = 1).
+    // Withdrawn entries and abandoned unpaid registrations should not block re-entry.
     $alreadyInCategory = $categoryEvent->categoryEventRegistrations()
+      ->where('status', 'active')
+      ->where('payment_status_id', 1)
       ->whereHas('registration.players', function ($q) use ($playerId) {
         $q->where('players.id', $playerId);
       })
