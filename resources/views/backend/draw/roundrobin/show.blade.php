@@ -1062,9 +1062,26 @@
                   $cerMap = $ce->categoryEventRegistrations->keyBy('registration_id');
                 @endphp
                 <div class="mb-3">
+                  @php
+                    // Count only eligible (paid, not assigned, not duplicate) players for the badge
+                    $eligibleCount = 0;
+                    $tempSeenIds = $seenPlayerIds->toArray();
+                    foreach ($ce->registrations as $reg) {
+                      $cer = $cerMap->get($reg->id);
+                      $isPaidCheck = $cer && $cer->payment_status_id == 1;
+                      $p = $reg->players->first();
+                      $pid = $p?->id;
+                      $alreadyAssigned = $assignedRegIds->contains($reg->id);
+                      $alreadySeen = $pid && in_array($pid, $tempSeenIds);
+                      if (!$alreadyAssigned && $isPaidCheck && !$alreadySeen) {
+                        $eligibleCount++;
+                        if ($pid) $tempSeenIds[] = $pid;
+                      }
+                    }
+                  @endphp
                   <div class="fw-bold text-primary small mb-1">
                     <i class="ti ti-category me-1"></i> {{ $ce->category->name ?? 'Unknown Category' }}
-                    <span class="badge bg-secondary">{{ $ce->registrations->count() }}</span>
+                    <span class="badge bg-secondary">{{ $eligibleCount }}</span>
                   </div>
 
                   <ul class="list-group list-group-flush rr-sortable" 
