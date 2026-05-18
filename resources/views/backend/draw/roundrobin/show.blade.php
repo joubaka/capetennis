@@ -683,6 +683,20 @@
             $playoffConfig = optional($draw->settings)->playoff_config ?? \App\Models\DrawSetting::defaultPlayoffConfig($currentBoxes);
             $presetTemplates = \App\Models\DrawSetting::getPresetTemplates();
             $savedPresetKey = optional($draw->settings)->preset_key; // Get saved preset key
+
+            // Merge group_order from preset template into stored playoff_config entries.
+            // This ensures draws saved before group_order was introduced still get the
+            // correct group ordering in the preview — without altering stored data.
+            if ($savedPresetKey && isset($presetTemplates[$savedPresetKey]['config'])) {
+                $templateConfig = collect($presetTemplates[$savedPresetKey]['config'])->keyBy('slug');
+                $playoffConfig = array_map(function ($entry) use ($templateConfig) {
+                    $slug = $entry['slug'] ?? null;
+                    if ($slug && !isset($entry['group_order']) && isset($templateConfig[$slug]['group_order'])) {
+                        $entry['group_order'] = $templateConfig[$slug]['group_order'];
+                    }
+                    return $entry;
+                }, $playoffConfig);
+            }
             
             // Group templates by number of groups BUT keep original keys
             $groupedTemplates = [];
@@ -2583,14 +2597,23 @@ function updatePlayerAccounting() {
 // (gives natural cross-group pairing A↔D, B↔C via standard bracket
 // matchups).  For ODD group counts, rotate by floor(N/2) per position
 // to avoid same-group R1 clashes.
-function buildSnakeSeeds(positions, groupNames) {
+// An optional groupOrder array overrides the default A→Z ordering for
+// specific brackets (e.g. A,B,D,C to avoid Round-2 rematches after BYEs).
+function buildSnakeSeeds(positions, groupNames, groupOrder) {
     var seeds = [];
-    var n = groupNames.length;
+    // Apply group_order override: listed groups first, then any remainder in alpha order
+    var orderedNames = groupNames.slice();
+    if (groupOrder && groupOrder.length > 0) {
+        var listed = groupOrder.filter(function(g) { return groupNames.indexOf(g) !== -1; });
+        var remainder = groupNames.filter(function(g) { return listed.indexOf(g) === -1; });
+        orderedNames = listed.concat(remainder);
+    }
+    var n = orderedNames.length;
     var halfOffset = Math.floor(n / 2);
     positions.forEach(function(pos, posIdx) {
         var offset = (n >= 3 && n % 2 !== 0) ? (posIdx * halfOffset) % n : 0;
         for (var g = 0; g < n; g++) {
-            var gn = groupNames[(g + offset) % n];
+            var gn = orderedNames[(g + offset) % n];
             seeds.push({ group: gn, position: pos });
         }
     });
@@ -2632,7 +2655,7 @@ function updateSeedingChart() {
         const totalPlayers = positions.length * numGroups;
         
         // Calculate seeding for this playoff (snake order)
-        let seeds = buildSnakeSeeds(positions, groupNames);
+        let seeds = buildSnakeSeeds(positions, groupNames, playoff.group_order || null);
         
         // Now show each seed and where it goes in the bracket
         if (seeds.length > 0) {
@@ -2797,7 +2820,7 @@ function updateBracketVisualization() {
         const size = playoff.size;
         
         // Calculate seeds (snake order)
-        let seeds = buildSnakeSeeds(positions, groupNames);
+        let seeds = buildSnakeSeeds(positions, groupNames, playoff.group_order || null);
         
         // Generate standard bracket matchups based on size
         const matchups = generateBracketMatchups(size);
@@ -2883,19 +2906,19 @@ function generateBracketMatchups(size) {
             break;
         case 8:
             matchups.push({seed1: 1, seed2: 8});
-            matchups.push({seed1: 4, seed2: 5});
             matchups.push({seed1: 2, seed2: 7});
             matchups.push({seed1: 3, seed2: 6});
+            matchups.push({seed1: 4, seed2: 5});
             break;
         case 16:
             matchups.push({seed1: 1, seed2: 16});
-            matchups.push({seed1: 8, seed2: 9});
+            matchups.push({seed1: 2, seed2: 15});
+            matchups.push({seed1: 3, seed2: 14});
             matchups.push({seed1: 4, seed2: 13});
             matchups.push({seed1: 5, seed2: 12});
-            matchups.push({seed1: 2, seed2: 15});
-            matchups.push({seed1: 7, seed2: 10});
-            matchups.push({seed1: 3, seed2: 14});
             matchups.push({seed1: 6, seed2: 11});
+            matchups.push({seed1: 7, seed2: 10});
+            matchups.push({seed1: 8, seed2: 9});
             break;
         case 32:
             // Standard 32-draw seeding
@@ -4040,7 +4063,7 @@ $(document).ready(function() {
     enabledPlayoffs.forEach(function(playoff) {
       var positions = playoff.positions || [];
       var size = playoff.size || 4;
-      var seeds = buildSnakeSeeds(positions, groupNames);
+      var seeds = buildSnakeSeeds(positions, groupNames, playoff.group_order || null);
 
       var matchups = generateBracketMatchups(size);
       var numRounds = Math.ceil(Math.log2(size));
@@ -4354,7 +4377,7 @@ $(document).ready(function() {
     enabledPlayoffs.forEach(function(playoff) {
       var positions = playoff.positions || [];
       var size = playoff.size || 4;
-      var seeds = buildSnakeSeeds(positions, groupNames);
+      var seeds = buildSnakeSeeds(positions, groupNames, playoff.group_order || null);
 
       var matchups = generateBracketMatchups(size);
       var numRounds = Math.ceil(Math.log2(size));

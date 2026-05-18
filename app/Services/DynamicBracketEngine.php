@@ -74,7 +74,8 @@ class DynamicBracketEngine
             $stage = $this->slugToStage($slug);
             $size = $config['size'] ?? 4;
             $positions = $config['positions'] ?? [];
-            $bracketData = $this->buildBracket($stage, $size, $currentY, $positions);
+            $groupOrder = $config['group_order'] ?? null;
+            $bracketData = $this->buildBracket($stage, $size, $currentY, $positions, $groupOrder);
             
             if (!empty($bracketData['rounds'])) {
                 $posFrom = $overallPosition;
@@ -98,7 +99,7 @@ class DynamicBracketEngine
         return $result;
     }
 
-    protected function buildBracket(string $stage, int $size, int $startY, array $positions = []): array
+    protected function buildBracket(string $stage, int $size, int $startY, array $positions = [], ?array $groupOrder = null): array
     {
         $stageFixtures = $this->fixtures->where('stage', $stage);
         $hasFixtures = $stageFixtures->isNotEmpty();
@@ -113,7 +114,15 @@ class DynamicBracketEngine
             : collect();
 
         // Virtual seed labels for empty bracket
-        $groupNames = $this->draw->groups->sortBy('name')->pluck('name')->values()->all();
+        $allGroupNames = $this->draw->groups->sortBy('name')->pluck('name')->values()->all();
+        // Apply group_order override (same logic as JS buildSnakeSeeds)
+        if ($groupOrder && count($groupOrder) > 0) {
+            $listed = array_values(array_filter($groupOrder, fn($g) => in_array($g, $allGroupNames)));
+            $remainder = array_values(array_filter($allGroupNames, fn($g) => !in_array($g, $listed)));
+            $groupNames = array_merge($listed, $remainder);
+        } else {
+            $groupNames = $allGroupNames;
+        }
         $seedLabels = [];
         foreach ($positions as $pos) {
             foreach ($groupNames as $gn) {
@@ -382,8 +391,8 @@ class DynamicBracketEngine
         return match($size) {
             2  => [[1, 2]],
             4  => [[1, 4], [2, 3]],
-            8  => [[1, 8], [4, 5], [2, 7], [3, 6]],
-            16 => [[1, 16], [8, 9], [4, 13], [5, 12], [2, 15], [7, 10], [3, 14], [6, 11]],
+            8  => [[1, 8], [2, 7], [3, 6], [4, 5]],
+            16 => [[1, 16], [2, 15], [3, 14], [4, 13], [5, 12], [6, 11], [7, 10], [8, 9]],
             32 => [
                 [1, 32], [16, 17], [8, 25], [9, 24],
                 [4, 29], [13, 20], [5, 28], [12, 21],

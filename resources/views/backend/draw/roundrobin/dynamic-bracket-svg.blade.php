@@ -136,6 +136,10 @@
                     $origin1 = $seedMap[$fx?->registration1_id] ?? null;
                     $origin2 = $seedMap[$fx?->registration2_id] ?? null;
 
+                    // Seed source labels for round 1 (e.g. "A1", "C4")
+                    $vSeedLabel1 = ($roundNum === 1) ? ($match['seedLabel1'] ?? null) : null;
+                    $vSeedLabel2 = ($roundNum === 1) ? ($match['seedLabel2'] ?? null) : null;
+
                     if ($isEmpty) {
                         // Use virtual data from engine when fx is null
                         $vSL1 = $match['seedLabel1'] ?? null;
@@ -170,6 +174,10 @@
                         @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
                         <text x="{{ $badgeX1 + 11 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
+                    @elseif(!$isEmpty && $vSeedLabel1)
+                        @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
+                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="24" height="14" fill="{{ $isBye1 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX1 + 12 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
                     <line x1="{{ $x }}" y1="{{ $topLineY }}" x2="{{ $rightX }}" y2="{{ $topLineY }}" class="bracket-line" />
 
@@ -184,6 +192,10 @@
                         @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
                         <text x="{{ $badgeX2 + 11 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
+                    @elseif(!$isEmpty && $vSeedLabel2)
+                        @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
+                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="24" height="14" fill="{{ $isBye2 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX2 + 12 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
 
                     {{-- Vertical Connector --}}
@@ -303,6 +315,10 @@
                     $origin1 = $seedMap[$fx?->registration1_id] ?? null;
                     $origin2 = $seedMap[$fx?->registration2_id] ?? null;
 
+                    // Seed source labels for position playoffs (always single-match, treat as round 1)
+                    $vSeedLabel1 = $origin1 ?? null;
+                    $vSeedLabel2 = $origin2 ?? null;
+
                     if ($isEmpty) {
                         // Use virtual feeder labels from engine
                         $vFL1 = $playoff['feederLabel1'] ?? null;
@@ -337,6 +353,10 @@
                         @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
                         <text x="{{ $badgeX1 + 11 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
+                    @elseif(!$isEmpty && $vSeedLabel1)
+                        @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
+                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="24" height="14" fill="{{ $isBye1 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX1 + 12 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
                     <line x1="{{ $x }}" y1="{{ $topLineY }}" x2="{{ $rightX }}" y2="{{ $topLineY }}" class="bracket-line" />
 
@@ -350,6 +370,10 @@
                         @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
                         <text x="{{ $badgeX2 + 11 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
+                    @elseif(!$isEmpty && $vSeedLabel2)
+                        @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
+                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="24" height="14" fill="{{ $isBye2 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX2 + 12 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
 
                     {{-- Vertical Connector --}}

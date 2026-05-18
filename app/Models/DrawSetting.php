@@ -200,8 +200,8 @@ class DrawSetting extends Model
           'max_positions' => 10,
           'config' => [
             ['name' => 'Main Draw (1-4)', 'slug' => 'main', 'size' => 4, 'positions' => [1], 'enabled' => true],
-            ['name' => 'Plate (5-12)', 'slug' => 'plate', 'size' => 8, 'positions' => [2,3], 'enabled' => true],
-            ['name' => 'Consolation (13-20)', 'slug' => 'cons', 'size' => 8, 'positions' => [4,5], 'enabled' => true],
+            ['name' => 'Plate (5-12)', 'slug' => 'plate', 'size' => 8, 'positions' => [2,3], 'enabled' => true, 'group_order' => ['A','B','D','C']],
+            ['name' => 'Consolation (13-20)', 'slug' => 'cons', 'size' => 8, 'positions' => [4,5], 'enabled' => true, 'group_order' => ['A','B','D','C']],
             ['name' => 'Bowl (21-28)', 'slug' => 'bowl', 'size' => 8, 'positions' => [6,7], 'enabled' => false],
             ['name' => 'Shield (29-36)', 'slug' => 'shield', 'size' => 8, 'positions' => [8,9], 'enabled' => false],
             ['name' => '37-40', 'slug' => 'p6', 'size' => 4, 'positions' => [10], 'enabled' => false],

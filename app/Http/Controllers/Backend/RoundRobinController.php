@@ -618,15 +618,32 @@ class RoundRobinController
       // IMPORTANT: Always push a value (null for missing) to preserve seed
       // slot positions — skipping would collapse the array and shift players
       // into wrong bracket halves.
+      // A 'group_order' key on the config entry overrides the default A→Z order
+      // for a specific bracket (e.g. to avoid Round-2 rematches after BYEs).
       $sortedGroups = $groups->sortBy('name')->values();
       $halfOffset = (int) floor($numGroups / 2);
-      
+
+      // Build the ordered group list for this bracket
+      if (!empty($config['group_order'])) {
+        $groupOrderMap = collect($sortedGroups)->keyBy(fn($g) => $g->name);
+        $orderedGroups = collect($config['group_order'])
+          ->map(fn($name) => $groupOrderMap->get($name))
+          ->filter()
+          ->values();
+        // Fall back to default sort for any groups not listed in group_order
+        $listedNames = collect($config['group_order']);
+        $remainder = $sortedGroups->filter(fn($g) => !$listedNames->contains($g->name))->values();
+        $orderedGroups = $orderedGroups->merge($remainder)->values();
+      } else {
+        $orderedGroups = $sortedGroups;
+      }
+
       foreach ($positions as $posIdx => $pos) {
         // Rotate only for odd group counts; even groups get straight order
         $offset = ($numGroups >= 3 && $numGroups % 2 !== 0) ? ($posIdx * $halfOffset) % $numGroups : 0;
-        
+
         for ($g = 0; $g < $numGroups; $g++) {
-          $group = $sortedGroups[($g + $offset) % $numGroups];
+          $group = $orderedGroups[($g + $offset) % $numGroups];
           $key = $group->name . $pos;
           $players[] = $seeds[$key] ?? null;
         }
@@ -735,8 +752,8 @@ class RoundRobinController
     return match($size) {
       2  => [[1, 2]],
       4  => [[1, 4], [2, 3]],
-      8  => [[1, 8], [4, 5], [2, 7], [3, 6]],
-      16 => [[1, 16], [8, 9], [4, 13], [5, 12], [2, 15], [7, 10], [3, 14], [6, 11]],
+      8  => [[1, 8], [2, 7], [3, 6], [4, 5]],
+      16 => [[1, 16], [2, 15], [3, 14], [4, 13], [5, 12], [6, 11], [7, 10], [8, 9]],
       32 => [
         [1, 32], [16, 17], [8, 25], [9, 24],
         [4, 29], [13, 20], [5, 28], [12, 21],
