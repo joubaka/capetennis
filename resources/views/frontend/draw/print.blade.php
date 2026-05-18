@@ -2,7 +2,6 @@
 use App\Services\Draw\Brackets;
 
 $bracketIdsWithFixtures = $draw->drawFixtures()
-  ->select('bracket_id')
   ->distinct()
   ->pluck('bracket_id')
   ->map(fn ($id) => (int) $id)
