@@ -86,32 +86,35 @@
 
 </div>
 
-    {{-- 🚧 Unpublished Draws (Admins only) --}}
+    {{-- 🚧 Unpublished Draws (Admin / Super-user / Convenor only) --}}
     @if($eventDraws->where('published', false)->count())
-      <div class="mt-4">
-        <h6 class="fw-bold text-danger">Unpublished Draws</h6>
-        @php $isAdmin = auth()->check() && in_array(auth()->id(), [1764, 584,585]); @endphp
+      @php
+        $user = auth()->user();
+        $canViewUnpublished = $user && (
+          (method_exists($user, 'isConvenorForEvent') && $user->isConvenorForEvent($event->id)) ||
+          (method_exists($user, 'is_convenor') && $user->is_convenor($event->id)) ||
+          (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
+        );
+      @endphp
 
-        @foreach($eventDraws->where('published', false)->sortByDesc('drawType_id')->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
-          <h6 class="mt-3">{{ $typeName }}</h6>
-          <div class="d-flex flex-wrap gap-2">
-            @foreach($draws as $draw)
-              @if($isAdmin)
+      @if($canViewUnpublished)
+        <div class="mt-4">
+          <h6 class="fw-bold text-danger">Unpublished Draws</h6>
+
+          @foreach($eventDraws->where('published', false)->sortByDesc('drawType_id')->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
+            <h6 class="mt-3">{{ $typeName }}</h6>
+            <div class="d-flex flex-wrap gap-2">
+              @foreach($draws as $draw)
                 <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
                    class="btn btn-sm btn-outline-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                   {{ $draw->drawName }}
-                  <span class="badge bg-danger ms-1">Not published</span>
+                  <span class="badge bg-danger ms-1">Unpublished</span>
                 </a>
-              @else
-                <span class="btn btn-sm btn-light disabled">
-                  {{ $draw->drawName }}
-                  <span class="badge bg-danger ms-1">Not published</span>
-                </span>
-              @endif
-            @endforeach
-          </div>
-        @endforeach
-      </div>
+              @endforeach
+            </div>
+          @endforeach
+        </div>
+      @endif
     @endif
 
  

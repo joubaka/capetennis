@@ -295,11 +295,10 @@ function renderOrderOfPlay() {
 
   /* ===================================================
    * STANDINGS
-   * Tiebreak cascade:
+   * ITF tiebreak cascade:
    *   1. Matches won
-   *   2. Sets won %
-   *   3. Games won %
-   *   4. Head-to-head (only when 2 players still tied)
+   *   2-way tie  : H2H → Sets % → Games % → =
+   *   3+ way tie : Sets % → Games % → recurse sub-groups (→ H2H if 2-way) → =
    * =================================================== */
   function renderStandings() {
     const wrapper = $('#rr-standings-wrapper');
@@ -329,34 +328,67 @@ function renderOrderOfPlay() {
         return match.winner === a.reg_id ? 1 : -1;
       }
 
-      rows.sort((a, b) => {
-        if (a.wins !== b.wins) return b.wins - a.wins;
-        const dSets = sp(b) - sp(a);
-        if (Math.abs(dSets) > 0.0001) return dSets;
-        const dGames = gp(b) - gp(a);
-        if (Math.abs(dGames) > 0.0001) return dGames;
-        return headToHead(a, b);
-      });
+      // Recursively resolve a sub-group that is already equal on match wins.
+      function resolveGroup(grp) {
+        if (grp.length <= 1) return grp;
 
-      // Tag tiebreak indicators (compare each row to the one above)
-      rows.forEach((r, i) => {
-        r.tiebreak = r.tiebreak || '';
-        if (i === 0) return;
-        const above = rows[i - 1];
-        if (above.wins !== r.wins) return;
-        if (Math.abs(sp(above) - sp(r)) > 0.0001) {
-          r.tiebreak = 'Sets %'; if (!above.tiebreak) above.tiebreak = 'Sets %'; return;
+        if (grp.length === 2) {
+          // 2-way: H2H first, then Sets %, then Games %
+          const hh = headToHead(grp[0], grp[1]);
+          if (hh !== 0) {
+            grp[0].tiebreak = grp[0].tiebreak || 'H2H';
+            grp[1].tiebreak = grp[1].tiebreak || 'H2H';
+            return hh === 1 ? grp : [grp[1], grp[0]];
+          }
+          const dSets = sp(grp[1]) - sp(grp[0]);
+          if (Math.abs(dSets) > 0.0001) {
+            grp[0].tiebreak = grp[0].tiebreak || 'Sets %';
+            grp[1].tiebreak = grp[1].tiebreak || 'Sets %';
+            return dSets > 0 ? [grp[1], grp[0]] : grp;
+          }
+          const dGames = gp(grp[1]) - gp(grp[0]);
+          if (Math.abs(dGames) > 0.0001) {
+            grp[0].tiebreak = grp[0].tiebreak || 'Games %';
+            grp[1].tiebreak = grp[1].tiebreak || 'Games %';
+            return dGames > 0 ? [grp[1], grp[0]] : grp;
+          }
+          grp[0].tiebreak = grp[0].tiebreak || '=';
+          grp[1].tiebreak = grp[1].tiebreak || '=';
+          return grp;
         }
-        if (Math.abs(gp(above) - gp(r)) > 0.0001) {
-          r.tiebreak = 'Games %'; if (!above.tiebreak) above.tiebreak = 'Games %'; return;
+
+        // 3+ way: Sets % → Games %, then recurse remaining sub-groups
+        grp.sort((a, b) => {
+          const dSets = sp(b) - sp(a);
+          if (Math.abs(dSets) > 0.0001) return dSets;
+          return gp(b) - gp(a);
+        });
+
+        const resolved = [];
+        let i = 0;
+        while (i < grp.length) {
+          let j = i + 1;
+          while (j < grp.length &&
+            Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
+            Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
+          const sub = grp.slice(i, j);
+          resolved.push(...resolveGroup(sub));
+          i = j;
         }
-        const hh = headToHead(above, r);
-        if (hh !== 0) {
-          r.tiebreak = 'H2H'; if (!above.tiebreak) above.tiebreak = 'H2H';
-        } else {
-          r.tiebreak = '='; if (!above.tiebreak) above.tiebreak = '=';
-        }
-      });
+        return resolved;
+      }
+
+      // Sort by wins then resolve each win-group
+      rows.sort((a, b) => b.wins - a.wins);
+      const final = [];
+      let i = 0;
+      while (i < rows.length) {
+        let j = i + 1;
+        while (j < rows.length && rows[j].wins === rows[i].wins) j++;
+        final.push(...resolveGroup(rows.slice(i, j)));
+        i = j;
+      }
+      rows = final;
 
       let html = `
         <h6 class="fw-bold mt-4">Box ${group.name}</h6>

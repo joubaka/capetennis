@@ -8,14 +8,21 @@
 
           <div class="card-body">
 
+            @php
+              $deskUser = auth()->user();
+              $canViewUnpublished = $deskUser && (
+                (method_exists($deskUser, 'isConvenorForEvent') && $deskUser->isConvenorForEvent($event->id)) ||
+                (method_exists($deskUser, 'is_convenor') && $deskUser->is_convenor($event->id)) ||
+                (method_exists($deskUser, 'hasRole') && ($deskUser->hasRole('admin') || $deskUser->hasRole('super-user')))
+              );
+            @endphp
+
             {{-- PUBLISHED DRAW LINKS --}}
             <div class="mb-3">
               <h6 class="fw-bold">Published Draws Desktop</h6>
 
               @forelse($eventDraws->where('published', true)
                   ->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
-
-             
 
                 <div class="d-flex flex-wrap gap-2 mt-1">
                   @foreach($draws as $draw)
@@ -31,14 +38,14 @@
               @endforelse
 
             </div>
-            
-          {{-- 🔹 ADMIN DRAW LIST (SEPARATE) --}}
-        
-@if($isAdmin)
- @include('frontend.event.partials.interpro-admin-drawlist')
-@endif
-            {{-- UNPUBLISHED FOR ADMIN --}}
-            @if($eventDraws->where('published', false)->count())
+
+            {{-- 🔹 ADMIN DRAW LIST (SEPARATE) --}}
+            @if($canViewUnpublished)
+              @include('frontend.event.partials.interpro-admin-drawlist')
+            @endif
+
+            {{-- UNPUBLISHED DRAWS (Admin / Super-user / Convenor only) --}}
+            @if($canViewUnpublished && $eventDraws->where('published', false)->count())
               <div class="mt-4">
                 <h6 class="fw-bold text-danger">Unpublished Draws</h6>
 
@@ -52,7 +59,7 @@
                       <a href="{{ route('public.roundrobin.show', $draw->id) }}"
                          class="btn btn-sm btn-outline-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                         {{ $draw->drawName }}
-                        <span class="badge bg-danger ms-1">Not published</span>
+                        <span class="badge bg-danger ms-1">Unpublished</span>
                       </a>
                     @endforeach
                   </div>
@@ -62,9 +69,8 @@
               </div>
             @endif
 
-
-            {{-- QUICK LINKS PER VENUE --}}
-            @if($isAdmin && !empty($fixturesPerVenueGrouped))
+            {{-- QUICK LINKS PER VENUE (Admin / Super-user / Convenor only) --}}
+            @if($canViewUnpublished && !empty($fixturesPerVenueGrouped))
               <div class="mt-4">
                 <h6 class="fw-bold mb-2">Quick Links per Venue</h6>
 

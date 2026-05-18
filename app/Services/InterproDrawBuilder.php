@@ -973,47 +973,86 @@ class DrawService
     };
 
     // ============================================================
-    // 4) SORT EACH GROUP
+    // 4) SORT EACH GROUP  (ITF standard tiebreak cascade)
+    //    2-way tie  : H2H → Sets % → Games % → =
+    //    3+ way tie : Sets % → Games % → recurse sub-groups → =
     // ============================================================
+
+    $setsPct = function (array $r): float {
+      $t = $r['sets_won'] + $r['sets_lost'];
+      return $t > 0 ? $r['sets_won'] / $t : 0.0;
+    };
+
+    $gamesPct = function (array $r): float {
+      $t = $r['games_won'] + $r['games_lost'];
+      return $t > 0 ? $r['games_won'] / $t : 0.0;
+    };
+
+    // Recursively resolve a group of players already equal on match wins.
+    $resolveGroup = null;
+    $resolveGroup = function (array $group) use ($headToHead, $setsPct, $gamesPct, &$resolveGroup): array {
+      if (count($group) <= 1) return $group;
+
+      if (count($group) === 2) {
+        // 2-way tie: H2H first, then Sets %, then Games %, then equal
+        $hh = $headToHead($group[0]['reg_id'], $group[1]['reg_id']);
+        if ($hh) {
+          return $hh == $group[0]['reg_id'] ? $group : array_reverse($group);
+        }
+        $dSets = $setsPct($group[1]) - $setsPct($group[0]);
+        if (abs($dSets) > 0.0001) {
+          return $dSets > 0 ? array_reverse($group) : $group;
+        }
+        $dGames = $gamesPct($group[1]) - $gamesPct($group[0]);
+        if (abs($dGames) > 0.0001) {
+          return $dGames > 0 ? array_reverse($group) : $group;
+        }
+        return $group; // truly equal
+      }
+
+      // 3+ way tie: Sets % → Games %, then recurse any remaining sub-groups
+      usort($group, function ($a, $b) use ($setsPct, $gamesPct) {
+        $dSets = $setsPct($b) - $setsPct($a);
+        if (abs($dSets) > 0.0001) return $dSets > 0 ? 1 : -1;
+        $dGames = $gamesPct($b) - $gamesPct($a);
+        if (abs($dGames) > 0.0001) return $dGames > 0 ? 1 : -1;
+        return 0;
+      });
+
+      $resolved = [];
+      $i = 0;
+      while ($i < count($group)) {
+        $j = $i + 1;
+        while (
+          $j < count($group) &&
+          abs($setsPct($group[$j]) - $setsPct($group[$i])) <= 0.0001 &&
+          abs($gamesPct($group[$j]) - $gamesPct($group[$i])) <= 0.0001
+        ) {
+          $j++;
+        }
+        $resolved = array_merge($resolved, $resolveGroup(array_slice($group, $i, $j - $i)));
+        $i = $j;
+      }
+      return $resolved;
+    };
+
     foreach ($standings as $gid => $rows) {
 
       Log::info("📊 [RR HUB] Standings before sort", $rows);
 
-      usort($rows, function ($a, $b) use ($headToHead) {
+      // Step 1: sort by wins descending
+      usort($rows, fn($a, $b) => $b['wins'] <=> $a['wins']);
 
-        // 1) Matches won
-        if ($a['wins'] !== $b['wins']) {
-          return $b['wins'] <=> $a['wins'];
-        }
-
-        // 2) Sets won percentage
-        $aTotalSets = $a['sets_won'] + $a['sets_lost'];
-        $bTotalSets = $b['sets_won'] + $b['sets_lost'];
-        $aSetsPct = $aTotalSets > 0 ? $a['sets_won'] / $aTotalSets : 0;
-        $bSetsPct = $bTotalSets > 0 ? $b['sets_won'] / $bTotalSets : 0;
-
-        if (abs($aSetsPct - $bSetsPct) > 0.0001) {
-          return $bSetsPct <=> $aSetsPct;
-        }
-
-        // 3) Games won percentage
-        $aTotalGames = $a['games_won'] + $a['games_lost'];
-        $bTotalGames = $b['games_won'] + $b['games_lost'];
-        $aGamesPct = $aTotalGames > 0 ? $a['games_won'] / $aTotalGames : 0;
-        $bGamesPct = $bTotalGames > 0 ? $b['games_won'] / $bTotalGames : 0;
-
-        if (abs($aGamesPct - $bGamesPct) > 0.0001) {
-          return $bGamesPct <=> $aGamesPct;
-        }
-
-        // 4) Head-to-head (if they played)
-        $hh = $headToHead($a['reg_id'], $b['reg_id']);
-        if ($hh) {
-          return $hh == $a['reg_id'] ? -1 : 1;
-        }
-
-        return 0; // identical
-      });
+      // Step 2: resolve tiebreaks within each win-group
+      $final = [];
+      $i = 0;
+      while ($i < count($rows)) {
+        $j = $i + 1;
+        while ($j < count($rows) && $rows[$j]['wins'] === $rows[$i]['wins']) $j++;
+        $final = array_merge($final, $resolveGroup(array_slice($rows, $i, $j - $i)));
+        $i = $j;
+      }
+      $rows = $final;
 
       Log::info("📈 [RR HUB] Standings AFTER sort", $rows);
 

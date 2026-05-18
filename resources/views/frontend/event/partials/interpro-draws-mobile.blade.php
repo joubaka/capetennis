@@ -2,13 +2,20 @@
       <div class="card d-block d-md-none mb-4">
         <div class="card-body">
 
+          @php
+            $mobileUser = auth()->user();
+            $canViewUnpublished = $mobileUser && (
+              (method_exists($mobileUser, 'isConvenorForEvent') && $mobileUser->isConvenorForEvent($event->id)) ||
+              (method_exists($mobileUser, 'is_convenor') && $mobileUser->is_convenor($event->id)) ||
+              (method_exists($mobileUser, 'hasRole') && ($mobileUser->hasRole('admin') || $mobileUser->hasRole('super-user')))
+            );
+          @endphp
+
           {{-- PUBLISHED DRAW LINKS (PUBLIC) --}}
           <h6 class="fw-bold mb-2">Published Draws Mobile</h6>
 
           @forelse($eventDraws->where('published', true)
               ->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
-
-         
 
             <div class="d-flex flex-column gap-2 mt-1">
               @foreach($draws as $draw)
@@ -24,18 +31,13 @@
           @endforelse
 
           {{-- 🔹 ADMIN DRAW LIST (SEPARATE) --}}
-        
-@if($isAdmin )
- @include('frontend.event.partials.interpro-admin-drawlist')
-@endif
+          @if($canViewUnpublished)
+            @include('frontend.event.partials.interpro-admin-drawlist')
+          @endif
 
+          {{-- UNPUBLISHED DRAW LINKS (Admin / Super-user / Convenor only) --}}
 
-          {{-- UNPUBLISHED DRAW LINKS (ADMIN ONLY) --}}
-          @php
-            $isAdmin = auth()->check() && in_array(auth()->id(), [1764, 584, 585]);
-          @endphp
-
-          @if($isAdmin && $eventDraws->where('published', false)->count())
+          @if($canViewUnpublished && $eventDraws->where('published', false)->count())
             <h6 class="fw-bold text-danger mt-4">Unpublished Draws</h6>
 
             @foreach($eventDraws->where('published', false)
@@ -56,8 +58,8 @@
             @endforeach
           @endif
 
-          {{-- QUICK LINKS PER VENUE (ADMIN ONLY) --}}
-          @if($isAdmin && !empty($fixturesPerVenueGrouped))
+          {{-- QUICK LINKS PER VENUE (Admin / Super-user / Convenor only) --}}
+          @if($canViewUnpublished && !empty($fixturesPerVenueGrouped))
             <h6 class="fw-bold mt-4 mb-2">Quick Links per Venue</h6>
 
             <div class="d-flex flex-column gap-2">

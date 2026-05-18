@@ -25,17 +25,25 @@ class FrontFixtureController extends Controller
   }
   public function show($id)
   {
- $draw = Draw::with('event')->findOrFail($id);
- 
-    if ($draw->event?->eventType == 13) {
+    $draw = Draw::with('event')->findOrFail($id);
 
-     
-   
-return $this->showInterproFixtures($draw);
+    // Block access to unpublished draws — only admin/super-user/convenor may view
+    if (!$draw->published) {
+      $user = auth()->user();
+      $isPrivileged = $user && (
+        $user->is_convenor($draw->event_id) ||
+        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
+      );
+      if (!$isPrivileged) {
+        abort(403, 'This draw has not been published yet.');
+      }
     }
 
-    
-      return $this->showTeamFixtures($draw);
+    if ($draw->event?->eventType == 13) {
+      return $this->showInterproFixtures($draw);
+    }
+
+    return $this->showTeamFixtures($draw);
   }
 
   protected function showTeamFixtures(Draw $draw)
@@ -174,6 +182,18 @@ return $this->showInterproFixtures($draw);
     // Load draw + event
     $draw = Draw::with('event')->findOrFail($id);
 
+    // Block access to unpublished draws — only admin/super-user/convenor may view
+    if (!$draw->published) {
+      $user = auth()->user();
+      $isPrivileged = $user && (
+        $user->is_convenor($draw->event_id) ||
+        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
+      );
+      if (!$isPrivileged) {
+        abort(403, 'This draw has not been published yet.');
+      }
+    }
+
     // Detect team vs individual
     $isTeamEvent = ($draw->event?->eventType == 3);
 
@@ -298,12 +318,25 @@ return $this->showInterproFixtures($draw);
     }
 
     public function bracketFixtures($id){
-        $data['draw'] = Draw::find($id);
-$data['event'] =Draw::find($id)->events;
-$data['bracket'] = new CapeTennisDraw($id);
-//dd($data);
+        $draw = Draw::with('event')->findOrFail($id);
+
+        // Block unpublished draws — only admin/super-user/convenor may view
+        if (!$draw->published) {
+          $user = auth()->user();
+          $isPrivileged = $user && (
+            $user->is_convenor($draw->event_id) ||
+            (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
+          );
+          if (!$isPrivileged) {
+            abort(403, 'This draw has not been published yet.');
+          }
+        }
+
+        $data['draw'] = $draw;
+        $data['event'] = $draw->event;
+        $data['bracket'] = new CapeTennisDraw($id);
         return view('frontend.draw.fixtures.showFixtures',$data);
-           
+
     }
 
   public function saveScore(Request $request, TeamFixture $fixture)

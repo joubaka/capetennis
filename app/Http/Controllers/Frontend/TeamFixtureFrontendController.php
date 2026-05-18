@@ -12,6 +12,20 @@ class TeamFixtureFrontendController extends Controller
 {
   public function index($draw)
   {
+    $drawModel = \App\Models\Draw::findOrFail($draw);
+
+    // Block unpublished draws — only admin/super-user/convenor may view
+    if (!$drawModel->published) {
+      $user = auth()->user();
+      $isPrivileged = $user && (
+        $user->is_convenor($drawModel->event_id) ||
+        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
+      );
+      if (!$isPrivileged) {
+        abort(403, 'This draw has not been published yet.');
+      }
+    }
+
     $fixtures = \App\Models\TeamFixture::with([
             'draw',
             'venue',
@@ -25,8 +39,6 @@ class TeamFixtureFrontendController extends Controller
         ->orderBy('scheduled_at')
         ->orderBy('home_rank_nr')
         ->get();
-
-    $drawModel = \App\Models\Draw::find($draw);
 
     // Group fixtures by day
     $fixturesByDay = $fixtures->groupBy(function($fx) {
