@@ -1303,4 +1303,71 @@ class RoundRobinController
       'groups_processed' => $updatedGroups,
     ]);
   }
+
+  /**
+   * Return fresh groups + players JSON for AJAX DOM refresh.
+   */
+  public function groupsData(Draw $draw)
+  {
+    $groups = $draw->groups()
+      ->with(['registrations.players'])
+      ->get()
+      ->map(fn($g) => [
+        'id'      => $g->id,
+        'name'    => $g->name,
+        'players' => $g->registrations->map(fn($r) => [
+          'id'   => $r->id,
+          'name' => optional($r->players->first())->full_name ?? 'Unknown',
+        ])->values(),
+      ]);
+
+    return response()->json(['groups' => $groups]);
+  }
+
+  /**
+   * Return available (unassigned, paid, not withdrawn) players per category for AJAX refresh.
+   */
+  public function availablePlayersData(Draw $draw)
+  {
+    $assignedRegIds = $draw->groups()
+      ->with('registrations')
+      ->get()
+      ->flatMap(fn($g) => $g->registrations->pluck('id'))
+      ->unique();
+
+    $categoryEvents = \App\Models\CategoryEvent::where('event_id', $draw->event_id)
+      ->with(['category', 'categoryEventRegistrations.registration.players'])
+      ->get();
+
+    if ($draw->category_event_id) {
+      $categoryEvents = $categoryEvents->where('id', $draw->category_event_id);
+    }
+
+    $result = $categoryEvents->map(function ($ce) use ($assignedRegIds) {
+      $cerMap = $ce->categoryEventRegistrations->keyBy('registration_id');
+
+      $players = $ce->categoryEventRegistrations
+        ->filter(fn($cer) =>
+          $cer->payment_status_id == 1 &&
+          !str_contains(strtolower($cer->status ?? ''), 'withdrawn') &&
+          !$assignedRegIds->contains($cer->registration_id) &&
+          $cer->registration &&
+          $cer->registration->players->isNotEmpty()
+        )
+        ->map(fn($cer) => [
+          'id'   => $cer->registration_id,
+          'name' => $cer->registration->players->first()->full_name ?? 'Unknown',
+        ])
+        ->values();
+
+      return [
+        'id'           => $ce->id,
+        'category'     => $ce->category->name ?? 'Unknown',
+        'players'      => $players,
+        'count'        => $players->count(),
+      ];
+    })->values();
+
+    return response()->json(['categories' => $result]);
+  }
 }

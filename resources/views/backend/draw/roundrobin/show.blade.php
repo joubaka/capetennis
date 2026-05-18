@@ -1040,7 +1040,7 @@
               <h6 class="mb-0"><i class="ti ti-list me-1"></i> Available Players</h6>
               <small>Drag players to groups on the right</small>
             </div>
-            <div class="card-body p-2" style="max-height: 500px; overflow-y: auto;">
+            <div id="available-players-list" class="card-body p-2" style="max-height: 500px; overflow-y: auto;">
 
               @php
                 // If draw is linked to a specific category event, only show that category's registrations.
@@ -1116,7 +1116,7 @@
 
         {{-- RIGHT SIDE: Draw Groups (A, B, C, D) --}}
         <div class="col-md-8">
-          <div class="row">
+          <div class="row" id="rr-groups-row">
 
             @forelse($groups as $group)
               <div class="col-6 mb-3">
@@ -1634,6 +1634,111 @@
     const DRAW_ID   = {{ $draw->id }};
 </script>
 
+<script>
+// ============================================================
+// AJAX REFRESH HELPERS (no page reload)
+// ============================================================
+var groupColors = {A:'bg-primary text-white', B:'bg-success text-white', C:'bg-warning text-dark', D:'bg-danger text-white'};
+
+function refreshGroupsUI() {
+    return $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/groups-data', function(res) {
+        if (!res.groups) return;
+        var $row = $('#rr-groups-row');
+        if (!$row.length) return;
+        var html = '';
+        res.groups.forEach(function(g) {
+            var colorClass = groupColors[g.name] || 'bg-dark text-white';
+            html += '<div class="col-6 mb-3">';
+            html += '<div class="card border h-100">';
+            html += '<div class="card-header py-2 ' + colorClass + '">';
+            html += '<h6 class="mb-0"><i class="ti ti-users-group me-1"></i> Group ' + g.name;
+            html += '<span class="badge bg-light text-dark float-end">' + g.players.length + ' players</span></h6></div>';
+            html += '<div class="card-body p-2" style="min-height:150px;">';
+            html += '<ul class="list-group list-group-flush rr-sortable rr-group" data-group-id="' + g.id + '" data-type="target">';
+            g.players.forEach(function(p) {
+                var eName = $('<div>').text(p.name).html();
+                html += '<li class="list-group-item list-group-item-action py-1 px-2" data-id="' + p.id + '" data-player-name="' + eName + '">';
+                html += '<small>' + eName + '</small>';
+                html += '<button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group" data-id="' + p.id + '"><i class="ti ti-x"></i></button></li>';
+            });
+            html += '</ul>';
+            if (g.players.length === 0) {
+                html += '<div class="text-muted text-center py-3 empty-group-placeholder"><small>Drop players here</small></div>';
+            }
+            html += '</div></div></div>';
+        });
+        if (html === '') {
+            html = '<div class="col-12"><div class="alert alert-warning"><i class="ti ti-alert-triangle me-1"></i> No groups found.</div></div>';
+        }
+        $row.html(html);
+    }).fail(function() {
+        toastr.warning('Could not refresh groups display.');
+    });
+}
+
+function refreshAvailablePlayersUI() {
+    return $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/available-players', function(res) {
+        if (!res.categories) return;
+        var $list = $('#available-players-list');
+        if (!$list.length) return;
+        var html = '';
+        res.categories.forEach(function(cat) {
+            if (!cat.players || cat.players.length === 0) return;
+            html += '<div class="mb-3">';
+            html += '<div class="fw-bold text-primary small mb-1">';
+            html += '<i class="ti ti-category me-1"></i> ' + $('<div>').text(cat.category).html();
+            html += ' <span class="badge bg-secondary">' + cat.count + '</span></div>';
+            html += '<ul class="list-group list-group-flush rr-sortable" data-type="source">';
+            cat.players.forEach(function(p) {
+                var eName = $('<div>').text(p.name).html();
+                html += '<li class="list-group-item list-group-item-action py-1 px-2" data-id="' + p.id + '" data-player-name="' + eName + '">';
+                html += '<small>' + eName + '</small></li>';
+            });
+            html += '</ul></div>';
+        });
+        if (html === '') {
+            html = '<div class="text-muted text-center py-4"><i class="ti ti-info-circle fs-3 d-block mb-2"></i>All players assigned.</div>';
+        }
+        $list.html(html);
+    }).fail(function() {
+        toastr.warning('Could not refresh available players.');
+    });
+}
+
+// Refresh both panels then re-init Sortable once
+function refreshGroupsAndPlayers() {
+    $.when(refreshGroupsUI(), refreshAvailablePlayersUI()).always(function() {
+        setTimeout(function() {
+            if (typeof window.initGroupsSortable === 'function') window.initGroupsSortable(true);
+        }, 50);
+    });
+}
+
+function refreshVenuesUI() {
+    $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/venues/json', function(venues) {
+        var $list = $('#rr-venues-list');
+        if (!$list.length) return;
+        if (!venues || venues.length === 0) {
+            $list.html('<div class="text-muted text-center py-3"><i class="ti ti-map-pin-off fs-3 d-block mb-2"></i>No venues assigned. Add a venue to enable scheduling.</div>');
+            return;
+        }
+        var html = '';
+        venues.forEach(function(v) {
+            var courts = v.num_courts || 1;
+            var vName = $('<div>').text(v.name).html();
+            html += '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">';
+            html += '<div><strong>' + vName + '</strong>';
+            html += '<span class="badge bg-label-info ms-2">' + courts + ' court' + (courts !== 1 ? 's' : '') + '</span></div>';
+            html += '<button class="btn btn-sm btn-outline-danger deleteVenue" data-id="' + DRAW_ID + '" data-venue="' + v.id + '">';
+            html += '<i class="ti ti-trash me-1"></i> Remove</button></div>';
+        });
+        $list.html(html);
+    }).fail(function() {
+        toastr.warning('Could not refresh venues display.');
+    });
+}
+</script>
+
 {{-- toastr already loaded by layout; Sortable and SweetAlert2 loaded here --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -1655,9 +1760,17 @@ $('#drawSettingsForm').on('submit', function(e) {
         success: function(response) {
             if (response.success) {
                 toastr.success(response.message || 'Settings saved successfully!');
-                
-                // Reload page to show new groups
-                setTimeout(() => location.reload(), 800);
+
+                // Update group count label
+                const newBoxes = response.settings ? response.settings.boxes : null;
+                if (newBoxes) {
+                    numGroups = newBoxes;
+                    $('#groups-tab-boxes').val(newBoxes);
+                    $('#groups-count-label').text('| ' + newBoxes + ' Groups');
+                }
+
+                // Refresh groups DOM via AJAX (no reload)
+                refreshGroupsAndPlayers();
             } else {
                 toastr.error(response.message || 'Failed to save settings.');
             }
@@ -2969,30 +3082,25 @@ $('#groups-tab-boxes').on('change', function() {
                     if (response.success) {
                         Swal.close();
                         toastr.success('Groups updated successfully!');
-                        
+
                         console.log('✅ [SYNC] Groups update successful, syncing all components...');
-                        
-                        // Update the groups UI without page reload
-                        updateGroupsUI(response.groups, newBoxes);
-                        
+
+                        // Refresh groups and available players via AJAX (no reload)
+                        refreshGroupsAndPlayers();
+
                         // Update label
                         $('#groups-count-label').text(`| ${response.groups_count} Groups`);
-                        
+
                         // Sync settings tab selector
                         $('#settings-boxes').val(newBoxes);
-                        
+
                         // CRITICAL: Update numGroups for playoff preview
                         numGroups = newBoxes;
                         console.log('📊 [SYNC] numGroups updated to:', numGroups);
-                        
+
                         // Trigger full visualization sync
                         updateFlowPreview();
-                        
-                        // Re-initialize sortable with force reinit after DOM updates
-                        setTimeout(function() {
-                            initGroupsSortable(true);
-                        }, 100);
-                        
+
                         console.log('✅ [SYNC] All components synced successfully');
                     } else {
                         Swal.fire('Error', response.message || 'Failed to update groups.', 'error');
@@ -3157,7 +3265,7 @@ $(document).on('click', '#btn-import-teams', function () {
 
         $.post(url, {}, function (response) {
             toastr.success(response.message);
-            location.reload();
+            refreshGroupsAndPlayers();
         }).fail(function () {
             toastr.error('Import failed.');
         });
@@ -3187,7 +3295,7 @@ $(document).on('click', '#btn-regenerate-fixtures', function () {
         $.post(`${APP_URL}/backend/draw/${DRAW_ID}/regenerate-rr`, {}, function (response) {
             Swal.close();
             toastr.success(response.message || 'Fixtures regenerated successfully');
-            location.reload();
+            refreshGroupsAndPlayers();
         }).fail(function (xhr) {
             Swal.close();
             toastr.error(xhr.responseJSON?.message || 'Failed to regenerate fixtures.');
@@ -3283,7 +3391,7 @@ window.__SORTABLE_INSTANCES = [];
 window.__GROUPS_SORTABLE_INIT = false;
 window.__SORTABLE_INIT_PENDING = false; // Prevent multiple simultaneous inits
 
-function initGroupsSortable(forceReinit = false) {
+window.initGroupsSortable = function initGroupsSortable(forceReinit = false) {
     // Prevent multiple simultaneous initializations
     if (window.__SORTABLE_INIT_PENDING) {
         console.log('⏳ [SORTABLE] Init already pending, skipping...');
@@ -3429,7 +3537,7 @@ $(document).ready(function() {
     if ($('#groups-tab').hasClass('active') || $('#groups-pane').hasClass('show')) {
         console.log('📌 [READY] Groups tab is already active on load');
         setTimeout(function() {
-            initGroupsSortable(true);
+            window.initGroupsSortable(true);
         }, 200);
     } else {
         console.log('📌 [READY] Groups tab is NOT active on load - will init when tab is clicked');
@@ -3490,7 +3598,7 @@ $(document).ready(function() {
     }).done(function(res) {
       toastr.success(res.message || 'Venue added');
       $('#basicModal').modal('hide');
-      location.reload();
+      refreshVenuesUI();
     }).fail(function(xhr) {
       toastr.error(xhr.responseJSON?.message || 'Failed to add venue');
     });

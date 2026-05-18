@@ -1151,6 +1151,16 @@ Route::delete(
     [RoundRobinController::class, 'saveGroups']
   )->name('backend.draw.save-groups');
 
+  Route::get(
+    'draw/{draw}/groups-data',
+    [RoundRobinController::class, 'groupsData']
+  )->name('backend.draw.groups-data');
+
+  Route::get(
+    'draw/{draw}/available-players',
+    [RoundRobinController::class, 'availablePlayersData']
+  )->name('backend.draw.available-players');
+
   Route::post(
     'draw/{draw}/regenerate-rr',
     [RoundRobinController::class, 'regenerateRR']

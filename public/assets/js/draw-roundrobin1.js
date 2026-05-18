@@ -41,6 +41,8 @@
    * INIT
    * =================================================== */
   function init() {
+    if (window.__RR_INIT_DONE) return;
+    window.__RR_INIT_DONE = true;
     console.log('[RR] Init draw', drawId);
 
     if (window.RR_FIXTURES) normalizeAllFixtures();
@@ -419,6 +421,8 @@
    * BIND EVENTS
    * =================================================== */
   function bindEvents() {
+    if (window.__RR_EVENTS_BOUND) return;
+    window.__RR_EVENTS_BOUND = true;
 
     $(document).on('click', '.rr-score-cell', function () {
       openScoreModal(
@@ -653,8 +657,22 @@
         });
       });
 
-      $.post(`${APP_URL}/backend/draw/${drawId}/save-groups`, { groups: payload })
-        .done(() => toastr.success('Groups saved successfully'))
+      $.post(`${APP_URL}/backend/draw/${drawId}/save-groups`, {
+          _token: $('meta[name="csrf-token"]').attr('content'),
+          groups: payload
+        })
+        .done(() => {
+          toastr.success('Groups saved successfully');
+          // DOM already reflects the correct dragged state - just update available players badges
+          // then re-init Sortable on the refreshed source lists
+          if (typeof refreshAvailablePlayersUI === 'function') {
+            $.when(refreshAvailablePlayersUI()).always(function() {
+              setTimeout(function() {
+                if (typeof window.initGroupsSortable === 'function') window.initGroupsSortable(true);
+              }, 50);
+            });
+          }
+        })
         .fail(() => toastr.error('Failed to save groups'));
     });
   }
