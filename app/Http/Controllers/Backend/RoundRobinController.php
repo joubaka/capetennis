@@ -89,7 +89,7 @@ class RoundRobinController
         'drawFixtures.groupRegistration2',
       ]);
 
-      $groups = $draw->groups;
+      $groups = $draw->groups()->orderBy('name')->get();
 
       // ---------------------------------------------------------
       // DEEP FIXTURE DEBUG LOG
@@ -251,7 +251,7 @@ class RoundRobinController
     $engine = new \App\Services\BracketEngine($draw);
     $svgData = $engine->build();
 
-    $groups = $draw->groups;
+    $groups = $draw->groups()->orderBy('name')->get();
 
     $groupsJson = $groups->map(function ($g) {
       return [
@@ -276,8 +276,8 @@ class RoundRobinController
     return view('backend.draw.roundrobin.show', [
       'draw' => $draw,
       'svg' => $svgData,
-      'groupsJs' => $draw->groups->values()->toArray(),
-      'groups' => $draw->groups,
+      'groupsJs' => $groups->values()->toArray(),
+      'groups' => $groups,
       'groupsjson' => $groupsJson,
       'fixtures' => $draw->drawFixtures,
       'categoryEvents' => $categoryEvents,
@@ -1311,6 +1311,7 @@ class RoundRobinController
   {
     $groups = $draw->groups()
       ->with(['registrations.players'])
+      ->orderBy('name')
       ->get()
       ->map(fn($g) => [
         'id'      => $g->id,

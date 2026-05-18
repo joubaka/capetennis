@@ -1645,8 +1645,12 @@ function refreshGroupsUI() {
         if (!res.groups) return;
         var $row = $('#rr-groups-row');
         if (!$row.length) return;
+        // Always render A → Z left to right
+        var groups = res.groups.slice().sort(function(a, b) {
+            return a.name.localeCompare(b.name);
+        });
         var html = '';
-        res.groups.forEach(function(g) {
+        groups.forEach(function(g) {
             var colorClass = groupColors[g.name] || 'bg-dark text-white';
             html += '<div class="col-6 mb-3">';
             html += '<div class="card border h-100">';
