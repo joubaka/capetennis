@@ -1,8 +1,15 @@
 @php
 use App\Services\Draw\Brackets;
 
-$hasBracket = fn (int $bracketId) => $draw->drawFixtures()->where('bracket_id', $bracketId)->exists();
-$hasAnyFixtures = $draw->drawFixtures()->exists();
+$bracketIdsWithFixtures = $draw->drawFixtures()
+  ->select('bracket_id')
+  ->distinct()
+  ->pluck('bracket_id')
+  ->map(fn ($id) => (int) $id)
+  ->all();
+
+$hasBracket = fn (int $bracketId) => in_array($bracketId, $bracketIdsWithFixtures, true);
+$hasAnyFixtures = !empty($bracketIdsWithFixtures);
 @endphp
 
 <style>
@@ -12,6 +19,7 @@ $hasAnyFixtures = $draw->drawFixtures()->exists();
   .draw-print-header h2 { margin: 0 0 .25rem; font-size: 1.4rem; }
   .draw-print-meta { font-size: .9rem; color: #555; }
   .draw-print-note { font-size: .9rem; font-style: italic; margin-top: .35rem; }
+  .draw-print-support { font-size: .85rem; color: #555; margin-top: .2rem; }
   .draw-print-section { margin-bottom: 1.25rem; }
   .draw-print-root svg { max-width: 100%; height: auto; display: block; }
 
@@ -34,7 +42,8 @@ $hasAnyFixtures = $draw->drawFixtures()->exists();
     <div class="draw-print-meta">
       Event: {{ optional($draw->event)->name ?? 'N/A' }} · Printed: {{ now()->format('d M Y H:i') }}
     </div>
-    <div class="draw-print-note">Optimized for offline progression: print and record winners/scores directly on this sheet.</div>
+    <div class="draw-print-note">Designed for offline tournament progression: print and record winners/scores directly on this sheet.</div>
+    <div class="draw-print-support">Support: support@capetennis.co.za</div>
   </div>
 
   @if(!$hasAnyFixtures)
