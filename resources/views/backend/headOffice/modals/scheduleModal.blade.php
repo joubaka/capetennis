@@ -172,10 +172,10 @@ function initScheduleModal() {
     // ------------------------------------------------------------------
     const drawId = $('#drawId').val();
     const routes = {
-        data:  `/backend/draw/${drawId}/scheduleData`,
-        apply: `/backend/draw/${drawId}/schedule/apply`,
-        auto:  `/backend/draw/${drawId}/schedule/auto`,
-        clear: `/backend/draw/${drawId}/schedule/clear`,
+        data:  APP_URL + `/backend/individual-schedule/${drawId}/data`,
+        apply: APP_URL + `/backend/individual-schedule/${drawId}/save`,
+        auto:  APP_URL + `/backend/individual-schedule/${drawId}/auto`,
+        clear: APP_URL + `/backend/individual-schedule/${drawId}/clear`,
     };
 
     // ------------------------------------------------------------------
