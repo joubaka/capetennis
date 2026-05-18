@@ -1051,31 +1051,25 @@
 
                 // Collect all registration IDs already assigned to any group in this draw
                 $assignedRegIds = $groups->flatMap(fn($g) => $g->registrations->pluck('id'))->unique();
-
-                // Collect player IDs seen so far across all categories to detect duplicates
-                $seenPlayerIds = collect();
               @endphp
 
               @forelse($sourceCategoryEvents as $ce)
                 @php
-                  // Build a map of registration_id => CER for payment check
+                  // Build a map of registration_id => CER for payment/status check
                   $cerMap = $ce->categoryEventRegistrations->keyBy('registration_id');
                 @endphp
                 <div class="mb-3">
                   @php
-                    // Count only eligible (paid, not assigned, not duplicate) players for the badge
+                    // Count eligible players: paid, not withdrawn, not already assigned
+                    // Matches frontend source of truth exactly (no cross-category dedup)
                     $eligibleCount = 0;
-                    $tempSeenIds = $seenPlayerIds->toArray();
                     foreach ($ce->registrations as $reg) {
                       $cer = $cerMap->get($reg->id);
                       $isPaidCheck = $cer && $cer->payment_status_id == 1;
-                      $p = $reg->players->first();
-                      $pid = $p?->id;
+                      $isWithdrawnCheck = $cer && str_contains(strtolower($cer->status ?? ''), 'withdrawn');
                       $alreadyAssigned = $assignedRegIds->contains($reg->id);
-                      $alreadySeen = $pid && in_array($pid, $tempSeenIds);
-                      if (!$alreadyAssigned && $isPaidCheck && !$alreadySeen) {
+                      if (!$alreadyAssigned && $isPaidCheck && !$isWithdrawnCheck) {
                         $eligibleCount++;
-                        if ($pid) $tempSeenIds[] = $pid;
                       }
                     }
                   @endphp
@@ -1091,16 +1085,14 @@
                       @php
                         $cer = $cerMap->get($reg->id);
                         $isPaid = $cer && $cer->payment_status_id == 1;
+                        $isWithdrawn = $cer && str_contains(strtolower($cer->status ?? ''), 'withdrawn');
                         $player = $reg->players->first();
-                        $playerId = $player?->id;
                         $display = $player ? $player->full_name : 'Unknown Player';
                         $isAssigned = $assignedRegIds->contains($reg->id);
-                        $isDuplicate = $playerId && $seenPlayerIds->contains($playerId);
-                        if ($playerId) $seenPlayerIds->push($playerId);
                       @endphp
 
-                      {{-- Only show paid, non-assigned, non-duplicate players --}}
-                      @if(!$isAssigned && $isPaid && !$isDuplicate)
+                      {{-- Match frontend: paid, not withdrawn, not already assigned to a group --}}
+                      @if(!$isAssigned && $isPaid && !$isWithdrawn)
                         <li class="list-group-item list-group-item-action py-1 px-2" 
                             data-id="{{ $reg->id }}"
                             data-player-name="{{ $display }}">
@@ -1642,16 +1634,12 @@
     const DRAW_ID   = {{ $draw->id }};
 </script>
 
-
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+{{-- toastr already loaded by layout; Sortable and SweetAlert2 loaded here --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-
-<!-- ADD THIS -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
+(function($) {
 // Save Draw Settings (AJAX)
 $('#drawSettingsForm').on('submit', function(e) {
     e.preventDefault();
@@ -3448,6 +3436,7 @@ $(document).ready(function() {
     }
 });
 
+})(jQuery);
 </script>
 
 <script src="{{ asset('assets/js/draw-roundrobin1.js') }}"></script>
@@ -4503,7 +4492,7 @@ $(document).ready(function() {
 // ============================================================
 // BRACKET PINCH-TO-ZOOM + BUTTON CONTROLS
 // ============================================================
-(function() {
+(function($) {
   var zoom = 1;
   var MIN_ZOOM = 0.3;
   var MAX_ZOOM = 3;
@@ -4571,28 +4560,32 @@ $(document).ready(function() {
       }
     }, { passive: false });
   });
-})();
+})(jQuery);
 </script>
 
 <script>
 // ---- SAVE NOTES ----
-$('#btn-save-notes').on('click', function() {
-  var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving…');
-  var notes = {};
-  $('.notes-field').each(function() {
-    notes[$(this).data('key')] = $(this).val();
-  });
-  $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', { notes: notes })
-    .done(function(res) {
-      toastr.success(res.message || 'Notes saved');
-    })
-    .fail(function(xhr) {
-      toastr.error(xhr.responseJSON?.message || 'Failed to save notes');
-    })
-    .always(function() {
-      $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Notes');
+(function($) {
+  $(document).ready(function() {
+    $('#btn-save-notes').on('click', function() {
+      var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving…');
+      var notes = {};
+      $('.notes-field').each(function() {
+        notes[$(this).data('key')] = $(this).val();
+      });
+      $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', { notes: notes })
+        .done(function(res) {
+          toastr.success(res.message || 'Notes saved');
+        })
+        .fail(function(xhr) {
+          toastr.error(xhr.responseJSON?.message || 'Failed to save notes');
+        })
+        .always(function() {
+          $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Notes');
+        });
     });
-});
+  });
+})(jQuery);
 </script>
 
 @endsection

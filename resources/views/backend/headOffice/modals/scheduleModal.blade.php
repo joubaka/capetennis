@@ -164,7 +164,7 @@
   </div>
 </div>
 <script>
-$(function () {
+function initScheduleModal() {
     'use strict';
 
     // ------------------------------------------------------------------
@@ -310,6 +310,14 @@ $(function () {
         }
     }
 
-});
-</script>
+}
 
+// Defer until jQuery is available (this script runs before jQuery loads)
+(function waitForJQuery() {
+    if (typeof window.jQuery !== 'undefined') {
+        jQuery(initScheduleModal);
+    } else {
+        setTimeout(waitForJQuery, 50);
+    }
+})();
+</script>

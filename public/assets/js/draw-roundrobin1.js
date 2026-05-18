@@ -37,14 +37,6 @@
   const $modalFixtureId = $('#rrm-fixture-id');
   const $modalMatchLabel = $('#rrm-match-label');
 
-  // Init sortable group lists
-  document.querySelectorAll('.rr-sortable').forEach(el => {
-    new Sortable(el, {
-      group: 'rr-groups',
-      animation: 150
-    });
-  });
-
   /* ===================================================
    * INIT
    * =================================================== */
@@ -824,5 +816,10 @@
     }
   }
 
+
+  // Start the app
+  $(document).ready(function () {
+    init();
+  });
 
 })(jQuery, window, document);
