@@ -263,9 +263,20 @@ function renderOrderOfPlay() {
     return;
   }
 
+  // Sort RR fixtures: round → group → match_nr; non-RR fixtures follow after
+  const rrFx = RR_OOP.filter(f => f.stage === 'RR' || !f.stage)
+    .slice()
+    .sort((a, b) => {
+      if (a.round !== b.round) return (a.round || 0) - (b.round || 0);
+      if (a.group_id !== b.group_id) return (a.group_id || 0) - (b.group_id || 0);
+      return (a.match_nr || 0) - (b.match_nr || 0);
+    });
+  const otherFx = RR_OOP.filter(f => f.stage && f.stage !== 'RR');
+  const sorted = [...rrFx, ...otherFx];
+
   let html = '';
 
-  RR_OOP.forEach(fx => {
+  sorted.forEach(fx => {
     let p1Class = '';
     let p2Class = '';
 
@@ -286,9 +297,10 @@ function renderOrderOfPlay() {
         <td class="text-center">vs</td>
         <td class="${p2Class}">${fx.away}</td>
         <td class="text-center">${fx.round}</td>
+        <td class="text-center">${fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '')}</td>
         <td class="text-center">${formatDayTimeVenue(fx)}</td>
         <td class="text-center fw-bold">${fx.score || ''}</td>
-       
+
       </tr>`;
   });
 

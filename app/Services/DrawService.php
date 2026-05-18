@@ -118,7 +118,7 @@ class DrawService
     // ORDER OF PLAY
     // ---------------------------------------------------------------------
     $allFixtures = $draw->drawFixtures()
-      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue'])
+      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue', 'drawGroup'])
       ->orderByRaw("
             FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS'),
             round ASC,
@@ -160,6 +160,8 @@ class DrawService
           'stage' => $fx->stage,
           'round' => $fx->round,
           'match_nr' => $fx->match_nr,
+          'group_id' => $fx->draw_group_id,
+          'group_name' => $fx->drawGroup?->name,
           'playoff_type' => $fx->playoff_type,
 
           'home' => $fx->registration1?->display_name ?? 'TBD',

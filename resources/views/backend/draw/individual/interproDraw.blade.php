@@ -135,6 +135,7 @@
                 <th class="text-center">vs</th>
                 <th>Player 2</th>
                 <th class="text-center">Round</th>
+                <th class="text-center">Group</th>
                 <th class="text-center">Time</th>
                 <th class="text-center">Score</th>
               </tr>
