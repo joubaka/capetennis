@@ -12,7 +12,7 @@
   @php
     $publishedDraws = $eventDraws
         ->where('published', true)
-        ->sortBy('drawType_id'); // 👈 order here
+        ->sortByDesc('drawType_id'); // 👈 order here
   @endphp
 
   @forelse(
@@ -92,7 +92,7 @@
         <h6 class="fw-bold text-danger">Unpublished Draws</h6>
         @php $isAdmin = auth()->check() && in_array(auth()->id(), [1764, 584,585]); @endphp
 
-        @foreach($eventDraws->where('published', false)->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
+        @foreach($eventDraws->where('published', false)->sortByDesc('drawType_id')->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
           <h6 class="mt-3">{{ $typeName }}</h6>
           <div class="d-flex flex-wrap gap-2">
             @foreach($draws as $draw)

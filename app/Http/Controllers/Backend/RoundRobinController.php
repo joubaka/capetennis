@@ -160,7 +160,7 @@ class RoundRobinController
       Log::info("📥 Loading ALL Category Events for EVENT {$draw->event_id}");
 
       $categoryEvents = CategoryEvent::where('event_id', $draw->event_id)
-        ->with(['registrations', 'registrations.players'])
+        ->with(['registrations', 'registrations.players', 'categoryEventRegistrations', 'categoryEventRegistrations.payfastTransaction'])
         ->get();
 
       Log::info("📦 CategoryEvents Loaded", [
@@ -270,7 +270,7 @@ class RoundRobinController
     });
 
     $categoryEvents = CategoryEvent::where('event_id', $draw->event_id)
-      ->with(['registrations', 'registrations.players'])
+      ->with(['registrations', 'registrations.players', 'categoryEventRegistrations', 'categoryEventRegistrations.payfastTransaction'])
       ->get();
 
     return view('backend.draw.roundrobin.show', [

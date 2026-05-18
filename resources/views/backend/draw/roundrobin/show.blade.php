@@ -1048,9 +1048,19 @@
                 if ($draw->category_event_id) {
                   $sourceCategoryEvents = $categoryEvents->where('id', $draw->category_event_id);
                 }
+
+                // Collect all registration IDs already assigned to any group in this draw
+                $assignedRegIds = $groups->flatMap(fn($g) => $g->registrations->pluck('id'))->unique();
+
+                // Collect player IDs seen so far across all categories to detect duplicates
+                $seenPlayerIds = collect();
               @endphp
 
               @forelse($sourceCategoryEvents as $ce)
+                @php
+                  // Build a map of registration_id => CER for payment check
+                  $cerMap = $ce->categoryEventRegistrations->keyBy('registration_id');
+                @endphp
                 <div class="mb-3">
                   <div class="fw-bold text-primary small mb-1">
                     <i class="ti ti-category me-1"></i> {{ $ce->category->name ?? 'Unknown Category' }}
@@ -1062,13 +1072,18 @@
                       data-type="source">
                     @foreach($ce->registrations as $reg)
                       @php
+                        $cer = $cerMap->get($reg->id);
+                        $isPaid = $cer && $cer->payment_status_id == 1;
                         $player = $reg->players->first();
+                        $playerId = $player?->id;
                         $display = $player ? $player->full_name : 'Unknown Player';
-                        // Check if already assigned to a group in this draw
-                        $isAssigned = $groups->contains(fn($g) => $g->registrations->contains('id', $reg->id));
+                        $isAssigned = $assignedRegIds->contains($reg->id);
+                        $isDuplicate = $playerId && $seenPlayerIds->contains($playerId);
+                        if ($playerId) $seenPlayerIds->push($playerId);
                       @endphp
 
-                      @if(!$isAssigned)
+                      {{-- Only show paid, non-assigned, non-duplicate players --}}
+                      @if(!$isAssigned && $isPaid && !$isDuplicate)
                         <li class="list-group-item list-group-item-action py-1 px-2" 
                             data-id="{{ $reg->id }}"
                             data-player-name="{{ $display }}">
