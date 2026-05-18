@@ -151,15 +151,17 @@
 
     wrapper.addClass('rr-matrix-scroll');
 
-    Object.keys(RR_FIXTURES).forEach(groupId => {
+    if (!RR_GROUPS.length) {
+      wrapper.html('<div class="text-muted text-center py-4">No groups configured yet.</div>');
+      return;
+    }
 
-      const group = RR_GROUPS.find(g => g.id == groupId);
-      const fixtures = RR_FIXTURES[groupId];
+    RR_GROUPS.forEach(group => {
+      const groupId = group.id;
+      const fixtures = (RR_FIXTURES && RR_FIXTURES[groupId]) ? RR_FIXTURES[groupId] : [];
 
       console.log(`🔷 GROUP ${groupId}`, group);
       console.log(`🔷 FIXTURES FOR GROUP ${groupId}`, fixtures);
-
-      if (!group) return;
 
       let players = group.registrations.map(r => ({
         id: r.id,
