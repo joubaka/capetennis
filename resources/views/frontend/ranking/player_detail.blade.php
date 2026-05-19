@@ -74,6 +74,7 @@
               <thead class="table-light">
                 <tr>
                   <th>Event</th>
+                  <th>Category</th>
                   <th>Date</th>
                   <th class="text-center">Position</th>
                   <th class="text-center">Points</th>
@@ -93,6 +94,7 @@
                   @endphp
                   <tr>
                     <td>{{ $leg['event_name'] }}</td>
+                    <td class="text-muted small">{{ $leg['category_name'] ?? '—' }}</td>
                     <td class="text-nowrap text-muted small">
                       {{ $leg['event_date'] ? \Carbon\Carbon::parse($leg['event_date'])->format('d M Y') : '—' }}
                     </td>
@@ -106,7 +108,7 @@
               </tbody>
               <tfoot class="table-light">
                 <tr>
-                  <td colspan="3" class="text-end fw-bold">Counted Total</td>
+                  <td colspan="4" class="text-end fw-bold">Counted Total</td>
                   <td class="text-center fw-bold points-total">{{ $countedTotal }}</td>
                   <td></td>
                 </tr>

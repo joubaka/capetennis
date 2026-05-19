@@ -125,12 +125,15 @@ class RankingController extends Controller
       ->keyBy('id');
 
     $legs = collect();
+    $rankingCategoryName = $rankingRecord?->category?->name ?? '—';
+
     if ($rankingRecord && !empty($rankingRecord->meta_json['legs'])) {
-      $legs = collect($rankingRecord->meta_json['legs'])->map(function ($leg) use ($eventsById) {
+      $legs = collect($rankingRecord->meta_json['legs'])->map(function ($leg) use ($eventsById, $rankingCategoryName) {
         $event = $eventsById->get($leg['event_id'] ?? null);
         return array_merge($leg, [
-          'event_name' => $event?->name ?? 'Event #' . ($leg['event_id'] ?? '?'),
-          'event_date' => $event?->start_date ?? null,
+          'event_name'    => $event?->name ?? 'Event #' . ($leg['event_id'] ?? '?'),
+          'event_date'    => $event?->start_date ?? null,
+          'category_name' => $rankingCategoryName,
         ]);
       });
     } elseif ($rankingRecord) {
@@ -145,6 +148,7 @@ class RankingController extends Controller
         ->join('player_registrations', 'player_registrations.registration_id', '=', 'registrations.id')
         ->whereIn('category_results.event_id', $eventIds)
         ->where('player_registrations.player_id', $player->id)
+        ->where('category_results.category_id', $rankingRecord->category_id)
         ->select(
           'category_results.event_id',
           'category_results.category_id',
@@ -153,14 +157,18 @@ class RankingController extends Controller
         ->get();
 
       if ($rawResults->isNotEmpty()) {
+        $categoryIds = $rawResults->pluck('category_id')->unique()->filter();
+        $categoriesById = \App\Models\Category::whereIn('id', $categoryIds)->pluck('name', 'id');
+
         // Sort by points descending (best first) so Best-N counting matches rebuild logic
-        $sorted = $rawResults->map(function ($result) use ($eventsById, $pointsMap) {
+        $sorted = $rawResults->map(function ($result) use ($eventsById, $pointsMap, $categoriesById) {
           return [
-            'event_id'   => (int) $result->event_id,
-            'event_name' => $eventsById->get($result->event_id)?->name ?? 'Event #' . $result->event_id,
-            'event_date' => $eventsById->get($result->event_id)?->start_date ?? null,
-            'position'   => (int) $result->position,
-            'points'     => (int) ($pointsMap[$result->position] ?? 0),
+            'event_id'      => (int) $result->event_id,
+            'event_name'    => $eventsById->get($result->event_id)?->name ?? 'Event #' . $result->event_id,
+            'event_date'    => $eventsById->get($result->event_id)?->start_date ?? null,
+            'category_name' => $categoriesById->get($result->category_id) ?? '—',
+            'position'      => (int) $result->position,
+            'points'        => (int) ($pointsMap[$result->position] ?? 0),
           ];
         })->sortByDesc('points')->values();
 
