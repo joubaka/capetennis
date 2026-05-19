@@ -26,6 +26,7 @@ class RefundExecutionService
     ): Model {
         $entityClass = get_class($refundEntity);
 
+        $transitioned = false;
         $completed = FinanceMutationScope::run('refund_state_write', function () use (
             $refundEntity,
             $entityClass,
@@ -34,7 +35,8 @@ class RefundExecutionService
             $sourceType,
             $sourceId,
             $meta,
-            $statusOverrides
+            $statusOverrides,
+            &$transitioned
         ) {
             return DB::transaction(function () use (
                 $refundEntity,
@@ -44,7 +46,8 @@ class RefundExecutionService
                 $sourceType,
                 $sourceId,
                 $meta,
-                $statusOverrides
+                $statusOverrides,
+                &$transitioned
             ) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
@@ -53,6 +56,7 @@ class RefundExecutionService
                     return $locked;
                 }
 
+                $transitioned = true;
                 $this->ledgerService->appendWalletCredit($wallet, $amount, $sourceType, $sourceId, $meta);
 
                 $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'wallet');
@@ -75,9 +79,11 @@ class RefundExecutionService
             });
         });
 
-        DB::afterCommit(function () use ($completed, $meta) {
-            event(new RefundCompleted($completed, ['type' => 'wallet'] + $meta));
-        });
+        if ($transitioned) {
+            DB::afterCommit(function () use ($completed, $meta) {
+                event(new RefundCompleted($completed, ['type' => 'wallet'] + $meta));
+            });
+        }
 
         return $completed;
     }
@@ -86,8 +92,9 @@ class RefundExecutionService
     {
         $entityClass = get_class($refundEntity);
 
-        $completed = FinanceMutationScope::run('refund_state_write', function () use ($refundEntity, $entityClass, $statusOverrides) {
-            return DB::transaction(function () use ($refundEntity, $entityClass, $statusOverrides) {
+        $transitioned = false;
+        $completed = FinanceMutationScope::run('refund_state_write', function () use ($refundEntity, $entityClass, $statusOverrides, &$transitioned) {
+            return DB::transaction(function () use ($refundEntity, $entityClass, $statusOverrides, &$transitioned) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
 
@@ -95,6 +102,7 @@ class RefundExecutionService
                     return $locked;
                 }
 
+                $transitioned = true;
                 $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'bank');
                 $locked->refund_status = 'completed';
                 $locked->refunded_at = now();
@@ -115,9 +123,11 @@ class RefundExecutionService
             });
         });
 
-        DB::afterCommit(function () use ($completed) {
-            event(new RefundCompleted($completed, ['type' => 'bank']));
-        });
+        if ($transitioned) {
+            DB::afterCommit(function () use ($completed) {
+                event(new RefundCompleted($completed, ['type' => 'bank']));
+            });
+        }
 
         return $completed;
     }

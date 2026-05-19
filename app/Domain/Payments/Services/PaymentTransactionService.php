@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\DB;
 
 class PaymentTransactionService
 {
+    public const WITHDRAWAL_BEFORE_DEADLINE_CONTEXT = 'withdrawel_before_deadline';
+    private const CAPE_TENNIS_FEE = 10;
+
     public function record(array $data, mixed $order): ?Transaction
     {
         return FinanceMutationScope::run('payment_transaction_write', function () use ($data, $order) {
@@ -19,7 +22,7 @@ class PaymentTransactionService
                     return $this->recordAdminTransaction($data);
                 }
 
-                if ($order === 'withdrawel_before_deadline') {
+                if ($order === self::WITHDRAWAL_BEFORE_DEADLINE_CONTEXT) {
                     return $this->recordWithdrawalTransaction($data);
                 }
 
@@ -87,15 +90,15 @@ class PaymentTransactionService
         if ($registration->payfast_id === 'Admin') {
             $transaction->amount_gross = 0;
             $transaction->amount_fee = 0;
-            $transaction->amount_net = 10;
+            $transaction->amount_net = self::CAPE_TENNIS_FEE;
         } else {
             $entryFee = (float) $registration->categoryEvent->entry_fee;
             $payfastFee = \App\Models\SiteSetting::calculatePayfastFee($entryFee);
 
-            $transaction->cape_tennis_fee = 10;
+            $transaction->cape_tennis_fee = self::CAPE_TENNIS_FEE;
             $transaction->amount_gross = -$entryFee;
             $transaction->amount_fee = -$payfastFee;
-            $transaction->amount_net = $entryFee - ($payfastFee - 10);
+            $transaction->amount_net = $entryFee - ($payfastFee - self::CAPE_TENNIS_FEE);
         }
 
         $player = $registration->registration->players->first();

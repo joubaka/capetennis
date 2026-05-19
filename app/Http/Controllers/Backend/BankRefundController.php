@@ -293,12 +293,12 @@ class BankRefundController extends Controller
                 'registration_id' => $registration->id,
                 'wallet_net' => $walletNet,
                 'error' => $walletEx->getMessage(),
-              ]);
+                ]);
             }
           }
-        } else {
-          $this->refundExecutionService->executeBankRefund($registration, ['refund_method' => 'bank']);
         }
+
+        $this->refundExecutionService->executeBankRefund($registration, ['refund_method' => 'bank']);
 
         activity('refund')
           ->performedOn($registration)

@@ -5,7 +5,6 @@
 namespace App\Services;
 
 use App\Domain\Payments\Services\PaymentTransactionService;
-use App\Models\Transaction;
 
 class TransactionHelper
 {
@@ -77,6 +76,6 @@ class TransactionHelper
             'categoryEventRegistration' => $categoryEventRegistration->id,
             'custom_int4' => Auth()->user()->id,
             'custom_str4' => Auth()->user()->username,
-        ], 'withdrawel_before_deadline');
+        ], PaymentTransactionService::WITHDRAWAL_BEFORE_DEADLINE_CONTEXT);
     }
 }
