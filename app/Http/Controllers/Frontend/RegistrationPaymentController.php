@@ -399,13 +399,4 @@ class RegistrationPaymentController extends Controller
       ->withErrors('Payment cancelled. No wallet funds were deducted.');
   }
 
-  /**
-   * Attach registrations
-   */
-  private function markOrderPaid(int $orderId, string $method)
-  {
-    $order = RegistrationOrder::findOrFail($orderId);
-    $pfReference = $method === 'WALLET' ? 'wallet-order-' . $orderId : $order->payfast_pf_payment_id;
-    app(RegistrationPaymentService::class)->markOrderRegistrationsPaid($order, $pfReference, $order->user_id);
-  }
 }

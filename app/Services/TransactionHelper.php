@@ -72,10 +72,15 @@ class TransactionHelper
 
   public function createTransaction($categoryEventRegistration)
   {
+        $user = Auth()->user();
+        if (!$user) {
+            throw new \RuntimeException('Authenticated user is required to create a withdrawal transaction.');
+        }
+
         return app(PaymentTransactionService::class)->record([
             'categoryEventRegistration' => $categoryEventRegistration->id,
-            'custom_int4' => Auth()->user()->id,
-            'custom_str4' => Auth()->user()->username,
+            'custom_int4' => $user->id,
+            'custom_str4' => $user->username,
         ], PaymentTransactionService::WITHDRAWAL_BEFORE_DEADLINE_CONTEXT);
     }
 }

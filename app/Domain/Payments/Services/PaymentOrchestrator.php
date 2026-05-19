@@ -54,10 +54,10 @@ class PaymentOrchestrator
 
                     $walletReserved = (float) ($locked->wallet_reserved ?? 0);
                     if ($walletReserved > 0 && !(bool) ($locked->wallet_debited ?? false)) {
-                        $wallet = $locked->user?->wallet;
-                        if (!$wallet) {
-                            throw new \RuntimeException("Wallet missing for payment order {$locked->getKey()}");
-                        }
+                    $wallet = $locked->user?->wallet;
+                    if (!$wallet) {
+                        throw new \RuntimeException('Cannot process payment: user wallet not found.');
+                    }
 
                         $this->ledgerService->appendWalletDebit(
                             $wallet,
