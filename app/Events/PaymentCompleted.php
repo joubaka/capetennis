@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -9,13 +10,12 @@ class PaymentCompleted
 {
     use Dispatchable, SerializesModels;
 
-    public $payment;
-    public $context;
+    public Model $payment;
+    public array $context;
 
-    public function __construct($payment, array $context = [])
+    public function __construct(Model $payment, array $context = [])
     {
         $this->payment = $payment;
         $this->context = $context;
     }
 }
-

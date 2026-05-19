@@ -123,9 +123,14 @@ class PaymentTransactionService
 
     protected function recordPayfastTransaction(array $data): Transaction
     {
-        $transaction = !empty($data['pf_payment_id'])
-            ? Transaction::firstOrNew(['pf_payment_id' => $data['pf_payment_id']])
-            : new Transaction();
+        $transaction = new Transaction();
+
+        if (!empty($data['pf_payment_id'])) {
+            $transaction = Transaction::query()
+                ->where('pf_payment_id', $data['pf_payment_id'])
+                ->lockForUpdate()
+                ->first() ?? new Transaction();
+        }
 
         $transaction->transaction_type = 'Registration';
         $transaction->amount_gross = $data['amount_gross'] ?? null;
