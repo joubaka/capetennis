@@ -13,6 +13,10 @@ return new class extends Migration
      */
     public function up()
     {
+        if (!Schema::hasTable('fixtures')) {
+            return;
+        }
+
         Schema::table('fixtures', function (Blueprint $table) {
             $table->unsignedInteger('position')->nullable()->after('match_status');
             $table->string('playoff_type')->nullable()->after('position');

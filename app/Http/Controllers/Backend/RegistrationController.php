@@ -128,7 +128,7 @@ class RegistrationController extends Controller
       }
 
       // 🔒 Prevent double withdrawal
-      if ($categoryEventRegistration->withdrawn_at ?? false) {
+      if ($categoryEventRegistration->status === 'withdrawn') {
         return response()->json([
           'status' => 'error',
           'message' => 'Registration already withdrawn',
@@ -152,16 +152,9 @@ class RegistrationController extends Controller
       $response = $this->transaction->withdrawal($categoryEventRegistration);
 
       /**
-       * 🧹 Domain cleanup
+       * 🧾 Canonical withdrawal transition
        */
-      $this->withdraw($registration_id, $categoryEventId);
-
-      /**
-       * 🧾 Soft mark as withdrawn (preferred)
-       */
-      $categoryEventRegistration->update([
-        'withdrawn_at' => now(),
-      ]);
+      $categoryEventRegistration->markWithdrawn(auth()->user(), 'admin');
 
       return response()->json([
         'status' => 'success',
@@ -193,7 +186,7 @@ class RegistrationController extends Controller
     $user->deposit(($categoryEventRegistration->categoryEvent->entry_fee) - 10);
     $order = 'withdrawel_before_deadline';
     $trans = RegisterController::update_transaction($request, $order);
-    $categoryEventRegistration->update(['withdrawn_at' => now()]);
+    $categoryEventRegistration->markWithdrawn(auth()->user(), 'admin');
 
     // have to send mail to admin and owner
 

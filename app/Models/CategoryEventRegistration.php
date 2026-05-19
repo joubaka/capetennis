@@ -43,10 +43,14 @@ class CategoryEventRegistration extends Model
     // Payment
     'pf_transaction_id',
     'payment_status_id',
+    'payment_method',
+    'wallet_transaction_id',
 
     // Withdrawal
     'status',
     'withdrawn_at',
+    'withdrawn_by',
+    'withdrawal_reason',
 
     // Refund core
     'refund_method',
@@ -67,13 +71,14 @@ class CategoryEventRegistration extends Model
 
   protected $appends = ['display_name', 'is_paid'];
   protected $casts = [
-    'user_id' => 'integer',
+    'user_id'              => 'integer',
+    'withdrawn_by'         => 'integer',
     'refund_account_number' => 'encrypted',
-    'withdrawn_at' => 'datetime',
-    'refunded_at' => 'datetime',
-    'refund_gross' => 'float',
-    'refund_fee' => 'float',
-    'refund_net' => 'float',
+    'withdrawn_at'         => 'datetime',
+    'refunded_at'          => 'datetime',
+    'refund_gross'         => 'float',
+    'refund_fee'           => 'float',
+    'refund_net'           => 'float',
   ];
 
 
@@ -97,6 +102,53 @@ class CategoryEventRegistration extends Model
     return $this->belongsTo(User::class);
   }
 
+  public function walletTransaction()
+  {
+    return $this->belongsTo(\App\Models\WalletTransaction::class, 'wallet_transaction_id');
+  }
+
+  public function withdrawnByUser()
+  {
+    return $this->belongsTo(User::class, 'withdrawn_by');
+  }
+
+  // --------------------------------------------------
+  // QUERY SCOPES
+  // --------------------------------------------------
+
+  /**
+   * Active (non-withdrawn) entries only.
+   * Use this for draws, rankings, entry counts, and finance summaries.
+   */
+  public function scopeActive($query)
+  {
+    return $query->whereNotIn('status', [
+      'withdrawn',
+      'withdrawn_pending_refund',
+      'withdrawn_refunded',
+    ]);
+  }
+
+  /**
+   * Withdrawn entries only (all sub-states).
+   */
+  public function scopeWithdrawn($query)
+  {
+    return $query->whereIn('status', [
+      'withdrawn',
+      'withdrawn_pending_refund',
+      'withdrawn_refunded',
+    ]);
+  }
+
+  /**
+   * Paid and active — use for draws, rankings, and finance entry counts.
+   */
+  public function scopeActiveAndPaid($query)
+  {
+    return $query->active()->where('payment_status_id', 1);
+  }
+
   /**
    * Players via registration
    */
@@ -113,17 +165,24 @@ class CategoryEventRegistration extends Model
   }
 
   /**
-   * PayFast transaction (single source of truth)
-   * Linked via pf_transaction_id → transactions.pf_payment_id
+   * Resolves the PayFast transaction for payfast/hybrid payments.
+   * Only valid when pf_transaction_id is a real PayFast payment ID
+   * (i.e. payment_method is 'payfast' or 'hybrid').
+   * Returns null for wallet-only payments.
    */
   public function payfastTransaction()
   {
+    // Wallet-only payments have no PayFast record — avoid a useless join.
+    if ($this->payment_method === 'wallet' || empty($this->pf_transaction_id)) {
+      return $this->belongsTo(Transaction::class, 'pf_transaction_id', 'pf_payment_id')
+        ->whereRaw('1 = 0'); // always-empty relation
+    }
+
     return $this->belongsTo(
       Transaction::class,
-      'pf_transaction_id', // local key on this model
-      'pf_payment_id'      // column on transactions table
-    )->where('transaction_type', 'Registration')
-     ->where('is_test', false);
+      'pf_transaction_id',
+      'pf_payment_id'
+    );
   }
 
   // --------------------------------------------------
@@ -150,59 +209,125 @@ class CategoryEventRegistration extends Model
   // --------------------------------------------------
 
   /**
-   * Returns PayFast payment info for this registration.
-   * Always derived from the linked Transaction model.
+   * Returns normalised payment info for this registration.
+   *
+   * Resolves correctly for all three payment paths:
+   *   - 'wallet'  — no PayFast record; amounts come from the order + wallet_transaction
+   *   - 'payfast' — standard PayFast ITN; amounts come from transactions_pf row
+   *   - 'hybrid'  — both; PayFast gross + wallet contribution split per item
+   *
+   * Returns [] if the registration is not paid or has no resolvable payment record.
    */
   public function paymentInfo(): array
   {
-    $tx = $this->payfastTransaction;
-
-    if (!$tx || !$tx->order) {
+    // Must be paid (payment_status_id = 1)
+    if (!$this->is_paid) {
       return [];
     }
 
-    $order = $tx->order;
+    $method = $this->payment_method; // wallet | payfast | hybrid | null (legacy)
 
-    // 🔹 How many registrations were paid in this transaction
-    $totalItems = max(
-      1,
-      $order->items->count()
-    );
+    // ------------------------------------------------------------------
+    // Resolve the order via the order item that holds this CER's
+    // registration_id. We load lazily so callers that already eager-loaded
+    // don't pay twice.
+    // ------------------------------------------------------------------
+    $orderItem = RegistrationOrderItems::where('registration_id', $this->registration_id)
+      ->where('category_event_id', $this->category_event_id)
+      ->first();
 
-    // 🔹 Per-registration allocation (PayFast portion)
-    $grossPerReg = (float) $tx->amount_gross / $totalItems;
-    // Recalculate using current custom rates (applied on per-registration PayFast gross)
+    $order = $orderItem?->order;
+
+    $totalItems = max(1, $order?->items?->count() ?? 1);
+
+    // ------------------------------------------------------------------
+    // WALLET-ONLY
+    // ------------------------------------------------------------------
+    if ($method === 'wallet') {
+      $walletTx       = $this->walletTransaction;
+      $walletReserved = (float) ($order?->wallet_reserved ?? $walletTx?->amount ?? 0);
+      $walletPerReg   = round($walletReserved / $totalItems, 2);
+
+      return [
+        'payment_method'  => 'wallet',
+        'pf_payment_id'   => null,
+        'transaction_id'  => null,
+        // Per-registration amounts
+        'gross'           => $walletPerReg,
+        'fee'             => 0.00,
+        'net'             => $walletPerReg,
+        'wallet_paid'     => $walletPerReg,
+        'total_paid'      => $walletPerReg,
+        // Meta
+        'paid_at'         => $walletTx?->created_at ?? $this->updated_at,
+        'payer_email'     => null,
+        'payer_name'      => null,
+        'item_name'       => optional($this->categoryEvent?->event)->name,
+        'items_in_order'  => $totalItems,
+      ];
+    }
+
+    // ------------------------------------------------------------------
+    // PAYFAST-ONLY or HYBRID
+    // ------------------------------------------------------------------
+    $tx = $this->payfastTransaction;
+
+    // Graceful fallback: if there is no linked transactions_pf row yet
+    // (e.g. legacy rows where pf_transaction_id was never a real ID)
+    // return a minimal record so callers don't crash.
+    if (!$tx) {
+      if ($method === null && !empty($this->pf_transaction_id)) {
+        // Legacy row — pf_transaction_id may be a real PayFast ID stored
+        // before the payment_method column existed. Surface what we can.
+        return [
+          'payment_method' => 'payfast',
+          'pf_payment_id'  => $this->pf_transaction_id,
+          'transaction_id' => null,
+          'gross'          => null,
+          'fee'            => null,
+          'net'            => null,
+          'wallet_paid'    => 0.00,
+          'total_paid'     => null,
+          'paid_at'        => null,
+          'payer_email'    => null,
+          'payer_name'     => null,
+          'item_name'      => null,
+          'items_in_order' => $totalItems,
+          '_legacy'        => true,
+        ];
+      }
+
+      return [];
+    }
+
+    // PayFast gross split per registration in the same order
+    $grossPerReg = round((float) $tx->amount_gross / $totalItems, 2);
     $totalFee    = SiteSetting::calculatePayfastFee((float) $tx->amount_gross);
-    $feePerReg   = $totalItems > 0 ? round($totalFee / $totalItems, 2) : $totalFee;
-    $netPerReg   = $grossPerReg - $feePerReg;
+    $feePerReg   = round($totalFee / $totalItems, 2);
+    $netPerReg   = round($grossPerReg - $feePerReg, 2);
 
-    // 🔹 Wallet portion (split across items in the same order)
-    $walletReserved = (float) ($order->wallet_reserved ?? 0);
-    $walletPerReg = $totalItems > 0 ? round($walletReserved / $totalItems, 2) : 0;
+    // Wallet portion (hybrid only)
+    $walletReserved = (float) ($order?->wallet_reserved ?? 0);
+    $walletPerReg   = round($walletReserved / $totalItems, 2);
 
     return [
-      'transaction_id' => $tx->id,
-      'pf_payment_id' => $tx->pf_payment_id,
-
-      // ✅ PER REGISTRATION (PayFast portion only)
-      'gross' => round($grossPerReg, 2),
-      'fee' => round($feePerReg, 2),
-      'net' => round($netPerReg, 2),
-
-      // ✅ Wallet portion per registration
-      'wallet_paid' => $walletPerReg,
-
-      // ✅ Total paid (PayFast + Wallet)
-      'total_paid' => round($grossPerReg + $walletPerReg, 2),
-
-      // meta
-      'paid_at' => $tx->created_at,
-      'payer_email' => $tx->email_address,
-      'payer_name' => trim($tx->name_first . ' ' . $tx->name_last),
-      'item_name' => $tx->item_name,
-
-      // debug / trace
-      'items_in_tx' => $totalItems,
+      'payment_method'  => $method ?? 'payfast',
+      'pf_payment_id'   => $tx->pf_payment_id,
+      'transaction_id'  => $tx->id,
+      // Per-registration amounts (PayFast portion)
+      'gross'           => $grossPerReg,
+      'fee'             => $feePerReg,
+      'net'             => $netPerReg,
+      // Wallet contribution
+      'wallet_paid'     => $walletPerReg,
+      // Combined
+      'total_paid'      => round($grossPerReg + $walletPerReg, 2),
+      // Meta
+      'paid_at'         => $tx->created_at,
+      'payer_email'     => $tx->email_address,
+      'payer_name'      => trim($tx->name_first . ' ' . $tx->name_last),
+      'item_name'       => $tx->item_name,
+      'items_in_order'  => $totalItems,
     ];
   }
 
@@ -218,6 +343,68 @@ class CategoryEventRegistration extends Model
   // --------------------------------------------------
   // WITHDRAWAL RULES
   // --------------------------------------------------
+
+  // --------------------------------------------------
+  // WITHDRAWAL — CANONICAL TRANSITION
+  // --------------------------------------------------
+
+  /**
+   * Single authoritative method for marking a registration as withdrawn.
+   *
+   * All controllers must call this instead of inlining update() calls.
+   * Payment columns (payment_status_id, pf_transaction_id, payment_method,
+   * wallet_transaction_id) are intentionally preserved for audit/refund purposes.
+   *
+   * @param  \App\Models\User  $by             The user performing the withdrawal.
+   * @param  string            $initiatedBy    'self' | 'admin'
+   * @param  string|null       $reason         Optional admin note / reason.
+   */
+  public function markWithdrawn(
+    User $by,
+    string $initiatedBy = 'self',
+    ?string $reason = null
+  ): void {
+    // Idempotency — never double-withdraw
+    if (in_array($this->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])) {
+      return;
+    }
+
+    $this->update([
+      'status'            => 'withdrawn',
+      'withdrawn_at'      => now(),
+      'withdrawn_by'      => $by->id,
+      'withdrawal_reason' => $reason,
+      // Reset refund tracking to a clean slate
+      'refund_status'     => 'not_refunded',
+      'refund_method'     => null,
+      'refund_gross'      => 0,
+      'refund_fee'        => 0,
+      'refund_net'        => 0,
+      'refunded_at'       => null,
+    ]);
+
+    try {
+      activity('withdrawal')
+        ->performedOn($this)
+        ->causedBy($by)
+        ->withProperties([
+          'registration_id' => $this->id,
+          'initiated_by'    => $initiatedBy,
+          'reason'          => $reason,
+          'event'           => optional($this->categoryEvent?->event)->name,
+          'category'        => optional($this->categoryEvent?->category)->name,
+          'player'          => optional($this->players->first())
+            ? trim($this->players->first()->name . ' ' . $this->players->first()->surname)
+            : null,
+        ])
+        ->log(ucfirst($initiatedBy) . ' withdrawal recorded');
+    } catch (\Throwable $e) {
+      \Illuminate\Support\Facades\Log::warning('markWithdrawn: activity log failed', [
+        'cer_id' => $this->id,
+        'error'  => $e->getMessage(),
+      ]);
+    }
+  }
 
   public function canWithdraw(User $user): array
   {
@@ -285,10 +472,13 @@ class CategoryEventRegistration extends Model
 // ACCESSORS
 // --------------------------------------------------
 
+  /**
+   * Paid state is authoritative from payment_status_id = 1.
+   * Never inferred from pf_transaction_id strings.
+   */
   public function getIsPaidAttribute(): bool
   {
-    return !empty($this->pf_transaction_id)
-      || $this->payfastTransaction !== null;
+    return (int) $this->payment_status_id === 1;
   }
 
   // --------------------------------------------------
@@ -318,6 +508,27 @@ class CategoryEventRegistration extends Model
   public function isWalletRefund(): bool
   {
     return $this->refund_method === 'wallet';
+  }
+
+  /**
+   * Maximum amount that may be refunded for this registration.
+   * Derived from paymentInfo() gross + wallet_paid.
+   * Never returns more than was actually paid.
+   */
+  public function maxRefundableAmount(): float
+  {
+    if ($this->isRefundCompleted()) {
+      return 0.0;
+    }
+
+    $payment = $this->paymentInfo();
+    if (empty($payment)) {
+      return 0.0;
+    }
+
+    $gross = round((float) ($payment['gross'] ?? 0) + (float) ($payment['wallet_paid'] ?? 0), 2);
+    $alreadyRefunded = (float) ($this->refund_gross ?? 0);
+    return max(0, round($gross - $alreadyRefunded, 2));
   }
 
   public function canRequestRefund(): bool

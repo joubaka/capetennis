@@ -34,7 +34,7 @@ class RegistrationWithdrawTest extends TestCase
 
         // Either succeeds or redirects — must not 403.
         $response->assertStatus(302);
-        $response->assertNotForbidden();
+        $this->assertNotEquals(403, $response->getStatusCode());
     }
 
     public function test_non_owner_cannot_withdraw(): void

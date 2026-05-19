@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
+use App\Exceptions\RefundAlreadyProcessedException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -75,14 +76,22 @@ class AdminRegistrationRefundController extends Controller
       abort(403, 'Only super-users can issue refunds.');
     }
 
+    // Idempotency: pessimistic lock before any state read or external call
+    try {
+      DB::transaction(function () use ($registration) {
+        $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
+        if ($locked->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
+          throw new \App\Exceptions\RefundAlreadyProcessedException('This registration has already been refunded.');
+        }
+      });
+    } catch (\App\Exceptions\RefundAlreadyProcessedException $e) {
+      return back()->withErrors($e->getMessage());
+    }
+
     $request->validate([
       'method' => 'required|in:wallet,payfast,none',
       'reason' => 'nullable|string|max:255',
     ]);
-
-    if ($registration->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
-      return back()->withErrors('This registration has already been refunded.');
-    }
 
     $payment = $registration->paymentInfo();
     $walletPaid   = $payment['wallet_paid'] ?? 0;
@@ -91,12 +100,20 @@ class AdminRegistrationRefundController extends Controller
     $pfPaymentId  = $payment['pf_payment_id'] ?? null;
     $method       = $request->input('method');
 
+    // Over-refund guard
+    if ($method !== 'none' && $registration->maxRefundableAmount() <= 0 && $gross > 0) {
+      return back()->withErrors('No refundable amount remaining for this registration.');
+    }
+
     // ── No Refund ──────────────────────────────────────────────────────────
     if ($method === 'none') {
-      $registration->update([
-        'refund_method' => null,
-        'refund_status' => 'not_refunded',
-      ]);
+      DB::transaction(function () use ($registration, $request) {
+        CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
+        $registration->update([
+          'refund_method' => null,
+          'refund_status' => 'not_refunded',
+        ]);
+      });
 
       activity('refund')
         ->performedOn($registration)
@@ -247,14 +264,17 @@ class AdminRegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error'));
         }
 
-        $registration->update([
-          'refund_method' => 'payfast',
-          'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
-          'refund_gross'  => $gross,
-          'refund_fee'    => 0,
-          'refund_net'    => $gross,
-          'refunded_at'   => now(),
-        ]);
+        DB::transaction(function () use ($registration, $gross) {
+          CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
+          $registration->update([
+            'refund_method' => 'payfast',
+            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
+            'refund_gross'  => $gross,
+            'refund_fee'    => 0,
+            'refund_net'    => $gross,
+            'refunded_at'   => now(),
+          ]);
+        });
 
         activity('refund')
           ->performedOn($registration)

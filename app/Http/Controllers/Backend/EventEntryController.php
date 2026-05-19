@@ -154,7 +154,7 @@ class EventEntryController extends Controller
 
     return response()->json([
       'success' => true,
-      'count' => $categoryEvent->categoryEventRegistrations()->count(),
+      'count' => $categoryEvent->activeRegistrations()->count(),
       'row' => view('backend.event.partials.entry-row', [
         'reg' => $entry,
       ])->render(),
@@ -173,13 +173,19 @@ class EventEntryController extends Controller
       ], 403);
     }
 
-    $categoryEvent->categoryEventRegistrations()
+    $cer = $categoryEvent->categoryEventRegistrations()
       ->where('registration_id', $registration->id)
-      ->update(['withdrawn_at' => now()]);
+      ->first();
+
+    if (!$cer) {
+      return response()->json(['success' => false, 'message' => 'Registration not found'], 404);
+    }
+
+    $cer->markWithdrawn(auth()->user(), 'admin');
 
     return response()->json([
       'success' => true,
-      'count' => $categoryEvent->categoryEventRegistrations()->count(),
+      'count' => $categoryEvent->activeRegistrations()->count(),
     ]);
   }
 

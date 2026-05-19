@@ -331,6 +331,10 @@ class TeamController extends Controller
         return redirect()->route('home')->withErrors('Please log in to continue.');
     }
 
+    if (!$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+        abort(403, 'Unauthorized.');
+    }
+
     // load models (will 404 if missing)
     $team = \App\Models\Team::findOrFail($teamId);
     $player = \App\Models\Player::findOrFail($playerId);
@@ -508,6 +512,11 @@ class TeamController extends Controller
 
   public function changePayStatus(Request $request)
   {
+    $user = auth()->user();
+    if (!$user || !$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+      return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
+    }
+
     $teamplayer = TeamPlayer::find($request->pivot_id);
 
     if (!$teamplayer) {

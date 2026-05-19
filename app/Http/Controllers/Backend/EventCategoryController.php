@@ -95,7 +95,7 @@ class EventCategoryController extends Controller
    */
   public function destroy(CategoryEvent $categoryEvent)
   {
-    if ($categoryEvent->categoryEventRegistrations()->exists()) {
+    if ($categoryEvent->activeRegistrations()->exists()) {
       return response()->json([
         'message' => 'Category has players and cannot be removed.'
       ], 422);

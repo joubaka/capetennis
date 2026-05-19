@@ -313,7 +313,10 @@
                   <i class="ti ti-photo me-1"></i>Photos
                 </a>
                 <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
-                  <i class="ti ti-cash-banknote me-1"></i>Refunds
+                  <i class="ti ti-cash-banknote me-1"></i>Bank Refunds
+                  @if($totalPending > 0)
+                    <span class="badge bg-danger ms-1">{{ $totalPending }}</span>
+                  @endif
                 </a>
                 <button type="button" class="btn btn-outline-danger btn-sm"
                         onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
@@ -536,11 +539,11 @@
       <div class="d-flex gap-2 flex-wrap mb-4">
         <span class="badge bg-danger fs-6 px-3 py-2">
           <i class="ti ti-clock me-1"></i>
-          {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }} Pending Bank
+          {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }} Pending Bank Refunds
         </span>
         <span class="badge bg-success fs-6 px-3 py-2">
           <i class="ti ti-check me-1"></i>
-          {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }} Completed Bank
+          {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }} Completed Bank Refunds
         </span>
         <span class="badge bg-info fs-6 px-3 py-2">
           <i class="ti ti-wallet me-1"></i>
@@ -558,7 +561,7 @@
         <li class="nav-item" role="presentation">
           <button class="nav-link active" id="sa-wtab-pending" data-bs-toggle="pill"
                   data-bs-target="#sa-wpane-pending" type="button" role="tab">
-            <i class="ti ti-clock me-1"></i>Pending Bank
+            <i class="ti ti-clock me-1"></i>Pending Bank Refunds
             @if($withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() > 0)
               <span class="badge bg-danger ms-1">
                 {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }}
@@ -617,6 +620,11 @@
                            class="btn btn-icon btn-sm btn-outline-primary" title="View">
                           <i class="ti ti-eye"></i>
                         </a>
+                        @if($refund->pf_transaction_id)
+                          <a href="#" class="btn btn-icon btn-sm btn-outline-secondary" title="PF Status">
+                            <i class="ti ti-credit-card"></i> PF Status
+                          </a>
+                        @endif
                         <form method="POST" action="{{ route('admin.refunds.bank.complete', $refund) }}"
                               onsubmit="return confirm('Mark this bank refund as paid?');">
                           @csrf
@@ -628,6 +636,7 @@
                     </td>
                   </tr>
                 @empty
+                  <tr class="d-none"><td colspan="8"><span class="text-success">All clear</span> — no pending bank refunds.</td></tr>
                 @endforelse
                 @foreach($withdrawalPendingTeamRefunds as $t)
                   <tr>

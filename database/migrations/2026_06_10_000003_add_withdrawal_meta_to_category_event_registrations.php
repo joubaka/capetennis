@@ -4,18 +4,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Adds soft-delete support to category_event_registrations.
- * Allows records to be hidden from normal queries while preserving
- * data for audit / GDPR compliance.
- */
 return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('category_event_registrations', 'deleted_at')) {
+        if (!Schema::hasColumn('category_event_registrations', 'withdrawn_by')) {
             Schema::table('category_event_registrations', function (Blueprint $table) {
-                $table->softDeletes()->after('refund_account_type');
+                $table->unsignedBigInteger('withdrawn_by')->nullable()->after('withdrawn_at');
+                $table->string('withdrawal_reason', 500)->nullable()->after('withdrawn_by');
             });
         }
     }
@@ -23,7 +19,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('category_event_registrations', function (Blueprint $table) {
-            $table->dropSoftDeletes();
+            $table->dropColumn(['withdrawn_by', 'withdrawal_reason']);
         });
     }
 };

@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('event_expenses', function (Blueprint $table) {
-            $table->string('convenor_name', 100)->nullable()->after('expense_type');
-        });
+        if (!Schema::hasColumn('event_expenses', 'convenor_name')) {
+            Schema::table('event_expenses', function (Blueprint $table) {
+                $table->string('convenor_name', 100)->nullable()->after('expense_type');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('event_expenses', function (Blueprint $table) {
-            $table->dropColumn('convenor_name');
-        });
+        if (Schema::hasColumn('event_expenses', 'convenor_name')) {
+            Schema::table('event_expenses', function (Blueprint $table) {
+                $table->dropColumn('convenor_name');
+            });
+        }
     }
 };

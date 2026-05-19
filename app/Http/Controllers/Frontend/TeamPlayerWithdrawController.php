@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Services\Wallet\WalletService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
+use App\Exceptions\RefundAlreadyProcessedException;
 
 class TeamPlayerWithdrawController extends Controller
 {
@@ -156,7 +157,18 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('Payment order not found.');
     }
 
-    // Duplicate / already processed protection (best-effort)
+    // Idempotency: pessimistic lock before any state check
+    try {
+      DB::transaction(function () use ($order) {
+        TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
+        if ($order->isRefundCompleted() || $order->isRefundPending()) {
+          throw new \App\Exceptions\RefundAlreadyProcessedException('Refund already processed or pending.');
+        }
+      });
+    } catch (\App\Exceptions\RefundAlreadyProcessedException $e) {
+      return back()->with('success', 'Refund already processed.');
+    }
+
     if ($order->pay_status !== 1 && !$order->payfast_paid && !$order->wallet_debited) {
       return back()->withErrors('No paid amount found to refund.');
     }
@@ -174,10 +186,21 @@ class TeamPlayerWithdrawController extends Controller
     $fee = SiteSetting::calculatePayfastFee($gross);
     $net = round($gross - $fee, 2);
 
+    // Over-refund guard
+    if ($order->maxRefundableAmount() <= 0) {
+      return back()->withErrors('No refundable amount remaining for this order.');
+    }
+
     // WALLET
     if ($request->input('method') === 'wallet') {
       try {
         DB::transaction(function () use ($order, $user, $teamPlayer, $gross, $fee, $net, $team, $player) {
+          // Pessimistic lock prevents concurrent double-refund
+          TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
+          if ($order->isRefundCompleted() || $order->isRefundPending()) {
+            throw new \App\Exceptions\RefundAlreadyProcessedException();
+          }
+
           app(WalletService::class)->credit(
             $order->user->wallet,
             (float) $net,
@@ -243,15 +266,7 @@ class TeamPlayerWithdrawController extends Controller
 
         return redirect()->route('events.show', [$eventId])->with('success', 'Refund credited to your wallet.');
 
-      } catch (DuplicateTransactionException $e) {
-        // Sync state
-        $teamPlayer->player_id = 0;
-        $teamPlayer->pay_status = 0;
-        $teamPlayer->save();
-
-        $order->pay_status = 0;
-        $order->save();
-
+      } catch (DuplicateTransactionException | RefundAlreadyProcessedException $e) {
         return redirect()->route('events.show', [$eventId])->with('success', 'Refund already processed.');
       } catch (\Throwable $e) {
         Log::error('TEAM WALLET REFUND FAILED', [
@@ -265,6 +280,7 @@ class TeamPlayerWithdrawController extends Controller
 
     // BANK: persist bank refund details and mark refund pending
     DB::transaction(function () use ($order, $teamPlayer, $request, $gross, $fee, $net) {
+      TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
       $teamPlayer->player_id = 0;
       $teamPlayer->pay_status = 0;
       $teamPlayer->save();

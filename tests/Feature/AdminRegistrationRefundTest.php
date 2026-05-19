@@ -29,7 +29,9 @@ class AdminRegistrationRefundTest extends TestCase
 
     private function adminUser(): User
     {
-        return User::factory()->create();
+        $user = User::factory()->create();
+        $user->assignRole('super-user');
+        return $user;
     }
 
     private function withdrawnRegistration(array $overrides = []): CategoryEventRegistration

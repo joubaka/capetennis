@@ -66,16 +66,16 @@ class Payfast
     $this->payfast_url = 'https://www.payfast.co.za/eng/process';
     $this->sandbox_url = 'https://sandbox.payfast.co.za/eng/process';
 
-    $this->payfast_id = '11307280';
-    $this->sandbox_id = '10008657';
+    $this->payfast_id  = config('services.payfast.merchant_id');
+    $this->sandbox_id  = config('services.payfast.sandbox_id');
 
-    $this->payfast_key = 'cnewg4817uvaq';
-    $this->sandbox_key = 'elbe10m0u0daf';
+    $this->payfast_key  = config('services.payfast.merchant_key');
+    $this->sandbox_key  = config('services.payfast.sandbox_key');
 
-    $this->notify_url = 'https://www.capetennis.co.za/notify';
-    $this->notify_url_team = 'https://www.capetennis.co.za/notify_team';
-    $this->cancel_url = 'https://www.capetennis.co.za/cancel';
-    $this->return_url = 'https://www.capetennis.co.za';
+    $this->notify_url       = config('app.url') . '/notify';
+    $this->notify_url_team  = config('app.url') . '/notify_team';
+    $this->cancel_url       = config('app.url') . '/cancel';
+    $this->return_url       = config('app.url');
 
     // default = live
     $this->url = $this->payfast_url;

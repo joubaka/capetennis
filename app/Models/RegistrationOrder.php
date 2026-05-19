@@ -10,21 +10,25 @@ class RegistrationOrder extends Model
   use HasFactory;
 
   protected $fillable = [
-    'user_id',                // ✅ ADD THIS
+    'user_id',
     'wallet_reserved',
     'wallet_debited',
     'payfast_paid',
     'payfast_pf_payment_id',
     'payfast_amount_due',
-    'pay_status',             // ✅ ADD THIS (important)
+    'pay_status',
+    'payment_method',
+    'wallet_transaction_id',
+    'total_fee',
   ];
 
   protected $casts = [
     'wallet_reserved' => 'float',
     'payfast_amount_due' => 'float',
+    'total_fee' => 'float',
     'wallet_debited' => 'boolean',
     'payfast_paid' => 'boolean',
-    'pay_status' => 'boolean',   // ✅ ADD
+    'pay_status' => 'boolean',
   ];
 
   /*
@@ -45,6 +49,11 @@ class RegistrationOrder extends Model
   public function user()  // ✅ REQUIRED FOR ITN
   {
     return $this->belongsTo(User::class);
+  }
+
+  public function walletTransaction()
+  {
+    return $this->belongsTo(\App\Models\WalletTransaction::class, 'wallet_transaction_id');
   }
 
   public function isFullyPaid(): bool

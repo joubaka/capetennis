@@ -42,6 +42,10 @@ class CategoryEventController extends Controller
   {
     $user = auth()->user();
 
+    if (!$user || !$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+      abort(403, 'Unauthorized.');
+    }
+
     if ($registration->status === 'withdrawn') {
       return back()->withErrors('This registration is already withdrawn.');
     }
@@ -50,41 +54,11 @@ class CategoryEventController extends Controller
     $eventName = optional($registration->categoryEvent?->event)->name ?? 'Event';
     $categoryName = optional($registration->categoryEvent?->category)->name ?? '';
 
-    // Admin-initiated withdrawals intentionally bypass canWithdraw() checks
-    // (deadline, draw-lock) and the global withdrawal_allowed switch.
-    // The reason is recorded in the activity log below.
-    DB::transaction(function () use ($registration, $user, $player, $eventName, $categoryName) {
-      $registration->update([
-        'status'        => 'withdrawn',
-        'withdrawn_at'  => now(),
-        'refund_status' => 'not_refunded',
-        'refund_method' => null,
-        'refund_gross'  => 0,
-        'refund_fee'    => 0,
-        'refund_net'    => 0,
-        'refunded_at'   => null,
-      ]);
+    // Admin-initiated withdrawals bypass canWithdraw() checks
+    // (deadline, draw-lock, global switch). Recorded in markWithdrawn() activity log.
+    DB::transaction(function () use ($registration, $user) {
+      $registration->markWithdrawn($user, 'admin');
     });
-
-    try {
-      activity('withdrawal')
-        ->performedOn($registration)
-        ->causedBy($user)
-        ->withProperties([
-          'registration_id' => $registration->id,
-          'event'           => $eventName,
-          'category'        => $categoryName,
-          'player'          => $player ? trim($player->name . ' ' . $player->surname) : '',
-          'initiated_by'    => 'admin',
-          'bypass_reason'   => 'admin override — deadline/lock rules do not apply',
-        ])
-        ->log("Admin withdrew {$eventName} ({$categoryName})");
-    } catch (\Throwable $e) {
-      \Log::warning('Admin withdraw: activity log failed', [
-        'registration_id' => $registration->id,
-        'error'           => $e->getMessage(),
-      ]);
-    }
 
     // Send notification emails outside the transaction
     $registration->sendWithdrawalEmails('admin');

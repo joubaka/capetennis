@@ -13,9 +13,11 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::table('draw_settings', function (Blueprint $table) {
-            $table->json('notes')->nullable()->after('preset_key');
-        });
+        if (!Schema::hasColumn('draw_settings', 'notes')) {
+            Schema::table('draw_settings', function (Blueprint $table) {
+                $table->json('notes')->nullable()->after('preset_key');
+            });
+        }
     }
 
     /**

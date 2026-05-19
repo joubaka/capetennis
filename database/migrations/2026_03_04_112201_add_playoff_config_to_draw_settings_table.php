@@ -13,9 +13,11 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::table('draw_settings', function (Blueprint $table) {
-            $table->json('playoff_config')->nullable()->after('num_sets');
-        });
+        if (!Schema::hasColumn('draw_settings', 'playoff_config')) {
+            Schema::table('draw_settings', function (Blueprint $table) {
+                $table->json('playoff_config')->nullable()->after('num_sets');
+            });
+        }
     }
 
     /**
