@@ -533,9 +533,7 @@ class BankRefundController extends Controller
         }
       }
 
-      if (!($walletNet > 0 && $registration->user && $registration->user->wallet)) {
-        $this->refundExecutionService->executeBankRefund($registration, ['refund_method' => 'bank']);
-      }
+      $this->refundExecutionService->executeBankRefund($registration, ['refund_method' => 'bank']);
 
       activity('refund')
         ->performedOn($registration)

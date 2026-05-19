@@ -59,9 +59,15 @@ class RefundExecutionService
                 $transitioned = true;
                 $this->ledgerService->appendWalletCredit($wallet, $amount, $sourceType, $sourceId, $meta);
 
-                $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'wallet');
-                $locked->refund_status = 'completed';
-                $locked->refunded_at = now();
+                if ($this->supportsAttribute($locked, 'refund_method')) {
+                    $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'wallet');
+                }
+                if ($this->supportsAttribute($locked, 'refund_status')) {
+                    $locked->refund_status = 'completed';
+                }
+                if ($this->supportsAttribute($locked, 'refunded_at')) {
+                    $locked->refunded_at = now();
+                }
 
                 if (array_key_exists('refund_gross', $statusOverrides)) {
                     $locked->refund_gross = $statusOverrides['refund_gross'];
@@ -103,9 +109,15 @@ class RefundExecutionService
                 }
 
                 $transitioned = true;
-                $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'bank');
-                $locked->refund_status = 'completed';
-                $locked->refunded_at = now();
+                if ($this->supportsAttribute($locked, 'refund_method')) {
+                    $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'bank');
+                }
+                if ($this->supportsAttribute($locked, 'refund_status')) {
+                    $locked->refund_status = 'completed';
+                }
+                if ($this->supportsAttribute($locked, 'refunded_at')) {
+                    $locked->refunded_at = now();
+                }
 
                 if (array_key_exists('refund_gross', $statusOverrides)) {
                     $locked->refund_gross = $statusOverrides['refund_gross'];
@@ -130,5 +142,10 @@ class RefundExecutionService
         }
 
         return $completed;
+    }
+    private function supportsAttribute(Model $model, string $attribute): bool
+    {
+        return array_key_exists($attribute, $model->getAttributes())
+            || in_array($attribute, $model->getFillable(), true);
     }
 }
