@@ -27,6 +27,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\TeamPaymentOrder;
+use App\Domain\Payments\Services\TeamPaymentService;
 
 class TeamController extends Controller
 {
@@ -347,22 +348,7 @@ class TeamController extends Controller
     $total = round($entryFee + $regionFee, 2);
 
     // create or load TeamPaymentOrder (unique constraint prevents duplicates)
-    $order = \App\Models\TeamPaymentOrder::firstOrCreate(
-        [
-            'team_id' => $team->id,
-            'player_id' => $player->id,
-            'event_id' => $event->id,
-        ],
-        [
-            'user_id' => $user->id,
-            'total_amount' => $total,
-            'wallet_reserved' => 0,
-            'payfast_amount_due' => $total,
-            'wallet_debited' => false,
-            'payfast_paid' => false,
-            'pay_status' => false,
-        ]
-    );
+    $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
 
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
@@ -839,76 +825,36 @@ class TeamController extends Controller
       abort(403);
     }
 
-    DB::transaction(function () use ($order, $user) {
+    $order = app(TeamPaymentService::class)->finalizePayment($order, [
+      'payment_method' => 'WALLET',
+      'wallet_source_type' => 'team_registration_wallet_payment',
+      'wallet_meta' => [
+        'order_id' => $order->id,
+        'reference' => optional($order->event)->name ?? 'Team Registration',
+      ],
+      'pf_payment_id' => 'wallet-team-order-' . $order->id,
+      'payfast_amount_due' => 0,
+    ]);
 
-      if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
+    Log::info('TEAM WALLET COMPLETE SUCCESS', [
+      'order_id' => $order->id
+    ]);
 
-        Log::info('TEAM WALLET DEBIT', [
-          'order_id' => $order->id,
-          'amount' => $order->wallet_reserved
-        ]);
+    $teamWalletEvent = optional($order->event)->name ?? 'Team Event';
+    $teamWalletPlayer = \App\Models\Player::find($order->player_id);
 
-        $eventName = optional($order->event)->name ?? 'Team Registration';
-
-        app(\App\Services\Wallet\WalletService::class)->debit(
-          $user->wallet,
-          (float) $order->wallet_reserved,
-          'team_registration_wallet_payment',
-          $order->id,
-          [
-            'order_id' => $order->id,
-            'reference' => $eventName,
-          ]
-        );
-
-        activity('wallet')
-          ->performedOn($order)
-          ->causedBy($user)
-          ->withProperties([
-            'type' => 'debit',
-            'amount' => $order->wallet_reserved,
-            'reference' => $eventName,
-            'order_id' => $order->id,
-          ])
-          ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-
-        $order->wallet_debited = true;
-      }
-
-      $order->payfast_paid = true;
-      $order->pay_status = 1;
-      $order->save();
-
-      // Mark team player paid
-      $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
-        ->where('player_id', $order->player_id)
-        ->first();
-
-      if ($teamPlayer) {
-        $teamPlayer->pay_status = 1;
-        $teamPlayer->save();
-      }
-
-      Log::info('TEAM WALLET COMPLETE SUCCESS', [
-        'order_id' => $order->id
-      ]);
-
-      $teamWalletEvent = optional($order->event)->name ?? 'Team Event';
-      $teamWalletPlayer = \App\Models\Player::find($order->player_id);
-
-      activity('registration')
-        ->performedOn($order)
-        ->causedBy($user)
-        ->withProperties([
-          'order_id' => $order->id,
-          'event' => $teamWalletEvent,
-          'player' => $teamWalletPlayer ? trim($teamWalletPlayer->name . ' ' . $teamWalletPlayer->surname) : '',
-          'team_id' => $order->team_id,
-          'method' => 'wallet',
-          'amount' => $order->wallet_reserved,
-        ])
-        ->log("Team registration paid via wallet for {$teamWalletEvent}");
-    });
+    activity('registration')
+      ->performedOn($order)
+      ->causedBy($user)
+      ->withProperties([
+        'order_id' => $order->id,
+        'event' => $teamWalletEvent,
+        'player' => $teamWalletPlayer ? trim($teamWalletPlayer->name . ' ' . $teamWalletPlayer->surname) : '',
+        'team_id' => $order->team_id,
+        'method' => 'wallet',
+        'amount' => $order->wallet_reserved,
+      ])
+      ->log("Team registration paid via wallet for {$teamWalletEvent}");
 
     return redirect()->route('events.success', $order->event_id)
       ->with('success', 'Team payment completed using wallet.');
@@ -916,10 +862,11 @@ class TeamController extends Controller
   public function teamHybridReserve(Request $request)
   {
     $order = TeamPaymentOrder::findOrFail($request->order_id);
-
-    $order->wallet_reserved = $request->wallet_applied;
-    $order->payfast_amount_due = $request->remaining_amount;
-    $order->save();
+    $order = app(TeamPaymentService::class)->reservePayment(
+      $order,
+      (float) $request->wallet_applied,
+      (float) $request->remaining_amount
+    );
 
     if ($order->payfast_amount_due <= 0) {
       return redirect()->route('team.hybrid.complete', $order->id);
@@ -961,9 +908,7 @@ class TeamController extends Controller
       return back()->with('success', 'Order already paid.');
     }
 
-    $order->wallet_reserved = round($walletApplied, 2);
-    $order->payfast_amount_due = round($remaining, 2);
-    $order->save();
+    $order = app(TeamPaymentService::class)->reservePayment($order, round($walletApplied, 2), round($remaining, 2));
 
     if ($remaining <= 0) {
       return redirect()->route('team.hybrid.complete', $orderId);

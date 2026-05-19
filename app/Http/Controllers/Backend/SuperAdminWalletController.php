@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Payments\Services\LedgerService;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -28,16 +29,17 @@ class SuperAdminWalletController extends Controller
             return back()->withErrors(['amount' => 'Insufficient wallet balance for debit.']);
         }
 
-        $wallet->transactions()->create([
-            'type'        => $request->type,
-            'amount'      => $amount,
-            'source_type' => 'manual',
-            'source_id'   => auth()->id(),
-            'meta'        => [
-                'admin'     => auth()->user()->name,
-                'reference' => $request->reference,
-            ],
-        ]);
+        $meta = [
+            'admin' => auth()->user()->name,
+            'reference' => $request->reference,
+            'initiated_by' => 'super_admin_wallet_controller',
+        ];
+
+        if ($request->type === 'credit') {
+            app(LedgerService::class)->appendWalletCredit($wallet, $amount, 'manual', auth()->id(), $meta);
+        } else {
+            app(LedgerService::class)->appendWalletDebit($wallet, $amount, 'manual', auth()->id(), $meta);
+        }
 
         activity('wallet')
             ->performedOn($wallet)
@@ -58,53 +60,7 @@ class SuperAdminWalletController extends Controller
      */
     public function updateTransaction(Request $request, WalletTransaction $transaction)
     {
-        $request->validate([
-            'type'      => 'required|in:credit,debit',
-            'amount'    => 'required|numeric|min:0.01',
-            'reference' => 'nullable|string|max:255',
-        ]);
-
-        $wallet    = $transaction->wallet;
-        $oldType   = $transaction->type;
-        $oldAmount = $transaction->amount;
-
-        // Check new balance would not go negative after edit
-        if ($request->type === 'debit') {
-            // Reverse the current transaction's effect on the balance, then apply the new values.
-            // oldEffect: +amount for credit (increased balance), -amount for debit (decreased balance).
-            // newEffect: always negative since we're validating a debit change.
-            $oldEffect = $oldType === 'credit' ? $oldAmount : -$oldAmount;
-            $newEffect = -(float) $request->amount;
-            $newBalance = $wallet->balance - $oldEffect + $newEffect;
-            if ($newBalance < 0) {
-                return back()->withErrors(['amount' => 'Editing this transaction would result in a negative wallet balance.']);
-            }
-        }
-
-        $meta = $transaction->meta ?? [];
-        $meta['reference'] = $request->reference;
-        $meta['admin']     = auth()->user()->name;
-
-        $transaction->update([
-            'type'   => $request->type,
-            'amount' => (float) $request->amount,
-            'meta'   => $meta,
-        ]);
-
-        activity('wallet')
-            ->performedOn($wallet)
-            ->causedBy(auth()->user())
-            ->withProperties([
-                'transaction_id' => $transaction->id,
-                'old_type'       => $oldType,
-                'old_amount'     => $oldAmount,
-                'new_type'       => $request->type,
-                'new_amount'     => $request->amount,
-                'reference'      => $request->reference,
-            ])
-            ->log("Edited wallet transaction #{$transaction->id} for wallet #{$wallet->id}");
-
-        return back()->with('wallet_success', 'Transaction updated successfully.');
+        return back()->withErrors('Wallet ledger entries are locked. Create a compensating adjustment instead.');
     }
 
     /**
@@ -112,29 +68,7 @@ class SuperAdminWalletController extends Controller
      */
     public function destroyTransaction(WalletTransaction $transaction)
     {
-        $wallet = $transaction->wallet;
-
-        // Prevent deletion if it would push balance negative (debit transaction removal increases balance; credit removal decreases)
-        if ($transaction->type === 'credit') {
-            $newBalance = $wallet->balance - $transaction->amount;
-            if ($newBalance < 0) {
-                return back()->withErrors(['wallet' => 'Deleting this credit transaction would result in a negative wallet balance.']);
-            }
-        }
-
-        activity('wallet')
-            ->performedOn($wallet)
-            ->causedBy(auth()->user())
-            ->withProperties([
-                'transaction_id' => $transaction->id,
-                'type'           => $transaction->type,
-                'amount'         => $transaction->amount,
-            ])
-            ->log("Deleted wallet transaction #{$transaction->id} from wallet #{$wallet->id}");
-
-        $transaction->delete();
-
-        return back()->with('wallet_success', 'Transaction deleted.');
+        return back()->withErrors('Wallet ledger entries are immutable. Create a compensating adjustment instead.');
     }
 
     /**
@@ -142,18 +76,6 @@ class SuperAdminWalletController extends Controller
      */
     public function destroyWallet(Wallet $wallet)
     {
-        $payable = $wallet->payable;
-        $name    = $payable?->name ?? "Wallet #{$wallet->id}";
-
-        activity('wallet')
-            ->performedOn($wallet)
-            ->causedBy(auth()->user())
-            ->withProperties(['wallet_id' => $wallet->id, 'user' => $name])
-            ->log("Deleted entire wallet #{$wallet->id} for {$name}");
-
-        $wallet->transactions()->delete();
-        $wallet->delete();
-
-        return back()->with('wallet_success', "Wallet for {$name} deleted.");
+        return back()->withErrors('Wallet deletion is locked in production-safe mode.');
     }
 }

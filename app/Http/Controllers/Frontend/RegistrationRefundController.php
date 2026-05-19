@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RefundMethodRequest;
+use App\Domain\Finance\Services\RefundRequestService;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
 use App\Services\Wallet\WalletService;
@@ -138,38 +140,27 @@ class RegistrationRefundController extends Controller
 
       try {
 
-        \DB::transaction(function () use ($user, $registration, $gross, $fee, $net) {
-          // Pessimistic lock: prevents a concurrent request from issuing a second refund
-          // before this transaction commits.
-          $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-          if ($locked->isRefundCompleted() || $locked->isRefundPending()) {
-            throw new DuplicateTransactionException('Refund already processed or pending.');
-          }
-
-          app(WalletService::class)->credit(
-            $user->wallet,
-            (float) $net,
-            'event_registration_refund',
-            $registration->id,
-            [
-              'registration_id' => $registration->id,
-              'event_id' => $registration->categoryEvent->event_id,
-              'gross' => $gross,
-              'fee' => $fee,
-              'method' => 'wallet',
-              'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
-            ]
-          );
-
-          $registration->update([
+        app(RefundExecutionService::class)->executeWalletRefund(
+          $registration,
+          $user->wallet,
+          (float) $net,
+          'event_registration_refund',
+          $registration->id,
+          [
+            'registration_id' => $registration->id,
+            'event_id' => $registration->categoryEvent->event_id,
+            'gross' => $gross,
+            'fee' => $fee,
+            'method' => 'wallet',
+            'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
+          ],
+          [
             'refund_method' => 'wallet',
-            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refund_gross' => $gross,
             'refund_fee' => $fee,
             'refund_net' => $net,
-            'refunded_at' => now(),
-          ]);
-        });
+          ]
+        );
 
         $refEventName = optional($registration->categoryEvent?->event)->name ?? 'Event Refund';
 
@@ -223,7 +214,7 @@ class RegistrationRefundController extends Controller
         ]);
 
         // Sync model state with wallet reality
-        $registration->update([
+        app(RefundRequestService::class)->requestRegistrationRefund($registration, [
           'refund_method' => 'wallet',
           'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
           'refunded_at' => now(),
@@ -249,26 +240,18 @@ class RegistrationRefundController extends Controller
 
     // Wrap the initial status write in a transaction with pessimistic lock
     // so that concurrent requests cannot both set the status to 'pending'.
-    \DB::transaction(function () use ($registration, $gross, $fee, $net, $request) {
-      $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-      if ($locked->isRefundCompleted() || $locked->isRefundPending()) {
-        // Use a signal exception so the outer code can return the right response
-        throw new \App\Exceptions\RefundAlreadyProcessedException();
-      }
-
-      $registration->update([
-        'refund_method' => 'bank',
-        'refund_status' => CategoryEventRegistration::REFUND_PENDING,
-        'refund_gross' => $gross,
-        'refund_fee' => $fee,
-        'refund_net' => $net,
-        'refund_account_name' => $request->account_name,
-        'refund_bank_name' => $request->bank_name,
-        'refund_account_number' => $request->account_number,
-        'refund_branch_code' => $request->branch_code,
-        'refund_account_type' => $request->account_type,
-      ]);
-    });
+    app(RefundRequestService::class)->requestRegistrationRefund($registration, [
+      'refund_method' => 'bank',
+      'refund_status' => CategoryEventRegistration::REFUND_PENDING,
+      'refund_gross' => $gross,
+      'refund_fee' => $fee,
+      'refund_net' => $net,
+      'refund_account_name' => $request->account_name,
+      'refund_bank_name' => $request->bank_name,
+      'refund_account_number' => $request->account_number,
+      'refund_branch_code' => $request->branch_code,
+      'refund_account_type' => $request->account_type,
+    ]);
 
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $payment['pf_payment_id'] ?? null;
@@ -295,7 +278,8 @@ class RegistrationRefundController extends Controller
           // wallet funds carry no PayFast fee.
           if ($walletNet > 0) {
             try {
-              app(WalletService::class)->credit(
+              app(RefundExecutionService::class)->executeWalletRefund(
+                $registration,
                 $user->wallet,
                 $walletNet,
                 'event_registration_bank_wallet_refund',
@@ -307,6 +291,12 @@ class RegistrationRefundController extends Controller
                   'fee' => 0,
                   'method' => 'hybrid_bank',
                   'reference' => optional($registration->categoryEvent?->event)->name ?? 'Event Refund',
+                ],
+                [
+                  'refund_method' => 'bank',
+                  'refund_gross' => $gross,
+                  'refund_fee' => $fee,
+                  'refund_net' => $net,
                 ]
               );
 
@@ -323,9 +313,11 @@ class RegistrationRefundController extends Controller
             }
           }
 
-          $registration->update([
-            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
-            'refunded_at' => now(),
+          app(RefundExecutionService::class)->executeBankRefund($registration, [
+            'refund_method' => 'bank',
+            'refund_gross' => $gross,
+            'refund_fee' => $fee,
+            'refund_net' => $net,
           ]);
 
           activity('refund')
@@ -437,7 +429,8 @@ class RegistrationRefundController extends Controller
     }
 
     try {
-      app(WalletService::class)->credit(
+      app(RefundExecutionService::class)->executeWalletRefund(
+        $registration,
         $wallet,
         (float) $registration->refund_net,
         'event_registration_refund',
@@ -448,13 +441,14 @@ class RegistrationRefundController extends Controller
           'gross' => $registration->refund_gross,
           'fee' => $registration->refund_fee,
           'method' => 'wallet',
+        ],
+        [
+          'refund_method' => 'wallet',
+          'refund_gross' => $registration->refund_gross,
+          'refund_fee' => $registration->refund_fee,
+          'refund_net' => $registration->refund_net,
         ]
       );
-
-      $registration->update([
-        'refund_status' => 'completed',
-        'refunded_at' => now(),
-      ]);
 
       Log::info('WALLET REFUND COMPLETED', [
         'registration_id' => $registration->id,
@@ -575,9 +569,11 @@ class RegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
         }
 
-        $order->update([
-          'refund_status' => 'completed',
-          'refunded_at' => now(),
+        app(RefundExecutionService::class)->executeBankRefund($order, [
+          'refund_method' => 'bank',
+          'refund_gross' => $order->refund_gross,
+          'refund_fee' => $order->refund_fee,
+          'refund_net' => $order->refund_net,
         ]);
 
         activity('refund')
@@ -603,9 +599,11 @@ class RegistrationRefundController extends Controller
     }
 
     // No PayFast transaction — mark as completed (manual)
-    $order->update([
-      'refund_status' => 'completed',
-      'refunded_at' => now(),
+    app(RefundExecutionService::class)->executeBankRefund($order, [
+      'refund_method' => 'bank',
+      'refund_gross' => $order->refund_gross,
+      'refund_fee' => $order->refund_fee,
+      'refund_net' => $order->refund_net,
     ]);
 
     return back()->with('success', 'Team bank refund marked as completed.');

@@ -9,6 +9,7 @@ use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
 use App\Domain\Payments\Services\PaymentOrchestrator;
+use App\Domain\Payments\Services\RegistrationPaymentService;
 
 class RegistrationPaymentController extends Controller
 {
@@ -161,9 +162,7 @@ class RegistrationPaymentController extends Controller
     $remaining = round($total - $walletApplied, 2);
 
     try {
-      $order->wallet_reserved = $walletApplied;
-      $order->payfast_amount_due = $remaining;
-      $order->save();
+      $order = app(RegistrationPaymentService::class)->reservePayment($order, $walletApplied, $remaining);
 
       Log::info('WALLET APPLIED TO ORDER', [
         'order_id' => $order->id,
@@ -232,13 +231,13 @@ class RegistrationPaymentController extends Controller
         ->route('frontend.registration.success', $orderId);
     }
 
-    $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+    $order = app(RegistrationPaymentService::class)->finalizePayment($order, [
       'payment_method' => 'WALLET',
       'wallet_source_type' => 'event_registration_wallet_payment',
       'wallet_meta' => ['order_id' => $order->id],
       'payfast_amount_due' => 0,
+      'pf_payment_id' => 'wallet-order-' . $order->id,
     ]);
-    $this->markOrderPaid($order->id, 'WALLET');
 
     $walletEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
     $walletPlayer = optional($order->items->first())->player_id
@@ -337,21 +336,19 @@ class RegistrationPaymentController extends Controller
 
     try {
 
-      $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+      $order = app(RegistrationPaymentService::class)->finalizePayment($order, [
         'payment_method' => 'PAYFAST',
         'wallet_source_type' => 'event_registration_wallet_payment',
         'wallet_meta' => ['order_id' => $order->id],
         'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
         'payfast_amount_due' => $amountGross,
+        'user_id' => $order->user_id,
       ]);
 
       Log::info('PAYFAST ORDER MARKED PAID', [
         'order_id' => $order->id,
         'pf_payment_id' => $order->payfast_pf_payment_id
       ]);
-
-      // 🔗 Attach registrations
-      $this->markOrderPaid($order->id, 'PAYFAST');
 
     } catch (\Throwable $e) {
 
@@ -407,23 +404,8 @@ class RegistrationPaymentController extends Controller
    */
   private function markOrderPaid(int $orderId, string $method)
   {
-    $items = RegistrationOrderItems::where('order_id', $orderId)->get();
-
-    foreach ($items as $item) {
-
-      $registration = Registration::find($item->registration_id);
-      if (!$registration)
-        continue;
-
-      $registration->players()->syncWithoutDetaching([$item->player_id]);
-
-      $registration->categoryEvents()->syncWithoutDetaching([
-        $item->category_event_id => [
-          'payment_status_id' => 1,
-          'user_id' => $item->user_id,
-          'pf_transaction_id' => $method . '-' . now()->timestamp,
-        ],
-      ]);
-    }
+    $order = RegistrationOrder::findOrFail($orderId);
+    $pfReference = $method === 'WALLET' ? 'wallet-order-' . $orderId : $order->payfast_pf_payment_id;
+    app(RegistrationPaymentService::class)->markOrderRegistrationsPaid($order, $pfReference, $order->user_id);
   }
 }

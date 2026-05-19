@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Domain\Payments\Services\LedgerService;
 use Illuminate\Http\Request;
 
 class WalletTransactionController extends Controller
@@ -49,17 +50,17 @@ class WalletTransactionController extends Controller
             return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
         }
 
-        // Create transaction (balance is computed from transactions)
-        $wallet->transactions()->create([
-            'type' => $request->type,
-            'amount' => $amount,
-            'source_type' => 'manual',
-            'source_id' => auth()->id(),
-            'meta' => [
-                'admin' => auth()->user()->name,
-                'reference' => $request->reference,
-            ],
-        ]);
+        $meta = [
+            'admin' => auth()->user()->name,
+            'reference' => $request->reference,
+            'initiated_by' => 'manual_wallet_controller',
+        ];
+
+        if ($request->type === 'credit') {
+            app(LedgerService::class)->appendWalletCredit($wallet, $amount, 'manual', auth()->id(), $meta);
+        } else {
+            app(LedgerService::class)->appendWalletDebit($wallet, $amount, 'manual', auth()->id(), $meta);
+        }
 
         activity('wallet')
           ->performedOn($wallet)

@@ -8,8 +8,19 @@ use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
 use App\Models\CategoryEventRegistration;
+use App\Models\ClothingOrder;
+use App\Models\Order;
+use App\Models\RegistrationOrder;
 use App\Models\TeamPaymentOrder;
+use App\Models\TeamPlayer;
+use App\Models\Transaction;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Observers\FinancialMutationObserver;
 use App\Observers\RegistrationObserver;
+use App\Observers\TransactionObserver;
+use App\Observers\WalletObserver;
+use App\Observers\WalletTransactionObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,6 +42,15 @@ class AppServiceProvider extends ServiceProvider
     View::share('assetVersion', config('app.asset_version', '1.0.0'));
 
     CategoryEventRegistration::observe(RegistrationObserver::class);
+    Wallet::observe(WalletObserver::class);
+    WalletTransaction::observe(WalletTransactionObserver::class);
+    Transaction::observe(TransactionObserver::class);
+    RegistrationOrder::observe(FinancialMutationObserver::class);
+    TeamPaymentOrder::observe(FinancialMutationObserver::class);
+    CategoryEventRegistration::observe(FinancialMutationObserver::class);
+    ClothingOrder::observe(FinancialMutationObserver::class);
+    Order::observe(FinancialMutationObserver::class);
+    TeamPlayer::observe(FinancialMutationObserver::class);
     // ✅ Global admin badge: pending bank refunds (registrations + team refunds)
     View::composer('*', function ($view) {
 

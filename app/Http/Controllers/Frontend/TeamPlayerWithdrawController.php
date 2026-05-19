@@ -12,7 +12,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use App\Services\Wallet\WalletService;
+use App\Domain\Finance\Services\RefundRequestService;
+use App\Domain\Payments\Services\TeamPaymentService;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 
 class TeamPlayerWithdrawController extends Controller
@@ -57,8 +59,7 @@ class TeamPlayerWithdrawController extends Controller
 
     // Paid slot: mark as unpaid and redirect to refund or notify no-refund
     if ((int) $teamPlayer->pay_status === 1) {
-      $teamPlayer->pay_status = 0;
-      $teamPlayer->save();
+      app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, ['pay_status' => 0]);
 
       if ($refundAllowed) {
         // Redirect user to refund choice so they can select wallet or bank refund
@@ -71,8 +72,7 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     // Unpaid: clear the slot to make it available
-    $teamPlayer->player_id = 0;
-    $teamPlayer->save();
+    app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0]);
 
     return back()->with('success', 'Player withdrawn (no payment). Slot is now available.');
   }
@@ -177,32 +177,31 @@ class TeamPlayerWithdrawController extends Controller
     // WALLET
     if ($request->input('method') === 'wallet') {
       try {
-        DB::transaction(function () use ($order, $user, $teamPlayer, $gross, $fee, $net, $team, $player) {
-          app(WalletService::class)->credit(
-            $order->user->wallet,
-            (float) $net,
-            'team_player_refund',
-            $order->id,
-            [
-              'team_id' => $team->id,
-              'player_id' => $player->id,
-              'gross' => $gross,
-              'fee' => $fee,
-              'method' => 'wallet',
-              'reference' => optional($order->event)->name ?? 'Team Refund',
-            ]
-          );
-
-          // clear slot and mark order unpaid
-          $teamPlayer->player_id = 0;
-          $teamPlayer->pay_status = 0;
-          $teamPlayer->save();
-
-          $order->pay_status = 0;
-          $order->payfast_paid = false;
-          $order->wallet_debited = false;
-          $order->save();
-        });
+        app(RefundExecutionService::class)->executeWalletRefund(
+          $order,
+          $order->user->wallet,
+          (float) $net,
+          'team_player_refund',
+          $order->id,
+          [
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'gross' => $gross,
+            'fee' => $fee,
+            'method' => 'wallet',
+            'reference' => optional($order->event)->name ?? 'Team Refund',
+          ],
+          [
+            'refund_method' => 'wallet',
+            'refund_gross' => $gross,
+            'refund_fee' => $fee,
+            'refund_net' => $net,
+          ]
+        );
+        app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, [
+          'player_id' => 0,
+          'pay_status' => 0,
+        ]);
 
         $teamRefEventName = optional($order->event)->name ?? 'Team Refund';
 
@@ -245,12 +244,10 @@ class TeamPlayerWithdrawController extends Controller
 
       } catch (DuplicateTransactionException $e) {
         // Sync state
-        $teamPlayer->player_id = 0;
-        $teamPlayer->pay_status = 0;
-        $teamPlayer->save();
-
-        $order->pay_status = 0;
-        $order->save();
+        app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, [
+          'player_id' => 0,
+          'pay_status' => 0,
+        ]);
 
         return redirect()->route('events.show', [$eventId])->with('success', 'Refund already processed.');
       } catch (\Throwable $e) {
@@ -264,25 +261,23 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     // BANK: persist bank refund details and mark refund pending
-    DB::transaction(function () use ($order, $teamPlayer, $request, $gross, $fee, $net) {
-      $teamPlayer->player_id = 0;
-      $teamPlayer->pay_status = 0;
-      $teamPlayer->save();
-
-      $order->update([
-        'pay_status' => 0,
-        'refund_method' => 'bank',
-        'refund_status' => 'pending',
-        'refund_gross' => $gross,
-        'refund_fee' => $fee,
-        'refund_net' => $net,
-        'refund_account_name' => $request->account_name ?? null,
-        'refund_bank_name' => $request->bank_name ?? null,
-        'refund_account_number' => $request->account_number ?? null,
-        'refund_branch_code' => $request->branch_code ?? null,
-        'refund_account_type' => $request->account_type ?? null,
-      ]);
-    });
+    app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, [
+      'player_id' => 0,
+      'pay_status' => 0,
+    ]);
+    app(RefundRequestService::class)->requestTeamRefund($order, [
+      'pay_status' => 0,
+      'refund_method' => 'bank',
+      'refund_status' => 'pending',
+      'refund_gross' => $gross,
+      'refund_fee' => $fee,
+      'refund_net' => $net,
+      'refund_account_name' => $request->account_name ?? null,
+      'refund_bank_name' => $request->bank_name ?? null,
+      'refund_account_number' => $request->account_number ?? null,
+      'refund_branch_code' => $request->branch_code ?? null,
+      'refund_account_type' => $request->account_type ?? null,
+    ]);
 
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $order->payfast_pf_payment_id ?? null;
@@ -300,9 +295,11 @@ class TeamPlayerWithdrawController extends Controller
         ]);
 
         if ($result['success']) {
-          $order->update([
-            'refund_status' => 'completed',
-            'refunded_at' => now(),
+          app(RefundExecutionService::class)->executeBankRefund($order, [
+            'refund_method' => 'bank',
+            'refund_gross' => $gross,
+            'refund_fee' => $fee,
+            'refund_net' => $net,
           ]);
 
           activity('refund')

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Finance\Services\RefundRequestService;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\User;
@@ -93,10 +95,10 @@ class AdminRegistrationRefundController extends Controller
 
     // ── No Refund ──────────────────────────────────────────────────────────
     if ($method === 'none') {
-      $registration->update([
-        'refund_method' => null,
-        'refund_status' => 'not_refunded',
-      ]);
+        app(RefundRequestService::class)->requestRegistrationRefund($registration, [
+          'refund_method' => null,
+          'refund_status' => 'not_refunded',
+        ]);
 
       activity('refund')
         ->performedOn($registration)
@@ -143,32 +145,28 @@ class AdminRegistrationRefundController extends Controller
       $user = $payer; // used in success message below
 
       try {
-        DB::transaction(function () use ($registration, $wallet, $gross, $event) {
-          app(WalletService::class)->credit(
-            $wallet,
-            $gross,
-            'admin_refund',
-            $registration->id,
-            [
-              'registration_id' => $registration->id,
-              'event_id'        => $event->id,
-              'gross'           => $gross,
-              'fee'             => 0,
-              'method'          => 'wallet',
-              'reference'       => $event->name,
-              'initiated_by'    => 'admin',
-            ]
-          );
-
-          $registration->update([
+        app(RefundExecutionService::class)->executeWalletRefund(
+          $registration,
+          $wallet,
+          $gross,
+          'admin_refund',
+          $registration->id,
+          [
+            'registration_id' => $registration->id,
+            'event_id'        => $event->id,
+            'gross'           => $gross,
+            'fee'             => 0,
+            'method'          => 'wallet',
+            'reference'       => $event->name,
+            'initiated_by'    => 'admin',
+          ],
+          [
             'refund_method' => 'wallet',
-            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refund_gross'  => $gross,
             'refund_fee'    => 0,
             'refund_net'    => $gross,
-            'refunded_at'   => now(),
-          ]);
-        });
+          ]
+        );
 
         activity('refund')
           ->performedOn($registration)
@@ -196,7 +194,7 @@ class AdminRegistrationRefundController extends Controller
           ->with('success', 'Wallet refund of R' . number_format($gross, 2) . " credited to {$user->name}'s wallet.");
 
       } catch (DuplicateTransactionException $e) {
-        $registration->update([
+        app(RefundRequestService::class)->requestRegistrationRefund($registration, [
           'refund_method' => 'wallet',
           'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
           'refunded_at'   => now(),
@@ -247,13 +245,11 @@ class AdminRegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error'));
         }
 
-        $registration->update([
+        app(RefundExecutionService::class)->executeBankRefund($registration, [
           'refund_method' => 'payfast',
-          'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
           'refund_gross'  => $gross,
           'refund_fee'    => 0,
           'refund_net'    => $gross,
-          'refunded_at'   => now(),
         ]);
 
         activity('refund')
@@ -317,7 +313,7 @@ class AdminRegistrationRefundController extends Controller
         ->with('info', 'Registration is not in a withdrawn state — nothing to revert.');
     }
 
-    $registration->update([
+    app(RefundRequestService::class)->requestRegistrationRefund($registration, [
       'status'        => 'active',
       'withdrawn_at'  => null,
       'refund_status' => null,

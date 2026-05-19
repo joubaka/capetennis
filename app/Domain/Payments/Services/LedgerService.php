@@ -6,8 +6,10 @@ use App\Events\WalletCredited;
 use App\Events\WalletDebited;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Support\FinanceMutationScope;
 use App\Services\Wallet\WalletService;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class LedgerService
 {
@@ -22,8 +24,19 @@ class LedgerService
         int $sourceId,
         array $meta = []
     ): WalletTransaction {
-        $transaction = $this->walletService->credit($wallet, $amount, $sourceType, $sourceId, $meta);
-        event(new WalletCredited($transaction, ['source_type' => $sourceType, 'source_id' => $sourceId] + $meta));
+        $transaction = FinanceMutationScope::run(['wallet_transaction_write', 'ledger_write'], function () use (
+            $wallet,
+            $amount,
+            $sourceType,
+            $sourceId,
+            $meta
+        ) {
+            return $this->walletService->credit($wallet, $amount, $sourceType, $sourceId, $meta);
+        });
+
+        DB::afterCommit(function () use ($transaction, $sourceType, $sourceId, $meta) {
+            event(new WalletCredited($transaction, ['source_type' => $sourceType, 'source_id' => $sourceId] + $meta));
+        });
 
         return $transaction;
     }
@@ -35,8 +48,19 @@ class LedgerService
         int $sourceId,
         array $meta = []
     ): WalletTransaction {
-        $transaction = $this->walletService->debit($wallet, $amount, $sourceType, $sourceId, $meta);
-        event(new WalletDebited($transaction, ['source_type' => $sourceType, 'source_id' => $sourceId] + $meta));
+        $transaction = FinanceMutationScope::run(['wallet_transaction_write', 'ledger_write'], function () use (
+            $wallet,
+            $amount,
+            $sourceType,
+            $sourceId,
+            $meta
+        ) {
+            return $this->walletService->debit($wallet, $amount, $sourceType, $sourceId, $meta);
+        });
+
+        DB::afterCommit(function () use ($transaction, $sourceType, $sourceId, $meta) {
+            event(new WalletDebited($transaction, ['source_type' => $sourceType, 'source_id' => $sourceId] + $meta));
+        });
 
         return $transaction;
     }
@@ -49,4 +73,3 @@ class LedgerService
         return "{$class}:{$id}:" . md5(json_encode($context));
     }
 }
-
