@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('event_expenses', 'convenor_name')) {
+            return;
+        }
+
         Schema::table('event_expenses', function (Blueprint $table) {
             $table->string('convenor_name', 100)->nullable()->after('expense_type');
         });

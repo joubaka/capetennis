@@ -19,6 +19,10 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         foreach ($this->tables as $table) {
             if (Schema::hasTable($table)) {
                 DB::statement("ALTER TABLE `{$table}` ENGINE = InnoDB");
@@ -28,6 +32,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         foreach ($this->tables as $table) {
             if (Schema::hasTable($table)) {
                 DB::statement("ALTER TABLE `{$table}` ENGINE = MyISAM");

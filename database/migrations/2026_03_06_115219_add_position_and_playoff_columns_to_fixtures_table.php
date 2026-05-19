@@ -14,14 +14,30 @@ return new class extends Migration
     public function up()
     {
         Schema::table('fixtures', function (Blueprint $table) {
-            $table->unsignedInteger('position')->nullable()->after('match_status');
-            $table->string('playoff_type')->nullable()->after('position');
-            $table->unsignedInteger('feeder_slot')->nullable()->after('playoff_type');
-            $table->unsignedBigInteger('region1')->nullable()->after('feeder_slot');
-            $table->unsignedBigInteger('region2')->nullable()->after('region1');
-            $table->unsignedInteger('tie_nr')->nullable()->after('region2');
-            $table->unsignedInteger('home_rank_nr')->nullable()->after('tie_nr');
-            $table->unsignedInteger('away_rank_nr')->nullable()->after('home_rank_nr');
+            if (! Schema::hasColumn('fixtures', 'position')) {
+                $table->unsignedInteger('position')->nullable()->after('match_status');
+            }
+            if (! Schema::hasColumn('fixtures', 'playoff_type')) {
+                $table->string('playoff_type')->nullable()->after('position');
+            }
+            if (! Schema::hasColumn('fixtures', 'feeder_slot')) {
+                $table->unsignedInteger('feeder_slot')->nullable()->after('playoff_type');
+            }
+            if (! Schema::hasColumn('fixtures', 'region1')) {
+                $table->unsignedBigInteger('region1')->nullable()->after('feeder_slot');
+            }
+            if (! Schema::hasColumn('fixtures', 'region2')) {
+                $table->unsignedBigInteger('region2')->nullable()->after('region1');
+            }
+            if (! Schema::hasColumn('fixtures', 'tie_nr')) {
+                $table->unsignedInteger('tie_nr')->nullable()->after('region2');
+            }
+            if (! Schema::hasColumn('fixtures', 'home_rank_nr')) {
+                $table->unsignedInteger('home_rank_nr')->nullable()->after('tie_nr');
+            }
+            if (! Schema::hasColumn('fixtures', 'away_rank_nr')) {
+                $table->unsignedInteger('away_rank_nr')->nullable()->after('home_rank_nr');
+            }
         });
     }
 
