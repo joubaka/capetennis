@@ -41,10 +41,11 @@ class PaymentOrchestrator
     public function finalizePayment(Model $order, array $context = []): Model
     {
         $orderClass = get_class($order);
+        $transitioned = false;
 
         try {
-            $finalized = FinanceMutationScope::run('payment_state_write', function () use ($order, $orderClass, $context) {
-                return DB::transaction(function () use ($order, $orderClass, $context) {
+            $finalized = FinanceMutationScope::run('payment_state_write', function () use ($order, $orderClass, $context, &$transitioned) {
+                return DB::transaction(function () use ($order, $orderClass, $context, &$transitioned) {
                     /** @var Model $locked */
                     $locked = $orderClass::query()->lockForUpdate()->with('user.wallet')->findOrFail($order->getKey());
 
@@ -82,6 +83,7 @@ class PaymentOrchestrator
                     }
 
                     $locked->save();
+                    $transitioned = true;
 
                     return $locked;
                 });
@@ -93,9 +95,11 @@ class PaymentOrchestrator
             throw $e;
         }
 
-        DB::afterCommit(function () use ($finalized, $context) {
-            event(new PaymentCompleted($finalized, $context));
-        });
+        if ($transitioned) {
+            DB::afterCommit(function () use ($finalized, $context) {
+                event(new PaymentCompleted($finalized, $context));
+            });
+        }
 
         return $finalized;
     }
