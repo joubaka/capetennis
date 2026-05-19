@@ -34,6 +34,16 @@ return [
     'passphrase_live'    => env('PAYFAST_PASSPHRASE_LIVE'),
     'passphrase_sandbox' => env('PAYFAST_PASSPHRASE_SANDBOX'),
     'sandbox'            => env('PAYFAST_SANDBOX', false),
+    'live_url'           => env('PAYFAST_LIVE_URL', 'https://www.payfast.co.za/eng/process'),
+    'sandbox_url'        => env('PAYFAST_SANDBOX_URL', 'https://sandbox.payfast.co.za/eng/process'),
+    'live_merchant_id'   => env('PAYFAST_LIVE_MERCHANT_ID'),
+    'live_merchant_key'  => env('PAYFAST_LIVE_MERCHANT_KEY'),
+    'sandbox_merchant_id'=> env('PAYFAST_SANDBOX_MERCHANT_ID'),
+    'sandbox_merchant_key'=> env('PAYFAST_SANDBOX_MERCHANT_KEY'),
+    'notify_url'         => env('PAYFAST_NOTIFY_URL', '/notify'),
+    'notify_team_url'    => env('PAYFAST_NOTIFY_TEAM_URL', '/notify_team'),
+    'cancel_url'         => env('PAYFAST_CANCEL_URL', '/cancel'),
+    'return_url'         => env('PAYFAST_RETURN_URL', '/'),
   ],
 
 ];

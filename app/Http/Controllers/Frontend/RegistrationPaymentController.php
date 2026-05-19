@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
-use App\Services\Wallet\WalletService;
+use App\Domain\Payments\Services\PaymentOrchestrator;
 
 class RegistrationPaymentController extends Controller
 {
@@ -70,13 +69,7 @@ class RegistrationPaymentController extends Controller
         return back()->withErrors('Insufficient wallet balance.');
       }
 
-      DB::transaction(function () use ($order, $walletApplied, $remaining) {
-
-        $order->wallet_reserved = $walletApplied;
-        $order->payfast_amount_due = $remaining;
-        $order->wallet_debited = false;
-        $order->save();
-      });
+      $order = app(PaymentOrchestrator::class)->initiatePayment($order, $walletApplied, $remaining);
 
       Log::info('HYBRID RESERVED', [
         'order_id' => $order->id,
@@ -239,47 +232,13 @@ class RegistrationPaymentController extends Controller
         ->route('frontend.registration.success', $orderId);
     }
 
-    DB::transaction(function () use ($user, $order) {
-
-      if ($order->wallet_reserved > 0) {
-
-        Log::info('HYBRID COMPLETE DEBIT', [
-          'order_id' => $order->id,
-          'amount' => $order->wallet_reserved,
-        ]);
-
-        $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
-
-        app(WalletService::class)->debit(
-          $user->wallet,
-          $order->wallet_reserved,
-          'event_registration_wallet_payment',
-          $order->id,
-          [
-            'order_id' => $order->id,
-            'reference' => $eventName,
-          ]
-        );
-
-        activity('wallet')
-          ->performedOn($order)
-          ->causedBy($user)
-          ->withProperties([
-            'type' => 'debit',
-            'amount' => $order->wallet_reserved,
-            'reference' => $eventName,
-            'order_id' => $order->id,
-          ])
-          ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-      }
-
-      $order->wallet_debited = true;
-      $order->payfast_paid = true;
-      $order->pay_status = 1;
-      $order->save();
-
-      $this->markOrderPaid($order->id, 'WALLET');
-    });
+    $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+      'payment_method' => 'WALLET',
+      'wallet_source_type' => 'event_registration_wallet_payment',
+      'wallet_meta' => ['order_id' => $order->id],
+      'payfast_amount_due' => 0,
+    ]);
+    $this->markOrderPaid($order->id, 'WALLET');
 
     $walletEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
     $walletPlayer = optional($order->items->first())->player_id
@@ -378,42 +337,21 @@ class RegistrationPaymentController extends Controller
 
     try {
 
-      DB::transaction(function () use ($order, $payfastData) {
+      $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+        'payment_method' => 'PAYFAST',
+        'wallet_source_type' => 'event_registration_wallet_payment',
+        'wallet_meta' => ['order_id' => $order->id],
+        'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
+        'payfast_amount_due' => $amountGross,
+      ]);
 
-        // 💰 Debit reserved wallet portion once
-        if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
+      Log::info('PAYFAST ORDER MARKED PAID', [
+        'order_id' => $order->id,
+        'pf_payment_id' => $order->payfast_pf_payment_id
+      ]);
 
-          Log::info('PAYFAST DEBITING WALLET', [
-            'order_id' => $order->id,
-            'amount' => $order->wallet_reserved,
-            'wallet_balance_before' => $order->user->wallet->balance
-          ]);
-
-          app(WalletService::class)->debit(
-            $order->user->wallet,
-            $order->wallet_reserved,
-            'event_registration_wallet_payment',
-            $order->id,
-            ['order_id' => $order->id]
-          );
-
-          $order->wallet_debited = true;
-        }
-
-        // ✅ Mark order fully paid
-        $order->payfast_paid = true;
-        $order->pay_status = 1;
-        $order->payfast_pf_payment_id = $payfastData['pf_payment_id'] ?? null;
-        $order->save();
-
-        Log::info('PAYFAST ORDER MARKED PAID', [
-          'order_id' => $order->id,
-          'pf_payment_id' => $order->payfast_pf_payment_id
-        ]);
-
-        // 🔗 Attach registrations
-        $this->markOrderPaid($order->id, 'PAYFAST');
-      });
+      // 🔗 Attach registrations
+      $this->markOrderPaid($order->id, 'PAYFAST');
 
     } catch (\Throwable $e) {
 
@@ -452,9 +390,7 @@ class RegistrationPaymentController extends Controller
     $order = RegistrationOrder::find($orderId);
 
     if ($order) {
-      $order->wallet_reserved = 0;
-      $order->payfast_amount_due = 0;
-      $order->save();
+      app(PaymentOrchestrator::class)->cancelPayment($order);
     }
 
     Log::info('HYBRID PAYMENT CANCELLED', [

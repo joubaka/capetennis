@@ -23,6 +23,7 @@ use App\Models\TeamPlayer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\SiteSetting;
+use App\Domain\Payments\Services\PaymentOrchestrator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -446,49 +447,17 @@ class RegisterController extends Controller
           throw new \Exception("Amount mismatch. Expected {$expectedAmount}, got {$paidAmount}");
         }
 
-        // Restore payfast_amount_due so the order record is accurate
-        $order->payfast_amount_due = $paidAmount;
-
-        // 3️⃣ Mark PayFast portion
-        $order->payfast_paid = true;
-        $order->pay_status = 1;
-        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
-        $order->save();
-
-        // 4️⃣ Debit wallet if reserved
-        if (
-          $order->wallet_reserved > 0 &&
-          $order->wallet_debited === false
-        ) {
-
-          $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
-
-          app(\App\Services\Wallet\WalletService::class)->debit(
-            $order->user->wallet,
-            (float) $order->wallet_reserved,
-            'event_registration_wallet_payment',
-            $order->id,
-            [
-              'order_id' => $order->id,
-              'source' => 'hybrid_notify',
-              'reference' => $eventName,
-            ]
-          );
-
-          activity('wallet')
-            ->performedOn($order)
-            ->causedBy($order->user)
-            ->withProperties([
-              'type' => 'debit',
-              'amount' => $order->wallet_reserved,
-              'reference' => $eventName,
-              'order_id' => $order->id,
-            ])
-            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-
-          $order->wallet_debited = true;
-          $order->save();
-        }
+        $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+          'payment_method' => 'PAYFAST',
+          'wallet_source_type' => 'event_registration_wallet_payment',
+          'wallet_meta' => [
+            'order_id' => $order->id,
+            'source' => 'hybrid_notify',
+            'reference' => optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration',
+          ],
+          'pf_payment_id' => $data['pf_payment_id'] ?? null,
+          'payfast_amount_due' => $paidAmount,
+        ]);
 
         // 5️⃣ Mark registrations as paid
         foreach ($order->items as $item) {
@@ -941,69 +910,21 @@ class RegisterController extends Controller
           throw new \Exception("Amount mismatch. Expected {$expected}, got {$received}");
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | MARK PAYFAST PAID
-        |--------------------------------------------------------------------------
-        */
-        $order->payfast_paid = true;
-        $order->pay_status = 1;
-        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
-
-        $order->save();
+        $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+          'payment_method' => 'PAYFAST',
+          'wallet_source_type' => 'team_registration_wallet_payment',
+          'wallet_meta' => [
+            'order_id' => $order->id,
+            'source' => 'team_hybrid_notify',
+            'reference' => optional($order->event)->name ?? 'Team Registration',
+          ],
+          'pf_payment_id' => $data['pf_payment_id'] ?? null,
+          'payfast_amount_due' => $received,
+        ]);
 
         Log::info('🟢 TEAM ITN STEP 8: ORDER UPDATED', [
           'new_pay_status' => $order->pay_status
         ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | WALLET DEBIT (HYBRID)
-        |--------------------------------------------------------------------------
-        */
-        if (
-          $order->wallet_reserved > 0 &&
-          !$order->wallet_debited &&
-          $order->user &&
-          $order->user->wallet
-        ) {
-
-          Log::info('🟢 TEAM ITN STEP 9: DEBIT WALLET', [
-            'amount' => $order->wallet_reserved
-          ]);
-
-          $eventName = optional($order->event)->name ?? 'Team Registration';
-
-          app(\App\Services\Wallet\WalletService::class)->debit(
-            $order->user->wallet,
-            (float) $order->wallet_reserved,
-            'team_registration_wallet_payment',
-            $order->id,
-            [
-              'order_id' => $order->id,
-              'source' => 'team_hybrid_notify',
-              'reference' => $eventName,
-            ]
-          );
-
-          activity('wallet')
-            ->performedOn($order)
-            ->causedBy($order->user)
-            ->withProperties([
-              'type' => 'debit',
-              'amount' => $order->wallet_reserved,
-              'reference' => $eventName,
-              'order_id' => $order->id,
-            ])
-            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-
-          $order->wallet_debited = true;
-          $order->save();
-
-          Log::info('🟢 TEAM ITN STEP 10: WALLET DEBITED');
-        } else {
-          Log::info('🟢 TEAM ITN STEP 9: NO WALLET DEBIT NEEDED');
-        }
 
         /*
         |--------------------------------------------------------------------------
