@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Payments\Services\PaymentTransactionService;
+use App\Domain\Payments\Services\RegistrationPaymentService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -121,30 +123,10 @@ class ImportPayfastCsv extends Command
             // create transaction inside DB transaction
             try {
                 DB::transaction(function () use ($pf, $amount, $data, $reconcile, &$imported, &$reconciled, $total) {
-                    $tx = new Transaction();
-                    $tx->transaction_type = 'Registration';
-                    $tx->amount_gross = $amount;
-                    $tx->amount_fee = null;
-                    $tx->amount_net = null;
-                    // map custom ints/strs
-                    foreach (['1','2','3','4','5'] as $i) {
-                        $intKey = "custom_int{$i}";
-                        $strKey = "custom_str{$i}";
-                        if (!empty($data[$intKey])) $tx->{$intKey} = is_numeric($data[$intKey]) ? (int)$data[$intKey] : $data[$intKey];
-                        if (!empty($data[$strKey])) $tx->{$strKey} = $data[$strKey];
-                    }
-
-                    if (!empty($data['item_name'])) $tx->item_name = $data['item_name'];
-                    if (!empty($data['email_address'])) $tx->email_address = $data['email_address'];
-
-                    $tx->pf_payment_id = $pf;
-
-                    // try to set event/category/player ids from custom ints
-                    if (!empty($data['custom_int3'])) $tx->event_id = (int)$data['custom_int3'];
-                    if (!empty($data['custom_int1'])) $tx->category_event_id = (int)$data['custom_int1'];
-                    if (!empty($data['custom_int2'])) $tx->player_id = (int)$data['custom_int2'];
-
-                    $tx->save();
+                    $tx = app(PaymentTransactionService::class)->record(array_merge($data, [
+                        'amount_gross' => $amount,
+                        'pf_payment_id' => $pf,
+                    ]), null);
                     $imported++;
                     $this->info("#{$total} imported pf={$pf} tx_id={$tx->id}");
 
@@ -153,26 +135,12 @@ class ImportPayfastCsv extends Command
                         $orderId = (int)$data['custom_int5'];
                         $order = RegistrationOrder::with('items')->find($orderId);
                         if ($order) {
-                            // mark paid
-                            $order->payfast_amount_due = $order->payfast_amount_due > 0 ? $order->payfast_amount_due : ($amount ?? 0);
-                            $order->payfast_paid = true;
-                            $order->pay_status = 1;
-                            $order->payfast_pf_payment_id = $pf;
-                            $order->save();
-
-                            // mark registrations
-                            foreach ($order->items as $item) {
-                                $reg = Registration::find($item->registration_id);
-                                if ($reg) {
-                                    $reg->categoryEvents()->syncWithoutDetaching([
-                                        $item->category_event_id => [
-                                            'payment_status_id' => 1,
-                                            'user_id' => $order->user_id,
-                                            'pf_transaction_id' => $pf,
-                                        ]
-                                    ]);
-                                }
-                            }
+                            app(RegistrationPaymentService::class)->finalizePayment($order, [
+                                'payment_method' => 'PAYFAST_IMPORT',
+                                'pf_payment_id' => $pf,
+                                'payfast_amount_due' => $order->payfast_amount_due > 0 ? $order->payfast_amount_due : ($amount ?? 0),
+                                'user_id' => $order->user_id,
+                            ]);
 
                             $reconciled++;
                             $this->info("#{$total} reconciled order={$orderId}");

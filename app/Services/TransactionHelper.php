@@ -4,6 +4,7 @@
 
 namespace App\Services;
 
+use App\Domain\Payments\Services\PaymentTransactionService;
 use App\Models\Transaction;
 
 class TransactionHelper
@@ -71,30 +72,11 @@ class TransactionHelper
   }
 
   public function createTransaction($categoryEventRegistration)
-    {
-        $transaction = new Transaction();
-
-
-        $transaction->amount_gross = $this->amount_gross;
-        $transaction->amount_fee = $this->amount_fee;
-
-        $transaction->amount_net = $this->amount_net;
-        $transaction->transaction_type = 'Withdrawal';
-        $transaction->event_id = $categoryEventRegistration->categoryEvent->event->id;
-        $transaction->item_name = $categoryEventRegistration->categoryEvent->event->name;
-        $transaction->custom_str1 = 'Admin Withdraw';
-        $transaction->custom_str3 = $categoryEventRegistration->categoryEvent->event->name;
-        $transaction->category_event_id =  $categoryEventRegistration->categoryEvent->id;
-        $transaction->custom_int3 =  $categoryEventRegistration->categoryEvent->event->id;
-
-        $transaction->custom_str4 = Auth()->user()->username;
-        $transaction->custom_int4 = Auth()->user()->id;
-        $transaction->player_id = $this->player_id;
-
-        if ($transaction->save()) {
-            return $transaction;
-        } else {
-            'error creating withdrawal transaction';
-        };
+  {
+        return app(PaymentTransactionService::class)->record([
+            'categoryEventRegistration' => $categoryEventRegistration->id,
+            'custom_int4' => Auth()->user()->id,
+            'custom_str4' => Auth()->user()->username,
+        ], 'withdrawel_before_deadline');
     }
 }

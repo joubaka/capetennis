@@ -672,7 +672,8 @@ class RegistrationRefundController extends Controller
           $refundUser = $registration->user;
           if ($refundUser && $refundUser->wallet) {
             try {
-              app(WalletService::class)->credit(
+              app(RefundExecutionService::class)->executeWalletRefund(
+                $registration,
                 $refundUser->wallet,
                 $walletNet,
                 'event_registration_bank_wallet_refund',
@@ -680,10 +681,11 @@ class RegistrationRefundController extends Controller
                 [
                   'registration_id' => $registration->id,
                   'gross' => $walletPaid,
-                  'fee' => 0,   // wallet portion carries no fee
+                  'fee' => 0,
                   'method' => 'hybrid_bank',
                   'initiated_by' => 'admin',
-                ]
+                ],
+                ['refund_method' => 'bank']
               );
             } catch (\Throwable $walletEx) {
               Log::warning('HYBRID BANK REFUND: wallet credit failed — manual follow-up required', [
@@ -695,9 +697,11 @@ class RegistrationRefundController extends Controller
           }
         }
 
-        $registration->update([
-          'refund_status' => 'completed',
-          'refunded_at' => now(),
+        app(RefundExecutionService::class)->executeBankRefund($registration, [
+          'refund_method' => 'bank',
+          'refund_gross' => $registration->refund_gross,
+          'refund_fee' => $registration->refund_fee,
+          'refund_net' => $registration->refund_net,
         ]);
 
         activity('refund')
