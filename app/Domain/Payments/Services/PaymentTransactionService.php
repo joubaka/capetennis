@@ -132,28 +132,31 @@ class PaymentTransactionService
                 ->first() ?? new Transaction();
         }
 
-        $transaction->transaction_type = 'Registration';
-        $transaction->amount_gross = $data['amount_gross'] ?? null;
+        $transaction->transaction_type = $transaction->transaction_type ?: 'Registration';
+        $this->assignIfPresent($transaction, 'amount_gross', $data, 'amount_gross');
 
         $gross = (float) ($data['amount_gross'] ?? 0);
         $paymentMethod = $data['payment_method'] ?? null;
         $configuredFee = \App\Models\SiteSetting::calculatePayfastFee($gross, $paymentMethod);
 
-        $transaction->amount_fee = $configuredFee;
-        $transaction->amount_net = round($gross - $configuredFee, 2);
-        $transaction->event_id = $data['custom_int3'] ?? null;
-        $transaction->category_event_id = $data['custom_int1'] ?? null;
-        $transaction->player_id = $data['custom_int2'] ?? null;
+        if ($gross > 0) {
+            $transaction->amount_fee = $configuredFee;
+            $transaction->amount_net = round($gross - $configuredFee, 2);
+        }
+
+        $this->assignIfPresent($transaction, 'event_id', $data, 'custom_int3');
+        $this->assignIfPresent($transaction, 'category_event_id', $data, 'custom_int1');
+        $this->assignIfPresent($transaction, 'player_id', $data, 'custom_int2');
 
         foreach (['1', '2', '3', '4', '5'] as $i) {
             $intKey = "custom_int{$i}";
             $strKey = "custom_str{$i}";
 
-            if (array_key_exists($intKey, $data)) {
+            if (array_key_exists($intKey, $data) && $data[$intKey] !== null && $data[$intKey] !== '') {
                 $transaction->{$intKey} = $data[$intKey];
             }
 
-            if (array_key_exists($strKey, $data)) {
+            if (array_key_exists($strKey, $data) && $data[$strKey] !== null && $data[$strKey] !== '') {
                 $transaction->{$strKey} = $data[$strKey];
             }
         }
@@ -162,10 +165,17 @@ class PaymentTransactionService
             $transaction->pf_payment_id = $data['pf_payment_id'];
         }
 
-        $transaction->item_name = $data['item_name'] ?? null;
-        $transaction->email_address = $data['email_address'] ?? null;
+        $this->assignIfPresent($transaction, 'item_name', $data, 'item_name');
+        $this->assignIfPresent($transaction, 'email_address', $data, 'email_address');
         $transaction->save();
 
         return $transaction;
+    }
+
+    protected function assignIfPresent(Transaction $transaction, string $attribute, array $data, string $key): void
+    {
+        if (array_key_exists($key, $data) && $data[$key] !== null && $data[$key] !== '') {
+            $transaction->{$attribute} = $data[$key];
+        }
     }
 }

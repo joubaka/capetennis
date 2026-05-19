@@ -60,7 +60,7 @@ class SuperAdminWalletController extends Controller
      */
     public function updateTransaction(Request $request, WalletTransaction $transaction)
     {
-        return back()->withErrors('Wallet ledger entries are locked. Create a compensating adjustment instead.');
+        return back()->withErrors('Wallet ledger entries are locked. Post a new opposite credit or debit adjustment instead of editing this row.');
     }
 
     /**
@@ -68,7 +68,7 @@ class SuperAdminWalletController extends Controller
      */
     public function destroyTransaction(WalletTransaction $transaction)
     {
-        return back()->withErrors('Wallet ledger entries are immutable. Create a compensating adjustment instead.');
+        return back()->withErrors('Wallet ledger entries are immutable. Post a new opposite credit or debit adjustment instead of deleting this row.');
     }
 
     /**
