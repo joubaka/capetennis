@@ -119,28 +119,22 @@ class CategoryEventRegistrationModelTest extends TestCase
     // is_paid accessor
     // -----------------------------------------------------------------------
 
-    public function test_is_paid_true_when_pf_transaction_id_is_set(): void
+    public function test_is_paid_true_when_payment_status_id_is_1(): void
     {
         $reg = new CategoryEventRegistration([
-            'pf_transaction_id' => 'PF-12345',
+            'payment_status_id' => 1,
         ]);
 
         $this->assertTrue($reg->is_paid);
     }
 
-    public function test_is_paid_false_when_no_pf_transaction_id(): void
+    public function test_is_paid_false_when_payment_status_id_is_not_1(): void
     {
         $reg = new CategoryEventRegistration([
-            'pf_transaction_id' => null,
+            'payment_status_id' => null,
         ]);
 
-        // Mock payfastTransaction returning null
-        $reg = Mockery::mock(CategoryEventRegistration::class)->makePartial();
-        $reg->pf_transaction_id = null;
-        $reg->shouldReceive('getAttribute')->with('payfastTransaction')->andReturn(null);
-        $reg->shouldReceive('getAttribute')->with('pf_transaction_id')->andReturn(null);
-
-        $this->assertFalse($reg->getIsPaidAttribute());
+        $this->assertFalse($reg->is_paid);
     }
 
     // -----------------------------------------------------------------------

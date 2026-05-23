@@ -120,7 +120,7 @@ Route::get('register/register/{id}', [RegisterController::class, 'register'])->m
 Route::get('register/search-players', [RegisterController::class, 'searchPlayers'])->middleware('auth')->name('register.search.players');
 Route::post('register/player-details', [RegisterController::class, 'getPlayerDetails'])->middleware('auth')->name('register.player.details');
 Route::post('register/update-player-details', [RegisterController::class, 'updatePlayerDetails'])->middleware('auth')->name('register.update.player.details');
-Route::post('register/registerAdmin', [RegisterController::class, 'registerPlayerInCategoryFromAdmin'])->middleware('auth')->name('register.admin');
+Route::post('register/registerAdmin', [RegisterController::class, 'registerPlayerInCategoryFromAdmin'])->middleware(['auth', 'role:super-user|admin'])->name('register.admin');
 Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.now.payfast');
 Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.order.payfast');
 
@@ -618,7 +618,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 Route::get(
   'event/{event}/transactions',
   [EventTransactionController::class, 'index']
-)->name('admin.events.transactions');
+)->middleware('role:super-user|admin|convenor')->name('admin.events.transactions');
 
 /////////////////////////event finances (convenor)
 
@@ -958,7 +958,7 @@ Route::delete(
 
   //wallet
   Route::get('/wallet/{id}/transaction/create', [WalletTransactionController::class, 'create'])->name('transaction.create');
-  Route::get('/wallet/{id}', [WalletController::class, 'show'])->name('wallet.show');
+  Route::get('/wallet/{id}', [WalletController::class, 'show'])->middleware('role:super-user|admin')->name('wallet.show');
   Route::post('/wallet/{id}/transaction', [WalletTransactionController::class, 'store'])->name('wallet.transaction.store');
 
   //event
@@ -1055,7 +1055,7 @@ Route::delete(
 
   Route::post('team/publishTeam/{id}', [TeamController::class, 'publishTeam'])->name('publish.team');
   Route::post('team/category/change/{id}', [TeamController::class, 'changeCategory'])->name('team.change.category');
-  Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->name('team.payment.payfast');
+  Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->middleware('role:super-user|admin|convenor')->name('team.payment.payfast');
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');
   Route::post('team/insertPlayer', [TeamController::class, 'insertPlayer'])->name('team.insert.player');
   Route::get('team/import/view', [TeamController::class, 'importView'])->name('team.import.view');
@@ -1064,7 +1064,7 @@ Route::delete(
     ->name('team.import.no.profile.template');
   Route::get('team/{team}/players-table', [TeamController::class, 'teamPlayersTable']);
 
-  Route::post('team/change/payStatus', [TeamController::class, 'changePayStatus'])->name('team.change.pay.status');
+  Route::post('team/change/payStatus', [TeamController::class, 'changePayStatus'])->middleware('role:super-user|admin|convenor')->name('team.change.pay.status');
   Route::post('team/addToRegion', [TeamController::class, 'addToRegion'])->name('team.addToRegion');
   Route::post('/team/replacePlayer', [TeamController::class, 'replacePlayer'])
     ->name('backend.team.replace.player');
@@ -1439,7 +1439,7 @@ Route::delete(
   Route::post(
     '/admin/category-registration/{registration}/withdraw',
     [CategoryEventController::class, 'withdraw']
-  )->name('admin.category.registration.withdraw');
+  )->middleware('role:super-user|admin|convenor')->name('admin.category.registration.withdraw');
 
   // Admin reinstate a withdrawn player
   Route::post(

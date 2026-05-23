@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Event;
-use App\Models\CategoryEvent;
 use App\Models\Registration;
 use App\Models\RegistrationOrder;
 use App\Models\User;
@@ -64,19 +63,19 @@ class Payfast
    * ===================================================== */
   public function __construct()
   {
-    $this->payfast_url = config('services.payfast.live_url', 'https://www.payfast.co.za/eng/process');
-    $this->sandbox_url = config('services.payfast.sandbox_url', 'https://sandbox.payfast.co.za/eng/process');
+    $this->payfast_url = 'https://www.payfast.co.za/eng/process';
+    $this->sandbox_url = 'https://sandbox.payfast.co.za/eng/process';
 
-    $this->payfast_id = (string) config('services.payfast.live_merchant_id');
-    $this->sandbox_id = (string) config('services.payfast.sandbox_merchant_id');
+    $this->payfast_id  = config('services.payfast.merchant_id');
+    $this->sandbox_id  = config('services.payfast.sandbox_id');
 
-    $this->payfast_key = (string) config('services.payfast.live_merchant_key');
-    $this->sandbox_key = (string) config('services.payfast.sandbox_merchant_key');
+    $this->payfast_key  = config('services.payfast.merchant_key');
+    $this->sandbox_key  = config('services.payfast.sandbox_key');
 
-    $this->notify_url = $this->normalizeUrl((string) config('services.payfast.notify_url', '/notify'));
-    $this->notify_url_team = $this->normalizeUrl((string) config('services.payfast.notify_team_url', '/notify_team'));
-    $this->cancel_url = $this->normalizeUrl((string) config('services.payfast.cancel_url', '/cancel'));
-    $this->return_url = $this->normalizeUrl((string) config('services.payfast.return_url', '/'));
+    $this->notify_url       = config('app.url') . '/notify';
+    $this->notify_url_team  = config('app.url') . '/notify_team';
+    $this->cancel_url       = config('app.url') . '/cancel';
+    $this->return_url       = config('app.url');
 
     // default = live
     $this->url = $this->payfast_url;

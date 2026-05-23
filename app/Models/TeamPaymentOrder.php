@@ -67,5 +67,36 @@ class TeamPaymentOrder extends Model
   {
     return $this->belongsTo(Event::class);
   }
+
+  // ------------------------------------------------------------------
+  // Refund status helpers (mirror CategoryEventRegistration interface)
+  // ------------------------------------------------------------------
+
+  public function isRefundCompleted(): bool
+  {
+    return $this->refund_status === 'completed';
+  }
+
+  public function isRefundPending(): bool
+  {
+    return $this->refund_status === 'pending';
+  }
+
+  public function hasRefund(): bool
+  {
+    return !in_array($this->refund_status, [null, '', 'not_refunded']);
+  }
+
+  /**
+   * Maximum amount that may be refunded for this order.
+   * Returns the lesser of what was actually paid and the stored gross.
+   * Always >= 0.
+   */
+  public function maxRefundableAmount(): float
+  {
+    $paid = (float) $this->total_amount;
+    $alreadyRefunded = (float) ($this->refund_gross ?? 0);
+    return max(0, round($paid - $alreadyRefunded, 2));
+  }
 }
 

@@ -24,6 +24,11 @@ class WalletController extends Controller
      */
     public function show($id)
     {
+        $user = auth()->user();
+        if (!$user || !$user->hasAnyRole(['super-user', 'admin'])) {
+            abort(403, 'Unauthorized.');
+        }
+
         $user = User::findOrFail($id);
 
         // Get wallet or create if missing

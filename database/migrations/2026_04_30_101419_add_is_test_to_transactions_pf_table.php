@@ -13,6 +13,10 @@ return new class extends Migration
      */
     public function up()
     {
+        if (!Schema::hasTable('transactions_pf') || Schema::hasColumn('transactions_pf', 'is_test')) {
+            return;
+        }
+
         Schema::table('transactions_pf', function (Blueprint $table) {
             $table->boolean('is_test')->default(false)->after('pf_payment_id');
         });

@@ -1497,7 +1497,7 @@ class RoundRobinController extends Controller
       $players = $ce->categoryEventRegistrations
         ->filter(fn($cer) =>
           $cer->payment_status_id == 1 &&
-          !str_contains(strtolower($cer->status ?? ''), 'withdrawn') &&
+          $cer->status !== 'withdrawn' &&
           !$assignedRegIds->contains($cer->registration_id) &&
           $cer->registration &&
           $cer->registration->players->isNotEmpty()

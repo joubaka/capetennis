@@ -97,7 +97,7 @@
     // Ensure all_sets exists
     if (!f.all_sets || !Array.isArray(f.all_sets)) {
       if (f.score) {
-        f.all_sets = String(f.score).trim().split(' ').filter(s => s.includes('-'));
+        f.all_sets = String(f.score).split(',').map(s => s.trim()).filter(s => s.includes('-'));
       } else {
         f.all_sets = [];
       }
@@ -160,16 +160,24 @@
       const groupId = group.id;
       const fixtures = (RR_FIXTURES && RR_FIXTURES[groupId]) ? RR_FIXTURES[groupId] : [];
 
-      console.log(`🔷 GROUP ${groupId}`, group);
-      console.log(`🔷 FIXTURES FOR GROUP ${groupId}`, fixtures);
+      // Build player list from fixtures (r1_id/r2_id) so IDs always match
+      const playerMap = {};
+      fixtures.forEach(f => {
+        if (f.r1_id && !playerMap[f.r1_id]) playerMap[f.r1_id] = { id: f.r1_id, name: f.name1 || '' };
+        if (f.r2_id && !playerMap[f.r2_id]) playerMap[f.r2_id] = { id: f.r2_id, name: f.name2 || '' };
+      });
 
-      let players = group.registrations.map(r => ({
-        id: r.id,
-        name: r.display_name,
-        seed: r.pivot ? (r.pivot.seed ?? 9999) : 9999
-      }));
+      // Fall back to group.registrations names where possible
+      group.registrations.forEach(r => {
+        if (playerMap[r.id]) playerMap[r.id].name = r.display_name || playerMap[r.id].name;
+      });
 
-      players = players.sort((a, b) => a.seed - b.seed);
+      let players = Object.values(playerMap);
+
+      // Sort by seed from group registrations if available
+      const seedMap = {};
+      group.registrations.forEach(r => { seedMap[r.id] = r.seed ?? 9999; });
+      players.sort((a, b) => (seedMap[a.id] || 9999) - (seedMap[b.id] || 9999));
 
       let html = `
       <h6 class="fw-bold mt-3 mb-2">Box ${group.name}</h6>
@@ -383,7 +391,14 @@
           while (j < grp.length &&
             Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
             Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
-          resolved.push(...resolveGroup(grp.slice(i, j)));
+          const sub = grp.slice(i, j);
+          // Guard: if sub equals full group, no further tiebreak possible
+          if (sub.length === grp.length) {
+            sub.forEach(r => { r.tiebreak = r.tiebreak || '='; });
+            resolved.push(...sub);
+          } else {
+            resolved.push(...resolveGroup(sub));
+          }
           i = j;
         }
         return resolved;
@@ -453,50 +468,13 @@
    * OPEN SCORE MODAL
    * =================================================== */
   function openScoreModal(id, home, away) {
-    // Guard: locked or published
-    if (window.RR_DRAW_LOCKED) {
-      rrToast('Draw is locked. Scores cannot be edited.', 'danger');
-      return;
-    }
-    if (window.RR_DRAW_PUBLISHED) {
-      rrToast('Draw is published. Scores cannot be edited.', 'warning');
-      return;
-    }
-
     $modalFixtureId.val(id);
     $modalMatchLabel.html(`<b>${home}</b> vs <b>${away}</b>`);
 
     $('#set1-p1-label, #set2-p1-label, #set3-p1-label').text(home);
     $('#set1-p2-label, #set2-p2-label, #set3-p2-label').text(away);
 
-    // Clear inputs first
     $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
-
-    // Prefill existing score if any
-    let existingFixture = null;
-    for (const gid in window.RR_FIXTURES) {
-      const found = (window.RR_FIXTURES[gid] || []).find(f => f && String(f.id) === String(id));
-      if (found) { existingFixture = found; break; }
-    }
-    if (!existingFixture && Array.isArray(window.RR_OOP)) {
-      existingFixture = window.RR_OOP.find(f => f && String(f.id) === String(id)) || null;
-    }
-
-    if (existingFixture && existingFixture.all_sets && existingFixture.all_sets.length) {
-      const sets = existingFixture.all_sets;
-      const inputs = [['#set1-p1','#set1-p2'],['#set2-p1','#set2-p2'],['#set3-p1','#set3-p2']];
-      sets.forEach(function(s, i) {
-        if (i < inputs.length && s) {
-          const parts = String(s).split('-');
-          $(inputs[i][0]).val(parts[0] || '');
-          $(inputs[i][1]).val(parts[1] || '');
-        }
-      });
-    }
-
-    // Show/hide delete button based on whether a score exists
-    const hasScore = existingFixture && existingFixture.score && existingFixture.score !== '—';
-    $('#rrm-delete-score').toggle(!!hasScore);
 
     new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
   }
@@ -603,6 +581,7 @@
             // Update full data from server response
             if (res.rrFixtures) {
               window.RR_FIXTURES = res.rrFixtures;
+              normalizeAllFixtures();
             }
             if (res.standings) {
               window.RR_STANDINGS = res.standings;
@@ -682,52 +661,42 @@
     // ============================================================
     $(document).on('click', '#rrm-delete-score', function() {
         var fixtureId = $('#rrm-fixture-id').val();
-        if (!fixtureId) { rrToast('No fixture selected.', 'warning'); return; }
+        if (!fixtureId) { toastr.warning('No fixture selected.'); return; }
+        if (!confirm('Delete the score for this match?')) return;
 
-        if (window.RR_DRAW_LOCKED) {
-            rrToast('Draw is locked. Cannot delete scores.', 'danger');
-            return;
-        }
+        var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Deleting…');
+        var url = window.RR_DELETE_SCORE_URL.replace('FIXTURE_ID', fixtureId);
 
-        Swal.fire({
-            title: 'Delete Score?',
-            text: 'This will remove the score and rollback any bracket progression.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, delete',
-            confirmButtonColor: '#dc3545',
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-
-            var $btn = $('#rrm-delete-score').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Deleting…');
-            var url = window.RR_DELETE_SCORE_URL.replace('FIXTURE_ID', fixtureId);
-
-            $.ajax({ url: url, method: 'DELETE' })
-             .done(function(res) {
-                rrToast('Score deleted', 'success');
-                bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'))?.hide();
-                $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
-                if (res.rrFixtures) window.RR_FIXTURES = res.rrFixtures;
-                if (res.standings)  window.RR_STANDINGS = res.standings;
-                if (res.oop) {
-                    window.RR_OOP = res.oop.map(function(fx) {
-                        return {
-                            id: fx.id, stage: fx.stage ?? '', round: fx.round ?? '', match_nr: fx.match_nr ?? '',
-                            time: fx.time ?? '', home: fx.home ?? '', away: fx.away ?? '',
-                            score: fx.score ?? '', winner: fx.winner ?? null, r1_id: fx.r1_id, r2_id: fx.r2_id,
-                            playoff_type: fx.playoff_type ?? null,
-                            winner_feeders: fx.winner_feeders ?? [], loser_feeders: fx.loser_feeders ?? []
-                        };
-                    });
-                }
-                renderMatrixFallback();
-                renderOrderOfPlay();
-                renderStandings();
-                if (typeof loadMainBracket === 'function') loadMainBracket(true);
-             })
-             .fail(function(err) { rrToast(err.responseJSON?.message || 'Error deleting score', 'danger'); })
-             .always(function() { $btn.prop('disabled', false).html('<i class="ti ti-trash me-1"></i> Delete Score'); });
-        });
+        $.ajax({ url: url, method: 'DELETE' })
+         .done(function(res) {
+            toastr.success('Score deleted');
+            bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'))?.hide();
+            $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
+            if (res.rrFixtures) {
+                window.RR_FIXTURES = res.rrFixtures;
+                normalizeAllFixtures();
+            }
+            if (res.standings) {
+                window.RR_STANDINGS = res.standings;
+            }
+            if (res.oop) {
+                window.RR_OOP = res.oop.map(function(fx) {
+                    return {
+                        id: fx.id, stage: fx.stage ?? '', round: fx.round ?? '', match_nr: fx.match_nr ?? '',
+                        time: fx.time ?? '', home: fx.home ?? '', away: fx.away ?? '',
+                        score: fx.score ?? '', winner: fx.winner ?? null, r1_id: fx.r1_id, r2_id: fx.r2_id,
+                        playoff_type: fx.playoff_type ?? null,
+                        winner_feeders: fx.winner_feeders ?? [], loser_feeders: fx.loser_feeders ?? []
+                    };
+                });
+            }
+            renderMatrixFallback();
+            renderOrderOfPlay();
+            renderStandings();
+            if (typeof loadMainBracket === 'function') loadMainBracket(true);
+         })
+         .fail(function(err) { toastr.error(err.responseJSON?.message || 'Error deleting score'); })
+         .always(function() { $btn.prop('disabled', false).html('<i class="ti ti-trash me-1"></i> Delete Score'); });
     });
 
     // ============================================================
@@ -809,40 +778,24 @@
     </div>`;
 
   $('#btn-generate-main-bracket').on('click', function () {
-    if (window.RR_DRAW_LOCKED || window.RR_DRAW_PUBLISHED) {
-      rrToast('Draw is locked or published. Cannot regenerate brackets.', 'danger');
-      return;
-    }
+    const btn = $(this).prop('disabled', true);
+    $('#main-bracket-wrapper').html(bracketSpinner);
 
-    Swal.fire({
-      title: 'Regenerate All Playoff Brackets?',
-      html: 'This will <strong>delete and recreate all playoff fixtures</strong> from the current RR standings.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Yes, regenerate',
-      confirmButtonColor: '#28a745',
-    }).then(result => {
-      if (!result.isConfirmed) return;
-
-      const btn = $(this).prop('disabled', true);
-      $('#main-bracket-wrapper').html(bracketSpinner);
-
-      $.post(APP_URL + '/backend/draw/' + drawId + '/generate-main-bracket')
-        .done(res => {
-          if (res.success) {
-            rrToast(res.message, 'success');
-            loadMainBracket();
-          } else {
-            rrToast(res.message, 'danger');
-            $('#main-bracket-wrapper').html('<div class="alert alert-danger">Generation failed.</div>');
-          }
-        })
-        .fail(xhr => {
-          rrToast(xhr.responseJSON?.message || 'Error generating bracket', 'danger');
-          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
-        })
-        .always(() => btn.prop('disabled', false));
-    });
+    $.post(APP_URL + '/backend/draw/' + drawId + '/generate-main-bracket')
+      .done(res => {
+        if (res.success) {
+          toastr.success(res.message);
+          loadMainBracket();
+        } else {
+          toastr.error(res.message);
+          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Generation failed.</div>');
+        }
+      })
+      .fail(() => {
+        toastr.error('Error generating bracket');
+        $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
+      })
+      .always(() => btn.prop('disabled', false));
   });
 
   function loadMainBracket(force = false) {

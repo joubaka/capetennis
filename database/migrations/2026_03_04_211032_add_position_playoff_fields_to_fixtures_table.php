@@ -13,6 +13,10 @@ return new class extends Migration
      */
     public function up()
     {
+        if (!Schema::hasTable('fixtures')) {
+            return;
+        }
+
         Schema::table('fixtures', function (Blueprint $table) {
             if (!Schema::hasColumn('fixtures', 'position')) {
                 $table->unsignedTinyInteger('position')->nullable()

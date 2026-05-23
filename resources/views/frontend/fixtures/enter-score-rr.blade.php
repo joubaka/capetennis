@@ -118,18 +118,144 @@
 
 @section('page-script')
 <script>
-  window.RR_SAVE_SCORE_URL =
-    "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
-  window.RR_DELETE_SCORE_URL =
-    "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
-</script>
-<script>
-  $.ajaxSetup({
-    headers: {
-      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+(function($) {
+  'use strict';
+
+  var SAVE_URL  = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
+  var DEL_URL   = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
+  var CSRF      = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': CSRF } });
+
+  // Find a table row by fixture id (hidden first cell)
+  function getRow(id) {
+    return $('#rr-score-table tbody tr').filter(function() {
+      return $(this).find('td.d-none').first().text().trim() == String(id);
+    });
+  }
+
+  function applyColours(tr, winner, r1, r2) {
+    tr.find('td').eq(1).removeClass('bg-success bg-danger text-white');
+    tr.find('td').eq(3).removeClass('bg-success bg-danger text-white');
+    if (!winner) return;
+    if (String(winner) === String(r1)) {
+      tr.find('td').eq(1).addClass('bg-success text-white');
+      tr.find('td').eq(3).addClass('bg-danger text-white');
+    } else if (String(winner) === String(r2)) {
+      tr.find('td').eq(1).addClass('bg-danger text-white');
+      tr.find('td').eq(3).addClass('bg-success text-white');
     }
+  }
+
+  function rebuildActions(tr, id, home, away, hasScore) {
+    var html = '<button class="btn btn-sm btn-primary rr-open-modal"'
+      + ' data-id="' + id + '"'
+      + ' data-home="' + home.replace(/"/g,'&quot;') + '"'
+      + ' data-away="' + away.replace(/"/g,'&quot;') + '">Enter</button>';
+    if (hasScore) {
+      html += ' <button class="btn btn-sm btn-outline-danger rr-delete-score" data-id="' + id + '">'
+            + '<i class="ti ti-trash"></i></button>';
+    }
+    tr.find('td').last().html(html);
+  }
+
+  // ── OPEN MODAL ──────────────────────────────────────────────────
+  $(document).on('click', '.rr-open-modal', function() {
+    var id   = $(this).data('id');
+    var home = $(this).data('home') || 'Player 1';
+    var away = $(this).data('away') || 'Player 2';
+
+    $('#rr-fixture-id').val(id);
+    $('#rr-match-label').html('<b>' + home + '</b> vs <b>' + away + '</b>');
+    $('.rr-p1-label').text(home);
+    $('.rr-p2-label').text(away);
+
+    // Clear all inputs
+    $('.rr-s1-p1,.rr-s1-p2,.rr-s2-p1,.rr-s2-p2,.rr-s3-p1,.rr-s3-p2').val('');
+
+    // Pre-fill existing score
+    var existing = getRow(id).find('td').eq(5).text().trim();
+    if (existing) {
+      existing.split(',').forEach(function(set, i) {
+        var parts = set.trim().split('-');
+        if (parts.length === 2 && i < 3) {
+          $('.rr-s' + (i+1) + '-p1').val(parts[0].trim());
+          $('.rr-s' + (i+1) + '-p2').val(parts[1].trim());
+        }
+      });
+    }
+
+    new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
   });
+
+  // ── SAVE SCORE ──────────────────────────────────────────────────
+  $('#rr-score-modal-form').on('submit', function(e) {
+    e.preventDefault();
+
+    var id   = $('#rr-fixture-id').val();
+    var home = $('.rr-p1-label').first().text();
+    var away = $('.rr-p2-label').first().text();
+    var sets = [];
+    var valid = true;
+
+    for (var i = 1; i <= 3; i++) {
+      var v1 = $('.rr-s' + i + '-p1').val().trim();
+      var v2 = $('.rr-s' + i + '-p2').val().trim();
+      if (v1 === '' && v2 === '') continue;
+      if (v1 === '' || v2 === '') {
+        toastr.error('Complete both sides of set ' + i + '.');
+        valid = false;
+        break;
+      }
+      sets.push(v1 + '-' + v2);
+    }
+    if (!valid) return;
+    if (!sets.length) { toastr.error('Enter at least one set.'); return; }
+
+    var $btn = $(this).find('[type="submit"]').prop('disabled', true).text('Saving…');
+    var url  = SAVE_URL.replace('FIXTURE_ID', id);
+
+    $.post(url, { sets: sets })
+      .done(function(res) {
+        if (!res.success) { toastr.error('Save failed.'); return; }
+        toastr.success('Score saved');
+        var tr = getRow(id);
+        if (tr.length && res.fixture) {
+          tr.find('td').eq(5).text(res.fixture.score || '');
+          applyColours(tr, res.fixture.winner_registration, res.fixture.r1_id, res.fixture.r2_id);
+          rebuildActions(tr, id, home, away, true);
+        }
+        bootstrap.Modal.getInstance(document.getElementById('rrScoreModal')).hide();
+      })
+      .fail(function(xhr) {
+        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Error saving score');
+      })
+      .always(function() { $btn.prop('disabled', false).text('Save'); });
+  });
+
+  // ── DELETE SCORE ─────────────────────────────────────────────────
+  $(document).on('click', '.rr-delete-score', function() {
+    if (!confirm('Delete this score?')) return;
+    var $btn = $(this).prop('disabled', true);
+    var id   = $btn.data('id');
+    var tr   = getRow(id);
+    var home = tr.find('.rr-open-modal').data('home') || '';
+    var away = tr.find('.rr-open-modal').data('away') || '';
+    var url  = DEL_URL.replace('FIXTURE_ID', id);
+
+    $.ajax({ url: url, method: 'DELETE' })
+      .done(function() {
+        toastr.success('Score deleted');
+        tr.find('td').eq(5).text('');
+        applyColours(tr, null);
+        rebuildActions(tr, id, home, away, false);
+      })
+      .fail(function(xhr) {
+        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Error deleting score');
+        $btn.prop('disabled', false);
+      });
+  });
+
+})(jQuery);
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-<script src="{{ asset('assets/js/roundrobin-admin-scores.js') }}"></script>
 @endsection

@@ -23,6 +23,11 @@ class EventTransactionController extends Controller
    */
   public function index(Event $event)
   {
+    $user = auth()->user();
+    if (!$user || !$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+      abort(403, 'Unauthorized.');
+    }
+
     // ---------------------------------------------------------
     // CHANGE THIS TO STEP THROUGH
     // ---------------------------------------------------------

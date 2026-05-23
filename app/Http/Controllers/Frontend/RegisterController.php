@@ -23,11 +23,6 @@ use App\Models\TeamPlayer;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\SiteSetting;
-use App\Domain\Payments\Services\PaymentOrchestrator;
-use App\Domain\Payments\Services\PaymentTransactionService;
-use App\Domain\Payments\Services\RegistrationPaymentService;
-use App\Domain\Payments\Services\SimplePaymentStateService;
-use App\Domain\Payments\Services\TeamPaymentService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -451,17 +446,49 @@ class RegisterController extends Controller
           throw new \Exception("Amount mismatch. Expected {$expectedAmount}, got {$paidAmount}");
         }
 
-        $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
-          'payment_method' => 'PAYFAST',
-          'wallet_source_type' => 'event_registration_wallet_payment',
-          'wallet_meta' => [
-            'order_id' => $order->id,
-            'source' => 'hybrid_notify',
-            'reference' => optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration',
-          ],
-          'pf_payment_id' => $data['pf_payment_id'] ?? null,
-          'payfast_amount_due' => $paidAmount,
-        ]);
+        // Restore payfast_amount_due so the order record is accurate
+        $order->payfast_amount_due = $paidAmount;
+
+        // 3️⃣ Mark PayFast portion
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
+        $order->save();
+
+        // 4️⃣ Debit wallet if reserved
+        if (
+          $order->wallet_reserved > 0 &&
+          $order->wallet_debited === false
+        ) {
+
+          $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
+
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'event_registration_wallet_payment',
+            $order->id,
+            [
+              'order_id' => $order->id,
+              'source' => 'hybrid_notify',
+              'reference' => $eventName,
+            ]
+          );
+
+          activity('wallet')
+            ->performedOn($order)
+            ->causedBy($order->user)
+            ->withProperties([
+              'type' => 'debit',
+              'amount' => $order->wallet_reserved,
+              'reference' => $eventName,
+              'order_id' => $order->id,
+            ])
+            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
+
+          $order->wallet_debited = true;
+          $order->save();
+        }
 
         // 5️⃣ Mark registrations as paid
         foreach ($order->items as $item) {
@@ -639,17 +666,53 @@ class RegisterController extends Controller
         $amount = (float) ($order->payfast_amount_due > 0 ? $order->payfast_amount_due : $order->items->sum('item_price'));
 
         // Mark order paid
-        $order = app(RegistrationPaymentService::class)->finalizePayment($order, [
-          'payment_method' => 'PAYFAST_SIMULATED',
-          'wallet_source_type' => 'event_registration_wallet_payment_sim',
-          'wallet_meta' => [
-            'order_id' => $order->id,
-            'source' => 'simulate_payfast',
-          ],
-          'pf_payment_id' => $fakePfId,
-          'payfast_amount_due' => $amount,
-          'user_id' => $order->user_id,
-        ]);
+        $order->payfast_amount_due = $amount;
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $fakePfId;
+        $order->save();
+
+        // Debit wallet if reserved
+        if (
+          $order->wallet_reserved > 0 &&
+          $order->wallet_debited === false &&
+          $order->user &&
+          $order->user->wallet
+        ) {
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'event_registration_wallet_payment_sim',
+            $order->id,
+            [
+              'order_id' => $order->id,
+              'source' => 'simulate_payfast',
+            ]
+          );
+
+          $order->wallet_debited = true;
+          $order->save();
+        }
+
+        // Mark registrations as paid
+        foreach ($order->items as $item) {
+          $registration = Registration::find($item->registration_id);
+          if (!$registration) {
+            continue;
+          }
+
+          $registration->players()->syncWithoutDetaching([
+            $item->player_id
+          ]);
+
+          $registration->categoryEvents()->syncWithoutDetaching([
+            $item->category_event_id => [
+              'payment_status_id' => 1,
+              'user_id' => $order->user_id,
+              'pf_transaction_id' => $fakePfId,
+            ],
+          ]);
+        }
 
         // Create transaction record (best-effort)
         try {
@@ -687,9 +750,15 @@ class RegisterController extends Controller
 
     try {
 
-      $order = RegistrationOrder::findOrFail($orderId);
-      $remaining = max(round((float) $order->payfast_amount_due - $walletApplied, 2), 0);
-      app(RegistrationPaymentService::class)->reservePayment($order, $walletApplied, $remaining);
+      app(\App\Services\Wallet\WalletService::class)->debit(
+        $wallet,
+        $walletApplied,
+        'event_registration_partial_payment',
+        $orderId,
+        [
+          'order_id' => $orderId,
+        ]
+      );
 
       return back()->with('success', 'Wallet applied successfully.');
 
@@ -704,10 +773,13 @@ class RegisterController extends Controller
     $orderId = $request->custom_int5 ?? null;
 
     if ($walletApplied > 0) {
-      $order = RegistrationOrder::find($orderId);
-      if ($order) {
-        app(RegistrationPaymentService::class)->cancelPayment($order);
-      }
+
+      app(\App\Services\Wallet\WalletService::class)->credit(
+        Auth::user()->wallet,
+        $walletApplied,
+        'event_registration_wallet_reversal',
+        $orderId
+      );
     }
 
     return redirect()->route('events.index')
@@ -744,9 +816,10 @@ class RegisterController extends Controller
     }
 
     // 4. Mark order as paid
-    app(SimplePaymentStateService::class)->markClothingOrderPaid($order, [
+    $order->update([
+      'pay_status' => 1,
       'pf_id' => $request->input('pf_payment_id'),
-      'paid_at' => now(),
+      'paid_at' => now(),              // strongly recommended
       'amount_paid' => $request->input('amount_gross'),
     ]);
 
@@ -761,9 +834,9 @@ class RegisterController extends Controller
         flush();
         $data = $_POST;
         $order = Order::find($data['custom_int1']);
-        app(SimplePaymentStateService::class)->markOrderPaid($order, [
-            'pf_payment_id' => $data['pf_payment_id'],
-        ]);
+        $order->pay_status = 1;
+        $order->pf_payment_id = $data['pf_payment_id'];
+        $order->save();
     }
 
 
@@ -868,22 +941,75 @@ class RegisterController extends Controller
           throw new \Exception("Amount mismatch. Expected {$expected}, got {$received}");
         }
 
-        $order = app(TeamPaymentService::class)->finalizePayment($order, [
-          'payment_method' => 'PAYFAST',
-          'wallet_source_type' => 'team_registration_wallet_payment',
-          'wallet_meta' => [
-            'order_id' => $order->id,
-            'source' => 'team_hybrid_notify',
-            'reference' => optional($order->event)->name ?? 'Team Registration',
-          ],
-          'pf_payment_id' => $data['pf_payment_id'] ?? null,
-          'payfast_amount_due' => $received,
-        ]);
+        /*
+        |--------------------------------------------------------------------------
+        | MARK PAYFAST PAID
+        |--------------------------------------------------------------------------
+        */
+        $order->payfast_paid = true;
+        $order->pay_status = 1;
+        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
+
+        $order->save();
 
         Log::info('🟢 TEAM ITN STEP 8: ORDER UPDATED', [
           'new_pay_status' => $order->pay_status
         ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | WALLET DEBIT (HYBRID)
+        |--------------------------------------------------------------------------
+        */
+        if (
+          $order->wallet_reserved > 0 &&
+          !$order->wallet_debited &&
+          $order->user &&
+          $order->user->wallet
+        ) {
+
+          Log::info('🟢 TEAM ITN STEP 9: DEBIT WALLET', [
+            'amount' => $order->wallet_reserved
+          ]);
+
+          $eventName = optional($order->event)->name ?? 'Team Registration';
+
+          app(\App\Services\Wallet\WalletService::class)->debit(
+            $order->user->wallet,
+            (float) $order->wallet_reserved,
+            'team_registration_wallet_payment',
+            $order->id,
+            [
+              'order_id' => $order->id,
+              'source' => 'team_hybrid_notify',
+              'reference' => $eventName,
+            ]
+          );
+
+          activity('wallet')
+            ->performedOn($order)
+            ->causedBy($order->user)
+            ->withProperties([
+              'type' => 'debit',
+              'amount' => $order->wallet_reserved,
+              'reference' => $eventName,
+              'order_id' => $order->id,
+            ])
+            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
+
+          $order->wallet_debited = true;
+          $order->save();
+
+          Log::info('🟢 TEAM ITN STEP 10: WALLET DEBITED');
+        } else {
+          Log::info('🟢 TEAM ITN STEP 9: NO WALLET DEBIT NEEDED');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | TEAM PLAYER UPDATE
+        |--------------------------------------------------------------------------
+        */
         $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
           ->where('player_id', $order->player_id)
           ->first();
@@ -893,12 +1019,16 @@ class RegisterController extends Controller
         ]);
 
         if ($teamPlayer) {
+
           Log::info('🟢 TEAM ITN STEP 12: TEAM PLAYER BEFORE', [
             'pay_status' => $teamPlayer->pay_status
           ]);
-          $teamPlayer = app(TeamPaymentService::class)->markPlayerPaid($order);
+
+          $teamPlayer->pay_status = 1;
+          $teamPlayer->save();
+
           Log::info('🟢 TEAM ITN STEP 13: TEAM PLAYER UPDATED', [
-            'new_pay_status' => $teamPlayer?->pay_status
+            'new_pay_status' => $teamPlayer->pay_status
           ]);
         }
 
@@ -1004,13 +1134,11 @@ class RegisterController extends Controller
       return null;
     }
 
-    return app(TeamPaymentService::class)->markPlayerPaid(
-      TeamPaymentOrder::firstOrNew([
-        'team_id' => $team->id,
-        'player_id' => $player->id,
-        'event_id' => $team->event_id ?? null,
-      ])
-    );
+    // ✅ Mark paid
+    $teamPlayer->pay_status = 1;
+    $teamPlayer->save();
+
+    return $teamPlayer;
   }
 
 
@@ -1022,11 +1150,24 @@ class RegisterController extends Controller
       throw new \Exception("Registration order not found for ID: {$payfastData['custom_int5']}");
     }
 
-    app(RegistrationPaymentService::class)->markOrderRegistrationsPaid(
-      $registrationOrder,
-      $payfastData['pf_payment_id'] ?? null,
-      $payfastData['custom_int4'] ?? null
-    );
+    foreach ($registrationOrder->items as $item) {
+      $registration = Registration::find($item->registration_id);
+      if (!$registration) {
+        continue; // skip if missing
+      }
+
+      // Attach player (avoid duplicates)
+      $registration->players()->syncWithoutDetaching([$item->player_id]);
+
+      // Attach category event with pivot data (avoid duplicates)
+      $registration->categoryEvents()->syncWithoutDetaching([
+        $item->category_event_id => [
+          'payment_status_id' => 1,
+          'user_id' => $payfastData['custom_int4'],
+          'pf_transaction_id' => $payfastData['pf_payment_id'],
+        ],
+      ]);
+    }
 
     return $this::update_transaction($payfastData, $registrationOrder);
   }
@@ -1034,6 +1175,10 @@ class RegisterController extends Controller
 
   public function registerPlayerInCategoryFromAdmin(Request $request)
     {
+        $user = Auth::user();
+        if (!$user || !$user->hasAnyRole(['super-user', 'admin'])) {
+            abort(403, 'Unauthorized.');
+        }
 
         $registration = new Registration();
         $registration->save();
@@ -1059,12 +1204,164 @@ class RegisterController extends Controller
 
   public static function update_transaction(array $data, $order)
   {
-    return app(PaymentTransactionService::class)->record($data, $order);
+    /**
+     * =====================================================
+     * ADMIN REGISTRATION / REMOVE
+     * =====================================================
+     */
+    if ($order === 'admin') {
+
+      $categoryEvent = CategoryEvent::with('event', 'category')->find($data['categoryEvent'] ?? null);
+      if (!$categoryEvent) {
+        return null;
+      }
+
+      $transaction = new Transaction();
+      $transaction->transaction_type = 'Registration';
+      $transaction->amount_gross = 0;
+      $transaction->amount_net = 0;
+      $transaction->amount_fee = 0;
+      $transaction->event_id = $categoryEvent->event->id;
+      $transaction->item_name = $categoryEvent->event->name;
+      $transaction->category_event_id = $categoryEvent->id;
+      $transaction->player_id = $data['player_id'] ?? null;
+
+      $transaction->custom_str1 = 'Admin Remove';
+
+      // Add category name
+      if ($categoryEvent->category) {
+        $transaction->custom_str1 = $categoryEvent->category->name;
+      }
+
+      if (!empty($data['player_id'])) {
+        $player = Player::find($data['player_id']);
+        if ($player) {
+          $transaction->custom_int2 = $player->id;
+          $transaction->custom_str2 = $player->name . ' ' . $player->surname;
+        }
+      }
+
+      $transaction->custom_int3 = $categoryEvent->event->id;
+      $transaction->custom_str3 = $categoryEvent->event->name;
+
+      // Auth only if available (NOT during ITN)
+      if (auth()->check()) {
+        $transaction->custom_int4 = auth()->id();
+        $transaction->custom_str4 = auth()->user()->name;
+      }
+
+      $transaction->save();
+      return $transaction;
+    }
+
+    /**
+     * =====================================================
+     * WITHDRAWAL BEFORE DEADLINE
+     * =====================================================
+     */
+    if ($order === 'withdrawel_before_deadline') {
+
+      $registration = CategoryEventRegistration::with('categoryEvent.event', 'categoryEvent.category')
+        ->find($data['categoryEventRegistration'] ?? null);
+
+      if (!$registration) {
+        return null;
+      }
+
+      $transaction = new Transaction();
+      $transaction->transaction_type = 'Withdrawal';
+      $transaction->category_event_id = $registration->category_event_id;
+      $transaction->event_id = $registration->categoryEvent->event->id;
+      $transaction->item_name = $registration->categoryEvent->event->name;
+
+      // Add category information
+      if ($registration->categoryEvent->category) {
+        $transaction->custom_int1 = $registration->category_event_id;
+        $transaction->custom_str1 = $registration->categoryEvent->category->name;
+      }
+
+      if ($registration->payfast_id === 'Admin') {
+        $transaction->amount_gross = 0;
+        $transaction->amount_fee = 0;
+        $transaction->amount_net = 10;
+      } else {
+        $entryFee = $registration->categoryEvent->entry_fee;
+
+        $payfastFee = \App\Models\SiteSetting::calculatePayfastFee($entryFee);
+
+        $transaction->cape_tennis_fee = 10;
+        $transaction->amount_gross = -$entryFee;
+        $transaction->amount_fee = -$payfastFee;
+        $transaction->amount_net = ($entryFee - ($payfastFee - 10));
+      }
+
+      $player = $registration->registration->players->first();
+      if ($player) {
+        $transaction->custom_int2 = $player->player_id;
+        $transaction->custom_str2 = $player->name . ' ' . $player->surname;
+        $transaction->player_id = $player->player_id;
+      }
+
+      $transaction->custom_int3 = $registration->categoryEvent->event->id;
+      $transaction->custom_str3 = $registration->categoryEvent->event->name;
+
+      if (auth()->check()) {
+        $transaction->custom_int4 = auth()->id();
+        $transaction->custom_str4 = auth()->user()->name;
+      }
+
+      $transaction->save();
+      return $transaction;
+    }
+
+    /**
+     * =====================================================
+     * PAYFAST REGISTRATION (STANDARD ITN)
+     * =====================================================
+     */
+
+    $transaction = new Transaction();
+    $transaction->transaction_type = 'Registration';
+
+    $transaction->amount_gross = $data['amount_gross'] ?? null;
+
+    // Use configured PayFast fee percentage per payment method (benefits Cape Tennis on negotiated discount)
+    $gross = (float) ($data['amount_gross'] ?? 0);
+    $paymentMethod = $data['payment_method'] ?? null;
+    $configuredFee = \App\Models\SiteSetting::calculatePayfastFee($gross, $paymentMethod);
+    $transaction->amount_fee = $configuredFee;
+    $transaction->amount_net = round($gross - $configuredFee, 2);
+
+    $transaction->event_id = $data['custom_int3'] ?? null;
+    $transaction->category_event_id = $data['custom_int1'] ?? null;
+    $transaction->player_id = $data['custom_int2'] ?? null;
+
+    foreach (['1', '2', '3', '4', '5'] as $i) {
+      $intKey = "custom_int{$i}";
+      $strKey = "custom_str{$i}";
+
+      if (!empty($data[$intKey])) {
+        $transaction->{$intKey} = $data[$intKey];
+      }
+
+      if (!empty($data[$strKey])) {
+        $transaction->{$strKey} = $data[$strKey];
+      }
+    }
+
+    if (!empty($data['pf_payment_id'])) {
+      $transaction->pf_payment_id = $data['pf_payment_id'];
+    }
+
+    $transaction->item_name = $data['item_name'] ?? null;
+    $transaction->email_address = $data['email_address'] ?? null;
+
+    $transaction->save();
+    return $transaction;
   }
 
   public function payNowPayfast(Request $request)
   {
-
     // ----------------------------
     // Validate terms accepted
     // ----------------------------
@@ -1092,50 +1389,123 @@ class RegisterController extends Controller
         ]);
       }
     }
- 
+
+    $authUser   = Auth::user();
+    $isAdmin    = $authUser->hasAnyRole(['super-user', 'admin']);
+
     // ----------------------------
-    // Create order
+    // Pre-flight: ownership + duplicate checks (outside transaction, fail fast)
     // ----------------------------
-    $regorder = new RegistrationOrder();
-    $regorder->user_id = Auth::id();
-    $regorder->save();
+    $playerIds  = $request->player;
+    $categoryIds = $request->category;
 
-    $totalFee = 0;
-
-    // Create items
-    for ($i = 0; $i < count($request->player); $i++) {
-
-      $categoryEvent = CategoryEvent::findOrFail($request->category[$i]);
-
-      $registration = new Registration();
-      $registration->save();
-
-      $order = new RegistrationOrderItems();
-      $order->order_id = $regorder->id;
-      $order->category_event_id = $categoryEvent->id;
-      $order->registration_id = $registration->id;
-      $order->player_id = $request->player[$i];
-      $order->user_id = Auth::id();
-      $order->item_price = $categoryEvent->entry_fee ?? 0;
-      $order->save();
-
-      // Attach player to registration + create category_event_registration immediately
-      $registration->players()->syncWithoutDetaching([$request->player[$i]]);
-      $registration->categoryEvents()->syncWithoutDetaching([
-        $categoryEvent->id => [
-          'payment_status_id' => 0,
-          'user_id' => Auth::id(),
-        ],
-      ]);
-
-      $totalFee += $order->item_price;
+    // Collect player IDs the auth user owns (unless admin)
+    if (!$isAdmin) {
+      $ownedPlayerIds = $authUser->players()->pluck('players.id')->map(fn($v) => (int) $v)->toArray();
     }
 
-    if ($totalFee <= 0) {
-      // Free event — mark as paid immediately
-      $regorder = app(RegistrationPaymentService::class)->markFreeOrderPaid($regorder);
+    $duplicateErrors = [];
 
-      // Send confirmation email for free registration
+    for ($i = 0; $i < count($playerIds); $i++) {
+      $playerId       = (int) $playerIds[$i];
+      $categoryEventId = (int) $categoryIds[$i];
+
+      // Ownership check
+      if (!$isAdmin && !in_array($playerId, $ownedPlayerIds, true)) {
+        return back()->withErrors([
+          'msg' => "You do not have permission to register player ID {$playerId}."
+        ]);
+      }
+
+      // Duplicate active registration check:
+      // Find any registration linked to this player AND this category event
+      // that is not withdrawn/cancelled.
+      $activeStatuses = ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled'];
+
+      $duplicate = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEventId)
+        ->whereNotIn('status', $activeStatuses)
+        ->whereHas('registration.players', fn($q) => $q->where('players.id', $playerId))
+        ->exists();
+
+      if ($duplicate) {
+        $categoryEvent = CategoryEvent::find($categoryEventId);
+        $categoryName  = optional($categoryEvent?->category)->name ?? "category ID {$categoryEventId}";
+        $duplicateErrors[] = "Player ID {$playerId} is already registered for {$categoryName}.";
+      }
+    }
+
+    if (!empty($duplicateErrors)) {
+      return back()->withErrors(['msg' => implode(' ', $duplicateErrors)]);
+    }
+
+    // ----------------------------
+    // Create order + registrations inside a single transaction
+    // ----------------------------
+    $regorder = DB::transaction(function () use ($request, $authUser, $playerIds, $categoryIds) {
+
+      $regorder           = new RegistrationOrder();
+      $regorder->user_id  = $authUser->id;
+      $regorder->save();
+
+      $totalFee = 0;
+
+      for ($i = 0; $i < count($playerIds); $i++) {
+
+        $categoryEvent = CategoryEvent::findOrFail((int) $categoryIds[$i]);
+
+        $registration = new Registration();
+        $registration->save();
+
+        $orderItem                    = new RegistrationOrderItems();
+        $orderItem->order_id          = $regorder->id;
+        $orderItem->category_event_id = $categoryEvent->id;
+        $orderItem->registration_id   = $registration->id;
+        $orderItem->player_id         = (int) $playerIds[$i];
+        $orderItem->user_id           = $authUser->id;
+        $orderItem->item_price        = $categoryEvent->entry_fee ?? 0;
+        $orderItem->save();
+
+        $registration->players()->syncWithoutDetaching([(int) $playerIds[$i]]);
+        $registration->categoryEvents()->syncWithoutDetaching([
+          $categoryEvent->id => [
+            'payment_status_id' => 0,
+            'user_id'           => $authUser->id,
+          ],
+        ]);
+
+        $totalFee += $orderItem->item_price;
+      }
+
+      // Free event — mark paid immediately inside the transaction
+      if ($totalFee <= 0) {
+        foreach ($regorder->items as $item) {
+          $reg = Registration::find($item->registration_id);
+          if ($reg) {
+            $reg->categoryEvents()->updateExistingPivot($item->category_event_id, [
+              'payment_status_id' => 1,
+            ]);
+          }
+        }
+        $regorder->pay_status    = 1;
+        $regorder->payfast_paid  = true;
+        $regorder->wallet_debited = true;
+      } else {
+        $regorder->wallet_reserved    = 0;
+        $regorder->payfast_amount_due = $totalFee;
+        $regorder->wallet_debited     = false;
+        $regorder->payfast_paid       = false;
+      }
+
+      $regorder->total_fee = $totalFee;
+      $regorder->save();
+
+      return $regorder;
+    });
+
+    $totalFee = $regorder->total_fee ?? $regorder->payfast_amount_due ?? 0;
+
+    // Free event confirmation email + redirect
+    if ($regorder->pay_status == 1) {
       if (\App\Models\SiteSetting::get('player_email_on_registration', '1') === '1') {
         try {
           $regorder->loadMissing('items.category_event.event', 'items.category_event.category', 'user');
@@ -1144,7 +1514,7 @@ class RegisterController extends Controller
               ->queue(new \App\Mail\RegistrationConfirmationMail($regorder));
           }
         } catch (\Throwable $e) {
-          \Illuminate\Support\Facades\Log::warning('[FREE REG] Confirmation email failed', ['error' => $e->getMessage()]);
+          Log::warning('[FREE REG] Confirmation email failed', ['error' => $e->getMessage()]);
         }
       }
 
@@ -1154,31 +1524,20 @@ class RegisterController extends Controller
     }
 
     // -----------------------------------
-    // 🔵 WALLET – DO NOT AUTO-APPLY
-    // Let the user choose on checkout page
+    // PayFast for full amount
     // -----------------------------------
-
-    $wallet = Auth::user()->wallet;
-    $walletBalance = $wallet?->balance ?? 0;
-
-    $regorder = app(RegistrationPaymentService::class)->reservePayment($regorder, 0, $totalFee);
-
-    // -----------------------------------
-    // 🔴 PayFast for full amount
-    // -----------------------------------
-
     $payfast = new Payfast();
-    $payfast->setMode(Auth::id() === 584 ? 0 : 1);
+    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
 
-    $request['amount'] = $totalFee;
-    $request['custom_int5'] = $regorder->id;
+    $request['amount']               = $totalFee;
+    $request['custom_int5']          = $regorder->id;
     $request['custom_wallet_reserved'] = 0;
+
     Log::info('HYBRID CREATE ORDER', [
-      'order_id' => $regorder->id,
-      'total_fee' => $totalFee,
-      'wallet_balance' => $walletBalance,
+      'order_id'        => $regorder->id,
+      'total_fee'       => $totalFee,
       'wallet_reserved' => 0,
-      'payfast_due' => $totalFee
+      'payfast_due'     => $totalFee,
     ]);
 
     return view('frontend.payfast.check_out', compact('request', 'payfast'));

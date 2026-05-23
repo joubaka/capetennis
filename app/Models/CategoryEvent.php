@@ -62,8 +62,15 @@ class CategoryEvent extends Model
   // app/Models/CategoryEvent.php
   public function categoryEventRegistrations()
   {
+    // Returns ALL rows (including withdrawn) so callers can apply their own filters.
+    // Use activeRegistrations() for the non-withdrawn active set.
+    return $this->hasMany(\App\Models\CategoryEventRegistration::class, 'category_event_id', 'id');
+  }
+
+  public function activeRegistrations()
+  {
     return $this->hasMany(\App\Models\CategoryEventRegistration::class, 'category_event_id', 'id')
-      ->whereNull('withdrawn_at');
+      ->where('status', '!=', 'withdrawn');
   }
 
   public function allCategoryEventRegistrations()

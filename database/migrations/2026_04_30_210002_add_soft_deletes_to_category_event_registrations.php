@@ -13,9 +13,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('category_event_registrations', function (Blueprint $table) {
-            $table->softDeletes()->after('refund_account_type');
-        });
+        if (!Schema::hasColumn('category_event_registrations', 'deleted_at')) {
+            Schema::table('category_event_registrations', function (Blueprint $table) {
+                $table->softDeletes()->after('refund_account_type');
+            });
+        }
     }
 
     public function down(): void

@@ -2,16 +2,14 @@
 
 namespace App\Http\Controllers\Frontend;
 
-use App\Domain\Entries\Services\EntryService;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\SiteSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class RegistrationWithdrawController extends Controller
 {
-  public function __construct(private EntryService $entryService) {}
-
   /**
    * Withdraw a registration.
    * Refund selection handled separately.
@@ -29,11 +27,23 @@ class RegistrationWithdrawController extends Controller
       return back()->withErrors('Withdrawals are currently disabled. Please contact support@capetennis.co.za for assistance.');
     }
 
-    try {
-      $check = $this->entryService->withdrawEntry($registration, $user);
-    } catch (\RuntimeException $e) {
-      return back()->withErrors($e->getMessage());
+    $check = $registration->canWithdraw($user);
+
+    if (!$check['ok']) {
+      return back()->withErrors($check['message']);
     }
+
+    if ($registration->status === 'withdrawn') {
+      return back()->withErrors('This registration is already withdrawn.');
+    }
+
+    // -------------------------
+    // WITHDRAW inside DB transaction so the state update and activity log
+    // are atomic. Emails are sent afterwards (cannot be rolled back).
+    // -------------------------
+    DB::transaction(function () use ($registration, $user, $check) {
+      $registration->markWithdrawn($user, 'self');
+    });
 
     // Send notification emails outside the transaction
     // (queued, so a mail failure won't roll back the withdrawal)
@@ -59,4 +69,6 @@ class RegistrationWithdrawController extends Controller
       : 'Registration withdrawn (no refund – deadline passed).'
     );
   }
+
+
 }

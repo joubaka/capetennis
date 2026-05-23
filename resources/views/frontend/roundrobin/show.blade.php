@@ -167,29 +167,12 @@
   .bracket-zoom-outer {
     position: relative;
   }
-  .bracket-zoom-controls {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    gap: 6px;
-    padding: 6px 0;
-  }
-  .bracket-zoom-controls .btn {
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 700;
-  }
   .bracket-zoom-scroll {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y pinch-zoom;
     max-height: 75vh;
+    padding: 8px;
   }
   .bracket-zoom-inner {
     transform-origin: top left;
@@ -222,7 +205,7 @@
  <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link"
+    <button class="nav-link active"
             id="matrix-tab"
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
@@ -251,7 +234,7 @@
     </button>
   </li>
    <li class="nav-item" role="presentation">
-    <button class="nav-link active"
+    <button class="nav-link"
             id="main-bracket-tab"
             data-bs-toggle="tab"
             data-bs-target="#main-bracket-pane"
@@ -272,7 +255,7 @@
     {{-- ============================
          TAB 1 — MATRIX + STANDINGS
        ============================ --}}
-    <div class="tab-pane fade show" 
+    <div class="tab-pane fade show active" 
          id="matrix-pane" 
          role="tabpanel">
       <div class="row"> 
@@ -415,29 +398,31 @@
      Brackets
 ========================================= -->
 
-  <div class="tab-pane fade show active" id="main-bracket-pane" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="mb-0">Main Bracket</h5>
-    </div>
-
-    <div class="bracket-zoom-outer">
-      <div class="bracket-zoom-controls">
-        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="out">−</button>
-        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="in">+</button>
-        <button type="button" class="btn btn-outline-secondary btn-bracket-zoom" data-dir="fit" style="font-size:11px;width:auto;padding:0 10px;">Fit</button>
-        <small class="text-muted d-flex align-items-center ms-1 bracket-zoom-label">100%</small>
+  <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 class="card-title mb-0">Main Bracket</h5>
+        <div class="bracket-zoom-controls d-flex gap-2 align-items-center">
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-bracket-zoom" data-dir="out" style="width:30px;height:30px;padding:0;">−</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-bracket-zoom" data-dir="in" style="width:30px;height:30px;padding:0;">+</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary btn-bracket-zoom" data-dir="fit" style="font-size:11px;padding:0 10px;height:30px;">Fit</button>
+          <small class="text-muted bracket-zoom-label">100%</small>
+        </div>
       </div>
-      <div class="bracket-zoom-scroll">
-        <div class="bracket-zoom-inner" id="main-bracket-wrapper">
-          <div class="text-center text-muted py-5">
-            <div class="spinner-border spinner-border-sm"></div>
-            <div>Loading…</div>
+      <div class="card-body p-0">
+        <div class="bracket-zoom-outer">
+          <div class="bracket-zoom-scroll" style="background:#f8fafc;border-radius:0 0 6px 6px;">
+            <div class="bracket-zoom-inner" id="main-bracket-wrapper">
+              <div class="text-center text-muted py-5">
+                <div class="spinner-border spinner-border-sm"></div>
+                <div>Loading…</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-
-</div>
+  </div>
 
   </div> {{-- END TABS --}}
 </div> {{-- END APP --}}

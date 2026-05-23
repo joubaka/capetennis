@@ -1088,7 +1088,7 @@ class EventAdminController extends Controller
       'registration_id' => 'required|exists:registrations,id',
     ]);
 
-    $exists = $categoryEvent->categoryEventRegistrations()
+    $exists = $categoryEvent->activeRegistrations()
       ->where('registration_id', $request->registration_id)
       ->exists();
 
@@ -1109,7 +1109,7 @@ class EventAdminController extends Controller
 
     return response()->json([
       'success' => true,
-      'count' => $categoryEvent->categoryEventRegistrations()->count(),
+      'count' => $categoryEvent->activeRegistrations()->count(),
       'row' => view(
         'backend.event.partials.entry-row',
         ['reg' => $entry]
@@ -1128,14 +1128,17 @@ class EventAdminController extends Controller
   ) {
     abort_if($categoryEvent->isLocked(), 403);
 
-    $categoryEvent->categoryEventRegistrations()
+    $cer = $categoryEvent->categoryEventRegistrations()
       ->where('registration_id', $registration->id)
-      ->limit(1)
-      ->update(['withdrawn_at' => now()]);
+      ->first();
+
+    if ($cer) {
+      $cer->markWithdrawn(auth()->user(), 'admin');
+    }
 
     return response()->json([
       'success' => true,
-      'count' => $categoryEvent->categoryEventRegistrations()->count(),
+      'count' => $categoryEvent->activeRegistrations()->count(),
     ]);
 
   }

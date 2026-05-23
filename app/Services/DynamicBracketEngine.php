@@ -391,7 +391,7 @@ class DynamicBracketEngine
         return match($size) {
             2  => [[1, 2]],
             4  => [[1, 4], [2, 3]],
-            8  => [[1, 8], [2, 7], [3, 6], [4, 5]],
+            8  => [[1, 8], [3, 6], [4, 5], [2, 7]],
             16 => [[1, 16], [2, 15], [3, 14], [4, 13], [5, 12], [6, 11], [7, 10], [8, 9]],
             32 => [
                 [1, 32], [16, 17], [8, 25], [9, 24],
@@ -409,7 +409,7 @@ class DynamicBracketEngine
      */
     protected function buildVirtualPositionPlayoffs(array $rounds, int $numRounds, int $startY, int $nextNr): array
     {
-        $matches = [];
+        $matches = []; 
         $maxY = $startY;
         $spacing = self::BOX_HEIGHT + 30;
         $currentY = $startY;
@@ -430,7 +430,7 @@ class DynamicBracketEngine
                     'width' => self::BOX_WIDTH,
                     'height' => self::BOX_HEIGHT,
                     'label' => '3rd/4th Place',
-                    'isFinal' => true,
+                    'isFinal' => true, 
                     'virtualMatchNr' => $nextNr,
                     'seedLabel1' => null,
                     'seedLabel2' => null,

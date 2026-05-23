@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (! Schema::hasColumn('draw_settings', 'preset_key')) {
+        if (!Schema::hasColumn('draw_settings', 'preset_key')) {
             Schema::table('draw_settings', function (Blueprint $table) {
-                $table->string('preset_key')->nullable()->after('playoff_config');
+                $table->string('preset_key')->nullable();
             });
         }
     }
