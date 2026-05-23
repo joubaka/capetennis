@@ -3685,31 +3685,32 @@ $(document).ready(function() {
   const printStyles = `
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; padding: 15px; color: #000; font-size: 14px; }
-      h1 { font-size: 24px; margin-bottom: 6px; }
-      h2 { font-size: 18px; color: #555; margin-bottom: 16px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-      th, td { border: 1px solid #999; padding: 8px 6px; text-align: left; }
-      th { background: #333; color: #fff; font-weight: 600; }
+      body { font-family: Arial, sans-serif; padding: 15px; color: #000; font-size: 18px; }
+      h1 { font-size: 30px; margin-bottom: 8px; }
+      h2 { font-size: 22px; color: #333; margin-bottom: 18px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 16px; }
+      th, td { border: 1px solid #999; padding: 10px 8px; text-align: left; }
+      th { background: #333; color: #fff; font-weight: 700; font-size: 15px; }
       .text-center { text-align: center; }
       .fw-bold { font-weight: bold; }
       .text-success { color: #198754; }
       .text-muted { color: #888; }
-      .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+      .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 13px; font-weight: 700; }
       .bg-dark { background: #000; color: #fff; }
       .bg-primary { background: #0d6efd; color: #fff; }
       .bg-secondary { background: #6c757d; color: #fff; }
       svg { max-width: 100%; }
       .page-break { page-break-before: always; }
       .rr-matrix-table { border-collapse: collapse; table-layout: fixed; }
-      .rr-matrix-table td, .rr-matrix-table th { border: 1px solid #999; padding: 9px 5px; text-align: center; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .rr-matrix-table thead th { background: #fff; color: #0a3566; border: 2px solid #0a3566; font-weight: 700; padding: 9px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .rr-matrix-table tbody th { background: #fff; color: #0b722e; border: 2px solid #0b722e; font-weight: 700; white-space: nowrap; text-align: left; padding: 9px 6px; overflow: hidden; text-overflow: ellipsis; }
+      .rr-matrix-table td, .rr-matrix-table th { border: 1px solid #999; padding: 10px 6px; text-align: center; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .rr-matrix-table thead th { background: #fff; color: #0a3566; border: 2px solid #0a3566; font-weight: 700; padding: 10px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+      .rr-matrix-table tbody th { background: #fff; color: #0b722e; border: 2px solid #0b722e; font-weight: 700; white-space: nowrap; text-align: left; padding: 10px 8px; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
       .rr-matrix-table .rr-win { color: #00a859; font-weight: bold; }
       .rr-matrix-table .rr-loss { color: #d32f2f; font-weight: bold; }
       .rr-matrix-table td.bg-diagonal, .rr-matrix-table td.bg-light { background: #000 !important; border-color: #333; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .standings-table { width: auto; margin-top: 10px; }
-      .standings-table th { border: 2px solid #222; color: #222; font-weight: 700; }
+      .standings-table { width: auto; margin-top: 12px; }
+      .standings-table th { border: 2px solid #222; color: #222; font-weight: 700; font-size: 15px; }
+      .standings-table td { font-size: 15px; }
       .bracket-print-wrap svg { width: 100% !important; }
       @media print {
         body { padding: 5px; }
@@ -4593,7 +4594,7 @@ $(document).ready(function() {
           if (hasContent) html += '<div class="page-break"></div>';
           html += '<h1>' + drawName + '</h1>';
           html += '<h2>Playoff Fixtures</h2>';
-          html += '<p style="font-size:11px; color:#666; margin-bottom:10px;">';
+          html += '<p style="font-size:15px; color:#444; margin-bottom:12px;">';
           html += '<span style="color:#0d6efd; font-weight:bold;">W3</span> = Winner of match 3 &nbsp; ';
           html += '<span style="color:#e65100; font-weight:bold;">L3</span> = Loser of match 3 &nbsp; ';
           html += '<span style="font-weight:bold;">A#1</span> = Group A position 1';
