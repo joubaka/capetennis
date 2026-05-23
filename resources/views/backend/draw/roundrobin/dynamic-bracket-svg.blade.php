@@ -1,15 +1,15 @@
 <svg width="{{ $svgData['totalWidth'] }}" height="{{ $svgData['totalHeight'] }}" viewBox="0 0 {{ $svgData['totalWidth'] }} {{ $svgData['totalHeight'] }}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet">
     <style>
-        .player-name { font-family: sans-serif; font-size: 13px; fill: #000; font-weight: 700; }
-        .score-green { font-family: monospace; font-size: 12px; fill: #059669; font-weight: 800; }
-        .id-red { font-family: sans-serif; font-size: 10px; fill: #ef4444; font-weight: 600; }
+        .player-name { font-family: sans-serif; font-size: 20px; fill: #000; font-weight: 700; }
+        .score-green { font-family: monospace; font-size: 16px; fill: #000; font-weight: 800; }
+        .id-red { font-family: sans-serif; font-size: 13px; fill: #000; font-weight: 600; }
         .bracket-line { stroke: #000; stroke-width: 2.5; fill: none; }
-        .seed-origin { font-family: sans-serif; font-size: 9px; fill: #fff; font-weight: 700; }
+        .seed-origin { font-family: sans-serif; font-size: 14px; fill: #000; font-weight: 700; }
         .seed-origin-bg { rx: 3; ry: 3; }
-        .seed-origin-inline { font-family: sans-serif; font-size: 12px; fill: #6366f1; font-weight: 700; }
+        .seed-origin-inline { font-family: sans-serif; font-size: 18px; fill: #000; font-weight: 700; }
         .match-hit { fill: transparent; cursor: pointer; }
         .match-hit:hover { fill: rgba(99,102,241,0.06); }
-        .match-score { font-family: monospace; font-size: 11px; fill: #059669; font-weight: 700; }
+        .match-score { font-family: monospace; font-size: 15px; fill: #000; font-weight: 700; }
     </style>
 
     @php
@@ -62,11 +62,11 @@
         @endphp
 
         {{-- Bracket Title --}}
-        <text x="60" y="{{ $bracketStartY - 45 }}" style="font-family: sans-serif; font-size: 18px; font-weight: 800; fill: #1e293b;">
+        <text x="60" y="{{ $bracketStartY - 45 }}" style="font-family: sans-serif; font-size: 22px; font-weight: 800; fill: #000;">
             {{ $bracketName }}
         </text>
         @if($posLabel && $isAdmin)
-            <text x="{{ 60 + strlen($bracketName) * 10 + 10 }}" y="{{ $bracketStartY - 45 }}" style="font-family: sans-serif; font-size: 12px; font-weight: 600; fill: #6366f1;">
+            <text x="{{ 60 + strlen($bracketName) * 10 + 10 }}" y="{{ $bracketStartY - 45 }}" style="font-family: sans-serif; font-size: 16px; font-weight: 600; fill: #000;">
                 {{ $posLabel }}
             </text>
         @endif
@@ -78,7 +78,7 @@
                 $roundLabel = $firstMatch['roundLabel'] ?? "R$rn";
                 $roundX = $firstMatch ? $firstMatch['x'] : (60 + ($rn - 1) * 200);
             @endphp
-            <text x="{{ $roundX + 95 }}" y="{{ $bracketStartY - 20 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 11px; font-weight: 700; fill: #64748b;">
+            <text x="{{ $roundX + 95 }}" y="{{ $bracketStartY - 20 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 15px; font-weight: 700; fill: #000;">
                 {{ $roundLabel }}
             </text>
         @endforeach
@@ -166,9 +166,9 @@
                 <g>
                     {{-- Top Player --}}
                     <text x="{{ $x }}" y="{{ $topLineY - 6 }}" class="player-name"
-                        @if($isFeeder1) style="fill: {{ $feederIsWin1 ? '#0d6efd' : '#e65100' }}; font-size: 11px; font-weight: 600;"
-                        @elseif($isEmpty && $roundNum === 1 && $p1 && !$isBye1) style="fill: #6366f1; font-size: 12px; font-weight: 700;"
-                        @elseif($isBye1 && !$isEmpty) style="fill: #9ca3af; font-style: italic;"
+                        @if($isFeeder1) style="fill: #000; font-size: 18px; font-weight: 700;"
+                        @elseif($isEmpty && $roundNum === 1 && $p1 && !$isBye1) style="fill: #000; font-size: 20px; font-weight: 700;"
+                        @elseif($isBye1 && !$isEmpty) style="fill: #000; font-style: italic;"
                         @endif>{{ Str::limit($p1, 25) }}</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
@@ -184,9 +184,9 @@
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
                     <text x="{{ $x }}" y="{{ $bottomLineY - 6 }}" class="player-name"
-                        @if($isFeeder2) style="fill: {{ $feederIsWin2 ? '#0d6efd' : '#e65100' }}; font-size: 11px; font-weight: 600;"
-                        @elseif($isEmpty && $roundNum === 1 && $p2 && !$isBye2) style="fill: #6366f1; font-size: 12px; font-weight: 700;"
-                        @elseif($isBye2 && !$isEmpty) style="fill: #9ca3af; font-style: italic;"
+                        @if($isFeeder2) style="fill: #000; font-size: 18px; font-weight: 700;"
+                        @elseif($isEmpty && $roundNum === 1 && $p2 && !$isBye2) style="fill: #000; font-size: 20px; font-weight: 700;"
+                        @elseif($isBye2 && !$isEmpty) style="fill: #000; font-style: italic;"
                         @endif>{{ Str::limit($p2, 25) }}</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
@@ -221,7 +221,7 @@
                         
                         {{-- Winner name --}}
                         @if($winnerName && !$isEmpty)
-                            <text x="{{ $winnerLineEndX + 10 }}" y="{{ $midY + 5 }}" class="player-name" style="fill: #059669; font-size: 15px;">
+                            <text x="{{ $winnerLineEndX + 10 }}" y="{{ $midY + 5 }}" class="player-name" style="fill: #000; font-size: 20px;">
                                 🏆 {{ Str::limit($winnerName, 30) }}
                             </text>
                         @endif
@@ -255,7 +255,7 @@
                         {{-- Virtual match number on empty bracket --}}
                         @php $vNr = $match['virtualMatchNr'] ?? null; @endphp
                         @if($vNr)
-                            <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 10px; fill: #94a3b8; font-weight: 600;">M{{ $vNr }}</text>
+                            <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 18px; fill: #000; font-weight: 700;">M{{ $vNr }}</text>
                         @endif
                     @endif
                 </g>
@@ -267,7 +267,7 @@
              =================================== --}}
         @if(!empty($bracket['positionPlayoffs']))
             {{-- Section Title --}}
-            <text x="60" y="{{ $bracket['positionPlayoffs'][0]['y'] - 30 }}" style="font-family: sans-serif; font-size: 16px; font-weight: 700; fill: #333;">Position Playoffs</text>
+            <text x="60" y="{{ $bracket['positionPlayoffs'][0]['y'] - 30 }}" style="font-family: sans-serif; font-size: 20px; font-weight: 700; fill: #000;">Position Playoffs</text>
             
             @foreach($bracket['positionPlayoffs'] as $playoff)
                 @php
@@ -340,40 +340,40 @@
 
                 <g>
                     {{-- Playoff Label --}}
-                    <text x="{{ $x + ($w / 2) }}" y="{{ $y - 20 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 11px; fill: #666; font-weight: 600;">
+                    <text x="{{ $x + ($w / 2) }}" y="{{ $y - 20 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 16px; fill: #000; font-weight: 700;">
                         {{ $label }}
                     </text>
 
                     {{-- Top Player --}}
                     <text x="{{ $x }}" y="{{ $topLineY - 6 }}" class="player-name"
-                        @if($isFeeder1) style="fill: {{ $feederIsWin1 ? '#0d6efd' : '#e65100' }}; font-size: 11px; font-weight: 600;"
-                        @elseif($isBye1 && !$isEmpty) style="fill: #9ca3af; font-style: italic;"
+                        @if($isFeeder1) style="fill: #000; font-size: 18px; font-weight: 700;"
+                        @elseif($isBye1 && !$isEmpty) style="fill: #000; font-style: italic;"
                         @endif>{{ Str::limit($p1, 25) }}</text>
                     @if($origin1 && $isAdmin)
-                        @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
-                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
-                        <text x="{{ $badgeX1 + 11 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
+                        @php $badgeX1 = $x + min(strlen($p1), 25) * 9 + 6; @endphp
+                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 20 }}" width="30" height="18" fill="none" stroke="#000" stroke-width="1" class="seed-origin-bg" />
+                        <text x="{{ $badgeX1 + 15 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel1)
-                        @php $badgeX1 = $x + min(strlen($p1), 25) * 7.5 + 6; @endphp
-                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 17 }}" width="24" height="14" fill="{{ $isBye1 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
-                        <text x="{{ $badgeX1 + 12 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
+                        @php $badgeX1 = $x + min(strlen($p1), 25) * 9 + 6; @endphp
+                        <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 20 }}" width="30" height="18" fill="none" stroke="#000" stroke-width="1" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX1 + 15 }}" y="{{ $topLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
                     <line x1="{{ $x }}" y1="{{ $topLineY }}" x2="{{ $rightX }}" y2="{{ $topLineY }}" class="bracket-line" />
 
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
                     <text x="{{ $x }}" y="{{ $bottomLineY - 6 }}" class="player-name"
-                        @if($isFeeder2) style="fill: {{ $feederIsWin2 ? '#0d6efd' : '#e65100' }}; font-size: 11px; font-weight: 600;"
-                        @elseif($isBye2 && !$isEmpty) style="fill: #9ca3af; font-style: italic;"
+                        @if($isFeeder2) style="fill: #000; font-size: 18px; font-weight: 700;"
+                        @elseif($isBye2 && !$isEmpty) style="fill: #000; font-style: italic;"
                         @endif>{{ Str::limit($p2, 25) }}</text>
                     @if($origin2 && $isAdmin)
-                        @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
-                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="22" height="14" fill="#6366f1" class="seed-origin-bg" />
-                        <text x="{{ $badgeX2 + 11 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
+                        @php $badgeX2 = $x + min(strlen($p2), 25) * 9 + 6; @endphp
+                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 20 }}" width="30" height="18" fill="none" stroke="#000" stroke-width="1" class="seed-origin-bg" />
+                        <text x="{{ $badgeX2 + 15 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel2)
-                        @php $badgeX2 = $x + min(strlen($p2), 25) * 7.5 + 6; @endphp
-                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 17 }}" width="24" height="14" fill="{{ $isBye2 ? '#9ca3af' : '#6366f1' }}" class="seed-origin-bg" rx="2" />
-                        <text x="{{ $badgeX2 + 12 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
+                        @php $badgeX2 = $x + min(strlen($p2), 25) * 9 + 6; @endphp
+                        <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 20 }}" width="30" height="18" fill="none" stroke="#000" stroke-width="1" class="seed-origin-bg" rx="2" />
+                        <text x="{{ $badgeX2 + 15 }}" y="{{ $bottomLineY - 7 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
 
                     {{-- Vertical Connector --}}
@@ -427,7 +427,7 @@
                         {{-- Virtual match number on empty bracket --}}
                         @php $vNr = $playoff['virtualMatchNr'] ?? null; @endphp
                         @if($vNr)
-                            <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 10px; fill: #94a3b8; font-weight: 600;">M{{ $vNr }}</text>
+                            <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 18px; fill: #000; font-weight: 700;">M{{ $vNr }}</text>
                         @endif
                     @endif
                 </g>
