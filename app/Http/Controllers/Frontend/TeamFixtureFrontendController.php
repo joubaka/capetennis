@@ -64,8 +64,12 @@ class TeamFixtureFrontendController extends Controller
             'registration1.players',
             'registration2.players',
             'fixtureResults',
+            'drawGroup',
           ])
-          ->orderBy('id')
+          ->orderByRaw("FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS')")
+          ->orderBy('round')
+          ->orderBy('draw_group_id')
+          ->orderBy('match_nr')
           ->get();
 
       return view('frontend.fixtures.enter-score-rr', [

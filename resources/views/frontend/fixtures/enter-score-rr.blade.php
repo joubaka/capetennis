@@ -20,6 +20,7 @@
               <th class="text-center">VS</th>
               <th>Player 2</th>
               <th class="text-center">Round</th>
+              <th class="text-center">Group</th>
               <th class="text-center">Score</th>
               <th class="text-center">Actions</th>
             </tr>
@@ -27,8 +28,7 @@
           <tbody>
             @foreach($fixtures as $fx)
               @php
-                $winner = $fx->winner_id;
-                $loser  = $fx->loser_id;
+                $winner = $fx->winner_registration;
 
                 $reg1 = $fx->registration1;
                 $reg2 = $fx->registration2;
@@ -36,11 +36,19 @@
                 $p1 = $reg1?->players?->first()?->full_name ?? 'TBD';
                 $p2 = $reg2?->players?->first()?->full_name ?? 'TBD';
 
-                $cls1 = $winner === $fx->registration1_id ? 'bg-success text-white' :
-                        ($loser === $fx->registration1_id ? 'bg-danger text-white' : '');
+                $cls1 = $winner && $winner == $fx->registration1_id ? 'bg-success text-white' :
+                        ($winner && $winner == $fx->registration2_id ? 'bg-danger text-white' : '');
 
-                $cls2 = $winner === $fx->registration2_id ? 'bg-success text-white' :
-                        ($loser === $fx->registration2_id ? 'bg-danger text-white' : '');
+                $cls2 = $winner && $winner == $fx->registration2_id ? 'bg-success text-white' :
+                        ($winner && $winner == $fx->registration1_id ? 'bg-danger text-white' : '');
+
+                $allSets = $fx->fixtureResults->sortBy('set_nr')
+                    ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
+                    ->implode(', ');
+
+                $groupLabel = $fx->stage === 'RR'
+                    ? 'Box ' . ($fx->drawGroup?->name ?? '-')
+                    : ($fx->stage ?? '-');
               @endphp
               <tr>
                 <td class="d-none">{{ $fx->id }}</td>
@@ -48,7 +56,8 @@
                 <td class="text-center"><span class="badge bg-light border text-secondary">vs</span></td>
                 <td class="{{ $cls2 }}">{{ $p2 }}</td>
                 <td class="text-center">{{ $fx->round ?? '-' }}</td>
-                <td class="text-center fw-bold">{{ $fx->score ?? '' }}</td>
+                <td class="text-center">{{ $groupLabel }}</td>
+                <td class="text-center fw-bold">{{ $allSets }}</td>
                 <td class="text-center">
                   <button class="btn btn-sm btn-primary rr-open-modal"
                           data-id="{{ $fx->id }}"
