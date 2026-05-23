@@ -386,7 +386,13 @@ function renderOrderOfPlay() {
             Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
             Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
           const sub = grp.slice(i, j);
-          resolved.push(...resolveGroup(sub));
+          // Guard: if sub is the whole group, no further tiebreak possible — return as-is
+          if (sub.length === grp.length) {
+            sub.forEach(r => { r.tiebreak = r.tiebreak || '='; });
+            resolved.push(...sub);
+          } else {
+            resolved.push(...resolveGroup(sub));
+          }
           i = j;
         }
         return resolved;
