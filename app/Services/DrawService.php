@@ -2,24 +2,42 @@
 
 namespace App\Services;
 
+use App\Domain\Draws\Services\StandingsService;
+use App\Domain\Draws\Services\RoundRobinGenerationService;
+use App\Domain\Fixtures\Services\FixtureProgressionService;
+use App\Domain\Engine\EngineRouter;
 use App\Models\Draw;
+use App\Models\DrawGroup;
 use App\Models\Fixture;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * DrawService
- * 
- * Handles draw operations including:
- * - Round Robin fixtures and scoring
- * - Bracket/Playoff generation
- * - Standings calculation
- * - Order of Play management
- * 
- * Renamed from InterproDrawBuilder as it's used for multiple event types.
+ *
+ * Legacy orchestrator — all draw/fixture operations are now routed through
+ * EngineRouter which dispatches to canonical services according to the
+ * configured engine mode (legacy / hybrid / canonical).
+ *
+ * Legacy methods remain intact as fallback targets.
+ * Do NOT remove legacy methods until canonical parity is confirmed via tests.
  */
 class DrawService
 {
+  private EngineRouter $engine;
+
+  // Legacy canonical references kept for direct use inside legacy methods.
+  private StandingsService            $canonicalStandings;
+  private RoundRobinGenerationService $canonicalRR;
+  private FixtureProgressionService   $canonicalProgression;
+
+  public function __construct()
+  {
+    $this->engine               = app(EngineRouter::class);
+    $this->canonicalStandings   = app(StandingsService::class);
+    $this->canonicalRR          = app(RoundRobinGenerationService::class);
+    $this->canonicalProgression = app(FixtureProgressionService::class);
+  }
   // ============================================================
   // PUBLIC: ROUND ROBIN HUB (MATRIX + OOP + STANDINGS)
   // ============================================================
@@ -47,22 +65,14 @@ class DrawService
       'fixtures' => $draw->drawFixtures->count(),
     ]);
 
-    // If no RR fixtures: generate
+    // If no RR fixtures: DO NOT generate — caller must invoke regenerateRoundRobinFixtures() explicitly
     if ($draw->drawFixtures->isEmpty()) {
-      Log::warning("⚠️ [RR HUB] No fixtures found — generating RR fixtures");
-      $this->generateRoundRobinFixtures($draw);
-
-      $draw->load([
-        'groups.registrations.players',
-        'drawFixtures.registration1.players',
-        'drawFixtures.registration2.players',
-        'drawFixtures.fixtureResults',
-        'drawFixtures.drawGroup',
-      ]);
-
-      Log::info("🔄 [RR HUB] Fixtures regenerated", [
-        'fixtures' => $draw->drawFixtures->count(),
-      ]);
+      Log::warning("⚠️ [RR HUB] No fixtures found — returning empty hub. Call regenerateRoundRobinFixtures() first.");
+      return [
+        'rrFixtures' => [],
+        'oops'       => collect(),
+        'standings'  => [],
+      ];
     }
 
     // ---------------------------------------------------------------------
@@ -119,12 +129,14 @@ class DrawService
     // ---------------------------------------------------------------------
     $allFixtures = $draw->drawFixtures()
       ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue', 'drawGroup'])
-      ->orderByRaw("
-            FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS'),
-            round ASC,
-            match_nr ASC
-        ")
-      ->get();
+      ->orderBy('round')
+      ->orderBy('match_nr')
+      ->get()
+      ->sortBy(function ($fx) {
+        $stageOrder = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2];
+        return sprintf('%02d_%02d_%04d', $stageOrder[$fx->stage] ?? 3, $fx->round, $fx->match_nr);
+      })
+      ->values();
 
     // Build feeder map: for each fixture, which match_nr feeds winner/loser into it
     // child.parent_fixture_id = parent.id  → child's WINNER goes to parent
@@ -836,9 +848,20 @@ class DrawService
   }
 
   // ============================================================
-// PRIVATE: FULL STANDINGS (MATCH → SET → H2H) FOR HUB
-// ============================================================
+  // PRIVATE: FULL STANDINGS — delegates to canonical StandingsService
+  // ============================================================
   private function buildStandingsFromFixtures(Draw $draw): array
+  {
+    return $this->engine->forDraw($draw)->standings(
+      $draw,
+      fn(Draw $d) => $this->buildStandingsFromFixturesLegacy($d)
+    );
+  }
+
+  // ============================================================
+  // PRIVATE: LEGACY STANDINGS IMPLEMENTATION (fallback only)
+  // ============================================================
+  private function buildStandingsFromFixturesLegacy(Draw $draw): array
   {
     $standings = [];
 
@@ -1019,58 +1042,18 @@ class DrawService
   }
 
   // ============================================================
-  // PRIVATE: GAMES-BASED STANDINGS (USED BY AJAX SAVE)
+  // PRIVATE: GAMES-BASED STANDINGS — deprecated, use buildStandingsFromFixtures()
+  // Kept for backwards-compatibility but now delegates to canonical method.
   // ============================================================
   private function calculateStandings(int $groupId): array
   {
-    $fixtures = Fixture::where('draw_group_id', $groupId)
-      ->with(['fixtureResults', 'registration1', 'registration2'])
-      ->get();
-
-    $scores = [];
-
-    foreach ($fixtures as $fx) {
-      if (!isset($scores[$fx->registration1_id])) {
-        $scores[$fx->registration1_id] = [
-          'player' => $fx->registration1->display_name,
-          'wins' => 0,
-          'losses' => 0,
-          'games_plus' => 0,
-          'games_minus' => 0,
-        ];
-      }
-
-      if (!isset($scores[$fx->registration2_id])) {
-        $scores[$fx->registration2_id] = [
-          'player' => $fx->registration2->display_name,
-          'wins' => 0,
-          'losses' => 0,
-          'games_plus' => 0,
-          'games_minus' => 0,
-        ];
-      }
-
-      if ($fx->fixtureResults->count()) {
-        foreach ($fx->fixtureResults as $set) {
-          $scores[$fx->registration1_id]['games_plus'] += $set->registration1_score;
-          $scores[$fx->registration1_id]['games_minus'] += $set->registration2_score;
-
-          $scores[$fx->registration2_id]['games_plus'] += $set->registration2_score;
-          $scores[$fx->registration2_id]['games_minus'] += $set->registration1_score;
-        }
-
-        // NOTE: this relies on fixture->winner_registration existing
-        if ($fx->winner_registration == $fx->registration1_id) {
-          $scores[$fx->registration1_id]['wins']++;
-          $scores[$fx->registration2_id]['losses']++;
-        } elseif ($fx->winner_registration == $fx->registration2_id) {
-          $scores[$fx->registration2_id]['wins']++;
-          $scores[$fx->registration1_id]['losses']++;
-        }
-      }
+    // Locate the draw that owns this group
+    $group = \App\Models\DrawGroup::with(['draw.groups.groupRegistrations.registration', 'draw.drawFixtures.fixtureResults'])->find($groupId);
+    if (!$group || !$group->draw) {
+      return [];
     }
-
-    return $scores;
+    $fullStandings = $this->buildStandingsFromFixtures($group->draw);
+    return $fullStandings[$groupId] ?? [];
   }
   public function getMainAndPlateFixtures(Draw $draw): array
   {
@@ -1394,7 +1377,10 @@ class DrawService
 
   public function regenerateRoundRobinFixtures(Draw $draw): void
   {
-    $this->generateRoundRobinFixtures($draw);
+    $this->engine->forDraw($draw)->generateRoundRobin(
+      $draw,
+      fn(Draw $d) => $this->generateRoundRobinFixtures($d)
+    );
   }
 
   public function saveBracketScore(Fixture $fixture, array $sets): array
@@ -1468,8 +1454,17 @@ class DrawService
       $fixture->match_status = 1;
       $fixture->save();
 
-      // AUTO ADVANCE
-      $this->autoAdvanceBracket($fixture, $winner, $loser);
+      // AUTO ADVANCE — route through EngineRouter (use per-draw mode)
+      // Only advance if both winner and loser are resolved (non-null) players
+      if ($winner && $loser) {
+        $fixture->loadMissing('fixtureResults', 'draw');
+        $this->engine->forDraw($fixture->draw)->advanceFixture(
+          $fixture,
+          $winner,
+          $loser,
+          fn(Fixture $f, int $w, int $l) => $this->autoAdvanceBracket($f, $w, $l)
+        );
+      }
     });
     // Rebuild updated OOP
     $draw = $fixture->draw()->with([
@@ -1599,12 +1594,31 @@ class DrawService
           $childIndex = $childIds->search($fixture->id);
           $slot = ($childIndex === 0) ? 1 : 2;
 
+          // Idempotency: only write if the slot is empty or already holds this winner
           if ($slot === 1) {
-            $next->registration1_id = $winner;
-            Log::info("   ✔ Winner placed into registration1 (child index {$childIndex})");
+            if (is_null($next->registration1_id) || $next->registration1_id === $winner) {
+              $next->registration1_id = $winner;
+              Log::info("   ✔ Winner placed into registration1 (child index {$childIndex})");
+            } else {
+              Log::warning("   ⚠ registration1 already occupied by a different player — skipping duplicate progression", [
+                'fixture_id' => $fixture->id,
+                'parent_id' => $next->id,
+                'existing' => $next->registration1_id,
+                'attempted' => $winner,
+              ]);
+            }
           } else {
-            $next->registration2_id = $winner;
-            Log::info("   ✔ Winner placed into registration2 (child index {$childIndex})");
+            if (is_null($next->registration2_id) || $next->registration2_id === $winner) {
+              $next->registration2_id = $winner;
+              Log::info("   ✔ Winner placed into registration2 (child index {$childIndex})");
+            } else {
+              Log::warning("   ⚠ registration2 already occupied by a different player — skipping duplicate progression", [
+                'fixture_id' => $fixture->id,
+                'parent_id' => $next->id,
+                'existing' => $next->registration2_id,
+                'attempted' => $winner,
+              ]);
+            }
           }
         }
 
@@ -1638,12 +1652,31 @@ class DrawService
         $childIndex = $childIds->search($fixture->id);
         $slot = ($childIndex === 0) ? 1 : 2;
 
+        // Idempotency: only write if the slot is empty or already holds this loser
         if ($slot === 1) {
-          $next->registration1_id = $loser;
-          Log::info("   ✔ Loser placed into registration1 (child index {$childIndex})");
+          if (is_null($next->registration1_id) || $next->registration1_id === $loser) {
+            $next->registration1_id = $loser;
+            Log::info("   ✔ Loser placed into registration1 (child index {$childIndex})");
+          } else {
+            Log::warning("   ⚠ Loser registration1 already occupied — skipping duplicate progression", [
+              'fixture_id' => $fixture->id,
+              'parent_id' => $next->id,
+              'existing' => $next->registration1_id,
+              'attempted' => $loser,
+            ]);
+          }
         } else {
-          $next->registration2_id = $loser;
-          Log::info("   ✔ Loser placed into registration2 (child index {$childIndex})");
+          if (is_null($next->registration2_id) || $next->registration2_id === $loser) {
+            $next->registration2_id = $loser;
+            Log::info("   ✔ Loser placed into registration2 (child index {$childIndex})");
+          } else {
+            Log::warning("   ⚠ Loser registration2 already occupied — skipping duplicate progression", [
+              'fixture_id' => $fixture->id,
+              'parent_id' => $next->id,
+              'existing' => $next->registration2_id,
+              'attempted' => $loser,
+            ]);
+          }
         }
 
         $next->save();

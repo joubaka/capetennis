@@ -95,35 +95,34 @@ class ScheduleEngine
 
   /**
    * Auto-schedule: multi-court, multi-venue logic.
-   * Simple version for now; can expand later.
+   *
+   * @param int    $drawId
+   * @param int    $duration   Minutes per match.
+   * @param array  $venues     [ venueId => ['name' => '...', 'courts' => [1,2,...]], ... ]
+   * @param string $startTime  ISO datetime string for the first slot.
    */
-  public function autoSchedule(int $drawId, int $duration = 75)
+  public function autoSchedule(int $drawId, int $duration = 75, array $venues = [], string $startTime = '')
   {
+    if (empty($venues)) {
+      throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a non-empty $venues array.');
+    }
+
+    if (empty($startTime)) {
+      throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a $startTime string.');
+    }
+
     // Fetch fixtures by round, then by match order
     $fixtures = Fixture::where('draw_id', $drawId)
       ->orderBy('round')
       ->orderBy('match_nr')
       ->get();
 
-    // Load venues/courts from your frontend AJAX definition
-    // You will plug in: $venues = Venue::where('event_id', ...)->get();
-    // For now: pseudo-structure expected to be injected by controller
-    if (!property_exists($this, 'venues') || !$this->venues) {
-      throw new \Exception("AutoSchedule requires ->venues to be injected from controller");
-    }
-
-    // For example:
-    // $this->venues = [
-    //   12 => ['name' => 'Hermanus Primary', 'courts' => [1,2,3]],
-    //   14 => ['name' => 'Laerskool Eikestad', 'courts' => [1,2]]
-    // ];
-
-    // Let's transform into a timeline structure
+    // Transform into a per-court timeline structure
     $timeline = [];
 
-    foreach ($this->venues as $venueId => $venueData) {
+    foreach ($venues as $venueId => $venueData) {
       foreach ($venueData['courts'] as $court) {
-        $timeline[$venueId][$court] = Carbon::parse($this->startTime);
+        $timeline[$venueId][$court] = Carbon::parse($startTime);
       }
     }
 
@@ -150,16 +149,14 @@ class ScheduleEngine
       OrderOfPlay::updateOrCreate(
         ['fixture_id' => $fx->id],
         [
-          'draw_id' => $drawId,
-          'round_number' => $fx->round,
+          'draw_id'  => $drawId,
           'venue_id' => $earliestVenue,
-          'court' => $earliestCourt,
-          'start_time' => $earliestTime->copy(),
-          'duration_minutes' => $duration
+          'court'    => $earliestCourt,
+          'time'     => $earliestTime->format('Y-m-d H:i:s'),
         ]
       );
 
-      // Advance that court’s timeline
+      // Advance that courtâ€™s timeline
       $timeline[$earliestVenue][$earliestCourt] =
         $earliestTime->copy()->addMinutes($duration);
     }
@@ -194,3 +191,4 @@ class ScheduleEngine
     return true;
   }
 }
+

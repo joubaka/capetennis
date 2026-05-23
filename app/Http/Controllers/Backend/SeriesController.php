@@ -9,6 +9,7 @@ use App\Models\RankType;
 use App\Models\Series;
 use App\Models\Player;
 use App\Models\RankingList;
+use App\Models\SeriesRanking;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -210,7 +211,18 @@ class SeriesController extends Controller
   {
     $positions = range(1, 50);
 
-    $series->load('points');
+    // Ensure a RankingList row exists for every category that has SeriesRanking rows
+    $categoryIds = SeriesRanking::where('series_id', $series->id)
+      ->distinct()
+      ->pluck('category_id');
+
+    foreach ($categoryIds as $catId) {
+      RankingList::firstOrCreate(
+        ['series_id' => $series->id, 'category_id' => $catId]
+      );
+    }
+
+    $series->load(['points', 'ranking_lists.category']);
     $rankTypes = RankType::orderBy('type')->get();
 
     return view('backend.series.series-settings', compact(
@@ -220,16 +232,42 @@ class SeriesController extends Controller
     ));
   }
 
+  public function updateCategoryBestNum(Request $request, Series $series)
+  {
+    $data = $request->validate([
+      'category_best' => ['required', 'array'],
+      'category_best.*' => ['nullable', 'integer', 'min:1', 'max:99'],
+    ]);
+
+    foreach ($data['category_best'] as $rankingListId => $value) {
+      $list = \App\Models\RankingList::where('id', $rankingListId)
+        ->where('series_id', $series->id)
+        ->first();
+      if ($list) {
+        $list->update(['best_num_of_scores' => $value ?: null]);
+      }
+    }
+
+    return response()->json(['status' => 'ok', 'message' => 'Category counts saved']);
+  }
+
   public function update(Request $request, int $id)
   {
     $series = Series::findOrFail($id);
 
     $data = $request->validate([
+      'name' => ['sometimes', 'string', 'max:255'],
+      'year' => ['sometimes', 'nullable', 'integer', 'min:2000', 'max:2100'],
       'best_num_of_scores' => ['required', 'integer', 'min:1'],
-      'rank_type' => ['required', 'integer', 'exists:rank_types,id'],
+      'rank_type' => ['sometimes', 'nullable', 'integer', 'exists:rank_types,id'],
+      'leaderboard_published' => ['sometimes', 'integer', 'in:0,1'],
+      'auto_award_rule' => ['sometimes', 'integer', 'in:0,1'],
     ]);
 
+    // Prevent rank_type change if points template already created
     if (
+      isset($data['rank_type']) &&
+      $data['rank_type'] !== null &&
       $series->points_template_created &&
       (int) $series->rank_type !== (int) $data['rank_type']
     ) {
@@ -237,6 +275,11 @@ class SeriesController extends Controller
         'status' => 'error',
         'message' => 'Rank type cannot be changed after points have been applied.',
       ], 422);
+    }
+
+    // Don't overwrite rank_type if it came through as null (disabled select)
+    if (array_key_exists('rank_type', $data) && $data['rank_type'] === null) {
+      unset($data['rank_type']);
     }
 
     $series->update($data);

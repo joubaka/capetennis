@@ -119,7 +119,9 @@
           <div class="mt-3 d-flex gap-2 flex-wrap">
             <span class="badge status-counted">Counted — contributes to ranking</span>
             <span class="badge status-dropped">Dropped — not counted</span>
-            <span class="badge status-auto">Auto-award — awarded by rule</span>
+            @if(!empty($series->auto_award_rule))
+              <span class="badge status-auto">Auto-award — awarded by rule</span>
+            @endif
           </div>
         @else
           <div class="alert alert-info mb-0">No per-event breakdown available.</div>

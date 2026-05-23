@@ -141,7 +141,11 @@ class RankingController extends Controller
       // (e.g. rankings created via direct data entry, not through the rebuild process)
       $eventIds = $eventsById->keys()->toArray();
       $pointsMap = $series->points->pluck('score', 'position')->toArray();
-      $bestN = (int) ($series->best_num_of_scores ?? 0);
+      // Use per-category override if set, otherwise fall back to series-level value
+      $rankingList = \App\Models\RankingList::where('series_id', $series->id)
+        ->where('category_id', $rankingRecord->category_id)
+        ->first();
+      $bestN = (int) ($rankingList?->best_num_of_scores ?? $series->best_num_of_scores ?? 0);
 
       $rawResults = \App\Models\CategoryResult::query()
         ->join('registrations', 'registrations.id', '=', 'category_results.registration_id')

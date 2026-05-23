@@ -7,14 +7,16 @@
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
-
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
 @endsection
 
 {{-- Vendor JS --}}
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-
+<script src="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.js') }}"></script>
+<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
 @endsection
 
 @section('page-style')
@@ -169,6 +171,10 @@
     overflow: visible !important;
   }
 
+  .category-card .card {
+    overflow: visible !important;
+  }
+
   .category-card .table-responsive {
     overflow: visible !important;
   }
@@ -182,6 +188,11 @@
   /* Dropdowns escape the card/table stacking context */
   .dropdown-menu {
     z-index: 1055;
+  }
+
+  /* Last column dropdowns open upward when near bottom */
+  .col-actions .dropdown-menu {
+    position: fixed !important;
   }
 
 </style>
@@ -383,6 +394,15 @@
                   data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                   data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
             <i class="ti ti-user-minus me-1"></i>Withdraw
+          </button>
+        </li>
+      @else
+        <li>
+          <button type="button"
+                  class="dropdown-item text-success reinstate-player-btn"
+                  data-url="{{ route('admin.category.registration.reinstate', $reg) }}"
+                  data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
+            <i class="ti ti-user-plus me-1"></i>Reinstate
           </button>
         </li>
       @endif
@@ -618,10 +638,10 @@ if (mailForm) {
         })
         .then(r => r.json())
         .then(res => {
-            alert(`Email sent to ${res.sent} recipients`);
             sendMailModal.hide();
+            toastr.success(`Email sent to ${res.sent} recipient${res.sent !== 1 ? 's' : ''}`);
         })
-        .catch(() => alert('Email failed'));
+        .catch(() => toastr.error('Email failed. Please try again.'));
     });
 }
 
@@ -650,6 +670,11 @@ document.addEventListener('click', function(e) {
         const card = btn.closest('.category-card');
         const nowLocked = res.locked;
 
+        // Build the opposite URL (swap /lock <-> /unlock in path)
+        const oppositeUrl = nowLocked
+            ? url.replace(/\/lock$/, '/unlock')
+            : url.replace(/\/unlock$/, '/lock');
+
         // Update card data attribute
         if (card) card.dataset.locked = nowLocked ? '1' : '0';
 
@@ -658,16 +683,16 @@ document.addEventListener('click', function(e) {
             btn.dataset.locked = '1';
             btn.className = 'btn btn-outline-warning btn-sm category-lock-btn';
             btn.innerHTML = '<i class="ti ti-lock-open me-1"></i>Unlock';
-            // Swap data-url attributes
-            btn.dataset.urlUnlock = url;
+            btn.dataset.urlUnlock = oppositeUrl;
             delete btn.dataset.urlLock;
             // Hide Add Player button
             if (card) card.querySelectorAll('.add-player-btn').forEach(b => b.style.display = 'none');
+            toastr.success('Category locked.');
         } else {
             btn.dataset.locked = '0';
             btn.className = 'btn btn-outline-secondary btn-sm category-lock-btn';
             btn.innerHTML = '<i class="ti ti-lock me-1"></i>Lock';
-            btn.dataset.urlLock = url;
+            btn.dataset.urlLock = oppositeUrl;
             delete btn.dataset.urlUnlock;
             // Show Add Player button (or create one if missing)
             if (card) {
@@ -684,9 +709,10 @@ document.addEventListener('click', function(e) {
                     btn.parentElement.appendChild(newBtn);
                 }
             }
+            toastr.success('Category unlocked.');
         }
     })
-    .catch(() => alert('Lock / unlock failed'));
+    .catch(() => toastr.error('Lock / unlock failed. Please try again.'));
 });
 
 /* =====================
@@ -699,25 +725,35 @@ document.addEventListener('click', function(e) {
 
     e.preventDefault();
 
-    if (!confirm('Remove player from category?')) return;
+    Swal.fire({
+        title: 'Remove player?',
+        text: 'This will remove the player from this category.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, remove',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33',
+    }).then(result => {
+        if (!result.isConfirmed) return;
 
-    fetch(btn.dataset.url, {
-        method: 'DELETE',
-        headers: {
-            'X-CSRF-TOKEN': csrf,
-            'Accept': 'application/json'
-        }
-    })
-    .then(r => r.json())
-    .then(() => {
-        const row = btn.closest('tr');
-        const card = btn.closest('.category-card');
-        if (row) row.remove();
-        // Reindex row numbers
-        if (card) reindexRows(card);
-        updateEntryCount(card, -1);
-    })
-    .catch(() => alert('Remove failed'));
+        fetch(btn.dataset.url, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            }
+        })
+        .then(r => r.json())
+        .then(() => {
+            const row = btn.closest('tr');
+            const card = btn.closest('.category-card');
+            if (row) row.remove();
+            if (card) reindexRows(card);
+            updateEntryCount(card, -1);
+            toastr.success('Player removed from category.');
+        })
+        .catch(() => toastr.error('Remove failed. Please try again.'));
+    });
 });
 
 /* =====================
@@ -731,7 +767,17 @@ document.addEventListener('click', function(e) {
     e.preventDefault();
 
     const playerName = btn.dataset.player || 'this player';
-    if (!confirm('Withdraw ' + playerName + ' from this event? This cannot be undone.')) return;
+
+    Swal.fire({
+        title: 'Withdraw ' + playerName + '?',
+        text: 'This will withdraw the player from the event. This cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, withdraw',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33',
+    }).then(result => {
+        if (!result.isConfirmed) return;
 
     fetch(btn.dataset.url, {
         method: 'POST',
@@ -769,6 +815,7 @@ document.addEventListener('click', function(e) {
                 }
                 updateWithdrawnCount(card, +1);
                 reindexRows(card);
+                toastr.success(playerName + ' has been withdrawn.');
             });
         } else {
             // Controller returned a redirect (e.g. refund page) – follow it
@@ -779,7 +826,70 @@ document.addEventListener('click', function(e) {
             }
         }
     })
-    .catch(() => alert('Withdraw failed'));
+    .catch(() => toastr.error('Withdraw failed. Please try again.'));
+    }); // end Swal.then
+});
+
+/* =====================
+   REINSTATE PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.reinstate-player-btn');
+    if (!btn) return;
+    e.preventDefault();
+
+    const playerName = btn.dataset.player || 'this player';
+
+    Swal.fire({
+        title: 'Reinstate ' + playerName + '?',
+        text: 'This will set the player back to active status.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, reinstate',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#28a745',
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+        fetch(btn.dataset.url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                toastr.error(res.message || 'Reinstate failed.');
+                return;
+            }
+            const row = btn.closest('tr');
+            const card = btn.closest('.category-card');
+            if (row) {
+                row.classList.remove('table-danger', 'text-muted');
+                // Update status badge
+                const statusCell = row.querySelector('td:nth-child(5)');
+                if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Active</span>';
+                // Remove the "Not refunded" badge if present
+                const refundBadge = row.querySelector('.badge.bg-secondary');
+                if (refundBadge) refundBadge.remove();
+                // Swap reinstate button back to withdraw button
+                btn.closest('li').outerHTML =
+                    `<li><button type="button" class="dropdown-item text-warning withdraw-player-btn"
+                        data-url="${btn.dataset.url.replace('/reinstate', '/withdraw')}"
+                        data-player="${playerName}">
+                        <i class="ti ti-user-minus me-1"></i>Withdraw
+                    </button></li>`;
+            }
+            updateWithdrawnCount(card, -1);
+            reindexRows(card);
+            toastr.success(playerName + ' has been reinstated.');
+            toastr.info(playerName + ' must be re-added to a draw group manually via the Draw → Players & Groups tab.', 'Draw Not Updated', { timeOut: 6000 });
+        })
+        .catch(() => toastr.error('Reinstate failed. Please try again.'));
+    });
 });
 
 /* =====================
@@ -793,7 +903,7 @@ document.addEventListener('click', function(e) {
     e.preventDefault();
 
     if (btn.dataset.locked === '1') {
-        alert('Category is locked');
+        toastr.warning('This category is locked. Unlock it before adding players.');
         return;
     }
 
@@ -827,7 +937,7 @@ document.addEventListener('click', function(e) {
         initPlayerSelect2();
         addPlayerModal.show();
     })
-    .catch(() => alert('Failed to load registrations'));
+    .catch(() => toastr.error('Failed to load available registrations.'));
 });
 
 /* =====================
@@ -852,10 +962,11 @@ if (addForm) {
         .then(r => r.json())
         .then(res => {
             if (!res.success) {
-                alert(res.message || 'Add player failed');
+                toastr.error(res.message || 'Add player failed.');
                 return;
             }
             addPlayerModal.hide();
+            toastr.success('Player added successfully.');
             // Find the category card
             const categoryId = document.getElementById('add_player_category_id').value;
             const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
@@ -868,7 +979,7 @@ if (addForm) {
                 }
             }
         })
-        .catch(() => alert('Add player failed'));
+        .catch(() => toastr.error('Add player failed. Please try again.'));
     });
 }
 
@@ -935,10 +1046,11 @@ if (moveForm) {
         .then(r => r.json())
         .then(res => {
             if (res && res.success === false) {
-                alert(res.message || 'Move failed');
+                toastr.error(res.message || 'Move failed.');
                 return;
             }
             movePlayerModal.hide();
+            toastr.success('Player moved successfully.');
             // Remove row from current card
             const entryId = document.getElementById('move_entry_id').value;
             const row = document.querySelector(`[data-entry-id="${entryId}"]`);
@@ -960,7 +1072,7 @@ if (moveForm) {
                 }
             }
         })
-        .catch(() => alert('Move failed'));
+        .catch(() => toastr.error('Move failed. Please try again.'));
     });
 }
 

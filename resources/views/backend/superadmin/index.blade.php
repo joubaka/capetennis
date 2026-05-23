@@ -315,6 +315,9 @@
                 <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
                   <i class="ti ti-cash-banknote me-1"></i>Refunds
                 </a>
+                <a href="{{ route('platform.health') }}" class="btn btn-outline-dark btn-sm">
+                  <i class="ti ti-heart-rate-monitor me-1"></i>Platform Health
+                </a>
                 <button type="button" class="btn btn-outline-danger btn-sm"
                         onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
                   <i class="ti ti-gavel me-1"></i>Disciplinary

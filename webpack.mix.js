@@ -149,6 +149,27 @@ mix.js('resources/js/pages/headOffice.js', 'public/js');
 mix.js('resources/js/pages/draw-fixtures-show.js', 'public/js');
 mix.js('resources/js/pages/team-schedule.js', 'public/js');
 mix.js('resources/js/pages/frontend/insert-score.js', 'public/js');
+
+// Admin modular frontend — core utilities
+mix.copy('resources/js/admin/core/api.js',     'public/assets/js/admin/core/api.js');
+mix.copy('resources/js/admin/core/toast.js',   'public/assets/js/admin/core/toast.js');
+mix.copy('resources/js/admin/core/modal.js',   'public/assets/js/admin/core/modal.js');
+mix.copy('resources/js/admin/core/loading.js', 'public/assets/js/admin/core/loading.js');
+mix.copy('resources/js/admin/core/confirm.js', 'public/assets/js/admin/core/confirm.js');
+mix.copy('resources/js/admin/core/routes.js',  'public/assets/js/admin/core/routes.js');
+mix.copy('resources/js/admin/core/state.js',   'public/assets/js/admin/core/state.js');
+
+// Admin modular frontend — round-robin page modules
+mix.copy('resources/js/admin/roundrobin/matrix.js',       'public/assets/js/admin/roundrobin/matrix.js');
+mix.copy('resources/js/admin/roundrobin/scores.js',        'public/assets/js/admin/roundrobin/scores.js');
+mix.copy('resources/js/admin/roundrobin/standings.js',     'public/assets/js/admin/roundrobin/standings.js');
+mix.copy('resources/js/admin/roundrobin/oop.js',           'public/assets/js/admin/roundrobin/oop.js');
+mix.copy('resources/js/admin/roundrobin/groups.js',        'public/assets/js/admin/roundrobin/groups.js');
+mix.copy('resources/js/admin/roundrobin/schedule.js',      'public/assets/js/admin/roundrobin/schedule.js');
+mix.copy('resources/js/admin/roundrobin/brackets.js',      'public/assets/js/admin/roundrobin/brackets.js');
+mix.copy('resources/js/admin/roundrobin/state-badges.js',  'public/assets/js/admin/roundrobin/state-badges.js');
+mix.copy('resources/js/admin/roundrobin/init.js',          'public/assets/js/admin/roundrobin/init.js');
+
 /*
  |--------------------------------------------------------------------------
  | Assets / Fonts / Images

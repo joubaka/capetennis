@@ -405,6 +405,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   });
 
   // Super Admin Dashboard
+  // Platform Health Dashboard
+  Route::middleware('role:super-user')->group(function () {
+    Route::get('platform/health',     [\App\Http\Controllers\Backend\PlatformHealthController::class, 'index'])
+      ->name('platform.health');
+    Route::get('platform/health/api', [\App\Http\Controllers\Backend\PlatformHealthController::class, 'api'])
+      ->name('platform.health.api');
+  });
+
   Route::get('superadmin', [\App\Http\Controllers\Backend\SuperAdminController::class, 'index'])
     ->middleware('role:super-user')
     ->name('backend.superadmin.index');
@@ -837,6 +845,12 @@ Route::delete(
   Route::get('individual-schedule/{draw}/data', [ScheduleController::class, 'scheduleData'])
     ->name('backend.individual-schedule.data');
 
+  Route::get('individual-schedule/{draw}/audit', [ScheduleController::class, 'auditData'])
+    ->name('backend.individual-schedule.audit');
+
+  Route::get('individual-schedule/{draw}/show-data', [ScheduleController::class, 'showData'])
+    ->name('backend.individual-schedule.show-data');
+
   Route::post('individual-schedule/{draw}/save', [ScheduleController::class, 'saveFixture'])
     ->name('backend.individual-schedule.save');
 
@@ -866,7 +880,7 @@ Route::delete(
 
 
   // routes/web.php
-  Route::get('/backend/draw/{draw}/venues/edit', [DrawController::class, 'editVenues'])
+  Route::get('draw/{draw}/venues/edit', [DrawController::class, 'editVenues'])
     ->name('backend.draw.venues.edit');
   Route::patch('/teams/{id}/toggle-noprofile', [TeamController::class, 'toggleNoProfile'])
     ->name('backend.teams.toggle-noprofile');
@@ -1289,8 +1303,20 @@ Route::delete(
     Route::get('series/{series}/audit', [SeriesRankingController::class, 'audit'])
       ->name('series.audit');
 
+    Route::get('series/{series}/audit-report', [SeriesRankingController::class, 'auditReport'])
+      ->name('series.audit-report');
+
     Route::post('series/{series}/rebuild', [SeriesRankingController::class, 'rebuild'])
       ->name('series.rebuild');
+
+    Route::post('series/{series}/review', [SeriesRankingController::class, 'review'])
+      ->name('series.ranking.review');
+
+    Route::post('series/{series}/publish', [SeriesRankingController::class, 'publish'])
+      ->name('series.ranking.publish');
+
+    Route::post('series/{series}/rollback', [SeriesRankingController::class, 'rollback'])
+      ->name('series.ranking.rollback');
 
 
     /*
@@ -1415,6 +1441,12 @@ Route::delete(
     [CategoryEventController::class, 'withdraw']
   )->name('admin.category.registration.withdraw');
 
+  // Admin reinstate a withdrawn player
+  Route::post(
+    '/admin/category-registration/{registration}/reinstate',
+    [CategoryEventController::class, 'reinstate']
+  )->name('admin.category.registration.reinstate');
+
   // Admin refund chooser (after admin withdrawal)
   Route::get(
     '/admin/event/{event}/registration/{registration}/refund',
@@ -1517,6 +1549,16 @@ Route::delete(
 
   
  Route::get(
+  'backend/events/create',
+  [\App\Http\Controllers\Backend\EventController::class, 'create']
+)->name('backend.events.create');
+
+  Route::post(
+    'backend/events',
+    [\App\Http\Controllers\Backend\EventController::class, 'store']
+  )->name('backend.events.store');
+
+ Route::get(
   'backend/events/{event}/edit',
   [\App\Http\Controllers\Backend\EventController::class, 'edit']
 )->name('backend.events.edit');
@@ -1536,6 +1578,7 @@ Route::delete(
   Route::get('/{series}/settings', [SeriesController::class, 'settings'])->name('series.settings'); // Settings form
   Route::patch('/series/{series}/publish', [SeriesController::class, 'publish'])->name('series.publish');
   Route::patch('/series/{series}/unpublish', [SeriesController::class, 'unpublish'])->name('series.unpublish');
+  Route::patch('/series/{series}/category-best-num', [SeriesController::class, 'updateCategoryBestNum'])->name('series.category-best-num');
 
   Route::post('/series/{series}/email-players', [EmailController::class, 'sendToSeriesPlayers'])->name('series.email.players');
 
@@ -1701,6 +1744,22 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::post('draw/{draw}/unlock', [DrawController::class, 'unlock_draw'])
     ->name('draw.unlock');
+
+  // Engine debug panel (read-only, super-user / admin only)
+  Route::get('/admin/engine/debug', [\App\Http\Controllers\Backend\EngineDebugController::class, 'index'])
+    ->name('engine.debug');
+  Route::delete('/admin/engine/debug/clear', [\App\Http\Controllers\Backend\EngineDebugController::class, 'clearLogs'])
+    ->name('engine.debug.clear');
+
+  // Per-draw engine mode management
+  Route::get('/admin/engine/draw/{draw}', [\App\Http\Controllers\Backend\DrawEngineModeController::class, 'show'])
+    ->name('engine.draw.show');
+  Route::patch('/admin/engine/draw/{draw}', [\App\Http\Controllers\Backend\DrawEngineModeController::class, 'update'])
+    ->name('engine.draw.update');
+  Route::post('/admin/engine/draw/{draw}/rollback', [\App\Http\Controllers\Backend\DrawEngineModeController::class, 'rollback'])
+    ->name('engine.draw.rollback');
+  Route::patch('/admin/engine/event/{event}', [\App\Http\Controllers\Backend\DrawEngineModeController::class, 'updateEvent'])
+    ->name('engine.event.update');
 
   // Team player withdraw / refund (frontend)
   Route::post(

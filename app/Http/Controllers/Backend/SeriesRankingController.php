@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\Ranking\Services\RankingAuditService;
+use App\Domain\Ranking\Services\RankingPublicationService;
+use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Http\Controllers\Controller;
+use App\Models\Category;
+use App\Models\CategoryResult;
+use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
-use App\Models\CategoryResult;
-use App\Models\Category;
+use App\Services\Ranking\RankingEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Services\Ranking\RankingEngine;
 
 class SeriesRankingController extends Controller
 {
@@ -46,13 +50,89 @@ class SeriesRankingController extends Controller
   }
 
   /**
-   * Rebuild the ranking list for a series
+   * Rebuild the ranking list for a series using the canonical pipeline.
+   * Pass ?dry_run=1 to preview without writing.
+   * Pass ?legacy=1 to force the legacy rebuild path (kept for parity testing).
    */
   public function rebuild(Request $request, Series $series)
   {
-    DB::transaction(function () use ($series, $request) {
+    $this->authorize('update', $series);
 
-      $runId = 'sr-' . $series->id . '-' . now()->format('YmdHis') . '-' . substr(md5((string) microtime(true)), 0, 6);
+    if ($request->boolean('legacy')) {
+      return $this->rebuildLegacy($request, $series);
+    }
+
+    $options = [
+      'dryRun'            => $request->boolean('dry_run'),
+      'walkoversExcluded' => $request->boolean('exclude_walkovers'),
+    ];
+
+    $report = app(RankingRebuildService::class)->rebuild($series, $options);
+
+    return response()->json([
+      'message' => $options['dryRun']
+        ? 'Dry-run complete (no rows written).'
+        : 'Rankings rebuilt successfully.',
+      'report'  => $report,
+    ]);
+  }
+
+  /**
+   * Mark the current calculated ranking as reviewed (admin approval step).
+   */
+  public function review(Request $request, Series $series)
+  {
+    $this->authorize('update', $series);
+
+    app(RankingPublicationService::class)->markReviewed($series, auth()->id());
+
+    return response()->json(['message' => 'Ranking marked as reviewed.']);
+  }
+
+  /**
+   * Publish the reviewed ranking, archiving the previous published snapshot.
+   */
+  public function publish(Request $request, Series $series)
+  {
+    $this->authorize('update', $series);
+
+    app(RankingPublicationService::class)->publish($series, auth()->id());
+
+    return response()->json(['message' => 'Ranking published.']);
+  }
+
+  /**
+   * Roll back the current publication to the previous archived snapshot.
+   */
+  public function rollback(Request $request, Series $series)
+  {
+    $this->authorize('update', $series);
+
+    app(RankingPublicationService::class)->rollback($series, auth()->id());
+
+    return response()->json(['message' => 'Ranking rolled back to previous publication.']);
+  }
+
+  /**
+   * Return the canonical audit report as JSON for the admin UI.
+   */
+  public function auditReport(Request $request, Series $series)
+  {
+    $this->authorize('view', $series);
+
+    $report = app(RankingAuditService::class)->buildReport($series);
+
+    return response()->json($report);
+  }
+
+      // ------------------------------------------------------------------
+      // Legacy rebuild (kept for parity testing — do not remove yet)
+      // ------------------------------------------------------------------
+
+      private function rebuildLegacy(Request $request, Series $series)
+      {
+        DB::transaction(function () use ($series, $request) {
+          $runId = 'sr-' . $series->id . '-' . now()->format('YmdHis') . '-' . substr(md5((string) microtime(true)), 0, 6);
 
       $normalize = fn(string $name) => $this->normalizeCategory($name);
 
@@ -159,6 +239,15 @@ class SeriesRankingController extends Controller
       $created = 0;
 
       /* -------------------------------------------------
+       | Per-category best-N overrides
+       ------------------------------------------------- */
+      $rankingListsByCat = RankingList::where('series_id', $series->id)
+        ->get()
+        ->keyBy('category_id');
+
+      $seriesDefaultBestN = (int) ($series->best_num_of_scores ?? 9999);
+
+      /* -------------------------------------------------
        | Resolve ranking strategy
        ------------------------------------------------- */
       $engine = app(RankingEngine::class);
@@ -179,18 +268,24 @@ class SeriesRankingController extends Controller
           ->unique()
           ->first();
 
+        /* Resolve per-category best-N */
+        $rankingList = $rankingListsByCat->get($canonicalCategoryId);
+        $bestN = (int) ($rankingList?->best_num_of_scores ?? $seriesDefaultBestN);
+
         Log::debug('Category start', [
           'run_id' => $runId,
           'category_key' => $categoryKey,
           'canonical_category_id' => $canonicalCategoryId,
           'players' => $players->keys()->count(),
+          'best_n' => $bestN,
         ]);
 
         /* Execute strategy */
         $rows = $strategy->rank(
           $players,
           $pointsMap,
-          $series
+          $series,
+          $bestN
         );
 
         Log::debug('Strategy result', [
@@ -241,12 +336,12 @@ class SeriesRankingController extends Controller
     });
 
     return response()->json([
-      'message' => 'Category-based series rankings rebuilt successfully'
+      'message' => '[Legacy] Category-based series rankings rebuilt successfully',
     ]);
   }
 
   /**
-   * Show an audit of the series ranking data
+   * Show the Blade audit view (legacy event/category summary table).
    */
   public function audit(Series $series)
   {

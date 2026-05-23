@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class RankingList extends Model
 {
     use HasFactory;
-  
+
+    protected $fillable = ['category_id', 'series_id', 'best_num_of_scores'];
     public function ranking_scores()
     {
        return $this->hasMany(RankingScores::class,'ranking_list_id','id')->orderByDesc('total_points');

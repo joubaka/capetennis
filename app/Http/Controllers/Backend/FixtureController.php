@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Services\Draw\CapeTennisDraw;
+use App\Domain\Draws\Exceptions\DrawMutationException;
+use App\Domain\Draws\Guards\DrawGuard;
+use App\Domain\Engine\EngineRouter;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\DrawVenue;
@@ -24,6 +27,8 @@ use Carbon\Carbon;
 use Carbon\CarbonInterval;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Writer\Pdf\Dompdf;
 use PhpParser\Builder\Property;
 
@@ -196,8 +201,22 @@ class FixtureController extends Controller
 
   public function insertResult(Request $request)
   {
-
     $responce = null;
+
+    // Lock guard for individual fixture types
+    if (in_array($request->type, ['individual', 'individualNew'])) {
+      $fixture = Fixture::find($request->fixture_id);
+      if ($fixture) {
+        $draw = \App\Models\Draw::find($fixture->draw_id);
+        if ($draw && $draw->locked) {
+          return response()->json(['message' => 'Draw is locked. Score submission is not allowed.'], 403);
+        }
+        if ($draw && $draw->published) {
+          return response()->json(['message' => 'Draw is published. Score submission is not allowed.'], 403);
+        }
+      }
+    }
+
     if ($request->type == 'team') {
       $fixture = TeamFixture::find($request->fixture_id);
 
@@ -264,7 +283,22 @@ class FixtureController extends Controller
       $responce['results'] = $fixture->fixtureResults;
       $responce['id'] = $fixture->id;
 
-      $responce['update'] =  CapeTennisDraw::run_update($fixture, $responce['loser'], $responce['winner']);
+      $engine = app(EngineRouter::class);
+      $draw   = \App\Models\Draw::find($fixture->draw_id);
+      $winner = $responce['winner'];
+      $loser  = $responce['loser'];
+
+      $responce['update'] = DB::transaction(function () use ($engine, $draw, $fixture, $winner, $loser) {
+          $engine->forDraw($draw)->advanceFixture(
+              $fixture,
+              $winner,
+              $loser,
+              function (Fixture $fx, int $w, int $l) {
+                  CapeTennisDraw::run_update($fx, $l, $w);
+              }
+          );
+          return true;
+      });
 
       return $responce;
     } elseif ($request->type == 'individualNew') {
@@ -309,13 +343,30 @@ class FixtureController extends Controller
         $fixture->match_status = 3;
         $fixture->save();
 
-        // ✅ Refetch the fixture from DB to ensure it's up-to-date
+        $engine = app(EngineRouter::class);
+        $draw   = \App\Models\Draw::find($fixture->draw_id);
+        $winner = $last->winner_registration;
+        $loser  = $last->loser_registration;
 
+        DB::transaction(function () use ($engine, $draw, $fixture, $winner, $loser) {
+            $self = $this;
+            $engine->forDraw($draw)->advanceFixture(
+                $fixture,
+                $winner,
+                $loser,
+                function (Fixture $fx, int $w, int $l) use ($self) {
+                    // Legacy fallback: inline parent/loser assignment + BYE advancement
+                    $self->assignWinnerToParentSide($fx);
+                    $self->assignLoserToConsolationSide($fx);
+                    DrawBuilder::autoAdvanceAllByesForDraw($fx->draw_id);
+                }
+            );
+            $engine->forDraw($draw)->advanceByes($draw, function (\App\Models\Draw $d) {
+                DrawBuilder::autoAdvanceAllByesForDraw($d->id);
+            });
+        });
 
-        $this->assignWinnerToParentSide($fixture);
-        $this->assignLoserToConsolationSide($fixture);
-      $responce['updates'] = DrawBuilder::autoAdvanceAllByesForDraw($fixture->draw_id);
-
+        $responce['updates'] = true;
       }
     }
     return $responce;
@@ -532,11 +583,34 @@ class FixtureController extends Controller
   }
   public function deleteIndResult($id)
   {
+    $fixture = Fixture::find($id);
+    if (! $fixture) {
+      return response()->json(['message' => 'Fixture not found.'], 404);
+    }
 
-    FixtureResult::where('fixture_id', $id)->delete();
-    $draw = Fixture::find($id)->draws;
-    $ctd = new CapeTennisDraw($draw->id);
-    $response['delete update'] = $ctd->run_delete_update(Fixture::find($id));
+    $draw = \App\Models\Draw::find($fixture->draw_id);
+
+    if ($draw && $draw->locked) {
+      return response()->json(['message' => 'Draw is locked.'], 403);
+    }
+
+    if ($draw && $draw->published) {
+      return response()->json(['message' => 'Draw is published.'], 403);
+    }
+
+    $engine = app(EngineRouter::class);
+
+    DB::transaction(function () use ($engine, $draw, $fixture) {
+      $engine->forDraw($draw)->rollbackFixture(
+        $fixture,
+        function (Fixture $fx) {
+          // Legacy fallback rollback
+          $ctd = new CapeTennisDraw($fx->draw_id);
+          $ctd->run_delete_update($fx);
+        }
+      );
+    });
+
     $response['fixture'] = Fixture::find($id);
     return $response;
   }

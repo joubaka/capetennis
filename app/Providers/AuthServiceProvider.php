@@ -5,7 +5,9 @@ namespace App\Providers;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
 use App\Models\Wallet;
+use App\Policies\DrawPolicy;
 use App\Policies\RegistrationPolicy;
 use App\Policies\WalletPolicy;
 
@@ -18,6 +20,7 @@ class AuthServiceProvider extends ServiceProvider
      */
     protected $policies = [
         CategoryEventRegistration::class => RegistrationPolicy::class,
+        Draw::class => DrawPolicy::class,
         Wallet::class => WalletPolicy::class,
     ];
 

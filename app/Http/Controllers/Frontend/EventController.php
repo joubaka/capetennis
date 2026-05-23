@@ -141,8 +141,14 @@ class EventController extends Controller
       'series_id' => $event->series_id,
     ]);
 
-    $regions = $event->regions;
+    // Block unpublished events from public access (admins may still view)
     $user = Auth::user();
+    $isAdmin = $user && method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user'));
+    if (!$isAdmin && (!$event->published || $event->published === '0')) {
+        return response()->view('frontend.event.unavailable', ['event' => $event], 404);
+    }
+
+    $regions = $event->regions;
 
     // ---------------------------------------------------------
 // DEADLINE LOGIC (INT DEADLINE = DAYS BEFORE START)

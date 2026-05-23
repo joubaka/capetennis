@@ -89,6 +89,15 @@ $navbarDetached = ($navbarDetached ?? '');
         </li>
       @endif
 
+      {{-- Super-user: Add New Event --}}
+      @if(auth()->check() && auth()->user()->hasRole('super-user'))
+        <li class="nav-item me-2">
+          <a href="{{ route('backend.events.create') }}" class="btn btn-success btn-sm">
+            <i class="ti ti-plus me-1"></i> New Event
+          </a>
+        </li>
+      @endif
+
       {{-- Profile shortcut --}}
       @if (Auth::check())
         <li class="nav-item me-2">

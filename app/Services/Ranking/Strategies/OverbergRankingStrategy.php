@@ -11,7 +11,8 @@ class OverbergRankingStrategy implements RankingStrategy
   public function rank(
     Collection $placements,
     array $pointsMap,
-    Series $series
+    Series $series,
+    int $bestN
   ): array {
 
     /*
@@ -104,31 +105,32 @@ class OverbergRankingStrategy implements RankingStrategy
         ->sortByDesc('points')
         ->values();
 
-      $bestTwoSum = $legs->take(2)->sum('points');
-      $thirdBest = $legs->get(2)['points'] ?? 0;
+      $countedLegs = $legs->take($bestN);
+      $bestNSum = $countedLegs->sum('points');
+      $nextBest = $legs->get($bestN)['points'] ?? 0;
 
-      if ($bestTwoSum === 0) {
+      if ($bestNSum === 0) {
         continue;
       }
 
-      $annotatedLegs = $legs->map(function ($leg, $i) {
+      $annotatedLegs = $legs->map(function ($leg, $i) use ($bestN) {
         return array_merge($leg, [
-          'status' => $i < 2 ? 'counted' : 'dropped',
+          'status' => $i < $bestN ? 'counted' : 'dropped',
           'colour' =>
             !empty($leg['is_auto'])
             ? 'yellow'
-            : ($i < 2 ? 'green' : 'red'),
+            : ($i < $bestN ? 'green' : 'red'),
         ]);
       })->values();
 
       $rows[] = [
         'player_id' => (int) $playerId,
-        'total' => (int) $bestTwoSum,
-        'third' => (int) $thirdBest,
+        'total' => (int) $bestNSum,
+        'third' => (int) $nextBest,
         'meta' => [
           'legs' => $annotatedLegs,
-          'best_two_sum' => $bestTwoSum,
-          'third_best' => $thirdBest,
+          'best_two_sum' => $bestNSum,
+          'third_best' => $nextBest,
           'auto_award' => $playerId === $autoPlayerId,
         ],
       ];
@@ -144,6 +146,7 @@ class OverbergRankingStrategy implements RankingStrategy
       <=>
       [$a['total'], $a['third']]
     );
+
 
     return $rows;
   }

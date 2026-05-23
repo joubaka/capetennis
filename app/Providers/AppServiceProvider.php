@@ -31,6 +31,23 @@ class AppServiceProvider extends ServiceProvider
   {
     // ✅ Override Fortify login redirect behaviour
     $this->app->singleton(LoginResponse::class, CustomLoginResponse::class);
+
+    // ---------------------------------------------------------------
+    // Draw domain — canonical services
+    // ---------------------------------------------------------------
+    $this->app->singleton(\App\Domain\Draws\Services\StandingsService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\RoundRobinGenerationService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\PlayoffGenerationService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\ByeAdvancementService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\DrawLockService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\DrawPublicationService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\BracketRenderService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\FeedInGenerationService::class);
+    $this->app->singleton(\App\Domain\Draws\Services\DrawGenerationService::class);
+    $this->app->singleton(\App\Domain\Fixtures\Services\FixtureProgressionService::class);
+
+    // EngineRouter — singleton so mismatch/fallback counters accumulate per request
+    $this->app->singleton(\App\Domain\Engine\EngineRouter::class);
   }
 
   /**

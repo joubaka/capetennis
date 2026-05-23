@@ -112,7 +112,6 @@ class DrawPlayoffGenerator
         $sets = [];
 
         if ($draw->settings->boxes == 2) {
-dd('2');
             $basePattern = ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'];
             $positionPattern = [1, 4, 3, 2, 2, 3, 4, 1];
             $boxCodes = array_values(array_unique(array_map(fn($code) => substr($code, 0, 1), array_keys($codeToReg))));
@@ -137,7 +136,6 @@ dd('2');
                 }
             }
         } elseif ($draw->settings->boxes == 4) {
-           dd('4');
             $basePattern = ['A', 'B', 'C', 'D', 'C', 'D', 'A', 'B'];
             $positionPattern = [1, 2, 2, 1, 1, 2, 2, 1];
 
@@ -152,6 +150,12 @@ dd('2');
                     return $codeToReg[$code]->id ?? 'Bye';
                 })->toArray();
             }
+        }
+
+        if (empty($sets)) {
+            throw new \RuntimeException(
+                "DrawPlayoffGenerator: unsupported box count ({$draw->settings->boxes}). Only 2 and 4 boxes are supported."
+            );
         }
 
         return $sets;

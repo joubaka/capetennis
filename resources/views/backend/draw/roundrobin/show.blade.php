@@ -148,6 +148,29 @@
     opacity: 0.9 !important;
     transform: rotate(2deg);
   }
+
+  /* ── Locked state ── */
+  .rr-item-locked {
+    cursor: not-allowed !important;
+    user-select: none;
+    -webkit-user-select: none;
+    opacity: 0.75;
+  }
+
+  .rr-item-locked:hover {
+    background: inherit !important;
+    transform: none !important;
+  }
+
+  /* Mute the drag handle area when locked */
+  .rr-sortable.rr-sortable-locked {
+    border-color: transparent !important;
+    background: transparent !important;
+  }
+
+  .rr-sortable.rr-sortable-locked .list-group-item {
+    cursor: not-allowed !important;
+  }
   
   /* Ensure fallback clone is visible */
   .sortable-fallback {
@@ -416,6 +439,26 @@
       <h5 class="mb-0 fs-6 fs-md-5">
         <i class="ti ti-tournament me-1 text-primary"></i>
         <strong>{{ $draw->drawName ?? 'Unnamed Draw' }}</strong>
+        {{-- Status badges --}}
+        @if($draw->locked)
+          <span class="badge bg-danger ms-1" id="badge-locked" title="Draw is locked">
+            <i class="ti ti-lock me-1"></i>Locked
+          </span>
+        @else
+          <span class="badge bg-success ms-1 d-none" id="badge-locked"></span>
+        @endif
+        @if($draw->published)
+          <span class="badge bg-primary ms-1" id="badge-published" title="Draw is published">
+            <i class="ti ti-eye me-1"></i>Published
+          </span>
+        @else
+          <span class="badge bg-secondary ms-1 d-none" id="badge-published"></span>
+        @endif
+        @if(!empty($draw->engine_mode) && $draw->engine_mode !== 'legacy')
+        <span class="badge bg-label-secondary ms-1" id="badge-engine" title="Engine mode">
+          {{ strtoupper($draw->engine_mode) }}
+        </span>
+        @endif
       </h5>
       <small class="text-muted d-inline-block text-truncate" style="max-width: 100%;">
         {{ $draw->category->name ?? 'No Category' }} 
@@ -995,6 +1038,12 @@
 
  <div class="tab-pane fade" id="groups-pane" role="tabpanel">
 
+  {{-- Locked overlay banner --}}
+  <div class="rr-locked-overlay alert alert-warning d-flex align-items-center gap-2 mb-3 {{ $draw->locked ? '' : 'd-none' }}" role="alert">
+    <i class="ti ti-lock fs-5"></i>
+    <span><strong>Draw is locked.</strong> Group assignments, fixtures, and scores cannot be changed. Unlock the draw to make edits.</span>
+  </div>
+
   {{-- Header with Draw Info --}}
     <div class="alert alert-primary mb-3">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
@@ -1022,7 +1071,7 @@
           <i class="ti ti-upload"></i> Import from Teams
         </button>
       @endif
-      <button class="btn btn-sm btn-success" id="btn-regenerate-fixtures">
+      <button class="btn btn-sm btn-success" id="btn-regenerate-fixtures" data-rr-destructive>
         <i class="ti ti-refresh"></i><span class="d-none d-sm-inline"> Regenerate Fixtures</span>
       </button>
     </div>
@@ -1093,7 +1142,7 @@
                     <span class="badge bg-secondary">{{ $eligibleCount }}</span>
                   </div>
 
-                  <ul class="list-group list-group-flush rr-sortable" 
+                  <ul class="list-group list-group-flush rr-sortable{{ $draw->locked ? ' rr-sortable-locked' : ''}}" 
                       data-category-event-id="{{ $ce->id }}"
                       data-type="source">
                     @foreach($ce->registrations as $reg)
@@ -1108,9 +1157,10 @@
 
                       {{-- Match frontend: paid, not withdrawn, not already assigned to a group --}}
                       @if(!$isAssigned && $isPaid && !$isWithdrawn)
-                        <li class="list-group-item list-group-item-action py-1 px-2" 
+                        <li class="list-group-item list-group-item-action py-1 px-2{{ $draw->locked ? ' rr-item-locked' : ''}}" 
                             data-id="{{ $reg->id }}"
-                            data-player-name="{{ $display }}">
+                            data-player-name="{{ $display }}"
+                            draggable="{{ $draw->locked ? 'false' : 'true' }}">
                           <small>{{ $display }}</small>
                         </li>
                       @endif
@@ -1151,7 +1201,7 @@
                     </h6>
                   </div>
                   <div class="card-body p-2" style="min-height: 150px;">
-                    <ul class="list-group list-group-flush rr-sortable rr-group"
+                    <ul class="list-group list-group-flush rr-sortable rr-group{{ $draw->locked ? ' rr-sortable-locked' : '' }}"
                         data-group-id="{{ $group->id }}"
                         data-type="target">
 
@@ -1161,11 +1211,12 @@
                           $display = $player ? $player->full_name : 'Unknown Player';
                         @endphp
 
-                        <li class="list-group-item list-group-item-action py-1 px-2" 
+                        <li class="list-group-item list-group-item-action py-1 px-2{{ $draw->locked ? ' rr-item-locked' : '' }}" 
                             data-id="{{ $reg->id }}"
-                            data-player-name="{{ $display }}">
+                            data-player-name="{{ $display }}"
+                            draggable="{{ $draw->locked ? 'false' : 'true' }}">
                           <small>{{ $display }}</small>
-                          <button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group" 
+                          <button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group{{ $draw->locked ? ' invisible' : '' }}" 
                                   data-id="{{ $reg->id }}">
                             <i class="ti ti-x"></i>
                           </button>
@@ -1218,7 +1269,7 @@
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Brackets</h5>
         <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-success" id="btn-generate-main-bracket">
+          <button class="btn btn-sm btn-success" id="btn-generate-main-bracket" data-rr-destructive>
               <i class="ti ti-refresh me-1"></i> Generate All Playoffs
           </button>
         </div>
@@ -1642,125 +1693,93 @@
     window.RR_OOP       = @json($oops);
     window.RR_STANDINGS = @json($standings);
 
-    window.RR_SAVE_SCORE_URL = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
+    window.RR_DRAW_LOCKED    = {{ $draw->locked ? 'true' : 'false' }};
+    window.RR_DRAW_PUBLISHED = {{ $draw->published ? 'true' : 'false' }};
+    window.RR_ENGINE_MODE    = "{{ $draw->engine_mode ?? 'legacy' }}";
+
+    // Canonical permissions object — mirrors DrawMutationPolicy::for($draw)->toArray()
+    // All frontend lock checks should read from here, not just RR_DRAW_LOCKED.
+    window.RR_PERMISSIONS = @json(\App\Services\Draw\DrawMutationPolicy::for($draw)->toArray());
+
+    window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
+
+    // Canonical RR API routes
+    window.RR_ROUTES = {
+        hub:           "{{ route('api.draws.hub', $draw) }}",
+        scoreStore:    "/api/draws/{{ $draw->id }}/fixtures/FIXTURE_ID/score",
+        scoreDelete:   "/api/draws/{{ $draw->id }}/fixtures/FIXTURE_ID/score",
+        groupsSave:    "{{ route('api.draws.groups.save', $draw) }}",
+        scheduleSave:  "{{ route('api.draws.schedule.save', $draw) }}",
+        scheduleSummary: "{{ route('api.draws.schedule.summary', $draw) }}",
+
+        // Legacy web routes (still active during transition)
+        legacyScoreStore:  "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}",
+        legacyScoreDelete: "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}",
+        groupsData:    "{{ route('backend.draw.groups-data', $draw) }}",
+        availablePlayers: "{{ route('backend.draw.available-players', $draw) }}",
+        regenerateRR:  "{{ route('backend.draw.regenerate-rr', $draw) }}",
+        toggleLock:    "{{ route('backend.draw.toggle-lock', $draw) }}",
+        saveGroups:    "{{ route('backend.draw.save-groups', $draw) }}",
+        generateMainBracket:  "{{ route('backend.draw.generate-main-bracket', $draw) }}",
+        generatePlateBracket: "{{ route('backend.draw.generate-second-third-bracket', $draw) }}",
+        mainBracket:   "{{ route('backend.draw.main-bracket', $draw) }}",
+        plateBracket:  "{{ route('backend.draw.plate-bracket', $draw) }}",
+    };
 
     window.EVENT_ID = {{ $draw->event_id }};
     const DRAW_ID   = {{ $draw->id }};
 </script>
 
 <script>
-// ============================================================
-// AJAX REFRESH HELPERS (no page reload)
-// ============================================================
-var groupColors = {A:'bg-primary text-white', B:'bg-success text-white', C:'bg-warning text-dark', D:'bg-danger text-white'};
+// ─── UI STATE HELPERS — thin shims, real logic in state-badges.js ─
+window.rrToast = function(message, type) {
+    if (window.AdminToast) { AdminToast.show(message, type === 'danger' ? 'error' : (type || 'success')); return; }
+    if (typeof toastr !== 'undefined') { toastr[type === 'danger' ? 'error' : (type || 'success')](message); }
+};
+window.rrApplyDrawState = function(locked, published) {
+    if (window.RRStateBadges) { RRStateBadges.apply(locked, published); return; }
+    // Fallback until module boots
+    $('#badge-locked').toggleClass('d-none', !locked);
+    $('#badge-published').toggleClass('d-none', !published);
+};
+</script>
 
-function refreshGroupsUI() {
-    return $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/groups-data', function(res) {
-        if (!res.groups) return;
-        var $row = $('#rr-groups-row');
-        if (!$row.length) return;
-        // Always render A → Z left to right
-        var groups = res.groups.slice().sort(function(a, b) {
-            return a.name.localeCompare(b.name);
-        });
-        var html = '';
-        groups.forEach(function(g) {
-            var colorClass = groupColors[g.name] || 'bg-dark text-white';
-            html += '<div class="col-6 mb-3">';
-            html += '<div class="card border h-100">';
-            html += '<div class="card-header py-2 ' + colorClass + '">';
-            html += '<h6 class="mb-0"><i class="ti ti-users-group me-1"></i> Group ' + g.name;
-            html += '<span class="badge bg-light text-dark float-end">' + g.players.length + ' players</span></h6></div>';
-            html += '<div class="card-body p-2" style="min-height:150px;">';
-            html += '<ul class="list-group list-group-flush rr-sortable rr-group" data-group-id="' + g.id + '" data-type="target">';
-            g.players.forEach(function(p) {
-                var eName = $('<div>').text(p.name).html();
-                html += '<li class="list-group-item list-group-item-action py-1 px-2" data-id="' + p.id + '" data-player-name="' + eName + '">';
-                html += '<small>' + eName + '</small>';
-                html += '<button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group" data-id="' + p.id + '"><i class="ti ti-x"></i></button></li>';
-            });
-            html += '</ul>';
-            if (g.players.length === 0) {
-                html += '<div class="text-muted text-center py-3 empty-group-placeholder"><small>Drop players here</small></div>';
-            }
-            html += '</div></div></div>';
-        });
-        if (html === '') {
-            html = '<div class="col-12"><div class="alert alert-warning"><i class="ti ti-alert-triangle me-1"></i> No groups found.</div></div>';
-        }
-        $row.html(html);
-    }).fail(function() {
-        toastr.warning('Could not refresh groups display.');
-    });
-}
-
-function refreshAvailablePlayersUI() {
-    return $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/available-players', function(res) {
-        if (!res.categories) return;
-        var $list = $('#available-players-list');
-        if (!$list.length) return;
-        var html = '';
-        res.categories.forEach(function(cat) {
-            if (!cat.players || cat.players.length === 0) return;
-            html += '<div class="mb-3">';
-            html += '<div class="fw-bold text-primary small mb-1">';
-            html += '<i class="ti ti-category me-1"></i> ' + $('<div>').text(cat.category).html();
-            html += ' <span class="badge bg-secondary">' + cat.count + '</span></div>';
-            html += '<ul class="list-group list-group-flush rr-sortable" data-type="source">';
-            cat.players.forEach(function(p) {
-                var eName = $('<div>').text(p.name).html();
-                html += '<li class="list-group-item list-group-item-action py-1 px-2" data-id="' + p.id + '" data-player-name="' + eName + '">';
-                html += '<small>' + eName + '</small></li>';
-            });
-            html += '</ul></div>';
-        });
-        if (html === '') {
-            html = '<div class="text-muted text-center py-4"><i class="ti ti-info-circle fs-3 d-block mb-2"></i>All players assigned.</div>';
-        }
-        $list.html(html);
-    }).fail(function() {
-        toastr.warning('Could not refresh available players.');
-    });
-}
-
-// Refresh both panels then re-init Sortable once
-function refreshGroupsAndPlayers() {
-    $.when(refreshGroupsUI(), refreshAvailablePlayersUI()).always(function() {
-        setTimeout(function() {
-            if (typeof window.initGroupsSortable === 'function') window.initGroupsSortable(true);
-        }, 50);
-    });
-}
-
-function refreshVenuesUI() {
-    $.getJSON(APP_URL + '/backend/draw/' + DRAW_ID + '/venues/json', function(venues) {
-        var $list = $('#rr-venues-list');
-        if (!$list.length) return;
-        if (!venues || venues.length === 0) {
-            $list.html('<div class="text-muted text-center py-3"><i class="ti ti-map-pin-off fs-3 d-block mb-2"></i>No venues assigned. Add a venue to enable scheduling.</div>');
-            return;
-        }
-        var html = '';
-        venues.forEach(function(v) {
-            var courts = v.num_courts || 1;
-            var vName = $('<div>').text(v.name).html();
-            html += '<div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">';
-            html += '<div><strong>' + vName + '</strong>';
-            html += '<span class="badge bg-label-info ms-2">' + courts + ' court' + (courts !== 1 ? 's' : '') + '</span></div>';
-            html += '<button class="btn btn-sm btn-outline-danger deleteVenue" data-id="' + DRAW_ID + '" data-venue="' + v.id + '">';
-            html += '<i class="ti ti-trash me-1"></i> Remove</button></div>';
-        });
-        $list.html(html);
-    }).fail(function() {
-        toastr.warning('Could not refresh venues display.');
-    });
-}
+<script>
+// ─── AJAX REFRESH HELPERS — delegate to modules when available ────
+function refreshGroupsUI()          { if (window.RRGroups)   return RRGroups.refreshGroupsUI();   return $.when(); }
+function refreshAvailablePlayersUI(){ if (window.RRGroups)   return RRGroups.refreshAvailablePlayersUI(); return $.when(); }
+function refreshGroupsAndPlayers()  { if (window.RRGroups)   RRGroups.refreshGroupsAndPlayers(); }
+function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshVenuesUI(); }
 </script>
 
 {{-- toastr already loaded by layout; Sortable and SweetAlert2 loaded here --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+{{-- ═══════════════════════════════════════════════════════════
+     Admin Core — shared utilities
+     ═══════════════════════════════════════════════════════════ --}}
+<script src="{{ asset('assets/js/admin/core/api.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/toast.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/modal.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/loading.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/confirm.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/routes.js') }}"></script>
+<script src="{{ asset('assets/js/admin/core/state.js') }}"></script>
+
+{{-- ═══════════════════════════════════════════════════════════
+     RR Page Modules
+     ═══════════════════════════════════════════════════════════ --}}
+<script src="{{ asset('assets/js/admin/roundrobin/matrix.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/scores.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/standings.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/oop.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/groups.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/schedule.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/brackets.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/state-badges.js') }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/init.js') }}"></script>
 
 <script>
 (function($) {
@@ -3256,15 +3275,20 @@ $('#btn-toggle-lock').on('click', function() {
                 if (response.success) {
                     toastr.success(response.message);
 
-                    if (response.locked) {
-                        $btn.removeClass('btn-outline-warning').addClass('btn-danger');
-                        $btn.find('i').removeClass('ti-lock-open').addClass('ti-lock');
-                        $('#lock-label').text('Locked');
-                    } else {
-                        $btn.removeClass('btn-danger').addClass('btn-outline-warning');
-                        $btn.find('i').removeClass('ti-lock').addClass('ti-lock-open');
-                        $('#lock-label').text('Unlocked');
+                    // Keep global lock state in sync so all modules pick it up
+                    window.RR_DRAW_LOCKED = response.locked;
+                    if (response.permissions) {
+                        window.RR_PERMISSIONS = response.permissions;
                     }
+
+                    // Re-init sortable on unlock before applying UI
+                    if (!response.locked && window.RRGroups) RRGroups.initSortable(true);
+
+                    // Sync all groups controls + lock button via the module
+                    if (window.RRGroups && RRGroups.applyLockUI) RRGroups.applyLockUI();
+
+                    // Update state badges
+                    rrApplyDrawState(response.locked, window.RR_DRAW_PUBLISHED);
                 } else {
                     toastr.error(response.message || 'Failed to toggle lock.');
                 }
@@ -3300,8 +3324,15 @@ $(document).on('click', '#btn-import-teams', function () {
     });
 });
 
-// Regenerate RR Fixtures for this draw
+// Regenerate RR Fixtures for this draw — guard: skip if groups.js module is handling this
 $(document).on('click', '#btn-regenerate-fixtures', function () {
+    // Defer to groups.js module when loaded (it has full lock enforcement)
+    if (window.RRGroups) return;
+
+    if (window.RR_DRAW_LOCKED) {
+        toastr.warning('Draw is locked. Unlock the draw to make changes.');
+        return;
+    }
     Swal.fire({
         title: 'Regenerate Fixtures?',
         html: 'This will <strong>delete existing fixtures</strong> and create new round-robin matches based on current group assignments.',
@@ -3331,11 +3362,19 @@ $(document).on('click', '#btn-regenerate-fixtures', function () {
     });
 });
 
-// Remove player from group (move back to source)
+// Remove player from group — guard: skip if groups.js module is handling this
 $(document).on('click', '.btn-remove-from-group', function (e) {
     e.preventDefault();
     e.stopPropagation();
-    
+
+    // Defer to groups.js module when loaded (it has full lock enforcement)
+    if (window.RRGroups) return;
+
+    if (window.RR_DRAW_LOCKED) {
+        toastr.warning('Draw is locked. Unlock the draw to make changes.');
+        return;
+    }
+
     const $item = $(this).closest('li');
     const regId = $item.data('id');
     const playerName = $item.data('player-name');
@@ -3375,202 +3414,37 @@ function updateEmptyPlaceholders() {
 // Use jQuery for tab events (more reliable)
 $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (event) {
     const tabId = $(event.target).attr('id');
-    console.log('📑 [TAB] Switched to tab:', tabId);
-    
+
     if (tabId === 'matrix-tab') {
         if (window.__RR_MATRIX_RENDERED !== true) {
-            if (typeof window.RR_INIT === 'function') {
-                window.RR_INIT();
-            }
+            if (typeof window.RR_INIT === 'function') window.RR_INIT();
             window.__RR_MATRIX_RENDERED = true;
         }
     }
 
     if (tabId === 'oop-tab') {
-        if (typeof window.renderOrderOfPlay === 'function') {
-            window.renderOrderOfPlay();
-        }
+        if (typeof window.renderOrderOfPlay === 'function') window.renderOrderOfPlay();
     }
 
     if (tabId === 'standings-tab') {
-        if (typeof window.renderStandings === 'function') {
-            window.renderStandings();
-        }
+        if (typeof window.renderStandings === 'function') window.renderStandings();
     }
-    
+
     if (tabId === 'groups-tab') {
-        console.log('📑 [TAB] Groups tab activated - __GROUPS_SORTABLE_INIT:', window.__GROUPS_SORTABLE_INIT, '__SORTABLE_INIT_PENDING:', window.__SORTABLE_INIT_PENDING);
-        // Initialize Sortable on groups tab activation
-        if (!window.__GROUPS_SORTABLE_INIT && !window.__SORTABLE_INIT_PENDING) {
-            console.log('📑 [TAB] Calling initGroupsSortable...');
-            setTimeout(function() {
-                initGroupsSortable(true);
-            }, 150);
-        } else {
-            console.log('📑 [TAB] Sortable already initialized or pending');
+        // Always delegate to groups.js — it owns Sortable and lock state
+        if (window.RRGroups) {
+            setTimeout(function () { RRGroups.initSortable(true); }, 150);
         }
     }
 });
 
 
-// Initialize Sortable for drag-and-drop
-// Store sortable instances for cleanup
-window.__SORTABLE_INSTANCES = [];
-window.__GROUPS_SORTABLE_INIT = false;
-window.__SORTABLE_INIT_PENDING = false; // Prevent multiple simultaneous inits
-
-window.initGroupsSortable = function initGroupsSortable(forceReinit = false) {
-    // Prevent multiple simultaneous initializations
-    if (window.__SORTABLE_INIT_PENDING) {
-        console.log('⏳ [SORTABLE] Init already pending, skipping...');
-        return;
-    }
-    
-    console.log('========================================');
-    console.log('🔧 [SORTABLE] initGroupsSortable called');
-    console.log('🔧 [SORTABLE] forceReinit:', forceReinit);
-    console.log('🔧 [SORTABLE] Current instances:', window.__SORTABLE_INSTANCES ? window.__SORTABLE_INSTANCES.length : 0);
-    console.log('🔧 [SORTABLE] __GROUPS_SORTABLE_INIT:', window.__GROUPS_SORTABLE_INIT);
-    
-    // Check if Sortable library is loaded
-    if (typeof Sortable === 'undefined') {
-        console.error('❌ [SORTABLE] Sortable library is NOT loaded!');
-        return;
-    }
-    console.log('✅ [SORTABLE] Sortable library is loaded');
-    
-    // Mark init as pending
-    window.__SORTABLE_INIT_PENDING = true;
-    
-    // Always destroy existing instances when called
-    if (window.__SORTABLE_INSTANCES && window.__SORTABLE_INSTANCES.length > 0) {
-        console.log('🗑️ [SORTABLE] Destroying', window.__SORTABLE_INSTANCES.length, 'existing instances');
-        window.__SORTABLE_INSTANCES.forEach(function(instance, idx) {
-            if (instance && typeof instance.destroy === 'function') {
-                try {
-                    instance.destroy();
-                } catch(e) {
-                    // Ignore errors during destroy
-                }
-            }
-        });
-    }
-    window.__SORTABLE_INSTANCES = [];
-    window.__GROUPS_SORTABLE_INIT = false;
-    
-    // Find elements within the groups pane specifically
-    const groupsPane = document.getElementById('groups-pane');
-    
-    if (!groupsPane) {
-        console.error('❌ [SORTABLE] Groups pane element not found!');
-        window.__SORTABLE_INIT_PENDING = false;
-        return;
-    }
-    
-    const sortableElements = groupsPane.querySelectorAll('.rr-sortable');
-    console.log('📋 [SORTABLE] Found .rr-sortable elements:', sortableElements.length);
-    
-    if (sortableElements.length === 0) {
-        console.error('❌ [SORTABLE] No .rr-sortable elements found in groups pane!');
-        window.__SORTABLE_INIT_PENDING = false;
-        return;
-    }
-    
-    sortableElements.forEach(function(el, index) {
-        console.log('🔨 [SORTABLE] Initializing element', index, '- type:', el.dataset.type, '- children:', el.children.length);
-        
-        // Add draggable attribute to all children
-        Array.from(el.children).forEach(function(child) {
-            child.setAttribute('draggable', 'true');
-        });
-        
-        try {
-            const instance = new Sortable(el, {
-                group: 'shared-players',
-                animation: 200,
-                ghostClass: 'sortable-ghost',
-                chosenClass: 'sortable-chosen',
-                dragClass: 'sortable-drag',
-                fallbackOnBody: true,
-                swapThreshold: 0.3,  // Reduced from 0.65 - less sticky
-                forceFallback: false,  // Changed to false - better native drag
-                fallbackTolerance: 5,  // Increased from 3
-                delay: 0,
-                delayOnTouchOnly: false,
-                touchStartThreshold: 5,  // Increased from 3
-                dragoverBubble: false,
-                removeCloneOnHide: true,
-                preventOnFilter: false,
-                filter: '.btn-remove-from-group',
-                onChoose: function(evt) {
-                    console.log('📌 [DRAG] onChoose - item selected');
-                    // Add visual feedback
-                    $(evt.item).css('opacity', '0.7');
-                },
-                onUnchoose: function(evt) {
-                    $(evt.item).css('opacity', '1');
-                },
-                onStart: function(evt) {
-                    console.log('🎯 [DRAG] onStart - item:', evt.item.innerText.trim().substring(0, 30));
-                    // Highlight all drop zones
-                    $('.rr-sortable').addClass('drop-zone-active');
-                },
-                onEnd: function(evt) {
-                    console.log('🏁 [DRAG] onEnd - from:', evt.from.dataset.type, 'to:', evt.to.dataset.type);
-                    
-                    // Remove drop zone highlighting
-                    $('.rr-sortable').removeClass('drop-zone-active');
-                    $(evt.item).css('opacity', '1');
-                    
-                    const $item = $(evt.item);
-                    const $target = $(evt.to);
-                    
-                    // If dropped into a group, add remove button if not present
-                    if ($target.hasClass('rr-group') && $item.find('.btn-remove-from-group').length === 0) {
-                        $item.append(`
-                            <button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group" 
-                                    data-id="${$item.data('id')}">
-                                <i class="ti ti-x"></i>
-                            </button>
-                        `);
-                    }
-                    
-                    // If dropped back to source, remove the button
-                    if ($target.data('type') === 'source') {
-                        $item.find('.btn-remove-from-group').remove();
-                    }
-                    
-                    updateEmptyPlaceholders();
-                }
-            });
-            window.__SORTABLE_INSTANCES.push(instance);
-            console.log('✅ [SORTABLE] Instance', index, 'created successfully');
-        } catch(e) {
-            console.error('❌ Error creating Sortable for element', index, ':', e);
-        }
-    });
-    
-    window.__GROUPS_SORTABLE_INIT = true;
-    window.__SORTABLE_INIT_PENDING = false;
-    console.log('✅ [SORTABLE] COMPLETE - Initialized', window.__SORTABLE_INSTANCES.length, 'sortable instances');
-    console.log('========================================');
-}
-
-
-// Auto-init if groups tab is already active
-$(document).ready(function() {
-    console.log('📄 [READY] Document ready - checking groups tab');
-    
-    // Check if groups tab is active on page load
-    if ($('#groups-tab').hasClass('active') || $('#groups-pane').hasClass('show')) {
-        console.log('📌 [READY] Groups tab is already active on load');
-        setTimeout(function() {
-            window.initGroupsSortable(true);
-        }, 200);
-    } else {
-        console.log('📌 [READY] Groups tab is NOT active on load - will init when tab is clicked');
-    }
-});
+// Sortable is fully owned by groups.js (public/assets/js/admin/roundrobin/groups.js).
+// That module handles init, lock enforcement, disabled state, and destroy/reinit.
+// The legacy window.initGroupsSortable shim simply forwards to it.
+window.initGroupsSortable = function (forceReinit) {
+    if (window.RRGroups) RRGroups.initSortable(forceReinit);
+};
 
 })(jQuery);
 </script>
@@ -4625,76 +4499,23 @@ $(document).ready(function() {
 </script>
 
 <script>
-// ============================================================
-// BRACKET PINCH-TO-ZOOM + BUTTON CONTROLS
-// ============================================================
+// ─── BRACKET ZOOM — handled by brackets.js ───────────────────────
+// Shim kept for any legacy inline references.
 (function($) {
-  var zoom = 1;
-  var MIN_ZOOM = 0.3;
-  var MAX_ZOOM = 3;
-  var STEP = 0.2;
-
-  var $wrapper = null;
-  var $inner = null;
-  var $label = null;
-
-  function applyZoom() {
-    if (!$inner) return;
-    $inner.css('transform', 'scale(' + zoom + ')');
-    $inner.css('transform-origin', '0 0');
-    if ($label) $label.text(Math.round(zoom * 100) + '%');
-  }
-
-  function setZoom(val) {
-    zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, val));
-    applyZoom();
-  }
-
   $(document).ready(function() {
-    $wrapper = $('#main-bracket-wrapper');
-    $inner = $('#bracket-zoom-inner');
-    $label = $('#bracket-zoom-label');
-
-    // Button controls
-    $('#bracket-zoom-in').on('click', function() { setZoom(zoom + STEP); });
-    $('#bracket-zoom-out').on('click', function() { setZoom(zoom - STEP); });
-    $('#bracket-zoom-reset').on('click', function() { setZoom(1); });
-
-    // Pinch-to-zoom on touch devices
-    var startDist = 0;
-    var startZoom = 1;
-
-    $wrapper[0]?.addEventListener('touchstart', function(e) {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        startDist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        startZoom = zoom;
+    // brackets.js init() wires zoom controls if RRBrackets is loaded.
+    if (typeof window.RRBrackets === 'undefined') {
+      // Minimal fallback zoom
+      var zoom = 1, MIN_ZOOM = 0.3, MAX_ZOOM = 3, STEP = 0.2;
+      function applyZoom() {
+        $('#bracket-zoom-inner').css({ transform: 'scale('+zoom+')', 'transform-origin': '0 0' });
+        $('#bracket-zoom-label').text(Math.round(zoom*100)+'%');
       }
-    }, { passive: false });
-
-    $wrapper[0]?.addEventListener('touchmove', function(e) {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        var dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        var scale = dist / startDist;
-        setZoom(startZoom * scale);
-      }
-    }, { passive: false });
-
-    // Mouse wheel zoom (Ctrl+scroll on desktop)
-    $wrapper[0]?.addEventListener('wheel', function(e) {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        var delta = e.deltaY > 0 ? -STEP : STEP;
-        setZoom(zoom + delta);
-      }
-    }, { passive: false });
+      function setZoom(v) { zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v)); applyZoom(); }
+      $('#bracket-zoom-in').on('click',    function() { setZoom(zoom + STEP); });
+      $('#bracket-zoom-out').on('click',   function() { setZoom(zoom - STEP); });
+      $('#bracket-zoom-reset').on('click', function() { setZoom(1); });
+    }
   });
 })(jQuery);
 </script>

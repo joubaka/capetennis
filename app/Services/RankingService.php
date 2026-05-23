@@ -10,7 +10,10 @@ class RankingService
     public function build(RankingList $list): array
     {
         $seriesId = $list->series_id;
-        $bestN = (int) (optional($list->series)->best_num_of_scores ?? 9999);
+        // Use per-category override if set, otherwise fall back to series-level value
+        $bestN = (int) ($list->best_num_of_scores
+            ?? optional($list->series)->best_num_of_scores
+            ?? 9999);
 
         // position -> points
         $pos2pts = DB::table('points')

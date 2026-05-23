@@ -5,11 +5,19 @@ namespace Tests\Feature;
 use App\Models\CategoryEventRegistration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class RegistrationWithdrawTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin',      'guard_name' => 'web']);
+    }
 
     public function test_guest_cannot_withdraw(): void
     {
@@ -34,7 +42,6 @@ class RegistrationWithdrawTest extends TestCase
 
         // Either succeeds or redirects — must not 403.
         $response->assertStatus(302);
-        $response->assertNotForbidden();
     }
 
     public function test_non_owner_cannot_withdraw(): void

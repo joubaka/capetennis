@@ -4,22 +4,28 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
+use App\Models\DrawAuditLog;
 use App\Models\Fixture;
 use App\Models\CategoryEvent;
 use Illuminate\Http\Request;
 use App\Services\DrawService;
+use App\Domain\Engine\EngineRouter;
+use App\Domain\Draws\Guards\DrawGuard;
+use App\Domain\Draws\Exceptions\DrawMutationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\DrawSetting;
 use App\Models\Venue;
 
-class RoundRobinController
+class RoundRobinController extends Controller
 {
   protected DrawService $builder;
+  protected EngineRouter $engine;
 
-  public function __construct(DrawService $builder)
+  public function __construct(DrawService $builder, EngineRouter $engine)
   {
     $this->builder = $builder;
+    $this->engine  = $engine;
   }
 
   // ============================================================
@@ -38,6 +44,8 @@ class RoundRobinController
 
   public function show(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     Log::info("🎾 [RoundRobinController@show] Entering method", [
       'draw_id' => $draw->id,
       'draw_name' => $draw->name,
@@ -315,6 +323,8 @@ class RoundRobinController
   // ============================================================
   public function storeOrderOfPlay(Request $request, Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
+
     $data = $request->validate([
       'items' => 'required|array',
       'items.*.fixture_id' => 'required|integer',
@@ -348,6 +358,22 @@ class RoundRobinController
       $fixture = Fixture::with(['registration1', 'registration2'])
         ->findOrFail($id);
 
+      $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
+
+      // Guard before authorize so JSON body is preserved for locked/published draws
+      try {
+        \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
+      } catch (DrawMutationException $e) {
+        return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
+      }
+
+      $this->authorize('saveScore', $draw);
+
+      // Guard: fixture belongs to this draw
+      if ((int) $fixture->draw_id !== (int) $draw->id) {
+        return response()->json(['success' => false, 'message' => 'Fixture does not belong to this draw.'], 422);
+      }
+
       // ------------------------
       // PARSE SETS
       // ------------------------
@@ -373,21 +399,31 @@ class RoundRobinController
       // SELECT MODE (RR / BRACKET)
       // ------------------------
       if ($fixture->stage === 'RR') {
-        $response = $this->builder->saveScore($fixture, $validSets);
+        $response = DB::transaction(function () use ($fixture, $validSets, $draw) {
+          $resp = $this->builder->saveScore($fixture, $validSets);
+          $hub  = $this->builder->loadRoundRobinHub($draw);
+          $resp['oop']        = $hub['oops'] ?? [];
+          $resp['rrFixtures'] = $hub['rrFixtures'] ?? [];
+          $resp['standings']  = $hub['standings'] ?? [];
+          return $resp;
+        });
 
-        // Reload full hub so frontend can refresh matrix, OOP & standings
-        $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
-        $hub  = $this->builder->loadRoundRobinHub($draw);
-
-        $response['oop']        = $hub['oops'] ?? [];
-        $response['rrFixtures'] = $hub['rrFixtures'] ?? [];
-        $response['standings']  = $hub['standings'] ?? [];
+        DrawAuditLog::record($draw->id, 'score_saved', $fixture->id, [
+          'stage' => $fixture->stage,
+          'sets'  => $validSets,
+        ]);
 
         return response()->json($response);
       }
 
       // BRACKET MODE
-      $response = $this->builder->saveBracketScore($fixture, $validSets);
+      $response = DB::transaction(fn () => $this->builder->saveBracketScore($fixture, $validSets));
+
+      DrawAuditLog::record($draw->id, 'bracket_score_saved', $fixture->id, [
+        'stage' => $fixture->stage,
+        'sets'  => $validSets,
+      ]);
+
       return response()->json($response);
     }
 
@@ -398,13 +434,77 @@ class RoundRobinController
   {
     $fixture = Fixture::with(['fixtureResults'])->findOrFail($id);
 
-    $fixture->fixtureResults()->delete();
-    $fixture->winner_registration = null;
-    $fixture->match_status = 0;
-    $fixture->save();
+    $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
+
+    // Guard before authorize so JSON body is preserved
+    if ($draw->locked) {
+      return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
+    }
+
+    if ($draw->published) {
+      return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
+    }
+
+    $this->authorize('deleteScore', $draw);
+
+    // Route rollback through EngineRouter wrapped in a transaction
+    DB::transaction(function () use ($draw, $fixture) {
+      $this->engine->forDraw($draw)->rollbackFixture($fixture, function (Fixture $fx) {
+      // ---- LEGACY ROLLBACK IMPLEMENTATION ----
+
+      // Roll back winner/loser progression in the parent fixture caused by this score
+      if ($fx->parent_fixture_id) {
+        $parent = Fixture::find($fx->parent_fixture_id);
+        if ($parent) {
+          $siblings     = Fixture::where('parent_fixture_id', $parent->id)->orderBy('match_nr')->get();
+          $siblingCount = $siblings->count();
+          $slotIndex    = $siblings->search(fn($s) => $s->id === $fx->id);
+
+          if ($slotIndex === 0 || $siblingCount < 2) {
+            $parent->registration1_id = null;
+          } elseif ($slotIndex === 1) {
+            $parent->registration2_id = null;
+          }
+          if ($parent->winner_registration === $fx->winner_registration) {
+            $parent->winner_registration = null;
+            $parent->match_status        = 0;
+          }
+          $parent->save();
+        }
+      }
+
+      // Roll back loser progression in the loser-parent fixture
+      if ($fx->loser_parent_fixture_id) {
+        $loserParent = Fixture::find($fx->loser_parent_fixture_id);
+        if ($loserParent) {
+          $loserSiblings = Fixture::where('loser_parent_fixture_id', $loserParent->id)->orderBy('match_nr')->get();
+          $loserId = ($fx->winner_registration === $fx->registration1_id)
+            ? $fx->registration2_id
+            : $fx->registration1_id;
+          if ($loserSiblings->count() === 2 && $loserSiblings[0]->id === $fx->id) {
+            if ($loserParent->registration1_id === $loserId) $loserParent->registration1_id = null;
+          } elseif ($loserSiblings->count() === 2 && $loserSiblings[1]->id === $fx->id) {
+            if ($loserParent->registration2_id === $loserId) $loserParent->registration2_id = null;
+          }
+          if ($loserParent->winner_registration === $loserId) {
+            $loserParent->winner_registration = null;
+            $loserParent->match_status        = 0;
+          }
+          $loserParent->save();
+        }
+      }
+
+      $fx->fixtureResults()->delete();
+      $fx->winner_registration = null;
+      $fx->match_status        = 0;
+      $fx->save();
+    });
+    });
+
+    DrawAuditLog::record($draw->id, 'score_deleted', $fixture->id);
 
     // Reload full OOP for the draw so the front-end table refreshes
-    $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
+    $draw->refresh();
     $hub  = $this->builder->loadRoundRobinHub($draw);
 
     return response()->json([
@@ -417,13 +517,20 @@ class RoundRobinController
   }
 
   // ============================================================
-  // GENERATE MAIN BRACKET (SERVICE)
-  // ============================================================
-  // ============================================================
   // GENERATE MAIN BRACKET (CALLED VIA AJAX)
   // ============================================================
   public function generateMainBracket(Request $request, Draw $draw)
   {
+    // Guard before authorize so JSON body is preserved (policy would return plain 403)
+    if ($draw->locked) {
+      return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
+    }
+    if ($draw->published) {
+      return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
+    }
+
+    $this->authorize('generateBrackets', $draw);
+
     \Log::info("===============================================");
     \Log::info("🎾 [MainBracket] START GENERATION", [
       'draw_id' => $draw->id,
@@ -437,24 +544,21 @@ class RoundRobinController
       // INTERPRO (eventType 13) - Use InterproDrawBuilder
       // ============================================================
       if ($eventType == 13) {
-        // 1) Build main seeds
-        $seeds = $this->builder->buildMainSeedsFromRRStandings($draw);
-        \Log::info("🧬 [MainBracket] SEEDS BUILT", $seeds);
+        $fixtures = DB::transaction(function () use ($draw) {
+          $seeds = $this->builder->buildMainSeedsFromRRStandings($draw);
+          \Log::info("🧬 [MainBracket] SEEDS BUILT", $seeds);
+          $this->builder->clearMainPlayoffFixtures($draw);
+          return $this->builder->generateFullBracketFixtures($draw, $seeds);
+        });
 
-        // 2) Clear only MAIN fixtures
-        $this->builder->clearMainPlayoffFixtures($draw);
-        \Log::info("🧬 [MainBracket] Incoming seeds before full bracket:", $seeds);
+        DrawAuditLog::record($draw->id, 'bracket_generated', null, ['type' => 'main_interpro']);
 
-        // 3) Build FULL BRACKET (MAIN + PLATE + CONS)
-        $fixtures = $this->builder->generateFullBracketFixtures($draw, $seeds);
-
+        $plateFixtures = $fixtures['plate'] ?? [];
         \Log::info("🏁 [MainBracket] MAIN fixtures created", [
           'sf1_id' => optional($fixtures['sf1'])->id,
           'sf2_id' => optional($fixtures['sf2'])->id,
           'final_id' => optional($fixtures['final'])->id,
         ]);
-
-        $plateFixtures = $fixtures['plate'] ?? [];
         \Log::info("🏁 [PlateBracket] FULL PLATE CREATED", $plateFixtures);
 
         return response()->json([
@@ -483,16 +587,19 @@ class RoundRobinController
 
       \Log::info("🧬 [MainBracket] Dynamic seeds built", $seeds);
 
-      // Clear existing playoff fixtures (include custom stages from config)
-      $allStages = collect(['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
-        ->merge(collect($playoffConfig)->pluck('slug')->map(fn($s) => strtoupper($s)))
-        ->unique()->values()->all();
-      Fixture::where('draw_id', $draw->id)
-        ->whereIn('stage', $allStages)
-        ->delete();
+      $allFixtures = DB::transaction(function () use ($draw, $playoffConfig, $seeds) {
+        // Clear existing playoff fixtures (include custom stages from config)
+        $allStages = collect(['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'])
+          ->merge(collect($playoffConfig)->pluck('slug')->map(fn($s) => strtoupper($s)))
+          ->unique()->values()->all();
+        Fixture::where('draw_id', $draw->id)
+          ->whereIn('stage', $allStages)
+          ->delete();
 
-      // Generate fixtures for each enabled bracket
-      $allFixtures = $this->generateDynamicPlayoffFixtures($draw, $playoffConfig, $seeds);
+        return $this->generateDynamicPlayoffFixtures($draw, $playoffConfig, $seeds);
+      });
+
+      DrawAuditLog::record($draw->id, 'bracket_generated', null, ['type' => 'dynamic', 'fixture_count' => count($allFixtures)]);
 
       \Log::info("🏁 [MainBracket] Dynamic fixtures created", [
         'total_fixtures' => count($allFixtures),
@@ -838,18 +945,31 @@ class RoundRobinController
         // Place winner into the parent fixture
         if ($fx->parent_fixture_id) {
           $parent = $fixtures->firstWhere('id', $fx->parent_fixture_id);
-          
+
           if ($parent) {
             $childIndex = $fixtures
               ->where('parent_fixture_id', $parent->id)
               ->sortBy('match_nr')
               ->values()
               ->search(fn ($c) => $c->id === $fx->id);
-            
+
             if ($childIndex === 0) {
-              $parent->registration1_id = $winnerId;
+              // Idempotency: only write if slot is empty or already holds this winner
+              if (is_null($parent->registration1_id) || $parent->registration1_id === $winnerId) {
+                $parent->registration1_id = $winnerId;
+              } else {
+                \Log::warning("🚫 [AutoAdvance] BYE: registration1 slot already occupied — skipping", [
+                  'parent_id' => $parent->id, 'existing' => $parent->registration1_id, 'attempted' => $winnerId,
+                ]);
+              }
             } else {
-              $parent->registration2_id = $winnerId;
+              if (is_null($parent->registration2_id) || $parent->registration2_id === $winnerId) {
+                $parent->registration2_id = $winnerId;
+              } else {
+                \Log::warning("🚫 [AutoAdvance] BYE: registration2 slot already occupied — skipping", [
+                  'parent_id' => $parent->id, 'existing' => $parent->registration2_id, 'attempted' => $winnerId,
+                ]);
+              }
             }
             $parent->save();
             $totalAdvanced++;
@@ -1066,39 +1186,44 @@ class RoundRobinController
 
 
   // ============================================================
-  // GENERATE 2nd/3rd PLAYOFF BRACKET (SERVICE)
+  // GENERATE 2nd/3rd PLAYOFF BRACKET (8-player, PLATE)
   // ============================================================
-  // ============================================================
-// GENERATE 2nd/3rd PLAYOFF BRACKET (8-player, PLATE)
-// ============================================================
   public function generateSecondThirdBracket(Request $request, Draw $draw)
   {
+    // Guard before authorize so JSON body is preserved
+    if ($draw->locked) {
+      return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
+    }
+    if ($draw->published) {
+      return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
+    }
+
+    $this->authorize('generateBrackets', $draw);
+
     \Log::info("===============================================");
     \Log::info("🎾 [PlateBracket] START GENERATION", [
       'draw_id' => $draw->id
     ]);
 
     try {
-      // Step 1 — Build seeds from RR standings (2nd & 3rd in each box)
-      $seeds = $this->builder->buildSecondThirdSeedsFromRRStandings($draw);
+      $fixtures = DB::transaction(function () use ($draw) {
+        $seeds = $this->builder->buildSecondThirdSeedsFromRRStandings($draw);
+        \Log::info("🧬 [PlateBracket] SEEDS BUILT", $seeds);
+        $this->builder->clearSecondThirdPlayoffFixtures($draw);
+        return $this->builder->createSecondThirdPlayoffFixtures($draw, $seeds);
+      });
 
-      \Log::info("🧬 [PlateBracket] SEEDS BUILT", $seeds);
-
-      // Step 2 — Clear any old PLATE fixtures
-      $this->builder->clearSecondThirdPlayoffFixtures($draw);
-
-      // Step 3 — Create QF, SF, Final, 3rd/4th
-      $fixtures = $this->builder->createSecondThirdPlayoffFixtures($draw, $seeds);
+      DrawAuditLog::record($draw->id, 'bracket_generated', null, ['type' => 'plate']);
 
       \Log::info("🏁 [PlateBracket] DONE – Fixtures Created", [
-        'qf1' => $fixtures['qf1']->id,
-        'qf2' => $fixtures['qf2']->id,
-        'qf3' => $fixtures['qf3']->id,
-        'qf4' => $fixtures['qf4']->id,
-        'sf1' => $fixtures['sf1']->id,
-        'sf2' => $fixtures['sf2']->id,
-        'final' => $fixtures['final']->id,
-        'third' => $fixtures['third']->id,
+        'qf1' => optional($fixtures['qf1'])->id,
+        'qf2' => optional($fixtures['qf2'])->id,
+        'qf3' => optional($fixtures['qf3'])->id,
+        'qf4' => optional($fixtures['qf4'])->id,
+        'sf1' => optional($fixtures['sf1'])->id,
+        'sf2' => optional($fixtures['sf2'])->id,
+        'final' => optional($fixtures['final'])->id,
+        'third' => optional($fixtures['third'])->id,
       ]);
 
       return response()->json([
@@ -1173,8 +1298,12 @@ class RoundRobinController
   
     public function toggleLock(Request $request, Draw $draw)
     {
+      $this->authorize('lockToggle', $draw);
+
       $draw->locked = !$draw->locked;
       $draw->save();
+
+      DrawAuditLog::record($draw->id, 'lock_toggled', null, ['locked' => $draw->locked]);
 
       Log::info("🔒 [toggleLock] Draw lock toggled", [
         'draw_id' => $draw->id,
@@ -1182,34 +1311,37 @@ class RoundRobinController
       ]);
 
       return response()->json([
-        'success' => true,
-        'locked' => $draw->locked,
-        'message' => $draw->locked ? 'Draw has been locked.' : 'Draw has been unlocked.',
+        'success'     => true,
+        'locked'      => (bool) $draw->locked,
+        'permissions' => \App\Services\Draw\DrawMutationPolicy::for($draw)->toArray(),
+        'message'     => $draw->locked ? 'Draw has been locked.' : 'Draw has been unlocked.',
       ]);
     }
 
     public function regenerateRR(Request $request, Draw $draw)
     {
+      $this->authorize('generateFixtures', $draw);
+
       Log::info("🔄 [regenerateRR] Starting fixture regeneration", [
         'draw_id' => $draw->id,
         'draw_name' => $draw->name,
       ]);
 
       try {
-        // Clear existing RR fixtures for this draw
-        $deletedRR = $draw->drawFixtures()->where('stage', 'RR')->delete();
+        DB::transaction(function () use ($draw) {
+          $deletedRR = $draw->drawFixtures()->where('stage', 'RR')->delete();
+          $deletedBracket = $draw->drawFixtures()->where('stage', '!=', 'RR')->delete();
 
-        // Clear existing bracket/playoff fixtures for this draw
-        $deletedBracket = $draw->drawFixtures()->where('stage', '!=', 'RR')->delete();
-      
-        Log::info("🗑 [regenerateRR] Deleted existing fixtures", [
-          'deleted_rr' => $deletedRR,
-          'deleted_bracket' => $deletedBracket,
-        ]);
+          Log::info("🗑 [regenerateRR] Deleted existing fixtures", [
+            'deleted_rr' => $deletedRR,
+            'deleted_bracket' => $deletedBracket,
+          ]);
 
-        // Regenerate fixtures based on current group assignments
-        $this->builder->regenerateRoundRobinFixtures($draw);
-      
+          $this->builder->regenerateRoundRobinFixtures($draw);
+        });
+
+        DrawAuditLog::record($draw->id, 'rr_regenerated');
+
         // Reload to get count
         $draw->load('drawFixtures');
       
@@ -1247,6 +1379,8 @@ class RoundRobinController
   
     public function saveGroups(Request $request, Draw $draw)
   {
+    $this->authorize('modifyGroups', $draw);
+
     Log::info("🎾 [saveGroups] Start", [
       'draw_id' => $draw->id,
       'payload' => $request->all(),
@@ -1266,49 +1400,45 @@ class RoundRobinController
 
     $updatedGroups = 0;
 
-    foreach ($request->groups as $groupData) {
+    DB::transaction(function () use ($request, $draw, &$updatedGroups) {
+      foreach ($request->groups as $groupData) {
+        $groupId = $groupData['group_id'] ?? null;
+        $registrationIds = $groupData['registration_ids'] ?? [];
 
-      $groupId = $groupData['group_id'] ?? null;
-      $registrationIds = $groupData['registration_ids'] ?? [];
-
-      Log::info("➡️ [saveGroups] Processing group", [
-        'group_id' => $groupId,
-        'registration_ids' => $registrationIds,
-      ]);
-
-      if (!$groupId) {
-        Log::warning("⚠️ [saveGroups] Skipping group - missing group_id", [
-          'data' => $groupData
-        ]);
-        continue;
-      }
-
-      // Remove existing links
-      Log::info("🗑 [saveGroups] Clearing old assignments", [
-        'group_id' => $groupId,
-      ]);
-
-      DB::table('draw_group_registrations')
-        ->where('draw_group_id', $groupId)
-        ->delete();
-
-      // Insert new assignments with seed based on array order
-      foreach ($registrationIds as $index => $regId) {
-        Log::info("➕ [saveGroups] Adding registration to group", [
+        Log::info("➡️ [saveGroups] Processing group", [
           'group_id' => $groupId,
-          'registration_id' => $regId,
-          'seed' => $index + 1,
+          'registration_ids' => $registrationIds,
         ]);
 
-        DB::table('draw_group_registrations')->insert([
-          'draw_group_id' => $groupId,
-          'registration_id' => $regId,
-          'seed' => $index + 1,
-        ]);
+        if (!$groupId) {
+          Log::warning("⚠️ [saveGroups] Skipping group - missing group_id", [
+            'data' => $groupData
+          ]);
+          continue;
+        }
+
+        // Remove existing links
+        DB::table('draw_group_registrations')
+          ->where('draw_group_id', $groupId)
+          ->delete();
+
+        // Deduplicate registration IDs before inserting
+        $uniqueRegIds = array_values(array_unique(array_map('intval', $registrationIds)));
+
+        // Insert new assignments with seed based on array order
+        foreach ($uniqueRegIds as $index => $regId) {
+          DB::table('draw_group_registrations')->insert([
+            'draw_group_id'   => $groupId,
+            'registration_id' => $regId,
+            'seed'            => $index + 1,
+          ]);
+        }
+
+        $updatedGroups++;
       }
+    });
 
-      $updatedGroups++;
-    }
+    DrawAuditLog::record($draw->id, 'groups_saved', null, ['groups_processed' => $updatedGroups]);
 
     Log::info("✅ [saveGroups] Complete", [
       'draw_id' => $draw->id,

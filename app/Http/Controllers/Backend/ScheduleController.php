@@ -285,24 +285,37 @@ class ScheduleController extends Controller
   {
     Log::info("🟦 AutoSchedule invoked", $request->all());
 
-    $engine = new ScheduleEngine();
+    $startTime = $request->input('start');
+    $duration  = (int) ($request->input('duration', 75));
 
-    // Build venue → court list (matches your existing logic)
+    if (!$startTime) {
+      return response()->json(['error' => 'Start time is required'], 422);
+    }
+
+    // Build venue → court list from draw's assigned venues
     $venues = [];
-
     foreach ($draw->venues as $v) {
+      $courts = range(1, max(1, (int) ($v->pivot->num_courts ?? 1)));
       $venues[$v->id] = [
-        'name' => $v->name,
-        'courts' => range(1, $v->pivot->num_courts)
+        'name'   => $v->name,
+        'courts' => $courts,
       ];
     }
 
-    // Inject into service
-    $engine->venues = $venues;
-    $engine->startTime = $request->start;
-    $engine->autoSchedule($draw->id, $request->duration ?? 75);
+    if (empty($venues)) {
+      return response()->json(['error' => 'No venues assigned to this draw.'], 422);
+    }
 
-    return response()->json(['status' => 'ok']);
+    try {
+      $engine = new ScheduleEngine();
+      $engine->autoSchedule($draw->id, $duration, $venues, $startTime);
+    } catch (\InvalidArgumentException $e) {
+      return response()->json(['error' => $e->getMessage()], 422);
+    }
+
+    $count = OrderOfPlay::where('draw_id', $draw->id)->whereNotNull('time')->count();
+
+    return response()->json(['status' => 'ok', 'count' => $count]);
   }
 
 
@@ -343,6 +356,218 @@ class ScheduleController extends Controller
   {
     $this->clearSchedule($draw);
     return $this->autoSchedule($request, $draw);
+  }
+
+  // ---------------------------------------------------------
+  // AUDIT DATA
+  // ---------------------------------------------------------
+  public function auditData(Draw $draw)
+  {
+    $draw->load(['venues' => fn($q) => $q->withPivot('num_courts')]);
+
+    $fixtures = Fixture::with(['registration1.players', 'registration2.players', 'orderOfPlay'])
+      ->where('draw_id', $draw->id)
+      ->orderByRaw("CASE WHEN stage='RR' THEN 1 WHEN stage='MAIN' THEN 2 WHEN stage='PLATE' THEN 3 WHEN stage='CONS' THEN 4 ELSE 5 END")
+      ->orderBy('round')
+      ->orderBy('match_nr')
+      ->get();
+
+    $total       = $fixtures->count();
+    $scheduled   = $fixtures->filter(fn($f) => $f->orderOfPlay && $f->orderOfPlay->time)->count();
+    $unscheduled = $total - $scheduled;
+
+    // ------------------------------------------------------------------
+    // Unscheduled fixtures detail
+    // ------------------------------------------------------------------
+    $unscheduledFixtures = $fixtures
+      ->filter(fn($f) => !$f->orderOfPlay || !$f->orderOfPlay->time)
+      ->map(fn($f) => [
+        'id'    => $f->id,
+        'stage' => $f->stage,
+        'round' => $f->round,
+        'match' => $f->match_nr,
+        'p1'    => $f->registration1?->players?->pluck('full_name')->join(' / ') ?? 'TBD',
+        'p2'    => $f->registration2?->players?->pluck('full_name')->join(' / ') ?? 'TBD',
+      ])->values();
+
+    // ------------------------------------------------------------------
+    // Stage completion summary
+    // ------------------------------------------------------------------
+    $stages = $fixtures->groupBy('stage')->map(function ($group) {
+      $total     = $group->count();
+      $scheduled = $group->filter(fn($f) => $f->orderOfPlay && $f->orderOfPlay->time)->count();
+      return ['total' => $total, 'scheduled' => $scheduled];
+    });
+
+    // ------------------------------------------------------------------
+    // Court conflicts — use actual gap between consecutive slots per court
+    // ------------------------------------------------------------------
+    $conflicts = [];
+    $slotsByCourtVenue = [];
+
+    foreach ($fixtures as $fx) {
+      $oop = $fx->orderOfPlay;
+      if (!$oop || !$oop->time || !$oop->venue_id) continue;
+      $key = $oop->venue_id . '|' . ($oop->court ?? '?');
+      $slotsByCourtVenue[$key][] = [
+        'start'      => \Carbon\Carbon::parse($oop->time),
+        'fixture_id' => $fx->id,
+        'time_str'   => $oop->time,
+      ];
+    }
+
+    // Infer slot duration = minimum gap between consecutive matches across all courts
+    $minGap = null;
+    foreach ($slotsByCourtVenue as $key => $slots) {
+      usort($slots, fn($a, $b) => $a['start']->timestamp <=> $b['start']->timestamp);
+      $slotsByCourtVenue[$key] = $slots;
+      for ($i = 1; $i < count($slots); $i++) {
+        $gap = $slots[$i]['start']->diffInMinutes($slots[$i-1]['start']);
+        if ($gap > 0 && ($minGap === null || $gap < $minGap)) {
+          $minGap = $gap;
+        }
+      }
+    }
+    $slotDuration = $minGap ?? 60; // fallback 60 min if only one match per court
+
+    foreach ($slotsByCourtVenue as $key => $slots) {
+      for ($i = 0; $i < count($slots); $i++) {
+        $aStart = $slots[$i]['start'];
+        $aEnd   = $aStart->copy()->addMinutes($slotDuration);
+        for ($j = $i + 1; $j < count($slots); $j++) {
+          $bStart = $slots[$j]['start'];
+          // Once bStart >= aEnd there can be no more overlaps (slots are sorted)
+          if ($bStart->gte($aEnd)) break;
+          $bEnd = $bStart->copy()->addMinutes($slotDuration);
+          if ($aStart->lt($bEnd) && $aEnd->gt($bStart)) {
+            [$venueId, $court] = explode('|', $key);
+            $conflicts[] = [
+              'fixture_a' => $slots[$i]['fixture_id'],
+              'fixture_b' => $slots[$j]['fixture_id'],
+              'venue_id'  => $venueId,
+              'court'     => $court,
+              'time_a'    => $aStart->format('Y-m-d H:i'),
+              'time_b'    => $bStart->format('Y-m-d H:i'),
+            ];
+          }
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Player double-booking — overlap-aware using same inferred duration
+    // ------------------------------------------------------------------
+    $playerConflicts = [];
+    $playerSlots     = [];
+
+    foreach ($fixtures as $fx) {
+      $oop = $fx->orderOfPlay;
+      if (!$oop || !$oop->time) continue;
+
+      $start   = \Carbon\Carbon::parse($oop->time);
+      $end     = $start->copy()->addMinutes($slotDuration);
+      $players = collect()
+        ->merge($fx->registration1?->players ?? [])
+        ->merge($fx->registration2?->players ?? []);
+
+      foreach ($players as $p) {
+        if (isset($playerSlots[$p->id])) {
+          foreach ($playerSlots[$p->id] as $slot) {
+            if ($start->lt($slot['end']) && $end->gt($slot['start'])) {
+              $playerConflicts[] = [
+                'player'    => $p->full_name,
+                'time_a'    => $slot['start']->format('Y-m-d H:i'),
+                'time_b'    => $start->format('Y-m-d H:i'),
+                'fixture_a' => $slot['fixture_id'],
+                'fixture_b' => $fx->id,
+              ];
+            }
+          }
+        }
+        $playerSlots[$p->id][] = [
+          'start'      => $start,
+          'end'        => $end,
+          'fixture_id' => $fx->id,
+        ];
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Per-player match load
+    // ------------------------------------------------------------------
+    $playerLoad = [];
+    foreach ($fixtures as $fx) {
+      $players = collect()
+        ->merge($fx->registration1?->players ?? [])
+        ->merge($fx->registration2?->players ?? []);
+      foreach ($players as $p) {
+        $playerLoad[$p->id] = $playerLoad[$p->id] ?? ['name' => $p->full_name, 'total' => 0, 'scheduled' => 0];
+        $playerLoad[$p->id]['total']++;
+        if ($fx->orderOfPlay && $fx->orderOfPlay->time) {
+          $playerLoad[$p->id]['scheduled']++;
+        }
+      }
+    }
+    usort($playerLoad, fn($a, $b) => $b['total'] <=> $a['total']);
+
+    // ------------------------------------------------------------------
+    // Venue usage
+    // ------------------------------------------------------------------
+    $venueUsage = [];
+    foreach ($fixtures as $fx) {
+      $oop = $fx->orderOfPlay;
+      if (!$oop || !$oop->venue_id) continue;
+      $venueUsage[$oop->venue_id] = ($venueUsage[$oop->venue_id] ?? 0) + 1;
+    }
+
+    $venues = $draw->venues->map(fn($v) => [
+      'id'         => $v->id,
+      'name'       => $v->name,
+      'num_courts' => $v->pivot->num_courts,
+      'matches'    => $venueUsage[$v->id] ?? 0,
+    ]);
+
+    return response()->json([
+      'total'                => $total,
+      'scheduled'            => $scheduled,
+      'unscheduled'          => $unscheduled,
+      'unscheduled_fixtures' => $unscheduledFixtures,
+      'stages'               => $stages,
+      'conflicts'            => $conflicts,
+      'player_conflicts'     => $playerConflicts,
+      'player_load'          => array_values($playerLoad),
+      'venues'               => $venues,
+    ]);
+  }
+
+  // ---------------------------------------------------------
+  // SHOW DATA (grouped by date → court)
+  // ---------------------------------------------------------
+  public function showData(Draw $draw)
+  {
+    $fixtures = Fixture::with(['registration1.players', 'registration2.players', 'orderOfPlay'])
+      ->where('draw_id', $draw->id)
+      ->get()
+      ->filter(fn($f) => $f->orderOfPlay && $f->orderOfPlay->time)
+      ->sortBy(fn($f) => $f->orderOfPlay->time);
+
+    $grouped = [];
+    foreach ($fixtures as $fx) {
+      $oop  = $fx->orderOfPlay;
+      $date = \Carbon\Carbon::parse($oop->time)->format('Y-m-d');
+      $court = $oop->court ?: 'Unassigned';
+      $grouped[$date][$court][] = [
+        'id'    => $fx->id,
+        'time'  => \Carbon\Carbon::parse($oop->time)->format('H:i'),
+        'stage' => $fx->stage,
+        'round' => $fx->round,
+        'match' => $fx->match_nr,
+        'p1'    => $fx->registration1?->players?->pluck('full_name')->join(' / ') ?? 'TBD',
+        'p2'    => $fx->registration2?->players?->pluck('full_name')->join(' / ') ?? 'TBD',
+      ];
+    }
+
+    return response()->json(['grouped' => $grouped]);
   }
 
   private function autoAdvanceFixture(Fixture $fx)

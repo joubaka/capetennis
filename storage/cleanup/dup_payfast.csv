@@ -1,0 +1,9 @@
+id,pf_payment_id,player_id,event_id,amount,created_at,risk_note
+526,280022243,,230,,"2026-02-07 14:05:30","DUPLICATE — manual review required"
+527,280022243,,230,,"2026-02-07 14:05:31","DUPLICATE — manual review required"
+530,280064537,,230,,"2026-02-07 20:34:35","DUPLICATE — manual review required"
+531,280064537,,230,,"2026-02-07 20:34:36","DUPLICATE — manual review required"
+536,280073041,,230,,"2026-02-07 22:15:59","DUPLICATE — manual review required"
+537,280073041,,230,,"2026-02-07 22:16:00","DUPLICATE — manual review required"
+588,280225013,,224,,"2026-02-09 04:51:16","DUPLICATE — manual review required"
+589,280225013,,224,,"2026-02-09 04:51:17","DUPLICATE — manual review required"

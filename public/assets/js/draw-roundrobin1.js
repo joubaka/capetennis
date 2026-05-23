@@ -383,7 +383,14 @@
           while (j < grp.length &&
             Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
             Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
-          resolved.push(...resolveGroup(grp.slice(i, j)));
+          const subGroup = grp.slice(i, j);
+          // Guard: if the sub-group is the same size as the input, no further
+          // resolution is possible — return to avoid infinite recursion.
+          if (subGroup.length === grp.length) {
+            resolved.push(...subGroup);
+          } else {
+            resolved.push(...resolveGroup(subGroup));
+          }
           i = j;
         }
         return resolved;
@@ -470,6 +477,7 @@
   function bindEvents() {
 
     $(document).on('click', '.rr-score-cell', function () {
+      if (window.RR_DRAW_LOCKED) { toastr.warning('Draw is locked. Unlock the draw to make changes.'); return; }
       openScoreModal(
         $(this).data('fixture-id'),
         $(this).data('home'),
@@ -479,6 +487,7 @@
 
     $(document).on('click', '.rr-open-score-modal', function (e) {
       e.preventDefault();
+      if (window.RR_DRAW_LOCKED) { toastr.warning('Draw is locked. Unlock the draw to make changes.'); return; }
       openScoreModal(
         $(this).data('fixture-id'),
         $(this).data('home'),
@@ -488,6 +497,7 @@
 
     // Bracket SVG click → open score modal
     $(document).on('click', '.bracket-score-btn', function () {
+      if (window.RR_DRAW_LOCKED) { toastr.warning('Draw is locked. Unlock the draw to make changes.'); return; }
       openScoreModal(
         $(this).data('fixture-id'),
         $(this).data('home'),
@@ -500,6 +510,7 @@
     // ============================================================
     $scoreModalForm.on('submit', function (e) {
       e.preventDefault();
+      if (window.RR_DRAW_LOCKED) { toastr.warning('Draw is locked. Unlock the draw to make changes.'); return; }
 
       const fixtureId = $modalFixtureId.val();
 
@@ -644,6 +655,7 @@
     // DELETE SCORE FROM MODAL
     // ============================================================
     $(document).on('click', '#rrm-delete-score', function() {
+        if (window.RR_DRAW_LOCKED) { toastr.warning('Draw is locked. Unlock the draw to make changes.'); return; }
         var fixtureId = $('#rrm-fixture-id').val();
         if (!fixtureId) { toastr.warning('No fixture selected.'); return; }
         if (!confirm('Delete the score for this match?')) return;
@@ -683,30 +695,7 @@
     });
 
     // ============================================================
-    // SAVE GROUPS
-    // ============================================================
-    $('#btn-save-groups').on('click', function () {
-      let payload = [];
-
-      $('.rr-group').each(function () {
-        const groupId = $(this).data('group-id');
-
-        const registrationIds = $(this)
-          .find('li')
-          .map(function () { return $(this).data('id'); })
-          .get();
-
-        payload.push({
-          group_id: groupId,
-          registration_ids: registrationIds
-        });
-      });
-
-      $.post(`${APP_URL}/backend/draw/${drawId}/save-groups`, { groups: payload })
-        .done(() => toastr.success('Groups saved successfully'))
-        .fail(() => toastr.error('Failed to save groups'));
-    });
-  }
+    }
 
   /* ===================================================
    * SCORE ORIENTATION

@@ -40,6 +40,7 @@ class Event extends Model
     'budget_cap',
     'target_entries',
     'target_income',
+    'engine_mode',
   ];
 
   /*

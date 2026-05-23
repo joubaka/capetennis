@@ -78,8 +78,12 @@ class SeriesRanker
         // Collect results
         $perPlayer = $this->collectResults($catEvents, $posToScore, $dbg);
       
-        // Apply 2-of-3 rule
-        $this->applyTwoOfThreeRule($catEvents, $perPlayer, $posToScore, $dbg);
+        // Apply 2-of-3 rule (if enabled for this series)
+        if ($series->auto_award_rule ?? true) {
+          $this->applyTwoOfThreeRule($catEvents, $perPlayer, $posToScore, $dbg);
+        } else {
+          $dbg->info('2-of-3 auto-award rule is disabled for this series.');
+        }
 
         // Reduce to best N
         $rankRows = $this->reduceToBestN($perPlayer, $bestN, $dbg);

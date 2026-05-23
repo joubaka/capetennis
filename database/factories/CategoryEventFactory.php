@@ -22,4 +22,9 @@ class CategoryEventFactory extends Factory
             'locked_at' => null,
         ];
     }
+
+    public function locked(): static
+    {
+        return $this->state(['locked_at' => now()]);
+    }
 }

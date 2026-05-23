@@ -137,6 +137,14 @@
           Add Venues
         </button>
 
+        @can('super-user')
+        <a href="{{ route('engine.draw.show', $draw->id) }}"
+           class="btn btn-outline-secondary btn-sm mb-3 ms-1"
+           title="Engine mode &amp; mismatch log for this draw">
+          <i class="ti ti-engine ti-xs me-1"></i>Engine
+        </a>
+        @endcan
+
         <div class="draw-venues" data-draw-id="{{ $draw->id }}">
           @if($draw->venues && $draw->venues->count() > 0)
             <small class="text-muted me-1"><i class="ti ti-map-pin ti-xs"></i> Venues:</small>

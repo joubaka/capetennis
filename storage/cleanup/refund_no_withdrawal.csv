@@ -1,0 +1,4 @@
+id,category_event_id,registration_id,status,refund_status,refund_gross,refund_method,payfast_id,pf_transaction_id,created_at,risk_note
+17850,1971,19629,withdrawn,pending,285.00,bank,,293890767,"2026-04-13 11:20:26","withdrawn but no withdrawal record — review payment/refund chain"
+17899,1971,19678,withdrawn,pending,285.00,bank,,293890767,"2026-04-13 11:20:26","withdrawn but no withdrawal record — review payment/refund chain"
+17900,1956,19679,withdrawn,pending,285.00,bank,,293890767,"2026-04-13 11:20:26","withdrawn but no withdrawal record — review payment/refund chain"

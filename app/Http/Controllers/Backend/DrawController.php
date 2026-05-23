@@ -9,7 +9,7 @@ use App\Services\Fixtures;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Draw;
-use App\Models\Venues;
+use App\Models\Venue;
 use App\Models\DrawFormats;
 use App\Models\DrawRegistrations;
 use App\Models\DrawSetting;
@@ -22,6 +22,7 @@ use App\Models\TeamFixture;
 
 use App\Services\CtBracket;
 use App\Services\DrawBuilder;
+use App\Domain\Engine\EngineRouter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -92,7 +93,7 @@ class DrawController extends Controller
     //dd('check');
     $data['drawTypes'] = DrawType::all();
     $data['drawFormats'] = DrawFormats::all();
-    $data['venues'] = Venues::all();
+    $data['venues'] = Venue::all();
     $data['event'] = Draw::find($id)->event;
     // dd($data['bracket']);
     /// teamm event
@@ -543,11 +544,20 @@ class DrawController extends Controller
   }
   public function manage($id)
   {
-    $draw = Draw::with(['categoryEvent.category', 'registrations.players'])->findOrFail($id);
+    $draw = Draw::with([
+      'categoryEvent.category',
+      'registrations.players',
+    ])->findOrFail($id);
 
+    $assignedIds = $draw->registrations->pluck('id');
 
+    // Eligible = registrations entered in the same category event, not yet assigned to this draw
+    $eligibleRegistrations = Registration::with('players')
+      ->whereHas('categoryEvents', fn($q) => $q->where('category_events.id', $draw->category_event_id))
+      ->whereNotIn('id', $assignedIds)
+      ->get();
 
-    return view('backend.draw.manage', compact('draw'));
+    return view('backend.draw.manage', compact('draw', 'eligibleRegistrations'));
   }
 
   public function players($id)
@@ -1025,17 +1035,20 @@ class DrawController extends Controller
 
   public function generateRoundRobinFixtures(Request $request, $id)
   {
-    $draw = Draw::findOrFail($id);
-    $builder = new DrawBuilder($draw);
+    $draw   = Draw::findOrFail($id);
+    $engine = app(EngineRouter::class);
 
     try {
-      $builder->generateRoundRobinFixtures($draw);
+      $engine->forDraw($draw)->generateRoundRobin($draw, function (Draw $d) {
+        $builder = new DrawBuilder($d);
+        $builder->generateRoundRobinFixtures($d);
+      });
 
       return response()->json(['message' => 'Round Robin fixtures generated successfully.']);
     } catch (\Throwable $e) {
       return response()->json([
         'message' => 'Error generating fixtures.',
-        'error' => $e->getMessage(),
+        'error'   => $e->getMessage(),
       ], 500);
     }
   }

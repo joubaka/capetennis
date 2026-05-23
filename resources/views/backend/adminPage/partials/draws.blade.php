@@ -42,6 +42,9 @@
       {{-- Action Buttons --}}
      {{-- Action Buttons --}}
 <div class="d-flex align-items-start gap-2 flex-wrap">
+  <a href="{{ route('engine.draw.show', $draw->id) }}" class="btn btn-sm btn-danger">
+    <i class="fas fa-cogs"></i> Engine
+  </a>
   <a href="{{ route('draws.settings', $draw->id) }}" class="btn btn-sm btn-warning">
     <i class="fas fa-cog"></i> Settings
   </a>

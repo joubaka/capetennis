@@ -36,6 +36,11 @@
 
     {{-- Action buttons --}}
     <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-danger"
+         href="{{ route('engine.draw.show', $draw->id) }}">
+        <i class="ti ti-engine me-1"></i>Engine
+      </a>
+
       <a class="btn btn-sm btn-warning"
          href="{{ $isTeamEvent
                   ? route('backend.team-fixtures.index', ['draw_id' => $draw->id])

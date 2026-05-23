@@ -2,28 +2,28 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\Entries\Services\EntryService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\Registration;
 use App\Models\CategoryEventRegistration;
 use Illuminate\Http\Request;
-
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Models\Player;
 use App\Models\PlayerRegistration;
 use Maatwebsite\Excel\Facades\Excel;
-
 use App\Mail\BulkEventMail;
 use App\Exports\EventEntriesExport;
 use App\Exports\CategoryEntriesExport;
-
-  use App\Models\Transaction;
-  use Illuminate\Support\Facades\DB;
+use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
 
 class EventEntryController extends Controller
 {
+  public function __construct(private EntryService $entryService) {}
+
   /**
    * Show entries page (grouped per category).
    */
@@ -46,9 +46,7 @@ class EventEntryController extends Controller
    */
   public function lock(CategoryEvent $categoryEvent)
   {
-    $categoryEvent->update([
-      'locked_at' => now(),
-    ]);
+    $this->entryService->lockCategory($categoryEvent, auth()->user());
 
     return response()->json([
       'success' => true,
@@ -61,9 +59,7 @@ class EventEntryController extends Controller
    */
   public function unlock(CategoryEvent $categoryEvent)
   {
-    $categoryEvent->update([
-      'locked_at' => null,
-    ]);
+    $this->entryService->unlockCategory($categoryEvent, auth()->user());
 
     return response()->json([
       'success' => true,
@@ -80,84 +76,26 @@ class EventEntryController extends Controller
 
   public function addPlayer(Request $request, CategoryEvent $categoryEvent)
   {
-    if ($categoryEvent->isLocked()) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Category is locked',
-      ], 403);
-    }
-
     $data = $request->validate([
       'registration_id' => ['required', 'exists:players,id'], // player_id
     ]);
 
-    $playerId = $data['registration_id'];
-
-    // 1️⃣ Prevent duplicate player in this category
-    // Only block if the player has an active, paid entry (payment_status_id = 1).
-    // Withdrawn entries and abandoned unpaid registrations should not block re-entry.
-    $alreadyInCategory = $categoryEvent->categoryEventRegistrations()
-      ->where('status', 'active')
-      ->where('payment_status_id', 1)
-      ->whereHas('registration.players', function ($q) use ($playerId) {
-        $q->where('players.id', $playerId);
-      })
-      ->exists();
-
-    if ($alreadyInCategory) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Player already in category',
-      ], 422);
+    try {
+      $entry = $this->entryService->addPlayerAsAdmin(
+        $categoryEvent,
+        (int) $data['registration_id'],
+        auth()->user()
+      );
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
     }
 
-    // 2️⃣ Create registration
-    $registration = Registration::create([]);
-
-    // 3️⃣ Attach player to registration
-    PlayerRegistration::create([
-      'player_id' => $playerId,
-      'registration_id' => $registration->id,
-    ]);
-
-    // 4️⃣ Attach registration to category
-    $entry = $categoryEvent->categoryEventRegistrations()->create([
-      'registration_id' => $registration->id,
-      'user_id'         => auth()->id(),
-      'status'          => 'active',
-      'payment_status_id' => 1,
-      'payfast_id'      => 'Admin',
-    ]);
-
     $entry->load('registration.players');
-
-    // 5️⃣ Create an admin-entry transaction record so it appears in the ledger
-    DB::table('transactions_pf')->insert([
-      'created_at'        => now(),
-      'updated_at'        => now(),
-      'transaction_type'  => 'Registration',
-      'amount_gross'      => 0.00,
-      'amount_net'        => 0.00,
-      'amount_fee'        => 0.00,
-      'cape_tennis_fee'   => 15.00,
-      'event_id'          => $categoryEvent->event_id,
-      'player_id'         => $playerId,
-      'category_event_id' => $categoryEvent->id,
-      'pf_payment_id'     => null,
-      'is_test'           => 0,
-      'item_name'         => 'Admin Entry',
-      'custom_int3'       => $categoryEvent->event_id,
-      'custom_int4'       => auth()->id(),
-      'custom_str1'       => optional($categoryEvent->category)->name,
-      'custom_str3'       => optional($categoryEvent->event)->name,
-    ]);
 
     return response()->json([
       'success' => true,
       'count' => $categoryEvent->categoryEventRegistrations()->count(),
-      'row' => view('backend.event.partials.entry-row', [
-        'reg' => $entry,
-      ])->render(),
+      'row' => view('backend.event.partials.entry-row', ['reg' => $entry])->render(),
     ]);
   }
 
@@ -166,16 +104,11 @@ class EventEntryController extends Controller
    */
   public function removePlayer(CategoryEvent $categoryEvent, Registration $registration)
   {
-    if ($categoryEvent->isLocked()) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Category is locked',
-      ], 403);
+    try {
+      $this->entryService->removePlayer($categoryEvent, $registration, auth()->user());
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
     }
-
-    $categoryEvent->categoryEventRegistrations()
-      ->where('registration_id', $registration->id)
-      ->update(['withdrawn_at' => now()]);
 
     return response()->json([
       'success' => true,
@@ -353,45 +286,30 @@ class EventEntryController extends Controller
 
   public function movePlayer(Request $request, $entryId)
   {
-    $entry = \App\Models\CategoryEventRegistration::findOrFail($entryId);
+    $entry = CategoryEventRegistration::findOrFail($entryId);
 
     $request->validate([
-      'new_category_id' => ['required', 'exists:category_events,id']
+      'new_category_id' => ['required', 'exists:category_events,id'],
     ]);
 
     $newCategory = CategoryEvent::findOrFail($request->new_category_id);
 
-    if ($newCategory->isLocked()) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Target category is locked'
-      ], 403);
+    try {
+      $entry = $this->entryService->transferEntry(
+        $entry,
+        $newCategory,
+        auth()->user(),
+        adminOverride: true
+      );
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
     }
-
-    // Prevent duplicate in target category
-    $exists = $newCategory->categoryEventRegistrations()
-      ->where('registration_id', $entry->registration_id)
-      ->exists();
-
-    if ($exists) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Player already in that category'
-      ], 422);
-    }
-
-    // 🔥 Move by updating foreign key
-    $entry->update([
-      'category_event_id' => $newCategory->id
-    ]);
 
     $entry->load('registration.players');
 
     return response()->json([
       'success' => true,
-      'row' => view('backend.event.partials.entry-row', [
-        'reg' => $entry,
-      ])->render(),
+      'row' => view('backend.event.partials.entry-row', ['reg' => $entry])->render(),
     ]);
   }
 

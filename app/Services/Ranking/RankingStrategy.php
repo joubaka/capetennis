@@ -10,6 +10,7 @@ interface RankingStrategy
   public function rank(
     Collection $placements,
     array $pointsMap,
-    Series $series
+    Series $series,
+    int $bestN
   ): array;
 }

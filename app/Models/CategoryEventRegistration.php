@@ -246,7 +246,7 @@ class CategoryEventRegistration extends Model
         'ok' => false,
         'reason' => 'already_withdrawn',
         'refund_allowed' => false,
-        'message' => 'This registration has already been withdrawn.',
+        'message' => 'This registration is already withdrawn.',
       ];
     }
 

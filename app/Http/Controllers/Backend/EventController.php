@@ -137,6 +137,70 @@ class EventController extends Controller
     return response()->json(['success' => true]);
   }
 
+  public function create()
+  {
+    $eventTypes = EventType::orderBy('name')->get();
+    $users = User::orderBy('name')->get();
+
+    return view('backend.event.create', compact('eventTypes', 'users'));
+  }
+
+  public function store(Request $request)
+  {
+    $data = $request->validate([
+      'name'                => 'required|string|max:255',
+      'start_date'          => 'nullable|date',
+      'end_date'            => 'nullable|date|after_or_equal:start_date',
+      'information'         => 'nullable|string',
+      'venue_notes'         => 'nullable|string',
+      'entryFee'            => 'nullable|integer',
+      'deadline'            => 'nullable|integer',
+      'withdrawal_deadline' => 'nullable|date',
+      'eventType'           => 'required|integer',
+      'email'               => 'nullable|email',
+      'organizer'           => 'nullable|string|max:191',
+      'logo_upload'         => 'nullable|image|max:2048',
+      'admins'              => 'nullable|array',
+      'admins.*'            => 'integer|exists:users,id',
+    ]);
+
+    $logo = null;
+    if ($request->hasFile('logo_upload')) {
+      $file     = $request->file('logo_upload');
+      $filename = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
+        . '.' . $file->getClientOriginalExtension();
+      $file->move(public_path('assets/img/logos'), $filename);
+      $logo = $filename;
+    }
+
+    $event = Event::create([
+      'name'                => $data['name'],
+      'start_date'          => $data['start_date'] ?? null,
+      'end_date'            => $data['end_date'] ?? null,
+      'information'         => $data['information'] ?? null,
+      'venue_notes'         => $data['venue_notes'] ?? null,
+      'entryFee'            => $data['entryFee'] ?? null,
+      'deadline'            => $data['deadline'] ?? null,
+      'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
+      'eventType'           => $data['eventType'],
+      'email'               => $data['email'] ?? null,
+      'organizer'           => $data['organizer'] ?? null,
+      'logo'                => $logo,
+      'published'           => $request->boolean('published'),
+      'signUp'              => $request->boolean('signUp'),
+    ]);
+
+    if (!empty($data['admins'])) {
+      $event->admins()->sync($data['admins']);
+    }
+
+    Log::info('✅ Event created', ['event_id' => $event->id, 'user_id' => auth()->id()]);
+
+    return redirect()
+      ->route('admin.events.overview', $event)
+      ->with('success', 'Event created successfully.');
+  }
+
   public function edit(Event $event)
   {
     $eventTypes = EventType::orderBy('type')->get();

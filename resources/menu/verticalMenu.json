@@ -73,6 +73,12 @@
           "name": "Photos",
           "icon": "circle",
           "slug": ""
+        },
+        {
+          "url": "backend/admin/engine/debug",
+          "name": "Engine Debug",
+          "icon": "circle",
+          "slug": "engine.debug"
         }
       ]
     }

@@ -15,7 +15,7 @@ class PlayerFactory extends Factory
             'name' => $this->faker->firstName(),
             'surname' => $this->faker->lastName(),
             'cellNr' => $this->faker->phoneNumber(),
-            'gender' => $this->faker->randomElement(['male', 'female']),
+            'gender' => $this->faker->randomElement([1, 2]),
             'userId' => null,
             'email' => $this->faker->unique()->safeEmail(),
             'dateOfBirth' => $this->faker->date('Y-m-d', '-10 years'),
@@ -25,11 +25,11 @@ class PlayerFactory extends Factory
 
     public function male(): static
     {
-        return $this->state(['gender' => 'male']);
+        return $this->state(['gender' => 1]);
     }
 
     public function female(): static
     {
-        return $this->state(['gender' => 'female']);
+        return $this->state(['gender' => 2]);
     }
 }

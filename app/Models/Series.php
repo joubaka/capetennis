@@ -17,11 +17,13 @@ class Series extends Model
     'leaderboard_published',
     'best_num_of_scores',
     'points_template_created', // ✅ ADD THIS
+    'auto_award_rule',
   ];
   protected $casts = [
     'year' => 'integer',
     'best_of' => 'integer',
     'published' => 'boolean',
+    'auto_award_rule' => 'boolean',
   ];
 
   //used

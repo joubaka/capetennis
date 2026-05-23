@@ -1,0 +1,3 @@
+discard_id,keep_id,category_event_id,registration_id,discard_payfast_id,discard_pf_transaction_id,discard_created_at,keep_created_at,risk_note
+7966,9595,914,7903,1698619,,,,"WARNING: discard row has payment ref — verify before confirming"
+13159,13160,1471,14119,,191022091,,,"WARNING: discard row has payment ref — verify before confirming"

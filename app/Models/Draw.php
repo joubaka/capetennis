@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Fixtures;
+use App\Services\FeatureFlags;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -26,6 +27,7 @@ class Draw extends Model
         'team_category_id',
         'gender',
         'oop_created',
+        'engine_mode',
     ];
     public function drawFormat()
     {
@@ -252,6 +254,70 @@ public function getStructureType(): string
     return 'knockout';
 }
 
+    /**
+     * Resolve the effective engine mode for this draw.
+     *
+     * Priority: draw override → event override → global config.
+     */
+    public function effectiveEngineMode(): string
+    {
+        if ($this->engine_mode) {
+            return $this->engine_mode;
+        }
 
+        // Lazy-load event if needed
+        $event = $this->relationLoaded('event') ? $this->event : $this->event()->first();
+        if ($event && $event->engine_mode) {
+            return $event->engine_mode;
+        }
+
+        return config('capetennis_engine.mode', 'hybrid');
+    }
+
+    /**
+     * Effective engine mode with feature-flag override applied.
+     *
+     * Priority: draw override → event override → feature flags → global config.
+     */
+    public function effectiveEngineModeWithFlags(): string
+    {
+        // Per-draw override always wins
+        if ($this->engine_mode) {
+            return $this->engine_mode;
+        }
+
+        // Per-event override
+        $event = $this->relationLoaded('event') ? $this->event : $this->event()->first();
+        if ($event && $event->engine_mode) {
+            return $event->engine_mode;
+        }
+
+        // Feature-flag gates
+        $flags = app(FeatureFlags::class);
+
+        if ($flags->enabled('canonical_engine', $event?->id)) {
+            return 'canonical';
+        }
+
+        if ($flags->enabled('hybrid_engine', $event?->id)) {
+            return 'hybrid';
+        }
+
+        return config('capetennis_engine.mode', 'hybrid');
+    }
+
+    /**
+     * Whether canonical mode is allowed for this draw.
+     * Canonical is blocked when unresolved HIGH or MEDIUM mismatches exist.
+     */
+    public function canonicalAllowed(): bool
+    {
+        $blocked = \App\Models\EngineMismatch::forDraw($this->id)
+            ->unresolved()
+            ->whereIn('severity', ['high', 'medium'])
+            ->exists();
+
+        return ! $blocked;
+    }
 
 }

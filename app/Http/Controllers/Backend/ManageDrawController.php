@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
+use App\Models\DrawAuditLog;
 use App\Models\CategoryEvent;
 use App\Models\DrawFormats;
 use App\Models\DrawSetting;
@@ -58,6 +59,7 @@ class ManageDrawController extends Controller
 
   public function updateSettings(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
     $data = $request->validate([
             'draw_format_id' => 'nullable|exists:draw_formats,id',
             'draw_type_id' => 'nullable|exists:draw_types,id',
@@ -88,6 +90,10 @@ class ManageDrawController extends Controller
             // Recreate groups if boxes changed
             if (isset($updateData['boxes']) && $oldBoxes !== $newBoxes) {
                 $this->recreateGroups($draw, $newBoxes);
+                DrawAuditLog::record($draw->id, 'groups_recreated', null, [
+                    'old_boxes' => $oldBoxes,
+                    'new_boxes' => $newBoxes,
+                ]);
             }
         }
 
@@ -177,6 +183,7 @@ class ManageDrawController extends Controller
    */
   public function updatePlayoffConfig(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
     $validated = $request->validate([
       'playoff_config' => 'required|array|min:1', // At least one playoff
       'playoff_config.*.name' => 'required|string',
@@ -222,6 +229,7 @@ class ManageDrawController extends Controller
    */
   public function updateNotes(Request $request, Draw $draw)
   {
+    $this->authorize('editNotes', $draw);
     $validated = $request->validate([
       'notes' => 'required|array',
       'notes.*' => 'nullable|string|max:5000',
@@ -249,6 +257,8 @@ class ManageDrawController extends Controller
    */
   public function generatePlayoffBrackets(Request $request, Draw $draw)
   {
+    $this->authorize('generateBrackets', $draw);
+
     try {
       // Delegate to RoundRobinController which has the generation logic
       return app(RoundRobinController::class)->generateMainBracket($request, $draw);
@@ -266,22 +276,24 @@ class ManageDrawController extends Controller
   }
 
   /**
-   * Get playoff brackets data for SVG rendering
+   * Get playoff brackets data for rendering (read-only via BracketRenderService)
    */
   public function getPlayoffBrackets(Request $request, Draw $draw)
   {
+    $this->authorize('view', $draw);
     try {
-      $engine = new \App\Services\DynamicBracketEngine($draw);
-      $svgData = $engine->build();
+      $stages = $request->input('stages', \App\Domain\Draws\Services\BracketRenderService::ALL_STAGES);
+      $data = app(\App\Domain\Draws\Services\BracketRenderService::class)
+        ->buildBracketData($draw, $stages);
 
       return response()->json([
         'success' => true,
-        'data' => $svgData,
+        'data'    => $data,
       ]);
     } catch (\Exception $e) {
       \Log::error('[getPlayoffBrackets] Error', [
         'draw_id' => $draw->id,
-        'error' => $e->getMessage(),
+        'error'   => $e->getMessage(),
       ]);
 
       return response()->json([
