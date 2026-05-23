@@ -90,7 +90,7 @@
                     $x = $match['x'];
                     $y = $match['y'];
                     $w = $match['width'];
-                    $h = $match['height'];
+                    $h = $match['height'];  
                     
                     $topLineY = $y;
                     $bottomLineY = $y + $h;

@@ -409,7 +409,7 @@ class DynamicBracketEngine
      */
     protected function buildVirtualPositionPlayoffs(array $rounds, int $numRounds, int $startY, int $nextNr): array
     {
-        $matches = [];
+        $matches = []; 
         $maxY = $startY;
         $spacing = self::BOX_HEIGHT + 30;
         $currentY = $startY;
@@ -430,7 +430,7 @@ class DynamicBracketEngine
                     'width' => self::BOX_WIDTH,
                     'height' => self::BOX_HEIGHT,
                     'label' => '3rd/4th Place',
-                    'isFinal' => true,
+                    'isFinal' => true, 
                     'virtualMatchNr' => $nextNr,
                     'seedLabel1' => null,
                     'seedLabel2' => null,

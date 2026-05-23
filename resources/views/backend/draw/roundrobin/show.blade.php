@@ -2928,7 +2928,7 @@ function generateBracketMatchups(size) {
             matchups.push({seed1: 8, seed2: 25});
             matchups.push({seed1: 9, seed2: 24});
             matchups.push({seed1: 4, seed2: 29});
-            matchups.push({seed1: 13, seed2: 20});
+            matchups.push({seed1: 13, seed2: 20});  
             matchups.push({seed1: 5, seed2: 28});
             matchups.push({seed1: 12, seed2: 21});
             matchups.push({seed1: 2, seed2: 31});
