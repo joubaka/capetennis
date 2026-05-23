@@ -97,7 +97,7 @@
     // Ensure all_sets exists
     if (!f.all_sets || !Array.isArray(f.all_sets)) {
       if (f.score) {
-        f.all_sets = String(f.score).trim().split(' ').filter(s => s.includes('-'));
+        f.all_sets = String(f.score).split(',').map(s => s.trim()).filter(s => s.includes('-'));
       } else {
         f.all_sets = [];
       }
@@ -160,16 +160,24 @@
       const groupId = group.id;
       const fixtures = (RR_FIXTURES && RR_FIXTURES[groupId]) ? RR_FIXTURES[groupId] : [];
 
-      console.log(`🔷 GROUP ${groupId}`, group);
-      console.log(`🔷 FIXTURES FOR GROUP ${groupId}`, fixtures);
+      // Build player list from fixtures (r1_id/r2_id) so IDs always match
+      const playerMap = {};
+      fixtures.forEach(f => {
+        if (f.r1_id && !playerMap[f.r1_id]) playerMap[f.r1_id] = { id: f.r1_id, name: f.name1 || '' };
+        if (f.r2_id && !playerMap[f.r2_id]) playerMap[f.r2_id] = { id: f.r2_id, name: f.name2 || '' };
+      });
 
-      let players = group.registrations.map(r => ({
-        id: r.id,
-        name: r.display_name,
-        seed: r.pivot ? (r.pivot.seed ?? 9999) : 9999
-      }));
+      // Fall back to group.registrations names where possible
+      group.registrations.forEach(r => {
+        if (playerMap[r.id]) playerMap[r.id].name = r.display_name || playerMap[r.id].name;
+      });
 
-      players = players.sort((a, b) => a.seed - b.seed);
+      let players = Object.values(playerMap);
+
+      // Sort by seed from group registrations if available
+      const seedMap = {};
+      group.registrations.forEach(r => { seedMap[r.id] = r.seed ?? 9999; });
+      players.sort((a, b) => (seedMap[a.id] || 9999) - (seedMap[b.id] || 9999));
 
       let html = `
       <h6 class="fw-bold mt-3 mb-2">Box ${group.name}</h6>
@@ -383,7 +391,14 @@
           while (j < grp.length &&
             Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
             Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
-          resolved.push(...resolveGroup(grp.slice(i, j)));
+          const sub = grp.slice(i, j);
+          // Guard: if sub equals full group, no further tiebreak possible
+          if (sub.length === grp.length) {
+            sub.forEach(r => { r.tiebreak = r.tiebreak || '='; });
+            resolved.push(...sub);
+          } else {
+            resolved.push(...resolveGroup(sub));
+          }
           i = j;
         }
         return resolved;
@@ -566,6 +581,7 @@
             // Update full data from server response
             if (res.rrFixtures) {
               window.RR_FIXTURES = res.rrFixtures;
+              normalizeAllFixtures();
             }
             if (res.standings) {
               window.RR_STANDINGS = res.standings;
@@ -658,6 +674,7 @@
             $('#set1-p1, #set1-p2, #set2-p1, #set2-p2, #set3-p1, #set3-p2').val('');
             if (res.rrFixtures) {
                 window.RR_FIXTURES = res.rrFixtures;
+                normalizeAllFixtures();
             }
             if (res.standings) {
                 window.RR_STANDINGS = res.standings;

@@ -88,7 +88,7 @@
                 $roundLabel = $firstMatch['roundLabel'] ?? "R$rn";
                 $roundX = $firstMatch ? $firstMatch['x'] : (60 + ($rn - 1) * 200);
             @endphp
-            <text x="{{ $roundX + 95 }}" y="{{ $bracketStartY - 8 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 10px; font-weight: 600; fill: #64748b; letter-spacing: 0.5px;">
+            <text x="{{ $roundX + 95 }}" y="{{ $bracketStartY - 28 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 10px; font-weight: 600; fill: #64748b; letter-spacing: 0.5px;">
                 {{ strtoupper($roundLabel) }}
             </text>
         @endforeach
