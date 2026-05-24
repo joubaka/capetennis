@@ -579,30 +579,45 @@ class DynamicBracketEngine
                 $away = $fx->registration2_id;
                 $homeSets = 0;
                 $awaySets = 0;
+                $homeGames = 0;
+                $awayGames = 0;
 
                 foreach ($fx->fixtureResults as $set) {
                     if ($set->registration1_score > $set->registration2_score) $homeSets++;
                     else $awaySets++;
+                    $homeGames += $set->registration1_score;
+                    $awayGames += $set->registration2_score;
                 }
 
                 if (isset($standings[$home])) {
-                    $standings[$home]['sets_won']  += $homeSets;
-                    $standings[$home]['sets_lost'] += $awaySets;
+                    $standings[$home]['sets_won']   += $homeSets;
+                    $standings[$home]['sets_lost']  += $awaySets;
+                    $standings[$home]['games_won']  = ($standings[$home]['games_won']  ?? 0) + $homeGames;
+                    $standings[$home]['games_lost'] = ($standings[$home]['games_lost'] ?? 0) + $awayGames;
                     $standings[$home][$homeSets > $awaySets ? 'wins' : 'losses']++;
                 }
                 if (isset($standings[$away])) {
-                    $standings[$away]['sets_won']  += $awaySets;
-                    $standings[$away]['sets_lost'] += $homeSets;
+                    $standings[$away]['sets_won']   += $awaySets;
+                    $standings[$away]['sets_lost']  += $homeSets;
+                    $standings[$away]['games_won']  = ($standings[$away]['games_won']  ?? 0) + $awayGames;
+                    $standings[$away]['games_lost'] = ($standings[$away]['games_lost'] ?? 0) + $homeGames;
                     $standings[$away][$awaySets > $homeSets ? 'wins' : 'losses']++;
                 }
             }
 
-            // Sort: wins desc, then set diff desc (explicit comparator)
+            // Sort: wins desc, then set diff desc, then game diff desc
             $sorted = collect($standings)->sort(function ($a, $b) {
                 if ($a['wins'] !== $b['wins']) {
                     return $b['wins'] - $a['wins'];
                 }
-                return ($b['sets_won'] - $b['sets_lost']) - ($a['sets_won'] - $a['sets_lost']);
+                $setDiffA = $a['sets_won'] - $a['sets_lost'];
+                $setDiffB = $b['sets_won'] - $b['sets_lost'];
+                if ($setDiffA !== $setDiffB) {
+                    return $setDiffB - $setDiffA;
+                }
+                $gameDiffA = ($a['games_won'] ?? 0) - ($a['games_lost'] ?? 0);
+                $gameDiffB = ($b['games_won'] ?? 0) - ($b['games_lost'] ?? 0);
+                return $gameDiffB - $gameDiffA;
             })->values();
 
             foreach ($sorted as $pos => $entry) {
