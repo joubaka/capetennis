@@ -93,7 +93,6 @@ $controller_path = 'App\Http\Controllers';
 
 // Temp: OPcache clear
 Route::get('/clear-opcache-ct2026', function () {
-    opcache_reset();
     \Artisan::call('cache:clear');
     \Artisan::call('view:clear');
     \Artisan::call('route:clear');
