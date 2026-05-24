@@ -662,10 +662,19 @@ class RoundRobinController
       
       // Round 1 fixtures — use standard bracket seeding matchups
       $bracketMatchups = $this->getStandardBracketMatchups($size);
-      
+
+      \Log::info("🎾 [GenerateDynamic] MATCHUPS for stage={$stage} size={$size}", [
+        'matchups' => $bracketMatchups,
+        'players'  => $players,
+        'file_mtime' => filemtime(__FILE__),
+        'file' => __FILE__,
+      ]);
+
       foreach ($bracketMatchups as $i => $matchup) {
         $p1 = $players[$matchup[0] - 1] ?? null; // seeds are 1-indexed
         $p2 = $players[$matchup[1] - 1] ?? null;
+
+        \Log::info("  Match {$i}: seed{$matchup[0]}(reg={$p1}) vs seed{$matchup[1]}(reg={$p2})");
         
         $fx = Fixture::create([
           'draw_id' => $draw->id,
