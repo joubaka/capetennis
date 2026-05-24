@@ -401,7 +401,7 @@ class DynamicBracketEngine
             ],
             default => collect(range(1, (int)($size / 2)))->map(fn($i) => [$i * 2 - 1, $i * 2])->toArray(),
         };
-    }
+    }   
 
     /**
      * Build virtual position playoff entries when no real fixtures exist.
