@@ -70,7 +70,7 @@ class TeamFixtureFrontendController extends Controller
           ->orderBy('round')
           ->orderBy('draw_group_id')
           ->orderBy('match_nr')
-          ->get();
+          ->get(); 
 
       return view('frontend.fixtures.enter-score-rr', [
         'draw'     => $drawModel,

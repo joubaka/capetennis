@@ -102,7 +102,7 @@
                     $w = $match['width'];
                     $h = $match['height'];  
                     
-                    $topLineY = $y;
+                    $topLineY = $y; 
                     $bottomLineY = $y + $h;
                     $midY = $y + ($h / 2);
                     $rightX = $x + $w;
