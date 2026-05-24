@@ -183,7 +183,7 @@
     $('.rr-s1-p1,.rr-s1-p2,.rr-s2-p1,.rr-s2-p2,.rr-s3-p1,.rr-s3-p2').val('');
 
     // Pre-fill existing score
-    var existing = getRow(id).find('td').eq(5).text().trim();
+    var existing = getRow(id).find('td').eq(6).text().trim();
     if (existing) {
       existing.split(',').forEach(function(set, i) {
         var parts = set.trim().split('-');
@@ -230,7 +230,7 @@
         toastr.success('Score saved');
         var tr = getRow(id);
         if (tr.length && res.fixture) {
-          tr.find('td').eq(5).text(res.fixture.score || '');
+          tr.find('td').eq(6).text(res.fixture.score || '');
           applyColours(tr, res.fixture.winner_registration, res.fixture.r1_id, res.fixture.r2_id);
           rebuildActions(tr, id, home, away, true);
         }
@@ -255,7 +255,7 @@
     $.ajax({ url: url, method: 'DELETE' })
       .done(function() {
         toastr.success('Score deleted');
-        tr.find('td').eq(5).text('');
+        tr.find('td').eq(6).text('');
         applyColours(tr, null);
         rebuildActions(tr, id, home, away, false);
       })

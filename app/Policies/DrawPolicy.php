@@ -32,7 +32,7 @@ class DrawPolicy
      */
     public function saveScore(User $user, Draw $draw): bool
     {
-        if ($draw->locked || $draw->published) {
+        if ($draw->locked) {
             return false;
         }
 
@@ -44,7 +44,7 @@ class DrawPolicy
      */
     public function deleteScore(User $user, Draw $draw): bool
     {
-        if ($draw->locked || $draw->published) {
+        if ($draw->locked) {
             return false;
         }
 
