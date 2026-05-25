@@ -280,44 +280,24 @@ class EventTransactionController extends Controller
       $grossPaid   = (float) ($payment['gross'] ?? 0);
       $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
       $totalGross  = round($grossPaid + $walletPaid, 2);
-      $refundFee   = round($totalGross * 0.10, 2);  // 10% withdrawal fee retained
-      $refundNet   = round($totalGross - $refundFee, 2);
-
-      // Actual fees from the original payment (for display on the row)
       $origPfFee   = abs((float) ($payment['fee'] ?? 0));
       $origCapeFee = abs((float) ($payment['cape_fee'] ?? $feePerEntry));
-
-      if ($DEBUG) {
-        Log::info('REFUND FINAL MODEL', [
-          'reg_id'       => $reg->id,
-          'total_gross'  => $totalGross,
-          'refund_fee'   => $refundFee,
-          'refund_net'   => $refundNet,
-          'orig_pf_fee'  => $origPfFee,
-          'orig_cape_fee'=> $origCapeFee,
-        ]);
-      }
+      $refundNet   = round($totalGross - $origPfFee - $origCapeFee, 2);
 
       return (object) [
         'type'          => 'refund',
         'refund_status' => $reg->refund_status,
         'created_at'    => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
-
         'player'        => $reg->display_name,
         'category'      => optional($reg->categoryEvent->category)->name,
         'method'        => ucfirst($reg->refund_method),
-
         'pf_payment_id' => $payment['pf_payment_id'] ?? null,
         'tx_id'         => $payment['transaction_id'] ?? null,
         'paid_at'       => $payment['paid_at'] ?? null,
-
-        'gross'         => -$totalGross,   // full amount paid — shown as negative (money out)
-        'fee'           => 0,              // zero for card totals — use displayFee for row display
-        'capeFee'       => 0,              // zero for card totals — use displayCapeFee for row display
-        'displayFee'    => +$origPfFee,    // original PF fee recovered — row display only
-        'displayCapeFee'=> +$origCapeFee,  // original Cape fee recovered — row display only
-        'withdrawalFee' => +$refundFee,    // 10% retained by Cape Tennis
-        'net'           => -$refundNet,    // 90% returned to player
+        'gross'         => -$totalGross,   // money out
+        'fee'           => +$origPfFee,    // PF fee recovered
+        'capeFee'       => +$origCapeFee,  // Cape fee recovered
+        'net'           => -$refundNet,    // net cost to event
       ];
 
     });
@@ -448,24 +428,14 @@ class EventTransactionController extends Controller
     $allPaymentRows = collect()->merge($paymentRows)->merge($walletOnlyRows);
     $totalGross = $allPaymentRows->sum('gross');
 
-    // Fees: PayFast fees from payments only (refunds have fee=0 so they don't pollute this)
-    $totalPayfastFees = $ledger->where('type', 'payment')->sum('fee');
-
-    // Cape Tennis fee: only active (non-refunded) entries pay the cape fee.
-    // Each completed refund represents one entry that should not be charged.
-    $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
-    $totalCapeTennisFees = $ledger->where('type', 'payment')->sum('capeFee')
-                         + ($completedRefundCount * $feePerEntry); // add back fee for refunded entries
+    // Fees: sum across all rows — refund rows carry positive fee/capeFee which naturally offsets
+    $totalPayfastFees    = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
+    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
 
     // Total payouts (absolute value for display)
     $totalPayouts = $payouts->sum('amount');
 
-    // 10% withdrawal fees retained by Cape Tennis on refunds
-    $totalWithdrawalFees = $refundRows->sum('withdrawalFee');
-
-    // Net = gross + fees (negative) + refund impact + payouts (negative)
-    // Refund rows carry their net as -$refundNet, withdrawalFee is NOT added to net separately
-    // because net on the refund row already accounts for the retention.
+    // Net = gross + fees + refund impact + payouts
     $netTournamentIncome = $ledger->sum('net');
 
     // Entry count for display (payments only - refunds don't add entries), including wallet-only
@@ -475,7 +445,7 @@ class EventTransactionController extends Controller
 
     // Refund count for display
     $refundCount          = $refundRows->count();
-    // $completedRefundCount already computed above
+    $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
     $pendingRefundCount   = $refundRows->where('refund_status', 'pending')->count();
 
     // Withdrawal totals: show net paid out to player (gross - 10% fee), not the gross
@@ -531,7 +501,6 @@ class EventTransactionController extends Controller
       'totalWithdrawals'         => $totalWithdrawals,
       'completedWithdrawalsTotal'=> $completedWithdrawalsTotal,
       'pendingWithdrawalsTotal'  => $pendingWithdrawalsTotal,
-      'totalWithdrawalFees'      => $totalWithdrawalFees,
       'totalGross' => $totalGross,
       'totalPayfastFees' => $totalPayfastFees,
       'totalCapeTennisFees' => $totalCapeTennisFees,
@@ -628,30 +597,24 @@ class EventTransactionController extends Controller
       $grossPaid   = (float) ($payment['gross'] ?? 0);
       $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
       $totalGross  = round($grossPaid + $walletPaid, 2);
-      $refundFee   = round($totalGross * 0.10, 2); // fixed 10%
-      $refundNet   = round($totalGross - $refundFee, 2);
-
-      // Actual fees from the original payment (for row display only)
       $origPfFee   = abs((float) ($payment['fee'] ?? 0));
       $origCapeFee = abs((float) ($payment['cape_fee'] ?? $feePerEntry));
+      $refundNet   = round($totalGross - $origPfFee - $origCapeFee, 2);
 
       return (object) [
-        'type'           => 'refund',
-        'refund_status'  => $reg->refund_status,
-        'created_at'     => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
-        'player'         => $reg->display_name,
-        'category'       => optional($reg->categoryEvent->category)->name,
-        'method'         => ucfirst($reg->refund_method),
-        'pf_payment_id'  => $payment['pf_payment_id'] ?? null,
-        'tx_id'          => $payment['transaction_id'] ?? null,
-        'paid_at'        => $payment['paid_at'] ?? null,
-        'gross'          => -$totalGross,
-        'fee'            => 0,              // zero for totals
-        'capeFee'        => 0,              // zero for totals
-        'displayFee'     => +$origPfFee,    // original PF fee — row display only
-        'displayCapeFee' => +$origCapeFee,  // original Cape fee — row display only
-        'withdrawalFee'  => +$refundFee,    // 10% retained
-        'net'            => -$refundNet,
+        'type'          => 'refund',
+        'refund_status' => $reg->refund_status,
+        'created_at'    => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
+        'player'        => $reg->display_name,
+        'category'      => optional($reg->categoryEvent->category)->name,
+        'method'        => ucfirst($reg->refund_method),
+        'pf_payment_id' => $payment['pf_payment_id'] ?? null,
+        'tx_id'         => $payment['transaction_id'] ?? null,
+        'paid_at'       => $payment['paid_at'] ?? null,
+        'gross'         => -$totalGross,
+        'fee'           => +$origPfFee,    // PF fee recovered
+        'capeFee'       => +$origCapeFee,  // Cape fee recovered
+        'net'           => -$refundNet,
       ];
     });
 
@@ -675,11 +638,9 @@ class EventTransactionController extends Controller
     $ledger = collect()->merge($paymentRows)->merge($refundRows)->merge($payoutRows)->sortByDesc('created_at')->values();
 
     $totalGross          = $paymentRows->sum('gross');
-    $totalPayfastFees    = $paymentRows->sum('fee');   // payment rows only
+    $totalPayfastFees    = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
+    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
     $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
-    $totalCapeTennisFees = $paymentRows->sum('capeFee')
-                         + ($completedRefundCount * $feePerEntry); // add back for refunded entries
-    $totalWithdrawalFees = $refundRows->sum('withdrawalFee');
     $totalPayouts        = $payouts->sum('amount');
     $netTournamentIncome = $ledger->sum('net');
 
@@ -699,7 +660,6 @@ class EventTransactionController extends Controller
       'totalGross',
       'totalPayfastFees',
       'totalCapeTennisFees',
-      'totalWithdrawalFees',
       'totalPayouts',
       'netTournamentIncome'
     );

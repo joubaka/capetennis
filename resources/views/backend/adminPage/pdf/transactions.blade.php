@@ -25,7 +25,7 @@
                 <th>Participant / Items</th>
                 <th>Method</th>
                 <th>Gross</th>
-                <th>PayFast / Withdrawal Fee</th>
+                <th>PayFast Fee</th>
                 <th>Cape Tennis Fee</th>
                 <th>Net</th>
                 <th>Balance</th>
@@ -60,17 +60,13 @@
                 <td>{{ $t->method ?? '-' }}</td>
                 <td>{{ in_array($t->type, ['refund', 'payout']) ? '-' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
                 <td>
-                    @if($isRefund && ($t->displayFee ?? 0) > 0)
-                        + R{{ number_format($t->displayFee, 2) }}
-                    @elseif(!$isRefund && $t->fee != 0)
+                    @if($t->fee != 0)
                         {{ $t->fee > 0 ? '+' : '-' }} R{{ number_format(abs($t->fee), 2) }}
                     @else &mdash;
                     @endif
                 </td>
                 <td>
-                    @if($isRefund && ($t->displayCapeFee ?? 0) > 0)
-                        + R{{ number_format($t->displayCapeFee, 2) }}
-                    @elseif(!$isRefund && $t->capeFee != 0)
+                    @if($t->capeFee != 0)
                         {{ $t->capeFee > 0 ? '+' : '-' }} R{{ number_format(abs($t->capeFee), 2) }}
                     @else &mdash;
                     @endif
