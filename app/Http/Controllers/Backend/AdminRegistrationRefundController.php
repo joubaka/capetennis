@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\SiteSetting;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletService;
@@ -97,6 +98,8 @@ class AdminRegistrationRefundController extends Controller
     $walletPaid   = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'] ?? 0;
     $gross        = round($payfastGross + $walletPaid, 2);
+    $fee          = SiteSetting::calculateWithdrawalFee($gross); // fixed 10% of gross
+    $net          = round($gross - $fee, 2);
     $pfPaymentId  = $payment['pf_payment_id'] ?? null;
     $method       = $request->input('method');
 
@@ -160,17 +163,18 @@ class AdminRegistrationRefundController extends Controller
       $user = $payer; // used in success message below
 
       try {
-        DB::transaction(function () use ($registration, $wallet, $gross, $event) {
+        DB::transaction(function () use ($registration, $wallet, $gross, $fee, $net, $event) {
           app(WalletService::class)->credit(
             $wallet,
-            $gross,
+            $net,
             'admin_refund',
             $registration->id,
             [
               'registration_id' => $registration->id,
               'event_id'        => $event->id,
               'gross'           => $gross,
-              'fee'             => 0,
+              'fee'             => $fee,
+              'net'             => $net,
               'method'          => 'wallet',
               'reference'       => $event->name,
               'initiated_by'    => 'admin',
@@ -181,8 +185,8 @@ class AdminRegistrationRefundController extends Controller
             'refund_method' => 'wallet',
             'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refund_gross'  => $gross,
-            'refund_fee'    => 0,
-            'refund_net'    => $gross,
+            'refund_fee'    => $fee,
+            'refund_net'    => $net,
             'refunded_at'   => now(),
           ]);
         });
@@ -194,11 +198,12 @@ class AdminRegistrationRefundController extends Controller
             'registration_id' => $registration->id,
             'method'          => 'wallet',
             'gross'           => $gross,
-            'net'             => $gross,
+            'fee'             => $fee,
+            'net'             => $net,
             'event'           => $event->name,
             'initiated_by'    => 'admin',
           ])
-          ->log("Admin wallet refund R{$gross} processed");
+          ->log("Admin wallet refund R{$net} processed (10% fee R{$fee} retained)");
 
         // Notify the player/payer of the wallet credit
         $playerEmail = optional($registration->players->first())->email
@@ -210,7 +215,7 @@ class AdminRegistrationRefundController extends Controller
 
         return redirect()
           ->route('admin.events.entries.new', $event)
-          ->with('success', 'Wallet refund of R' . number_format($gross, 2) . " credited to {$user->name}'s wallet.");
+          ->with('success', 'Wallet refund of R' . number_format($net, 2) . " credited to {$user->name}'s wallet (10% fee R" . number_format($fee, 2) . ' retained).');
 
       } catch (DuplicateTransactionException $e) {
         $registration->update([
@@ -264,14 +269,14 @@ class AdminRegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error'));
         }
 
-        DB::transaction(function () use ($registration, $gross) {
+        DB::transaction(function () use ($registration, $gross, $fee, $net) {
           CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
           $registration->update([
             'refund_method' => 'payfast',
             'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refund_gross'  => $gross,
-            'refund_fee'    => 0,
-            'refund_net'    => $gross,
+            'refund_fee'    => $fee,
+            'refund_net'    => $net,
             'refunded_at'   => now(),
           ]);
         });

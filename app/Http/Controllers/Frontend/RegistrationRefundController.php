@@ -8,6 +8,7 @@ use App\Domain\Finance\Services\RefundRequestService;
 use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
+use App\Models\SiteSetting;
 use App\Services\Wallet\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -42,14 +43,11 @@ class RegistrationRefundController extends Controller
         ->with('success', 'Registration withdrawn (no payment to refund).');
     }
 
-    // Include wallet portion in total paid.
-    // Fee applies only to the PayFast portion; wallet funds are refunded in full.
     $walletPaid   = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'];
-    $fee          = $payment['fee'];          // SiteSetting-based, PayFast portion only
-    $payfastNet   = $payment['net'];          // PayFast gross minus fee
     $gross        = round($payfastGross + $walletPaid, 2);
-    $net          = round($payfastNet + $walletPaid, 2); // wallet refunded in full
+    $fee          = SiteSetting::calculateWithdrawalFee($gross); // fixed 10% of gross
+    $net          = round($gross - $fee, 2);
 
     return view('frontend.registrations.choose-refund', compact(
       'registration',
@@ -118,10 +116,9 @@ class RegistrationRefundController extends Controller
     // Fee applies only to the PayFast portion; wallet funds are refunded in full.
     $walletPaid   = $payment['wallet_paid'] ?? 0;
     $payfastGross = $payment['gross'];
-    $fee          = $payment['fee'];          // SiteSetting-based, PayFast portion only
-    $payfastNet   = $payment['net'];          // PayFast gross minus fee
     $gross        = round($payfastGross + $walletPaid, 2);
-    $net          = round($payfastNet + $walletPaid, 2); // wallet refunded in full
+    $fee          = SiteSetting::calculateWithdrawalFee($gross); // fixed 10% of gross
+    $net          = round($gross - $fee, 2);
 
     Log::info('REFUND CALCULATED', [
       'registration_id' => $registration->id,

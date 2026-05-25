@@ -278,26 +278,21 @@ class EventTransactionController extends Controller
       $payment = $reg->paymentInfo();
 
       $grossPaid = (float) ($payment['gross'] ?? 0);     // per player
-      $payfastFee = abs((float) ($payment['fee'] ?? 0));  // per player
 
       // -----------------------------------
-      // REFUND ACCOUNTING (FINAL MODEL)
+      // REFUND ACCOUNTING: 10% withdrawal fee on gross paid
       // -----------------------------------
-
-      $grossDisplay = $grossPaid;          // refunded to player
-      $feeDisplay = -1 * $payfastFee;    // PF fee recovered
-      $capeDisplay = -1 * $feePerEntry;   // Cape fee recovered
-
-      // Net impact = reverse original net
-      $netImpact = -1 * ($grossPaid - $payfastFee - $feePerEntry);
+      $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
+      $totalGross  = round($grossPaid + $walletPaid, 2);
+      $refundFee   = round($totalGross * 0.10, 2);  // fixed 10%
+      $refundNet   = round($totalGross - $refundFee, 2);
 
       if ($DEBUG) {
         Log::info('REFUND FINAL MODEL', [
-          'reg_id' => $reg->id,
-          'gross' => $grossDisplay,
-          'pf_recovered' => $feeDisplay,
-          'cape_recovered' => $capeDisplay,
-          'net' => $netImpact,
+          'reg_id'      => $reg->id,
+          'total_gross' => $totalGross,
+          'refund_fee'  => $refundFee,
+          'refund_net'  => $refundNet,
         ]);
       }
 
@@ -314,10 +309,10 @@ class EventTransactionController extends Controller
         'tx_id' => $payment['transaction_id'] ?? null,
         'paid_at' => $payment['paid_at'] ?? null,
 
-        'gross' => -$grossPaid,
-        'fee' => +$payfastFee,
-        'capeFee' => +$feePerEntry,
-        'net' => (-$grossPaid + $payfastFee + $feePerEntry),
+        'gross' => -$totalGross,
+        'fee' => +$refundFee,
+        'capeFee' => 0,
+        'net' => -$refundNet,
       ];
 
     });

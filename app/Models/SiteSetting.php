@@ -104,4 +104,15 @@ class SiteSetting extends Model
 
         return round((($amount * $percentage / 100) + $flatFee) * (1 + $vatRate / 100), 2);
     }
+
+    /**
+     * Calculate the withdrawal/refund fee.
+     * Fixed at 10% of the gross amount, regardless of payment method or PayFast fee.
+     *
+     * @param float $gross  The gross amount paid
+     */
+    public static function calculateWithdrawalFee(float $gross): float
+    {
+        return round($gross * 0.10, 2);
+    }
 }
