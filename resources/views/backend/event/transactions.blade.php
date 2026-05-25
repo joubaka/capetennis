@@ -125,8 +125,11 @@
           </small>
           <h4 class="text-danger mb-1">− R {{ number_format($totalWithdrawals, 2) }}</h4>
           @if($refundCount > 0)
-            <small class="text-muted d-block">R {{ number_format($completedWithdrawalsTotal, 2) }} refunded</small>
+            <small class="text-muted d-block">R {{ number_format($completedWithdrawalsTotal, 2) }} paid out</small>
             <small class="text-muted d-block">R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+            @if($totalWithdrawalFees > 0)
+              <small class="text-success d-block mt-1">+ R {{ number_format($totalWithdrawalFees, 2) }} retained (10%)</small>
+            @endif
           @endif
         </div>
       </div>
@@ -210,7 +213,7 @@
     <th style="width:90px;">Method</th>
 
     <th style="width:80px;" class="text-end">Gross</th>
-<th style="width:100px;" class="text-end">PayFast Fee</th>
+<th style="width:100px;" class="text-end">PayFast / Withdrawal Fee</th>
 <th style="width:110px;" class="text-end">Cape Tennis Fee</th>
 <th style="width:110px;" class="text-end">Net to Event</th>
   </tr>
@@ -255,14 +258,13 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             // REFUND CHILD DATA
             if ($tx->type === 'refund') {
               $payload = collect([[
-                'mode'           => 'refund',
-                'pf_payment_id'  => $tx->pf_payment_id ?? '—',
-                'paid_at'        => optional($tx->paid_at)->format('Y-m-d'),
-                'category'       => $tx->category ?? '—',
-                'gross_original' => number_format($tx->gross, 2),
-                'payfast_fee'    => number_format(abs($tx->fee), 2),
-                'cape_fee'       => number_format(abs($tx->capeFee), 2),
-                'refund_total'   => number_format(abs($tx->net), 2),
+                'mode'              => 'refund',
+                'pf_payment_id'     => $tx->pf_payment_id ?? '—',
+                'paid_at'           => optional($tx->paid_at)->format('Y-m-d'),
+                'category'          => $tx->category ?? '—',
+                'gross_original'    => number_format(abs($tx->gross), 2),
+                'withdrawal_fee'    => number_format($tx->withdrawalFee ?? 0, 2),
+                'refund_total'      => number_format(abs($tx->net), 2),
               ]]);
             }
           @endphp
@@ -320,26 +322,31 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               R {{ number_format(abs($tx->gross), 2) }}
             </td>
 
-            {{-- PayFast Fee --}}
-        <td class="text-end {{ $tx->fee >= 0 ? 'text-success' : 'text-warning' }}">
-  @if($tx->fee != 0)
-    {{ $tx->fee > 0 ? '+ ' : '− ' }}
-    R {{ number_format(abs($tx->fee), 2) }}
-  @else
-    —
-  @endif
-</td>
+            {{-- PayFast Fee (payments) / Withdrawal Fee retained (refunds) --}}
+            <td class="text-end">
+              @if($tx->type === 'refund')
+                @if(($tx->withdrawalFee ?? 0) > 0)
+                  <span class="text-success">+ R {{ number_format($tx->withdrawalFee, 2) }}</span>
+                @else
+                  —
+                @endif
+              @elseif($tx->fee != 0)
+                <span class="{{ $tx->fee > 0 ? 'text-success' : 'text-warning' }}">
+                  {{ $tx->fee > 0 ? '+ ' : '− ' }}R {{ number_format(abs($tx->fee), 2) }}
+                </span>
+              @else
+                —
+              @endif
+            </td>
 
-
-            {{-- Cape Tennis Fee --}}
-      <td class="text-end {{ $tx->capeFee >= 0 ? 'text-success' : 'text-danger' }}">
-  @if($tx->capeFee != 0)
-    {{ $tx->capeFee > 0 ? '+ ' : '− ' }}
-    R {{ number_format(abs($tx->capeFee), 2) }}
-  @else
-    —
-  @endif
-</td>
+            {{-- Cape Tennis Fee (payments only) --}}
+            <td class="text-end {{ $tx->capeFee < 0 ? 'text-danger' : ($tx->capeFee > 0 ? 'text-success' : '') }}">
+              @if($tx->type !== 'refund' && $tx->capeFee != 0)
+                {{ $tx->capeFee > 0 ? '+ ' : '− ' }}R {{ number_format(abs($tx->capeFee), 2) }}
+              @else
+                —
+              @endif
+            </td>
 
 
             {{-- Net --}}

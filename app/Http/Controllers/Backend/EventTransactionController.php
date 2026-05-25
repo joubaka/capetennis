@@ -309,10 +309,11 @@ class EventTransactionController extends Controller
         'tx_id' => $payment['transaction_id'] ?? null,
         'paid_at' => $payment['paid_at'] ?? null,
 
-        'gross' => -$totalGross,
-        'fee' => +$refundFee,
-        'capeFee' => 0,
-        'net' => -$refundNet,
+        'gross'         => -$totalGross,    // full amount that was paid
+        'fee'           => 0,               // NOT a PayFast fee — do not pollute PayFast totals
+        'capeFee'       => 0,               // Cape fee not charged on refunds
+        'withdrawalFee' => +$refundFee,     // 10% retained by Cape Tennis
+        'net'           => -$refundNet,     // net actually returned to player
       ];
 
     });
@@ -443,14 +444,19 @@ class EventTransactionController extends Controller
     $allPaymentRows = collect()->merge($paymentRows)->merge($walletOnlyRows);
     $totalGross = $allPaymentRows->sum('gross');
 
-    // Fees are net of refund recoveries
-    $totalPayfastFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
-    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
+    // Fees: PayFast fees from payments only (refunds have fee=0 so they don't pollute this)
+    $totalPayfastFees    = $ledger->where('type', 'payment')->sum('fee');
+    $totalCapeTennisFees = $ledger->where('type', 'payment')->sum('capeFee');
 
     // Total payouts (absolute value for display)
     $totalPayouts = $payouts->sum('amount');
 
+    // 10% withdrawal fees retained by Cape Tennis on refunds
+    $totalWithdrawalFees = $refundRows->sum('withdrawalFee');
+
     // Net = gross + fees (negative) + refund impact + payouts (negative)
+    // Refund rows carry their net as -$refundNet, withdrawalFee is NOT added to net separately
+    // because net on the refund row already accounts for the retention.
     $netTournamentIncome = $ledger->sum('net');
 
     // Entry count for display (payments only - refunds don't add entries), including wallet-only
@@ -463,10 +469,10 @@ class EventTransactionController extends Controller
     $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
     $pendingRefundCount   = $refundRows->where('refund_status', 'pending')->count();
 
-    // Withdrawal totals (gross amount refunded back to players)
-    $totalWithdrawals          = abs($refundRows->sum('gross'));
-    $completedWithdrawalsTotal = abs($refundRows->where('refund_status', 'completed')->sum('gross'));
-    $pendingWithdrawalsTotal   = abs($refundRows->where('refund_status', 'pending')->sum('gross'));
+    // Withdrawal totals: show net paid out to player (gross - 10% fee), not the gross
+    $totalWithdrawals          = abs($refundRows->sum('net'));  // net returned to player
+    $completedWithdrawalsTotal = abs($refundRows->where('refund_status', 'completed')->sum('net'));
+    $pendingWithdrawalsTotal   = abs($refundRows->where('refund_status', 'pending')->sum('net'));
 
     if ($STEP === 7) {
       dd([
@@ -516,6 +522,7 @@ class EventTransactionController extends Controller
       'totalWithdrawals'         => $totalWithdrawals,
       'completedWithdrawalsTotal'=> $completedWithdrawalsTotal,
       'pendingWithdrawalsTotal'  => $pendingWithdrawalsTotal,
+      'totalWithdrawalFees'      => $totalWithdrawalFees,
       'totalGross' => $totalGross,
       'totalPayfastFees' => $totalPayfastFees,
       'totalCapeTennisFees' => $totalCapeTennisFees,
