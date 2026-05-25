@@ -273,25 +273,37 @@ class CategoryEventRegistration extends Model
     $tx = $this->payfastTransaction;
 
     // Graceful fallback: if there is no linked transactions_pf row yet
-    // (e.g. legacy rows where pf_transaction_id was never a real ID)
-    // return a minimal record so callers don't crash.
+    // (e.g. admin-marked-paid rows or legacy rows where pf_transaction_id
+    // was stored before the transactions_pf insert, or pf_payment_id column
+    // truncation meant the insert failed). Derive amounts from the order so
+    // that the refund flow always has a valid gross/fee/net to work with.
     if (!$tx) {
-      if ($method === null && !empty($this->pf_transaction_id)) {
-        // Legacy row — pf_transaction_id may be a real PayFast ID stored
-        // before the payment_method column existed. Surface what we can.
+      if (($method === null || $method === 'payfast') && !empty($this->pf_transaction_id)) {
+        // Resolve amounts from the order or CER item price as fallback.
+        // This covers admin-marked-paid and legacy rows with no transactions_pf record.
+        $orderItemPrice = RegistrationOrderItems::where('registration_id', $this->registration_id)
+          ->where('category_event_id', $this->category_event_id)
+          ->value('item_price');
+
+        $grossTotal  = (float) ($orderItemPrice ?? $order?->payfast_amount_due ?? 0);
+        $grossPerReg = $totalItems > 1 ? round($grossTotal / $totalItems, 2) : round($grossTotal, 2);
+        $feeTotal    = SiteSetting::calculatePayfastFee($grossPerReg);
+        $feePerReg   = round($feeTotal, 2);
+        $netPerReg   = round($grossPerReg - $feePerReg, 2);
+
         return [
           'payment_method' => 'payfast',
           'pf_payment_id'  => $this->pf_transaction_id,
           'transaction_id' => null,
-          'gross'          => null,
-          'fee'            => null,
-          'net'            => null,
+          'gross'          => $grossPerReg,
+          'fee'            => $feePerReg,
+          'net'            => $netPerReg,
           'wallet_paid'    => 0.00,
-          'total_paid'     => null,
-          'paid_at'        => null,
+          'total_paid'     => $grossPerReg,
+          'paid_at'        => $this->updated_at,
           'payer_email'    => null,
           'payer_name'     => null,
-          'item_name'      => null,
+          'item_name'      => optional($this->categoryEvent?->event)->name,
           'items_in_order' => $totalItems,
           '_legacy'        => true,
         ];
