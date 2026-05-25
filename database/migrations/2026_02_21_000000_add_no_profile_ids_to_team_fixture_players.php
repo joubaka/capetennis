@@ -11,11 +11,17 @@ return new class extends Migration {
     Schema::table('team_fixture_players', function (Blueprint $table) {
 
       if (!Schema::hasColumn('team_fixture_players', 'team1_no_profile_id')) {
-        $table->unsignedBigInteger('team1_no_profile_id')->nullable()->after('team1_id');
+        $col = $table->unsignedBigInteger('team1_no_profile_id')->nullable();
+        if (Schema::hasColumn('team_fixture_players', 'team1_id')) {
+          $col->after('team1_id');
+        }
       }
 
       if (!Schema::hasColumn('team_fixture_players', 'team2_no_profile_id')) {
-        $table->unsignedBigInteger('team2_no_profile_id')->nullable()->after('team2_id');
+        $col = $table->unsignedBigInteger('team2_no_profile_id')->nullable();
+        if (Schema::hasColumn('team_fixture_players', 'team2_id')) {
+          $col->after('team2_id');
+        }
       }
 
     });

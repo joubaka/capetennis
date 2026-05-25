@@ -1414,11 +1414,14 @@ class RegisterController extends Controller
       }
 
       // Duplicate active registration check:
-      // Find any registration linked to this player AND this category event
-      // that is not withdrawn/cancelled.
+      // Only block if the player already has a PAID (payment_status_id = 1) and
+      // non-withdrawn registration for this category.
+      // Unpaid draft rows (payment_status_id = 0) from abandoned checkouts must
+      // NOT block a fresh attempt — they are cleaned up by the order process.
       $activeStatuses = ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled'];
 
       $duplicate = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEventId)
+        ->where('payment_status_id', 1)
         ->whereNotIn('status', $activeStatuses)
         ->whereHas('registration.players', fn($q) => $q->where('players.id', $playerId))
         ->exists();
@@ -1448,6 +1451,21 @@ class RegisterController extends Controller
       for ($i = 0; $i < count($playerIds); $i++) {
 
         $categoryEvent = CategoryEvent::findOrFail((int) $categoryIds[$i]);
+        $currentPlayerId = (int) $playerIds[$i];
+
+        // Clean up any stale unpaid draft CER rows left by abandoned checkouts.
+        // Only removes rows where payment_status_id = 0 and status = 'active'
+        // (i.e. draft rows that were never paid). Paid rows are never touched.
+        $staleDrafts = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
+          ->where('payment_status_id', 0)
+          ->where('status', 'active')
+          ->where('user_id', $authUser->id)
+          ->whereHas('registration.players', fn($q) => $q->where('players.id', $currentPlayerId))
+          ->get();
+
+        foreach ($staleDrafts as $staleDraft) {
+          $staleDraft->forceDelete();
+        }
 
         $registration = new Registration();
         $registration->save();
