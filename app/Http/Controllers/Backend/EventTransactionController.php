@@ -612,7 +612,7 @@ class EventTransactionController extends Controller
       ->where(function ($q) {
         // Include both real PayFast refunds AND admin-marked-paid refunds (no pf_transaction_id)
         $q->whereNotNull('pf_transaction_id')
-          ->orWhereHas('registrationOrder', fn($q2) => $q2->whereNotNull('admin_marked_paid_at'));
+          ->orWhere('payment_status_id', 1); // admin-marked-paid have no pf_transaction_id but are paid
       })
       ->get()
       ->filter(function ($reg) {
