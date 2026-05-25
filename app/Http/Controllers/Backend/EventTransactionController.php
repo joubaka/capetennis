@@ -604,7 +604,6 @@ class EventTransactionController extends Controller
       'players',
       'categoryEvent.category',
       'payfastTransaction',
-      'registrationOrder',
     ])
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
