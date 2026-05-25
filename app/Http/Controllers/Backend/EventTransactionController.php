@@ -277,43 +277,47 @@ class EventTransactionController extends Controller
 
       $payment = $reg->paymentInfo();
 
-      $grossPaid = (float) ($payment['gross'] ?? 0);     // per player
-
-      // -----------------------------------
-      // REFUND ACCOUNTING: 10% withdrawal fee on gross paid
-      // -----------------------------------
+      $grossPaid   = (float) ($payment['gross'] ?? 0);
       $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
       $totalGross  = round($grossPaid + $walletPaid, 2);
-      $refundFee   = round($totalGross * 0.10, 2);  // fixed 10%
+      $refundFee   = round($totalGross * 0.10, 2);  // 10% withdrawal fee retained
       $refundNet   = round($totalGross - $refundFee, 2);
+
+      // Actual fees from the original payment (for display on the row)
+      $origPfFee   = abs((float) ($payment['fee'] ?? 0));
+      $origCapeFee = abs((float) ($payment['cape_fee'] ?? $feePerEntry));
 
       if ($DEBUG) {
         Log::info('REFUND FINAL MODEL', [
-          'reg_id'      => $reg->id,
-          'total_gross' => $totalGross,
-          'refund_fee'  => $refundFee,
-          'refund_net'  => $refundNet,
+          'reg_id'       => $reg->id,
+          'total_gross'  => $totalGross,
+          'refund_fee'   => $refundFee,
+          'refund_net'   => $refundNet,
+          'orig_pf_fee'  => $origPfFee,
+          'orig_cape_fee'=> $origCapeFee,
         ]);
       }
 
       return (object) [
-        'type' => 'refund',
+        'type'          => 'refund',
         'refund_status' => $reg->refund_status,
-        'created_at' => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
+        'created_at'    => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
 
-        'player' => $reg->display_name,
-        'category' => optional($reg->categoryEvent->category)->name,
-        'method' => ucfirst($reg->refund_method),
+        'player'        => $reg->display_name,
+        'category'      => optional($reg->categoryEvent->category)->name,
+        'method'        => ucfirst($reg->refund_method),
 
         'pf_payment_id' => $payment['pf_payment_id'] ?? null,
-        'tx_id' => $payment['transaction_id'] ?? null,
-        'paid_at' => $payment['paid_at'] ?? null,
+        'tx_id'         => $payment['transaction_id'] ?? null,
+        'paid_at'       => $payment['paid_at'] ?? null,
 
-        'gross'         => -$totalGross,    // full amount that was paid
-        'fee'           => 0,               // NOT a PayFast fee — do not pollute PayFast totals
-        'capeFee'       => 0,               // Cape fee not charged on refunds
-        'withdrawalFee' => +$refundFee,     // 10% retained by Cape Tennis
-        'net'           => -$refundNet,     // net actually returned to player
+        'gross'         => -$totalGross,   // full amount paid — shown as negative (money out)
+        'fee'           => 0,              // zero for card totals — use displayFee for row display
+        'capeFee'       => 0,              // zero for card totals — use displayCapeFee for row display
+        'displayFee'    => +$origPfFee,    // original PF fee recovered — row display only
+        'displayCapeFee'=> +$origCapeFee,  // original Cape fee recovered — row display only
+        'withdrawalFee' => +$refundFee,    // 10% retained by Cape Tennis
+        'net'           => -$refundNet,    // 90% returned to player
       ];
 
     });
@@ -619,7 +623,7 @@ class EventTransactionController extends Controller
         return ! optional($reg->payfastTransaction)->is_test;
       });
 
-    $refundRows = $refundRegs->map(function ($reg) {
+    $refundRows = $refundRegs->map(function ($reg) use ($feePerEntry) {
       $payment     = $reg->paymentInfo();
       $grossPaid   = (float) ($payment['gross'] ?? 0);
       $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
@@ -627,21 +631,27 @@ class EventTransactionController extends Controller
       $refundFee   = round($totalGross * 0.10, 2); // fixed 10%
       $refundNet   = round($totalGross - $refundFee, 2);
 
+      // Actual fees from the original payment (for row display only)
+      $origPfFee   = abs((float) ($payment['fee'] ?? 0));
+      $origCapeFee = abs((float) ($payment['cape_fee'] ?? $feePerEntry));
+
       return (object) [
-        'type'          => 'refund',
-        'refund_status' => $reg->refund_status,
-        'created_at'    => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
-        'player'        => $reg->display_name,
-        'category'      => optional($reg->categoryEvent->category)->name,
-        'method'        => ucfirst($reg->refund_method),
-        'pf_payment_id' => $payment['pf_payment_id'] ?? null,
-        'tx_id'         => $payment['transaction_id'] ?? null,
-        'paid_at'       => $payment['paid_at'] ?? null,
-        'gross'         => -$totalGross,
-        'fee'           => 0,
-        'capeFee'       => 0,
-        'withdrawalFee' => +$refundFee,   // 10% retained
-        'net'           => -$refundNet,
+        'type'           => 'refund',
+        'refund_status'  => $reg->refund_status,
+        'created_at'     => $reg->refunded_at ?? $reg->withdrawn_at ?? $reg->updated_at,
+        'player'         => $reg->display_name,
+        'category'       => optional($reg->categoryEvent->category)->name,
+        'method'         => ucfirst($reg->refund_method),
+        'pf_payment_id'  => $payment['pf_payment_id'] ?? null,
+        'tx_id'          => $payment['transaction_id'] ?? null,
+        'paid_at'        => $payment['paid_at'] ?? null,
+        'gross'          => -$totalGross,
+        'fee'            => 0,              // zero for totals
+        'capeFee'        => 0,              // zero for totals
+        'displayFee'     => +$origPfFee,    // original PF fee — row display only
+        'displayCapeFee' => +$origCapeFee,  // original Cape fee — row display only
+        'withdrawalFee'  => +$refundFee,    // 10% retained
+        'net'            => -$refundNet,
       ];
     });
 

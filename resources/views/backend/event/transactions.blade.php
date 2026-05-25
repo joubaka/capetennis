@@ -265,6 +265,8 @@ if ($tx->type === 'payment' && isset($tx->order)) {
                 'paid_at'           => optional($tx->paid_at)->format('Y-m-d'),
                 'category'          => $tx->category ?? '—',
                 'gross_original'    => number_format(abs($tx->gross), 2),
+                'payfast_fee'       => number_format($tx->displayFee ?? 0, 2),
+                'cape_fee'          => number_format($tx->displayCapeFee ?? 0, 2),
                 'withdrawal_fee'    => number_format($tx->withdrawalFee ?? 0, 2),
                 'refund_total'      => number_format(abs($tx->net), 2),
               ]]);
@@ -324,11 +326,11 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               R {{ number_format(abs($tx->gross), 2) }}
             </td>
 
-            {{-- PayFast Fee (payments) / Withdrawal Fee retained (refunds) --}}
+            {{-- PayFast Fee (payments) / Original PF fee recovered (refunds) --}}
             <td class="text-end">
               @if($tx->type === 'refund')
-                @if(($tx->withdrawalFee ?? 0) > 0)
-                  <span class="text-success">+ R {{ number_format($tx->withdrawalFee, 2) }}</span>
+                @if(($tx->displayFee ?? 0) > 0)
+                  <span class="text-success">+ R {{ number_format($tx->displayFee, 2) }}</span>
                 @else
                   —
                 @endif
@@ -341,10 +343,18 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               @endif
             </td>
 
-            {{-- Cape Tennis Fee (payments only) --}}
-            <td class="text-end {{ $tx->capeFee < 0 ? 'text-danger' : ($tx->capeFee > 0 ? 'text-success' : '') }}">
-              @if($tx->type !== 'refund' && $tx->capeFee != 0)
-                {{ $tx->capeFee > 0 ? '+ ' : '− ' }}R {{ number_format(abs($tx->capeFee), 2) }}
+            {{-- Cape Tennis Fee (payments) / Original Cape fee recovered (refunds) --}}
+            <td class="text-end">
+              @if($tx->type === 'refund')
+                @if(($tx->displayCapeFee ?? 0) > 0)
+                  <span class="text-success">+ R {{ number_format($tx->displayCapeFee, 2) }}</span>
+                @else
+                  —
+                @endif
+              @elseif($tx->capeFee != 0)
+                <span class="{{ $tx->capeFee > 0 ? 'text-success' : 'text-danger' }}">
+                  {{ $tx->capeFee > 0 ? '+ ' : '− ' }}R {{ number_format(abs($tx->capeFee), 2) }}
+                </span>
               @else
                 —
               @endif

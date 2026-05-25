@@ -60,15 +60,17 @@
                 <td>{{ $t->method ?? '-' }}</td>
                 <td>{{ in_array($t->type, ['refund', 'payout']) ? '-' : '' }} R{{ number_format(abs($t->gross), 2) }}</td>
                 <td>
-                    @if($isRefund && ($t->withdrawalFee ?? 0) > 0)
-                        + R{{ number_format($t->withdrawalFee, 2) }}
+                    @if($isRefund && ($t->displayFee ?? 0) > 0)
+                        + R{{ number_format($t->displayFee, 2) }}
                     @elseif(!$isRefund && $t->fee != 0)
                         {{ $t->fee > 0 ? '+' : '-' }} R{{ number_format(abs($t->fee), 2) }}
                     @else &mdash;
                     @endif
                 </td>
                 <td>
-                    @if(!$isRefund && $t->capeFee != 0)
+                    @if($isRefund && ($t->displayCapeFee ?? 0) > 0)
+                        + R{{ number_format($t->displayCapeFee, 2) }}
+                    @elseif(!$isRefund && $t->capeFee != 0)
                         {{ $t->capeFee > 0 ? '+' : '-' }} R{{ number_format(abs($t->capeFee), 2) }}
                     @else &mdash;
                     @endif
