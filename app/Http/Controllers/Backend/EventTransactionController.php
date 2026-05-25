@@ -204,6 +204,11 @@ class EventTransactionController extends Controller
     // =========================
     // STEP 4: LOAD REFUND REGS
     // =========================
+    // Include ALL paid withdrawn registrations — not just those with a
+    // linked transactions_pf row. Admin-marked-paid registrations have
+    // payment_status_id=1 and pf_transaction_id set but no transactions_pf
+    // row (the legacy/admin path never inserts one). paymentInfo() resolves
+    // amounts from the order for those cases (_legacy fallback).
     $refundRegs = CategoryEventRegistration::with([
       'players',
       'categoryEvent.category',
@@ -211,9 +216,17 @@ class EventTransactionController extends Controller
     ])
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
+      ->where('payment_status_id', 1)
       ->whereIn('refund_status', ['completed', 'pending'])
-      ->whereNotNull('pf_transaction_id')
-      ->whereHas('payfastTransaction', fn($q) => $q->where('is_test', false))
+      ->where(function ($q) {
+          // Either has a real PayFast transaction (not a test), OR was
+          // admin-marked-paid (pf_transaction_id set but no tx row).
+          $q->whereHas('payfastTransaction', fn($q2) => $q2->where('is_test', false))
+            ->orWhere(function ($q3) {
+                $q3->whereNotNull('pf_transaction_id')
+                   ->whereDoesntHave('payfastTransaction');
+            });
+      })
       ->get();
 
     if ($STEP === 4) {
