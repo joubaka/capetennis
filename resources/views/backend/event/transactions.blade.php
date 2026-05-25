@@ -141,11 +141,15 @@
         <div class="card-body">
           <small class="text-muted d-block mb-1">PayFast Fees (net)</small>
           <h4 class="text-warning mb-1">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
+          @php $activePayfastEntries = $totalEntries - $completedRefundCount - $adminEntriesCount; @endphp
           @if($adminEntriesCount > 0)
-            <small class="text-muted d-block">{{ $payfastEntries }} PayFast {{ $payfastEntries === 1 ? 'entry' : 'entries' }}</small>
+            <small class="text-muted d-block">{{ $activePayfastEntries }} active PayFast {{ $activePayfastEntries === 1 ? 'entry' : 'entries' }}</small>
             <small class="text-muted d-block">{{ $adminEntriesCount }} admin = R 0.00 fee</small>
           @else
-            <small class="text-muted d-block">{{ $totalEntries }} {{ $totalEntries === 1 ? 'entry' : 'entries' }}</small>
+            <small class="text-muted d-block">{{ $totalEntries - $completedRefundCount }} active {{ ($totalEntries - $completedRefundCount) === 1 ? 'entry' : 'entries' }}</small>
+          @endif
+          @if($completedRefundCount > 0)
+            <small class="text-muted d-block">{{ $completedRefundCount }} refunded — no PF fee</small>
           @endif
         </div>
       </div>
@@ -157,12 +161,10 @@
         <div class="card-body">
           <small class="text-muted d-block mb-1">Cape Tennis Fees (net)</small>
           <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
-          <small class="text-muted d-block">{{ $totalEntries }} {{ $totalEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}</small>
-          @if($adminEntriesCount > 0)
-            <small class="text-warning d-block mt-1">
-              <i class="ti ti-alert-triangle me-1"></i>
-              R {{ number_format($adminEntriesCapeFee, 2) }} owed from {{ $adminEntriesCount }} private {{ $adminEntriesCount === 1 ? 'entry' : 'entries' }}
-            </small>
+          @php $activeEntries = $totalEntries - $completedRefundCount; @endphp
+          <small class="text-muted d-block">{{ $activeEntries }} active {{ $activeEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}</small>
+          @if($completedRefundCount > 0)
+            <small class="text-muted d-block">{{ $completedRefundCount }} refunded — not charged</small>
           @endif
         </div>
       </div>
