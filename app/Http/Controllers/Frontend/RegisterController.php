@@ -769,21 +769,17 @@ class RegisterController extends Controller
 
   public function cancel(Request $request)
   {
-    $walletApplied = $request->custom_wallet_applied ?? 0;
-    $orderId = $request->custom_int5 ?? null;
-
-    if ($walletApplied > 0) {
-
-      app(\App\Services\Wallet\WalletService::class)->credit(
-        Auth::user()->wallet,
-        $walletApplied,
-        'event_registration_wallet_reversal',
-        $orderId
-      );
-    }
+    // ⚠️  HOTFIX — DO NOT restore wallet based on any client-supplied value.
+    // The live registration cancel path is RegistrationPaymentController::hybridCancel()
+    // which reads wallet_reserved from the DB. This legacy method must never be wired
+    // to a registration payment route and performs no wallet mutation.
+    Log::warning('[RegisterController::cancel] legacy cancel endpoint reached — no action taken', [
+      'user_id'  => auth()->id(),
+      'order_id' => $request->custom_int5 ?? null,
+    ]);
 
     return redirect()->route('events.index')
-      ->withErrors('Payment cancelled. Wallet funds restored.');
+      ->withErrors('Payment cancelled.');
   }
 
   public function notifyClothing(Request $request)

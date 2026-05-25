@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Services\Fixtures;
 use App\Http\Controllers\Controller;
+use App\Domain\Draws\Services\StandingsService;
 use App\Models\CategoryEvent;
 use App\Models\Draw;
 use App\Models\DrawSetting;
@@ -661,57 +662,7 @@ class HeadOfficeController extends Controller
         ];
       })->values()->toArray();
 
-    $standings = [];
-    foreach ($draw->groups as $group) {
-      foreach ($group->groupRegistrations as $gr) {
-        $reg = $gr->registration;
-        if (!$reg) continue;
-        $player = $reg->players?->first();
-        $standings[$group->id][$reg->id] = [
-          'reg_id'   => $reg->id,
-          'player'   => $player?->full_name ?? 'Unknown',
-          'wins'     => 0,
-          'losses'   => 0,
-          'sets_won' => 0,
-          'sets_lost'=> 0,
-        ];
-      }
-    }
-
-    foreach ($draw->drawFixtures as $fx) {
-      if (($fx->stage ?? 'RR') !== 'RR') continue;
-      if ($fx->fixtureResults->isEmpty()) continue;
-
-      $gid = $fx->draw_group_id ?: optional($fx->drawGroup)->id;
-      if (!$gid || !isset($standings[$gid])) continue;
-
-      foreach ($fx->fixtureResults->sortBy('set_nr') as $set) {
-        $s1 = (int) $set->registration1_score;
-        $s2 = (int) $set->registration2_score;
-
-        if (isset($standings[$gid][$fx->registration1_id])) {
-          $standings[$gid][$fx->registration1_id]['sets_won']  += $s1;
-          $standings[$gid][$fx->registration1_id]['sets_lost'] += $s2;
-        }
-        if (isset($standings[$gid][$fx->registration2_id])) {
-          $standings[$gid][$fx->registration2_id]['sets_won']  += $s2;
-          $standings[$gid][$fx->registration2_id]['sets_lost'] += $s1;
-        }
-      }
-
-      $lastSet = $fx->fixtureResults->sortBy('set_nr')->last();
-      if ($lastSet) {
-        $s1 = (int) $lastSet->registration1_score;
-        $s2 = (int) $lastSet->registration2_score;
-        if ($s1 > $s2) {
-          if (isset($standings[$gid][$fx->registration1_id])) $standings[$gid][$fx->registration1_id]['wins']++;
-          if (isset($standings[$gid][$fx->registration2_id])) $standings[$gid][$fx->registration2_id]['losses']++;
-        } elseif ($s2 > $s1) {
-          if (isset($standings[$gid][$fx->registration2_id])) $standings[$gid][$fx->registration2_id]['wins']++;
-          if (isset($standings[$gid][$fx->registration1_id])) $standings[$gid][$fx->registration1_id]['losses']++;
-        }
-      }
-    }
+    $standings = app(StandingsService::class)->forDraw($draw);
 
     return [
       'id'         => $draw->id,

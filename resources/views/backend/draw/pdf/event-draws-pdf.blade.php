@@ -128,23 +128,12 @@
       @foreach($groups as $group)
         @if(isset($standings[$group['id']]))
           @php
-            $rows = collect($standings[$group['id']])->sort(function ($a, $b) {
-              if ($a['wins'] !== $b['wins']) return $b['wins'] <=> $a['wins'];
-              $aTotalSets = $a['sets_won'] + $a['sets_lost'];
-              $bTotalSets = $b['sets_won'] + $b['sets_lost'];
-              $aSetsPct = $aTotalSets > 0 ? $a['sets_won'] / $aTotalSets : 0;
-              $bSetsPct = $bTotalSets > 0 ? $b['sets_won'] / $bTotalSets : 0;
-              if (abs($aSetsPct - $bSetsPct) > 0.0001) return $bSetsPct <=> $aSetsPct;
-              $aTotalGames = ($a['games_won'] ?? 0) + ($a['games_lost'] ?? 0);
-              $bTotalGames = ($b['games_won'] ?? 0) + ($b['games_lost'] ?? 0);
-              $aGamesPct = $aTotalGames > 0 ? ($a['games_won'] ?? 0) / $aTotalGames : 0;
-              $bGamesPct = $bTotalGames > 0 ? ($b['games_won'] ?? 0) / $bTotalGames : 0;
-              return $bGamesPct <=> $aGamesPct;
-            })->values();
+            // Standings are pre-sorted by StandingsService (canonical order).
+            $rows = collect($standings[$group['id']])->values();
           @endphp
           <h3>Box {{ $group['name'] }} — Standings</h3>
           <table class="standings-table">
-            <thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead>
             <tbody>
               @foreach($rows as $i => $r)
                 @php
@@ -152,6 +141,7 @@
                   $setsPct = $totalSets > 0 ? round(($r['sets_won'] / $totalSets) * 100) . '%' : '-';
                   $totalGames = ($r['games_won'] ?? 0) + ($r['games_lost'] ?? 0);
                   $gamesPct = $totalGames > 0 ? round((($r['games_won'] ?? 0) / $totalGames) * 100) . '%' : '-';
+                  $tb = $r['tiebreak'] ?? '';
                 @endphp
                 <tr>
                   <td>{{ $i + 1 }}</td>
@@ -160,6 +150,7 @@
                   <td>{{ $r['losses'] }}</td>
                   <td>{{ $setsPct }}</td>
                   <td>{{ $gamesPct }}</td>
+                  <td>{{ $tb }}</td>
                 </tr>
               @endforeach
             </tbody>

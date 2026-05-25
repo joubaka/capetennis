@@ -202,51 +202,35 @@ class RegistrationController extends Controller
     \Log::info('[ADD PLAYER TO CATEGORY PAYLOAD]', $request->all());
 
     $validated = $request->validate([
-      'player_id' => 'required|integer|exists:players,id',
+      'player_id'         => 'required|integer|exists:players,id',
       'category_event_id' => 'required|integer|exists:category_events,id',
-      'event_id' => 'required|integer|exists:events,id',
+      'event_id'          => 'required|integer|exists:events,id',
     ]);
 
-    $playerId = $validated['player_id'];
+    $playerId        = $validated['player_id'];
     $categoryEventId = $validated['category_event_id'];
-    $eventId = $validated['event_id'];
 
-    // ✅ Step 1: Check if this player already exists for this category event
-    $exists = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEventId)
-      ->whereHas('registration.players', function ($q) use ($playerId) {
-        $q->where('players.id', $playerId);
-      })
-      ->exists();
+    $categoryEvent = \App\Models\CategoryEvent::findOrFail($categoryEventId);
+    $actingUser    = auth()->user();
 
-    if ($exists) {
+    try {
+      $entry = app(\App\Domain\Entries\Services\EntryService::class)
+        ->addPlayerAsAdmin($categoryEvent, $playerId, $actingUser);
+    } catch (\RuntimeException $e) {
       return response()->json([
         'success' => false,
-        'message' => 'Player is already registered in this category.',
+        'message' => $e->getMessage(),
       ]);
     }
 
-    // ✅ Step 2: Create a new registration
-    $registration = \App\Models\Registration::create();
-
-    // ✅ Step 3: Attach player to registration
-    $registration->players()->attach($playerId);
-
-    // ✅ Step 4: Attach registration to category event
-    $registration->categoryEvents()->attach($categoryEventId, [
-      'user_id' => $playerId,
-      'payment_status_id' => 1,
-    ]);
-
-    // ✅ Step 5: Fetch player info (email + cell)
     $player = \App\Models\Player::find($playerId);
 
-    // ✅ Step 6: Return success JSON with contact info
     return response()->json([
-      'success' => true,
-      'message' => 'Player added successfully!',
-      'registration_id' => $registration->id,
-      'email' => $player->email ?? null,
-      'cellNr' => $player->cellNr ?? null,
+      'success'         => true,
+      'message'         => 'Player added successfully!',
+      'registration_id' => $entry->registration_id,
+      'email'           => $player->email ?? null,
+      'cellNr'          => $player->cellNr ?? null,
     ]);
   }
 

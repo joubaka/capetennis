@@ -229,100 +229,14 @@ class DrawService
       'group_count' => $draw->groups->count(),
     ]);
 
-    $draw->loadMissing([
-      'groups.registrations',
-      'drawFixtures.fixtureResults',
+    // Delegate to canonical StandingsService so seeding always matches displayed standings.
+    $sorted = $this->canonicalStandings->forDraw($draw);
+
+    Log::info("📦 [MainSeeds] Canonical standings loaded", [
+      'group_ids' => array_keys($sorted),
     ]);
-    Log::info("📦 [MainSeeds] Relations loaded");
 
-    // 1) Init standings
-    Log::info("🧮 [MainSeeds] Step 1 — Init standings");
-
-    $standings = [];
-    foreach ($draw->groups as $group) {
-      Log::info("  ➤ Init Group {$group->name} ({$group->id})");
-      foreach ($group->registrations as $reg) {
-        $standings[$group->id][$reg->id] = [
-          'reg_id' => $reg->id,
-          'player' => $reg->display_name,
-          'wins' => 0,
-          'losses' => 0,
-          'sets_won' => 0,
-          'sets_lost' => 0,
-        ];
-      }
-    }
-
-    // 2) Fill from fixtures
-    Log::info("🧮 [MainSeeds] Step 2 — Fill standings from fixtures");
-
-    foreach ($draw->drawFixtures as $fx) {
-      if ($fx->stage !== 'RR')
-        continue;
-
-      if ($fx->fixtureResults->isEmpty()) {
-        Log::debug("  ⏭ Fixture {$fx->id} has no results — skipping");
-        continue;
-      }
-
-      $gid = $fx->draw_group_id;
-      $home = $fx->registration1_id;
-      $away = $fx->registration2_id;
-
-      $homeSets = 0;
-      $awaySets = 0;
-
-      foreach ($fx->fixtureResults as $set) {
-        if ($set->registration1_score > $set->registration2_score) {
-          $homeSets++;
-        } else {
-          $awaySets++;
-        }
-      }
-
-      $standings[$gid][$home]['sets_won'] += $homeSets;
-      $standings[$gid][$home]['sets_lost'] += $awaySets;
-
-      $standings[$gid][$away]['sets_won'] += $awaySets;
-      $standings[$gid][$away]['sets_lost'] += $homeSets;
-
-      $last = $fx->fixtureResults->sortBy('set_nr')->last();
-
-      if ($last) {
-        $winner = $last->winner_registration;
-        if ($winner == $home) {
-          $standings[$gid][$home]['wins']++;
-          $standings[$gid][$away]['losses']++;
-        } else {
-          $standings[$gid][$away]['wins']++;
-          $standings[$gid][$home]['losses']++;
-        }
-      }
-    }
-
-    // 3) Sort
-    Log::info("🧮 [MainSeeds] Step 3 — Sort standings");
-
-    $sorted = [];
-    foreach ($standings as $gid => $rows) {
-      $rows = array_values($rows);
-
-      usort($rows, function ($a, $b) {
-        if ($a['wins'] !== $b['wins'])
-          return $b['wins'] <=> $a['wins'];
-
-        $diffA = $a['sets_won'] - $a['sets_lost'];
-        $diffB = $b['sets_won'] - $b['sets_lost'];
-        return $diffB <=> $diffA;
-      });
-
-      $sorted[$gid] = $rows;
-    }
-
-    // 4) Build seeds
-    Log::info("🧮 [MainSeeds] Step 4 — Build seeds");
-
-    $groups = $draw->groups->sortBy('name')->values();
+    $groups     = $draw->groups->sortBy('name')->values();
     $groupCount = $groups->count();
 
     if ($groupCount === 4) {
@@ -334,22 +248,15 @@ class DrawService
       $gD = $groups[3];
 
       $result = [
-        // A group
         'A1' => $sorted[$gA->id][0]['reg_id'] ?? null,
         'A2' => $sorted[$gA->id][1]['reg_id'] ?? null,
         'A3' => $sorted[$gA->id][2]['reg_id'] ?? null,
-
-        // B group
         'B1' => $sorted[$gB->id][0]['reg_id'] ?? null,
         'B2' => $sorted[$gB->id][1]['reg_id'] ?? null,
         'B3' => $sorted[$gB->id][2]['reg_id'] ?? null,
-
-        // C group
         'C1' => $sorted[$gC->id][0]['reg_id'] ?? null,
         'C2' => $sorted[$gC->id][1]['reg_id'] ?? null,
         'C3' => $sorted[$gC->id][2]['reg_id'] ?? null,
-
-        // D group
         'D1' => $sorted[$gD->id][0]['reg_id'] ?? null,
         'D2' => $sorted[$gD->id][1]['reg_id'] ?? null,
         'D3' => $sorted[$gD->id][2]['reg_id'] ?? null,
@@ -359,9 +266,19 @@ class DrawService
       return $result;
     }
 
-    // 2-group unchanged
     if ($groupCount === 2) {
-      // your existing 2-group logic stays
+      $gA = $groups[0];
+      $gB = $groups[1];
+
+      $result = [
+        'A1' => $sorted[$gA->id][0]['reg_id'] ?? null,
+        'A2' => $sorted[$gA->id][1]['reg_id'] ?? null,
+        'B1' => $sorted[$gB->id][0]['reg_id'] ?? null,
+        'B2' => $sorted[$gB->id][1]['reg_id'] ?? null,
+      ];
+
+      Log::info("  ✔ 2-GROUP SEED MAP", $result);
+      return $result;
     }
 
     throw new \Exception("Main bracket currently supports only 2 or 4 groups.");
@@ -377,123 +294,18 @@ class DrawService
       'group_count' => $draw->groups->count(),
     ]);
 
-    $draw->loadMissing([
-      'groups.registrations',
-      'drawFixtures.fixtureResults',
+    // Delegate to canonical StandingsService so seeding always matches displayed standings.
+    $sorted = $this->canonicalStandings->forDraw($draw);
+
+    Log::info("📦 [PlateSeeds] Canonical standings loaded", [
+      'group_ids' => array_keys($sorted),
     ]);
-    Log::info("📦 [PlateSeeds] Relations loaded");
 
-    // 1) Init standings
-    Log::info("🧮 [PlateSeeds] Step 1 — Init standings");
-
-    $standings = [];
-    foreach ($draw->groups as $group) {
-      Log::info("  ➤ Init Group {$group->name} ({$group->id})");
-
-      foreach ($group->registrations as $reg) {
-        $standings[$group->id][$reg->id] = [
-          'reg_id' => $reg->id,
-          'player' => $reg->display_name,
-          'wins' => 0,
-          'losses' => 0,
-          'sets_won' => 0,
-          'sets_lost' => 0,
-        ];
-      }
-    }
-
-    // 2) Fill from fixtures
-    Log::info("🧮 [PlateSeeds] Step 2 — Fill standings from fixtures");
-
-    foreach ($draw->drawFixtures as $fx) {
-      if ($fx->stage !== 'RR') {
-        continue;
-      }
-
-      if ($fx->fixtureResults->isEmpty()) {
-        Log::debug("  ⏭ Fixture {$fx->id} has no results — skipping");
-        continue;
-      }
-
-      $gid = $fx->draw_group_id;
-      $home = $fx->registration1_id;
-      $away = $fx->registration2_id;
-
-      Log::info("  ⚔ Fixture {$fx->id}: {$home} vs {$away}");
-
-      $homeSets = 0;
-      $awaySets = 0;
-
-      foreach ($fx->fixtureResults as $set) {
-        if ($set->registration1_score > $set->registration2_score) {
-          $homeSets++;
-        } else {
-          $awaySets++;
-        }
-      }
-
-      Log::info("     → Set totals", [
-        'home_sets' => $homeSets,
-        'away_sets' => $awaySets,
-      ]);
-
-      $standings[$gid][$home]['sets_won'] += $homeSets;
-      $standings[$gid][$home]['sets_lost'] += $awaySets;
-
-      $standings[$gid][$away]['sets_won'] += $awaySets;
-      $standings[$gid][$away]['sets_lost'] += $homeSets;
-
-      $last = $fx->fixtureResults->sortBy('set_nr')->last();
-      if ($last) {
-        $winner = $last->winner_registration;
-
-        if ($winner == $home) {
-          $standings[$gid][$home]['wins']++;
-          $standings[$gid][$away]['losses']++;
-        } else {
-          $standings[$gid][$away]['wins']++;
-          $standings[$gid][$home]['losses']++;
-        }
-
-        Log::info("     ✔ Match Winner", ['winner' => $winner]);
-      }
-    }
-
-    // 3) Sort inside each group
-    Log::info("🧮 [PlateSeeds] Step 3 — Sort standings inside each group");
-
-    $sorted = [];
-    foreach ($standings as $gid => $rows) {
-      $rows = array_values($rows);
-
-      Log::info("  📊 Before sort (Group ID {$gid})", $rows);
-
-      usort($rows, function ($a, $b) {
-        if ($a['wins'] !== $b['wins']) {
-          return $b['wins'] <=> $a['wins'];
-        }
-
-        $diffA = $a['sets_won'] - $a['sets_lost'];
-        $diffB = $b['sets_won'] - $b['sets_lost'];
-
-        return $diffB <=> $diffA;
-      });
-
-      Log::info("  📈 After sort (Group ID {$gid})", $rows);
-
-      $sorted[$gid] = $rows;
-    }
-
-    // 4) Build seeds for 2nd & 3rd positions
-    Log::info("🧮 [PlateSeeds] Step 4 — Build seeds (2nd & 3rd)");
-
-    $groups = $draw->groups->sortBy('name')->values();
+    $groups     = $draw->groups->sortBy('name')->values();
     $groupCount = $groups->count();
 
     if ($groupCount !== 4) {
-      Log::error("❌ [PlateSeeds] Needs exactly 4 groups (A–D)", [
-        'group_count' => $groupCount,
-      ]);
+      Log::error("❌ [PlateSeeds] Needs exactly 4 groups (A–D)", ['group_count' => $groupCount]);
       throw new \Exception("2nd/3rd playoff requires exactly 4 groups (A, B, C, D).");
     }
 

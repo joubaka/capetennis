@@ -355,4 +355,203 @@ class EntryServiceTest extends TestCase
         $sm->assertTransition($from, $to);
         return $to;
     }
+
+    // -----------------------------------------------------------------------
+    // P0 HOTFIX 1 — withdrawal removes RR draw-group membership
+    // -----------------------------------------------------------------------
+
+    public function test_withdraw_entry_as_admin_removes_draw_group_membership(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $registrationId = $entry->registration_id;
+
+        // Build a RR draw group and place the player inside it
+        $draw = \App\Models\Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $ce->id,
+            'event_id'          => $event->id,
+        ]);
+
+        $group = \App\Models\DrawGroup::create([
+            'draw_id' => $draw->id,
+            'name'    => 'A',
+        ]);
+
+        \App\Models\DrawGroupRegistration::create([
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        $this->assertDatabaseHas('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, $user);
+
+        $this->assertDatabaseMissing('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+    }
+
+    public function test_withdrawn_entry_status_is_withdrawn(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, $user);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id'     => $entry->id,
+            'status' => 'withdrawn',
+        ]);
+    }
+
+    public function test_withdrawn_entry_excluded_from_active_scope(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, $user);
+
+        $active = CategoryEventRegistration::where('category_event_id', $ce->id)
+            ->where('status', 'active')
+            ->where('id', $entry->id)
+            ->exists();
+
+        $this->assertFalse($active);
+    }
+
+    // -----------------------------------------------------------------------
+    // P0 HOTFIX 2 — admin add enforces lock and duplicate checks
+    // -----------------------------------------------------------------------
+
+    public function test_admin_add_blocked_when_category_locked(): void
+    {
+        $admin = User::factory()->create();
+        $ce    = CategoryEvent::factory()->locked()->create();
+
+        $player = \App\Models\Player::factory()->create();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/locked/i');
+
+        app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+    }
+
+    public function test_admin_add_blocked_when_player_already_active(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $player = \App\Models\Player::factory()->create();
+
+        // First add succeeds
+        app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+
+        // Second add must be blocked
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/already registered/i');
+
+        app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+    }
+
+    public function test_admin_add_creates_audit_transaction_record(): void
+    {
+        $admin  = User::factory()->create();
+        $event  = Event::factory()->create();
+        $ce     = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+
+        app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+
+        $this->assertDatabaseHas('transactions_pf', [
+            'transaction_type'  => 'Registration',
+            'category_event_id' => $ce->id,
+            'player_id'         => $player->id,
+            'item_name'         => 'Admin Entry',
+        ]);
+    }
+
+    // -----------------------------------------------------------------------
+    // P0 HOTFIX 4 — hybridCancel uses server-side wallet_reserved only
+    // -----------------------------------------------------------------------
+
+    public function test_hybrid_cancel_resets_wallet_reserved_from_db(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $order = \App\Models\RegistrationOrder::create([
+            'user_id'           => $user->id,
+            'pay_status'        => 0,
+            'payfast_paid'      => false,
+            'wallet_reserved'   => 150.00,
+            'payfast_amount_due'=> 100.00,
+            'wallet_debited'    => false,
+        ]);
+
+        $this->actingAs($user);
+
+        // Attempt cancel with a tampered client wallet amount — the controller
+        // must ignore any request body and reset from the order record only.
+        $response = $this->get(route('registration.hybrid.cancel', ['orderId' => $order->id]));
+
+        $response->assertRedirect();
+
+        $order->refresh();
+
+        // Server must zero out wallet_reserved regardless of any client-supplied value
+        $this->assertEquals(0, (float) $order->wallet_reserved);
+        $this->assertEquals(0, (float) $order->payfast_amount_due);
+    }
+
+    public function test_hybrid_cancel_does_not_debit_wallet(): void
+    {
+        $user  = User::factory()->create();
+
+        // Give user a wallet with balance
+        $wallet = \App\Models\Wallet::factory()->create([
+            'user_id' => $user->id,
+            'balance' => 500.00,
+        ]);
+
+        $order = \App\Models\RegistrationOrder::create([
+            'user_id'           => $user->id,
+            'pay_status'        => 0,
+            'payfast_paid'      => false,
+            'wallet_reserved'   => 150.00,
+            'payfast_amount_due'=> 100.00,
+            'wallet_debited'    => false,
+        ]);
+
+        $this->actingAs($user);
+
+        $this->get(route('registration.hybrid.cancel', ['orderId' => $order->id]));
+
+        // Wallet balance must be untouched — cancel must never debit
+        $wallet->refresh();
+        $this->assertEquals(500.00, (float) $wallet->balance);
+    }
 }

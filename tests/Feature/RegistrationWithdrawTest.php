@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
+use App\Models\DrawGroup;
+use App\Models\DrawGroupRegistration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -87,5 +90,76 @@ class RegistrationWithdrawTest extends TestCase
 
         $this->assertFalse($result['ok']);
         $this->assertEquals('draw_locked', $result['reason']);
+    }
+
+    // =========================================================================
+    // P0 HOTFIX 1 — WITHDRAWAL MUST REMOVE FROM RR GROUPS
+    // =========================================================================
+
+    /**
+     * After withdrawal the player's draw_group_registrations row must be gone.
+     */
+    public function test_withdrawal_removes_player_from_rr_draw_group(): void
+    {
+        $user = User::factory()->create();
+        $cer  = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $registrationId = $cer->registration_id;
+        $eventId        = $cer->categoryEvent->event_id;
+
+        // Create a Draw → DrawGroup → DrawGroupRegistration for this player
+        $draw = Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $cer->category_event_id,
+            'event_id'          => $eventId,
+        ]);
+
+        $group = DrawGroup::create([
+            'draw_id' => $draw->id,
+            'name'    => 'A',
+        ]);
+
+        DrawGroupRegistration::create([
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        $this->assertDatabaseHas('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        // Act — withdraw via the service (same path the controller uses after HOTFIX 1)
+        $actingUser = $user;
+        // Bypass canWithdraw deadline checks by using admin withdrawal
+        app(\App\Domain\Entries\Services\EntryService::class)
+            ->withdrawEntryAsAdmin($cer, $actingUser);
+
+        // Assert — draw group row must be deleted
+        $this->assertDatabaseMissing('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+    }
+
+    /**
+     * After withdrawal the CER status is withdrawn so it is excluded from
+     * active/standing queries.
+     */
+    public function test_withdrawn_player_has_withdrawn_status(): void
+    {
+        $user = User::factory()->create();
+        $cer  = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        app(\App\Domain\Entries\Services\EntryService::class)
+            ->withdrawEntryAsAdmin($cer, $user);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id'     => $cer->id,
+            'status' => 'withdrawn',
+        ]);
     }
 }

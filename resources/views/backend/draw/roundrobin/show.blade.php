@@ -3763,13 +3763,10 @@ window.initGroupsSortable = function (forceReinit) {
             }
           }
         });
-        // Count matches won for this row player
+        // Count matches won for this row player using canonical winner field
         var rowWins = 0;
         gFixtures.forEach(function(f) {
-          if (!f.all_sets || !f.all_sets.length) return;
-          var lastSet = f.all_sets[f.all_sets.length - 1].split('-').map(Number);
-          if (f.r1_id === rowP.id && lastSet[0] > lastSet[1]) rowWins++;
-          if (f.r2_id === rowP.id && lastSet[1] > lastSet[0]) rowWins++;
+          if (f.winner && f.winner === rowP.id) rowWins++;
         });
         html += '<td style="font-weight:800; font-size:13px; background:#f0fdf4; color:#198754;">' + rowWins + '</td>';
         html += '</tr>';
@@ -3777,25 +3774,12 @@ window.initGroupsSortable = function (forceReinit) {
       html += '</tbody></table>';
     });
 
-    // Standings
+    // Standings — use server-provided order (already sorted by canonical StandingsService)
     if (includeStandings) {
       var standings = window.RR_STANDINGS || {};
       sortedGroups.forEach(function(group) {
         if (!standings[group.id]) return;
-        var rows = Object.values(standings[group.id]).sort(function(a, b) {
-          if (a.wins !== b.wins) return b.wins - a.wins;
-          var aTotalSets = a.sets_won + a.sets_lost;
-          var bTotalSets = b.sets_won + b.sets_lost;
-          var aSetsPct = aTotalSets > 0 ? a.sets_won / aTotalSets : 0;
-          var bSetsPct = bTotalSets > 0 ? b.sets_won / bTotalSets : 0;
-          if (Math.abs(aSetsPct - bSetsPct) > 0.0001) return bSetsPct - aSetsPct;
-          var aTotalGames = (a.games_won || 0) + (a.games_lost || 0);
-          var bTotalGames = (b.games_won || 0) + (b.games_lost || 0);
-          var aGamesPct = aTotalGames > 0 ? (a.games_won || 0) / aTotalGames : 0;
-          var bGamesPct = bTotalGames > 0 ? (b.games_won || 0) / bTotalGames : 0;
-          if (Math.abs(aGamesPct - bGamesPct) > 0.0001) return bGamesPct - aGamesPct;
-          return 0;
-        });
+        var rows = Object.values(standings[group.id]);
         html += '<div class="page-break"></div>';
         html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + ' — Standings</h3>';
         html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
