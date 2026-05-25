@@ -604,18 +604,29 @@ class EventTransactionController extends Controller
       'players',
       'categoryEvent.category',
       'payfastTransaction',
+      'registrationOrder',
     ])
       ->whereHas('categoryEvent', fn($q) => $q->where('event_id', $event->id))
       ->where('status', 'withdrawn')
       ->whereIn('refund_status', ['completed', 'pending'])
-      ->whereNotNull('pf_transaction_id')
-      ->whereHas('payfastTransaction', fn($q) => $q->where('is_test', false))
-      ->get();
+      ->where(function ($q) {
+        // Include both real PayFast refunds AND admin-marked-paid refunds (no pf_transaction_id)
+        $q->whereNotNull('pf_transaction_id')
+          ->orWhereHas('registrationOrder', fn($q2) => $q2->whereNotNull('admin_marked_paid_at'));
+      })
+      ->get()
+      ->filter(function ($reg) {
+        // Exclude test transactions
+        return ! optional($reg->payfastTransaction)->is_test;
+      });
 
-    $refundRows = $refundRegs->map(function ($reg) use ($feePerEntry) {
-      $payment    = $reg->paymentInfo();
-      $grossPaid  = (float) ($payment['gross'] ?? 0);
-      $payfastFee = abs((float) ($payment['fee'] ?? 0));
+    $refundRows = $refundRegs->map(function ($reg) {
+      $payment     = $reg->paymentInfo();
+      $grossPaid   = (float) ($payment['gross'] ?? 0);
+      $walletPaid  = (float) ($payment['wallet_paid'] ?? 0);
+      $totalGross  = round($grossPaid + $walletPaid, 2);
+      $refundFee   = round($totalGross * 0.10, 2); // fixed 10%
+      $refundNet   = round($totalGross - $refundFee, 2);
 
       return (object) [
         'type'          => 'refund',
@@ -627,10 +638,11 @@ class EventTransactionController extends Controller
         'pf_payment_id' => $payment['pf_payment_id'] ?? null,
         'tx_id'         => $payment['transaction_id'] ?? null,
         'paid_at'       => $payment['paid_at'] ?? null,
-        'gross'         => -$grossPaid,
-        'fee'           => +$payfastFee,
-        'capeFee'       => +$feePerEntry,
-        'net'           => (-$grossPaid + $payfastFee + $feePerEntry),
+        'gross'         => -$totalGross,
+        'fee'           => 0,
+        'capeFee'       => 0,
+        'withdrawalFee' => +$refundFee,   // 10% retained
+        'net'           => -$refundNet,
       ];
     });
 
@@ -653,10 +665,12 @@ class EventTransactionController extends Controller
     // ---- MERGE & TOTALS ----
     $ledger = collect()->merge($paymentRows)->merge($refundRows)->merge($payoutRows)->sortByDesc('created_at')->values();
 
-    // ✅ Gross = payments only
     $totalGross          = $paymentRows->sum('gross');
-    $totalPayfastFees    = $ledger->whereIn('type', ['payment', 'refund'])->sum('fee');
-    $totalCapeTennisFees = $ledger->whereIn('type', ['payment', 'refund'])->sum('capeFee');
+    $totalPayfastFees    = $paymentRows->sum('fee');   // payment rows only
+    $completedRefundCount = $refundRows->where('refund_status', 'completed')->count();
+    $totalCapeTennisFees = $paymentRows->sum('capeFee')
+                         + ($completedRefundCount * $feePerEntry); // add back for refunded entries
+    $totalWithdrawalFees = $refundRows->sum('withdrawalFee');
     $totalPayouts        = $payouts->sum('amount');
     $netTournamentIncome = $ledger->sum('net');
 
@@ -672,9 +686,11 @@ class EventTransactionController extends Controller
       'isTeamEvent',
       'totalEntries',
       'refundCount',
+      'completedRefundCount',
       'totalGross',
       'totalPayfastFees',
       'totalCapeTennisFees',
+      'totalWithdrawalFees',
       'totalPayouts',
       'netTournamentIncome'
     );

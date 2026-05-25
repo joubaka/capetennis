@@ -83,11 +83,19 @@
                 <th colspan="4" style="text-align: right;">Totals:</th>
                 <th></th>
                 <th>R{{ number_format($totalGross, 2) }}</th>
-                <th>R{{ number_format($totalPayfastFees, 2) }}</th>
-                <th>R{{ number_format($totalCapeTennisFees, 2) }}</th>
+                <th>R{{ number_format(abs($totalPayfastFees) + ($totalWithdrawalFees ?? 0), 2) }}</th>
+                <th>R{{ number_format(abs($totalCapeTennisFees), 2) }}</th>
                 <th>R{{ number_format($netTournamentIncome, 2) }}</th>
                 <th>R{{ number_format($runningBalance, 2) }}</th>
             </tr>
+            @if(($totalWithdrawalFees ?? 0) > 0)
+            <tr>
+                <th colspan="9" style="text-align: right; font-weight: normal;">
+                    Incl. withdrawal fees retained (10%): R{{ number_format($totalWithdrawalFees, 2) }}
+                </th>
+                <th></th>
+            </tr>
+            @endif
             @if($totalPayouts > 0)
             <tr>
                 <th colspan="9" style="text-align: right;">
