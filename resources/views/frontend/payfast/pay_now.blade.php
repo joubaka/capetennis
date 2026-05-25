@@ -84,6 +84,34 @@
 </form>
 
 <script>
-    document.getElementById('payfastForm').submit();
+    (function() {
+        var form = document.getElementById('payfastForm');
+        var fields = {};
+        form.querySelectorAll('input[type=hidden]').forEach(function(el) {
+            fields[el.name] = el.value;
+        });
+        console.log('[PayFast Form Fields]', fields);
+        console.warn('merchant_id  = "' + (fields.merchant_id  || 'EMPTY') + '"');
+        console.warn('merchant_key = "' + (fields.merchant_key || 'EMPTY') + '"');
+        console.warn('amount       = "' + (fields.amount       || 'EMPTY') + '"');
+        console.warn('action URL   = "' + form.action + '"');
+
+        // DEBUG MODE: hold for 10 seconds so you can read console, then submit
+        var debugHold = {{ app()->isLocal() ? 'true' : 'false' }};
+        var hasCreds  = fields.merchant_id && fields.merchant_key;
+
+        if (!hasCreds) {
+            console.error('[PayFast] MISSING CREDENTIALS — form will NOT submit. Check config/services.payfast');
+            document.body.insertAdjacentHTML('afterbegin',
+                '<div style="background:red;color:#fff;padding:16px;font-size:16px;z-index:9999;position:fixed;top:0;left:0;right:0">'
+                + '⚠️ PayFast merchant_id or merchant_key is EMPTY. Check server .env / config cache.'
+                + '</div>'
+            );
+            return; // stop — do not submit broken form
+        }
+
+        console.log('[PayFast] Credentials present — submitting...');
+        form.submit();
+    })();
 </script>
 
