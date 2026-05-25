@@ -360,8 +360,7 @@
 
                     {{-- Top Player --}}
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
-                        @if($isFeeder1) style="fill: #6366f1; font-weight: 700;"
-                        @elseif($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
+                        @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p1, 22) }}</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
@@ -377,8 +376,7 @@
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
-                        @if($isFeeder2) style="fill: #6366f1; font-weight: 700;"
-                        @elseif($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
+                        @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p2, 22) }}</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
