@@ -37,6 +37,19 @@
     pointer-events: none;
     opacity: .6;
   }
+
+  .removed-players {
+    background: #fff8f8;
+    border: 1px dashed #dc3545;
+    border-radius: .4rem;
+    padding: .5rem 1rem;
+    margin-top: .75rem;
+    font-size: .875rem;
+  }
+
+  .removed-players .badge {
+    cursor: pointer;
+  }
 </style>
 @endsection
 
@@ -100,10 +113,24 @@
                 {{ $reg->display_name }}
               </span>
 
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger btn-remove-player ms-2"
+                      title="Remove from results (did not play)"
+                      onclick="removePlayer(this)">
+                <i class="ti ti-user-minus"></i>
+              </button>
+
             </li>
           @endforeach
 
         </ul>
+
+        {{-- Removed players tray --}}
+        <div class="removed-players d-none" id="removed-{{ $category->id }}">
+          <span class="text-danger fw-semibold me-2"><i class="ti ti-user-off"></i> Removed (no points):</span>
+          <span class="removed-list d-inline-flex flex-wrap gap-1"></span>
+          <div class="text-muted small mt-1">These players will not receive ranking points. Click × to restore.</div>
+        </div>
       </div>
     </div>
   @empty
@@ -140,16 +167,69 @@ function notifyError(msg) {
 }
 
 // ------------------------------
+// Remove / Restore player
+// ------------------------------
+function removePlayer(btn) {
+  const li = btn.closest('li');
+  const regId = li.dataset.registration;
+  const name = li.querySelector('.flex-grow-1').textContent.trim();
+  const list = li.closest('.sortable-results');
+  const categoryId = list.dataset.category;
+  const tray = document.getElementById('removed-' + categoryId);
+  const removedList = tray.querySelector('.removed-list');
+
+  // Hide the row
+  li.dataset.removed = '1';
+  li.style.display = 'none';
+
+  // Renumber visible rows
+  renumberList(list);
+
+  // Add badge to tray
+  const badge = document.createElement('span');
+  badge.className = 'badge bg-danger';
+  badge.dataset.regId = regId;
+  badge.title = 'Click to restore';
+  badge.style.cursor = 'pointer';
+  badge.innerHTML = name + ' &times;';
+  badge.addEventListener('click', () => restorePlayer(regId, categoryId, badge));
+  removedList.appendChild(badge);
+
+  tray.classList.remove('d-none');
+}
+
+function restorePlayer(regId, categoryId, badge) {
+  const list = document.querySelector(`.sortable-results[data-category="${categoryId}"]`);
+  const li = list.querySelector(`li[data-registration="${regId}"]`);
+  if (li) {
+    li.removeAttribute('data-removed');
+    li.style.display = '';
+    renumberList(list);
+  }
+  badge.remove();
+  const tray = document.getElementById('removed-' + categoryId);
+  if (tray.querySelector('.removed-list').children.length === 0) {
+    tray.classList.add('d-none');
+  }
+}
+
+function renumberList(list) {
+  let n = 1;
+  list.querySelectorAll('li:not([data-removed])').forEach(li => {
+    li.querySelector('.position-badge').textContent = n++ + '.';
+  });
+}
+
+// ------------------------------
 // Sortable init
 // ------------------------------
 document.querySelectorAll('.sortable-results').forEach(list => {
   new Sortable(list, {
     handle: '.drag-handle',
+    filter: '[data-removed]',
     animation: 150,
     onEnd() {
-      list.querySelectorAll('.position-badge').forEach((el, i) => {
-        el.textContent = (i + 1) + '.';
-      });
+      renumberList(list);
     }
   });
 });
@@ -170,7 +250,7 @@ async function saveCategory(categoryId, button = null) {
   }
 
   const positions = [];
-  list.querySelectorAll('li').forEach((li, index) => {
+  list.querySelectorAll('li:not([data-removed])').forEach((li, index) => {
     positions.push({
       registration_id: li.dataset.registration,
       position: index + 1
