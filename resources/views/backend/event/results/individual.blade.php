@@ -97,16 +97,20 @@
         <ul class="list-group sortable-results"
             data-category="{{ $category->id }}">
 
+          @php $positionCounter = 1; @endphp
           @foreach($category->registrations as $reg)
+            @php $isRemoved = $reg->position === null; @endphp
             <li class="list-group-item d-flex align-items-center"
-                data-registration="{{ $reg->id }}">
+                data-registration="{{ $reg->id }}"
+                data-name="{{ $reg->display_name }}"
+                @if($isRemoved) data-removed="1" style="display:none;" @endif>
 
               <span class="me-2 drag-handle">
                 <i class="ti ti-grip-vertical"></i>
               </span>
 
               <strong class="me-3 position-badge">
-                {{ $loop->iteration }}.
+                @if(!$isRemoved){{ $positionCounter++ }}.@endif
               </strong>
 
               <span class="flex-grow-1">
@@ -167,12 +171,39 @@ function notifyError(msg) {
 }
 
 // ------------------------------
+// Init: restore removed-tray state on page load
+// ------------------------------
+document.querySelectorAll('.sortable-results').forEach(list => {
+  const categoryId = list.dataset.category;
+  const tray = document.getElementById('removed-' + categoryId);
+  const removedList = tray.querySelector('.removed-list');
+
+  list.querySelectorAll('li[data-removed]').forEach(li => {
+    const regId = li.dataset.registration;
+    const name = li.dataset.name;
+
+    const badge = document.createElement('span');
+    badge.className = 'badge bg-danger';
+    badge.dataset.regId = regId;
+    badge.title = 'Click to restore';
+    badge.style.cursor = 'pointer';
+    badge.innerHTML = name + ' &times;';
+    badge.addEventListener('click', () => restorePlayer(regId, categoryId, badge));
+    removedList.appendChild(badge);
+  });
+
+  if (removedList.children.length > 0) {
+    tray.classList.remove('d-none');
+  }
+});
+
+// ------------------------------
 // Remove / Restore player
 // ------------------------------
 function removePlayer(btn) {
   const li = btn.closest('li');
   const regId = li.dataset.registration;
-  const name = li.querySelector('.flex-grow-1').textContent.trim();
+  const name = li.dataset.name || li.querySelector('.flex-grow-1').textContent.trim();
   const list = li.closest('.sortable-results');
   const categoryId = list.dataset.category;
   const tray = document.getElementById('removed-' + categoryId);
