@@ -127,8 +127,51 @@ class RankingController extends Controller
     $legs = collect();
     $rankingCategoryName = $rankingRecord?->category?->name ?? '—';
 
-    if ($rankingRecord && !empty($rankingRecord->meta_json['legs'])) {
-      $legs = collect($rankingRecord->meta_json['legs'])->map(function ($leg) use ($eventsById, $rankingCategoryName) {
+    // Normalise meta_json: handle double-encoded JSON (stored as json_encode'd string in an array-cast column)
+    $metaJson = $rankingRecord?->meta_json ?? null;
+    if (is_string($metaJson)) {
+      $metaJson = json_decode($metaJson, true) ?? [];
+    }
+
+    if ($rankingRecord && (!empty($metaJson['counting_legs']) || !empty($metaJson['dropped_legs']))) {
+      // New format from RankingRebuildService: counting_legs / dropped_legs keyed by category_event_id
+      $meta = $metaJson;
+      $allCeIds = collect($meta['counting_legs'] ?? [])->pluck('category_event_id')
+        ->merge(collect($meta['dropped_legs'] ?? [])->pluck('category_event_id'))
+        ->unique()->filter()->values();
+
+      $catEventsById = \App\Models\CategoryEvent::with(['event:id,name,start_date'])
+        ->whereIn('id', $allCeIds)
+        ->get()
+        ->keyBy('id');
+
+      $countingLegs = collect($meta['counting_legs'] ?? [])->map(function ($leg) use ($catEventsById, $rankingCategoryName) {
+        $ce = $catEventsById->get($leg['category_event_id'] ?? null);
+        return array_merge($leg, [
+          'event_name'    => $ce?->event?->name ?? 'Event #' . ($leg['category_event_id'] ?? '?'),
+          'event_date'    => $ce?->event?->start_date ?? null,
+          'category_name' => $rankingCategoryName,
+          'status'        => 'counted',
+          'colour'        => !empty($leg['synthetic']) ? 'yellow' : 'green',
+          'is_auto'       => !empty($leg['synthetic']),
+        ]);
+      });
+
+      $droppedLegs = collect($meta['dropped_legs'] ?? [])->map(function ($leg) use ($catEventsById, $rankingCategoryName) {
+        $ce = $catEventsById->get($leg['category_event_id'] ?? null);
+        return array_merge($leg, [
+          'event_name'    => $ce?->event?->name ?? 'Event #' . ($leg['category_event_id'] ?? '?'),
+          'event_date'    => $ce?->event?->start_date ?? null,
+          'category_name' => $rankingCategoryName,
+          'status'        => 'dropped',
+          'colour'        => 'red',
+          'is_auto'       => false,
+        ]);
+      });
+
+      $legs = $countingLegs->concat($droppedLegs)->sortByDesc('points')->values();
+    } elseif ($rankingRecord && !empty($metaJson['legs'])) {
+      $legs = collect($metaJson['legs'])->map(function ($leg) use ($eventsById, $rankingCategoryName) {
         $event = $eventsById->get($leg['event_id'] ?? null);
         return array_merge($leg, [
           'event_name'    => $event?->name ?? 'Event #' . ($leg['event_id'] ?? '?'),

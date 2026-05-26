@@ -31,8 +31,11 @@ class SeriesRankingController extends Controller
    */
   public function index(Series $series)
   {
+    $series->load(['events.categoryEvents']);
+
     $rankings = SeriesRanking::with([
       'registration.players',
+      'player',
       'category'
     ])
       ->where('series_id', $series->id)
@@ -302,7 +305,7 @@ class SeriesRankingController extends Controller
             'player_id' => (int) $row['player_id'],
             'rank_position' => $i + 1,
             'total_points' => (int) $row['total'],
-            'meta_json' => json_encode($row['meta']),
+            'meta_json' => $row['meta'],
           ]);
 
           $created++;

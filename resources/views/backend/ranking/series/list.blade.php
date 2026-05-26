@@ -108,7 +108,33 @@
                     ? $row->meta_json
                     : json_decode($row->meta_json, true) ?? [];
 
-                  $legs = collect($meta['legs'] ?? []);
+                  // Support both meta formats:
+                  // New: counting_legs + dropped_legs (from RankingRebuildService)
+                  // Old: legs[] with status/colour (from OverbergRankingStrategy / legacy)
+                  if (!empty($meta['counting_legs']) || !empty($meta['dropped_legs'])) {
+                    $legs = collect(array_merge(
+                      array_map(fn($l) => array_merge($l, [
+                        'colour'   => !empty($l['synthetic']) ? 'yellow' : 'green',
+                        'is_auto'  => !empty($l['synthetic']),
+                        'event_id' => null, // resolved below via category_event_id
+                      ]), $meta['counting_legs'] ?? []),
+                      array_map(fn($l) => array_merge($l, [
+                        'colour'  => 'red',
+                        'is_auto' => false,
+                        'event_id' => null,
+                      ]), $meta['dropped_legs'] ?? [])
+                    ));
+                    // Resolve event_id from category_event_id
+                    $ceToEvent = [];
+                    foreach ($series->events as $ev) {
+                      foreach ($ev->categoryEvents ?? [] as $ce) {
+                        $ceToEvent[$ce->id] = $ev;
+                      }
+                    }
+                  } else {
+                    $legs = collect($meta['legs'] ?? []);
+                    $ceToEvent = [];
+                  }
                 @endphp
 
                 <tr>
@@ -126,7 +152,14 @@
                     <div class="d-flex gap-1 flex-wrap">
                       @foreach($legs as $leg)
                         @php
-  $event = $series->events->firstWhere('id', $leg['event_id']);
+  // Resolve event: old format uses event_id, new format uses category_event_id
+  if (!empty($leg['event_id'])) {
+    $event = $series->events->firstWhere('id', $leg['event_id']);
+  } elseif (!empty($leg['category_event_id']) && !empty($ceToEvent)) {
+    $event = $ceToEvent[$leg['category_event_id']] ?? null;
+  } else {
+    $event = null;
+  }
 
   $isAuto = ($leg['is_auto'] ?? false) === true;
 
@@ -202,7 +235,7 @@ document.getElementById('rebuild-ranking')?.addEventListener('click', () => {
   const btn = document.getElementById('rebuild-ranking');
   btn.disabled = true;
 
-  fetch('{{ route('ranking.series.rebuild', $series) }}', {
+  fetch('{{ route('ranking.series.rebuild', $series) }}?legacy=1', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

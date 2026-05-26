@@ -145,11 +145,22 @@ final class RankingRebuildService
 
     private function persist(Series $series, int $rankingListId, RankingResult $result, string $runId): void
     {
+        $categoryId = $this->resolveCategoryId($rankingListId);
+
         // Delete previously calculated (non-published) rows for this list
         SeriesRanking::where('series_id', $series->id)
             ->where('ranking_list_id', $rankingListId)
             ->where('status', '!=', RankingStatus::Published->value)
             ->delete();
+
+        // Also delete legacy rows (ranking_list_id = null) for the same series + category
+        if ($categoryId) {
+            SeriesRanking::where('series_id', $series->id)
+                ->whereNull('ranking_list_id')
+                ->where('category_id', $categoryId)
+                ->where('status', '!=', RankingStatus::Published->value)
+                ->delete();
+        }
 
         $now = now();
 
@@ -157,7 +168,7 @@ final class RankingRebuildService
             SeriesRanking::create([
                 'series_id'       => $series->id,
                 'ranking_list_id' => $rankingListId,
-                'category_id'     => $this->resolveCategoryId($rankingListId),
+                'category_id'     => $categoryId,
                 'player_id'       => $row->playerId,
                 'rank_position'   => $row->rankPosition,
                 'total_points'    => $row->totalPoints,
