@@ -529,21 +529,23 @@ class EntryServiceTest extends TestCase
 
     public function test_hybrid_cancel_does_not_debit_wallet(): void
     {
-        $user  = User::factory()->create();
+        $user   = User::factory()->create();
+        $wallet = \App\Models\Wallet::factory()->forUser($user)->create();
 
-        // Give user a wallet with balance
-        $wallet = \App\Models\Wallet::factory()->create([
-            'user_id' => $user->id,
-            'balance' => 500.00,
+        // Seed a credit of 500 so we can verify it remains untouched
+        \App\Models\WalletTransaction::create([
+            'wallet_id' => $wallet->id,
+            'type'      => 'credit',
+            'amount'    => 500.00,
         ]);
 
         $order = \App\Models\RegistrationOrder::create([
-            'user_id'           => $user->id,
-            'pay_status'        => 0,
-            'payfast_paid'      => false,
-            'wallet_reserved'   => 150.00,
-            'payfast_amount_due'=> 100.00,
-            'wallet_debited'    => false,
+            'user_id'            => $user->id,
+            'pay_status'         => 0,
+            'payfast_paid'       => false,
+            'wallet_reserved'    => 150.00,
+            'payfast_amount_due' => 100.00,
+            'wallet_debited'     => false,
         ]);
 
         $this->actingAs($user);
@@ -552,6 +554,165 @@ class EntryServiceTest extends TestCase
 
         // Wallet balance must be untouched — cancel must never debit
         $wallet->refresh();
-        $this->assertEquals(500.00, (float) $wallet->balance);
+        $this->assertEquals(500.00, $wallet->balance);
+    }
+
+    // -----------------------------------------------------------------------
+    // HOTFIX 4 — removePlayer() sets status = 'withdrawn'
+    // -----------------------------------------------------------------------
+
+    public function test_remove_player_sets_status_to_withdrawn(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['status' => 'active']);
+
+        $registration = \App\Models\Registration::find($entry->registration_id);
+
+        app(\App\Domain\Entries\Services\EntryService::class)->removePlayer($ce, $registration, $admin);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id'     => $entry->id,
+            'status' => 'withdrawn',
+        ]);
+    }
+
+    public function test_remove_player_excluded_from_active_scope(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['status' => 'active']);
+
+        $registration = \App\Models\Registration::find($entry->registration_id);
+
+        app(\App\Domain\Entries\Services\EntryService::class)->removePlayer($ce, $registration, $admin);
+
+        $exists = CategoryEventRegistration::where('id', $entry->id)
+            ->active()
+            ->exists();
+
+        $this->assertFalse($exists, 'Removed player must not appear in active scope');
+    }
+
+    public function test_remove_player_sets_withdrawn_by(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['status' => 'active']);
+
+        $registration = \App\Models\Registration::find($entry->registration_id);
+
+        app(\App\Domain\Entries\Services\EntryService::class)->removePlayer($ce, $registration, $admin);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id'          => $entry->id,
+            'withdrawn_by' => $admin->id,
+        ]);
+    }
+
+    public function test_remove_player_blocked_when_category_locked(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->locked()->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['status' => 'active']);
+
+        $registration = \App\Models\Registration::find($entry->registration_id);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/locked/i');
+
+        app(\App\Domain\Entries\Services\EntryService::class)->removePlayer($ce, $registration, $admin);
+    }
+
+    // -----------------------------------------------------------------------
+    // HOTFIX 5 — markWithdrawn() is idempotent: double-call is safe
+    // -----------------------------------------------------------------------
+
+    public function test_mark_withdrawn_is_idempotent_on_double_call(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        // First call
+        $entry->markWithdrawn($user, 'self');
+
+        $entry->refresh();
+        $this->assertEquals('withdrawn', $entry->status);
+        $firstWithdrawnAt = $entry->withdrawn_at;
+
+        // Second call — must not throw, must not change withdrawn_at or create duplicate log
+        $entry->markWithdrawn($user, 'self');
+
+        $entry->refresh();
+        $this->assertEquals('withdrawn', $entry->status);
+        $this->assertEquals($firstWithdrawnAt->toDateTimeString(), $entry->withdrawn_at->toDateTimeString());
+    }
+
+    public function test_mark_withdrawn_does_not_duplicate_activity_log(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $entry->markWithdrawn($user, 'self');
+        $entry->markWithdrawn($user, 'self'); // second call — idempotent
+
+        $logCount = \Spatie\Activitylog\Models\Activity::where('log_name', 'withdrawal')
+            ->where('subject_type', get_class($entry))
+            ->where('subject_id', $entry->id)
+            ->count();
+
+        $this->assertEquals(1, $logCount, 'markWithdrawn must write exactly one activity log entry');
+    }
+
+    public function test_mark_withdrawn_resets_refund_fields_to_zero(): void
+    {
+        $user  = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $entry = CategoryEventRegistration::factory()
+            ->for($ce)
+            ->create([
+                'user_id'      => $user->id,
+                'status'       => 'active',
+                'refund_gross' => 100.00,
+                'refund_fee'   => 10.00,
+                'refund_net'   => 90.00,
+            ]);
+
+        $entry->markWithdrawn($user, 'self');
+
+        $entry->refresh();
+        $this->assertEquals(0, $entry->refund_gross);
+        $this->assertEquals(0, $entry->refund_fee);
+        $this->assertEquals(0, $entry->refund_net);
+        $this->assertNull($entry->refund_method);
+        $this->assertEquals('not_refunded', $entry->refund_status);
     }
 }

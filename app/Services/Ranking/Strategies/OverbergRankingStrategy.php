@@ -35,8 +35,9 @@ class OverbergRankingStrategy implements RankingStrategy
      * Detect auto-award player:
      * - exactly 2 legs
      * - both wins
+     * - only when auto_award_rule is enabled on the series
      */
-    foreach ($byPlayer as $playerId => $legs) {
+    if ($series->auto_award_rule ?? false) foreach ($byPlayer as $playerId => $legs) {
       if ($legs->count() === 2 && $legs->where('position', 1)->count() === 2) {
 
         $autoPlayerId = (int) $playerId;

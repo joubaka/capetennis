@@ -248,15 +248,20 @@ class AdminRegistrationRefundController extends Controller
         return back()->withErrors('No PayFast amount to refund — payment was funded entirely by wallet.');
       }
 
+      // HOTFIX 1: Apply 10% withdrawal fee — refund 90% of the PayFast portion only.
+      // Cape Tennis retains the 10% fee; PayFast cannot refund wallet contributions.
+      $payfastNet = round($payfastGross * 0.90, 2);
+
       try {
         $payfast = new \App\Services\Payfast();
-        // Only refund the PayFast portion — PayFast cannot refund wallet contributions.
-        $result  = $payfast->refund($pfPaymentId, $payfastGross, 'Admin withdrawal refund');
+        $result  = $payfast->refund($pfPaymentId, $payfastNet, 'Admin withdrawal refund');
 
         Log::info('ADMIN PAYFAST REFUND ATTEMPT', [
           'registration_id' => $registration->id,
           'pf_payment_id'   => $pfPaymentId,
-          'amount'          => $payfastGross,
+          'payfast_gross'   => $payfastGross,
+          'payfast_net'     => $payfastNet,
+          'fee'             => $fee,
           'result'          => $result,
         ]);
 
@@ -289,12 +294,14 @@ class AdminRegistrationRefundController extends Controller
             'method'          => 'payfast',
             'pf_payment_id'   => $pfPaymentId,
             'payfast_gross'   => $payfastGross,
+            'payfast_net'     => $payfastNet,
+            'fee'             => $fee,
             'wallet_paid'     => $walletPaid,
             'gross'           => $gross,
             'event'           => $event->name,
             'initiated_by'    => 'admin',
           ])
-          ->log("Admin PayFast refund R{$payfastGross} processed");
+          ->log("Admin PayFast refund R{$payfastNet} processed (10% fee R{$fee} retained)");
 
         // Notify the player that their PayFast refund has been processed
         $playerEmail = optional($registration->players->first())->email
@@ -303,7 +310,7 @@ class AdminRegistrationRefundController extends Controller
           Mail::to($playerEmail)->queue(new \App\Mail\PayFastRefundConfirmationMail($registration));
         }
 
-        $successMsg = 'PayFast refund of R' . number_format($payfastGross, 2) . ' processed successfully.';
+        $successMsg = 'PayFast refund of R' . number_format($payfastNet, 2) . ' processed successfully (10% fee R' . number_format($fee, 2) . ' retained).';
         if ($walletPaid > 0) {
           $successMsg .= ' Note: wallet contribution of R' . number_format($walletPaid, 2) . ' was not refunded via PayFast — issue a wallet refund separately if required.';
         }

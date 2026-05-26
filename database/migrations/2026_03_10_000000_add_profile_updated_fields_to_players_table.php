@@ -10,8 +10,8 @@ return new class extends Migration
     {
         if (!Schema::hasColumn('players', 'profile_updated_at')) {
             Schema::table('players', function (Blueprint $table) {
-                $table->timestamp('profile_updated_at')->nullable()->after('coach');
-                $table->boolean('profile_complete')->default(false)->after('profile_updated_at');
+                $table->timestamp('profile_updated_at')->nullable();
+                $table->boolean('profile_complete')->default(false);
             });
         }
     }

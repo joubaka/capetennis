@@ -376,24 +376,39 @@ class CategoryEventRegistration extends Model
     string $initiatedBy = 'self',
     ?string $reason = null
   ): void {
-    // Idempotency — never double-withdraw
-    if (in_array($this->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])) {
+    // HOTFIX 5: Idempotency check + state mutation inside a lockForUpdate transaction
+    // so concurrent requests cannot both pass the withdrawn-state check before either commits.
+    $alreadyWithdrawn = false;
+
+    \Illuminate\Support\Facades\DB::transaction(function () use ($by, $reason, &$alreadyWithdrawn) {
+      $locked = static::lockForUpdate()->findOrFail($this->id);
+
+      if (in_array($locked->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])) {
+        $alreadyWithdrawn = true;
+        return;
+      }
+
+      $locked->update([
+        'status'            => 'withdrawn',
+        'withdrawn_at'      => now(),
+        'withdrawn_by'      => $by->id,
+        'withdrawal_reason' => $reason,
+        // Reset refund tracking to a clean slate
+        'refund_status'     => 'not_refunded',
+        'refund_method'     => null,
+        'refund_gross'      => 0,
+        'refund_fee'        => 0,
+        'refund_net'        => 0,
+        'refunded_at'       => null,
+      ]);
+
+      // Refresh $this so callers see the new state immediately
+      $this->setRawAttributes($locked->fresh()->getAttributes());
+    });
+
+    if ($alreadyWithdrawn) {
       return;
     }
-
-    $this->update([
-      'status'            => 'withdrawn',
-      'withdrawn_at'      => now(),
-      'withdrawn_by'      => $by->id,
-      'withdrawal_reason' => $reason,
-      // Reset refund tracking to a clean slate
-      'refund_status'     => 'not_refunded',
-      'refund_method'     => null,
-      'refund_gross'      => 0,
-      'refund_fee'        => 0,
-      'refund_net'        => 0,
-      'refunded_at'       => null,
-    ]);
 
     try {
       activity('withdrawal')
@@ -405,8 +420,8 @@ class CategoryEventRegistration extends Model
           'reason'          => $reason,
           'event'           => optional($this->categoryEvent?->event)->name,
           'category'        => optional($this->categoryEvent?->category)->name,
-          'player'          => optional($this->players->first())
-            ? trim($this->players->first()->name . ' ' . $this->players->first()->surname)
+          'player'          => ($p = $this->players->first())
+            ? trim($p->name . ' ' . $p->surname)
             : null,
         ])
         ->log(ucfirst($initiatedBy) . ' withdrawal recorded');

@@ -109,6 +109,24 @@ class User extends Authenticatable
       ->withTimestamps();
   }
 
+  /**
+   * Return all player IDs this user owns.
+   *
+   * Ownership is established via TWO paths:
+   *   1. user_players pivot  — explicit link (normal registration flow)
+   *   2. players.userId FK   — legacy/migrated accounts where the pivot was never populated
+   *
+   * Always use this method for permission checks instead of players()->pluck() alone.
+   *
+   * @return int[]
+   */
+  public function ownedPlayerIds(): array
+  {
+    $pivotIds  = $this->players()->pluck('players.id')->map(fn($v) => (int) $v)->toArray();
+    $directIds = Player::where('userId', $this->id)->pluck('id')->map(fn($v) => (int) $v)->toArray();
+    return array_unique(array_merge($pivotIds, $directIds));
+  }
+
   public function clothingOrders()
     {
         return $this->hasMany(ClothingOrder::class, 'user_id', 'id');

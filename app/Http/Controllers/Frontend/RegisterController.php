@@ -1395,9 +1395,19 @@ class RegisterController extends Controller
     $playerIds  = $request->player;
     $categoryIds = $request->category;
 
-    // Collect player IDs the auth user owns (unless admin)
+    // Collect player IDs the auth user owns (unless admin).
+    // Ownership is established via TWO paths:
+    //   1. user_players pivot table (explicit link created during registration flow)
+    //   2. players.userId FK (legacy/migrated players linked directly to a user account)
+    // Both must be checked — missing either path causes false permission denials.
     if (!$isAdmin) {
-      $ownedPlayerIds = $authUser->players()->pluck('players.id')->map(fn($v) => (int) $v)->toArray();
+      $ownedPlayerIds = $authUser->ownedPlayerIds();
+
+      Log::info('[REGISTRATION OWNERSHIP CHECK]', [
+        'auth_user_id'     => $authUser->id,
+        'owned_player_ids' => $ownedPlayerIds,
+        'requested_players'=> array_map('intval', $playerIds),
+      ]);
     }
 
     $duplicateErrors = [];
@@ -1406,8 +1416,17 @@ class RegisterController extends Controller
       $playerId       = (int) $playerIds[$i];
       $categoryEventId = (int) $categoryIds[$i];
 
-      // Ownership check
+      // Ownership check — player must be owned via pivot OR via direct userId FK
       if (!$isAdmin && !in_array($playerId, $ownedPlayerIds, true)) {
+        $playerRecord = \App\Models\Player::find($playerId);
+        Log::warning('[REGISTRATION PERMISSION DENIED]', [
+          'auth_user_id'   => $authUser->id,
+          'player_id'      => $playerId,
+          'player_name'    => $playerRecord ? $playerRecord->name . ' ' . $playerRecord->surname : null,
+          'player_userId'  => $playerRecord?->userId,
+          'player_dob'     => $playerRecord?->dateOfBirth,
+          'owned_ids'      => $ownedPlayerIds,
+        ]);
         return back()->withErrors([
           'msg' => "You do not have permission to register player ID {$playerId}."
         ]);

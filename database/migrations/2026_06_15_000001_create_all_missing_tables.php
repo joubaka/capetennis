@@ -576,7 +576,7 @@ return new class extends Migration
                 $table->timestamps();
                 $table->integer('category_event_id');
                 $table->integer('ranking_list_id');
-                $table->unique(['ranking_list_id', 'category_event_id']);
+                $table->unique(['ranking_list_id', 'category_event_id'], 'rl_ce_unique');
             });
         }
 

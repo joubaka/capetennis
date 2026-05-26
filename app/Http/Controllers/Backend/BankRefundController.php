@@ -255,8 +255,8 @@ class BankRefundController extends Controller
       // the wallet contribution is credited back to the user's wallet separately.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      // Use SiteSetting-based fee; wallet portion carries no fee.
-      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      // HOTFIX 2: Use 10% withdrawal fee formula — not PayFast platform fee net.
+      $payfastNet   = round($payfastGross * 0.90, 2);
       $walletNet    = $walletPaid;
 
       try {

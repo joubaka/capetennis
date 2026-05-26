@@ -278,7 +278,7 @@
     const btn = document.getElementById('save-series-btn');
     btn.disabled = true;
 
-    fetch('{{ route('ranking.series.update', $series) }}', {
+    fetch('{{ route('series.update', $series) }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
       body: JSON.stringify({

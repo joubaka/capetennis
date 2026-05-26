@@ -132,9 +132,15 @@ class EntryService
         }
 
         DB::transaction(function () use ($categoryEvent, $registration, $actingUser) {
+            // HOTFIX 4: Set status='withdrawn' so scopeActive() correctly excludes this player.
+            // Previously only withdrawn_at was set, leaving the player visible in active queries.
             $categoryEvent->categoryEventRegistrations()
                 ->where('registration_id', $registration->id)
-                ->update(['withdrawn_at' => now()]);
+                ->update([
+                    'status'       => 'withdrawn',
+                    'withdrawn_at' => now(),
+                    'withdrawn_by' => $actingUser->id,
+                ]);
 
             Log::info('[EntryService] Player removed from category', [
                 'category_event_id' => $categoryEvent->id,

@@ -255,7 +255,8 @@ class RegistrationRefundController extends Controller
 
     // For hybrid payments PayFast can only refund its own portion;
     // the wallet contribution is refunded in full (no fee) back to the wallet.
-    $payfastNet = $payment['net'];   // fee already deducted via SiteSetting
+    // HOTFIX 2: Use 10% withdrawal fee formula — not PayFast platform fee net.
+    $payfastNet = round($payfastGross * 0.90, 2);
     $walletNet  = $walletPaid;       // wallet portion has no fee — refund in full
 
     if (!empty($pfPaymentId) && $payfastGross > 0) {

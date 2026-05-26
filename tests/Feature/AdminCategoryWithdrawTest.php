@@ -9,6 +9,7 @@ use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -21,6 +22,13 @@ use Tests\TestCase;
 class AdminCategoryWithdrawTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin',      'guard_name' => 'web']);
+    }
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -36,7 +44,9 @@ class AdminCategoryWithdrawTest extends TestCase
 
     private function adminUser(): User
     {
-        return User::factory()->create();
+        $user = User::factory()->create();
+        $user->assignRole('admin');
+        return $user;
     }
 
     // -----------------------------------------------------------------------
@@ -160,5 +170,134 @@ class AdminCategoryWithdrawTest extends TestCase
         $this->assertEquals(0, $reg->refund_fee);
         $this->assertEquals(0, $reg->refund_net);
         $this->assertNull($reg->refund_method);
+    }
+
+    // -----------------------------------------------------------------------
+    // HOTFIX 3 — admin withdrawal routes through EntryService, cleaning draw groups
+    // -----------------------------------------------------------------------
+
+    public function test_admin_withdrawal_removes_player_from_draw_group(): void
+    {
+        $admin = $this->adminUser();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $reg = $this->activeRegistration([
+            'category_event_id' => $ce->id,
+        ]);
+        $registrationId = $reg->registration_id;
+
+        // Place player in a draw group
+        $draw = \App\Models\Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $ce->id,
+            'event_id'          => $event->id,
+        ]);
+
+        $group = \App\Models\DrawGroup::create([
+            'draw_id'    => $draw->id,
+            'name'       => 'Group A',
+            'sort_order' => 1,
+        ]);
+
+        \App\Models\DrawGroupRegistration::create([
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        $this->assertDatabaseHas('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+
+        $this->actingAs($admin);
+        $this->post(route('admin.category.registration.withdraw', $reg));
+
+        // HOTFIX 3: draw_group_registrations must be removed
+        $this->assertDatabaseMissing('draw_group_registrations', [
+            'draw_group_id'   => $group->id,
+            'registration_id' => $registrationId,
+        ]);
+    }
+
+    public function test_admin_withdrawal_sets_withdrawn_status_and_draw_group_is_absent(): void
+    {
+        $admin = $this->adminUser();
+        $event = Event::factory()->create();
+        $ce    = CategoryEvent::factory()->for($event)->create();
+
+        $reg = $this->activeRegistration(['category_event_id' => $ce->id]);
+
+        $draw = \App\Models\Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $ce->id,
+            'event_id'          => $event->id,
+        ]);
+
+        $group = \App\Models\DrawGroup::create([
+            'draw_id'    => $draw->id,
+            'name'       => 'Group B',
+            'sort_order' => 1,
+        ]);
+
+        \App\Models\DrawGroupRegistration::create([
+            'draw_group_id'   => $group->id,
+            'registration_id' => $reg->registration_id,
+        ]);
+
+        $this->actingAs($admin);
+        $this->post(route('admin.category.registration.withdraw', $reg));
+
+        $reg->refresh();
+        $this->assertEquals('withdrawn', $reg->status);
+
+        $inGroup = \App\Models\DrawGroupRegistration::where('registration_id', $reg->registration_id)->exists();
+        $this->assertFalse($inGroup, 'Withdrawn player must not remain in any draw group');
+    }
+
+    public function test_non_super_user_admin_withdrawal_does_not_redirect_to_refund_chooser(): void
+    {
+        // Regular admin (not super-user): withdrawal succeeds but no refund chooser redirect
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $reg = CategoryEventRegistration::factory()
+            ->paid()
+            ->create(['status' => 'active']);
+
+        $this->actingAs($admin);
+
+        $response = $this->post(route('admin.category.registration.withdraw', $reg));
+
+        $response->assertStatus(302);
+        $response->assertSessionHasNoErrors();
+        $response->assertSessionHas('success');
+
+        // Must NOT redirect to refund chooser
+        $location = $response->headers->get('location', '');
+        $this->assertStringNotContainsString('refund', $location);
+    }
+
+    public function test_super_user_admin_withdrawal_of_paid_registration_redirects_to_refund_chooser(): void
+    {
+        $superUser = User::factory()->create();
+        $superUser->assignRole('super-user');
+
+        $reg = CategoryEventRegistration::factory()
+            ->paid()
+            ->create(['status' => 'active']);
+
+        $this->actingAs($superUser);
+
+        $response = $this->post(route('admin.category.registration.withdraw', $reg));
+
+        $response->assertStatus(302);
+        $response->assertSessionHasNoErrors();
+
+        // Super-user must be sent to refund chooser
+        $location = $response->headers->get('location', '');
+        $this->assertStringContainsString('refund', $location);
     }
 }

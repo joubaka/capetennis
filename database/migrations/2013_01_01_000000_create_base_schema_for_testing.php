@@ -250,8 +250,10 @@ return new class extends Migration
                 $table->date('dateOfBirth')->nullable();
                 $table->tinyInteger('gender')->nullable();
                 $table->string('cellNr')->nullable();
-                // profile_updated_at and profile_complete are added by
-                // 2026_03_10_000000_add_profile_updated_fields_to_players_table
+                $table->unsignedBigInteger('userId')->nullable();
+                $table->string('coach')->nullable();
+                $table->timestamp('profile_updated_at')->nullable();
+                $table->boolean('profile_complete')->default(false);
                 $table->timestamps();
             });
         }
@@ -327,8 +329,8 @@ return new class extends Migration
                 $table->unsignedBigInteger('wallet_id')->index();
                 $table->string('type');           // credit | debit
                 $table->decimal('amount', 12, 2);
-                $table->string('source_type');
-                $table->unsignedBigInteger('source_id');
+                $table->string('source_type')->nullable();
+                $table->unsignedBigInteger('source_id')->nullable();
                 $table->json('meta')->nullable();
                 $table->timestamps();
             });

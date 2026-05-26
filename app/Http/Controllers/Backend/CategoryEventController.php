@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\Entries\Services\EntryService;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\DrawFormats;
@@ -54,11 +55,9 @@ class CategoryEventController extends Controller
     $eventName = optional($registration->categoryEvent?->event)->name ?? 'Event';
     $categoryName = optional($registration->categoryEvent?->category)->name ?? '';
 
-    // Admin-initiated withdrawals bypass canWithdraw() checks
-    // (deadline, draw-lock, global switch). Recorded in markWithdrawn() activity log.
-    DB::transaction(function () use ($registration, $user) {
-      $registration->markWithdrawn($user, 'admin');
-    });
+    // HOTFIX 3: Route through EntryService::withdrawEntryAsAdmin() so that
+    // draw_group_registrations are removed atomically inside the transaction.
+    app(EntryService::class)->withdrawEntryAsAdmin($registration, $user);
 
     // Send notification emails outside the transaction
     $registration->sendWithdrawalEmails('admin');
