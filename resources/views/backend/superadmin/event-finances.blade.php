@@ -17,8 +17,9 @@
   .child-table thead th { background:#eef1ff; font-size:.75rem; text-transform:uppercase; }
   .child-table td { font-size:.8rem; }
 
-  tr.refund-row { background:#fff4f4 !important; }
-  tr.payout-row { background:#f0f7ff !important; }
+  tr.refund-row      { background:#fff4f4 !important; }
+  tr.payout-row      { background:#f0f7ff !important; }
+  tr.withdrawal-row  { background:#f9f9f9 !important; opacity:.75; }
 
   #txTable td.text-end { font-variant-numeric: tabular-nums; }
   #txTable { table-layout: fixed; width: 100%; }
@@ -61,7 +62,10 @@
       <div class="card border-start border-primary">
         <div class="card-body">
           <small class="text-muted">
-            Gross Income ({{ $totalEntries }} entries{{ isset($refundCount) && $refundCount > 0 ? ", {$refundCount} refunds" : '' }})
+            Gross Income ({{ $totalEntries }} entries
+            @if(isset($refundCount) && $refundCount > 0), {{ $refundCount }} refund{{ $refundCount !== 1 ? 's' : '' }}@endif
+            @if(isset($noRefundCount) && $noRefundCount > 0), {{ $noRefundCount }} withdrawn (no refund)@endif
+            )
           </small>
           <h4>R {{ number_format($totalGross, 2) }}</h4>
         </div>
@@ -154,6 +158,7 @@
             <th style="width:100px;" class="text-end">PayFast Fee</th>
             <th style="width:110px;" class="text-end">Cape Tennis Fee</th>
             <th style="width:110px;" class="text-end">Net to Event</th>
+            <th style="width:80px;" class="text-center">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -207,8 +212,9 @@
             }
           @endphp
 
-          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'payout' ? 'payout-row' : '') }}"
-              @if($payload->count()) data-items='@json($payload)' @endif>
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'withdrawal' ? 'withdrawal-row text-muted' : ($tx->type === 'payout' ? 'payout-row' : '')) }}"
+              @if($payload->count()) data-items='@json($payload)' @endif
+              @if($tx->type === 'withdrawal') title="Withdrawn — no refund issued" @endif>
 
             <td class="dt-toggle">
               @if($payload->count())
@@ -221,20 +227,32 @@
             <td>
               @php
                 $badgeClass = match($tx->type) {
-                  'payment' => 'bg-success',
-                  'refund'  => 'bg-danger',
-                  'payout'  => 'bg-info',
-                  default   => 'bg-secondary',
+                  'payment'    => 'bg-success',
+                  'refund'     => ($tx->refund_status ?? '') === 'pending' ? 'bg-warning text-dark' : 'bg-danger',
+                  'withdrawal' => 'bg-secondary',
+                  'payout'     => 'bg-info',
+                  default      => 'bg-secondary',
+                };
+                $badgeLabel = match($tx->type) {
+                  'refund'     => ($tx->refund_status ?? '') === 'pending' ? 'Refund Pending' : 'Refund',
+                  'withdrawal' => 'Withdrawn',
+                  default      => ucfirst($tx->type),
                 };
               @endphp
-              <span class="badge {{ $badgeClass }}">{{ ucfirst($tx->type) }}</span>
+              <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
             </td>
 
             <td>{{ $tx->player ?? '—' }}</td>
             <td>{{ $tx->method }}</td>
 
             <td class="text-end">
-              @if($tx->type === 'refund' || $tx->type === 'payout')
+              @if($tx->type === 'withdrawal')
+                @if(($tx->original_gross ?? 0) > 0)
+                  <span class="text-muted">R {{ number_format($tx->original_gross, 2) }}</span>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              @elseif($tx->type === 'refund' || $tx->type === 'payout')
                 − R {{ number_format(abs($tx->gross), 2) }}
               @else
                 R {{ number_format($tx->gross, 2) }}
@@ -258,6 +276,20 @@
             <td class="text-end {{ $tx->net < 0 ? 'text-danger' : 'text-success' }}">
               {{ $tx->net < 0 ? '− ' : '' }} R {{ number_format(abs($tx->net), 2) }}
             </td>
+            <td class="text-center">
+              @if($tx->type === 'withdrawal' && ($tx->original_gross ?? 0) > 0 && ($tx->cer_id ?? null))
+                <button type="button"
+                        class="btn btn-xs btn-outline-warning py-0 px-1"
+                        data-bs-toggle="modal"
+                        data-bs-target="#fullRefundModal"
+                        data-player="{{ $tx->player }}"
+                        data-amount="{{ $tx->original_gross }}"
+                        data-route="{{ route('superadmin.finances.full-refund.registration', [$event, $tx->cer_id]) }}"
+                        title="Issue refund for this withdrawal">
+                  <i class="ti ti-cash-banknote" style="font-size:.85rem;"></i>
+                </button>
+              @endif
+            </td>
           </tr>
         @endforeach
         </tbody>
@@ -268,16 +300,19 @@
             <td class="text-end text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</td>
             <td class="text-end text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</td>
             <td class="text-end {{ $netTournamentIncome < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($netTournamentIncome, 2) }}</td>
+            <td></td>
           </tr>
           @if($totalPaidOut > 0)
           <tr class="payout-row">
             <td colspan="5" class="text-end">Total Paid Out to Convenors</td>
             <td class="text-end text-danger" colspan="3">− R {{ number_format($totalPaidOut, 2) }}</td>
             <td class="text-end text-danger">− R {{ number_format($totalPaidOut, 2) }}</td>
+            <td></td>
           </tr>
           <tr>
             <td colspan="5" class="text-end fw-bold">Balance</td>
             <td colspan="4" class="text-end fw-bold {{ $balance < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($balance, 2) }}</td>
+            <td></td>
           </tr>
           @endif
         </tfoot>
@@ -626,7 +661,7 @@
 $(function () {
   const table = $('#txTable').DataTable({
     order: [[1, 'desc']],
-    columnDefs: [{ orderable: false, targets: 0 }],
+    columnDefs: [{ orderable: false, targets: [0, 9] }],
     autoWidth: false
   });
 

@@ -497,32 +497,6 @@ class RegistrationRefundController extends Controller
       ->latest()
       ->get();
 
-    Log::debug('BANK INDEX: pending counts', [
-      'pending_registration_refunds' => $pendingRefunds->count(),
-      'pending_team_refunds' => $pendingTeamRefunds->count(),
-    ]);
-
-    // Detailed debug dump (IDs + key fields) to help trace missing rows in view
-    try {
-      Log::debug('BANK INDEX: pending team refunds data', [
-        'team_refunds' => $pendingTeamRefunds->map(function ($r) {
-          return [
-            'id' => $r->id,
-            'team_id' => $r->team_id,
-            'player_id' => $r->player_id,
-            'event_id' => $r->event_id,
-            'refund_status' => $r->refund_status,
-            'refund_net' => $r->refund_net,
-            'refund_account_name' => $r->refund_account_name,
-            'refund_bank_name' => $r->refund_bank_name,
-            'updated_at' => optional($r->updated_at)->toDateTimeString(),
-          ];
-        })->toArray()
-      ]);
-    } catch (\Throwable $e) {
-      Log::error('BANK INDEX debug dump failed', ['error' => $e->getMessage()]);
-    }
-
     return view('admin.refunds.bank-index', compact(
       'pendingRefunds',
       'completedRefunds',
@@ -733,9 +707,11 @@ class RegistrationRefundController extends Controller
     }
 
     // No PayFast transaction — mark as completed (manual bank refund processed)
-    $registration->update([
-      'refund_status' => 'completed',
-      'refunded_at' => now(),
+    app(RefundExecutionService::class)->executeBankRefund($registration, [
+      'refund_method' => 'bank',
+      'refund_gross'  => $registration->refund_gross,
+      'refund_fee'    => $registration->refund_fee,
+      'refund_net'    => $registration->refund_net,
     ]);
 
     Log::info('BANK REFUND COMPLETED (manual)', [

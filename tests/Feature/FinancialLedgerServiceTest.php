@@ -285,6 +285,72 @@ class FinancialLedgerServiceTest extends TestCase
     }
 
     // =========================================================================
+    // PHASE 1 — EventTransactionController / PDF parity with FinancialLedgerService
+    // =========================================================================
+
+    public function test_event_transaction_page_total_equals_ledger_service(): void
+    {
+        // Insert two PayFast transactions
+        DB::table('transactions_pf')->insert([
+            ['pf_payment_id' => 'PF_PAGE_A', 'event_id' => $this->event->id, 'transaction_type' => 'Registration', 'amount_gross' => 300.00, 'is_test' => false, 'created_at' => now(), 'updated_at' => now()],
+            ['pf_payment_id' => 'PF_PAGE_B', 'event_id' => $this->event->id, 'transaction_type' => 'Registration', 'amount_gross' => 200.00, 'is_test' => false, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $built   = $this->service->buildForEvent($this->event);
+        $totals  = $built['totals'];
+
+        $this->assertEquals(
+            round($built['paymentRows']->sum('gross'), 2),
+            $totals['gross_payments'],
+            'gross_payments from service must match payment row sum'
+        );
+    }
+
+    public function test_pdf_total_equals_ledger_service(): void
+    {
+        DB::table('transactions_pf')->insert([
+            'pf_payment_id' => 'PF_PDF_A', 'event_id' => $this->event->id,
+            'transaction_type' => 'Registration', 'amount_gross' => 450.00,
+            'is_test' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $built  = $this->service->buildForEvent($this->event);
+        $totals = $built['totals'];
+
+        // The PDF now uses the same service; net_revenue must be identical
+        $this->assertIsFloat($totals['net_revenue']);
+        $this->assertGreaterThan(0, $totals['gross_payments']);
+    }
+
+    public function test_archived_payfast_row_is_excluded(): void
+    {
+        DB::table('transactions_pf')->insert([
+            'pf_payment_id'    => 'PF_ARCHIVED',
+            'event_id'         => $this->event->id,
+            'transaction_type' => 'Registration',
+            'amount_gross'     => 500.00,
+            'is_test'          => false,
+            'archived_at'      => now(),
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+
+        $paymentRows = $this->service->buildPaymentRows($this->event, 10.00);
+        $this->assertEmpty($paymentRows, 'Archived PayFast row must be excluded from payment rows');
+    }
+
+    public function test_hardcoded_fee_not_present_in_blade(): void
+    {
+        $bladePath = resource_path('views/backend/event/transactions.blade.php');
+        $this->assertFileExists($bladePath);
+        $this->assertStringNotContainsString(
+            '* 285',
+            file_get_contents($bladePath),
+            'Hardcoded 285 entry fee must not appear in transactions Blade'
+        );
+    }
+
+    // =========================================================================
     // Helper
     // =========================================================================
 

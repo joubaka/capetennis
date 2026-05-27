@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\Models\Wallet;
-use App\Services\Wallet\WalletService;
-use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use App\Exceptions\RefundAlreadyProcessedException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -163,33 +162,29 @@ class AdminRegistrationRefundController extends Controller
       $user = $payer; // used in success message below
 
       try {
-        DB::transaction(function () use ($registration, $wallet, $gross, $fee, $net, $event) {
-          app(WalletService::class)->credit(
-            $wallet,
-            $net,
-            'admin_refund',
-            $registration->id,
-            [
-              'registration_id' => $registration->id,
-              'event_id'        => $event->id,
-              'gross'           => $gross,
-              'fee'             => $fee,
-              'net'             => $net,
-              'method'          => 'wallet',
-              'reference'       => $event->name,
-              'initiated_by'    => 'admin',
-            ]
-          );
-
-          $registration->update([
+        app(RefundExecutionService::class)->executeWalletRefund(
+          $registration,
+          $wallet,
+          $net,
+          'admin_refund',
+          $registration->id,
+          [
+            'registration_id' => $registration->id,
+            'event_id'        => $event->id,
+            'gross'           => $gross,
+            'fee'             => $fee,
+            'net'             => $net,
+            'method'          => 'wallet',
+            'reference'       => $event->name,
+            'initiated_by'    => 'admin',
+          ],
+          [
             'refund_method' => 'wallet',
-            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
             'refund_gross'  => $gross,
             'refund_fee'    => $fee,
             'refund_net'    => $net,
-            'refunded_at'   => now(),
-          ]);
-        });
+          ]
+        );
 
         activity('refund')
           ->performedOn($registration)
@@ -217,13 +212,7 @@ class AdminRegistrationRefundController extends Controller
           ->route('admin.events.entries.new', $event)
           ->with('success', 'Wallet refund of R' . number_format($net, 2) . " credited to {$user->name}'s wallet (10% fee R" . number_format($fee, 2) . ' retained).');
 
-      } catch (DuplicateTransactionException $e) {
-        $registration->update([
-          'refund_method' => 'wallet',
-          'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
-          'refunded_at'   => now(),
-        ]);
-
+      } catch (RefundAlreadyProcessedException $e) {
         return redirect()
           ->route('admin.events.entries.new', $event)
           ->with('success', 'Refund already processed (wallet).');
@@ -274,17 +263,12 @@ class AdminRegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error'));
         }
 
-        DB::transaction(function () use ($registration, $gross, $fee, $net) {
-          CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-          $registration->update([
-            'refund_method' => 'payfast',
-            'refund_status' => CategoryEventRegistration::REFUND_COMPLETED,
-            'refund_gross'  => $gross,
-            'refund_fee'    => $fee,
-            'refund_net'    => $net,
-            'refunded_at'   => now(),
-          ]);
-        });
+        app(RefundExecutionService::class)->executeBankRefund($registration, [
+          'refund_method' => 'payfast',
+          'refund_gross'  => $gross,
+          'refund_fee'    => $fee,
+          'refund_net'    => $net,
+        ]);
 
         activity('refund')
           ->performedOn($registration)

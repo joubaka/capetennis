@@ -115,9 +115,12 @@ class SuperAdminFinanceController extends Controller
             ? $paymentRows->count()
             : $paymentRows->sum(fn($t) => $t->entryCount ?? 1);
 
-        $refundCount = $refundRows->count();
+        $accountingRefundRows = $refundRows->where('type', 'refund');
+        $noRefundRows        = $refundRows->where('type', 'withdrawal');
+        $refundCount         = $accountingRefundRows->count();
+        $noRefundCount       = $noRefundRows->count();
 
-        // ── Payout models for the form ────────────────────────────────────
+        // ── Payout models for the form
         $payoutModels = EventPayout::with(['convenor.user', 'paidByUser'])
             ->where('event_id', $event->id)
             ->orderByDesc('paid_at')
@@ -164,6 +167,7 @@ class SuperAdminFinanceController extends Controller
             'isTeamEvent',
             'totalEntries',
             'refundCount',
+            'noRefundCount',
             'totalGross',
             'grossPayments',
             'completedRefunds',

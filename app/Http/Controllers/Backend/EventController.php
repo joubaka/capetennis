@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Finance\Services\FinancialLedgerService;
 use App\Models\Event;
 use App\Models\Series;
 use Barryvdh\DomPDF\Facade\Pdf as FacadePdf;
@@ -60,12 +61,38 @@ class EventController extends Controller
   {
     $event = Event::findOrFail($eventId);
 
-    $data = EventTransactionController::buildLedger($event);
+    /** @var FinancialLedgerService $ledgerService */
+    $ledgerService = app(FinancialLedgerService::class);
 
-    $pdf = FacadePdf::loadView(
-      'backend.adminPage.pdf.transactions',
-      array_merge(['event' => $event], $data)
-    );
+    $built       = $ledgerService->buildForEvent($event);
+    $paymentRows = $built['paymentRows'];
+    $refundRows  = $built['refundRows'];
+    $payoutRows  = $built['payoutRows'];
+    $totals      = $built['totals'];
+
+    $isTeamEvent  = $event->isTeam();
+    $totalEntries = $isTeamEvent
+      ? $paymentRows->count()
+      : $paymentRows->sum(fn($r) => $r->entryCount ?? 1);
+
+    $ledger = collect()
+      ->merge($paymentRows)
+      ->merge($refundRows)
+      ->merge($payoutRows)
+      ->sortByDesc('created_at')
+      ->values();
+
+    $pdf = FacadePdf::loadView('backend.adminPage.pdf.transactions', [
+      'event'              => $event,
+      'ledger'             => $ledger,
+      'totalEntries'       => $totalEntries,
+      'totalGross'         => $totals['gross_payments'],
+      'totalPayfastFees'   => $totals['pf_fees'],
+      'totalCapeTennisFees'=> $totals['cape_fees'],
+      'totalPayouts'       => $totals['total_paid_out'],
+      'netTournamentIncome'=> $totals['net_revenue'],
+      'totalWithdrawalFees'=> 0,
+    ]);
 
     return $pdf->download("transactions_{$event->id}.pdf");
   }

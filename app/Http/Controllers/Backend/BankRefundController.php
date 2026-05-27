@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
-use App\Services\Wallet\WalletService;
 use App\Mail\BankDetailsRequestMail;
 use App\Exceptions\RefundAlreadyProcessedException;
 use Illuminate\Http\Request;
@@ -55,31 +55,6 @@ class BankRefundController extends Controller
       ->where('refund_status', 'completed')
       ->orderBy('updated_at')
       ->get();
-
-    \Log::debug('BACKEND BANK INDEX counts', [
-      'pending_registration_refunds' => $refunds->count(),
-      'pending_team_refunds' => $pendingTeamRefunds->count(),
-    ]);
-
-    try {
-      \Log::debug('BACKEND BANK INDEX team refunds data', [
-        'team_refunds' => $pendingTeamRefunds->map(function ($r) {
-          return [
-            'id' => $r->id,
-            'team_id' => $r->team_id,
-            'player_id' => $r->player_id,
-            'event_id' => $r->event_id,
-            'refund_status' => $r->refund_status,
-            'refund_net' => $r->refund_net,
-            'refund_account_name' => $r->refund_account_name,
-            'refund_bank_name' => $r->refund_bank_name,
-            'updated_at' => optional($r->updated_at)->toDateTimeString(),
-          ];
-        })->toArray()
-      ]);
-    } catch (\Throwable $e) {
-      \Log::error('BACKEND BANK INDEX debug dump failed', ['error' => $e->getMessage()]);
-    }
 
     return view('backend.refunds.bank', compact('refunds', 'completedRefunds', 'pendingTeamRefunds', 'completedTeamRefunds'));
   }
@@ -282,7 +257,8 @@ class BankRefundController extends Controller
           $refundUser = $registration->user;
           if ($refundUser && $refundUser->wallet) {
             try {
-              app(WalletService::class)->credit(
+              app(RefundExecutionService::class)->executeWalletRefund(
+                $registration,
                 $refundUser->wallet,
                 $walletNet,
                 'event_registration_bank_wallet_refund',
@@ -290,10 +266,11 @@ class BankRefundController extends Controller
                 [
                   'registration_id' => $registration->id,
                   'gross' => $walletPaid,
-                  'fee' => 0,   // wallet portion carries no fee
+                  'fee' => 0,
                   'method' => 'hybrid_bank',
                   'initiated_by' => 'admin',
-                ]
+                ],
+                ['refund_method' => 'bank']
               );
             } catch (\Throwable $walletEx) {
               Log::warning('HYBRID BANK REFUND: wallet credit failed — manual follow-up required', [
@@ -305,13 +282,12 @@ class BankRefundController extends Controller
           }
         }
 
-        DB::transaction(function () use ($registration) {
-          CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-          $registration->update([
-            'refund_status' => 'completed',
-            'refunded_at' => now(),
-          ]);
-        });
+        app(RefundExecutionService::class)->executeBankRefund($registration, [
+          'refund_method' => 'bank',
+          'refund_gross'  => $registration->refund_gross,
+          'refund_fee'    => $registration->refund_fee,
+          'refund_net'    => $registration->refund_net,
+        ]);
 
         activity('refund')
           ->performedOn($registration)
@@ -344,13 +320,12 @@ class BankRefundController extends Controller
     }
 
     // No PayFast transaction — mark as completed (manual)
-    DB::transaction(function () use ($registration) {
-      CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-      $registration->update([
-        'refund_status' => 'completed',
-        'refunded_at' => now(),
-      ]);
-    });
+    app(RefundExecutionService::class)->executeBankRefund($registration, [
+      'refund_method' => 'bank',
+      'refund_gross'  => $registration->refund_gross,
+      'refund_fee'    => $registration->refund_fee,
+      'refund_net'    => $registration->refund_net,
+    ]);
 
     // Notify the player that their bank refund has been processed
     $playerEmail = optional($registration->players->first())->email
@@ -442,13 +417,12 @@ class BankRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
         }
 
-        DB::transaction(function () use ($order) {
-          TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
-          $order->update([
-            'refund_status' => 'completed',
-            'refunded_at' => now(),
-          ]);
-        });
+        app(RefundExecutionService::class)->executeBankRefund($order, [
+          'refund_method' => 'bank',
+          'refund_gross'  => $order->refund_gross,
+          'refund_fee'    => $order->refund_fee,
+          'refund_net'    => $order->refund_net,
+        ]);
 
         activity('refund')
           ->performedOn($order)
@@ -473,13 +447,12 @@ class BankRefundController extends Controller
     }
 
     // No PayFast transaction — mark as completed (manual)
-    DB::transaction(function () use ($order) {
-      TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
-      $order->update([
-        'refund_status' => 'completed',
-        'refunded_at' => now(),
-      ]);
-    });
+    app(RefundExecutionService::class)->executeBankRefund($order, [
+      'refund_method' => 'bank',
+      'refund_gross'  => $order->refund_gross,
+      'refund_fee'    => $order->refund_fee,
+      'refund_net'    => $order->refund_net,
+    ]);
 
     return back()->with('success', 'Team bank refund marked as completed.');
   }
@@ -553,7 +526,8 @@ class BankRefundController extends Controller
               $refundUser = $registration->user;
               if ($refundUser && $refundUser->wallet) {
                 try {
-                  app(WalletService::class)->credit(
+                  app(RefundExecutionService::class)->executeWalletRefund(
+                    $registration,
                     $refundUser->wallet,
                     $walletNet,
                     'event_registration_bank_wallet_refund',
@@ -564,7 +538,8 @@ class BankRefundController extends Controller
                       'fee'             => 0,
                       'method'          => 'hybrid_bank',
                       'initiated_by'    => 'admin_bulk',
-                    ]
+                    ],
+                    ['refund_method' => 'bank']
                   );
                 } catch (\Throwable $walletEx) {
                   Log::warning('BULK: hybrid wallet credit failed — manual follow-up required', [
@@ -589,13 +564,12 @@ class BankRefundController extends Controller
         }
       }
 
-      DB::transaction(function () use ($registration) {
-        CategoryEventRegistration::lockForUpdate()->findOrFail($registration->id);
-        $registration->update([
-          'refund_status' => 'completed',
-          'refunded_at'   => now(),
-        ]);
-      });
+      app(RefundExecutionService::class)->executeBankRefund($registration, [
+        'refund_method' => $refundedViaPayfast ? 'payfast' : 'bank',
+        'refund_gross'  => $registration->refund_gross,
+        'refund_fee'    => $registration->refund_fee,
+        'refund_net'    => $registration->refund_net,
+      ]);
 
       activity('refund')
         ->performedOn($registration)

@@ -85,6 +85,7 @@
   </div>
 
   {{-- SUMMARY --}}
+  @php $totalWithdrawnCount = ($refundCount ?? 0) + ($noRefundCount ?? 0); @endphp
   <div class="row g-3 mb-4">
 
     {{-- 1. GROSS INCOME --}}
@@ -95,6 +96,7 @@
           <h4 class="mb-1">R {{ number_format($totalGross, 2) }}</h4>
           <small class="text-muted d-block">
             {{ $totalEntries }} total {{ $totalEntries === 1 ? 'entry' : 'entries' }}
+            @if(($totalWithdrawnCount ?? 0) > 0) · {{ $totalWithdrawnCount }} withdrew @endif
             @if($refundCount > 0) · {{ $refundCount }} {{ $refundCount === 1 ? 'refund' : 'refunds' }} @endif
           </small>
           @php $payfastEntries = $totalEntries - $adminEntriesCount; @endphp
@@ -117,16 +119,30 @@
     <div class="col-md-2">
       <div class="card border-start border-danger h-100">
         <div class="card-body">
+          @php
+            $activeEntries = $totalEntries - ($completedRefundCount ?? 0);
+          @endphp
           <small class="text-muted d-block mb-1">
-            Withdrawals ({{ $refundCount }})
-            @if($pendingRefundCount > 0)
+            Withdrawals ({{ $totalWithdrawnCount }})
+            @if(($pendingRefundCount ?? 0) > 0)
               <span class="badge bg-warning text-dark ms-1">{{ $pendingRefundCount }} pending</span>
             @endif
           </small>
-          <h4 class="text-danger mb-1">− R {{ number_format($totalWithdrawals, 2) }}</h4>
-          @if($refundCount > 0)
-            <small class="text-muted d-block">R {{ number_format($completedWithdrawalsTotal, 2) }} paid out</small>
-            <small class="text-muted d-block">R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+          @if(($totalWithdrawals ?? 0) > 0)
+            <h4 class="text-danger mb-1">− R {{ number_format($totalWithdrawals, 2) }}</h4>
+            @if(($completedWithdrawalsTotal ?? 0) > 0)
+              <small class="text-muted d-block">R {{ number_format($completedWithdrawalsTotal, 2) }} refunded</small>
+            @endif
+            @if(($pendingWithdrawalsTotal ?? 0) > 0)
+              <small class="text-muted d-block text-warning">R {{ number_format($pendingWithdrawalsTotal, 2) }} pending</small>
+            @endif
+          @else
+            <h4 class="text-danger mb-1">− R 0.00</h4>
+          @endif
+          @if(($noRefundCount ?? 0) > 0)
+            <small class="text-muted d-block mt-1">
+              {{ $noRefundCount }} withdrew · fees not refunded
+            </small>
           @endif
         </div>
       </div>
@@ -158,10 +174,15 @@
         <div class="card-body">
           <small class="text-muted d-block mb-1">Cape Tennis Fees (net)</small>
           <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
-          @php $activeEntries = $totalEntries - $completedRefundCount; @endphp
-          <small class="text-muted d-block">{{ $activeEntries }} active {{ $activeEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}</small>
-          @if($completedRefundCount > 0)
-            <small class="text-muted d-block">{{ $completedRefundCount }} refunded — not charged</small>
+          @php
+            $chargedEntries = $feePerEntry > 0 ? round(abs($totalCapeTennisFees) / $feePerEntry) : 0;
+            $activeNonAdmin = $totalEntries - $adminEntriesCount - ($completedRefundCount ?? 0);
+          @endphp
+          <small class="text-muted d-block">
+            {{ $chargedEntries }} active {{ $chargedEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}
+          </small>
+          @if($adminEntriesCount > 0)
+            <small class="text-muted d-block">{{ $adminEntriesCount }} admin entries = R 0.00 fee</small>
           @endif
         </div>
       </div>
@@ -185,9 +206,10 @@
           <small class="text-muted d-block mb-1">Net Tournament Income</small>
           <h4 class="{{ $netTournamentIncome >= 0 ? 'text-success' : 'text-danger' }} mb-1">R {{ number_format($netTournamentIncome, 2) }}</h4>
           @if($adminEntriesCount > 0)
+            @php $privatelyCollected = round($adminEntriesCount * (float) $event->entryFee, 2); @endphp
             <small class="text-warning d-block">
               <i class="ti ti-alert-triangle me-1"></i>
-              Excludes R {{ number_format($totalGross + $adminEntriesCount * 285, 2) }} privately collected
+              Excludes R {{ number_format($privatelyCollected, 2) }} privately collected
             </small>
           @endif
           <small class="text-muted d-block">After all fees &amp; payouts</small>
@@ -258,6 +280,7 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             if ($tx->type === 'refund') {
               $payload = collect([[
                 'mode'              => 'refund',
+                'refund_status'     => $tx->refund_status ?? '—',
                 'pf_payment_id'     => $tx->pf_payment_id ?? '—',
                 'paid_at'           => optional($tx->paid_at)->format('Y-m-d'),
                 'category'          => $tx->category ?? '—',
@@ -268,11 +291,23 @@ if ($tx->type === 'payment' && isset($tx->order)) {
                 'refund_total'      => number_format(abs($tx->net), 2),
               ]]);
             }
+
+            // WITHDRAWAL (NO-REFUND) CHILD DATA
+            if ($tx->type === 'withdrawal') {
+              $payload = collect([[
+                'mode'           => 'withdrawal',
+                'category'       => $tx->category ?? '—',
+                'paid_at'        => optional($tx->paid_at)->format('Y-m-d'),
+                'original_gross' => number_format($tx->original_gross ?? 0, 2),
+                'refund_status'  => 'No Refund Issued',
+              ]]);
+            }
           @endphp
 
-          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->method === 'Admin Entry' ? 'admin-entry-row' : '') }}"
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'withdrawal' ? 'withdrawal-row text-muted' : ($tx->method === 'Admin Entry' ? 'admin-entry-row' : '')) }}"
               @if($payload->count()) data-items='@json($payload)' @endif
-              @if($tx->method === 'Admin Entry') title="Collected privately — no refund possible" @endif>
+              @if($tx->method === 'Admin Entry') title="Collected privately — no refund possible" @endif
+              @if($tx->type === 'withdrawal') title="Withdrawn — no refund issued" @endif>
 
             <td class="dt-toggle">
               @if($payload->count())
@@ -288,7 +323,13 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               @elseif($tx->type === 'payment')
                 <span class="badge bg-success">Payment</span>
               @elseif($tx->type === 'refund')
-                <span class="badge bg-danger">Refund</span>
+                @if(($tx->refund_status ?? '') === 'pending')
+                  <span class="badge bg-warning text-dark">Refund Pending</span>
+                @else
+                  <span class="badge bg-danger">Refund</span>
+                @endif
+              @elseif($tx->type === 'withdrawal')
+                <span class="badge bg-secondary">Withdrawn</span>
               @elseif($tx->type === 'payout')
                 <span class="badge bg-secondary">Payout</span>
               @else
@@ -318,9 +359,17 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             </td>
 
             {{-- Gross --}}
-            <td class="text-end {{ $tx->type === 'payout' ? 'text-secondary' : '' }}">
-              {{ in_array($tx->type, ['refund', 'payout']) ? '− ' : '' }}
-              R {{ number_format(abs($tx->gross), 2) }}
+            <td class="text-end {{ $tx->type === 'payout' ? 'text-secondary' : ($tx->type === 'withdrawal' ? 'text-muted' : '') }}">
+              @if($tx->type === 'withdrawal')
+                @if(($tx->original_gross ?? 0) > 0)
+                  <span class="text-muted">R {{ number_format($tx->original_gross, 2) }}</span>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              @else
+                {{ in_array($tx->type, ['refund', 'payout']) ? '− ' : '' }}
+                R {{ number_format(abs($tx->gross), 2) }}
+              @endif
             </td>
 
             {{-- PayFast / Withdrawal Fee --}}
@@ -403,9 +452,13 @@ $(function () {
     ========================= */
     if (items[0].mode === 'refund') {
       const r = items[0];
+      const statusBadge = r.refund_status === 'pending'
+        ? `<span class="badge bg-warning text-dark">Pending</span>`
+        : `<span class="badge bg-success">Completed</span>`;
       return `
         <table class="table table-sm mb-0 child-table">
           <tbody>
+            <tr><th>Status</th><td>${statusBadge}</td></tr>
             <tr><th>PayFast ID</th><td><code>${r.pf_payment_id}</code></td></tr>
             <tr><th>Original Payment Date</th><td>${r.paid_at}</td></tr>
             <tr><th>Category</th><td>${r.category}</td></tr>
@@ -416,6 +469,24 @@ $(function () {
               <th>Total Refund Impact</th>
               <td>R ${r.refund_total}</td>
             </tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    /* =========================
+       WITHDRAWAL (NO REFUND)
+    ========================= */
+    if (items[0].mode === 'withdrawal') {
+      const w = items[0];
+      return `
+        <table class="table table-sm mb-0 child-table">
+          <tbody>
+            <tr><th>Status</th><td><span class="badge bg-secondary">No Refund Issued</span></td></tr>
+            <tr><th>Category</th><td>${w.category}</td></tr>
+            <tr><th>Original Payment Date</th><td>${w.paid_at || '—'}</td></tr>
+            <tr><th>Original Amount Paid</th><td class="text-muted">R ${w.original_gross}</td></tr>
+            <tr><td colspan="2" class="text-muted small">This withdrawal was processed without a refund. The entry fee is retained.</td></tr>
           </tbody>
         </table>
       `;

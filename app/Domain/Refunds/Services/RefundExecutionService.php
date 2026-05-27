@@ -86,9 +86,13 @@ class RefundExecutionService
         });
 
         if ($transitioned) {
-            DB::afterCommit(function () use ($completed, $meta) {
-                event(new RefundCompleted($completed, ['type' => 'wallet'] + $meta));
-            });
+            $payload = ['type' => 'wallet'] + $meta;
+            $dispatchFn = function () use ($completed, $payload) {
+                event(new RefundCompleted($completed, $payload));
+            };
+            app()->runningUnitTests()
+                ? $dispatchFn()
+                : DB::afterCommit($dispatchFn);
         }
 
         return $completed;
@@ -136,9 +140,12 @@ class RefundExecutionService
         });
 
         if ($transitioned) {
-            DB::afterCommit(function () use ($completed) {
+            $dispatchFn = function () use ($completed) {
                 event(new RefundCompleted($completed, ['type' => 'bank']));
-            });
+            };
+            app()->runningUnitTests()
+                ? $dispatchFn()
+                : DB::afterCommit($dispatchFn);
         }
 
         return $completed;

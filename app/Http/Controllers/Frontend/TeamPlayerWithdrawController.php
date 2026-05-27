@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\Player;
 use App\Models\SiteSetting;
 use App\Models\Team;
@@ -12,7 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use App\Services\Wallet\WalletService;
 use App\Services\Wallet\Exceptions\DuplicateTransactionException;
 use App\Exceptions\RefundAlreadyProcessedException;
 
@@ -194,38 +194,52 @@ class TeamPlayerWithdrawController extends Controller
     // WALLET
     if ($request->input('method') === 'wallet') {
       try {
-        DB::transaction(function () use ($order, $user, $teamPlayer, $gross, $fee, $net, $team, $player) {
+        DB::transaction(function () use ($order, $teamPlayer) {
           // Pessimistic lock prevents concurrent double-refund
           TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
           if ($order->isRefundCompleted() || $order->isRefundPending()) {
             throw new \App\Exceptions\RefundAlreadyProcessedException();
           }
 
-          app(WalletService::class)->credit(
-            $order->user->wallet,
-            (float) $net,
-            'team_player_refund',
-            $order->id,
-            [
-              'team_id' => $team->id,
-              'player_id' => $player->id,
-              'gross' => $gross,
-              'fee' => $fee,
-              'method' => 'wallet',
-              'reference' => optional($order->event)->name ?? 'Team Refund',
-            ]
-          );
-
-          // clear slot and mark order unpaid
+          // Clear team player slot
           $teamPlayer->player_id = 0;
           $teamPlayer->pay_status = 0;
           $teamPlayer->save();
 
+          // Mark order as unpaid so slot is freed
           $order->pay_status = 0;
           $order->payfast_paid = false;
           $order->wallet_debited = false;
           $order->save();
         });
+
+        $wallet = $order->user->wallet;
+
+        if (!$wallet) {
+          return redirect()->route('events.show', [$eventId])->withErrors('Wallet not found for this user.');
+        }
+
+        app(RefundExecutionService::class)->executeWalletRefund(
+          $order,
+          $wallet,
+          (float) $net,
+          'team_player_refund',
+          $order->id,
+          [
+            'team_id'   => $team->id,
+            'player_id' => $player->id,
+            'gross'     => $gross,
+            'fee'       => $fee,
+            'method'    => 'wallet',
+            'reference' => optional($order->event)->name ?? 'Team Refund',
+          ],
+          [
+            'refund_method' => 'wallet',
+            'refund_gross'  => $gross,
+            'refund_fee'    => $fee,
+            'refund_net'    => $net,
+          ]
+        );
 
         $teamRefEventName = optional($order->event)->name ?? 'Team Refund';
 
@@ -316,9 +330,11 @@ class TeamPlayerWithdrawController extends Controller
         ]);
 
         if ($result['success']) {
-          $order->update([
-            'refund_status' => 'completed',
-            'refunded_at' => now(),
+          app(RefundExecutionService::class)->executeBankRefund($order, [
+            'refund_method' => 'payfast',
+            'refund_gross'  => $gross,
+            'refund_fee'    => $fee,
+            'refund_net'    => $net,
           ]);
 
           activity('refund')
