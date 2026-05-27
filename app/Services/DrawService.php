@@ -605,7 +605,7 @@ class DrawService
       }
 
       if ($n % 2 === 1) {
-        $ids[] = 0;
+        $ids[] = null;
         $n++;
         Log::info("   ➕ Added BYE (odd number of players)");
       }
@@ -625,7 +625,7 @@ class DrawService
           $home = $players[$i];
           $away = $players[$n - 1 - $i];
 
-          if ($home === 0 || $away === 0) {
+          if ($home === null || $away === null) {
             Log::info("      ⏭ BYE skipped (home={$home}, away={$away})");
             continue;
           }

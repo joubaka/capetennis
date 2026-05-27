@@ -2,6 +2,11 @@
 
 namespace Tests\Feature\Platform;
 
+use App\Domain\Entries\Events\EntryCreated;
+use App\Domain\Entries\Events\EntryLocked;
+use App\Domain\Entries\Events\EntryUnlocked;
+use App\Models\CategoryEvent;
+use App\Models\User;
 use App\Services\FeatureFlags;
 use App\Services\PlatformAuditLogger;
 use App\Services\PlatformHealthService;
@@ -9,11 +14,25 @@ use App\Services\PerformanceTracker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class PlatformGovernanceTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin',      'guard_name' => 'web']);
+    }
+
+    private function adminUser(): User
+    {
+        return User::factory()->create()->assignRole('admin');
+    }
 
     // ==============================================================
     // PlatformHealthService
@@ -231,5 +250,111 @@ class PlatformGovernanceTest extends TestCase
     {
         $this->artisan('platform:release-audit --since=1hour')
             ->assertExitCode(0);
+    }
+
+    // ==============================================================
+    // FIX 3 — EventEntryController uses EntryService (admin add)
+    // ==============================================================
+
+    public function test_admin_add_player_fires_entry_created_event(): void
+    {
+        Event::fake([EntryCreated::class]);
+
+        $admin        = $this->adminUser();
+        $categoryEvent = CategoryEvent::factory()->create();
+
+        $player = \App\Models\Player::factory()->create();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.category.addPlayer', $categoryEvent), [
+                'registration_id' => $player->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Event::assertDispatched(EntryCreated::class, fn ($e) => $e->source === 'admin');
+    }
+
+    public function test_admin_add_player_blocked_when_category_locked(): void
+    {
+        $admin         = $this->adminUser();
+        $categoryEvent = CategoryEvent::factory()->create(['locked_at' => now()]);
+        $player        = \App\Models\Player::factory()->create();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.category.addPlayer', $categoryEvent), [
+                'registration_id' => $player->id,
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_lock_category_fires_entry_locked_event(): void
+    {
+        Event::fake([EntryLocked::class]);
+
+        $admin         = $this->adminUser();
+        $categoryEvent = CategoryEvent::factory()->create(['locked_at' => null]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.category.lock', $categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', true);
+
+        Event::assertDispatched(EntryLocked::class);
+    }
+
+    public function test_unlock_category_fires_entry_unlocked_event(): void
+    {
+        Event::fake([EntryUnlocked::class]);
+
+        $admin         = $this->adminUser();
+        $categoryEvent = CategoryEvent::factory()->create(['locked_at' => now()]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.category.unlock', $categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', false);
+
+        Event::assertDispatched(EntryUnlocked::class);
+    }
+
+    // ==============================================================
+    // FIX 4 — ScheduleEngine lock guard
+    // ==============================================================
+
+    public function test_schedule_engine_blocks_locked_draw(): void
+    {
+        $draw = \App\Models\Draw::factory()->create(['locked' => true, 'published' => false]);
+
+        $engine = app(\App\Services\ScheduleEngine::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/locked/');
+
+        $engine->scheduleDraw($draw->id, 1, now()->toDateTimeString());
+    }
+
+    public function test_schedule_engine_blocks_published_draw(): void
+    {
+        $draw = \App\Models\Draw::factory()->create(['locked' => false, 'published' => true]);
+
+        $engine = app(\App\Services\ScheduleEngine::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/published/');
+
+        $engine->scheduleDraw($draw->id, 1, now()->toDateTimeString());
+    }
+
+    public function test_schedule_engine_allows_unlocked_draft_draw(): void
+    {
+        $draw = \App\Models\Draw::factory()->create(['locked' => false, 'published' => false]);
+
+        $engine = app(\App\Services\ScheduleEngine::class);
+
+        // No fixtures → returns true without error
+        $result = $engine->scheduleDraw($draw->id, 1, now()->toDateTimeString());
+
+        $this->assertTrue($result);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Draw;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use Carbon\Carbon;
@@ -9,10 +10,28 @@ use Carbon\Carbon;
 class ScheduleEngine
 {
   /**
+   * @throws \RuntimeException if the draw is locked or published
+   */
+  private function assertSchedulable(int $drawId): void
+  {
+    $draw = Draw::findOrFail($drawId);
+
+    if ($draw->locked) {
+      throw new \RuntimeException("Cannot schedule a locked draw (draw #{$drawId}).");
+    }
+
+    if ($draw->published) {
+      throw new \RuntimeException("Cannot schedule a published draw (draw #{$drawId}).");
+    }
+  }
+
+  /**
    * Schedule the entire draw.
    */
   public function scheduleDraw(int $drawId, int $venueId, string $startTime, ?string $court = null, int $duration = 75)
   {
+    $this->assertSchedulable($drawId);
+
     $fixtures = Fixture::where('draw_id', $drawId)
       ->orderBy('round')
       ->orderBy('match_nr')
@@ -45,6 +64,8 @@ class ScheduleEngine
    */
   public function scheduleRound(int $drawId, int $round, int $venueId, string $startTime, ?string $court = null, int $duration = 75)
   {
+    $this->assertSchedulable($drawId);
+
     $fixtures = Fixture::where('draw_id', $drawId)
       ->where('round', $round)
       ->orderBy('match_nr')
@@ -79,6 +100,8 @@ class ScheduleEngine
   {
     $fx = Fixture::findOrFail($fixtureId);
 
+    $this->assertSchedulable($fx->draw_id);
+
     return OrderOfPlay::updateOrCreate(
       ['fixture_id' => $fixtureId],
       [
@@ -103,6 +126,8 @@ class ScheduleEngine
    */
   public function autoSchedule(int $drawId, int $duration = 75, array $venues = [], string $startTime = '')
   {
+    $this->assertSchedulable($drawId);
+
     if (empty($venues)) {
       throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a non-empty $venues array.');
     }

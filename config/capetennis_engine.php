@@ -61,7 +61,7 @@ return [
     | Set to 0 to disable automatic rollback.
     |
     */
-    'mismatch_rollback_threshold' => env('DRAW_ENGINE_MISMATCH_THRESHOLD', 25),
+    'mismatch_rollback_threshold' => env('DRAW_ENGINE_MISMATCH_THRESHOLD', 5),
 
     /*
     |--------------------------------------------------------------------------

@@ -502,8 +502,71 @@ class EngineParityTest extends TestCase
 
         $this->assertEquals(1, EngineComparisonLog::count());
 
-        EngineComparisonLog::truncate();
+        // Use delete() instead of truncate() — truncate() cannot run inside
+        // the wrapping transaction used by RefreshDatabase.
+        EngineComparisonLog::query()->delete();
 
         $this->assertEquals(0, EngineComparisonLog::count());
+    }
+
+    // ------------------------------------------------------------------
+    // MISMATCH THRESHOLD (FIX 5)
+    // ------------------------------------------------------------------
+
+    public function test_mismatch_threshold_default_is_five(): void
+    {
+        $this->assertSame(5, (int) config('capetennis_engine.mismatch_rollback_threshold'));
+    }
+
+    public function test_mismatch_above_threshold_triggers_pilot_monitor_alert(): void
+    {
+        $draw = $this->makeDraw(['engine_mode' => EngineRouter::MODE_CANONICAL]);
+
+        // mismatch_alert_pct default is 5.0 — put 6% mismatches in metrics
+        $metrics = [
+            'total_runs'         => 100,
+            'mismatch_count'     => 6,
+            'mismatch_pct'       => 6.0,
+            'fallback_count'     => 0,
+            'fallback_pct'       => 0.0,
+            'rollback_count'     => 0,
+            'score_delete_count' => 0,
+            'duplicate_count'    => 0,
+            'total_duration_ms'  => 0,
+            'avg_duration_ms'    => 0,
+            'open_feedback'      => 0,
+        ];
+
+        $alerts = \App\Services\Pilot\PilotMonitor::alertsForMetrics($draw->id, $metrics);
+
+        $hasAlert = collect($alerts)->contains(fn ($a) => str_contains(strtoupper($a), 'MISMATCH'));
+
+        $this->assertTrue($hasAlert, 'A 6% mismatch rate must trigger a MISMATCH ALERT');
+    }
+
+    public function test_mismatch_at_threshold_does_not_trigger_alert(): void
+    {
+        $draw = $this->makeDraw(['engine_mode' => EngineRouter::MODE_CANONICAL]);
+
+        // Exactly at 5.0% — alertsForMetrics uses > not >=, so this should NOT alert
+        $metrics = [
+            'total_runs'         => 100,
+            'mismatch_count'     => 5,
+            'mismatch_pct'       => 5.0,
+            'fallback_count'     => 0,
+            'fallback_pct'       => 0.0,
+            'rollback_count'     => 0,
+            'score_delete_count' => 0,
+            'duplicate_count'    => 0,
+            'total_duration_ms'  => 0,
+            'avg_duration_ms'    => 0,
+            'open_feedback'      => 0,
+        ];
+
+        $alerts = \App\Services\Pilot\PilotMonitor::alertsForMetrics($draw->id, $metrics);
+
+        $hasAlert = collect($alerts)->contains(fn ($a) => str_contains(strtoupper($a), 'MISMATCH'));
+
+        $this->assertFalse($hasAlert, 'A 5.0% mismatch rate must NOT trigger an alert (boundary is exclusive)');
     }
 }

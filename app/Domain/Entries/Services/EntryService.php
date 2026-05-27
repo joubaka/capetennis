@@ -208,6 +208,42 @@ class EntryService
                             ->where('registration_id', $entry->registration_id)
                             ->delete();
                     }
+
+                    // Null out unplayed fixture slots for this registration
+                    $regId = $entry->registration_id;
+                    $drawIds = \DB::table('draws')
+                        ->where('event_id', $eventId)
+                        ->pluck('id');
+
+                    if ($drawIds->isNotEmpty()) {
+                        \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where('registration1_id', $regId)
+                            ->update(['registration1_id' => null]);
+
+                        \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where('registration2_id', $regId)
+                            ->update(['registration2_id' => null]);
+
+                        // Remove schedules for those now-orphaned unplayed fixtures
+                        $orphanedFixtureIds = \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where(function ($q) use ($regId) {
+                                $q->whereNull('registration1_id')
+                                  ->orWhereNull('registration2_id');
+                            })
+                            ->pluck('id');
+
+                        if ($orphanedFixtureIds->isNotEmpty()) {
+                            \DB::table('order_of_plays')
+                                ->whereIn('fixture_id', $orphanedFixtureIds)
+                                ->delete();
+                        }
+                    }
                 }
             }
 
@@ -276,6 +312,42 @@ class EntryService
                             ->whereIn('draw_group_id', $drawGroupIds)
                             ->where('registration_id', $entry->registration_id)
                             ->delete();
+                    }
+
+                    // Null out unplayed fixture slots for this registration
+                    $regId = $entry->registration_id;
+                    $drawIds = \DB::table('draws')
+                        ->where('event_id', $eventId)
+                        ->pluck('id');
+
+                    if ($drawIds->isNotEmpty()) {
+                        \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where('registration1_id', $regId)
+                            ->update(['registration1_id' => null]);
+
+                        \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where('registration2_id', $regId)
+                            ->update(['registration2_id' => null]);
+
+                        // Remove schedules for those now-orphaned unplayed fixtures
+                        $orphanedFixtureIds = \DB::table('fixtures')
+                            ->whereIn('draw_id', $drawIds)
+                            ->whereNull('winner_registration')
+                            ->where(function ($q) use ($regId) {
+                                $q->whereNull('registration1_id')
+                                  ->orWhereNull('registration2_id');
+                            })
+                            ->pluck('id');
+
+                        if ($orphanedFixtureIds->isNotEmpty()) {
+                            \DB::table('order_of_plays')
+                                ->whereIn('fixture_id', $orphanedFixtureIds)
+                                ->delete();
+                        }
                     }
                 }
             }

@@ -358,25 +358,22 @@ class RRHardeningTest extends TestCase
         $fixture = $this->makeRRFixture($draw);
         $user    = $this->adminUser();
 
-        // The fixtures table may not have court/start_time in the test DB.
-        // This test verifies the endpoint is authorized and returns a valid envelope.
-        try {
-            $response = $this->actingAs($user)->postJson(
-                route('api.draws.schedule.save', $draw),
-                ['items' => [[
-                    'fixture_id' => $fixture->id,
-                    'court'      => 'Court 3',
-                    'start_time' => '10:00',
-                    'round'      => '1',
-                ]]]
-            );
+        $response = $this->actingAs($user)->postJson(
+            route('api.draws.schedule.save', $draw),
+            ['items' => [[
+                'fixture_id' => $fixture->id,
+                'court'      => 'Court 3',
+                'start_time' => '2026-01-15 10:00:00',
+                'round'      => '1',
+            ]]]
+        );
 
-            // If the table has the columns, we expect 200
-            $response->assertOk()->assertJson(['success' => true]);
-        } catch (\Exception $e) {
-            // Column missing in test DB is acceptable — authorization already validated above
-            $this->markTestSkipped('fixtures table missing court/start_time columns in test DB: ' . $e->getMessage());
-        }
+        $response->assertOk()->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('order_of_plays', [
+            'fixture_id' => $fixture->id,
+            'court'      => 'Court 3',
+        ]);
     }
 
     // ─────────────────────────────────────────────
@@ -387,8 +384,18 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw();
         $fixture = $this->makeRRFixture($draw);
-        $fixture->update(['start_time' => '09:00', 'court' => 'Court 1']);
-        $user = $this->adminUser();
+        $user    = $this->adminUser();
+
+        // Create a schedule entry in order_of_plays (the correct table)
+        \Illuminate\Support\Facades\DB::table('order_of_plays')->insert([
+            'fixture_id' => $fixture->id,
+            'draw_id'    => $draw->id,
+            'court'      => 'Court 1',
+            'time'       => '2026-01-15 09:00:00',
+            'venue_id'   => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $response = $this->actingAs($user)->getJson(
             route('api.draws.schedule.summary', $draw)
@@ -435,5 +442,83 @@ class RRHardeningTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('success', true);
+    }
+
+    // ─────────────────────────────────────────────
+    // BYE ENCODING: legacy fixtures use null, not 0
+    // ─────────────────────────────────────────────
+
+    public function test_legacy_rr_bye_uses_null_not_zero(): void
+    {
+        // Odd number of players → DrawService::generateRoundRobinFixtures injects BYE
+        $draw  = $this->makeDraw();
+        $group = $draw->groups()->create(['name' => 'A']);
+
+        // 3 players → 1 BYE injected
+        foreach ([101, 102, 103] as $regId) {
+            \App\Models\DrawGroupRegistration::factory()->create([
+                'draw_group_id'   => $group->id,
+                'registration_id' => $regId,
+            ]);
+        }
+
+        $service = app(\App\Services\DrawService::class);
+        $service->regenerateRoundRobinFixtures($draw);
+
+        // No fixture should ever store 0 in a registration slot
+        $this->assertDatabaseMissing('fixtures', ['registration1_id' => 0]);
+        $this->assertDatabaseMissing('fixtures', ['registration2_id' => 0]);
+    }
+
+    public function test_canonical_rr_bye_uses_null(): void
+    {
+        $draw  = $this->makeDraw();
+        $group = $draw->groups()->create(['name' => 'A']);
+
+        foreach ([201, 202, 203] as $regId) {
+            \App\Models\DrawGroupRegistration::factory()->create([
+                'draw_group_id'   => $group->id,
+                'registration_id' => $regId,
+            ]);
+        }
+
+        app(\App\Domain\Draws\Services\RoundRobinGenerationService::class)->generate($draw);
+
+        $this->assertDatabaseMissing('fixtures', ['registration1_id' => 0]);
+        $this->assertDatabaseMissing('fixtures', ['registration2_id' => 0]);
+    }
+
+    public function test_canonical_and_legacy_bye_fixtures_match_on_null(): void
+    {
+        // Both engines must produce null (not 0) for BYE slots
+        $drawL = $this->makeDraw();
+        $groupL = $drawL->groups()->create(['name' => 'A']);
+
+        $drawC = $this->makeDraw();
+        $groupC = $drawC->groups()->create(['name' => 'A']);
+
+        foreach ([301, 302, 303] as $regId) {
+            \App\Models\DrawGroupRegistration::factory()->create([
+                'draw_group_id'   => $groupL->id,
+                'registration_id' => $regId,
+            ]);
+            \App\Models\DrawGroupRegistration::factory()->create([
+                'draw_group_id'   => $groupC->id,
+                'registration_id' => $regId,
+            ]);
+        }
+
+        app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($drawL);
+        app(\App\Domain\Draws\Services\RoundRobinGenerationService::class)->generate($drawC);
+
+        $legacyByes = \App\Models\Fixture::where('draw_id', $drawL->id)
+            ->where(fn ($q) => $q->whereNull('registration1_id')->orWhereNull('registration2_id'))
+            ->count();
+
+        $canonicalByes = \App\Models\Fixture::where('draw_id', $drawC->id)
+            ->where(fn ($q) => $q->whereNull('registration1_id')->orWhereNull('registration2_id'))
+            ->count();
+
+        $this->assertSame($canonicalByes, $legacyByes, 'BYE count must match between engines');
     }
 }

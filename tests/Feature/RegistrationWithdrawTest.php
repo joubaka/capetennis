@@ -8,6 +8,7 @@ use App\Models\DrawGroup;
 use App\Models\DrawGroupRegistration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -161,5 +162,119 @@ class RegistrationWithdrawTest extends TestCase
             'id'     => $cer->id,
             'status' => 'withdrawn',
         ]);
+    }
+
+    // =========================================================================
+    // FIX 2 — WITHDRAWAL NULLS UNPLAYED FIXTURE SLOTS + REMOVES SCHEDULES
+    // =========================================================================
+
+    public function test_withdrawal_nulls_unplayed_fixture_slots(): void
+    {
+        $user = User::factory()->create()->assignRole('admin');
+        $cer  = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $registrationId = $cer->registration_id;
+        $eventId        = $cer->categoryEvent->event_id;
+
+        $draw = Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $cer->category_event_id,
+            'event_id'          => $eventId,
+        ]);
+
+        // Unplayed fixture — withdrawn player is reg1
+        $fixture = \App\Models\Fixture::factory()->create([
+            'draw_id'             => $draw->id,
+            'registration1_id'    => $registrationId,
+            'registration2_id'    => 999,
+            'winner_registration' => null,
+        ]);
+
+        app(\App\Domain\Entries\Services\EntryService::class)
+            ->withdrawEntryAsAdmin($cer, $user);
+
+        $this->assertDatabaseHas('fixtures', [
+            'id'               => $fixture->id,
+            'registration1_id' => null,
+        ]);
+    }
+
+    public function test_withdrawal_does_not_alter_completed_fixture(): void
+    {
+        $user = User::factory()->create()->assignRole('admin');
+        $cer  = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $registrationId = $cer->registration_id;
+        $eventId        = $cer->categoryEvent->event_id;
+
+        $draw = Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $cer->category_event_id,
+            'event_id'          => $eventId,
+        ]);
+
+        // Completed fixture — winner already set
+        $fixture = \App\Models\Fixture::factory()->create([
+            'draw_id'             => $draw->id,
+            'registration1_id'    => $registrationId,
+            'registration2_id'    => 999,
+            'winner_registration' => $registrationId,
+        ]);
+
+        app(\App\Domain\Entries\Services\EntryService::class)
+            ->withdrawEntryAsAdmin($cer, $user);
+
+        // Completed fixture must be untouched
+        $this->assertDatabaseHas('fixtures', [
+            'id'                  => $fixture->id,
+            'registration1_id'    => $registrationId,
+            'winner_registration' => $registrationId,
+        ]);
+    }
+
+    public function test_withdrawal_removes_schedules_for_unplayed_fixture(): void
+    {
+        $user = User::factory()->create()->assignRole('admin');
+        $cer  = CategoryEventRegistration::factory()
+            ->create(['user_id' => $user->id, 'status' => 'active']);
+
+        $registrationId = $cer->registration_id;
+        $eventId        = $cer->categoryEvent->event_id;
+
+        $draw = Draw::create([
+            'drawName'          => 'RR',
+            'drawType_id'       => 1,
+            'category_event_id' => $cer->category_event_id,
+            'event_id'          => $eventId,
+        ]);
+
+        $fixture = \App\Models\Fixture::factory()->create([
+            'draw_id'             => $draw->id,
+            'registration1_id'    => $registrationId,
+            'registration2_id'    => 999,
+            'winner_registration' => null,
+        ]);
+
+        // Attach a schedule (OOP) to this fixture
+        \Illuminate\Support\Facades\DB::table('order_of_plays')->insert([
+            'fixture_id' => $fixture->id,
+            'draw_id'    => $draw->id,
+            'venue_id'   => 1,
+            'court'      => '1',
+            'time'       => now()->toDateTimeString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixture->id]);
+
+        app(\App\Domain\Entries\Services\EntryService::class)
+            ->withdrawEntryAsAdmin($cer, $user);
+
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixture->id]);
     }
 }

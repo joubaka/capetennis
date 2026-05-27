@@ -441,6 +441,10 @@ class RoundRobinController extends Controller
       return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
     }
 
+    if ($draw->published) {
+      return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
+    }
+
     $this->authorize('deleteScore', $draw);
 
     // Route rollback through EngineRouter wrapped in a transaction

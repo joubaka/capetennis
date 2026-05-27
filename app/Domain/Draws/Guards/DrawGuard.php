@@ -65,6 +65,10 @@ final class DrawGuard
             throw DrawMutationException::fixtureLocked($fixture->id, $draw->id);
         }
 
+        if ($draw && $draw->published) {
+            throw DrawMutationException::published($draw->id, 'save_score');
+        }
+
         $state = FixtureState::fromFixture($fixture);
         if ($state === FixtureState::Verified) {
             throw DrawMutationException::fixtureVerified($fixture->id);

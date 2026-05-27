@@ -260,17 +260,33 @@ class DrawApiController extends Controller
             'items.*.round'        => 'nullable|string|max:50',
         ]);
 
-        DB::transaction(function () use ($draw, $validated) {
-            foreach ($validated['items'] as $item) {
-                $fixture = $draw->drawFixtures()->find($item['fixture_id']);
-                if (!$fixture) continue;
+        $venueId = $draw->venues->first()->id ?? 1;
 
-                $fixture->court      = $item['court'] ?? null;
-                $fixture->start_time = $item['start_time'] ?? null;
-                $fixture->round      = $item['round'] ?? $fixture->round;
-                $fixture->save();
-            }
-        });
+        DB::transaction(function () use ($draw, $validated, $venueId) {
+                foreach ($validated['items'] as $item) {
+                    $fixture = $draw->drawFixtures()->find($item['fixture_id']);
+                    if (!$fixture) continue;
+
+                    $rawTime = $item['start_time'] ?? null;
+                    $timeValue = null;
+                    if ($rawTime) {
+                        // Accept either full datetime or time-only (HH:MM or HH:MM:SS)
+                        $timeValue = (strlen($rawTime) <= 8)
+                            ? now()->toDateString() . ' ' . $rawTime
+                            : $rawTime;
+                    }
+
+                    \App\Models\OrderOfPlay::updateOrCreate(
+                        ['fixture_id' => $fixture->id],
+                        [
+                            'draw_id'  => $draw->id,
+                            'court'    => $item['court'] ?? null,
+                            'time'     => $timeValue,
+                            'venue_id' => $venueId,
+                        ]
+                    );
+                }
+            });
 
         DrawAuditLog::record($draw->id, 'schedule_saved', null, [
             'item_count' => count($validated['items']),
@@ -289,26 +305,28 @@ class DrawApiController extends Controller
     {
         $this->authorize('view', $draw);
 
-        $fixtures = $draw->drawFixtures()
-            ->with(['registration1.players', 'registration2.players', 'schedule'])
-            ->whereNotNull('start_time')
-            ->orderBy('start_time')
+        $schedule = \App\Models\OrderOfPlay::with([
+                'fixture.registration1.players',
+                'fixture.registration2.players',
+            ])
+            ->whereHas('fixture', fn ($q) => $q->where('draw_id', $draw->id))
+            ->orderBy('time')
             ->orderBy('court')
             ->get()
-            ->map(fn($fx) => [
-                'fixture_id'  => $fx->id,
-                'stage'       => $fx->stage,
-                'round'       => $fx->round,
-                'match_nr'    => $fx->match_nr,
-                'court'       => $fx->court,
-                'start_time'  => $fx->start_time,
-                'home'        => optional($fx->registration1)->display_name ?? '',
-                'away'        => optional($fx->registration2)->display_name ?? '',
+            ->map(fn ($oop) => [
+                'fixture_id' => $oop->fixture_id,
+                'stage'      => optional($oop->fixture)->stage,
+                'round'      => optional($oop->fixture)->round,
+                'match_nr'   => optional($oop->fixture)->match_nr,
+                'court'      => $oop->court,
+                'start_time' => $oop->time,
+                'home'       => optional(optional($oop->fixture)->registration1)->display_name ?? '',
+                'away'       => optional(optional($oop->fixture)->registration2)->display_name ?? '',
             ]);
 
         return response()->json([
             'success'  => true,
-            'schedule' => $fixtures,
+            'schedule' => $schedule,
         ]);
     }
 
