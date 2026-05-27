@@ -70,7 +70,7 @@ class FinancialLedgerService
         $isTeamEvent  = $event->isTeam();
         $totalEntries = $isTeamEvent
             ? $paymentRows->count()
-            : $paymentRows->flatMap(fn($r) => optional($r->order)->items ?? collect())->count();
+            : $paymentRows->sum(fn($r) => $r->entryCount ?? 1);
 
         return [
             'event'            => $event,

@@ -113,7 +113,7 @@ class SuperAdminFinanceController extends Controller
 
         $totalEntries = $isTeamEvent
             ? $paymentRows->count()
-            : $paymentRows->flatMap(fn($t) => optional($t->order)->items ?? collect())->count();
+            : $paymentRows->sum(fn($t) => $t->entryCount ?? 1);
 
         $refundCount = $refundRows->count();
 
