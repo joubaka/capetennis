@@ -18,6 +18,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\WalletRefundConfirmationMail;
 
 class SuperAdminFinanceController extends Controller
 {
@@ -120,6 +122,14 @@ class SuperAdminFinanceController extends Controller
         $refundCount         = $accountingRefundRows->count();
         $noRefundCount       = $noRefundRows->count();
 
+        // ── Withdrawal / refund policy for the info card ──────────────────
+        $withdrawalDeadline     = $event->withdrawalCloseAt();
+        $entryDeadline          = $event->entryCloseAt();
+        $withdrawalOpen         = $event->canWithdraw();
+        $handlingFeePercent     = 10; // fixed 10% per SiteSetting::calculateWithdrawalFee
+        $handlingFeeExample     = \App\Models\SiteSetting::calculateWithdrawalFee((float) $event->entryFee);
+        $walletRefundNet        = (float) $event->entryFee - $handlingFeeExample;
+
         // ── Payout models for the form
         $payoutModels = EventPayout::with(['convenor.user', 'paidByUser'])
             ->where('event_id', $event->id)
@@ -178,7 +188,13 @@ class SuperAdminFinanceController extends Controller
             'totalPaidOut',
             'balance',
             'eligibleForRefund',
-            'eligibleTeamOrders'
+            'eligibleTeamOrders',
+            'withdrawalDeadline',
+            'entryDeadline',
+            'withdrawalOpen',
+            'handlingFeePercent',
+            'handlingFeeExample',
+            'walletRefundNet'
         ));
     }
 
@@ -345,7 +361,18 @@ class SuperAdminFinanceController extends Controller
                     ->withProperties(array_merge($meta, ['method' => 'wallet', 'net' => $net]))
                     ->log("Super-admin {$refundLabel} wallet refund R{$net}");
 
-                return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " credited to {$user->name}'s wallet.");
+                try {
+                    $registration->load(['categoryEvent.event', 'categoryEvent.category', 'players', 'user']);
+                    Mail::to($user->email)->send(new WalletRefundConfirmationMail($registration));
+                } catch (\Throwable $mailEx) {
+                    Log::warning('ADMIN FULL REFUND: wallet confirmation email failed', [
+                        'registration_id' => $registration->id,
+                        'user_email'      => $user->email,
+                        'error'           => $mailEx->getMessage(),
+                    ]);
+                }
+
+                return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " credited to {$user->name}'s wallet. Confirmation email sent to {$user->email}.");
 
             } catch (\Throwable $e) {
                 Log::error('ADMIN FULL REFUND FAILED (wallet/registration)', [

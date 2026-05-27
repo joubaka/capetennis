@@ -113,6 +113,68 @@
     </div>
   </div>
 
+  {{-- WITHDRAWAL & REFUND POLICY CARD --}}
+  <div class="card mb-3 border-start border-4 {{ $withdrawalOpen ? 'border-warning' : 'border-secondary' }}">
+    <div class="card-body py-3">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <h6 class="mb-0 fw-semibold">
+          <i class="ti ti-info-circle me-1 {{ $withdrawalOpen ? 'text-warning' : 'text-secondary' }}"></i>
+          Withdrawal &amp; Refund Policy
+        </h6>
+        @if($withdrawalOpen)
+          <span class="badge bg-success">Withdrawals Open</span>
+        @else
+          <span class="badge bg-secondary">Withdrawals Closed</span>
+        @endif
+      </div>
+      <div class="row g-3 small">
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Entry Deadline</div>
+          <div class="fw-semibold">{{ $entryDeadline->format('d M Y') }}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Withdrawal Deadline</div>
+          <div class="fw-semibold">{{ $withdrawalDeadline->format('d M Y H:i') }}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted">Entry Fee</div>
+          <div class="fw-semibold">R {{ number_format($event->entryFee, 2) }}</div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="text-muted mb-1">Player-initiated withdrawal refund (before deadline)</div>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-label-success">
+              <i class="ti ti-wallet me-1"></i>Wallet — R {{ number_format($walletRefundNet, 2) }}
+              <span class="text-muted ms-1">(after {{ $handlingFeePercent }}% handling fee)</span>
+            </span>
+            <span class="badge bg-label-primary">
+              <i class="ti ti-building-bank me-1"></i>Bank — same net, manual EFT
+            </span>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="text-muted mb-1">Super-admin full refund (no handling fee)</div>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-label-warning">
+              <i class="ti ti-wallet me-1"></i>Wallet — R {{ number_format($event->entryFee, 2) }} instant
+            </span>
+            <span class="badge bg-label-info">
+              <i class="ti ti-building-bank me-1"></i>Bank — marked pending, manual process
+            </span>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="text-muted mb-1">Withdrawal after deadline / no refund</div>
+          <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-label-secondary">
+              <i class="ti ti-ban me-1"></i>Fee retained — R {{ number_format($event->entryFee, 2) }} not refunded
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {{-- TABS --}}
   <ul class="nav nav-tabs mb-0" id="financesTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -190,15 +252,38 @@
             }
 
             if ($tx->type === 'refund') {
+              $refundInitiator = ($tx->refund_status ?? '') === 'completed'
+                  ? (str_contains(strtolower($tx->method ?? ''), 'admin') ? 'Super-admin full refund (no handling fee)' : 'Player-initiated (' . $handlingFeePercent . '% handling fee deducted)')
+                  : 'Pending';
               $payload = collect([[
-                'mode'           => 'refund',
-                'pf_payment_id'  => $tx->pf_payment_id ?? '—',
-                'paid_at'        => optional($tx->paid_at)->format('Y-m-d'),
-                'category'       => $tx->category ?? '—',
-                'gross_original' => number_format($tx->gross, 2),
-                'payfast_fee'    => number_format(abs($tx->fee), 2),
-                'cape_fee'       => number_format(abs($tx->capeFee), 2),
-                'refund_total'   => number_format(abs($tx->net), 2),
+                'mode'            => 'refund',
+                'pf_payment_id'   => $tx->pf_payment_id ?? '—',
+                'paid_at'         => optional($tx->paid_at)->format('Y-m-d'),
+                'category'        => $tx->category ?? '—',
+                'gross_original'  => number_format(abs($tx->gross), 2),
+                'payfast_fee'     => number_format(abs($tx->fee), 2),
+                'cape_fee'        => number_format(abs($tx->capeFee), 2),
+                'refund_total'    => number_format(abs($tx->net), 2),
+                'refund_method'   => $tx->method ?? '—',
+                'refund_status'   => $tx->refund_status ?? '—',
+                'initiator'       => $refundInitiator,
+                'handling_fee'    => number_format($handlingFeeExample, 2),
+                'handling_pct'    => $handlingFeePercent,
+              ]]);
+            }
+
+            if ($tx->type === 'withdrawal') {
+              $wDeadlinePassed = now()->gt($withdrawalDeadline);
+              $payload = collect([[
+                'mode'              => 'withdrawal',
+                'withdrawn_at'      => \Carbon\Carbon::parse($tx->created_at)->format('Y-m-d H:i'),
+                'category'          => $tx->category ?? '—',
+                'original_paid'     => number_format($tx->original_gross ?? 0, 2),
+                'withdrawal_deadline' => $withdrawalDeadline->format('d M Y H:i'),
+                'deadline_passed'   => $wDeadlinePassed,
+                'refund_status'     => 'No refund issued',
+                'reason'            => $wDeadlinePassed ? 'Withdrawal after deadline — fee retained' : 'Withdrawal before deadline — no refund chosen',
+                'admin_can_refund'  => ($tx->original_gross ?? 0) > 0,
               ]]);
             }
 
@@ -243,7 +328,32 @@
             </td>
 
             <td>{{ $tx->player ?? '—' }}</td>
-            <td>{{ $tx->method }}</td>
+            <td>
+              @if($tx->type === 'withdrawal')
+                <span class="text-muted small">No Refund
+                  @if(now()->gt($withdrawalDeadline))
+                    <i class="ti ti-clock-x ms-1 text-danger" title="After deadline — fee retained"></i>
+                  @else
+                    <i class="ti ti-clock-check ms-1 text-secondary" title="Before deadline — no refund chosen"></i>
+                  @endif
+                </span>
+              @elseif($tx->type === 'refund')
+                @php
+                  $isAdminRefund = str_contains(strtolower($tx->method ?? ''), 'admin') ||
+                                   str_contains(strtolower($tx->method ?? ''), 'wallet') && ($tx->refund_fee ?? 0) == 0;
+                @endphp
+                <span class="small">
+                  {{ ucfirst($tx->method ?? '—') }}
+                  @if($isAdminRefund)
+                    <i class="ti ti-shield-check ms-1 text-success" title="Admin full refund — no handling fee"></i>
+                  @else
+                    <i class="ti ti-percentage ms-1 text-warning" title="{{ $handlingFeePercent }}% handling fee deducted"></i>
+                  @endif
+                </span>
+              @else
+                {{ $tx->method }}
+              @endif
+            </td>
 
             <td class="text-end">
               @if($tx->type === 'withdrawal')
@@ -670,15 +780,46 @@ $(function () {
 
     if (items[0].mode === 'refund') {
       const r = items[0];
+      const handlingRow = parseFloat(r.payfast_fee) > 0 || r.initiator.includes('handling')
+        ? `<tr><th>Handling Fee (${r.handling_pct}%)</th><td class="text-warning">− R ${r.handling_fee}</td></tr>`
+        : `<tr><th>Handling Fee</th><td class="text-success">None (admin full refund)</td></tr>`;
+      const statusBadge = r.refund_status === 'completed'
+        ? `<span class="badge bg-success">Completed</span>`
+        : `<span class="badge bg-warning text-dark">Pending</span>`;
       return `<table class="table table-sm mb-0 child-table">
         <tbody>
+          <tr><th>Initiator</th><td>${r.initiator}</td></tr>
+          <tr><th>Status</th><td>${statusBadge}</td></tr>
+          <tr><th>Method</th><td>${r.refund_method}</td></tr>
           <tr><th>PayFast ID</th><td><code>${r.pf_payment_id}</code></td></tr>
           <tr><th>Original Payment Date</th><td>${r.paid_at}</td></tr>
           <tr><th>Category</th><td>${r.category}</td></tr>
           <tr><th>Gross Paid</th><td>R ${r.gross_original}</td></tr>
+          ${handlingRow}
           <tr><th>PayFast Fee (recovered)</th><td>R ${r.payfast_fee}</td></tr>
           <tr><th>Cape Tennis Fee (recovered)</th><td>R ${r.cape_fee}</td></tr>
-          <tr class="fw-bold text-danger"><th>Total Refund Impact</th><td>R ${r.refund_total}</td></tr>
+          <tr class="fw-bold text-danger"><th>Total Refunded to Player</th><td>R ${r.refund_total}</td></tr>
+        </tbody></table>`;
+    }
+
+    if (items[0].mode === 'withdrawal') {
+      const w = items[0];
+      const deadlineBadge = w.deadline_passed
+        ? `<span class="badge bg-danger">After deadline — fee retained by event</span>`
+        : `<span class="badge bg-secondary">Before deadline — no refund chosen / admin withdrawal</span>`;
+      const adminRefundHint = w.admin_can_refund
+        ? `<tr><th>Super-admin Action</th><td><span class="badge bg-warning text-dark">Use the Refund button on this row to issue a full refund</span></td></tr>`
+        : `<tr><th>Super-admin Action</th><td class="text-muted">No payment on file — nothing to refund</td></tr>`;
+      return `<table class="table table-sm mb-0 child-table">
+        <tbody>
+          <tr><th>Withdrawn At</th><td>${w.withdrawn_at}</td></tr>
+          <tr><th>Category</th><td>${w.category}</td></tr>
+          <tr><th>Original Amount Paid</th><td>R ${w.original_paid}</td></tr>
+          <tr><th>Withdrawal Deadline</th><td>${w.withdrawal_deadline}</td></tr>
+          <tr><th>Deadline Status</th><td>${deadlineBadge}</td></tr>
+          <tr><th>Refund Status</th><td class="text-muted">${w.refund_status}</td></tr>
+          <tr><th>Reason</th><td>${w.reason}</td></tr>
+          ${adminRefundHint}
         </tbody></table>`;
     }
 
