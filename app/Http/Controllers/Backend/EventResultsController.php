@@ -99,19 +99,24 @@ class EventResultsController extends Controller
     // ── 6. Assemble per-category in PHP (no more queries) ────────────────────
     $categories = $categoryEvents->map(function ($category) use ($registrations, $savedPositions, $pivotRows) {
       $categoryResults = $savedPositions->get($category->category_id, collect());
+      $hasSavedResults = $categoryResults->isNotEmpty();
 
       $catRegistrations = $pivotRows
         ->get($category->id, collect())
         ->pluck('registration_id')
         ->map(fn($id) => $registrations->get($id))
         ->filter()
-        ->map(function ($reg) use ($categoryResults) {
-          $reg->position = $categoryResults->get($reg->id)?->position ?? null;
+        ->map(function ($reg) use ($categoryResults, $hasSavedResults) {
+          // If no results have been saved yet, treat all players as positioned (not removed)
+          $reg->position = $hasSavedResults
+            ? ($categoryResults->get($reg->id)?->position ?? null)
+            : -1; // -1 = unsaved default (not removed)
           return $reg;
         })
         ->sortBy([
           fn($a, $b) => (int) ($a->position === null) - (int) ($b->position === null),
-          fn($a, $b) => ($a->position ?? PHP_INT_MAX) <=> ($b->position ?? PHP_INT_MAX),
+          fn($a, $b) => ($a->position === null ? PHP_INT_MAX : ($a->position < 0 ? PHP_INT_MAX - 1 : $a->position))
+                    <=> ($b->position === null ? PHP_INT_MAX : ($b->position < 0 ? PHP_INT_MAX - 1 : $b->position)),
           fn($a, $b) => $a->id <=> $b->id,
         ])
         ->values();

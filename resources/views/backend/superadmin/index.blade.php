@@ -20,131 +20,81 @@
 <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
 @endsection
 
+@section('page-style')
+<style>
+  .divide-x .col + .col { border-left: 1px solid rgba(0,0,0,.07); }
+</style>
+@endsection
+
 @section('content')
 
-{{-- ═══════════════ HEADER BANNER ═══════════════ --}}
-<div class="row mb-4">
-  <div class="col-12">
-    <div class="card mb-0" style="background: linear-gradient(135deg, #696cff 0%, #567bfb 100%);">
-      <div class="card-body d-flex align-items-center justify-content-between py-4">
-        <div>
-          <h4 class="text-white mb-1">
-            <i class="ti ti-shield-chevron me-2"></i>Super Admin Dashboard
-          </h4>
-          <p class="text-white mb-0 opacity-75">Manage Cape Tennis system settings, agreements, and users</p>
-        </div>
-        <div>
-          <span class="badge bg-white text-primary fs-6 px-3 py-2">
-            <i class="ti ti-user me-1"></i>{{ auth()->user()->name }}
-          </span>
-        </div>
-      </div>
-    </div>
+{{-- ═══════════════ PAGE HEADER ═══════════════ --}}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h5 class="mb-0"><i class="ti ti-shield-chevron me-2 text-primary"></i>Super Admin Dashboard</h5>
+    <small class="text-muted">Cape Tennis system settings, agreements, and users</small>
   </div>
+  <span class="badge bg-label-primary"><i class="ti ti-user me-1"></i>{{ auth()->user()->name }}</span>
 </div>
 @php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
 
-{{-- ═══════════════ TOP 6 STAT CARDS ═══════════════ --}}
-<div class="row mb-4">
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#ebe9ff;">
-            <i class="ti ti-users text-primary" style="font-size:1.5rem;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($totalUsers) }}</h3>
-        <small class="text-muted">Total Users</small>
-        <div class="mt-2 d-flex justify-content-center gap-2">
-          <span class="badge bg-label-success small">+{{ $newUsersThisWeek }} this week</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#e8f8f0;">
-            <i class="ti ti-user-check" style="font-size:1.5rem;color:#28c76f;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($totalPlayers) }}</h3>
-        <small class="text-muted">Total Players</small>
-        <div class="mt-2">
-          <span class="badge bg-label-success small">+{{ $newPlayersThisWeek }} this week</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#e0f4fd;">
-            <i class="ti ti-calendar-event" style="font-size:1.5rem;color:#00cfe8;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($totalEvents) }}</h3>
-        <small class="text-muted">Total Events</small>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#fff4e0;">
-            <i class="ti ti-calendar-time" style="font-size:1.5rem;color:#ff9f43;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($activeEvents) }}</h3>
-        <small class="text-muted">Active Events</small>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#ffe0e0;">
-            <i class="ti ti-ticket" style="font-size:1.5rem;color:#ea5455;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($totalRegistrations) }}</h3>
-        <small class="text-muted">Registrations</small>
-        <div class="mt-2">
-          <span class="badge bg-label-danger small">+{{ $recentRegistrations }} last 30d</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-xl-2 col-sm-4 col-6 mb-3">
-    <div class="card h-100 text-center">
-      <div class="card-body py-4">
-        <div class="mb-3">
-          <span class="badge rounded-circle p-3" style="background-color:#e8f8f0;">
-            <i class="ti ti-file-check" style="font-size:1.5rem;color:#28c76f;"></i>
-          </span>
-        </div>
-        <h3 class="mb-0">{{ number_format($agreementStats['total_acceptances']) }}</h3>
-        <small class="text-muted">CoC Accepted</small>
-        @if($agreementStats['active_agreement'])
-          <div class="mt-2">
-            <span class="badge bg-label-warning small">{{ $agreementStats['pending_players'] }} pending</span>
+{{-- ═══════════════ STAT STRIP ═══════════════ --}}
+<div class="card mb-3">
+  <div class="card-body py-2 px-3">
+    <div class="row g-0 text-center divide-x">
+      <div class="col">
+        <a href="{{ url('backend/user') }}" class="text-decoration-none">
+          <div class="py-2">
+            <div class="fw-bold fs-5">{{ number_format($totalUsers) }}</div>
+            <small class="text-muted">Users</small>
+            <div><span class="badge bg-label-success" style="font-size:.7rem;">+{{ $newUsersThisWeek }} wk</span></div>
           </div>
-        @endif
+        </a>
+      </div>
+      <div class="col">
+        <a href="{{ url('backend/player') }}" class="text-decoration-none">
+          <div class="py-2">
+            <div class="fw-bold fs-5">{{ number_format($totalPlayers) }}</div>
+            <small class="text-muted">Players</small>
+            <div><span class="badge bg-label-success" style="font-size:.7rem;">+{{ $newPlayersThisWeek }} wk</span></div>
+          </div>
+        </a>
+      </div>
+      <div class="col">
+        <a href="{{ url('backend/event') }}" class="text-decoration-none">
+          <div class="py-2">
+            <div class="fw-bold fs-5">{{ number_format($activeEvents) }} <small class="text-muted fw-normal fs-6">/ {{ number_format($totalEvents) }}</small></div>
+            <small class="text-muted">Active / Total Events</small>
+          </div>
+        </a>
+      </div>
+      <div class="col">
+        <div class="py-2">
+          <div class="fw-bold fs-5">{{ number_format($totalRegistrations) }}</div>
+          <small class="text-muted">Registrations</small>
+          <div><span class="badge bg-label-danger" style="font-size:.7rem;">+{{ $recentRegistrations }} 30d</span></div>
+        </div>
+      </div>
+      <div class="col">
+        <button type="button" class="btn btn-link p-0 text-decoration-none w-100"
+                onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
+          <div class="py-2">
+            <div class="fw-bold fs-5 {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div>
+            <small class="text-muted">Pending Refunds</small>
+          </div>
+        </button>
+      </div>
+      <div class="col">
+        <div class="py-2">
+          <div class="fw-bold fs-5">{{ number_format($agreementStats['total_acceptances']) }}</div>
+          <small class="text-muted">CoC Accepted</small>
+          @if($agreementStats['pending_players'] > 0)
+            <div><span class="badge bg-label-warning" style="font-size:.7rem;">{{ $agreementStats['pending_players'] }} pending</span></div>
+          @endif
+        </div>
       </div>
     </div>
   </div>
-
 </div>
 
 
@@ -223,62 +173,14 @@
     {{-- ══ TAB: OVERVIEW ══ --}}
     <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
 
-      <h6 class="text-muted d-flex align-items-center mb-3">
-        <i class="ti ti-user-circle me-1"></i> Player Profile Status
-      </h6>
-      <div class="row mb-4">
-        <div class="col-md-3 col-sm-6 mb-3">
-          <div class="card h-100" style="border:2px solid #28c76f;">
-            <div class="card-body d-flex align-items-center gap-3 py-3">
-              <span class="badge rounded-circle p-3" style="background-color:#e8f8f0;">
-                <i class="ti ti-circle-check" style="font-size:1.3rem;color:#28c76f;"></i>
-              </span>
-              <div>
-                <h4 class="mb-0">{{ number_format($profileStats['up_to_date']) }}</h4>
-                <small class="text-muted">Up to Date</small>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6 mb-3">
-          <div class="card h-100" style="border:2px solid #ff9f43;">
-            <div class="card-body d-flex align-items-center gap-3 py-3">
-              <span class="badge rounded-circle p-3" style="background-color:#fff4e0;">
-                <i class="ti ti-clock" style="font-size:1.3rem;color:#ff9f43;"></i>
-              </span>
-              <div>
-                <h4 class="mb-0">{{ number_format($profileStats['needs_update']) }}</h4>
-                <small class="text-muted">Needs Update</small>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6 mb-3">
-          <div class="card h-100" style="border:2px solid #ea5455;">
-            <div class="card-body d-flex align-items-center gap-3 py-3">
-              <span class="badge rounded-circle p-3" style="background-color:#ffe0e0;">
-                <i class="ti ti-alert-circle" style="font-size:1.3rem;color:#ea5455;"></i>
-              </span>
-              <div>
-                <h4 class="mb-0">{{ number_format($profileStats['incomplete']) }}</h4>
-                <small class="text-muted">Incomplete</small>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-3 col-sm-6 mb-3">
-          <div class="card h-100" style="border:2px solid #b0b8c1;">
-            <div class="card-body d-flex align-items-center gap-3 py-3">
-              <span class="badge rounded-circle p-3" style="background-color:#f0f0f0;">
-                <i class="ti ti-user-off" style="font-size:1.3rem;color:#a0aab4;"></i>
-              </span>
-              <div>
-                <h4 class="mb-0">{{ number_format($profileStats['never_updated']) }}</h4>
-                <small class="text-muted">Never Updated</small>
-              </div>
-            </div>
-          </div>
-        </div>
+      {{-- Profile Status compact strip --}}
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <small class="text-muted me-1"><i class="ti ti-user-circle me-1"></i>Profile Status:</small>
+        <span class="badge bg-label-success px-3 py-2"><i class="ti ti-circle-check me-1"></i>{{ number_format($profileStats['up_to_date']) }} Up to Date</span>
+        <span class="badge bg-label-warning px-3 py-2"><i class="ti ti-clock me-1"></i>{{ number_format($profileStats['needs_update']) }} Needs Update</span>
+        <span class="badge bg-label-danger px-3 py-2"><i class="ti ti-alert-circle me-1"></i>{{ number_format($profileStats['incomplete']) }} Incomplete</span>
+        <span class="badge bg-label-secondary px-3 py-2"><i class="ti ti-user-off me-1"></i>{{ number_format($profileStats['never_updated']) }} Never Updated</span>
+        <a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-secondary ms-auto">Manage Players</a>
       </div>
 
       <div class="row">
@@ -329,29 +231,7 @@
                   @endif
                 </button>
               </div>
-              <hr>
-              <div class="d-flex gap-3 mt-2 flex-wrap">
-                <div class="text-center">
-                  <div class="fw-bold text-success fs-5">{{ $loginAuditTodayCount }}</div>
-                  <small class="text-muted">Logins Today</small>
-                </div>
-                <div class="text-center">
-                  <div class="fw-bold text-danger fs-5">{{ $loginAuditFailedToday }}</div>
-                  <small class="text-muted">Failed Today</small>
-                </div>
-                <div class="text-center">
-                  <button type="button" class="btn btn-link p-0 text-decoration-none"
-                          onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
-                    <div class="fw-bold text-warning fs-5">{{ $totalPending }}</div>
-                    <small class="text-muted">Pending Withdrawals</small>
-                  </button>
-                </div>
-                <div class="text-center">
-                  <div class="fw-bold text-info fs-5">{{ $newUsersThisMonth }}</div>
-                  <small class="text-muted">New Users (mo.)</small>
-                </div>
               </div>
-            </div>
             <div class="card-footer">
               <h6 class="mb-1"><i class="ti ti-headset me-2"></i>Support</h6>
               <a href="mailto:support@capetennis.co.za" class="btn btn-sm btn-outline-primary">
@@ -391,7 +271,6 @@
 
     {{-- ══ TAB: FINANCE ══ --}}
     <div class="tab-pane fade p-3" id="sa-pane-finance" role="tabpanel">
-      {{-- Year filter --}}
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <span class="text-muted small"><i class="ti ti-filter me-1"></i>Year:</span>
         @foreach($financeYears as $yr)
@@ -400,63 +279,42 @@
             {{ $yr }}
           </a>
         @endforeach
+        <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning ms-auto">
+          <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
+        </a>
       </div>
-      <div class="row g-3 mb-3">
-        <div class="col-6 col-md-4">
-          <div class="card border-start border-success border-3 h-100">
-            <div class="card-body">
-              <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-success"></i>Total Gross Income</small>
-              <h5 class="mb-0 text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
-              <small class="text-muted">All registration payments in {{ $financeYear }}</small>
+
+      {{-- Finance summary strip --}}
+      <div class="card mb-3">
+        <div class="card-body py-2 px-3">
+          <div class="row g-0 text-center divide-x">
+            <div class="col py-2">
+              <div class="fw-bold text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</div>
+              <small class="text-muted">Gross Income</small>
             </div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4">
-          <div class="card border-start border-primary border-3 h-100">
-            <div class="card-body">
-              <small class="text-muted d-block mb-1"><i class="ti ti-coin me-1 text-primary"></i>Net Income</small>
-              <h5 class="mb-0">R {{ number_format($financeSummary['total_income'], 2) }}</h5>
-              <small class="text-muted">After PayFast &amp; Cape Tennis fees</small>
+            <div class="col py-2">
+              <div class="fw-bold">R {{ number_format($financeSummary['total_income'], 2) }}</div>
+              <small class="text-muted">Net Income</small>
             </div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4">
-          <div class="card border-start border-secondary border-3 h-100">
-            <div class="card-body">
-              <small class="text-muted d-block mb-1"><i class="ti ti-users me-1 text-secondary"></i>Total Entries</small>
-              <h5 class="mb-0">{{ number_format($financeSummary['total_entries']) }}</h5>
-              <small class="text-muted">Across all {{ $financeYear }} events</small>
+            <div class="col py-2">
+              <div class="fw-bold text-danger">R {{ number_format($financeSummary['total_paid_out'] ?? 0, 2) }}</div>
+              <small class="text-muted">Paid Out</small>
             </div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4">
-          <div class="card border-start border-danger border-3 h-100">
-            <div class="card-body">
-              <small class="text-muted d-block mb-1"><i class="ti ti-cash-banknote me-1 text-danger"></i>Total Paid Out</small>
-              <h5 class="mb-0 text-danger">R {{ number_format($financeSummary['total_paid_out'], 2) }}</h5>
-              <small class="text-muted">Convenor payouts in {{ $financeYear }}</small>
+            <div class="col py-2">
+              <div class="fw-bold {{ ($financeSummary['balance'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($financeSummary['balance'] ?? 0, 2) }}</div>
+              <small class="text-muted">Balance</small>
             </div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4">
-          <div class="card border-start border-info border-3 h-100">
-            <div class="card-body">
-              <small class="text-muted d-block mb-1"><i class="ti ti-scale me-1 text-info"></i>Balance (unpaid)</small>
-              <h5 class="mb-0 {{ ($financeSummary['balance'] ?? 0) < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($financeSummary['balance'] ?? 0, 2) }}</h5>
-              <small class="text-muted">Net income minus payouts</small>
+            <div class="col py-2">
+              <div class="fw-bold">{{ number_format($financeSummary['total_entries']) }}</div>
+              <small class="text-muted">Entries</small>
             </div>
           </div>
         </div>
       </div>
       <div class="card mb-0">
-        <div class="card-header d-flex align-items-center justify-content-between">
-          <div class="d-flex align-items-center">
-            <i class="ti ti-calendar-stats me-2 text-warning"></i>
-            <h5 class="mb-0">Per-Event Financial Summary – {{ $financeYear }}</h5>
-          </div>
-          <a href="{{ route('superadmin.finances') }}" class="btn btn-sm btn-outline-warning">
-            <i class="ti ti-report-money me-1"></i>Full Financial Dashboard
-          </a>
+        <div class="card-header d-flex align-items-center">
+          <i class="ti ti-calendar-stats me-2 text-warning"></i>
+          <h6 class="mb-0">Per-Event Summary – {{ $financeYear }}</h6>
         </div>
         <div class="table-responsive">
           <table class="table table-hover mb-0">

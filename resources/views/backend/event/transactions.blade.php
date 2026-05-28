@@ -323,10 +323,9 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               @elseif($tx->type === 'payment')
                 <span class="badge bg-success">Payment</span>
               @elseif($tx->type === 'refund')
+                <span class="badge bg-danger">Refunded</span>
                 @if(($tx->refund_status ?? '') === 'pending')
-                  <span class="badge bg-warning text-dark">Refund Pending</span>
-                @else
-                  <span class="badge bg-danger">Refund</span>
+                  <span class="badge bg-warning text-dark ms-1"><i class="ti ti-clock me-1"></i>Bank Pending</span>
                 @endif
               @elseif($tx->type === 'withdrawal')
                 <span class="badge bg-secondary">Withdrawn</span>

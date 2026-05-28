@@ -313,18 +313,21 @@
               @php
                 $badgeClass = match($tx->type) {
                   'payment'    => 'bg-success',
-                  'refund'     => ($tx->refund_status ?? '') === 'pending' ? 'bg-warning text-dark' : 'bg-danger',
+                  'refund'     => 'bg-danger',
                   'withdrawal' => 'bg-secondary',
                   'payout'     => 'bg-info',
                   default      => 'bg-secondary',
                 };
                 $badgeLabel = match($tx->type) {
-                  'refund'     => ($tx->refund_status ?? '') === 'pending' ? 'Refund Pending' : 'Refund',
+                  'refund'     => 'Refunded',
                   'withdrawal' => 'Withdrawn',
                   default      => ucfirst($tx->type),
                 };
               @endphp
               <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
+              @if($tx->type === 'refund' && ($tx->refund_status ?? '') === 'pending')
+                <span class="badge bg-warning text-dark ms-1"><i class="ti ti-clock me-1"></i>Bank Pending</span>
+              @endif
             </td>
 
             <td>{{ $tx->player ?? '—' }}</td>
