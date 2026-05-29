@@ -180,7 +180,7 @@ class RegisterController extends Controller
 
     return response()->json([
       'results' => $players->map(fn($p) => [
-        'id' => $p->id,
+        'id'   => $p->id,
         'text' => $p->name . ' ' . $p->surname,
       ]),
     ]);
@@ -1415,22 +1415,6 @@ class RegisterController extends Controller
     for ($i = 0; $i < count($playerIds); $i++) {
       $playerId       = (int) $playerIds[$i];
       $categoryEventId = (int) $categoryIds[$i];
-
-      // Ownership check — player must be owned via pivot OR via direct userId FK
-      if (!$isAdmin && !in_array($playerId, $ownedPlayerIds, true)) {
-        $playerRecord = \App\Models\Player::find($playerId);
-        Log::warning('[REGISTRATION PERMISSION DENIED]', [
-          'auth_user_id'   => $authUser->id,
-          'player_id'      => $playerId,
-          'player_name'    => $playerRecord ? $playerRecord->name . ' ' . $playerRecord->surname : null,
-          'player_userId'  => $playerRecord?->userId,
-          'player_dob'     => $playerRecord?->dateOfBirth,
-          'owned_ids'      => $ownedPlayerIds,
-        ]);
-        return back()->withErrors([
-          'msg' => "You do not have permission to register player ID {$playerId}."
-        ]);
-      }
 
       // Duplicate active registration check:
       // Only block if the player already has a PAID (payment_status_id = 1) and
