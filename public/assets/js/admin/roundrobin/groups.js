@@ -10,16 +10,6 @@
 
   var DRAW_ID = null;
 
-  // ─── Lock helper ─────────────────────────────────────────────────
-  function isLocked() {
-    // Prefer the canonical permissions object when available
-    if (root.RR_PERMISSIONS) return root.RR_PERMISSIONS.canEditAssignments === false;
-    return root.RR_DRAW_LOCKED === true;
-  }
-
-  function _warnLocked() {
-    AdminToast.warning('Draw is locked. Unlock the draw to make changes.');
-  }
   var COLORS = {
     A: 'bg-primary text-white',
     B: 'bg-success text-white',
@@ -86,10 +76,7 @@
   function refreshGroupsAndPlayers() {
     return Promise.all([refreshGroupsUI(), refreshAvailablePlayersUI()])
       .then(function () {
-        setTimeout(function () {
-          initSortable(true);
-          _applyLockUI();
-        }, 50);
+        setTimeout(function () { initSortable(true); }, 50);
       });
   }
 
@@ -148,14 +135,7 @@
     if (!pane) { __initPending = false; return; }
 
     pane.querySelectorAll('.rr-sortable').forEach(function (el) {
-      Array.from(el.children).forEach(function (c) {
-        c.setAttribute('draggable', isLocked() ? 'false' : 'true');
-        if (isLocked()) {
-          c.classList.add('rr-item-locked');
-        } else {
-          c.classList.remove('rr-item-locked');
-        }
-      });
+      Array.from(el.children).forEach(function (c) { c.setAttribute('draggable', 'true'); });
 
       try {
         var inst = new Sortable(el, {
@@ -169,15 +149,10 @@
           touchStartThreshold: 5,
           dragoverBubble:  false,
           removeCloneOnHide: true,
-          disabled:        isLocked(),
           filter:          '.btn-remove-from-group',
-          onStart: function () {
-            if (isLocked()) { _warnLocked(); return false; }
-            $('.rr-sortable').addClass('drop-zone-active');
-          },
+          onStart: function () { $('.rr-sortable').addClass('drop-zone-active'); },
           onEnd: function (evt) {
             $('.rr-sortable').removeClass('drop-zone-active');
-            if (isLocked()) return;
             var $item   = $(evt.item);
             var $target = $(evt.to);
             if ($target.hasClass('rr-group') && !$item.find('.btn-remove-from-group').length) {
@@ -219,7 +194,6 @@
 
   // ─── Save groups ─────────────────────────────────────────────────
   function saveGroups() {
-    if (isLocked()) { _warnLocked(); return; }
     var payload = [];
     $('.rr-group').each(function () {
       payload.push({
@@ -239,7 +213,6 @@
 
   // ─── Regenerate fixtures ──────────────────────────────────────────
   function regenerateFixtures() {
-    if (isLocked()) { _warnLocked(); return; }
     AdminConfirm.destructive(
       'Regenerate Fixtures?',
       'This will <strong>delete existing fixtures</strong> and create new round-robin matches based on current group assignments.'
@@ -265,7 +238,6 @@
   function _removeFromGroup(e) {
     e.preventDefault();
     e.stopPropagation();
-    if (isLocked()) { _warnLocked(); return; }
     var $item      = $(this).closest('li');
     var playerName = $item.data('player-name');
     var $sourceList = $('.rr-sortable[data-type="source"]').first();
@@ -297,7 +269,6 @@
   // ─── Change number of groups ─────────────────────────────────────
   function changeGroups(newBoxes, currentVal, $select) {
     if (newBoxes === currentVal) return;
-    if (isLocked()) { _warnLocked(); $select.val(currentVal); return; }
 
     AdminModal.confirm({
       title:       'Change Number of Groups?',
@@ -367,60 +338,9 @@
   }
 
   // ─── Init ─────────────────────────────────────────────────────────
-  function _applyLockUI() {
-    var locked = isLocked();
-
-    // Buttons
-    $('#btn-save-groups').prop('disabled', locked).attr('title', locked ? 'Draw is locked' : '');
-    $('#btn-regenerate-fixtures').prop('disabled', locked).attr('title', locked ? 'Draw is locked' : '');
-    $('#groups-tab-boxes').prop('disabled', locked).attr('title', locked ? 'Draw is locked' : '');
-
-    // Locked overlay banner
-    $('#groups-pane .rr-locked-overlay').toggleClass('d-none', !locked);
-
-    // Player items — draggable attribute + cursor
-    $('#groups-pane li[data-id]').each(function () {
-      $(this)
-        .attr('draggable', locked ? 'false' : 'true')
-        .toggleClass('rr-item-locked', locked);
-    });
-
-    // Sortable containers — visual locked class
-    $('#groups-pane .rr-sortable').toggleClass('rr-sortable-locked', locked);
-
-    // Sortable instances — disable/enable
-    __instances.forEach(function (s) {
-      if (s && typeof s.option === 'function') {
-        s.option('disabled', locked);
-      }
-    });
-
-    // Remove buttons — hide when locked
-    $('#groups-pane .btn-remove-from-group').toggleClass('invisible', locked);
-
-    // Lock toggle button state
-    var $lockBtn = $('#btn-toggle-lock');
-    if ($lockBtn.length) {
-      if (locked) {
-        $lockBtn.removeClass('btn-outline-warning btn-success btn-secondary').addClass('btn-danger');
-        $lockBtn.find('i').removeClass('ti-lock-open').addClass('ti-lock');
-      } else {
-        $lockBtn.removeClass('btn-danger btn-success btn-secondary').addClass('btn-outline-warning');
-        $lockBtn.find('i').removeClass('ti-lock').addClass('ti-lock-open');
-      }
-      $('#lock-label').text(locked ? 'Locked' : 'Unlocked');
-    }
-  }
-
   function init(drawId) {
     DRAW_ID = drawId;
     bind();
-
-    // Apply locked UI state on load and whenever the groups tab becomes visible
-    _applyLockUI();
-    $(document).on('shown.bs.tab', 'button[data-bs-target="#groups-pane"], a[href="#groups-pane"]', function () {
-      _applyLockUI();
-    });
 
     // Expose for external calls (matrix, settings module)
     root.refreshGroupsAndPlayers = refreshGroupsAndPlayers;
@@ -432,6 +352,6 @@
     }
   }
 
-  root.RRGroups = { init: init, refresh: refreshGroupsAndPlayers, initSortable: initSortable, applyLockUI: _applyLockUI };
+  root.RRGroups = { init: init, refresh: refreshGroupsAndPlayers, initSortable: initSortable };
 
 }(jQuery, window));

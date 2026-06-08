@@ -12,16 +12,8 @@
   var $fixtureId   = $('#rrm-fixture-id');
   var $matchLabel  = $('#rrm-match-label');
 
-  // ─── Lock helper ──────────────────────────────────────────────────
-  function _isLocked() {
-    if (root.RR_PERMISSIONS) return root.RR_PERMISSIONS.canEditScores === false;
-    return root.RR_DRAW_LOCKED === true;
-  }
-  function _warnLocked() { AdminToast.warning('Draw is locked. Unlock the draw to make changes.'); }
-
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
-    if (_isLocked()) { _warnLocked(); return; }
     $fixtureId.val(id);
     $matchLabel.html('<b>' + home + '</b> vs <b>' + away + '</b>');
 
@@ -80,7 +72,6 @@
   // ─── Save score ───────────────────────────────────────────────────
   function _save(e) {
     e.preventDefault();
-    if (_isLocked()) { _warnLocked(); return; }
 
     var fixtureId = $fixtureId.val();
     if (!fixtureId) { AdminToast.error('No fixture selected.'); return; }
@@ -106,7 +97,6 @@
 
   // ─── Delete score ─────────────────────────────────────────────────
   function _delete() {
-    if (_isLocked()) { _warnLocked(); return; }
     var fixtureId = $fixtureId.val();
     if (!fixtureId) { AdminToast.warning('No fixture selected.'); return; }
 

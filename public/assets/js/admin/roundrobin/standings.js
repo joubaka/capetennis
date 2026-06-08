@@ -1,9 +1,6 @@
 /**
  * RR Standings module — render standings tables from AdminState.
  *
- * Standings are pre-sorted by the canonical StandingsService on the server.
- * This module renders them in the order received; it does NOT re-sort.
- *
  * Listens for rr:standings:updated and rr:fixtures:updated events.
  * Can also be called manually: RRStandings.render()
  *
@@ -25,12 +22,75 @@
     return t > 0 ? (r.games_won || 0) / t : 0;
   }
 
+  function _headToHead(a, b, fixtures) {
+    var match = (fixtures || []).find(function (f) {
+      return (f.r1_id === a.reg_id && f.r2_id === b.reg_id) ||
+             (f.r1_id === b.reg_id && f.r2_id === a.reg_id);
+    });
+    if (!match || !match.winner) return 0;
+    return match.winner === a.reg_id ? 1 : -1;
+  }
+
+  function _resolveGroup(grp, fixtures) {
+    if (grp.length <= 1) return grp;
+
+    if (grp.length === 2) {
+      var hh = _headToHead(grp[0], grp[1], fixtures);
+      if (hh !== 0) {
+        grp[0].tiebreak = grp[0].tiebreak || 'H2H';
+        grp[1].tiebreak = grp[1].tiebreak || 'H2H';
+        return hh === 1 ? grp : [grp[1], grp[0]];
+      }
+      var dSets = _sp(grp[1]) - _sp(grp[0]);
+      if (Math.abs(dSets) > 0.0001) {
+        grp[0].tiebreak = grp[0].tiebreak || 'Sets %';
+        grp[1].tiebreak = grp[1].tiebreak || 'Sets %';
+        return dSets > 0 ? [grp[1], grp[0]] : grp;
+      }
+      var dGames = _gp(grp[1]) - _gp(grp[0]);
+      if (Math.abs(dGames) > 0.0001) {
+        grp[0].tiebreak = grp[0].tiebreak || 'Games %';
+        grp[1].tiebreak = grp[1].tiebreak || 'Games %';
+        return dGames > 0 ? [grp[1], grp[0]] : grp;
+      }
+      grp[0].tiebreak = grp[0].tiebreak || '=';
+      grp[1].tiebreak = grp[1].tiebreak || '=';
+      return grp;
+    }
+
+    grp.sort(function (a, b) {
+      var dS = _sp(b) - _sp(a);
+      if (Math.abs(dS) > 0.0001) return dS;
+      return _gp(b) - _gp(a);
+    });
+
+    var resolved = [];
+    var i = 0;
+    while (i < grp.length) {
+      var j = i + 1;
+      while (j < grp.length &&
+             Math.abs(_sp(grp[j]) - _sp(grp[i])) <= 0.0001 &&
+             Math.abs(_gp(grp[j]) - _gp(grp[i])) <= 0.0001) {
+        j++;
+      }
+      var subGroup = grp.slice(i, j);
+      if (subGroup.length === grp.length) {
+        resolved.push.apply(resolved, subGroup);
+      } else {
+        resolved.push.apply(resolved, _resolveGroup(subGroup, fixtures));
+      }
+      i = j;
+    }
+    return resolved;
+  }
+
   function render() {
     $wrapper = $wrapper || $('#rr-standings-wrapper');
     if (!$wrapper.length) return;
 
     var groups   = AdminState.getGroups();
     var standings = AdminState.getStandings();
+    var fixtures  = AdminState.getFixtures();
 
     if (!groups || !groups.length) {
       $wrapper.html('<div class="text-muted text-center py-4">No groups configured yet.</div>');
@@ -43,8 +103,21 @@
       var gid = group.id;
       if (!standings[gid]) return;
 
-      // Use server-provided order — already sorted by canonical StandingsService
+      var gFixtures = fixtures[gid] || [];
       var rows = Object.values(standings[gid]);
+
+      // Sort by wins then resolve ties
+      rows.sort(function (a, b) { return b.wins - a.wins; });
+
+      var final = [];
+      var i = 0;
+      while (i < rows.length) {
+        var j = i + 1;
+        while (j < rows.length && rows[j].wins === rows[i].wins) j++;
+        final.push.apply(final, _resolveGroup(rows.slice(i, j), gFixtures));
+        i = j;
+      }
+      rows = final;
 
       var html = [
         '<h6 class="fw-bold mt-4">Box ' + group.name + '</h6>',

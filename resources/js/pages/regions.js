@@ -190,8 +190,10 @@
             </a>
           </div>
 
-          <div class="alert alert-light border text-center py-2">
-            No teams in this region yet.
+          <div class="teams-container">
+            <div class="alert alert-light border text-center py-2 no-teams-alert">
+              No teams in this region yet.
+            </div>
           </div>
 
         </div>
@@ -199,6 +201,8 @@
     </div>
   `;
 
+        // Remove the "no regions" alert if present, then prepend new region
+        $('#regionsAccordion .noRegions').remove();
         $('#regionsAccordion').prepend(html);
 
         bootstrap.Modal
@@ -212,7 +216,7 @@
         console.error('Status:', xhr.status);
         console.error('Response:', xhr.responseText);
         console.error('JSON:', xhr.responseJSON);
-        
+
         logXhrFail('Add region failed', xhr);
         toastr.error('Failed to add region');
       });
@@ -506,45 +510,14 @@
         // Clear form
         $('#teamForm')[0].reset();
 
-        // Find region row and add team to it
+        // Find region row's teams container
         const $regionRow = $(`[data-region-id="${regionId}"]`);
-        const $teamList = $regionRow.find('.list-group');
+        const $teamsContainer = $regionRow.find('.teams-container');
 
-        if ($teamList.length === 0) {
-          // Remove "No teams" alert and create list
-          $regionRow.find('.alert-light').remove();
+        // Remove "no teams" alert
+        $teamsContainer.find('.no-teams-alert').remove();
 
-          const teamListHtml = `
-            <div class="list-group">
-              <div class="list-group-item d-flex justify-content-between align-items-start py-3 px-3 border-0 border-bottom" data-team-row data-team-id="${res.id}">
-                <div>
-                  <div class="fw-medium">${res.name}</div>
-                  <small class="text-muted d-block mb-1 category-${res.id}">
-                    Category: <span class="fw-semibold text-primary">None</span>
-                  </small>
-                  <button class="btn btn-xs bg-label-info edit-team-category" data-team='${JSON.stringify({id: res.id, name: res.name})}' data-bs-toggle="modal" data-bs-target="#edit-team-category-modal">
-                    <i class="ti ti-edit me-25"></i> Edit Category
-                  </button>
-                </div>
-                <div class="text-end" style="min-width:180px">
-                  <a href="javascript:void(0)" class="publishTeam btn btn-xs w-100 mb-2 btn-success" data-id="${res.id}" data-state="0">
-                    <i class="ti ti-eye me-1"></i> Publish Team
-                  </a>
-                  <a href="javascript:void(0)" class="toggleNoProfile btn btn-xs w-100 mb-2 btn-info" data-url="${APP_URL}/backend/teams/toggle-noprofile/${res.id}" data-state="0">
-                    <i class="ti ti-user me-1"></i> Enable NoProfile
-                  </a>
-                  <a href="javascript:void(0)" class="text-danger small removeTeam" data-id="${res.id}">
-                    <i class="ti ti-trash me-25"></i> Delete
-                  </a>
-                </div>
-              </div>
-            </div>
-          `;
-          
-          $regionRow.find('.accordion-body').html(teamListHtml);
-        } else {
-          // Add to existing team list
-          const teamRowHtml = `
+        const teamRowHtml = `
             <div class="list-group-item d-flex justify-content-between align-items-start py-3 px-3 border-0 border-bottom" data-team-row data-team-id="${res.id}">
               <div>
                 <div class="fw-medium">${res.name}</div>
@@ -568,9 +541,13 @@
               </div>
             </div>
           `;
-          
-          $teamList.append(teamRowHtml);
+
+        let $teamList = $teamsContainer.find('.list-group');
+        if ($teamList.length === 0) {
+          $teamsContainer.append('<div class="list-group"></div>');
+          $teamList = $teamsContainer.find('.list-group');
         }
+        $teamList.append(teamRowHtml);
 
         // Update team count
         const headerText = $regionRow.find('.ms-2.text-muted.small').text();

@@ -20,14 +20,14 @@
 
     <div class="card-body">
 
-      @if ($event->regions->isEmpty())
-        <div class="alert alert-primary noRegions text-center">
-          <i class="ti ti-info-circle me-1"></i>
-          No regions added to this event yet.
-        </div>
-      @else
-
         <div class="accordion" id="regionsAccordion">
+
+          @if ($event->regions->isEmpty())
+            <div class="alert alert-primary noRegions text-center">
+              <i class="ti ti-info-circle me-1"></i>
+              No regions added to this event yet.
+            </div>
+          @else
 
           @foreach ($event->regions as $region)
 
@@ -74,9 +74,10 @@
                     </a>
                   </div>
 
-                  {{-- 🔹 TEAMS --}}
+                  {{-- 🔹 TEAMS CONTAINER --}}
+                  <div class="teams-container">
                   @if($region->teams->isEmpty())
-                    <div class="alert alert-light border text-center py-2">
+                    <div class="alert alert-light border text-center py-2 no-teams-alert">
                       No teams in this region yet.
                     </div>
                   @else
@@ -159,14 +160,17 @@
                       @endforeach
                     </div>
                   @endif
+                  </div>{{-- /.teams-container --}}
 
                 </div>
               </div>
             </div>
 
           @endforeach
-        </div>
-      @endif
+
+          @endif
+
+        </div>{{-- /#regionsAccordion --}}
 
     </div>
   </div>
