@@ -48,14 +48,12 @@ class EventResultsController extends Controller
       ->distinct()
       ->pluck('id');
 
-    // Path B: admin-added entries (payment_status_id = 1 but no order row)
+    // Path B: admin-approved entries (payment_status_id = 1, with or without an order row)
     $paidByAdmin = DB::table('registrations')
       ->join('category_event_registrations as cer', 'registrations.id', '=', 'cer.registration_id')
-      ->leftJoin('registration_order_items as roi', 'registrations.id', '=', 'roi.registration_id')
       ->whereIn('cer.category_event_id', $categoryEventIds)
       ->where('cer.status', '!=', 'withdrawn')
       ->where('cer.payment_status_id', 1)
-      ->whereNull('roi.id')
       ->select('registrations.id')
       ->distinct()
       ->pluck('id');
