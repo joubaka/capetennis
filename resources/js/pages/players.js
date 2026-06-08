@@ -388,7 +388,24 @@
             width: '100%',
             dropdownParent: $('#replaceRosterModal'),
             placeholder: 'Select player',
-            allowClear: true
+            allowClear: true,
+            matcher: function (params, data) {
+              if (!params.term || params.term.trim() === '') return data;
+
+              const terms = params.term.trim().toLowerCase().split(/\s+/);
+              const text = data.text.toLowerCase();
+
+              // Build reversed text: "Surname, Name" → also check "Name Surname"
+              const parts = text.split(',').map(s => s.trim());
+              const reversed = parts.length === 2 ? parts[1] + ' ' + parts[0] : text;
+
+              // Every typed word must appear in either the original or reversed form
+              const matchesAll = terms.every(
+                term => text.includes(term) || reversed.includes(term)
+              );
+
+              return matchesAll ? data : null;
+            }
           });
         });
 
