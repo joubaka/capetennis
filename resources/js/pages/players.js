@@ -337,18 +337,19 @@
           `;
 
           players.forEach(p => {
-            const selected = slot.player_id === p.id ? 'selected' : '';
+            const selected = parseInt(slot.player_id) === parseInt(p.id) ? 'selected' : '';
             html += `<option value="${p.id}" ${selected}>
               ${p.surname}, ${p.name}
             </option>`;
           });
 
+          const paid = parseInt(slot.pay_status) === 1;
           html += `
                 </select>
               </td>
               <td class="text-center">
-                <span class="badge ${slot.pay_status ? 'bg-label-success' : 'bg-label-danger'}">
-                  ${slot.pay_status ? 'Paid' : 'Unpaid'}
+                <span class="badge ${paid ? 'bg-label-success' : 'bg-label-danger'}">
+                  ${paid ? 'Paid' : 'Unpaid'}
                 </span>
               </td>
             </tr>

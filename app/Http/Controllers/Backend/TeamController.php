@@ -683,26 +683,28 @@ class TeamController extends Controller
 
     $slots = TeamPlayer::where('team_id', $teamId)
       ->orderBy('rank')
-      ->get([
-        'id',
-        'rank',
-        'player_id',
-        'pay_status',
+      ->get(['id', 'rank', 'player_id', 'pay_status'])
+      ->map(fn($s) => [
+        'id'         => (int) $s->id,
+        'rank'       => (int) $s->rank,
+        'player_id'  => (int) $s->player_id,
+        'pay_status' => (int) $s->pay_status,
       ]);
 
     $players = Player::orderBy('surname')
-      ->get([
-        'id',
-        'name',
-        'surname',
+      ->get(['id', 'name', 'surname'])
+      ->map(fn($p) => [
+        'id'      => (int) $p->id,
+        'name'    => $p->name,
+        'surname' => $p->surname,
       ]);
 
     return response()->json([
       'team' => [
-        'id' => $team->id,
+        'id'   => (int) $team->id,
         'name' => $team->name,
       ],
-      'slots' => $slots,
+      'slots'   => $slots,
       'players' => $players,
     ]);
   }
