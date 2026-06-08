@@ -190,10 +190,8 @@
     z-index: 1055;
   }
 
-  /* Last column dropdowns open upward when near bottom */
-  .col-actions .dropdown-menu {
-    position: fixed !important;
-  }
+  /* Dropdowns in action column must not be clipped by table overflow */
+  .col-actions { overflow: visible; }
 
 </style>
 @endsection
@@ -216,8 +214,8 @@
       <div class="d-flex gap-2 flex-wrap">
        <button type="button"
         class="btn btn-outline-primary btn-sm email-btn"
-        data-scope="event">
-
+        data-scope="event"
+        data-emails="All players in this event">
           <i class="ti ti-mail me-1"></i>Email All
         </button>
 
@@ -254,7 +252,8 @@
   <button type="button"
           class="btn btn-outline-primary btn-sm email-btn"
           data-scope="category"
-          data-category="{{ $categoryEvent->id }}">
+          data-category="{{ $categoryEvent->id }}"
+          data-emails="All players in {{ $categoryEvent->category?->name }}">
     <i class="ti ti-mail me-1"></i>Email Category
   </button>
 
@@ -275,14 +274,22 @@
     </button>
   @endif
 
-  {{-- ADD PLAYER --}}
+  {{-- ADD PLAYER / ADD PAIR --}}
   @unless($categoryEvent->isLocked())
-    <button type="button"
-            class="btn btn-outline-success btn-sm add-player-btn"
-            data-category="{{ $categoryEvent->id }}"
-            data-locked="0">
-      <i class="ti ti-plus me-1"></i>Add Player
-    </button>
+    @if($categoryEvent->isDoubles())
+      <button type="button"
+              class="btn btn-outline-success btn-sm add-pair-btn"
+              data-category="{{ $categoryEvent->id }}">
+        <i class="ti ti-users me-1"></i>Add Pair
+      </button>
+    @else
+      <button type="button"
+              class="btn btn-outline-success btn-sm add-player-btn"
+              data-category="{{ $categoryEvent->id }}"
+              data-locked="0">
+        <i class="ti ti-plus me-1"></i>Add Player
+      </button>
+    @endif
   @endunless
 
 </div>
@@ -310,25 +317,67 @@
 
           <tbody>
             @foreach($categoryEvent->allCategoryEventRegistrations as $reg)
-
-              @php $player = optional($reg->registration?->players)->first(); @endphp
+              @php
+                $player = optional($reg->registration?->players)->first();
+                $isDoubles = $categoryEvent->isDoubles();
+                $displayName = $isDoubles
+                    ? ($reg->registration?->displayName() ?? '—')
+                    : (trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) ?: '—');
+              @endphp
               <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}" data-entry-id="{{ $reg->id }}">
                 <td>{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
-                <td>{{ $player?->name }} {{ $player?->surname }}</td>
+                <td>
+                  @if($isDoubles)
+                    @php $players = $reg->registration?->playersOrdered()->get() ?? collect(); @endphp
+                    @forelse($players as $p)
+                      <div>
+                        <small class="text-muted me-1" style="font-size:.68rem;">{{ $loop->first ? 'P1' : 'P2' }}</small>
+                        {{ $p->name }} {{ $p->surname }}
+                      </div>
+                    @empty
+                      —
+                    @endforelse
+                  @else
+                    {{ $displayName }}
+                  @endif
+                </td>
                 <td class="col-email">
-  @if($player?->email)
-    <a href="mailto:{{ $player->email }}" class="text-decoration-none">
-      {{ $player->email }}
-    </a>
-  @else
-    —
-  @endif
-</td>
+                  @if($isDoubles)
+                    @forelse($players as $p)
+                      <div>
+                        <small class="text-muted me-1" style="font-size:.68rem;">{{ $loop->first ? 'P1' : 'P2' }}</small>
+                        @if($p->email)
+                          <a href="mailto:{{ $p->email }}" class="text-decoration-none">{{ $p->email }}</a>
+                        @else
+                          <span class="text-muted">—</span>
+                        @endif
+                      </div>
+                    @empty
+                      —
+                    @endforelse
+                  @else
+                    @if($player?->email)
+                      <a href="mailto:{{ $player->email }}" class="text-decoration-none">{{ $player->email }}</a>
+                    @else
+                      —
+                    @endif
+                  @endif
+                </td>
 
-
-<td class="col-cell">
-  {{ $player?->cellNr ?? $player?->cellNr ?? '—' }}
-</td>
+                <td class="col-cell">
+                  @if($isDoubles)
+                    @forelse($players as $p)
+                      <div>
+                        <small class="text-muted me-1" style="font-size:.68rem;">{{ $loop->first ? 'P1' : 'P2' }}</small>
+                        {{ $p->cellNr ?? '—' }}
+                      </div>
+                    @empty
+                      —
+                    @endforelse
+                  @else
+                    {{ $player?->cellNr ?? '—' }}
+                  @endif
+                </td>
 
                 <td>
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
@@ -362,17 +411,25 @@
     <button type="button"
             class="btn btn-outline-secondary btn-sm dropdown-toggle"
             data-bs-toggle="dropdown"
-            data-bs-strategy="fixed"
             aria-expanded="false">
       Actions
     </button>
     <ul class="dropdown-menu dropdown-menu-end">
 
       <li>
+        @php
+          $emailAddresses = $isDoubles
+            ? ($reg->registration?->playersOrdered()->get(['name','surname','email'])
+                ->map(fn($p) => trim($p->name.' '.$p->surname).' <'.$p->email.'>')
+                ->filter(fn($e) => !str_ends_with($e, '<>'))
+                ->implode(', '))
+            : ($player?->email ? trim($player->name.' '.$player->surname).' <'.$player->email.'>' : '');
+        @endphp
         <button type="button"
                 class="dropdown-item email-btn"
                 data-scope="player"
-                data-registration="{{ $reg->registration_id }}">
+                data-registration="{{ $reg->registration_id }}"
+                data-emails="{{ $emailAddresses }}">
           <i class="ti ti-mail me-1"></i>Email
         </button>
       </li>
@@ -517,11 +574,49 @@
 </div>
 
 
+{{-- ADD PAIR MODAL (doubles categories) --}}
+<div class="modal fade" id="addPairModal" tabindex="-1">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="ti ti-users me-1"></i>Add Doubles Pair</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="addPairError" class="alert alert-danger d-none"></div>
+        <input type="hidden" id="addPair_category_id">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Player 1 <span class="text-danger">*</span></label>
+          <select id="addPairPlayer1" class="form-select" style="width:100%;">
+            <option value="">— Select Player 1 —</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Player 2 <span class="text-danger">*</span></label>
+          <select id="addPairPlayer2" class="form-select" style="width:100%;">
+            <option value="">— Select Player 2 —</option>
+          </select>
+        </div>
+        <small class="text-muted">Only players not yet paired in this category are shown.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="addPairConfirm">
+          <span id="addPairSpinner" class="spinner-border spinner-border-sm me-1 d-none"></span>
+          Create Pair
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 window.routes = {
   availableRegistrations: @json(route('admin.category.availableRegistrations', ':id')),
-  addPlayer: @json(route('admin.category.addPlayer', ':id')),
-  movePlayer: @json(route('admin.category.movePlayer', ':id'))
+  addPlayer:              @json(route('admin.category.addPlayer', ':id')),
+  movePlayer:             @json(route('admin.category.movePlayer', ':id')),
+  eligiblePlayers:        @json(route('admin.doubles.pairs.eligiblePlayers', ':id')),
+  addPair:                @json(route('admin.doubles.pairs.store', ':id')),
 };
 </script>
 
@@ -565,7 +660,10 @@ const sendMailModal  = sendMailEl  ? new bootstrap.Modal(sendMailEl)  : null;
 const addPlayerModal = addPlayerEl ? new bootstrap.Modal(addPlayerEl) : null;
 const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
 
-// Dropdown strategy is set via data-bs-strategy="fixed" on each button.
+// Init all dropdowns with Popper fixed strategy so they escape overflow:hidden containers.
+document.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(el => {
+    new bootstrap.Dropdown(el, { popperConfig: { strategy: 'fixed' } });
+});
 
 /* =====================
    QUILL INIT
@@ -612,6 +710,11 @@ document.addEventListener('click', function(e) {
     document.getElementById('mail_scope').value = btn.dataset.scope || 'event';
     document.getElementById('mail_category').value = btn.dataset.category || '';
     document.getElementById('mail_registration').value = btn.dataset.registration || '';
+
+    const toDisplay = document.getElementById('mail_to_display');
+    if (toDisplay) {
+        toDisplay.value = btn.dataset.emails || '(all players in category)';
+    }
 
     sendMailModal.show();
 });
@@ -1270,6 +1373,124 @@ document.addEventListener('click', function (e) {
                 '<div class="alert alert-danger">Failed to load entry details.</div>';
         });
 });
+
+/* =====================
+   ADD PAIR MODAL OPEN
+===================== */
+const addPairEl = document.getElementById('addPairModal');
+const addPairModal = addPairEl ? new bootstrap.Modal(addPairEl) : null;
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.add-pair-btn');
+    if (!btn || !addPairModal) return;
+    e.preventDefault();
+
+    const categoryId = btn.dataset.category;
+    document.getElementById('addPair_category_id').value = categoryId;
+    document.getElementById('addPairError').classList.add('d-none');
+
+    const url = window.routes.eligiblePlayers.replace(':id', categoryId);
+
+    fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(res => {
+            const players = res.players ?? res ?? [];
+            const p1 = document.getElementById('addPairPlayer1');
+            const p2 = document.getElementById('addPairPlayer2');
+
+            const emptyOpt = '<option value="">— Select Player —</option>';
+            p1.innerHTML = emptyOpt;
+            p2.innerHTML = emptyOpt;
+
+            if (!players.length) {
+                p1.innerHTML = '<option value="" disabled>No eligible players</option>';
+                p2.innerHTML = '<option value="" disabled>No eligible players</option>';
+            } else {
+                players.forEach(p => {
+                    const label = `${p.surname}, ${p.name}`;
+                    const opt = `<option value="${p.id}">${label}</option>`;
+                    p1.insertAdjacentHTML('beforeend', opt);
+                    p2.insertAdjacentHTML('beforeend', opt);
+                });
+            }
+
+            addPairModal.show();
+        })
+        .catch(() => toastr.error('Failed to load eligible players.'));
+});
+
+/* =====================
+   ADD PAIR SUBMIT
+===================== */
+const addPairConfirm = document.getElementById('addPairConfirm');
+if (addPairConfirm) {
+    addPairConfirm.addEventListener('click', function() {
+        const categoryId = document.getElementById('addPair_category_id').value;
+        const player1Id  = document.getElementById('addPairPlayer1').value;
+        const player2Id  = document.getElementById('addPairPlayer2').value;
+        const errEl      = document.getElementById('addPairError');
+        const spinner    = document.getElementById('addPairSpinner');
+
+        errEl.classList.add('d-none');
+
+        if (!player1Id || !player2Id) {
+            errEl.textContent = 'Please select both players.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        if (player1Id === player2Id) {
+            errEl.textContent = 'A player cannot be paired with themselves.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+
+        spinner.classList.remove('d-none');
+        addPairConfirm.disabled = true;
+
+        const url = window.routes.addPair.replace(':id', categoryId);
+        const body = new FormData();
+        body.append('player1_id', player1Id);
+        body.append('player2_id', player2Id);
+
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            body
+        })
+        .then(r => r.json())
+        .then(res => {
+            spinner.classList.add('d-none');
+            addPairConfirm.disabled = false;
+
+            if (!res.success) {
+                errEl.textContent = res.message || 'Failed to create pair.';
+                errEl.classList.remove('d-none');
+                return;
+            }
+
+            addPairModal.hide();
+            toastr.success('Doubles pair created.');
+
+            // Append a new row to the category table
+            const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
+            if (card && res.row) {
+                const tbody = card.querySelector('tbody');
+                if (tbody) {
+                    tbody.insertAdjacentHTML('beforeend', res.row);
+                    reindexRows(card);
+                    updateEntryCount(card, +1);
+                }
+            } else {
+                location.reload();
+            }
+        })
+        .catch(() => {
+            spinner.classList.add('d-none');
+            addPairConfirm.disabled = false;
+            toastr.error('Failed to create pair. Please try again.');
+        });
+    });
+}
 
 </script>
 @endsection

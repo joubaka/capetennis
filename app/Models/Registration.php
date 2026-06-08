@@ -96,12 +96,29 @@ class Registration extends Model
   {
     // Use already-loaded relation if available to avoid extra queries
     $players = $this->relationLoaded('players')
-      ? $this->players->sortBy('surname')->sortBy('name')
+      ? $this->players->sortBy([['surname', 'asc'], ['name', 'asc']])
       : $this->playersOrdered()->get(['name', 'surname']);
 
     if ($players->isEmpty())
       return 'Unassigned';
     return $players->map(fn($p) => trim("{$p->name} {$p->surname}"))->join(' / ');
+  }
+
+  /**
+   * Short display name using surnames only.
+   * Singles:  "Smith"
+   * Doubles:  "Smith / Jones"
+   * Used in draws, fixtures, RR matrices, schedules.
+   */
+  public function displayShortName(): string
+  {
+    $players = $this->relationLoaded('players')
+      ? $this->players->sortBy([['surname', 'asc'], ['name', 'asc']])
+      : $this->playersOrdered()->get(['name', 'surname']);
+
+    if ($players->isEmpty())
+      return 'Unassigned';
+    return $players->map(fn($p) => trim($p->surname))->join(' / ');
   }
 
   public function getDisplayNameAttribute(): string

@@ -1260,6 +1260,13 @@ public function json(Draw $draw)
 
     return response()->json($venues);
   }
+
+  public function destroyVenue(Draw $draw, \App\Models\Venue $venue)
+  {
+    $this->authorize('update', $draw);
+    $draw->venues()->detach($venue->id);
+    return response()->json(['success' => true, 'message' => 'Venue removed.']);
+  }
   public function createDraw(Event $event, Request $request)
   {
     $draw = new Draw();

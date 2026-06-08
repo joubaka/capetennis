@@ -244,14 +244,10 @@
                 @php
                   $registration = $cereg->registration;
                   $pivotStatus = strtolower($cereg->status ?? '');
-                  $player = $registration ? $registration->players->first() : null;
                 @endphp
-                @if(!$registration || !$player) @continue @endif
+                @if(!$registration) @continue @endif
                 <li class="list-group-item d-flex justify-content-between align-items-center">
-                  <span>
-                    {{ $player->name }}
-                    {{ $player->surname }}
-                  </span>
+                  <span>{{ $registration->displayName() }}</span>
                   @if(str_contains($pivotStatus, 'withdrawn'))
                     <span class="d-flex align-items-center gap-1">
                       <span class="badge bg-label-danger">
@@ -267,7 +263,7 @@
                                   title="View withdrawal details"
                                   data-bs-toggle="modal"
                                   data-bs-target="#withdrawalDetailsModal"
-                                  data-player="{{ $player->name }} {{ $player->surname }}"
+                                  data-player="{{ $registration->displayName() }}"
                                   data-withdrawn-at="{{ $cereg->withdrawn_at ? \Carbon\Carbon::parse($cereg->withdrawn_at)->format('j/n/Y H:i') : '—' }}"
                                   data-method="{{ ucfirst($cereg->refund_method ?? 'none') }}"
                                   data-refund-method="{{ strtolower($cereg->refund_method ?? '') }}"
@@ -291,7 +287,7 @@
                             data-bs-toggle="modal"
                             data-bs-target="#moveCategoryModal"
                             data-entry-id="{{ $cereg->id }}"
-                            data-player="{{ $player->name }} {{ $player->surname }}"
+                            data-player="{{ $registration->displayName() }}"
                             data-current-category="{{ $eventCategory->category->name }}"
                             data-current-category-id="{{ $eventCategory->id }}">
                       <i class="ti ti-switch-horizontal me-1"></i> Change Category

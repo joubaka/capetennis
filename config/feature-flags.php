@@ -22,4 +22,6 @@ return [
     'canonical_progression' => (bool) env('FLAG_CANONICAL_PROGRESSION', false),
     'new_standings'         => (bool) env('FLAG_NEW_STANDINGS',         false),
     'strict_integrity_mode' => (bool) env('FLAG_STRICT_INTEGRITY_MODE', false),
+    // PHASE 1 DOUBLES FOUNDATION — disabled by default, never affects production
+    'doubles_foundation'    => (bool) env('FLAG_DOUBLES_FOUNDATION',    false),
 ];

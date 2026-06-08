@@ -12,10 +12,11 @@ class DrawFactory extends Factory
     public function definition(): array
     {
         return [
-            'drawName'  => $this->faker->words(3, true),
-            'event_id'  => null,
-            'locked'    => false,
-            'published' => false,
+            'drawName'           => $this->faker->words(3, true),
+            'event_id'           => null,
+            'category_event_id'  => null,
+            'locked'             => false,
+            'published'          => false,
         ];
     }
 }

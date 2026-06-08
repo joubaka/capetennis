@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\DrawSetting;
 use App\Models\Venue;
+use App\Domain\Draws\Services\DrawStatusService;
 
 class RoundRobinController extends Controller
 {
@@ -202,12 +203,12 @@ class RoundRobinController extends Controller
             Log::info("➡️ GroupReg ID {$gr->id}", [
               'seed' => $gr->seed,
               'reg_id' => $reg?->id,
-              'player' => $player?->full_name ?? 'UNKNOWN'
+              'player' => $reg?->displayName() ?? 'UNKNOWN'
             ]);
 
             return [
               'id' => $reg?->id,
-              'display_name' => $player?->full_name ?? 'Unknown',
+              'display_name' => $reg?->displayName() ?? 'Unknown',
               'seed' => $gr->seed ?? 9999,
             ];
           })->values(),
@@ -267,10 +268,9 @@ class RoundRobinController extends Controller
         'name' => $g->name,
         'registrations' => $g->groupRegistrations->map(function ($gr) {
           $reg = $gr->registration;
-          $player = $reg?->players?->first();
           return [
             'id' => $reg?->id,
-            'display_name' => $player?->full_name ?? 'Unknown',
+            'display_name' => $reg?->displayName() ?? 'Unknown',
             'seed' => $gr->seed ?? 9999,
           ];
         })->values(),
@@ -323,30 +323,22 @@ class RoundRobinController extends Controller
   // ============================================================
   public function storeOrderOfPlay(Request $request, Draw $draw)
   {
-    $this->authorize('modifySchedule', $draw);
+    $this->authorize('view', $draw);
 
     $data = $request->validate([
-      'items' => 'required|array',
-      'items.*.fixture_id' => 'required|integer',
-      'items.*.court' => 'nullable|string|max:50',
-      'items.*.start_time' => 'nullable|string|max:50',
-      'items.*.round' => 'nullable|string|max:50',
+      'order'   => 'required|array',
+      'order.*' => 'integer',
     ]);
 
-    foreach ($data['items'] as $item) {
-      $fixture = $draw->drawFixtures()->find($item['fixture_id']);
-      if (!$fixture)
-        continue;
-
-      $fixture->court = $item['court'] ?? null;
-      $fixture->start_time = $item['start_time'] ?? null;
-      $fixture->round = $item['round'] ?? $fixture->round;
-      $fixture->save();
+    foreach ($data['order'] as $position => $fixtureId) {
+      $draw->drawFixtures()
+           ->where('id', $fixtureId)
+           ->update(['sort_order' => $position]);
     }
 
     return response()->json([
-      'status' => 'ok',
-      'message' => 'Order of play updated',
+      'status'  => 'ok',
+      'message' => 'Order of play saved.',
     ]);
   }
 
@@ -529,6 +521,29 @@ class RoundRobinController extends Controller
       return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
     }
 
+    // Only allow bracket generation once all RR matches are scored
+    // (skip in force mode so admins can still override)
+    $statusSvc = new DrawStatusService();
+    if (!$request->boolean('force') && !$statusSvc->isRRComplete($draw)) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Not all round robin matches have been scored. Score all matches before generating playoffs, or use force mode.',
+      ], 422);
+    }
+
+    // Log forced generation attempts so operators can audit overrides
+    if ($request->boolean('force')) {
+      $draw->loadMissing('drawFixtures.fixtureResults');
+      $rrFixtures = $draw->drawFixtures->where('stage', 'RR');
+      DrawAuditLog::record($draw->id, 'force_generate_main_bracket', null, [
+        'force'           => true,
+        'rr_total'        => $rrFixtures->count(),
+        'rr_played'       => $rrFixtures->filter(fn($f) => $f->fixtureResults->isNotEmpty())->count(),
+        'draw_locked'     => (bool) $draw->locked,
+        'draw_published'  => (bool) $draw->published,
+      ]);
+    }
+
     $this->authorize('generateBrackets', $draw);
 
     \Log::info("===============================================");
@@ -561,11 +576,15 @@ class RoundRobinController extends Controller
         ]);
         \Log::info("🏁 [PlateBracket] FULL PLATE CREATED", $plateFixtures);
 
+        $draw->refresh();
+        $oopHub = $this->builder->loadRoundRobinHub($draw);
+
         return response()->json([
           'success' => true,
           'message' => 'Main playoff bracket created.',
           'fixtures' => $fixtures,
           'plateFixtures' => $plateFixtures,
+          'oop' => $oopHub['oops'] ?? [],
         ]);
       }
 
@@ -605,10 +624,14 @@ class RoundRobinController extends Controller
         'total_fixtures' => count($allFixtures),
       ]);
 
+      $draw->refresh();
+      $oopHub = $this->builder->loadRoundRobinHub($draw);
+
       return response()->json([
         'success' => true,
         'message' => 'Playoff brackets created successfully.',
         'fixtures' => $allFixtures,
+        'oop' => $oopHub['oops'] ?? [],
       ]);
 
     } catch (\Throwable $e) {
@@ -1207,6 +1230,27 @@ class RoundRobinController extends Controller
       return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
     }
 
+    $statusSvc2 = new DrawStatusService();
+    if (!$request->boolean('force') && !$statusSvc2->isRRComplete($draw)) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Not all round robin matches have been scored. Score all matches before generating playoffs, or use force mode.',
+      ], 422);
+    }
+
+    // Log forced generation attempts so operators can audit overrides
+    if ($request->boolean('force')) {
+      $draw->loadMissing('drawFixtures.fixtureResults');
+      $rrFixtures = $draw->drawFixtures->where('stage', 'RR');
+      DrawAuditLog::record($draw->id, 'force_generate_second_third_bracket', null, [
+        'force'          => true,
+        'rr_total'       => $rrFixtures->count(),
+        'rr_played'      => $rrFixtures->filter(fn($f) => $f->fixtureResults->isNotEmpty())->count(),
+        'draw_locked'    => (bool) $draw->locked,
+        'draw_published' => (bool) $draw->published,
+      ]);
+    }
+
     $this->authorize('generateBrackets', $draw);
 
     \Log::info("===============================================");
@@ -1235,10 +1279,14 @@ class RoundRobinController extends Controller
         'third' => optional($fixtures['third'])->id,
       ]);
 
+      $draw->refresh();
+      $oopHub2 = $this->builder->loadRoundRobinHub($draw);
+
       return response()->json([
         'success' => true,
         'message' => '2nd/3rd playoff bracket (PLATE) created.',
         'fixtures' => $fixtures,
+        'oop' => $oopHub2['oops'] ?? [],
       ]);
 
     } catch (\Throwable $e) {
@@ -1305,6 +1353,12 @@ class RoundRobinController extends Controller
     ]);
     }
   
+    public function consBracket(Draw $draw)
+    {
+        // Consolation bracket is not yet generated for this draw type; return empty response.
+        return response('', 204);
+    }
+
     public function toggleLock(Request $request, Draw $draw)
     {
       $this->authorize('lockToggle', $draw);
@@ -1330,6 +1384,30 @@ class RoundRobinController extends Controller
     public function regenerateRR(Request $request, Draw $draw)
     {
       $this->authorize('generateFixtures', $draw);
+
+      // Warn if results already exist — require explicit force flag to proceed
+      $hadResults = (new DrawStatusService())->hasAnyResults($draw);
+      if (!$request->boolean('force') && $hadResults) {
+        return response()->json([
+          'success' => false,
+          'confirm' => true,
+          'message' => 'This draw already has scored matches. Regenerating will delete all results and brackets. Are you sure?',
+        ], 422);
+      }
+
+      // Log forced regeneration so operators can audit destructive overrides
+      if ($request->boolean('force') && $hadResults) {
+        $draw->loadMissing('drawFixtures.fixtureResults');
+        $rrFixtures  = $draw->drawFixtures->where('stage', 'RR');
+        $resultCount = $rrFixtures->sum(fn($f) => $f->fixtureResults->count());
+        DrawAuditLog::record($draw->id, 'force_regenerate_round_robin', null, [
+          'force'            => true,
+          'existing_results' => $resultCount,
+          'rr_fixtures'      => $rrFixtures->count(),
+          'draw_locked'      => (bool) $draw->locked,
+          'draw_published'   => (bool) $draw->published,
+        ]);
+      }
 
       Log::info("🔄 [regenerateRR] Starting fixture regeneration", [
         'draw_id' => $draw->id,
@@ -1360,10 +1438,15 @@ class RoundRobinController extends Controller
 
         // Return JSON for AJAX requests
         if ($request->ajax() || $request->wantsJson()) {
+          $draw->refresh();
+          $regenHub = $this->builder->loadRoundRobinHub($draw);
           return response()->json([
             'success' => true,
             'message' => 'Round robin fixtures regenerated successfully.',
             'fixture_count' => $draw->drawFixtures->count(),
+            'oop'        => $regenHub['oops']       ?? [],
+            'rrFixtures' => $regenHub['rrFixtures']  ?? [],
+            'standings'  => $regenHub['standings']   ?? [],
           ]);
         }
 
@@ -1474,7 +1557,7 @@ class RoundRobinController extends Controller
         'name'    => $g->name,
         'players' => $g->registrations->map(fn($r) => [
           'id'   => $r->id,
-          'name' => optional($r->players->first())->full_name ?? 'Unknown',
+          'name' => $r->displayName(),
         ])->values(),
       ]);
 
@@ -1513,7 +1596,7 @@ class RoundRobinController extends Controller
         )
         ->map(fn($cer) => [
           'id'   => $cer->registration_id,
-          'name' => $cer->registration->players->first()->full_name ?? 'Unknown',
+          'name' => $cer->registration->displayName(),
         ])
         ->values();
 
@@ -1526,5 +1609,12 @@ class RoundRobinController extends Controller
     })->values();
 
     return response()->json(['categories' => $result]);
+  }
+
+  public function drawStatus(Draw $draw)
+  {
+    $this->authorize('view', $draw);
+    $status = (new DrawStatusService())->status($draw);
+    return response()->json($status);
   }
 }

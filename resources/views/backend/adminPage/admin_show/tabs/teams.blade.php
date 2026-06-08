@@ -57,14 +57,12 @@
                     style="min-height:150px;">
 
                   @foreach ($categoryEvent->registrations as $registration)
-                    @php $p = $registration->players->first(); @endphp
-
                     <li class="list-group-item d-flex justify-content-between align-items-center"
                       data-registration-id="{{ $registration->id }}"
-                      data-player-id="{{ $p->id }}"
+                      data-player-id="{{ $registration->players->first()?->id }}"
                       data-category="{{ $catSlug }}">
 
-                      <span>{{ $p->name }} {{ $p->surname }}</span>
+                      <span>{{ $registration->displayName() }}</span>
                       <small class="text-muted">{{ $categoryEvent->category->name }}</small>
                     </li>
 
@@ -109,14 +107,14 @@
               style="min-height:200px;">
 
             @foreach ($group->groupRegistrations as $grpReg)
-              @php $player = $grpReg->registration->players->first(); @endphp
+              @php $displayName = $grpReg->registration->displayName(); @endphp
 
               <li class="list-group-item d-flex justify-content-between align-items-center"
                   data-registration-id="{{ $grpReg->registration_id }}"
-                  data-player-id="{{ $player->id }}"
+                  data-player-id="{{ $grpReg->registration->players->first()?->id }}"
                   data-category="{{ $catSlug }}">
 
-                <span>{{ $player->name }} {{ $player->surname }}</span>
+                <span>{{ $displayName }}</span>
                 <small class="text-muted">{{ $categoryEvent->category->name }}</small>
               </li>
             @endforeach

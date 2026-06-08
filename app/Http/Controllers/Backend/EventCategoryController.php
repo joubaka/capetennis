@@ -91,6 +91,26 @@ class EventCategoryController extends Controller
   }
 
   /**
+   * Toggle a category between Singles and Doubles.
+   */
+  public function setDoubles(Request $request, CategoryEvent $categoryEvent)
+  {
+    $data = $request->validate([
+      'is_doubles' => ['required', 'boolean'],
+    ]);
+
+    $categoryEvent->update(['is_doubles' => $data['is_doubles']]);
+
+    $label = $data['is_doubles'] ? 'Doubles' : 'Singles';
+
+    return response()->json([
+      'success'    => true,
+      'is_doubles' => $data['is_doubles'],
+      'message'    => "Category set to {$label}.",
+    ]);
+  }
+
+  /**
    * Delete a single category IF empty
    */
   public function destroy(CategoryEvent $categoryEvent)

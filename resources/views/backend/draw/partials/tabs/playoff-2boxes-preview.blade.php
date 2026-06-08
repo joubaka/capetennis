@@ -69,7 +69,7 @@
                 $position = $rankings[$reg->id] ?? null;
                 $finalPositions[$reg->id] = [
                     'box' => $boxNumber,
-                    'player' => $reg->players->first()?->full_name ?? 'TBD',
+                    'player' => $reg->displayName(),
                     'position' => $position !== null ? $position + 1 : null,
                 ];
             }
@@ -85,7 +85,7 @@
 
             foreach ($positioned as $i => $reg) {
                 $code = $boxLetters[$boxNumber - 1] . ($i + 1);
-                $codeToName[$code] = $reg->players->first()?->full_name ?? 'TBD';
+                $codeToName[$code] = $reg->displayName();
             }
         }
     @endphp

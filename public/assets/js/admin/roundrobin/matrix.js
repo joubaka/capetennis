@@ -83,9 +83,8 @@
       return;
     }
 
-    // Normalize once
+    // Normalize once (local copy only — do NOT write back to state to avoid recursion)
     fixtures = normalizeAll(fixtures);
-    AdminState.setFixtures(fixtures);
 
     groups.forEach(function (group) {
       var gid      = group.id;
@@ -166,6 +165,12 @@
 
     // Full re-render after any fixture update
     AdminState.on('rr:fixtures:updated', function () {
+      render();
+    });
+
+    // Re-render when group membership changes (player reassigned / groups recreated)
+    AdminState.on('rr:groups:updated', function () {
+      root.__RR_MATRIX_RENDERED = false;
       render();
     });
 

@@ -62,7 +62,7 @@
               return;
             }
 
-            reject({ status: xhr.status, message: msg, xhr: xhr });
+            reject({ status: xhr.status, message: msg, xhr: xhr, body: xhr.responseJSON || {} });
           }
         };
 

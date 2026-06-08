@@ -77,7 +77,7 @@ class PublicRoundRobinController extends Controller
 
           return [
             'id' => $reg->id ?? null,
-            'display_name' => $player?->full_name ?? 'Unknown',
+            'display_name' => $reg?->display_name ?? $player?->full_name ?? 'Unknown',
             'seed' => $gr->seed ?? 9999
           ];
         })->values()

@@ -11,7 +11,8 @@ class CategoryEvent extends Model
   protected $fillable = [
     'event_id',
     'category_id',
-    'entry_fee',                 // ✅ ADD THIS
+    'entry_fee',
+    'is_doubles',
     'ordering',
     'nominations_published',
     'locked_at',
@@ -106,6 +107,15 @@ class CategoryEvent extends Model
   public function isLocked(): bool
   {
     return !is_null($this->locked_at);
+  }
+
+  /**
+   * Whether this category is a doubles event.
+   * PHASE 1 FOUNDATION — checked only when FeatureFlags::DOUBLES_FOUNDATION is enabled.
+   */
+  public function isDoubles(): bool
+  {
+    return (bool) ($this->is_doubles ?? false);
   }
 
 

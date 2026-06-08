@@ -37,7 +37,7 @@ class Brackets
       } else {
         $data .= "<text font-family='Noto Sans JP' font-size='20' id='svg_43' y=$y x=$x font-weight='bold'>";
 
-        $data .= $bracket_fix->registrations1->players[0]->getFullNameAttribute() . '</text>';
+        $data .= $bracket_fix->registrations1->displayName() . '</text>';
       }
     } else {
     }
@@ -118,9 +118,7 @@ class Brackets
         $data .= "<text font-family='Noto Sans JP' font-size='20' id='svg_43' y=$y x=$x font-weight='bold'>";
 
         $data .=
-          $bracket_fix->registrations2->players[0]->name .
-          ' ' .
-          $bracket_fix->registrations2->players[0]->surname .
+          $bracket_fix->registrations2->displayName() .
           '</text>';
       }
     } else {
@@ -1347,7 +1345,7 @@ class Brackets
   {
     if (count($fixture->fixtureResults) > 0) {
       $results = $fixture->fixtureResults;
-      return $results[0]->w_registration->players[0]->name . ' ' . $results[0]->w_registration->players[0]->surname;
+      return $results[0]->w_registration->displayName();
     } else {
       return '';
     }
@@ -1412,7 +1410,7 @@ class Brackets
 
       $table .= '<td>';
       if (!$fixture->registration1_id == null && !$fixture->registration2_id == null) {
-        $table .= $fixture->registrations1->players[0]->name . ' ' . $fixture->registrations1->players[0]->surname;
+        $table .= $fixture->registrations1->displayName();
       }
 
       $table .= '</td>';
@@ -1420,7 +1418,7 @@ class Brackets
       $table .= 'vs </td>';
       $table .= '<td>';
       if (!$fixture->registration1_id == null && !$fixture->registration2_id == null) {
-        $table .= $fixture->registrations2->players[0]->name . ' ' . $fixture->registrations2->players[0]->surname;
+        $table .= $fixture->registrations2->displayName();
       }
       $table .= '</td>';
       $table .= '<td>';
@@ -1464,10 +1462,10 @@ class Brackets
 
         if (!$fixture->registration1_id == null && !$fixture->registration2_id == null) {
           $data .=
-            $fixture->registrations1->players[0]->name . ' ' . $fixture->registrations1->players[0]->surname . ' vs ';
+            $fixture->registrations1->displayName() . ' vs ';
         }
         if (!$fixture->registration1_id == null && !$fixture->registration2_id == null) {
-          $data .= $fixture->registrations2->players[0]->name . ' ' . $fixture->registrations2->players[0]->surname;
+          $data .= $fixture->registrations2->displayName();
         }
 
         $data .= '</li>';
@@ -1504,13 +1502,9 @@ class Brackets
           '/' .
           ($i + 2) .
           ' - ' .
-          Registration::find($positions[$draw_id][$i])->players[0]->name .
-          ' ' .
-          Registration::find($positions[$draw_id][$i])->players[0]->surname .
+          Registration::find($positions[$draw_id][$i])->displayName() .
           ' vs ' .
-          Registration::find($positions[$draw_id][$i + 1])->players[0]->name .
-          ' ' .
-          Registration::find($positions[$draw_id][$i + 1])->players[0]->surname;
+          Registration::find($positions[$draw_id][$i + 1])->displayName();
       } else {
         $matches[] = '';
       }
@@ -1823,7 +1817,7 @@ class Brackets
   public static function getResultFinalWinner($res)
   {
     if (count($res) > 0) {
-      return $res->last()->w_registration->players[0]->getFullNameAttribute();
+      return $res->last()->w_registration->displayName();
     } else {
       return 'not played yet';
     }
@@ -1831,7 +1825,7 @@ class Brackets
   public static function getResultFinalLoser($res)
   {
     if (count($res) > 0) {
-      return $res->last()->l_registration->players[0]->getFullNameAttribute();
+      return $res->last()->l_registration->displayName();
     } else {
       return 'not played yet';
     }

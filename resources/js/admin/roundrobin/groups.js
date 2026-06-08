@@ -37,6 +37,22 @@
           return (a.name || '').localeCompare(b.name || '');
         });
         _renderGroupsRow(sorted);
+
+        // Sync AdminState so matrix and other modules see fresh group membership
+        var stateGroups = sorted.map(function (g, gi) {
+          return {
+            id:   g.id,
+            name: g.name,
+            registrations: (g.players || []).map(function (p, pi) {
+              return {
+                id:           p.id,
+                display_name: p.name,
+                pivot:        { seed: pi + 1 }
+              };
+            })
+          };
+        });
+        AdminState.setGroups(stateGroups);
       })
       .catch(function () { AdminToast.warning('Could not refresh groups.'); });
   }
@@ -211,8 +227,32 @@
       .then(function () { restore(); });
   }
 
+  // ─── OOP normaliser (mirrors scores.js) ─────────────────────────
+  function _normaliseOop(raw) {
+    return (raw || []).map(function (fx) {
+      return {
+        id:             fx.id,
+        stage:          fx.stage        || '',
+        round:          fx.round        || fx.round_nr   || '',
+        match_nr:       fx.match_nr     || '',
+        time:           fx.time         || '',
+        home:           fx.home         || fx.home_name  || fx.name1 || '',
+        away:           fx.away         || fx.away_name  || fx.name2 || '',
+        score:          fx.score        || '',
+        winner:         fx.winner_registration || fx.winner || null,
+        r1_id:          fx.r1_id,
+        r2_id:          fx.r2_id,
+        group_id:       fx.group_id     || null,
+        group_name:     fx.group_name   || '',
+        playoff_type:   fx.playoff_type || null,
+        winner_feeders: fx.winner_feeders || [],
+        loser_feeders:  fx.loser_feeders  || []
+      };
+    });
+  }
+
   // ─── Regenerate fixtures ──────────────────────────────────────────
-  function regenerateFixtures() {
+  function regenerateFixtures(force) {
     AdminConfirm.destructive(
       'Regenerate Fixtures?',
       'This will <strong>delete existing fixtures</strong> and create new round-robin matches based on current group assignments.'
@@ -220,16 +260,34 @@
       if (!ok) return;
 
       var loader = AdminModal.loading('Generating…', 'Please wait while fixtures are being created.');
+      var payload = force ? { force: 1 } : {};
 
-      AdminApi.post(AdminRoutes.drawUrl(DRAW_ID, '/regenerate-rr'))
+      AdminApi.post(AdminRoutes.drawUrl(DRAW_ID, '/regenerate-rr'), payload)
         .then(function (res) {
           loader.close();
           AdminToast.success(res.message || 'Fixtures regenerated successfully');
+          // Sync all state so OOP, matrix and standings update immediately
+          if (res.rrFixtures) AdminState.setFixtures(res.rrFixtures);
+          if (res.standings)  AdminState.setStandings(res.standings);
+          if (res.oop)        AdminState.setOop(_normaliseOop(res.oop));
           refreshGroupsAndPlayers();
         })
         .catch(function (err) {
           loader.close();
-          AdminToast.error(err.message || 'Failed to regenerate fixtures.');
+          // 422 with confirm flag means results already exist — ask user to force
+          if (err && err.status === 422 && err.body && err.body.confirm) {
+            // Delay to let the loading Swal fully close before opening the confirm dialog
+            setTimeout(function () {
+              AdminConfirm.destructive(
+                'Results already exist',
+                err.message || 'Regenerating will delete all results and brackets. Are you sure?'
+              ).then(function (confirmed) {
+                if (confirmed) { regenerateFixtures(true); }
+              });
+            }, 300);
+          } else {
+            AdminToast.error(err.message || 'Failed to regenerate fixtures.');
+          }
         });
     });
   }

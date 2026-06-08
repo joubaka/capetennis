@@ -169,6 +169,12 @@
       render();
     });
 
+    // Re-render when group membership changes (player reassigned / groups recreated)
+    AdminState.on('rr:groups:updated', function () {
+      root.__RR_MATRIX_RENDERED = false;
+      render();
+    });
+
     // Lightweight cell update after score save
     AdminState.on('score:saved', function (e) {
       if (e.detail && e.detail.mode === 'RR' && e.detail.fixture) {

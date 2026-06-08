@@ -131,15 +131,15 @@
                     <tr class="fixture-row">
                       <td class="text-muted">{{ $fixture->match_nr ?? $loop->iteration }}</td>
                       <td>
-                        @if($fixture->registration1?->players->first())
-                          {{ $fixture->registration1->players->first()->full_name ?? $fixture->registration1->players->first()->name }}
+                        @if($fixture->registration1)
+                          {{ $fixture->registration1->displayName() }}
                         @else
                           <span class="text-muted">TBD</span>
                         @endif
                       </td>
                       <td>
-                        @if($fixture->registration2?->players->first())
-                          {{ $fixture->registration2->players->first()->full_name ?? $fixture->registration2->players->first()->name }}
+                        @if($fixture->registration2)
+                          {{ $fixture->registration2->displayName() }}
                         @else
                           <span class="text-muted">TBD</span>
                         @endif

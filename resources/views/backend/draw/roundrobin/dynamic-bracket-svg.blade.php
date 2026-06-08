@@ -86,7 +86,7 @@
             @php
                 $firstMatch = $rMatches[0] ?? null;
                 $roundLabel = $firstMatch['roundLabel'] ?? "R$rn";
-                $roundX = $firstMatch ? $firstMatch['x'] : (60 + ($rn - 1) * 200);
+                $roundX = $firstMatch ? $firstMatch['x'] : (60 + ($rn - 1) * 300);
             @endphp
             <text x="{{ $roundX + 95 }}" y="{{ $bracketStartY - 28 }}" text-anchor="middle" style="font-family: sans-serif; font-size: 10px; font-weight: 600; fill: #64748b; letter-spacing: 0.5px;">
                 {{ strtoupper($roundLabel) }}
@@ -108,7 +108,7 @@
                     $rightX = $x + $w;
                     
                     // LINKING LOGIC: Calculate which line to connect to in next round
-                    $nextRoundX = $x + 200; // ROUND_GAP constant
+                    $nextRoundX = $x + 300; // ROUND_GAP constant
                     
                     // Determine if this is the top or bottom match of a pair
                     $isTopOfPair = ($matchIndex % 2 == 0);
@@ -180,13 +180,13 @@
                     {{-- Top Player --}}
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p1, 22) }}</text>
+                        @endif>{{ Str::limit($p1, 35) }}</text>
                     @if($origin1 && $isAdmin)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $x + 5 + min(strlen($p1), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel1 && !$isBye1)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $x + 5 + min(strlen($p1), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
@@ -198,13 +198,13 @@
                     <line x1="{{ $x }}" y1="{{ $midY }}" x2="{{ $rightX }}" y2="{{ $midY }}" stroke="#e2e8f0" stroke-width="0.8" />
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p2, 22) }}</text>
+                        @endif>{{ Str::limit($p2, 35) }}</text>
                     @if($origin2 && $isAdmin)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $x + 5 + min(strlen($p2), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel2 && !$isBye2)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $x + 5 + min(strlen($p2), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
@@ -259,8 +259,8 @@
                             <rect x="{{ $x }}" y="{{ $topLineY - 18 }}" width="{{ $w }}" height="{{ $h + 36 }}"
                                   class="match-hit bracket-score-btn"
                                   data-fixture-id="{{ $fx->id }}"
-                                  data-home="{{ Str::limit($p1, 30) }}"
-                                  data-away="{{ Str::limit($p2, 30) }}" />
+                                  data-home="{{ Str::limit($p1, 35) }}"
+                                  data-away="{{ Str::limit($p2, 35) }}" />
                         @endif
                     @else
                         {{-- Virtual match number on empty bracket --}}
@@ -361,13 +361,13 @@
                     {{-- Top Player --}}
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p1, 22) }}</text>
+                        @endif>{{ Str::limit($p1, 35) }}</text>
                     @if($origin1 && $isAdmin)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $x + 5 + min(strlen($p1), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel1 && !$isBye1)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $x + 5 + min(strlen($p1), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
@@ -377,13 +377,13 @@
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p2, 22) }}</text>
+                        @endif>{{ Str::limit($p2, 35) }}</text>
                     @if($origin2 && $isAdmin)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $x + 5 + min(strlen($p2), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel2 && !$isBye2)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $x + 5 + min(strlen($p2), 35) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
@@ -409,7 +409,7 @@
                         @endif
                     @else
                         {{-- Connecting line to next playoff round --}}
-                        <line x1="{{ $rightX }}" y1="{{ $midY }}" x2="{{ $x + 200 }}" y2="{{ $midY }}" class="bracket-line" />
+                        <line x1="{{ $rightX }}" y1="{{ $midY }}" x2="{{ $x + 300 }}" y2="{{ $midY }}" class="bracket-line" />
                     @endif
 
                     {{-- Score display --}}
@@ -432,8 +432,8 @@
                             <rect x="{{ $x }}" y="{{ $topLineY - 18 }}" width="{{ $w }}" height="{{ $h + 36 }}"
                                   class="match-hit bracket-score-btn"
                                   data-fixture-id="{{ $fx->id }}"
-                                  data-home="{{ Str::limit($p1, 30) }}"
-                                  data-away="{{ Str::limit($p2, 30) }}" />
+                                  data-home="{{ Str::limit($p1, 35) }}"
+                                  data-away="{{ Str::limit($p2, 35) }}" />
                         @endif
                     @else
                         {{-- Virtual match number on empty bracket --}}

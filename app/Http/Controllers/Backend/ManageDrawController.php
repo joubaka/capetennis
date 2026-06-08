@@ -231,8 +231,10 @@ class ManageDrawController extends Controller
   {
     $this->authorize('editNotes', $draw);
     $validated = $request->validate([
-      'notes' => 'required|array',
-      'notes.*' => 'nullable|string|max:5000',
+      'notes'           => 'required|array',
+      'notes._enabled'  => 'nullable|array',
+      'notes._enabled.*'=> 'nullable|boolean',
+      'notes.*'         => 'nullable|string|max:5000',
     ]);
 
     if (!$draw->settings) {

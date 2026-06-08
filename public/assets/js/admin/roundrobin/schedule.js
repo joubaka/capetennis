@@ -99,11 +99,10 @@
       if (!ok) return;
 
       AdminApi.request({
-        url:    AdminRoutes.appUrl() + '/backend/draw/' + drawId + '/venues',
+        url:    AdminRoutes.appUrl() + '/backend/draw/' + drawId + '/venues/' + venueId,
         method: 'POST',
         data: {
           _token:   $('meta[name="csrf-token"]').attr('content'),
-          venue_id: venueId,
           _method:  'DELETE'
         }
       }).then(function (res) {

@@ -29,6 +29,7 @@ class Fixture extends Model
     'hint_registration2_id',
 
     'stage',
+    'sort_order',
     'parent_fixture_id',
     'loser_parent_fixture_id',
     'winner_registration',
@@ -246,7 +247,7 @@ class Fixture extends Model
       return "Unknown";
     }
 
-    return $reg->players->first()->getFullNameAttribute();
+    return $reg->displayName();
   }
 
 }

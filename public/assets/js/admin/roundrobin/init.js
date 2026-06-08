@@ -87,6 +87,55 @@
     });
 
     console.log('[RR Admin] Modular boot complete — draw', drawId);
+
+    // ── 7. Load and render the draw status bar ───────────────────
+    _loadStatusBar(drawId);
+
+    // Refresh status bar whenever a score is saved/deleted
+    $(document).on('rr:score:saved rr:score:deleted rr:groups:saved rr:rr:regenerated', function () {
+      _loadStatusBar(drawId);
+    });
   });
+
+  function _loadStatusBar(drawId) {
+    var url = (window.RR_ROUTES && window.RR_ROUTES.drawStatus)
+      ? window.RR_ROUTES.drawStatus
+      : (AdminRoutes.appUrl() + '/backend/draw/' + drawId + '/status');
+
+    AdminApi.get(url).then(function (s) {
+      _applyStatusBadge('#dss-groups',    s.groups_configured,  'Groups');
+      _applyStatusBadge('#dss-fixtures',  s.fixtures_generated, 'Fixtures');
+      $('#dss-rr').text('RR ' + s.rr_complete_pct + '%')
+        .removeClass('bg-secondary bg-success bg-warning bg-danger')
+        .addClass(s.rr_complete ? 'bg-success' : (s.rr_played > 0 ? 'bg-warning' : 'bg-secondary'));
+      _applyStatusBadge('#dss-standings', s.standings_ready,    'Standings');
+      _applyStatusBadge('#dss-brackets',  s.brackets_generated, 'Brackets');
+
+      // Lock / publish
+      $('#dss-lock').text(s.locked ? 'Locked' : 'Unlocked')
+        .removeClass('bg-secondary bg-warning bg-danger')
+        .addClass(s.locked ? 'bg-danger' : 'bg-secondary');
+      if (s.published) { $('#dss-publish').show().removeClass('bg-secondary').addClass('bg-success'); }
+      else             { $('#dss-publish').hide(); }
+
+      // Warnings
+      if (s.warnings && s.warnings.length) {
+        var html = s.warnings.map(function (w) {
+          return '<div class="small text-warning"><i class="ti ti-alert-triangle me-1"></i>' + w + '</div>';
+        }).join('');
+        $('#dss-warnings').html(html).show();
+      } else {
+        $('#dss-warnings').hide();
+      }
+
+      $('#draw-status-bar').show();
+    }).catch(function () { /* silently skip if not available */ });
+  }
+
+  function _applyStatusBadge(sel, ok, label) {
+    $(sel).text(label)
+      .removeClass('bg-secondary bg-success bg-danger')
+      .addClass(ok ? 'bg-success' : 'bg-secondary');
+  }
 
 }(jQuery, window));

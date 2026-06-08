@@ -121,6 +121,7 @@
           <tr>
             <th>Category</th>
             <th class="text-center">Entries</th>
+            <th class="text-center">Type</th>
             <th class="text-center">Entry Fee Override</th>
             <th class="text-end">Actions</th>
           </tr>
@@ -133,6 +134,21 @@
 
               <td class="text-center">
                 {{ $categoryEvent->categoryEventRegistrations->count() }}
+              </td>
+
+              <td class="text-center">
+                <div class="d-flex justify-content-center align-items-center gap-2">
+                  <span class="badge {{ $categoryEvent->is_doubles ? 'bg-info' : 'bg-secondary' }} type-badge"
+                        id="type-badge-{{ $categoryEvent->id }}">
+                    {{ $categoryEvent->is_doubles ? 'Doubles' : 'Singles' }}
+                  </span>
+                  <button class="btn btn-sm btn-outline-secondary toggle-doubles-btn"
+                          data-id="{{ $categoryEvent->id }}"
+                          data-is-doubles="{{ $categoryEvent->is_doubles ? '1' : '0' }}"
+                          title="Switch to {{ $categoryEvent->is_doubles ? 'Singles' : 'Doubles' }}">
+                    <i class="ti ti-switch-horizontal"></i>
+                  </button>
+                </div>
               </td>
 
               <td class="text-center">
@@ -165,7 +181,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="4" class="text-center text-muted py-3">
+              <td colspan="5" class="text-center text-muted py-3">
                 No categories attached to this event.
               </td>
             </tr>
@@ -186,8 +202,9 @@
 
 <script>
 window.categoryConfig = {
-    attachedIds: @json($attachedCategoryIds),
-    feeUpdateUrl: "{{ route('admin.events.category-fee.update', ':id') }}"
+    attachedIds:    @json($attachedCategoryIds),
+    feeUpdateUrl:   "{{ route('admin.events.category-fee.update', ':id') }}",
+    setDoublesUrl:  "{{ route('admin.category.setDoubles', ':id') }}",
 };
 </script>
 
@@ -203,5 +220,49 @@ if (window.toastr) {
 </script>
 
 <script src="{{ asset(mix('js/eventCategories.js')) }}"></script>
+
+<script>
+// Singles / Doubles toggle
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.toggle-doubles-btn');
+    if (!btn) return;
+
+    const id        = btn.dataset.id;
+    const isDoubles = btn.dataset.isDoubles === '1';
+    const newValue  = isDoubles ? 0 : 1;
+
+    const url = window.categoryConfig.setDoublesUrl.replace(':id', id);
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept':       'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+        },
+        body: JSON.stringify({ is_doubles: newValue }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const badge = document.getElementById(`type-badge-${id}`);
+            if (newValue === 1) {
+                badge.textContent = 'Doubles';
+                badge.className   = 'badge bg-info type-badge';
+                btn.title         = 'Switch to Singles';
+            } else {
+                badge.textContent = 'Singles';
+                badge.className   = 'badge bg-secondary type-badge';
+                btn.title         = 'Switch to Doubles';
+            }
+            btn.dataset.isDoubles = String(newValue);
+            if (window.toastr) toastr.success(data.message);
+        } else {
+            if (window.toastr) toastr.error(data.message ?? 'Could not update.');
+        }
+    })
+    .catch(() => { if (window.toastr) toastr.error('Network error.'); });
+});
+</script>
 
 @endsection

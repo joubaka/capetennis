@@ -38,10 +38,36 @@ class DrawGroupRegistration extends Model
 
   // -------------------------------------------------------------
   // DIRECT PLAYER (SINGLES OR FIRST PLAYER IN DOUBLES)
+  // NOTE: Returns first player only. Safe for singles.
+  // For doubles display use displayName() instead.
   // -------------------------------------------------------------
 
   public function player()
   {
     return $this->registration->players->first() ?? null;
+  }
+
+  // -------------------------------------------------------------
+  // DISPLAY — supports both singles and doubles
+  // Singles:  "John Smith"
+  // Doubles:  "John Smith / Peter Jones"
+  // -------------------------------------------------------------
+
+  public function displayName(): string
+  {
+    $reg = $this->relationLoaded('registration')
+      ? $this->registration
+      : $this->registration()->with('players')->first();
+
+    return $reg ? $reg->displayName() : 'Unassigned';
+  }
+
+  public function displayShortName(): string
+  {
+    $reg = $this->relationLoaded('registration')
+      ? $this->registration
+      : $this->registration()->with('players')->first();
+
+    return $reg ? $reg->displayShortName() : 'Unassigned';
   }
 }

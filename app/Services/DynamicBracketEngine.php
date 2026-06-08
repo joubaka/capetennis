@@ -14,9 +14,9 @@ class DynamicBracketEngine
     protected array $seedOriginMap = [];
 
     // SVG Layout Constants
-    const BOX_WIDTH = 190;
+    const BOX_WIDTH = 240;
     const BOX_HEIGHT = 60;
-    const ROUND_GAP = 200;
+    const ROUND_GAP = 300;
     const MATCH_GAP_BASE = 40;
     const START_X = 60;
     const START_Y = 70;
@@ -95,7 +95,7 @@ class DynamicBracketEngine
         }
 
         $result['totalHeight'] = $currentY;
-        $result['totalWidth'] = 1400; 
+        $result['totalWidth'] = 1800;
         return $result;
     }
 

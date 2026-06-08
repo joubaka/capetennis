@@ -114,7 +114,7 @@ $(function () {
               <ul id="eligible-players" style="min-height: 60px; list-style: none; padding: 0; margin: 0;">
                 @forelse ($eligibleRegistrations as $reg)
                   <li class="list-group-item list-group-item-action draggable-player mb-1 rounded" data-player-id="{{ $reg->id }}" style="cursor: grab;">
-                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
+                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->displayName() }}
                   </li>
                 @empty
                   <li class="list-group-item text-muted text-center">No eligible players</li>
@@ -133,7 +133,7 @@ $(function () {
               <ul id="assigned-players" style="min-height: 60px; list-style: none; padding: 0; margin: 0;">
                 @forelse ($draw->registrations as $reg)
                   <li class="list-group-item list-group-item-action draggable-player mb-1 rounded" data-player-id="{{ $reg->id }}" style="cursor: grab;">
-                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
+                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->displayName() }}
                   </li>
                 @empty
                   <li class="list-group-item text-muted text-center">No players assigned yet</li>

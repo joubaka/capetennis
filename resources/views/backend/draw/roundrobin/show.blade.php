@@ -511,6 +511,25 @@
 </div>
 
 {{-- ============================
+     DRAW WORKFLOW STATUS BAR
+   ============================ --}}
+<div id="draw-status-bar" class="card mb-2 border-0 bg-light shadow-none" style="display:none;">
+  <div class="card-body py-2 px-3 d-flex flex-wrap align-items-center gap-2">
+    <span class="fw-semibold me-2 text-muted small">Draw progress:</span>
+    <span id="dss-groups"    class="badge bg-secondary">Groups</span>
+    <span id="dss-fixtures"  class="badge bg-secondary">Fixtures</span>
+    <span id="dss-rr"        class="badge bg-secondary">RR 0%</span>
+    <span id="dss-standings" class="badge bg-secondary">Standings</span>
+    <span id="dss-brackets"  class="badge bg-secondary">Brackets</span>
+    <span class="ms-auto">
+      <span id="dss-lock"    class="badge bg-secondary">Unlocked</span>
+      <span id="dss-publish" class="badge bg-secondary ms-1" style="display:none;">Published</span>
+    </span>
+  </div>
+  <div id="dss-warnings" class="px-3 pb-2" style="display:none;"></div>
+</div>
+
+{{-- ============================
      TAB NAVIGATION
    ============================ --}}
  <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
@@ -1000,9 +1019,10 @@
                   <th class="text-center">VS</th>
                   <th>Player 2</th>
                   <th class="text-center">Round</th>
-                  <th class="text-center">Group</th>
+                  <th class="text-center">Stage</th>
                   <th class="text-center d-none d-sm-table-cell">Time</th>
                   <th class="text-center">Score</th>
+                  <th class="text-center">Feeders</th>
                   <th class="text-center">Actions</th>
                 </tr>
               </thead>
@@ -1150,8 +1170,7 @@
                         $cer = $cerMap->get($reg->id);
                         $isPaid = $cer && $cer->payment_status_id == 1;
                         $isWithdrawn = $cer && str_contains(strtolower($cer->status ?? ''), 'withdrawn');
-                        $player = $reg->players->first();
-                        $display = $player ? $player->full_name : 'Unknown Player';
+                        $display = $reg->displayName();
                         $isAssigned = $assignedRegIds->contains($reg->id);
                       @endphp
 
@@ -1207,8 +1226,7 @@
 
                       @foreach($group->registrations as $reg)
                         @php
-                          $player = $reg->players->first();
-                          $display = $player ? $player->full_name : 'Unknown Player';
+                          $display = $reg->displayName();
                         @endphp
 
                         <li class="list-group-item list-group-item-action py-1 px-2{{ $draw->locked ? ' rr-item-locked' : '' }}" 
@@ -1499,23 +1517,37 @@
    ============================ --}}
 <div class="tab-pane fade" id="notes-pane" role="tabpanel">
   @php
-    $drawNotes = optional($draw->settings)->notes ?? [];
-    $playoffConfig = optional($draw->settings)->playoff_config ?? [];
-    $enabledBrackets = collect($playoffConfig)->where('enabled', true)->values();
-    $defaultGeneralNotes = "General Rules\n\nPlayers must be ready to play at their scheduled time.\nA 5-minute warm-up is allowed before the match starts.\nStandard ITF tennis rules apply unless otherwise specified by the tournament organizer.\nThe tournament referee's decision is final in all disputes.";
-    $defaultRRNotes = "Round Robin Match Format\n\nMatches consist of 1 set starting from 0–0.\nThe first player/team to 4 games wins the set.\nAt 3–3, a tiebreaker is played.\nAdvantage scoring applies in all games.";
-    $defaultPlayoffNotes = "Top Bracket Match Format\n\nMatches are played as Best of 3 sets.\nEach set starts at 2–2.\nAdvantage scoring applies in all games.\nIf a third set is required, it is played as a 10-point match tiebreak.";
-    $defaultBracketNotes = "Other Brackets Match Format\n\nMatches consist of 1 full set starting from 0–0.\nThe first player/team to 6 games wins the set.\nAt 6–6, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+    $drawNotes        = optional($draw->settings)->notes ?? [];
+    $notesEnabled     = $drawNotes['_enabled'] ?? [];          // persisted print-toggle states
+    $playoffConfig    = optional($draw->settings)->playoff_config ?? [];
+    $enabledBrackets  = collect($playoffConfig)->where('enabled', true)->values();
+
+    $defaultGeneralNotes  = "General Rules\n\nPlayers must be ready to play at their scheduled time.\nA 5-minute warm-up is allowed before the match starts.\nStandard ITF tennis rules apply unless otherwise specified by the tournament organizer.\nThe tournament referee's decision is final in all disputes.";
+    $defaultRRNotes       = "Round Robin Match Format\n\nMatches consist of 1 set starting from 0–0.\nThe first player/team to 4 games wins the set.\nAt 3–3, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+    $defaultPlayoffNotes  = "Top Bracket Match Format\n\nMatches are played as Best of 3 sets.\nEach set starts at 2–2.\nAdvantage scoring applies in all games.\nIf a third set is required, it is played as a 10-point match tiebreak.";
+    $defaultBracketNotes  = "Other Brackets Match Format\n\nMatches consist of 1 full set starting from 0–0.\nThe first player/team to 6 games wins the set.\nAt 6–6, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+
+    // Helper: only use default when key was never saved; an explicit empty string is intentional
+    $noteVal = fn(string $key, string $default): string =>
+        array_key_exists($key, $drawNotes) ? ($drawNotes[$key] ?? '') : $default;
+
+    $notePrint = fn(string $key): bool =>
+        array_key_exists($key, $notesEnabled) ? (bool) $notesEnabled[$key] : true;
   @endphp
   <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <div>
-        <h5 class="card-title mb-0"><i class="ti ti-notes me-1"></i> Rules & Notes</h5>
-        <small class="text-muted">Edit rules for each section. These will appear on printed draw packs.</small>
+        <h5 class="card-title mb-0"><i class="ti ti-notes me-1"></i> Rules &amp; Notes</h5>
+        <small class="text-muted">Toggle <strong>Print</strong> to include or exclude a section from printed draw packs. Unsaved changes are highlighted.</small>
       </div>
-      <button class="btn btn-success btn-sm" id="btn-save-notes">
-        <i class="ti ti-device-floppy me-1"></i> Save All Notes
-      </button>
+      <div class="d-flex align-items-center gap-2">
+        <span id="notes-dirty-badge" class="badge bg-warning text-dark d-none">
+          <i class="ti ti-alert-circle me-1"></i> Unsaved changes
+        </span>
+        <button class="btn btn-success btn-sm" id="btn-save-notes">
+          <i class="ti ti-device-floppy me-1"></i> Save All Notes
+        </button>
+      </div>
     </div>
     <div class="card-body">
       <div class="row g-4">
@@ -1526,12 +1558,15 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-info-circle me-1 text-primary"></i> General Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <input class="form-check-input notes-enabled" type="checkbox" data-key="general"
+                  {{ $notePrint('general') ? 'checked' : '' }}>
                 <label class="form-check-label small text-muted">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="general" rows="6" placeholder="Enter general event rules...">{{ $drawNotes['general'] ?? $defaultGeneralNotes }}</textarea>
+              <textarea class="form-control notes-field" data-key="general" rows="6"
+                placeholder="Enter general event rules..." maxlength="5000">{{ $noteVal('general', $defaultGeneralNotes) }}</textarea>
+              <div class="text-end mt-1"><small class="notes-char-count text-muted">0 / 5000</small></div>
             </div>
           </div>
         </div>
@@ -1542,12 +1577,15 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-tournament me-1 text-success"></i> Round Robin Scoring Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <input class="form-check-input notes-enabled" type="checkbox" data-key="round_robin"
+                  {{ $notePrint('round_robin') ? 'checked' : '' }}>
                 <label class="form-check-label small text-muted">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="round_robin" rows="6" placeholder="e.g. Best of 3 sets, tiebreak at 6-all, 10-point match tiebreak in 3rd...">{{ $drawNotes['round_robin'] ?? $defaultRRNotes }}</textarea>
+              <textarea class="form-control notes-field" data-key="round_robin" rows="6"
+                placeholder="e.g. Best of 3 sets, tiebreak at 6-all, 10-point match tiebreak in 3rd..." maxlength="5000">{{ $noteVal('round_robin', $defaultRRNotes) }}</textarea>
+              <div class="text-end mt-1"><small class="notes-char-count text-muted">0 / 5000</small></div>
             </div>
           </div>
         </div>
@@ -1558,34 +1596,39 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-trophy me-1 text-warning"></i> Playoff Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
+                <input class="form-check-input notes-enabled" type="checkbox" data-key="playoffs"
+                  {{ $notePrint('playoffs') ? 'checked' : '' }}>
                 <label class="form-check-label small text-muted">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="playoffs" rows="6" placeholder="e.g. Single elimination, 3rd/4th playoff for losers of semis...">{{ $drawNotes['playoffs'] ?? $defaultPlayoffNotes }}</textarea>
+              <textarea class="form-control notes-field" data-key="playoffs" rows="6"
+                placeholder="e.g. Single elimination, 3rd/4th playoff for losers of semis..." maxlength="5000">{{ $noteVal('playoffs', $defaultPlayoffNotes) }}</textarea>
+              <div class="text-end mt-1"><small class="notes-char-count text-muted">0 / 5000</small></div>
             </div>
           </div>
         </div>
 
         {{-- Per-bracket rules for each enabled bracket --}}
         @foreach($enabledBrackets as $bracket)
+          @php $bKey = 'bracket_' . ($bracket['slug'] ?? 'bracket'); @endphp
           <div class="col-md-6">
             <div class="card border h-100">
               <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">
                   <i class="ti ti-brackets me-1 text-info"></i>
                   {{ $bracket['name'] ?? 'Bracket' }} Rules
-                  <span class="badge bg-secondary ms-1" style="font-size: 10px;">{{ $bracket['slug'] }}</span>
                 </h6>
                 <div class="form-check form-switch mb-0">
-                  <input class="form-check-input notes-enabled" type="checkbox" checked>
+                  <input class="form-check-input notes-enabled" type="checkbox" data-key="{{ $bKey }}"
+                    {{ $notePrint($bKey) ? 'checked' : '' }}>
                   <label class="form-check-label small text-muted">Print</label>
                 </div>
               </div>
               <div class="card-body p-2">
-                <textarea class="form-control notes-field" data-key="bracket_{{ $bracket['slug'] }}" rows="5"
-                  placeholder="Rules specific to {{ $bracket['name'] ?? 'this bracket' }}...">{{ $drawNotes['bracket_' . $bracket['slug']] ?? (($bracket['slug'] ?? '') === 'main' ? $defaultPlayoffNotes : $defaultBracketNotes) }}</textarea>
+                <textarea class="form-control notes-field" data-key="{{ $bKey }}" rows="5"
+                  placeholder="Rules specific to {{ $bracket['name'] ?? 'this bracket' }}..." maxlength="5000">{{ $noteVal($bKey, ($bracket['slug'] ?? '') === 'main' ? $defaultPlayoffNotes : $defaultBracketNotes) }}</textarea>
+                <div class="text-end mt-1"><small class="notes-char-count text-muted">0 / 5000</small></div>
               </div>
             </div>
           </div>
@@ -1707,8 +1750,8 @@
     // Canonical RR API routes
     window.RR_ROUTES = {
         hub:           "{{ route('api.draws.hub', $draw) }}",
-        scoreStore:    "/api/draws/{{ $draw->id }}/fixtures/FIXTURE_ID/score",
-        scoreDelete:   "/api/draws/{{ $draw->id }}/fixtures/FIXTURE_ID/score",
+        apiScoreStore:  "{{ route('api.draws.fixtures.score.store', ['draw' => $draw->id, 'fixture' => 'FIXTURE_ID']) }}",
+        apiScoreDelete: "{{ route('api.draws.fixtures.score.delete', ['draw' => $draw->id, 'fixture' => 'FIXTURE_ID']) }}",
         groupsSave:    "{{ route('api.draws.groups.save', $draw) }}",
         scheduleSave:  "{{ route('api.draws.schedule.save', $draw) }}",
         scheduleSummary: "{{ route('api.draws.schedule.summary', $draw) }}",
@@ -1725,6 +1768,8 @@
         generatePlateBracket: "{{ route('backend.draw.generate-second-third-bracket', $draw) }}",
         mainBracket:   "{{ route('backend.draw.main-bracket', $draw) }}",
         plateBracket:  "{{ route('backend.draw.plate-bracket', $draw) }}",
+        saveOrder:     "{{ route('backend.draw.save-order', $draw) }}",
+        drawStatus:    "{{ route('backend.draw.status', $draw) }}",
     };
 
     window.EVENT_ID = {{ $draw->event_id }};
@@ -3351,14 +3396,32 @@ $(document).on('click', '#btn-regenerate-fixtures', function () {
             didOpen: () => Swal.showLoading()
         });
 
-        $.post(`${APP_URL}/backend/draw/${DRAW_ID}/regenerate-rr`, {}, function (response) {
-            Swal.close();
-            toastr.success(response.message || 'Fixtures regenerated successfully');
-            refreshGroupsAndPlayers();
-        }).fail(function (xhr) {
-            Swal.close();
-            toastr.error(xhr.responseJSON?.message || 'Failed to regenerate fixtures.');
-        });
+        function doRegenerate(force) {
+            var postData = force ? { force: 1 } : {};
+            $.post(`${APP_URL}/backend/draw/${DRAW_ID}/regenerate-rr`, postData, function (response) {
+                Swal.close();
+                toastr.success(response.message || 'Fixtures regenerated successfully');
+                refreshGroupsAndPlayers();
+            }).fail(function (xhr) {
+                Swal.close();
+                var json = xhr.responseJSON || {};
+                if (xhr.status === 422 && json.confirm) {
+                    Swal.fire({
+                        title: 'Results already exist',
+                        html: json.message || 'Regenerating will delete all results and brackets. Are you sure?',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, regenerate anyway',
+                        confirmButtonColor: '#dc3545'
+                    }).then(function (r) {
+                        if (r.isConfirmed) doRegenerate(true);
+                    });
+                } else {
+                    toastr.error(json.message || 'Failed to regenerate fixtures.');
+                }
+            });
+        }
+        doRegenerate(false);
     });
 });
 
@@ -4508,23 +4571,81 @@ window.initGroupsSortable = function (forceReinit) {
 <script>
 // ---- SAVE NOTES ----
 (function($) {
+  var NOTES_SAVE_URL = '{{ route('backend.draw.update-notes', $draw) }}';
+  var notesDirty = false;
+
+  function markNotesDirty() {
+    if (!notesDirty) {
+      notesDirty = true;
+      $('#notes-dirty-badge').removeClass('d-none');
+    }
+  }
+
+  function markNotesClean() {
+    notesDirty = false;
+    $('#notes-dirty-badge').addClass('d-none');
+  }
+
+  function updateCharCount($textarea) {
+    var len = $textarea.val().length;
+    $textarea.closest('.card-body').find('.notes-char-count').text(len + ' / 5000');
+  }
+
   $(document).ready(function() {
+
+    // Initialise char counters
+    $('.notes-field').each(function() {
+      updateCharCount($(this));
+    });
+
+    // Live char count + dirty flag on input
+    $(document).on('input', '.notes-field', function() {
+      updateCharCount($(this));
+      markNotesDirty();
+    });
+
+    // Dirty flag on toggle change
+    $(document).on('change', '.notes-enabled', function() {
+      markNotesDirty();
+    });
+
+    // Warn before navigating away with unsaved changes
+    $(window).on('beforeunload', function() {
+      if (notesDirty) return 'You have unsaved notes changes. Leave anyway?';
+    });
+
     $('#btn-save-notes').on('click', function() {
       var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving…');
+
+      // Collect note text keyed by data-key
       var notes = {};
       $('.notes-field').each(function() {
         notes[$(this).data('key')] = $(this).val();
       });
-      $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', { notes: notes })
-        .done(function(res) {
+
+      // Collect print-toggle states keyed by data-key inside _enabled
+      var enabled = {};
+      $('.notes-enabled').each(function() {
+        var key = $(this).data('key');
+        if (key) enabled[key] = $(this).is(':checked') ? 1 : 0;
+      });
+      notes['_enabled'] = enabled;
+
+      $.ajax({
+        url: NOTES_SAVE_URL,
+        method: 'POST',
+        data: { notes: notes, _token: '{{ csrf_token() }}' },
+        success: function(res) {
           toastr.success(res.message || 'Notes saved');
-        })
-        .fail(function(xhr) {
+          markNotesClean();
+        },
+        error: function(xhr) {
           toastr.error(xhr.responseJSON?.message || 'Failed to save notes');
-        })
-        .always(function() {
+        },
+        complete: function() {
           $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Notes');
-        });
+        }
+      });
     });
   });
 })(jQuery);

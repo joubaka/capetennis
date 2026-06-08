@@ -571,6 +571,11 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     [EventCategoryController::class, 'index']
   )->name('admin.events.categories');
 
+  Route::post(
+    'event/category/{categoryEvent}/set-doubles',
+    [EventCategoryController::class, 'setDoubles']
+  )->name('admin.category.setDoubles');
+
   Route::delete(
     'event/category/{categoryEvent}',
     [EventCategoryController::class, 'destroy']
@@ -795,6 +800,30 @@ Route::delete(
 
 
   // =========================
+  // DOUBLES PAIRS (admin-only, Phase 2)
+  // =========================
+
+  Route::get(
+    'event/category/{categoryEvent}/pairs',
+    [\App\Http\Controllers\Backend\AdminDoublesController::class, 'index']
+  )->name('admin.doubles.pairs.index');
+
+  Route::post(
+    'event/category/{categoryEvent}/pairs',
+    [\App\Http\Controllers\Backend\AdminDoublesController::class, 'store']
+  )->name('admin.doubles.pairs.store');
+
+  Route::delete(
+    'event/category/{categoryEvent}/pairs/{pair}',
+    [\App\Http\Controllers\Backend\AdminDoublesController::class, 'destroy']
+  )->name('admin.doubles.pairs.destroy');
+
+  Route::get(
+    'event/category/{categoryEvent}/pairs/eligible-players',
+    [\App\Http\Controllers\Backend\AdminDoublesController::class, 'eligiblePlayers']
+  )->name('admin.doubles.pairs.eligiblePlayers');
+
+  // =========================
   // EXPORTS
   // =========================
 
@@ -842,6 +871,8 @@ Route::delete(
     ->name('backend.draw.rankvenues.save');
   Route::post('draw/{draw}/venues', [DrawController::class, 'storeVenues'])
     ->name('backend.draw.venues.store');
+  Route::delete('draw/{draw}/venues/{venue}', [DrawController::class, 'destroyVenue'])
+    ->name('backend.draw.venues.destroy');
   Route::get('draw/{draw}/venues/json', [DrawController::class, 'getVenues'])
     ->name('backend.draw.venues.json');
 
@@ -961,6 +992,9 @@ Route::delete(
 
   Route::get('draw/{draw}/plate-bracket', [RoundRobinController::class, 'plateBracket'])
     ->name('backend.draw.plate-bracket');
+
+  Route::get('draw/{draw}/cons-bracket', [RoundRobinController::class, 'consBracket'])
+    ->name('backend.draw.cons-bracket');
 
   Route::post('draw/{draw}/generate-second-third-bracket', [RoundRobinController::class, 'generateSecondThirdBracket'])
     ->name('backend.draw.generate-second-third-bracket');
@@ -1193,6 +1227,18 @@ Route::delete(
     'draw/{draw}/toggle-lock',
     [RoundRobinController::class, 'toggleLock']
   )->name('backend.draw.toggle-lock');
+
+  // Save order-of-play sequence
+  Route::post(
+    'draw/{draw}/save-order',
+    [RoundRobinController::class, 'storeOrderOfPlay']
+  )->name('backend.draw.save-order');
+
+  // Draw status/completion check (used by status bar + bracket guard)
+  Route::get(
+    'draw/{draw}/status',
+    [RoundRobinController::class, 'drawStatus']
+  )->name('backend.draw.status');
 
   // Draw settings update (used by settings tab)
   Route::post('draw/{draw}/settings', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updateSettings'])

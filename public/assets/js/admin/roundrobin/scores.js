@@ -7,10 +7,16 @@
 (function ($, root) {
   'use strict';
 
-  // ─── Modal DOM refs (cached once) ────────────────────────────────
-  var $form        = $('#rr-score-modal-form');
-  var $fixtureId   = $('#rrm-fixture-id');
-  var $matchLabel  = $('#rrm-match-label');
+  // ─── Modal DOM refs (cached once on first bind) ──────────────────
+  var $form        = null;
+  var $fixtureId   = null;
+  var $matchLabel  = null;
+
+  function _domRefs() {
+    if (!$form || !$form.length) $form       = $('#rr-score-modal-form');
+    if (!$fixtureId || !$fixtureId.length)   $fixtureId  = $('#rrm-fixture-id');
+    if (!$matchLabel || !$matchLabel.length) $matchLabel = $('#rrm-match-label');
+  }
 
   // ─── Lock helper ──────────────────────────────────────────────────
   function _isLocked() {
@@ -21,6 +27,7 @@
 
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
+    _domRefs();
     if (_isLocked()) { _warnLocked(); return; }
     $fixtureId.val(id);
     $matchLabel.html('<b>' + home + '</b> vs <b>' + away + '</b>');
@@ -31,7 +38,7 @@
     // Pre-fill existing score if available
     _prefillScore(id);
 
-    new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
+    _getModal().show();
   }
 
   function _prefillScore(id) {
@@ -80,6 +87,7 @@
   // ─── Save score ───────────────────────────────────────────────────
   function _save(e) {
     e.preventDefault();
+    _domRefs();
     if (_isLocked()) { _warnLocked(); return; }
 
     var fixtureId = $fixtureId.val();
@@ -106,6 +114,7 @@
 
   // ─── Delete score ─────────────────────────────────────────────────
   function _delete() {
+    _domRefs();
     if (_isLocked()) { _warnLocked(); return; }
     var fixtureId = $fixtureId.val();
     if (!fixtureId) { AdminToast.warning('No fixture selected.'); return; }
@@ -164,17 +173,37 @@
   }
 
   // ─── Close modal ──────────────────────────────────────────────────
+  var _modalInstance = null;
+
+  function _getModal() {
+    var el = document.getElementById('rrScoreModal');
+    if (!el) return null;
+    if (!_modalInstance) {
+      _modalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true });
+    }
+    return _modalInstance;
+  }
+
   function _closeModal() {
-    var el  = document.getElementById('rrScoreModal');
-    var bsm = el ? bootstrap.Modal.getInstance(el) : null;
-    if (bsm) bsm.hide();
+    var m = _getModal();
+    if (m) m.hide();
+    // Force-clean Bootstrap backdrop/body state in case of stale instances
+    setTimeout(function () {
+      $('.modal-backdrop').remove();
+      $('body').removeClass('modal-open').css('overflow', '').css('padding-right', '');
+    }, 300);
     $('#set1-p1,#set1-p2,#set2-p1,#set2-p2,#set3-p1,#set3-p2').val('');
-    $fixtureId.val('');
-    $matchLabel.html('');
+    if ($fixtureId) $fixtureId.val('');
+    if ($matchLabel) $matchLabel.html('');
   }
 
   // ─── Bind DOM events ─────────────────────────────────────────────
+  var _bound = false;
   function bind() {
+    if (_bound) return;
+    _bound = true;
+    _domRefs();
+
     // Matrix cell click
     $(document).on('click', '.rr-score-cell', function () {
       open($(this).data('fixture-id'), $(this).data('home'), $(this).data('away'));
@@ -191,11 +220,12 @@
       open($(this).data('fixture-id'), $(this).data('home'), $(this).data('away'));
     });
 
-    // Form submit
-    $form.on('submit', _save);
+    // Form submit — use off() first as a safety net then bind once
+    $form.off('submit', _save).on('submit', _save);
 
     // Delete button
-    $(document).on('click', '#rrm-delete-score', _delete);
+    $(document).off('click', '#rrm-delete-score', _delete)
+               .on('click', '#rrm-delete-score', _delete);
   }
 
   // ─── Public API ───────────────────────────────────────────────────

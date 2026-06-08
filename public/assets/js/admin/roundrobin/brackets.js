@@ -1,7 +1,7 @@
 /**
  * RR Brackets module — load, generate, and zoom playoff brackets.
  *
- * Depends on: AdminApi, AdminToast, AdminLoading, AdminRoutes
+ * Depends on: AdminApi, AdminToast, AdminLoading, AdminRoutes, AdminConfirm
  */
 
 (function ($, root) {
@@ -44,29 +44,68 @@
   }
 
   // ─── Generate all playoffs ────────────────────────────────────────
-  function generateMainBracket() {
+  function generateMainBracket(force) {
     var $btn    = $('#btn-generate-main-bracket');
     var restore = AdminLoading.button($btn, 'Generating…');
     $('#main-bracket-wrapper').html(SPINNER_LARGE);
 
-    AdminApi.post(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/generate-main-bracket')
+    var payload = force ? { force: 1 } : {};
+
+    AdminApi.post(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/generate-main-bracket', payload)
       .then(function (res) {
         if (res.success) {
           AdminToast.success(res.message || 'Brackets generated');
+          // Sync OOP so Order of Play tab updates immediately
+          if (res.oop) AdminState.setOop(_normaliseOop(res.oop));
           loadMainBracket();
         } else {
           AdminToast.error(res.message || 'Generation failed');
-          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Generation failed.</div>');
+          $('#main-bracket-wrapper').html('<div class="alert alert-danger">' + (res.message || 'Generation failed.') + '</div>');
         }
       })
-      .catch(function () {
-        AdminToast.error('Error generating bracket');
-        $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
+      .catch(function (err) {
+        var msg = (err && err.message) ? err.message : 'Error generating bracket';
+        // 422 = RR not complete — offer force override
+        if (err && err.status === 422) {
+          setTimeout(function () {
+            AdminConfirm.destructive('RR not complete', msg + '<br><br>Generate anyway with incomplete scores?').then(function (ok) {
+              if (ok) { generateMainBracket(true); }
+              else    { $('#main-bracket-wrapper').html('<div class="alert alert-warning">' + msg + '</div>'); }
+            });
+          }, 300);
+        } else {
+          AdminToast.error(msg);
+          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
+        }
       })
       .then(function () { restore(); });
   }
 
-  // ─── Zoom controls ────────────────────────────────────────────────
+  // ─── OOP normaliser ───────────────────────────────────────────────
+  function _normaliseOop(raw) {
+    return (raw || []).map(function (fx) {
+      return {
+        id:             fx.id,
+        stage:          fx.stage        || '',
+        round:          fx.round        || '',
+        match_nr:       fx.match_nr     || '',
+        time:           fx.time         || '',
+        home:           fx.home         || fx.name1 || '',
+        away:           fx.away         || fx.name2 || '',
+        score:          fx.score        || '',
+        winner:         fx.winner_registration || fx.winner || null,
+        r1_id:          fx.r1_id,
+        r2_id:          fx.r2_id,
+        group_id:       fx.group_id     || null,
+        group_name:     fx.group_name   || '',
+        playoff_type:   fx.playoff_type || null,
+        winner_feeders: fx.winner_feeders || [],
+        loser_feeders:  fx.loser_feeders  || []
+      };
+    });
+  }
+
+
   var _zoom = 1;
   var MIN_ZOOM = 0.3, MAX_ZOOM = 3, STEP = 0.2;
 

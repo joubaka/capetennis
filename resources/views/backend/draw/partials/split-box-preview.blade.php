@@ -6,7 +6,7 @@
         <strong>Box {{ $boxNum }}</strong>
         <ul class="mb-0">
           @foreach ($registrations as $reg)
-            <li>{{ $reg->players->first()?->full_name ?? 'Unnamed' }}</li>
+            <li>{{ $reg->displayName() }}</li>
           @endforeach
         </ul>
       </div>

@@ -51,7 +51,7 @@
     if (!$body.length) return;
 
     if (!oop || !oop.length) {
-      $body.html('<tr><td colspan="9" class="text-muted text-center">No fixtures…</td></tr>');
+      $body.html('<tr><td colspan="10" class="text-muted text-center">No fixtures…</td></tr>');
       return;
     }
 
@@ -73,15 +73,45 @@
         else                       { p1Cls = 'bg-danger text-white';  p2Cls = 'bg-success text-white'; }
       }
 
+      var isBracket = fx.stage && fx.stage !== 'RR';
+
+      // Player name cells — show feeder label when player is TBD
+      var homeDisplay = (fx.home && fx.home !== 'TBD' && fx.home !== '---')
+        ? (fx.home || '---')
+        : feederLabel(fx, 'home') || (fx.home || '---');
+      var awayDisplay = (fx.away && fx.away !== 'TBD' && fx.away !== '---')
+        ? (fx.away || '---')
+        : feederLabel(fx, 'away') || (fx.away || '---');
+
+      // Stage/group column
+      var stageCell = fx.group_name
+        ? 'Box ' + fx.group_name
+        : (STAGE_LABELS[fx.stage] || fx.stage || '');
+      if (isBracket && fx.playoff_type) {
+        stageCell += ' <span class="badge bg-secondary ms-1" style="font-size:10px;">' + fx.playoff_type + '</span>';
+      }
+
+      // Feeder summary column (bracket fixtures only)
+      var feederCell = '';
+      if (isBracket) {
+        var wf = fx.winner_feeders || [];
+        var lf = fx.loser_feeders  || [];
+        var parts = [];
+        wf.forEach(function (n) { parts.push('<span style="color:#0d6efd;font-weight:600;">W' + n + '</span>'); });
+        lf.forEach(function (n) { parts.push('<span style="color:#e65100;font-weight:600;">L' + n + '</span>'); });
+        feederCell = parts.join(' / ');
+      }
+
       html += '<tr data-fixture-id="' + fx.id + '">' +
         '<td>' + fx.id + '</td>' +
-        '<td class="' + p1Cls + '">' + (fx.home || '---') + '</td>' +
+        '<td class="' + p1Cls + '">' + homeDisplay + '</td>' +
         '<td class="text-center">vs</td>' +
-        '<td class="' + p2Cls + '">' + (fx.away || '---') + '</td>' +
+        '<td class="' + p2Cls + '">' + awayDisplay + '</td>' +
         '<td class="text-center">' + (fx.round || '') + '</td>' +
-        '<td class="text-center">' + (fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '')) + '</td>' +
+        '<td class="text-center">' + stageCell + '</td>' +
         '<td class="text-center d-none d-sm-table-cell">' + (fx.time || '') + '</td>' +
         '<td class="text-center fw-bold">' + (fx.score || '') + '</td>' +
+        '<td class="text-center">' + feederCell + '</td>' +
         '<td class="text-center">' +
           '<button class="btn btn-sm btn-primary rr-open-score-modal"' +
           ' data-fixture-id="' + fx.id + '"' +

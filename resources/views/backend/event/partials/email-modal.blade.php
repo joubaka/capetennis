@@ -16,6 +16,15 @@
 
       <div class="modal-body">
 
+        <div class="mb-2">
+          <label class="form-label fw-semibold">To</label>
+          <input type="text"
+                 id="mail_to_display"
+                 class="form-control bg-light"
+                 readonly
+                 placeholder="Recipient(s) will appear here">
+        </div>
+
         <div class="row mb-2">
           <div class="col-md-6">
             <label class="form-label fw-semibold">From Name</label>

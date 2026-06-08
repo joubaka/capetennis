@@ -70,7 +70,7 @@
 
     @foreach ($boxes as $boxNumber => $registrations)
         @php
-            $players = $registrations->map(fn($r) => $r->players->first()?->full_name ?? 'TBD')->values();
+            $players = $registrations->map(fn($r) => $r->displayShortName())->values();
             $playerMap = $registrations->mapWithKeys(fn($r, $i) => [$r->id => $players[$i]]);
             $numPlayers = $players->count();
             $cellWidth = 70;

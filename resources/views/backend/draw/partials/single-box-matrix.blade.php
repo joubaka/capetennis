@@ -1,6 +1,6 @@
 @php
   $registrations = $registrations->values(); // Ensure numeric indexes
-  $players = $registrations->map(fn($r) => $r->players->first()?->full_name ?? 'TBD')->values();
+  $players = $registrations->map(fn($r) => $r->displayShortName())->values();
   $numPlayers = $players->count();
   $cellWidth = 70;
   $cellHeight = 30;
@@ -33,7 +33,7 @@
       'reg_id' => $regId,
       'matchWins' => $matchWins,
       'gameWins' => $gameWins,
-      'name' => $reg->players->first()?->full_name ?? 'TBD',
+      'name' => $reg->displayName(),
     ]);
   }
 

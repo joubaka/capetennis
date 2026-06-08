@@ -33,8 +33,8 @@
                 $reg1 = $fx->registration1;
                 $reg2 = $fx->registration2;
 
-                $p1 = $reg1?->players?->first()?->full_name ?? 'TBD';
-                $p2 = $reg2?->players?->first()?->full_name ?? 'TBD';
+                $p1 = $reg1 ? $reg1->displayName() : 'TBD';
+                $p2 = $reg2 ? $reg2->displayName() : 'TBD';
 
                 $cls1 = $winner && $winner == $fx->registration1_id ? 'bg-success text-white' :
                         ($winner && $winner == $fx->registration2_id ? 'bg-danger text-white' : '');
