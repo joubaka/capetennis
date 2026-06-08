@@ -181,18 +181,22 @@ $nominations = EventNomination::all();
         </div>
         <!--/ About User -->
         <div class="card mb-4">
-            <div class="card-header"> <small class="card-text text-uppercase">Documents</small>
-                @guest
-
-                @else
-
-                @if(Auth::user()->is_admin($event->id)->count() > 0 || Auth::user()->id == 584 )
-                <div class="btn btn-success btn-sm float-right" data-bs-target='#addFileModal' data-bs-toggle='modal'>Upload .PDF</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <small class="card-text text-uppercase">Documents</small>
+                @auth
+                @if(Auth::user()->is_admin($event->id)->count() > 0 || Auth::user()->id == 584)
+                <form action="{{ route('file.store') }}" method="POST" enctype="multipart/form-data" class="mb-0">
+                    @csrf
+                    <input type="hidden" name="event_id" value="{{ $event->id }}">
+                    <label class="btn btn-success btn-sm mb-0">
+                        Upload .PDF
+                        <input type="file" name="myFile" class="d-none"
+                               accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                               onchange="this.form.submit()">
+                    </label>
+                </form>
                 @endif
-                @endguest
-
-
-
+                @endauth
             </div>
 
             <div class="card-body">
