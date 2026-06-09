@@ -39,7 +39,7 @@
           <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
           <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
 
-          <input type="hidden" name="return_url" value="https://www.capetennis.co.za/public/events/success/{{ $event->id }}?email={{ $user->email }}">
+          <input type="hidden" name="return_url" value="{{ $payfast->return_url }}">
           <input type="hidden" name="cancel_url" value="{{ $payfast->cancel_url }}">
           <input type="hidden" name="notify_url" value="{{ $payfast->notify_url_team }}">
 
@@ -65,7 +65,7 @@
 
           <!-- Order -->
           <input type="hidden" name="custom_int5" value="{{ $payfast->custom_int5 }}">
-          <input type="hidden" name="custom_str5" value="Order">
+          <input type="hidden" name="custom_str5" value="TeamOrder">
 
           @php
             $formFields = array_filter([
@@ -75,7 +75,7 @@
               'item_name'    => $payfast->item_name,
               'return_url'   => $payfast->return_url,
               'cancel_url'   => $payfast->cancel_url,
-              'notify_url'   => $payfast->notify_url,
+              'notify_url'   => $payfast->notify_url_team,
               'custom_int1'  => $payfast->custom_int1 ? (string)$payfast->custom_int1 : null,
               'custom_int2'  => $payfast->custom_int2 ? (string)$payfast->custom_int2 : null,
               'custom_int3'  => $payfast->custom_int3 ? (string)$payfast->custom_int3 : null,
@@ -85,7 +85,7 @@
               'custom_str2'  => $payfast->custom_str2 ?: null,
               'custom_str3'  => $payfast->custom_str3 ?: null,
               'custom_str4'  => $payfast->custom_str4 ?: null,
-              'custom_str5'  => 'Order',
+              'custom_str5'  => 'TeamOrder',
             ], fn($v) => $v !== null && $v !== '');
           @endphp
           <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">

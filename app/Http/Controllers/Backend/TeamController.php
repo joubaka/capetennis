@@ -356,8 +356,10 @@ class TeamController extends Controller
 
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
-    // use same mode logic as other controllers (user id 584 => sandbox)
-    $payfast->setMode($user->id == 584 ? 0 : 1);
+    // Sandbox only on non-production environments (local/staging) for user 584.
+    // On production (remote) always use live regardless of user.
+    $isLocalTest = !app()->environment('production') && $user->id == 584;
+    $payfast->setMode($isLocalTest ? 0 : 1);
 
     // set core fields
     $payfast->setEvent($event);                     // sets custom_int3, custom_str3, item_name
@@ -378,7 +380,7 @@ class TeamController extends Controller
       'order_id' => $order->id,
       'notify_url' => route('notify.team'),
       'amount' => $payfast->amount,
-      'mode' => $user->id == 584 ? 'sandbox' : 'live',
+      'mode' => $isLocalTest ? 'sandbox' : 'live',
       'payfast' => $payfast
     ]);
 
