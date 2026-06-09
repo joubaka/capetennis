@@ -365,6 +365,7 @@ class TeamController extends Controller
     $payfast->setEvent($event);                     // sets custom_int3, custom_str3, item_name
     $payfast->setPlayerInfo($player);               // sets custom_int2, custom_str2
     $payfast->setPayer($user);                      // sets custom_str4
+    $payfast->custom_int4 = $user->id;              // user_id (must be set so no empty field is posted)
     $payfast->amount = number_format($total, 2, '.', ''); // amount expects formatted string
     // For team orders we don't have RegistrationOrder type — set custom_int5 manually
     $payfast->custom_int5 = $order->id;
