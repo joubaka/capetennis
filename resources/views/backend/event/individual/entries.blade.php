@@ -182,17 +182,18 @@
   /* Keep the horizontal scroll only via the wrapper */
   .table-scroll-wrapper {
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
   }
 
   /* Dropdowns escape the card/table stacking context */
   .dropdown-menu {
-    z-index: 1055;
+    z-index: 1080;
   }
 
-  /* Last column dropdowns open upward when near bottom */
   .col-actions .dropdown-menu {
-    position: fixed !important;
+    max-height: min(60vh, 360px);
+    overflow-y: auto;
   }
 
 </style>
@@ -362,7 +363,7 @@
     <button type="button"
             class="btn btn-outline-secondary btn-sm dropdown-toggle"
             data-bs-toggle="dropdown"
-            data-bs-strategy="fixed"
+            data-bs-boundary="viewport"
             aria-expanded="false">
       Actions
     </button>
@@ -565,7 +566,31 @@ const sendMailModal  = sendMailEl  ? new bootstrap.Modal(sendMailEl)  : null;
 const addPlayerModal = addPlayerEl ? new bootstrap.Modal(addPlayerEl) : null;
 const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
 
-// Dropdown strategy is set via data-bs-strategy="fixed" on each button.
+/* =====================
+   ACTIONS DROPDOWN INIT
+===================== */
+document.querySelectorAll('.col-actions .dropdown-toggle').forEach((el) => {
+    bootstrap.Dropdown.getOrCreateInstance(el, {
+        popperConfig: (defaultConfig) => ({
+            ...defaultConfig,
+            strategy: 'fixed',
+            placement: 'bottom-end',
+            modifiers: [
+                ...(defaultConfig.modifiers || []),
+                {
+                    name: 'preventOverflow',
+                    options: { boundary: 'viewport', padding: 8 }
+                },
+                {
+                    name: 'flip',
+                    options: { fallbackPlacements: ['top-end'] }
+                }
+            ]
+        })
+    });
+});
+
+// Dropdown boundary is configured on each Actions toggle button.
 
 /* =====================
    QUILL INIT
@@ -756,7 +781,7 @@ document.addEventListener('click', function(e) {
     });
 });
 
-/* =====================
+    /* =====================
    WITHDRAW PLAYER
 ===================== */
 document.addEventListener('click', function(e) {
@@ -830,7 +855,7 @@ document.addEventListener('click', function(e) {
     }); // end Swal.then
 });
 
-/* =====================
+    /* =====================
    REINSTATE PLAYER
 ===================== */
 document.addEventListener('click', function(e) {
@@ -892,7 +917,7 @@ document.addEventListener('click', function(e) {
     });
 });
 
-/* =====================
+    /* =====================
    ADD PLAYER MODAL
 ===================== */
 document.addEventListener('click', function(e) {
@@ -940,7 +965,7 @@ document.addEventListener('click', function(e) {
     .catch(() => toastr.error('Failed to load available registrations.'));
 });
 
-/* =====================
+    /* =====================
    ADD PLAYER SUBMIT
 ===================== */
 const addForm = document.getElementById('addPlayerForm');
@@ -983,7 +1008,7 @@ if (addForm) {
     });
 }
 
-/* =====================
+    /* =====================
    MOVE PLAYER
 ===================== */
 document.addEventListener('click', function(e) {
@@ -1011,7 +1036,7 @@ document.addEventListener('click', function(e) {
     movePlayerModal.show();
 });
 
-/* =====================
+    /* =====================
    UPDATE DESTINATION LIVE
 ===================== */
 const moveSelect = document.getElementById('moveCategorySelect');
@@ -1024,7 +1049,7 @@ if (moveSelect) {
     });
 }
 
-/* =====================
+    /* =====================
    MOVE PLAYER SUBMIT
 ===================== */
 const moveForm = document.getElementById('movePlayerForm');
@@ -1143,6 +1168,7 @@ document.addEventListener('click', function (e) {
             const na = v => v ?? '—';
             const badge = (label, cls) => `<span class="badge ${cls} me-1">${label}</span>`;
 
+
             let txHtml = '';
             if (d.transactions && d.transactions.length) {
                 txHtml = `<table class="table table-sm table-bordered mt-2 mb-0">
@@ -1173,6 +1199,8 @@ document.addEventListener('click', function (e) {
             if (d.added_by) {
                 const roleClass = d.added_by.role === 'Super Admin' ? 'bg-danger' : 'bg-secondary';
                 addedByHtml = `
+
+
                   <strong>${na(d.added_by.name)}</strong>
                   ${badge(d.added_by.role, roleClass)}
                   <br><small class="text-muted">ID: ${d.added_by.id} &nbsp;|&nbsp; ${na(d.added_by.email)} &nbsp;|&nbsp; userType: ${na(d.added_by.userType)}</small>`;
@@ -1187,6 +1215,7 @@ document.addEventListener('click', function (e) {
             const pmBadge = d.payment_method?.includes('Wallet') && d.payment_method?.includes('PayFast')
                 ? `<span class="badge bg-success me-1">PayFast</span><span class="badge bg-info text-dark">+ Wallet</span>`
                 : `<span class="badge ${pmClass}">${na(d.payment_method)}</span>`;
+
 
             // Wallet section
             let walletHtml = '';
@@ -1258,6 +1287,7 @@ document.addEventListener('click', function (e) {
                     </div>
                   </div>
                 </div>` : ''}
+
                 ${walletHtml}
                 <div class="col-12">
                   <h6 class="text-uppercase text-muted mb-1" style="font-size:.7rem;letter-spacing:.08em">Transactions (transactions_pf)</h6>
@@ -1273,6 +1303,23 @@ document.addEventListener('click', function (e) {
 
 </script>
 @endsection
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

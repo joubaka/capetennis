@@ -469,6 +469,40 @@ class HeadOfficeController extends Controller
   // --- your existing createSingleDrawTeam(), previewSingleDrawTeam(), buildRegionFixturesForEvent() stay unchanged below ---
   // (Keep your current implementations as-is)
 
+  public function createSingleDrawTeam(Request $request, Event $event, FixtureService $fixtureService)
+  {
+    $validated = $request->validate([
+      'draw_type_id'   => 'required|integer|exists:draw_types,id',
+      'drawName'       => 'required|string|max:255',
+      'category_ids'   => 'required|array|min:1',
+      'category_ids.*' => 'integer|exists:category_events,id',
+    ]);
+
+    $draw = $this->createDraw($event->id, (int) $validated['draw_type_id'], $validated['drawName']);
+
+    // Store the first category_event pivot on the draw for reference
+    if (!empty($validated['category_ids'][0])) {
+      $draw->category_event_id = $validated['category_ids'][0];
+      $draw->save();
+    }
+
+    \Log::info('[createSingleDrawTeam] Draw created', [
+      'draw_id'      => $draw->id,
+      'event_id'     => $event->id,
+      'draw_type_id' => $validated['draw_type_id'],
+      'categories'   => $validated['category_ids'],
+    ]);
+
+    return response()->json([
+      'success' => true,
+      'message' => 'Draw "' . $draw->drawName . '" created successfully.',
+      'draw'    => [
+        'id'   => $draw->id,
+        'name' => $draw->drawName,
+      ],
+    ]);
+  }
+
   private function buildRegionFixturesForEvent(int $eventId)
   {
     $regions = EventRegion::where('event_id', $eventId)

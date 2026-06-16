@@ -72,7 +72,7 @@
     </nav>
   </div>
   <div class="d-flex align-content-center flex-wrap gap-3 mt-3 mt-md-0">
-    <button class="btn btn-primary" id="createNewDrawBtn">
+    <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
     </button>
   </div>
@@ -198,6 +198,77 @@
 @endsection
 
 @section('modals')
+
+<!-- Modal: Create New Draw (Team Event) -->
+<div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content">
+      <form id="createDrawForm">
+        @csrf
+
+        <div class="modal-header">
+          <h5 class="modal-title">Create New Draw</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          {{-- Draw Name --}}
+          <div class="mb-3">
+            <label for="drawName" class="form-label fw-bold">Draw Name</label>
+            <input type="text" id="drawName" name="drawName" class="form-control"
+                   placeholder="e.g. U14 Boys – Round Robin" required>
+          </div>
+
+          {{-- Draw Type --}}
+          <div class="mb-3">
+            <label class="form-label fw-bold">Draw Type</label>
+            <div class="d-flex flex-wrap gap-2">
+              @foreach($teamDrawTypes as $drawType)
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio"
+                         name="draw_type_id"
+                         id="drawType{{ $drawType->id }}"
+                         value="{{ $drawType->id }}">
+                  <label class="form-check-label" for="drawType{{ $drawType->id }}">
+                    {{ $drawType->drawTypeName }}
+                  </label>
+                </div>
+              @endforeach
+            </div>
+          </div>
+
+          {{-- Category --}}
+          <div class="mb-3">
+            <label class="form-label fw-bold">Category</label>
+            <div class="d-flex flex-wrap gap-2">
+              @foreach($categories as $cat)
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio"
+                         name="category_choice"
+                         id="cat{{ $cat->pivot_id }}"
+                         value="{{ $cat->pivot_id }}"
+                         data-pivot-id="{{ $cat->pivot_id }}">
+                  <label class="form-check-label" for="cat{{ $cat->pivot_id }}">
+                    {{ $cat->name }}
+                  </label>
+                </div>
+              @endforeach
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Draw</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Single Venues Modal (centralized to avoid duplicates / flicker) -->
 <div class="modal fade" id="venuesModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
