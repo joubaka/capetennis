@@ -365,10 +365,8 @@ class FinancialLedgerService
             $method  = 'PayFast';
         }
 
-        // Admin entries (no PayFast, no wallet) are privately collected — no CT fee charged
-        $capeFeeTx = ($method === 'Admin Entry')
-            ? 0
-            : -1 * round($feePerEntry * $entryCount, 2);
+        // Admin entries are privately collected, but still carry Cape Tennis fee per entry
+        $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
         $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
         $playerName = ($tx->pf_payment_id === null)
