@@ -53,15 +53,15 @@
             </div>
           @endif
 
-          @if($walletBalance > 0 && $payfastDue > 0)
+          @if($walletBalance > 0 && $walletReserved <= 0 && $payfastDue > 0)
             <form id="teamHybridForm" action="{{ route('team.hybrid.pay') }}" method="post" class="mb-3">
               @csrf
               <input type="hidden" name="custom_int5" value="{{ $order->id }}">
-              <input type="hidden" name="wallet_applied" value="{{ number_format($walletReserved, 2, '.', '') }}">
-              <input type="hidden" name="remaining_amount" value="{{ number_format($payfastDue, 2, '.', '') }}">
+              <input type="hidden" name="wallet_applied" value="{{ number_format(min($walletBalance, $total), 2, '.', '') }}">
+              <input type="hidden" name="remaining_amount" value="{{ number_format(max(0, $total - min($walletBalance, $total)), 2, '.', '') }}">
               <input type="hidden" name="type" value="team">
               <button type="submit" class="btn btn-primary w-100" id="applyWalletBtn">
-                <i class="ti ti-wallet me-1"></i> Apply Wallet Balance and Continue
+                <i class="ti ti-wallet me-1"></i> Apply Wallet Balance
               </button>
             </form>
           @endif
@@ -139,10 +139,14 @@
               </form>
             </div>
           @else
-            <div class="alert alert-success mb-0">
+            <div class="alert alert-success mb-3">
               <i class="ti ti-circle-check me-2"></i>
               No additional payment required. Your wallet covers the full amount.
             </div>
+            <form action="{{ route('team.hybrid.complete', ['order' => $order->id]) }}" method="post">
+              @csrf
+              <button type="submit" class="btn btn-success btn-lg w-100">Confirm Wallet Payment</button>
+            </form>
           @endif
         </div>
       </div>

@@ -355,8 +355,10 @@ class TeamController extends Controller
     $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
 
     $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
-    $walletReserved = round(min($walletBalance, $total), 2);
-    $payfastDue = round($total - $walletReserved, 2);
+    $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);
+    $payfastDueStored = round((float) ($order->payfast_amount_due ?? $total), 2);
+    $calculatedPayfastDue = round($total - $walletReserved, 2);
+    $payfastDue = abs($payfastDueStored - $calculatedPayfastDue) > 0.01 ? $calculatedPayfastDue : $payfastDueStored;
 
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
@@ -370,7 +372,7 @@ class TeamController extends Controller
     $payfast->setPlayerInfo($player);               // sets custom_int2, custom_str2
     $payfast->setPayer($user);                      // sets custom_str4
     $payfast->custom_int4 = $user->id;              // user_id (must be set so no empty field is posted)
-    $payfast->amount = number_format($total, 2, '.', ''); // amount expects formatted string
+    $payfast->amount = number_format($payfastDue, 2, '.', ''); // amount expects formatted string
     // For team orders we don't have RegistrationOrder type — set custom_int5 manually
     $payfast->custom_int5 = $order->id;
     $payfast->custom_str5 = 'TeamOrder';

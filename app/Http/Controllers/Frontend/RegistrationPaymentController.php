@@ -513,6 +513,109 @@ class RegistrationPaymentController extends Controller
       ->withErrors('Payment cancelled. No wallet funds were deducted.');
   }
 
+  public function teamHybridPay(Request $request)
+  {
+    $orderId = (int) $request->custom_int5;
+
+    $user = auth()->user();
+    $wallet = $user?->wallet;
+
+    if (!$user || !$wallet) {
+      return back()->withErrors('Wallet not found.');
+    }
+
+    $order = \App\Models\TeamPaymentOrder::with('event')->findOrFail($orderId);
+
+    if ((int) $order->user_id !== (int) $user->id) {
+      abort(403, 'Unauthorized order access.');
+    }
+
+    if ($order->pay_status == 1 || $order->payfast_paid) {
+      return redirect()->route('event.success', ['id' => $order->event_id])
+        ->with('success', 'Order already paid.');
+    }
+
+    $orderTotal = round((float) ($order->total_amount ?? 0), 2);
+    $walletBalance = round((float) ($wallet->balance ?? 0), 2);
+    $walletReserved = round(min($walletBalance, $orderTotal), 2);
+    $payfastDue = round($orderTotal - $walletReserved, 2);
+
+    $order = app(\App\Domain\Payments\Services\TeamPaymentService::class)
+      ->reservePayment($order, $walletReserved, $payfastDue);
+
+    if ($payfastDue <= 0) {
+      return redirect()->route('team.checkout', ['order' => $order->id]);
+    }
+
+    return redirect()->route('team.checkout', ['order' => $order->id]);
+  }
+
+  public function teamHybridComplete(int $orderId)
+  {
+    $user = auth()->user();
+
+    if (!$user) {
+      return redirect()->route('events.index')->withErrors('Session expired.');
+    }
+
+    $order = \App\Models\TeamPaymentOrder::lockForUpdate()
+      ->with('event', 'user.wallet')
+      ->find($orderId);
+
+    if (!$order) {
+      return redirect()->route('events.index')->withErrors('Order not found.');
+    }
+
+    if ((int) $order->user_id !== (int) $user->id) {
+      abort(403, 'Unauthorized order access.');
+    }
+
+    if ((int) $order->pay_status === 1) {
+      return redirect()->route('event.success', ['id' => $order->event_id])
+        ->with('info', 'This order has already been paid.');
+    }
+
+    app(\App\Domain\Payments\Services\TeamPaymentService::class)
+      ->finalizePayment($order, [
+        'payment_method' => 'WALLET',
+        'wallet_source_type' => 'team_registration_wallet_payment',
+        'wallet_meta' => [
+          'order_id' => $order->id,
+          'reference' => optional($order->event)->name ?? 'Team Registration',
+        ],
+        'pf_payment_id' => 'wallet-team-order-' . $order->id,
+        'payfast_amount_due' => 0,
+      ]);
+
+    return redirect()->route('event.success', ['id' => $order->event_id])
+      ->with('success', 'Team payment completed using wallet.');
+  }
+
+  public function teamHybridCancel(int $orderId)
+  {
+    $order = \App\Models\TeamPaymentOrder::find($orderId);
+
+    if (!$order) {
+      return redirect()->route('events.index')->withErrors('Order not found.');
+    }
+
+    if ((int) $order->user_id !== (int) auth()->id()) {
+      abort(403, 'Unauthorized order access.');
+    }
+
+    if ($order->pay_status == 1 || $order->payfast_paid) {
+      return redirect()->route('event.success', ['id' => $order->event_id])
+        ->with('info', 'This order has already been paid.');
+    }
+
+    $order->wallet_reserved = 0;
+    $order->payfast_amount_due = round((float) ($order->total_amount ?? 0), 2);
+    $order->save();
+
+    return redirect()->route('team.checkout', ['order' => $order->id])
+      ->withErrors('Payment cancelled. No wallet funds were deducted.');
+  }
+
   /**
    * Attach registrations and write a durable payment record on every CER row.
    *
