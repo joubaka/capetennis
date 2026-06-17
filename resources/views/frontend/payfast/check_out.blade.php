@@ -216,16 +216,34 @@
               <input type="hidden" name="item_name" value="{{ $event ? $event->name : 'Event Registration' }}">
 
               {{-- PayFast Custom Fields --}}
-              <input type="hidden" name="custom_int1" value="{{ $categoryEvent ? $categoryEvent->id : '' }}">
-              <input type="hidden" name="custom_int2" value="{{ $player ? $player->id : '' }}">
-              <input type="hidden" name="custom_int3" value="{{ $event ? $event->id : '' }}">
-              <input type="hidden" name="custom_int4" value="{{ auth()->id() }}">
-              <input type="hidden" name="custom_int5" value="{{ $orderId }}">
+              @if($categoryEvent)
+                <input type="hidden" name="custom_int1" value="{{ $categoryEvent->id }}">
+              @endif
+              @if($player)
+                <input type="hidden" name="custom_int2" value="{{ $player->id }}">
+              @endif
+              @if($event)
+                <input type="hidden" name="custom_int3" value="{{ $event->id }}">
+              @endif
+              @if(auth()->check())
+                <input type="hidden" name="custom_int4" value="{{ auth()->id() }}">
+              @endif
+              @if($orderId)
+                <input type="hidden" name="custom_int5" value="{{ $orderId }}">
+              @endif
 
-              <input type="hidden" name="custom_str1" value="{{ $category ? $category->name : '' }}">
-              <input type="hidden" name="custom_str2" value="{{ $player ? trim($player->name . ' ' . $player->surname) : '' }}">
-              <input type="hidden" name="custom_str3" value="{{ $event ? $event->name : '' }}">
-              <input type="hidden" name="custom_str4" value="{{ auth()->user()->name }}">
+              @if($category)
+                <input type="hidden" name="custom_str1" value="{{ $category->name }}">
+              @endif
+              @if($player)
+                <input type="hidden" name="custom_str2" value="{{ trim($player->name . ' ' . $player->surname) }}">
+              @endif
+              @if($event)
+                <input type="hidden" name="custom_str3" value="{{ $event->name }}">
+              @endif
+              @if(auth()->check())
+                <input type="hidden" name="custom_str4" value="{{ trim(auth()->user()->name) }}">
+              @endif
 
               {{-- NOTE: custom_wallet_reserved is NOT sent to PayFast (not a PayFast field) --}}
 
@@ -246,7 +264,7 @@
                   'custom_str1'  => $category ? $category->name : null,
                   'custom_str2'  => $player ? trim($player->name . ' ' . $player->surname) : null,
                   'custom_str3'  => $event ? $event->name : null,
-                  'custom_str4'  => auth()->user()->name,
+                  'custom_str4'  => trim(auth()->user()->name),
                 ], fn($v) => $v !== null && $v !== '');
               @endphp
               <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
@@ -300,23 +318,9 @@ $(function () {
       },
       success: function (res) {
         if (res.success) {
-          // Update displays
-          $('#walletAppliedDisplay').html('- R ' + parseFloat(res.wallet_applied).toFixed(2));
-          $('#payfastDueDisplay').html('R ' + parseFloat(res.payfast_due).toFixed(2));
-
-          // Update PayFast form amount
-          $('input[name="amount"]').val(parseFloat(res.payfast_due).toFixed(2));
-          $('input[name="custom_wallet_reserved"]').val(parseFloat(res.wallet_applied).toFixed(2));
-
-          $btn.replaceWith('<div class="alert alert-success mb-0"><i class="ti ti-check me-1"></i>Wallet applied: R ' + parseFloat(res.wallet_applied).toFixed(2) + '</div>');
-
-          if (res.wallet_covers_all) {
-            // Wallet covers entire order – redirect to complete
-            window.location.href = APP_URL + '/registration/hybrid/complete/{{ $orderId }}';
-          } else {
-            // Update PayFast button text
-            $('.btn-danger.btn-lg').text('Pay R ' + parseFloat(res.payfast_due).toFixed(2) + ' with PayFast');
-          }
+          // Important: signature must be regenerated server-side after amount changes.
+          // Reload checkout so amount + signature always match.
+          window.location.reload();
         }
       },
       error: function (xhr) {

@@ -57,7 +57,7 @@
         <input type="hidden" name="custom_str3" value="{{ $event->name }}">
     @endif
     @if(auth()->check())
-        <input type="hidden" name="custom_str4" value="{{ auth()->user()->name }}">
+        <input type="hidden" name="custom_str4" value="{{ trim(auth()->user()->name) }}">
     @endif
 
     @php
@@ -77,7 +77,7 @@
             'custom_str1'  => $category ? $category->name : null,
             'custom_str2'  => $player ? trim($player->name . ' ' . $player->surname) : null,
             'custom_str3'  => $event ? $event->name : null,
-            'custom_str4'  => auth()->check() ? auth()->user()->name : null,
+            'custom_str4'  => auth()->check() ? trim(auth()->user()->name) : null,
         ], fn($v) => $v !== null && $v !== '');
     @endphp
     <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">

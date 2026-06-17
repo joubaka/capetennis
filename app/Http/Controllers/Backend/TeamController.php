@@ -354,6 +354,10 @@ class TeamController extends Controller
     // create or load TeamPaymentOrder (unique constraint prevents duplicates)
     $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
 
+    $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
+    $walletReserved = round(min($walletBalance, $total), 2);
+    $payfastDue = round($total - $walletReserved, 2);
+
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
     // Sandbox only on non-production environments (local/staging) for user 584.
@@ -391,6 +395,13 @@ class TeamController extends Controller
         'event' => $event,
         'user' => $user,
         'regionFee' => $regionFee,
+        'team' => $team,
+        'player' => $player,
+        'order' => $order,
+        'total' => $total,
+        'walletBalance' => $walletBalance,
+        'walletReserved' => $walletReserved,
+        'payfastDue' => $payfastDue,
     ]);
   }
 

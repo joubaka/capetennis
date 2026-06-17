@@ -46,7 +46,7 @@
         </div>
 
         <div class="card-body">
-          <form method="POST" action="{{ route('player.profile.store') }}">
+          <form method="POST" action="{{ route('player.profile.store') }}" id="createPlayerProfileForm">
             @csrf
 
             <div class="row g-3">
@@ -100,7 +100,7 @@
             </div>
 
             <div class="mt-4 d-flex gap-2">
-              <button type="submit" class="btn btn-primary">
+              <button type="submit" class="btn btn-primary" id="savePlayerProfileBtn">
                 <i class="ti ti-device-floppy me-1"></i> Save Profile
               </button>
               <a href="{{ route('backend.dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
@@ -123,5 +123,15 @@
     maxDate: 'today',
     allowInput: true,
   });
+
+  const createPlayerProfileForm = document.getElementById('createPlayerProfileForm');
+  const savePlayerProfileBtn = document.getElementById('savePlayerProfileBtn');
+
+  if (createPlayerProfileForm && savePlayerProfileBtn) {
+    createPlayerProfileForm.addEventListener('submit', function () {
+      savePlayerProfileBtn.disabled = true;
+      savePlayerProfileBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+    });
+  }
 </script>
 @endsection

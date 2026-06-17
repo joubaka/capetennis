@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Player;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class PlayerProfileController extends Controller
@@ -38,17 +40,37 @@ class PlayerProfileController extends Controller
 
         $user = auth()->user();
 
-        $player = Player::create([
-            'name'        => $validated['name'],
-            'surname'     => $validated['surname'],
-            'dateOfBirth' => $validated['dateOfBirth'],
-            'gender'      => (int) $validated['gender'],
-            'cellNr'      => $validated['cellNr'] ?? null,
-            'email'       => $validated['email'] ?? null,
-            'userId'      => $user->id,
-        ]);
+        $name = trim($validated['name']);
+        $surname = trim($validated['surname']);
+        $dob = $validated['dateOfBirth'];
+        $gender = (int) $validated['gender'];
 
-        // Auto-attach to the user
+        $player = DB::transaction(function () use ($user, $name, $surname, $dob, $gender, $validated) {
+            User::where('id', $user->id)->lockForUpdate()->first();
+
+            $existingPlayer = Player::query()
+                ->where('userId', $user->id)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+                ->whereRaw('LOWER(TRIM(surname)) = ?', [mb_strtolower($surname)])
+                ->whereDate('dateOfBirth', $dob)
+                ->where('gender', $gender)
+                ->first();
+
+            if ($existingPlayer) {
+                return $existingPlayer;
+            }
+
+            return Player::create([
+                'name'        => $name,
+                'surname'     => $surname,
+                'dateOfBirth' => $dob,
+                'gender'      => $gender,
+                'cellNr'      => $validated['cellNr'] ?? null,
+                'email'       => $validated['email'] ?? null,
+                'userId'      => $user->id,
+            ]);
+        });
+
         $user->players()->syncWithoutDetaching($player->id);
 
         return redirect()->route('backend.dashboard')
