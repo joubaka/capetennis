@@ -68,7 +68,7 @@
 
           @php
             $returnUrl = route('event.success', ['id' => $event->id]);
-            $cancelUrl = route('team.checkout', ['order' => $order->id]);
+            $cancelUrl = route('team.payment.payfast', ['team' => $team->id, 'player' => $player->id, 'event' => $event->id]);
             $notifyUrl = route('notify.team');
           @endphp
 

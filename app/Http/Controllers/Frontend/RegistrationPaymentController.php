@@ -544,10 +544,18 @@ class RegistrationPaymentController extends Controller
       ->reservePayment($order, $walletReserved, $payfastDue);
 
     if ($payfastDue <= 0) {
-      return redirect()->route('team.checkout', ['order' => $order->id]);
+      return redirect()->route('team.payment.payfast', [
+        'team' => $order->team_id,
+        'player' => $order->player_id,
+        'event' => $order->event_id,
+      ]);
     }
 
-    return redirect()->route('team.checkout', ['order' => $order->id]);
+    return redirect()->route('team.payment.payfast', [
+      'team' => $order->team_id,
+      'player' => $order->player_id,
+      'event' => $order->event_id,
+    ]);
   }
 
   public function teamHybridComplete(int $orderId)
@@ -612,7 +620,11 @@ class RegistrationPaymentController extends Controller
     $order->payfast_amount_due = round((float) ($order->total_amount ?? 0), 2);
     $order->save();
 
-    return redirect()->route('team.checkout', ['order' => $order->id])
+    return redirect()->route('team.payment.payfast', [
+      'team' => $order->team_id,
+      'player' => $order->player_id,
+      'event' => $order->event_id,
+    ])
       ->withErrors('Payment cancelled. No wallet funds were deducted.');
   }
 
