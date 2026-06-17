@@ -37,7 +37,8 @@
       <h4 class="mb-0">Manage Categories</h4>
 
       <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger btn-sm" id="cleanupCategoriesBtn">
+        <button class="btn btn-outline-danger btn-sm" id="cleanupCategoriesBtn"
+                data-url="{{ route('admin.categories.cleanup', $event) }}">
           <i class="ti ti-trash me-1"></i>Remove Empty Categories
         </button>
 
@@ -200,6 +201,60 @@ if (window.toastr) {
         timeOut: 2000
     };
 }
+
+(function () {
+  const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  async function deleteRequest(url) {
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'X-CSRF-TOKEN': token,
+        'Accept': 'application/json'
+      }
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.message || 'Request failed');
+    }
+
+    return data;
+  }
+
+  document.addEventListener('click', async function (e) {
+    const removeBtn = e.target.closest('.delete-category-btn');
+    if (removeBtn) {
+      e.preventDefault();
+      if (!confirm('Remove this category from the event?')) return;
+
+      try {
+        await deleteRequest(removeBtn.dataset.url);
+        const row = removeBtn.closest('tr');
+        if (row) row.remove();
+        if (window.toastr) toastr.success('Category removed successfully.');
+      } catch (err) {
+        if (window.toastr) toastr.error(err.message || 'Could not remove category.');
+      }
+      return;
+    }
+
+    const cleanupBtn = e.target.closest('#cleanupCategoriesBtn');
+    if (cleanupBtn) {
+      e.preventDefault();
+      if (!confirm('Remove all empty categories from this event?')) return;
+
+      try {
+        const result = await deleteRequest(cleanupBtn.dataset.url);
+        if (window.toastr) toastr.success(`${result.removed ?? 0} empty categories removed.`);
+        window.location.reload();
+      } catch (err) {
+        if (window.toastr) toastr.error(err.message || 'Cleanup failed.');
+      }
+    }
+  });
+})();
 </script>
 
 <script src="{{ asset(mix('js/eventCategories.js')) }}"></script>
