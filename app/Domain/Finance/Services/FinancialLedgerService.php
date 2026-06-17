@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventPayout;
 use App\Models\RegistrationOrder;
 use App\Models\SiteSetting;
+use App\Models\TeamPaymentOrder;
 use App\Models\Transaction;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Collection;
@@ -114,10 +115,16 @@ class FinancialLedgerService
 
         $pfRows = $rawTransactions->map(fn($tx) => $this->mapPayfastRow($tx, $feePerEntry));
 
-        // ── Wallet-only orders (no PayFast tx at all) ─────────────────────
+        // ── Wallet-only individual orders (no PayFast tx at all) ──────────
         $walletOnlyRows = $this->buildWalletOnlyRows($event, $feePerEntry);
 
-        return collect()->merge($pfRows)->merge($walletOnlyRows);
+        // ── Wallet-only team orders (no PayFast tx at all) ─────────────────
+        $teamWalletOnlyRows = $this->buildTeamWalletOnlyRows($event, $feePerEntry);
+
+        return collect()
+            ->merge($pfRows)
+            ->merge($walletOnlyRows)
+            ->merge($teamWalletOnlyRows);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -456,6 +463,73 @@ class FinancialLedgerService
                     'paid_at'       => $wt->created_at,
                     'order'         => $order,
                     'entryCount'    => $entryCount,
+                    'payfastGross'  => 0,
+                    'walletUsed'    => $gross,
+                ];
+            });
+    }
+
+    private function buildTeamWalletOnlyRows(Event $event, float $feePerEntry): Collection
+    {
+        $teamOrderIds = TeamPaymentOrder::where('event_id', $event->id)
+            ->where('wallet_reserved', '>', 0)
+            ->where('wallet_debited', true)
+            ->where('pay_status', 1)
+            ->where(function ($q) {
+                $q->whereNull('payfast_amount_due')->orWhere('payfast_amount_due', 0);
+            })
+            ->pluck('id');
+
+        if ($teamOrderIds->isEmpty()) {
+            return collect();
+        }
+
+        return WalletTransaction::with('wallet.payable')
+            ->whereIn('source_id', $teamOrderIds)
+            ->where('source_type', 'team_registration_wallet_payment')
+            ->where('type', 'debit')
+            ->get()
+            ->map(function ($wt) use ($feePerEntry) {
+                $order = TeamPaymentOrder::find($wt->source_id);
+                $gross = round((float) $wt->amount, 2);
+                $capeFeeTx = -1 * round($feePerEntry, 2);
+                $user = $wt->wallet?->payable;
+                $playerName = null;
+
+                if ($order && $order->player_id) {
+                    $player = \App\Models\Player::find($order->player_id);
+                    $playerName = $player ? trim($player->name . ' ' . $player->surname) : null;
+                }
+
+                return (object) [
+                    'type'              => 'payment',
+                    'subtype'           => 'wallet_payment_team',
+                    'amount_gross'      => $gross,
+                    'amount_fee'        => 0,
+                    'amount_net'        => round($gross + $capeFeeTx, 2),
+                    'payment_method'    => 'Wallet',
+                    'refund_status'     => null,
+                    'withdrawal_status' => null,
+                    'status_label'      => 'Wallet',
+                    'status_colour'     => 'info',
+                    'source_tx_id'      => null,
+                    'source_order_id'   => $order?->id,
+                    'source_pf_id'      => null,
+                    'user_name'         => $playerName ?: ($user?->name ?? '—'),
+                    'event_id'          => $order?->event_id,
+
+                    'created_at'    => $wt->created_at,
+                    'player'        => $playerName ?: ($user?->name ?? '—'),
+                    'method'        => 'Wallet',
+                    'gross'         => $gross,
+                    'fee'           => 0,
+                    'capeFee'       => $capeFeeTx,
+                    'net'           => round($gross + $capeFeeTx, 2),
+                    'pf_payment_id' => null,
+                    'tx_id'         => null,
+                    'paid_at'       => $wt->created_at,
+                    'order'         => null,
+                    'entryCount'    => 1,
                     'payfastGross'  => 0,
                     'walletUsed'    => $gross,
                 ];
