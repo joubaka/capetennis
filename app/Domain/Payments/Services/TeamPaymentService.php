@@ -20,22 +20,37 @@ class TeamPaymentService
     public function ensureOrder(User $user, Team $team, Player $player, Event $event, float $total): TeamPaymentOrder
     {
         return FinanceMutationScope::run('payment_state_write', function () use ($user, $team, $player, $event, $total) {
-            return TeamPaymentOrder::firstOrCreate(
-                [
+            return DB::transaction(function () use ($user, $team, $player, $event, $total) {
+                $existing = TeamPaymentOrder::query()
+                    ->where('team_id', $team->id)
+                    ->where('player_id', $player->id)
+                    ->where('event_id', $event->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
+                        $existing->user_id = $user->id;
+                        $existing->total_amount = $total;
+                        $existing->save();
+                    }
+
+                    return $existing;
+                }
+
+                return TeamPaymentOrder::create([
+                    'user_id' => $user->id,
                     'team_id' => $team->id,
                     'player_id' => $player->id,
                     'event_id' => $event->id,
-                ],
-                [
-                    'user_id' => $user->id,
                     'total_amount' => $total,
                     'wallet_reserved' => 0,
                     'payfast_amount_due' => $total,
                     'wallet_debited' => false,
                     'payfast_paid' => false,
                     'pay_status' => false,
-                ]
-            );
+                ]);
+            });
         });
     }
 

@@ -356,9 +356,21 @@ class TeamController extends Controller
 
     $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
     $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);
+
+    if ($walletReserved > $walletBalance) {
+      $walletReserved = 0.00;
+      $order->wallet_reserved = 0.00;
+      $order->payfast_amount_due = round($total, 2);
+      $order->save();
+    }
+
     $payfastDueStored = round((float) ($order->payfast_amount_due ?? $total), 2);
     $calculatedPayfastDue = round($total - $walletReserved, 2);
     $payfastDue = abs($payfastDueStored - $calculatedPayfastDue) > 0.01 ? $calculatedPayfastDue : $payfastDueStored;
+
+    if ($payfastDue < 0) {
+      $payfastDue = 0.00;
+    }
 
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
