@@ -175,12 +175,14 @@
           <small class="text-muted d-block mb-1">Cape Tennis Fees (net)</small>
           <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
           @php
-            $chargedEntries = $feePerEntry > 0 ? round(abs($totalCapeTennisFees) / $feePerEntry) : 0;
-            $activeNonAdmin = $totalEntries - $adminEntriesCount - ($completedRefundCount ?? 0);
+            $chargedEntries = max(0, $totalEntries - $adminEntriesCount - ($completedRefundCount ?? 0));
           @endphp
           <small class="text-muted d-block">
-            {{ $chargedEntries }} active {{ $chargedEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}
+            {{ $chargedEntries }} fee-bearing {{ $chargedEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}
           </small>
+          @if(($noRefundCount ?? 0) > 0)
+            <small class="text-muted d-block">Includes {{ $noRefundCount }} withdrawn (not refunded)</small>
+          @endif
           @if($adminEntriesCount > 0)
             <small class="text-muted d-block">{{ $adminEntriesCount }} admin entries = R 0.00 fee</small>
           @endif
