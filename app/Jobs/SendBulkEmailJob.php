@@ -153,9 +153,11 @@ class SendBulkEmailJob implements ShouldQueue
                     ->replyTo('info@capetennis.co.za', 'Cape Tennis');
 
             case 'bulk_event_mail':
+            case 'team_email':
+            case 'region_email':
                 return (new \App\Mail\BulkEventMail(
                     $payload['subject'] ?? 'Event Update',
-                    $payload['body'] ?? '',
+                    $payload['body'] ?? $payload['message'] ?? '',
                     $payload['from_name'] ?? 'Cape Tennis',
                     $payload['reply_to'] ?? 'info@capetennis.co.za'
                 ));

@@ -13,6 +13,7 @@ use App\Models\TeamRegion;
 use App\Models\Player;
 use App\Models\Series;
 use App\Services\MailAccountManager;
+use App\Services\BulkMailDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -391,9 +392,37 @@ class EmailController extends Controller
     if (!$team)
       return ['message' => 'Team not found.', 'title' => 'error'];
 
+    // ✅ Collect player emails
+    $recipients = [];
     foreach ($team->players as $player) {
       if (!empty($player->email)) {
-        $details['email'] = trim(strtolower($player->email));
+        $recipients[] = trim(strtolower($player->email));
+      }
+    }
+
+    // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
+    if (count($recipients) >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for team email', [
+        'team_id' => $team->id,
+        'recipient_count' => count($recipients),
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        recipients: $recipients,
+        mailType: 'team_email',
+        relatedType: Team::class,
+        relatedId: $team->id,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small teams, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
         $this->queueMail($details, $mailer);
       }
     }
@@ -413,7 +442,7 @@ class EmailController extends Controller
     ]);
 
     $region = TeamRegion::with('teams.players')->find($details['region']);
-    
+
     if (!$region) {
       Log::warning('[sendToRegion] ❌ Region not found', ['region_id' => $details['region']]);
       return ['message' => 'Region not found.', 'title' => 'error'];
@@ -425,13 +454,14 @@ class EmailController extends Controller
       'teams_count' => $region->teams->count(),
     ]);
 
+    // ✅ Collect all player emails from all teams in the region
+    $recipients = [];
     $playerCount = 0;
-    $queuedCount = 0;
     $missingEmail = 0;
 
     foreach ($region->teams as $teamIndex => $team) {
       $players = $team->players ?? collect();
-      
+
       Log::debug('[sendToRegion] 🔹 Processing team', [
         'team_index' => $teamIndex + 1,
         'team_id' => $team->id,
@@ -443,16 +473,14 @@ class EmailController extends Controller
         $playerCount++;
 
         if (!empty($player->email)) {
-          $queuedCount++;
-          $details['email'] = trim(strtolower($player->email));
+          $email = trim(strtolower($player->email));
+          $recipients[] = $email;
 
-          Log::debug('[sendToRegion] 📧 Queuing email', [
+          Log::debug('[sendToRegion] 📧 Collected email', [
             'player_id' => $player->id,
             'player_name' => "{$player->name} {$player->surname}",
-            'email' => $details['email'],
+            'email' => $email,
           ]);
-
-          $this->queueMail($details, $mailer);
         } else {
           $missingEmail++;
           Log::warning('[sendToRegion] ⚠️ Player missing email', [
@@ -460,6 +488,38 @@ class EmailController extends Controller
             'player_name' => "{$player->name} {$player->surname}",
           ]);
         }
+      }
+    }
+
+    // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
+    $recipientCount = count($recipients);
+    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for region email', [
+        'region_id' => $region->id,
+        'recipient_count' => $recipientCount,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        recipients: $recipients,
+        mailType: 'region_email',
+        relatedType: TeamRegion::class,
+        relatedId: $region->id,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+
+      $queuedCount = $recipientCount;
+    } else {
+      // For small regions, use direct queueing
+      $queuedCount = 0;
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
+        $queuedCount++;
       }
     }
 

@@ -25,14 +25,10 @@ class SendEmailTest extends Mailable
    */
   public function envelope(): Envelope
   {
-    // 🔹 Default values
-    $defaultFromEmail = 'capetennis@capetennis.co.za';
-    $defaultFromName = 'Cape Tennis';
-
-    // 🔹 Use custom from if provided and valid
-    $fromEmail = 'capetennis@capetennis.co.za';
-
-    $fromName = $this->data['fromName'] ?? $defaultFromName;
+    // ✅ Use the FROM email from the mailer account being used
+    // The fromEmail MUST match the SMTP account sending the email
+    $fromEmail = $this->data['fromEmail'] ?? config('mail.from.address', 'noreply@capetennis.co.za');
+    $fromName = $this->data['fromName'] ?? config('mail.from.name', 'Cape Tennis');
     $subject = $this->data['subject'] ?? '(no subject)';
 
     // 🔹 Add reply-to only if valid
