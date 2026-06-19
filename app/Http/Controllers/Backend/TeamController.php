@@ -332,9 +332,8 @@ class TeamController extends Controller
         return redirect()->route('home')->withErrors('Please log in to continue.');
     }
 
-    if (!$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
-        abort(403, 'Unauthorized.');
-    }
+    // ✅ Any authenticated user can register team players (same as individual registration)
+    // No role restriction needed - users can register any player
 
     // load models (will 404 if missing)
     $team = \App\Models\Team::findOrFail($teamId);

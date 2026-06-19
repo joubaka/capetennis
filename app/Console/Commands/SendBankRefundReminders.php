@@ -6,6 +6,7 @@ use App\Mail\BankRefundReminderMail;
 use App\Models\CategoryEventRegistration;
 use App\Models\SiteSetting;
 use App\Models\User;
+use App\Services\BulkMailDispatcher;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -52,27 +53,47 @@ class SendBankRefundReminders extends Command
             ->unique()
             ->values();
 
+        $dispatcher = app(BulkMailDispatcher::class);
+        $totalDispatched = 0;
+
         foreach ($stale as $registration) {
             try {
+                // Collect recipients for this registration
+                $recipients = collect();
+
                 // Notify the player / payer
                 $playerEmail = optional($registration->players->first())->email
                             ?? optional($registration->user)->email;
 
                 if ($playerEmail) {
-                    Mail::to($playerEmail)->queue(new BankRefundReminderMail($registration));
+                    $recipients->push($playerEmail);
                 }
 
                 // Also notify super-users
                 foreach ($superUserEmails as $email) {
-                    Mail::to($email)->queue(new BankRefundReminderMail($registration));
+                    $recipients->push($email);
                 }
 
-                Log::info('BANK REFUND REMINDER SENT', [
+                // Dispatch via BulkMailDispatcher with throttling
+                $stats = $dispatcher->dispatch(
+                    mailType: 'bank_refund_reminder',
+                    related: $registration,
+                    recipients: $recipients,
+                    payload: [
+                        'registration_id' => $registration->id,
+                    ],
+                    allowDuplicates: false
+                );
+
+                $totalDispatched += $stats['queued'];
+
+                Log::info('BANK REFUND REMINDER DISPATCHED', [
                     'registration_id' => $registration->id,
                     'player_email'    => $playerEmail,
+                    'stats'           => $stats,
                 ]);
 
-                $this->line("  → Reminder sent for registration #{$registration->id}");
+                $this->line("  → Reminder queued for registration #{$registration->id} ({$stats['queued']} emails)");
             } catch (\Throwable $e) {
                 Log::error('BANK REFUND REMINDER FAILED', [
                     'registration_id' => $registration->id,
@@ -81,6 +102,8 @@ class SendBankRefundReminders extends Command
                 $this->error("  ✗ Failed for registration #{$registration->id}: " . $e->getMessage());
             }
         }
+
+        $this->info("Done. {$totalDispatched} reminder emails queued with throttling.");
 
         return self::SUCCESS;
     }

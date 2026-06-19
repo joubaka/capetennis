@@ -3,19 +3,13 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * AnnouncementMail - Used for event/tournament announcements.
- * 
- * IMPORTANT: This mailable does NOT implement ShouldQueue because it is sent
- * from within SendBulkEmailJob, which is already queued. Implementing ShouldQueue
- * here would cause double-queuing and bypass throttling, leading to rate limit errors.
- */
-class AnnouncementMail extends Mailable
+class AnnouncementMail extends Mailable implements ShouldQueue
 {
   use Queueable, SerializesModels;
 
@@ -60,4 +54,3 @@ class AnnouncementMail extends Mailable
     return [];
   }
 }
-

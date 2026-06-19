@@ -134,4 +134,32 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Bulk Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | These settings control how bulk emails are dispatched to prevent
+    | overwhelming the mail server. Exim limits connections to 10 messages,
+    | so we add delays between each queued job to spread the load.
+    |
+    */
+
+    'bulk_mail' => [
+        // Delay in seconds between each email job dispatch
+        'delay_seconds' => env('BULK_MAIL_DELAY_SECONDS', 10),
+
+        // Maximum emails per minute (runtime rate limit)
+        'max_per_minute' => env('BULK_MAIL_MAX_PER_MINUTE', 10),
+
+        // Threshold above which throttling is applied
+        'batch_threshold' => env('BULK_MAIL_BATCH_THRESHOLD', 10),
+
+        // Maximum retries for failed bulk emails
+        'max_tries' => env('BULK_MAIL_MAX_TRIES', 3),
+
+        // Backoff intervals in seconds for retries
+        'backoff' => [60, 300, 900], // 1 min, 5 min, 15 min
+    ],
+
 ];

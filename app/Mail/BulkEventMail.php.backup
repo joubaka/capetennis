@@ -3,17 +3,11 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-/**
- * BulkEventMail - Used for admin bulk email feature.
- * 
- * IMPORTANT: This mailable does NOT implement ShouldQueue because it is sent
- * from within SendBulkEmailJob, which is already queued. Implementing ShouldQueue
- * here would cause double-queuing and bypass throttling, leading to rate limit errors.
- */
-class BulkEventMail extends Mailable
+class BulkEventMail extends Mailable implements ShouldQueue
 {
   use Queueable, SerializesModels;
 
@@ -38,4 +32,3 @@ class BulkEventMail extends Mailable
       ->html($this->body);
   }
 }
-

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Announcement;
 use App\Mail\AnnouncementMail;
+use App\Services\BulkMailDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -172,23 +173,23 @@ class EventAnnouncementController extends Controller
       return;
     }
 
-    foreach ($emails as $email) {
+    // Use BulkMailDispatcher for throttled sending
+    $dispatcher = app(BulkMailDispatcher::class);
 
-      Log::debug('[EventAnnouncement] 📤 Queuing email', [
-        'to' => $email,
-      ]);
+    $stats = $dispatcher->dispatch(
+      mailType: 'event_announcement',
+      related: $announcement,
+      recipients: $emails,
+      payload: [
+        'event_name' => $event->name,
+        'title' => $announcement->title,
+        'message' => $announcement->message,
+      ],
+      allowDuplicates: false
+    );
 
-      Mail::to($email)->queue(
-        new AnnouncementMail([
-          'event' => $event->name,
-          'title' => $announcement->title,
-          'message' => $announcement->message,
-        ])
-      );
-    }
-
-    Log::info('[EventAnnouncement] ✅ All emails queued', [
-      'count' => $emails->count(),
+    Log::info('[EventAnnouncement] ✅ Bulk email dispatch completed', [
+      'stats' => $stats,
     ]);
   }
 

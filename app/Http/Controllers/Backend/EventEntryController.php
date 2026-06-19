@@ -18,6 +18,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Mail\BulkEventMail;
 use App\Exports\EventEntriesExport;
 use App\Exports\CategoryEntriesExport;
+use App\Services\BulkMailDispatcher;
 
   use App\Models\Transaction;
   use Illuminate\Support\Facades\DB;
@@ -246,37 +247,42 @@ class EventEntryController extends Controller
     }
 
     /* =========================
-       QUEUE EMAILS
+       DISPATCH BULK EMAILS WITH THROTTLING
     ========================= */
-    foreach ($emails as $email) {
+    $dispatcher = app(BulkMailDispatcher::class);
 
-      Log::info('➡️ Queuing bulk email', [
-        'to' => $email,
-        'subject' => $data['subject'],
-        'from' => $data['from_name'],
-        'reply_to' => $data['reply_to'],
-      ]);
-
-      Mail::to($email)->queue(
-        new BulkEventMail(
-          $data['subject'],
-          $data['message'],
-          $data['from_name'],
-          $data['reply_to']
-        )
-      );
+    // Determine related model for duplicate detection
+    $related = null;
+    if ($data['scope'] === 'category' && !empty($data['category_event_id'])) {
+      $related = CategoryEvent::find($data['category_event_id']);
+    } elseif ($data['scope'] === 'event') {
+      $related = Event::find($data['event_id']);
     }
 
-    Log::info('✅ Bulk email queue completed', [
-      'sent_count' => $emails->count(),
+    $stats = $dispatcher->dispatch(
+      mailType: 'bulk_event_mail',
+      related: $related,
+      recipients: $emails,
+      payload: [
+        'subject' => $data['subject'],
+        'body' => $data['message'],
+        'from_name' => $data['from_name'],
+        'reply_to' => $data['reply_to'],
+      ],
+      allowDuplicates: true // Allow resending to same recipients if admin chooses
+    );
+
+    Log::info('✅ Bulk email dispatch completed', [
+      'stats' => $stats,
       'scope' => $data['scope'],
       'event_id' => $data['event_id'],
     ]);
 
     return response()->json([
       'success' => true,
-      'sent' => $emails->count(),
+      'sent' => $stats['queued'],
       'queued' => true,
+      'stats' => $stats,
     ]);
   }
 

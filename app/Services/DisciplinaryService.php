@@ -203,20 +203,33 @@ class DisciplinaryService
         // Deduplicate and remove any CC that already appears in TO
         $ccAddresses = $ccAddresses->unique()->filter()->diff($toAddresses)->values();
 
-        $mailable = new ViolationNotificationMail($player, $violation, $recorder);
+        // Combine all recipients
+        $allRecipients = $toAddresses->merge($ccAddresses)->unique()->values();
 
-        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
-        // are folded in here because Laravel's PendingMail only supports a single primary TO
-        // address; everyone else is passed via CC so they all receive the message.
-        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
-
-        $mailer = Mail::to($toAddresses->first());
-
-        if ($allCc->isNotEmpty()) {
-            $mailer = $mailer->cc($allCc->toArray());
+        // If fewer than 10 recipients, use traditional cc method (one SMTP connection)
+        if ($allRecipients->count() < config('mail.bulk_mail.batch_threshold', 10)) {
+            $mailable = new ViolationNotificationMail($player, $violation, $recorder);
+            $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+            $mailer = Mail::to($toAddresses->first());
+            if ($allCc->isNotEmpty()) {
+                $mailer = $mailer->cc($allCc->toArray());
+            }
+            $mailer->queue($mailable);
+        } else {
+            // Use BulkMailDispatcher for large recipient lists
+            $dispatcher = app(\App\Services\BulkMailDispatcher::class);
+            $dispatcher->dispatch(
+                mailType: 'violation_notification',
+                related: $violation,
+                recipients: $allRecipients,
+                payload: [
+                    'player_id' => $player->id,
+                    'violation_id' => $violation->id,
+                    'recorder_id' => $recorder?->id,
+                ],
+                allowDuplicates: false
+            );
         }
-
-        $mailer->queue($mailable);
     }
 
     /**
@@ -257,20 +270,32 @@ class DisciplinaryService
             ->diff($toAddresses)
             ->values();
 
-        $mailable = new SuspensionAlertMail($player, $suspension);
+        // Combine all recipients
+        $allRecipients = $toAddresses->merge($ccAddresses)->unique()->values();
 
-        // Build the full CC list in one call: additional TO recipients (guardian, linked users)
-        // are folded in here because Laravel's PendingMail only supports a single primary TO
-        // address; everyone else is passed via CC so they all receive the message.
-        $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
-
-        $mailer = Mail::to($toAddresses->first());
-
-        if ($allCc->isNotEmpty()) {
-            $mailer = $mailer->cc($allCc->toArray());
+        // If fewer than 10 recipients, use traditional cc method (one SMTP connection)
+        if ($allRecipients->count() < config('mail.bulk_mail.batch_threshold', 10)) {
+            $mailable = new SuspensionAlertMail($player, $suspension);
+            $allCc = $toAddresses->slice(1)->values()->merge($ccAddresses)->unique()->values();
+            $mailer = Mail::to($toAddresses->first());
+            if ($allCc->isNotEmpty()) {
+                $mailer = $mailer->cc($allCc->toArray());
+            }
+            $mailer->queue($mailable);
+        } else {
+            // Use BulkMailDispatcher for large recipient lists
+            $dispatcher = app(\App\Services\BulkMailDispatcher::class);
+            $dispatcher->dispatch(
+                mailType: 'suspension_alert',
+                related: $suspension,
+                recipients: $allRecipients,
+                payload: [
+                    'player_id' => $player->id,
+                    'suspension_id' => $suspension->id,
+                ],
+                allowDuplicates: false
+            );
         }
-
-        $mailer->queue($mailable);
     }
 
     /**
