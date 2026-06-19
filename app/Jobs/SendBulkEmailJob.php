@@ -106,6 +106,15 @@ class SendBulkEmailJob implements ShouldQueue
             // Send the email
             Mail::mailer($mailer)->to($log->recipient_email)->send($mailable);
 
+            // ✅ CRITICAL: Force delay after sending to prevent SMTP "more than 10 messages in one connection"
+            // This ensures each email gets its own connection window, even if queue worker ignores delays
+            $forceDelay = config('mail.bulk_mail.delay_seconds', 6);
+            Log::debug('[SendBulkEmailJob] Forcing delay after send', [
+                'delay_seconds' => $forceDelay,
+                'log_id' => $log->id,
+            ]);
+            sleep($forceDelay);
+
             // Mark as sent
             $log->markAsSent();
 
