@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamRegion;
 use App\Models\Player;
 use App\Models\Series;
+use App\Services\MailAccountManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
