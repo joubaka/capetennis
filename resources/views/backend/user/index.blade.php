@@ -97,6 +97,35 @@
     </div>
   </div>
 </div>
+
+{{-- Remove Role Modal --}}
+<div class="modal fade" id="removeRoleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-user-minus me-2"></i> Remove Role from User</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="removeRoleUserId">
+        <p>Removing role from: <strong id="removeRoleUserName"></strong></p>
+        <div class="mb-3">
+          <label class="form-label">Select Role to Remove</label>
+          <select id="roleToRemove" class="form-select">
+            <option value="">-- Select Role --</option>
+          </select>
+          <div class="form-text text-muted mt-2" id="noRolesMessage" style="display:none;">
+            This user has no roles to remove.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="confirmRemoveRole">Remove Role</button>
+      </div>
+    </div>
+  </div>
+</div>
 @endsection
 
 @section('page-script')
@@ -165,6 +194,13 @@ $(function () {
                       title="Add Role">
                 <i class="ti ti-user-plus"></i>
               </button>
+              <button class="btn btn-sm btn-icon btn-outline-warning remove-role-btn" 
+                      data-id="${data.id}" 
+                      data-name="${data.name || ''}" 
+                      data-roles='${JSON.stringify(data.roles || [])}' 
+                      title="Remove Role">
+                <i class="ti ti-user-minus"></i>
+              </button>
               <button class="btn btn-sm btn-icon btn-outline-danger delete-user-btn" 
                       data-id="${data.id}" 
                       data-name="${data.name || ''}" 
@@ -221,6 +257,58 @@ $(function () {
       },
       error: function(xhr) {
         Swal.fire('Error', xhr.responseJSON?.message || 'Failed to add role', 'error');
+      }
+    });
+  });
+
+  // Remove Role button click
+  $(document).on('click', '.remove-role-btn', function() {
+    var userId = $(this).data('id');
+    var userName = $(this).data('name');
+    var roles = $(this).data('roles') || [];
+
+    $('#removeRoleUserId').val(userId);
+    $('#removeRoleUserName').text(userName);
+    $('#roleToRemove').empty().append('<option value="">-- Select Role --</option>');
+
+    if (roles.length === 0) {
+      $('#roleToRemove').prop('disabled', true);
+      $('#noRolesMessage').show();
+      $('#confirmRemoveRole').prop('disabled', true);
+    } else {
+      $('#roleToRemove').prop('disabled', false);
+      $('#noRolesMessage').hide();
+      $('#confirmRemoveRole').prop('disabled', false);
+
+      roles.forEach(function(role) {
+        $('#roleToRemove').append('<option value="' + role.name + '">' + role.name + '</option>');
+      });
+    }
+
+    $('#removeRoleModal').modal('show');
+  });
+
+  // Confirm Remove Role
+  $('#confirmRemoveRole').on('click', function() {
+    var userId = $('#removeRoleUserId').val();
+    var role = $('#roleToRemove').val();
+
+    if (!role) {
+      Swal.fire('Error', 'Please select a role to remove', 'warning');
+      return;
+    }
+
+    $.ajax({
+      url: APP_URL + '/backend/users/' + userId + '/remove-role',
+      method: 'POST',
+      data: { role: role },
+      success: function(res) {
+        $('#removeRoleModal').modal('hide');
+        Swal.fire('Success', res.message, 'success');
+        dtUsers.ajax.reload();
+      },
+      error: function(xhr) {
+        Swal.fire('Error', xhr.responseJSON?.message || 'Failed to remove role', 'error');
       }
     });
   });
