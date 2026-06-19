@@ -408,10 +408,9 @@ class EmailController extends Controller
       ]);
 
       app(BulkMailDispatcher::class)->dispatch(
-        recipients: $recipients,
         mailType: 'team_email',
-        relatedType: Team::class,
-        relatedId: $team->id,
+        related: $team,
+        recipients: $recipients,
         payload: [
           'subject' => $details['subject'],
           'message' => $details['message'],
@@ -500,10 +499,9 @@ class EmailController extends Controller
       ]);
 
       app(BulkMailDispatcher::class)->dispatch(
-        recipients: $recipients,
         mailType: 'region_email',
-        relatedType: TeamRegion::class,
-        relatedId: $region->id,
+        related: $region,
+        recipients: $recipients,
         payload: [
           'subject' => $details['subject'],
           'message' => $details['message'],
