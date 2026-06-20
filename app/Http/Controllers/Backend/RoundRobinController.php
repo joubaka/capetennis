@@ -441,7 +441,9 @@ class RoundRobinController extends Controller
       return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
     }
 
-    if ($draw->published) {
+    // Allow deleting scores on published draws for round robin fixtures
+    $isRoundRobin = $fixture->stage === 'RR';
+    if ($draw->published && !$isRoundRobin) {
       return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
     }
 

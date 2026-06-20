@@ -53,10 +53,10 @@ class DrawApiControllerDeleteScoreTest extends TestCase
     }
 
     // ─────────────────────────────────────────────
-    // 1. Published draw blocks score delete
+    // 1. Published draw ALLOWS score delete for round robin
     // ─────────────────────────────────────────────
 
-    public function test_published_draw_blocks_api_score_delete(): void
+    public function test_published_draw_allows_api_score_delete_for_round_robin(): void
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeFixture($draw);
@@ -64,8 +64,8 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         $response = $this->actingAs($this->adminUser())
             ->deleteJson($this->deleteScoreRoute($draw, $fixture));
 
-        $response->assertForbidden()
-            ->assertJsonPath('success', false);
+        $response->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     // ─────────────────────────────────────────────

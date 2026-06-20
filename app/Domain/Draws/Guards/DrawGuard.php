@@ -65,7 +65,9 @@ final class DrawGuard
             throw DrawMutationException::fixtureLocked($fixture->id, $draw->id);
         }
 
-        if ($draw && $draw->published) {
+        // Allow scoring on published draws for round robin fixtures
+        $isRoundRobin = $fixture->stage === 'RR';
+        if ($draw && $draw->published && !$isRoundRobin) {
             throw DrawMutationException::published($draw->id, 'save_score');
         }
 

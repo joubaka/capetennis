@@ -17,7 +17,7 @@ use Tests\TestCase;
  *
  * Covers:
  *  1.  Unauthorized access is blocked
- *  2.  Published draw blocks score save
+ *  2.  Published draw ALLOWS score save for round robin
  *  3.  Locked draw blocks score save
  *  4.  Locked draw blocks score delete
  *  5.  Locked draw blocks group modification
@@ -31,7 +31,7 @@ use Tests\TestCase;
  *  13. groups_saved audit log created
  *  14. API hub returns server standings
  *  15. API score store returns server standings
- *  16. API score delete returns server standings
+ *  16. Published draw ALLOWS score delete for round robin
  */
 class RRHardeningTest extends TestCase
 {
@@ -120,10 +120,10 @@ class RRHardeningTest extends TestCase
     }
 
     // ─────────────────────────────────────────────
-    // 2. Published draw blocks score save
+    // 2. Published draw ALLOWS score save for round robin
     // ─────────────────────────────────────────────
 
-    public function test_published_draw_blocks_score_save(): void
+    public function test_published_draw_allows_score_save_for_round_robin(): void
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeRRFixture($draw);
@@ -134,7 +134,7 @@ class RRHardeningTest extends TestCase
             ['sets' => ['6-4', '6-3']]
         );
 
-        $response->assertForbidden();
+        $response->assertOk();
     }
 
     // ─────────────────────────────────────────────
@@ -407,10 +407,10 @@ class RRHardeningTest extends TestCase
     }
 
     // ─────────────────────────────────────────────
-    // 16. Published draw blocks score delete (RR)
+    // 16. Published draw ALLOWS score delete for round robin
     // ─────────────────────────────────────────────
 
-    public function test_published_draw_blocks_score_delete(): void
+    public function test_published_draw_allows_score_delete_for_round_robin(): void
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeRRFixture($draw);
@@ -420,8 +420,8 @@ class RRHardeningTest extends TestCase
             route('backend.roundrobin.score.delete', $fixture)
         );
 
-        $response->assertForbidden()
-            ->assertJsonPath('success', false);
+        $response->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     // ─────────────────────────────────────────────
