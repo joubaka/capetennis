@@ -265,7 +265,7 @@ class EmailController extends Controller
     Log::info('[sendToEvent] ▶️ START', [
       'event_id' => $details['event'] ?? null,
       'mailer' => $mailer,
-      'subject' => $details['emailSubject'] ?? '(no subject)'
+      'subject' => $details['subject'] ?? '(no subject)'
     ]);
 
     $event = Event::with('registrations.players')->find($details['event']);
@@ -275,8 +275,9 @@ class EmailController extends Controller
       return ['message' => 'Event not found.', 'title' => 'error'];
     }
 
+    // Collect all player emails
+    $recipients = [];
     $playerCount = 0;
-    $queuedCount = 0;
     $missingEmail = 0;
 
     Log::info('[sendToEvent] 🟢 Event loaded', [
@@ -296,24 +297,13 @@ class EmailController extends Controller
         $playerCount++;
 
         if (!empty($player->email)) {
-          $queuedCount++;
-          $details['email'] = trim(strtolower($player->email));
+          $recipients[] = trim(strtolower($player->email));
 
-          Log::info('[sendToEvent] 📧 Queuing email', [
+          Log::debug('[sendToEvent] 📧 Collected email', [
             'player_id' => $player->id ?? null,
             'player_name' => "{$player->name} {$player->surname}",
             'email' => $player->email
           ]);
-
-          try {
-            $this->queueMail($details, $mailer);
-          } catch (\Throwable $e) {
-            Log::error('[sendToEvent] 💥 Mail queue failed', [
-              'player_id' => $player->id ?? null,
-              'email' => $player->email,
-              'error' => $e->getMessage()
-            ]);
-          }
         } else {
           $missingEmail++;
           Log::warning('[sendToEvent] ⚠️ Player missing email', [
@@ -321,6 +311,37 @@ class EmailController extends Controller
             'player_name' => "{$player->name} {$player->surname}"
           ]);
         }
+      }
+    }
+
+    // Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
+    $recipientCount = count($recipients);
+    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for event email', [
+        'event_id' => $event->id,
+        'recipient_count' => $recipientCount,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'event_email',
+        related: $event,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+
+      $queuedCount = $recipientCount;
+    } else {
+      // For small events, use direct queueing
+      $queuedCount = 0;
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
+        $queuedCount++;
       }
     }
 
@@ -350,9 +371,38 @@ class EmailController extends Controller
     $eventId = $details['event'];
     $nominations = EventNomination::where('event_id', $eventId)->with('player')->get();
 
+    // Collect all nomination emails
+    $recipients = [];
     foreach ($nominations as $nom) {
       if (!empty($nom->player->email)) {
-        $details['email'] = trim(strtolower($nom->player->email));
+        $recipients[] = trim(strtolower($nom->player->email));
+      }
+    }
+
+    // Use BulkMailDispatcher for throttled sending
+    $recipientCount = count($recipients);
+    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for nomination email', [
+        'event_id' => $eventId,
+        'recipient_count' => $recipientCount,
+      ]);
+
+      $event = Event::find($eventId);
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'nomination_email',
+        related: $event,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small nomination lists, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
         $this->queueMail($details, $mailer);
       }
     }
@@ -369,14 +419,41 @@ class EmailController extends Controller
     if (!$region)
       return ['message' => 'Region not found', 'title' => 'error'];
 
-    $count = 0;
+    // Collect unpaid player emails
+    $recipients = [];
     foreach ($region->teams as $team) {
       foreach ($team->players as $p) {
         if ($p->pivot->pay_status == 0 && !empty($p->email)) {
-          $details['email'] = trim(strtolower($p->email));
-          $this->queueMail($details, $mailer);
-          $count++;
+          $recipients[] = trim(strtolower($p->email));
         }
+      }
+    }
+
+    $count = count($recipients);
+
+    // Use BulkMailDispatcher for throttled sending
+    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for unregistered team email', [
+        'region_id' => $region->id,
+        'recipient_count' => $count,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'unregistered_team_email',
+        related: $region,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small lists, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
       }
     }
 
@@ -586,29 +663,44 @@ class EmailController extends Controller
       foreach ($players as $p) {
         $email = trim(strtolower((string) $p->email));
         if ($email !== '') {
-          $recipients[$email] = [
-            'email' => $email,
-            'name' => trim(($p->name ?? '') . ' ' . ($p->surname ?? '')),
-            'registration_id' => $cer->registration_id,
-            'category_event_registration_id' => $cer->id,
-          ];
+          $recipients[$email] = $email; // Using email as key for automatic deduplication
         }
       }
     }
 
-    $recipients = array_values($recipients);        // keyed-by-email -> list
+    $recipients = array_values($recipients); // Convert to indexed array
     $total = count($recipients);
 
     \Log::info('[Mail] Category recipients resolved', [
       'category_event_id' => $categoryEventId,
       'total' => $total,
-      'emails' => array_column($recipients, 'email'),
+      'sample' => array_slice($recipients, 0, 5),
     ]);
 
-    // Queue mail
-    foreach ($recipients as $r) {
-      $details['email'] = $r['email'];
-      $this->queueMail($details, $mailer);
+    // Use BulkMailDispatcher for throttled sending
+    if ($total >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for category email', [
+        'category_event_id' => $categoryEventId,
+        'recipient_count' => $total,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'category_email',
+        related: $category,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small categories, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
+      }
     }
 
     $this->sendToOwner($details, $mailer);
@@ -617,7 +709,7 @@ class EmailController extends Controller
       'title' => 'success',
       'message' => "Emails queued to {$total} unique recipients.",
       'total' => $total,
-      'recipients' => $recipients, // includes email + name + ids
+      'recipients' => array_map(fn($email) => ['email' => $email], $recipients),
     ];
   }
 
@@ -655,24 +747,46 @@ class EmailController extends Controller
 
     // Collect unique emails across all events in the series
     $events = $series->events()->with('registrations.players')->get();
-    $recipients = collect();
+    $recipients = [];
 
     foreach ($events as $event) {
       foreach ($event->registrations as $registration) {
         foreach ($registration->players ?? collect() as $player) {
           $email = trim(strtolower((string) $player->email));
           if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $recipients[$email] = $player;
+            $recipients[$email] = $email; // Using email as key for automatic deduplication
           }
         }
       }
     }
 
-    $queuedCount = 0;
-    foreach ($recipients as $email => $player) {
-      $details['email'] = $email;
-      $this->queueMail($details, $mailer);
-      $queuedCount++;
+    $recipients = array_values($recipients); // Convert to indexed array
+    $queuedCount = count($recipients);
+
+    // Use BulkMailDispatcher for throttled sending
+    if ($queuedCount >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for series email', [
+        'series_id' => $series->id,
+        'recipient_count' => $queuedCount,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'series_email',
+        related: $series,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small series, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
+      }
     }
 
     $this->sendToOwner($details, $mailer);
@@ -761,16 +875,43 @@ class EmailController extends Controller
     if (!$event)
       return ['message' => 'Event not found', 'title' => 'error'];
 
-    $count = 0;
+    // Collect unpaid player emails
+    $recipients = [];
     foreach ($event->region_in_events as $region) {
       foreach ($region->teams as $team) {
         foreach ($team->players as $player) {
           if ($player->pivot->pay_status == 0 && !empty($player->email)) {
-            $details['email'] = trim(strtolower($player->email));
-            $this->queueMail($details, $mailer);
-            $count++;
+            $recipients[] = trim(strtolower($player->email));
           }
         }
+      }
+    }
+
+    $count = count($recipients);
+
+    // Use BulkMailDispatcher for throttled sending
+    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for unregistered event email', [
+        'event_id' => $event->id,
+        'recipient_count' => $count,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'unregistered_event_email',
+        related: $event,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small lists, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
       }
     }
 
@@ -786,14 +927,41 @@ class EmailController extends Controller
     if (!$region)
       return ['message' => 'Region not found', 'title' => 'error'];
 
-    $count = 0;
+    // Collect unpaid player emails
+    $recipients = [];
     foreach ($region->teams as $team) {
       foreach ($team->players as $player) {
         if ($player->pivot->pay_status == 0 && !empty($player->email)) {
-          $details['email'] = trim(strtolower($player->email));
-          $this->queueMail($details, $mailer);
-          $count++;
+          $recipients[] = trim(strtolower($player->email));
         }
+      }
+    }
+
+    $count = count($recipients);
+
+    // Use BulkMailDispatcher for throttled sending
+    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
+      Log::info('[EmailController] Using BulkMailDispatcher for unregistered region email', [
+        'region_id' => $region->id,
+        'recipient_count' => $count,
+      ]);
+
+      app(BulkMailDispatcher::class)->dispatch(
+        mailType: 'unregistered_region_email',
+        related: $region,
+        recipients: $recipients,
+        payload: [
+          'subject' => $details['subject'],
+          'message' => $details['message'],
+          'from_name' => $details['fromName'],
+          'reply_to' => $details['replyTo'],
+        ]
+      );
+    } else {
+      // For small lists, use direct queueing
+      foreach ($recipients as $email) {
+        $details['email'] = $email;
+        $this->queueMail($details, $mailer);
       }
     }
 

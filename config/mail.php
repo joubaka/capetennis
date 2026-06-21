@@ -146,14 +146,15 @@ return [
     */
 
     'bulk_mail' => [
-        // Delay in seconds between each email job dispatch
-        'delay_seconds' => env('BULK_MAIL_DELAY_SECONDS', 10),
+        // Delay in seconds between each SMTP batch reconnection
+        'delay_seconds' => env('BULK_MAIL_DELAY_SECONDS', 2),
 
         // Maximum emails per minute (runtime rate limit)
         'max_per_minute' => env('BULK_MAIL_MAX_PER_MINUTE', 10),
 
-        // Threshold above which throttling is applied
-        'batch_threshold' => env('BULK_MAIL_BATCH_THRESHOLD', 10),
+        // SMTP connection batch size: max emails per connection before reconnect
+        // Set to 8 to stay under Exim's 10-message-per-connection limit
+        'batch_threshold' => env('BULK_MAIL_BATCH_THRESHOLD', 8),
 
         // Maximum retries for failed bulk emails
         'max_tries' => env('BULK_MAIL_MAX_TRIES', 3),
