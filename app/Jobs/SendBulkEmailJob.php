@@ -9,8 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\Middleware\RateLimited;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -50,7 +48,7 @@ class SendBulkEmailJob implements ShouldQueue
      */
     public function middleware(): array
     {
-        return [new RateLimited('bulk-email')];
+        return [];
     }
 
     /**
@@ -104,50 +102,8 @@ class SendBulkEmailJob implements ShouldQueue
                 return;
             }
 
-            // ✅ SMTP Connection Batch Management
-            // Track emails sent in current SMTP connection to prevent Exim 10-message limit
-            $batchThreshold = config('mail.bulk_mail.batch_threshold', 8);
-            $delaySeconds = config('mail.bulk_mail.delay_seconds', 2);
-            $cacheKey = "smtp_batch_counter_{$mailer}";
-
-            $emailsInBatch = Cache::get($cacheKey, 0);
-            $currentBatch = (int) floor($emailsInBatch / $batchThreshold) + 1;
-            $positionInBatch = ($emailsInBatch % $batchThreshold) + 1;
-
-            // If we're at the start of a new batch (after hitting threshold), reconnect
-            if ($emailsInBatch > 0 && $emailsInBatch % $batchThreshold === 0) {
-                Log::info('[SendBulkEmailJob] SMTP batch threshold reached, forcing reconnect', [
-                    'mailer' => $mailer,
-                    'batch_completed' => $currentBatch - 1,
-                    'emails_in_completed_batch' => $batchThreshold,
-                    'total_sent_this_session' => $emailsInBatch,
-                ]);
-
-                // Force disconnect the SMTP transport
-                $this->disconnectMailer($mailer);
-
-                // Pause before reconnecting
-                Log::info('[SendBulkEmailJob] Pausing before next batch', [
-                    'delay_seconds' => $delaySeconds,
-                    'next_batch' => $currentBatch,
-                ]);
-                sleep($delaySeconds);
-            }
-
-            Log::info('[SendBulkEmailJob] Sending email in batch', [
-                'log_id' => $log->id,
-                'batch_number' => $currentBatch,
-                'position_in_batch' => $positionInBatch,
-                'emails_in_current_batch' => ($emailsInBatch % $batchThreshold),
-                'total_sent_this_session' => $emailsInBatch,
-                'mailer' => $mailer,
-            ]);
-
             // Send the email
             Mail::mailer($mailer)->to($log->recipient_email)->send($mailable);
-
-            // Increment batch counter (TTL: 1 hour, resets if worker restarts)
-            Cache::put($cacheKey, $emailsInBatch + 1, now()->addHour());
 
             // Mark as sent
             $log->markAsSent();
@@ -155,8 +111,7 @@ class SendBulkEmailJob implements ShouldQueue
             Log::info('[SendBulkEmailJob] Email sent successfully', [
                 'log_id' => $log->id,
                 'recipient' => $log->recipient_email,
-                'batch_number' => $currentBatch,
-                'position_in_batch' => $positionInBatch,
+                'mailer' => $mailer,
             ]);
 
         } catch (\Throwable $e) {
@@ -273,46 +228,6 @@ class SendBulkEmailJob implements ShouldQueue
                     'log_id' => $log->id,
                 ]);
                 return null;
-        }
-    }
-
-    /**
-     * Force disconnect the SMTP transport to reset the connection.
-     * 
-     * This prevents Exim "more than 10 messages in one connection" errors
-     * by forcing Laravel to create a new SMTP connection for the next batch.
-     */
-    protected function disconnectMailer(string $mailer): void
-    {
-        try {
-            $mailerInstance = Mail::mailer($mailer);
-            $transport = $mailerInstance->getSymfonyTransport();
-
-            // Check if transport has a stop() method (SMTP transports do)
-            if (method_exists($transport, 'stop')) {
-                $transport->stop();
-                Log::debug('[SendBulkEmailJob] SMTP transport disconnected', [
-                    'mailer' => $mailer,
-                    'transport_class' => get_class($transport),
-                ]);
-            } elseif (method_exists($transport, '__destruct')) {
-                // Some transports clean up in destructor
-                unset($transport);
-                Log::debug('[SendBulkEmailJob] SMTP transport unset for cleanup', [
-                    'mailer' => $mailer,
-                ]);
-            }
-
-            // Force Laravel to forget the mailer instance so it creates a new one
-            Mail::forgetMailers();
-            Log::debug('[SendBulkEmailJob] Mailer instances cleared from container');
-
-        } catch (\Throwable $e) {
-            // Log but don't fail - reconnection will happen naturally anyway
-            Log::warning('[SendBulkEmailJob] Could not explicitly disconnect transport', [
-                'mailer' => $mailer,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 

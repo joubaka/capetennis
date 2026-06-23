@@ -50,10 +50,5 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
-
-        // Rate limiter for bulk email jobs
-        RateLimiter::for('bulk-email', function () {
-            return Limit::perMinute(config('mail.bulk_mail.max_per_minute', 10));
-        });
     }
 }

@@ -5,8 +5,6 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Cache\RateLimiting\Limit;
 use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
 use App\Models\CategoryEventRegistration;
@@ -57,13 +55,6 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
-    // ✅ Rate limiter for bulk email sending jobs
-    // Prevents SMTP rate limit errors by throttling queue workers
-    RateLimiter::for('bulk-email', function (object $job) {
-      return Limit::perMinute(config('mail.bulk_mail.max_per_minute', 10))
-        ->by('bulk-email-throttle');
-    });
-
     // Share asset version globally for cache busting
     View::share('assetVersion', config('app.asset_version', '1.0.0'));
 

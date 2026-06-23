@@ -48,10 +48,6 @@ class BulkMailDispatcher
 
         $stats['total'] = $normalizedRecipients->count();
 
-        // Get delay configuration
-        $delaySeconds = config('mail.bulk_mail.delay_seconds', 10);
-        $currentDelay = 0;
-
         foreach ($normalizedRecipients as $recipient) {
             // Validate email
             if (empty($recipient['email']) || !filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) {
@@ -100,24 +96,15 @@ class BulkMailDispatcher
                 'queued_at' => now(),
             ]);
 
-            // Dispatch job with progressive delay
-            SendBulkEmailJob::dispatch($log->id)
-                ->delay(now()->addSeconds($currentDelay));
+            // Dispatch job immediately (bulk email server handles rate)
+            SendBulkEmailJob::dispatch($log->id);
 
             $stats['queued']++;
-            $currentDelay += $delaySeconds;
-
-            Log::debug('[BulkMailDispatcher] Email queued', [
-                'log_id' => $log->id,
-                'email' => $recipient['email'],
-                'delay_seconds' => $currentDelay - $delaySeconds,
-            ]);
         }
 
         Log::info('[BulkMailDispatcher] Bulk email dispatch completed', [
             'mail_type' => $mailType,
             'stats' => $stats,
-            'total_delay' => $currentDelay,
         ]);
 
         return $stats;
