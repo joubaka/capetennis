@@ -123,7 +123,7 @@ class EventAdminController extends Controller
       } elseif ($transaction->order?->items) {
         foreach ($transaction->order->items as $item) {
           $items[] = [
-            'name' => $item->player->name . ' ' . $item->player->surname,
+            'name' => optional($item->player)->name . ' ' . optional($item->player)->surname,
             'category' => optional(optional($item->category_event)->category)->name,
             'price' => $item->item_price ?? abs($gross),
           ];
