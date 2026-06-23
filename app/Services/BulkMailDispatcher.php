@@ -47,6 +47,7 @@ class BulkMailDispatcher
         $normalizedRecipients = $this->normalizeRecipients($recipients);
 
         $stats['total'] = $normalizedRecipients->count();
+        $seenInBatch = [];
 
         foreach ($normalizedRecipients as $recipient) {
             // Validate email
@@ -58,31 +59,20 @@ class BulkMailDispatcher
                 continue;
             }
 
-            // Check for duplicates (unless explicitly allowed)
-            if (!$allowDuplicates && $this->isDuplicate($mailType, $related, $recipient['email'])) {
+            // Check for duplicates within this batch only
+            if (!$allowDuplicates && isset($seenInBatch[$recipient['email']])) {
                 $stats['duplicate']++;
                 $stats['skipped']++;
 
-                // Log as skipped
-                BulkEmailLog::create([
-                    'mail_type' => $mailType,
-                    'related_type' => $related ? get_class($related) : null,
-                    'related_id' => $related?->id ?? null,
-                    'recipient_email' => $recipient['email'],
-                    'recipient_name' => $recipient['name'] ?? null,
-                    'status' => 'skipped',
-                    'error_message' => 'Duplicate email for this mail type and related record',
-                    'payload' => $payload,
-                    'skipped_at' => now(),
-                ]);
-
-                Log::info('[BulkMailDispatcher] Duplicate email skipped', [
+                Log::info('[BulkMailDispatcher] Duplicate email skipped in batch', [
                     'email' => $recipient['email'],
                     'mail_type' => $mailType,
                 ]);
 
                 continue;
             }
+
+            $seenInBatch[$recipient['email']] = true;
 
             // Create log entry
             $log = BulkEmailLog::create([
@@ -146,25 +136,7 @@ class BulkMailDispatcher
             ->values();
     }
 
-    /**
-     * Check if this email was already sent for this mail type and related record.
-     */
-    protected function isDuplicate(string $mailType, $related, string $email): bool
-    {
-        $query = BulkEmailLog::where('mail_type', $mailType)
-            ->where('recipient_email', strtolower(trim($email)))
-            ->whereIn('status', ['queued', 'sent']); // Don't count failed/skipped as duplicates
 
-        if ($related) {
-            $query->where('related_type', get_class($related))
-                ->where('related_id', $related->id);
-        } else {
-            $query->whereNull('related_type')
-                ->whereNull('related_id');
-        }
-
-        return $query->exists();
-    }
 
     /**
      * Resend failed emails for a specific mail type and related record.
