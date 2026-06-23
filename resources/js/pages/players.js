@@ -33,7 +33,8 @@
     sendMail: APP_URL + '/backend/email/send',
     loadRoster: APP_URL + '/backend/team/roster/edit',
     saveRoster: APP_URL + '/backend/team/roster/update',
-    changePayStatus: APP_URL + '/backend/team/change/payStatus'
+    changePayStatus: APP_URL + '/backend/team/change/payStatus',
+    refundWallet: APP_URL + '/backend/wallet/refund'
   };
 
   // =====================================================
@@ -79,6 +80,38 @@
         toastr.error('Failed to update pay status');
         logXhrFail('Change pay failed', xhr);
       });
+  });
+
+  // =====================================================
+  // REFUND TO WALLET
+  // =====================================================
+  $(document).on('click', '.refundToWallet', function (e) {
+    e.preventDefault();
+
+    const pivotId = $(this).data('pivot');
+    const $btn = $(this);
+
+    console.log('💰 RefundToWallet clicked, pivot:', pivotId);
+
+    if (!pivotId) {
+      toastr.error('Missing pivot ID');
+      return;
+    }
+
+    $btn.addClass('disabled opacity-50');
+    toastr.info('Processing refund…');
+
+    $.post(api.refundWallet, { team_player_id: pivotId })
+      .done(res => {
+        console.log('🟢 Refund response:', res);
+        toastr.success(res.message || 'Refunded to wallet');
+      })
+      .fail(xhr => {
+        const msg = xhr.responseJSON?.message || 'Refund failed';
+        toastr.error(msg);
+        logXhrFail('Refund failed', xhr);
+      })
+      .always(() => $btn.removeClass('disabled opacity-50'));
   });
 
   // =====================================================

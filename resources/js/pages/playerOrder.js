@@ -121,6 +121,46 @@
                 console.warn('↕️ Rank mismatches', rankMismatches);
               }
 
+              // Update Players tab to reflect new order
+              const $playersTab = $('#tab-players');
+              order.forEach(item => {
+                const entityId = item.type === 'noprofile'
+                  ? (item.no_profile_id || item.id)
+                  : (item.team_player_id || item.id);
+
+                const $playersRow = $playersTab.find(`tr[data-playerteamid="${entityId}"]`);
+                if ($playersRow.length) {
+                  const $rankBadge = $playersRow.find('td:first .badge');
+                  if ($rankBadge.length) {
+                    $rankBadge.text(item.position);
+                  }
+                }
+              });
+
+              // Re-sort rows in each affected tbody
+              $playersTab.find('tbody').each(function () {
+                const $tbody = $(this);
+                const $rows = $tbody.find('tr[data-playerteamid]');
+                if ($rows.length < 2) return;
+
+                // Check if any row in this tbody was part of the reorder
+                const orderIds = new Set(order.map(o =>
+                  String(o.type === 'noprofile' ? (o.no_profile_id || o.id) : (o.team_player_id || o.id))
+                ));
+                const hasMatch = $rows.toArray().some(r => orderIds.has(String($(r).data('playerteamid'))));
+                if (!hasMatch) return;
+
+                // Sort rows by their rank badge number
+                const sorted = $rows.toArray().sort((a, b) => {
+                  const rankA = parseInt($(a).find('td:first .badge').text()) || 0;
+                  const rankB = parseInt($(b).find('td:first .badge').text()) || 0;
+                  return rankA - rankB;
+                });
+
+                sorted.forEach(row => $tbody.append(row));
+                console.log('↕️ Re-sorted Players tab tbody');
+              });
+
               toastr.success('Order saved');
             })
             .fail(() => toastr.error('Failed to save order'));
