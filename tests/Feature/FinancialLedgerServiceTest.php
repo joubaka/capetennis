@@ -404,13 +404,17 @@ class FinancialLedgerServiceTest extends TestCase
             'payfastGrossTotal'         => 125.00,
         ])->render();
 
-        $this->assertMatchesRegularExpression("/data-items='([^']+)'/", $html, 'Expected rendered child payload JSON');
-        preg_match("/data-items='([^']+)'/", $html, $matches);
-        $payload = json_decode(html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+        $payloadPattern = "/data-items='([^']+)'/";
 
-        $this->assertSame('', $payload[1]['player']);
-        $this->assertSame('—', $payload[1]['category']);
-        $this->assertSame('125.00', $payload[1]['price']);
+        $this->assertMatchesRegularExpression($payloadPattern, $html, 'Expected rendered child payload JSON');
+        preg_match($payloadPattern, $html, $matches);
+        $payload = json_decode(html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+        $paymentItem = collect($payload)->firstWhere('mode', 'payment_item');
+
+        $this->assertNotNull($paymentItem);
+        $this->assertSame('', $paymentItem['player']);
+        $this->assertSame('—', $paymentItem['category']);
+        $this->assertSame('125.00', $paymentItem['price']);
     }
 
     // =========================================================================
