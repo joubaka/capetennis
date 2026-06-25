@@ -350,6 +350,69 @@ class FinancialLedgerServiceTest extends TestCase
         );
     }
 
+    public function test_transactions_view_renders_payment_items_with_missing_relations(): void
+    {
+        $transactions = collect([
+            (object) [
+                'type'         => 'payment',
+                'method'       => 'PayFast',
+                'player'       => null,
+                'pf_payment_id'=> 'PF_TEAM_NULLS',
+                'entryCount'   => 1,
+                'gross'        => 125.00,
+                'payfastGross' => 125.00,
+                'walletUsed'   => 0.00,
+                'fee'          => -5.00,
+                'capeFee'      => -10.00,
+                'net'          => 110.00,
+                'created_at'   => now(),
+                'order'        => (object) [
+                    'items' => collect([
+                        (object) [
+                            'player'         => null,
+                            'category_event' => null,
+                            'item_price'     => 125.00,
+                        ],
+                    ]),
+                ],
+            ],
+        ]);
+
+        $html = view('backend.event.transactions', [
+            'event'                     => $this->event,
+            'transactions'              => $transactions,
+            'feePerEntry'               => 10.00,
+            'isTeamEvent'               => true,
+            'totalEntries'              => 1,
+            'refundCount'               => 0,
+            'completedRefundCount'      => 0,
+            'pendingRefundCount'        => 0,
+            'noRefundCount'             => 0,
+            'noRefundRetainedTotal'     => 0.00,
+            'totalWithdrawals'          => 0.00,
+            'completedWithdrawalsTotal' => 0.00,
+            'pendingWithdrawalsTotal'   => 0.00,
+            'totalGross'                => 125.00,
+            'totalPayfastFees'          => -5.00,
+            'totalCapeTennisFees'       => -10.00,
+            'totalPayouts'              => 0.00,
+            'netTournamentIncome'       => 110.00,
+            'adminEntriesCount'         => 0,
+            'adminEntriesCapeFee'       => 0.00,
+            'adminGrossPrivate'         => 0.00,
+            'payfastEntriesCount'       => 1,
+            'payfastGrossTotal'         => 125.00,
+        ])->render();
+
+        $this->assertMatchesRegularExpression("/data-items='([^']+)'/", $html, 'Expected rendered child payload JSON');
+        preg_match("/data-items='([^']+)'/", $html, $matches);
+        $payload = json_decode(html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame('', $payload[1]['player']);
+        $this->assertSame('—', $payload[1]['category']);
+        $this->assertSame('125.00', $payload[1]['price']);
+    }
+
     public function test_transaction_blades_use_null_safe_order_item_access(): void
     {
         $eventBladePath = resource_path('views/backend/event/transactions.blade.php');
