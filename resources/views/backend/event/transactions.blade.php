@@ -270,8 +270,8 @@ if ($tx->type === 'payment' && isset($tx->order)) {
   ])->merge(
     collect($tx->order->items ?? [])->map(fn ($item) => [
       'mode'     => 'payment_item',
-      'player'   => trim(($item->player->name ?? '') . ' ' . ($item->player->surname ?? '')),
-      'category' => optional($item->category_event->category)->name,
+      'player'   => trim(($item->player?->name ?? '') . ' ' . ($item->player?->surname ?? '')),
+      'category' => $item->category_event?->category?->name ?? '—',
       'price'    => number_format($item->item_price ?? 0, 2),
     ])
   );
