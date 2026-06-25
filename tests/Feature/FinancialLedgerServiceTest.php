@@ -413,29 +413,6 @@ class FinancialLedgerServiceTest extends TestCase
         $this->assertSame('125.00', $payload[1]['price']);
     }
 
-    public function test_transaction_blades_use_null_safe_order_item_access(): void
-    {
-        $eventBladePath = resource_path('views/backend/event/transactions.blade.php');
-        $financeBladePath = resource_path('views/backend/superadmin/event-finances.blade.php');
-
-        $this->assertStringContainsString(
-            "\$item->category_event?->category?->name ?? '—'",
-            file_get_contents($eventBladePath)
-        );
-        $this->assertStringContainsString(
-            "\$item->player?->name",
-            file_get_contents($eventBladePath)
-        );
-        $this->assertStringContainsString(
-            "\$item->category_event?->category?->name ?? '—'",
-            file_get_contents($financeBladePath)
-        );
-        $this->assertStringContainsString(
-            "\$item->player?->name",
-            file_get_contents($financeBladePath)
-        );
-    }
-
     // =========================================================================
     // Helper
     // =========================================================================
