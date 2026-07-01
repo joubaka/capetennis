@@ -29,7 +29,7 @@ class WalletController extends Controller
     public function show($id)
     {
         $authUser = auth()->user();
-        if (!$authUser || ($authUser->id != $id && !$authUser->hasAnyRole(['super-user', 'admin']))) {
+        if (!$authUser || ($authUser->id !== (int) $id && !$authUser->hasAnyRole(['super-user', 'admin']))) {
             abort(403, 'Unauthorized.');
         }
 
