@@ -533,10 +533,12 @@
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0"><i class="ti ti-gavel me-2"></i>Disciplinary Violations</h5>
+                            @if(auth()->user()?->hasAnyRole(['super-user', 'admin']))
                             <a href="{{ route('backend.disciplinary.create', ['player_id' => $player->id]) }}"
                                class="btn btn-sm btn-primary">
                                 <i class="ti ti-plus me-1"></i> Record Violation
                             </a>
+                            @endif
                         </div>
                         <div class="card-body pt-2">
 
@@ -599,10 +601,12 @@
                                                         <small>{{ $v->notes ? \Illuminate\Support\Str::limit($v->notes, 60) : '—' }}</small>
                                                     </td>
                                                     <td>
-                                                        <a href="{{ route('backend.disciplinary.violation.edit', $v->id) }}"
-                                                           class="btn btn-sm btn-outline-warning" title="Edit">
-                                                            <i class="ti ti-pencil"></i>
-                                                        </a>
+                                                       @if(auth()->user()?->hasAnyRole(['super-user', 'admin']))
+                                                       <a href="{{ route('backend.disciplinary.violation.edit', $v->id) }}"
+                                                          class="btn btn-sm btn-outline-warning" title="Edit">
+                                                           <i class="ti ti-pencil"></i>
+                                                       </a>
+                                                       @endif
                                                     </td>
                                                 </tr>
                                             @endforeach
