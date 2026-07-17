@@ -11,7 +11,6 @@ use App\Models\TeamTie;
 use App\Models\User;
 use App\Services\FeatureFlags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -51,12 +50,12 @@ class TeamDrawV2Test extends TestCase
         $this->admin = User::factory()->create()->assignRole('admin');
 
         // Enable the feature flag globally for all tests in this class
-        Cache::put('feature_flag.admin.team_draw_v2', true, 3600);
+        FeatureFlags::enable(FeatureFlags::TEAM_DRAW_V2);
     }
 
     protected function tearDown(): void
     {
-        Cache::forget('feature_flag.admin.team_draw_v2');
+        FeatureFlags::clearOverride(FeatureFlags::TEAM_DRAW_V2);
         parent::tearDown();
     }
 

@@ -113,8 +113,8 @@ class TeamDrawController extends Controller
                 return $format->load('rubbers');
             });
         } catch (\Illuminate\Database\QueryException $e) {
-            // Unique constraint violation on rubber sequence (format_id, sequence)
-            if ($e->errorInfo[1] === 1062) {
+            // Detect duplicate key violation (MySQL 1062 / SQLSTATE 23000) for rubber sequence
+            if ($e->getCode() === '23000' || ($e->errorInfo[1] ?? null) === 1062) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Rubber sequences must be unique within a format.',

@@ -53,16 +53,15 @@ class TeamTieValidationServiceTest extends TestCase
             ? Player::factory()->female()
             : Player::factory()->male();
 
-        $factory->count($count)->create()->each(function ($player) use ($team) {
-            \DB::table('team_players')->insert([
-                'team_id'    => $team->id,
-                'player_id'  => $player->id,
+        $players = $factory->count($count)->create();
+
+        // Attach via Eloquent relationship with rank ordering
+        foreach ($players as $rank => $player) {
+            $team->players()->attach($player->id, [
                 'pay_status' => null,
-                'rank'       => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'rank'       => $rank + 1,
             ]);
-        });
+        }
 
         return $team->fresh(['team_players', 'team_players_no_profile']);
     }

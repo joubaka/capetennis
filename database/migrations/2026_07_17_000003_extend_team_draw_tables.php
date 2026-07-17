@@ -78,7 +78,10 @@ return new class extends Migration
             try { $table->dropForeign(['team_tie_id']); } catch (\Throwable) {}
             try { $table->dropUnique('team_fixtures_tie_rubber_unique'); } catch (\Throwable) {}
             $cols = ['team_tie_id', 'rubber_sequence', 'rubber_code', 'rubber_name', 'gender_rule', 'player_count_per_team'];
-            $table->dropColumn(array_filter($cols, fn($c) => Schema::hasColumn('team_fixtures', $c)));
+            $toDrop = array_values(array_filter($cols, fn($c) => Schema::hasColumn('team_fixtures', $c)));
+            if (!empty($toDrop)) {
+                $table->dropColumn($toDrop);
+            }
         });
 
         Schema::table('draws', function (Blueprint $table) {
