@@ -43,6 +43,7 @@ use App\Http\Controllers\Backend\ScoreboardController;
 use App\Http\Controllers\Backend\SeriesController;
 use App\Http\Controllers\Backend\SettingsController;
 use App\Http\Controllers\Backend\TeamController;
+use App\Http\Controllers\Backend\TeamDrawController;
 use App\Http\Controllers\Backend\TeamFixtureController;
 use App\Http\Controllers\Backend\TeamScheduleController;
 use App\Http\Controllers\Backend\TeamSelectionController as BackendTeamSelectionController;
@@ -1170,6 +1171,23 @@ Route::delete(
 
   Route::post('/backend/headoffice/recreateFixtures/{draw}', [TeamFixtureController::class, 'recreateFixturesForDraw'])
     ->name('headoffice.recreateFixturesForDraw');
+
+  // ─── Team Draw v2 routes (gated by team_draw_v2 feature flag) ───────────
+  Route::prefix('backend/team-draw')->name('team-draw.')->group(function () {
+    // Format management
+    Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
+    Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');
+    // Draw-level operations
+    Route::post('{draw}/attach-format',  [TeamDrawController::class, 'attachFormat'])->name('attach-format');
+    Route::post('{draw}/sync-teams',     [TeamDrawController::class, 'syncTeams'])->name('sync-teams');
+    Route::post('{draw}/generate-ties',  [TeamDrawController::class, 'generateTies'])->name('generate-ties');
+    Route::post('{draw}/generate-rubbers', [TeamDrawController::class, 'generateRubbers'])->name('generate-rubbers');
+    Route::post('{draw}/regenerate',     [TeamDrawController::class, 'regenerate'])->name('regenerate');
+    // Tie-level operations
+    Route::post('ties/{tie}/generate-rubbers', [TeamDrawController::class, 'generateRubbersForTie'])->name('ties.generate-rubbers');
+    Route::post('ties/{tie}/validate',         [TeamDrawController::class, 'validateTie'])->name('ties.validate');
+    Route::post('ties/{tie}/publish',          [TeamDrawController::class, 'publishTie'])->name('ties.publish');
+  });
 
   Route::post(
     'draw/{draw}/save-groups',

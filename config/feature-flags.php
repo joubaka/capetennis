@@ -22,4 +22,5 @@ return [
     'canonical_progression' => (bool) env('FLAG_CANONICAL_PROGRESSION', false),
     'new_standings'         => (bool) env('FLAG_NEW_STANDINGS',         false),
     'strict_integrity_mode' => (bool) env('FLAG_STRICT_INTEGRITY_MODE', false),
+    'team_draw_v2'          => (bool) env('FLAG_TEAM_DRAW_V2',          false),
 ];

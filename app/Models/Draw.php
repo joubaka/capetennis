@@ -28,6 +28,7 @@ class Draw extends Model
         'gender',
         'oop_created',
         'engine_mode',
+        'team_event_format_id',
     ];
     public function drawFormat()
     {
@@ -223,6 +224,16 @@ public function getAllPlayersAttribute()
     public function teams_in_draw()
     {
         return $this->belongsToMany(Team::class, 'draw_teams');
+    }
+
+    public function teamEventFormat()
+    {
+        return $this->belongsTo(\App\Models\TeamEventFormat::class, 'team_event_format_id');
+    }
+
+    public function teamTies()
+    {
+        return $this->hasMany(\App\Models\TeamTie::class, 'draw_id');
     }
     public function ties($round)
     {

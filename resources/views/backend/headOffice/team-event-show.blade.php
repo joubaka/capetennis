@@ -43,6 +43,12 @@
     createUrl: "{{ route('headoffice.createSingleDraw.team', $event) }}",
     backendDrawVenuesStoreTemplate: @json(route('backend.draw.venues.store', ['draw' => '__ID__'])),
     backendDrawVenuesJsonTemplate: @json(route('backend.draw.venues.json', ['draw' => '__ID__'])),
+    // v2 endpoints
+    teamDrawV2Enabled: @json($teamDrawV2Enabled ?? false),
+    formatsUrl: @json(route('team-draw.formats.index', $event)),
+    generateTiesUrlTemplate: @json(route('team-draw.generate-ties', ['draw' => '__DRAW_ID__'])),
+    generateRubbersUrlTemplate: @json(route('team-draw.generate-rubbers', ['draw' => '__DRAW_ID__'])),
+    attachFormatUrlTemplate: @json(route('team-draw.attach-format', ['draw' => '__DRAW_ID__'])),
   };
 
   $(function () {
@@ -256,6 +262,22 @@
               @endforeach
             </div>
           </div>
+
+          {{-- Format selection (v2 only, loaded async) --}}
+          @if($teamDrawV2Enabled ?? false)
+          <div class="mb-3" id="formatSelectGroup">
+            <label for="format_id" class="form-label fw-bold">Tie Format <span class="text-muted fw-normal">(optional – attach later)</span></label>
+            <select id="format_id" name="format_id" class="form-select">
+              <option value="">— Select format —</option>
+              @foreach($availableFormats ?? [] as $fmt)
+                <option value="{{ $fmt->id }}">{{ $fmt->name }}</option>
+              @endforeach
+            </select>
+            <div class="form-text">
+              Defines the rubber sequence (singles, doubles, mixed, etc.) for each tie.
+            </div>
+          </div>
+          @endif
 
         </div>
 

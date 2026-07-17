@@ -32,6 +32,7 @@ class FeatureFlags
     public const CANONICAL_PROGRESSION = 'canonical_progression';
     public const NEW_STANDINGS         = 'new_standings';
     public const STRICT_INTEGRITY_MODE = 'strict_integrity_mode';
+    public const TEAM_DRAW_V2          = 'team_draw_v2';
 
     public const ALL_FLAGS = [
         self::CANONICAL_ENGINE,
@@ -40,6 +41,7 @@ class FeatureFlags
         self::CANONICAL_PROGRESSION,
         self::NEW_STANDINGS,
         self::STRICT_INTEGRITY_MODE,
+        self::TEAM_DRAW_V2,
     ];
 
     private const CACHE_PREFIX     = 'feature_flag.';

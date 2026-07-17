@@ -12,7 +12,9 @@ use App\Models\DrawType;
 use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\Team;
+use App\Models\TeamEventFormat;
 use App\Models\Venue;
+use App\Services\FeatureFlags;
 use App\Services\FixtureService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -160,6 +162,10 @@ class HeadOfficeController extends Controller
       'scheduledVenues' => $scheduledVenues,
       'teamDrawTypes' => $teamDrawTypes,
       'individualDrawTypes' => $individualDrawTypes,
+      'teamDrawV2Enabled' => FeatureFlags::enabled(FeatureFlags::TEAM_DRAW_V2, $event->id),
+      'availableFormats' => FeatureFlags::enabled(FeatureFlags::TEAM_DRAW_V2, $event->id)
+        ? TeamEventFormat::with('rubbers')->forEvent($event->id)->orderBy('name')->get()
+        : collect(),
     ];
 
     /*

@@ -31,6 +31,13 @@ class TeamFixture extends Model
     'age',
     'scheduled',
     'scheduled_at',
+    // v2 rubber fields
+    'team_tie_id',
+    'rubber_sequence',
+    'rubber_code',
+    'rubber_name',
+    'gender_rule',
+    'player_count_per_team',
   ];
 
   /** ------------------------
@@ -127,5 +134,10 @@ class TeamFixture extends Model
   public function awayTeam()
   {
     return $this->belongsTo(Team::class, 'away_team_id');
+  }
+
+  public function teamTie()
+  {
+    return $this->belongsTo(\App\Models\TeamTie::class, 'team_tie_id');
   }
 }
