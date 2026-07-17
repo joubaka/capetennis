@@ -187,9 +187,13 @@ class TeamDrawV2Test extends TestCase
             ],
         ];
 
-        $this->actingAs($this->admin)
+        $response = $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/{$event->id}/formats", $payload)
             ->assertStatus(422);
+
+        $body = $response->json();
+        $this->assertFalse($body['success']);
+        $this->assertStringContainsStringIgnoringCase('sequence', $body['message']);
     }
 
     // ─── 3. Tie generation: correct pairings ───────────────────────────────
@@ -409,11 +413,14 @@ class TeamDrawV2Test extends TestCase
             'tie_nr'                => 1,
         ]);
 
+        $player1 = \App\Models\Player::factory()->create();
+        $player2 = \App\Models\Player::factory()->create();
+
         \App\Models\TeamFixturePlayer::create([
             'team_fixture_id' => $rubber1->id,
             'slot_no'         => 1,
-            'team1_id'        => 1,
-            'team2_id'        => 2,
+            'team1_id'        => $player1->id,
+            'team2_id'        => $player2->id,
         ]);
 
         $this->actingAs($this->admin)

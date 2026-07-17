@@ -152,12 +152,7 @@ class TeamDrawRegenerationService
             $query->whereNotIn('status', [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED]);
         }
 
-        // Delete rubbers first (team_fixtures FK cascades if set, but be explicit)
-        $tieIds = $query->pluck('id');
-        if ($tieIds->isNotEmpty()) {
-            \App\Models\TeamFixture::whereIn('team_tie_id', $tieIds)->delete();
-        }
-
+        // CASCADE DELETE on team_ties.id → team_fixtures.team_tie_id handles rubber cleanup.
         $query->delete();
     }
 }

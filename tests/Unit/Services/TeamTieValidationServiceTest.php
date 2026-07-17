@@ -49,7 +49,11 @@ class TeamTieValidationServiceTest extends TestCase
     {
         $team = Team::factory()->create();
 
-        Player::factory()->count($count)->create(['gender' => $gender])->each(function ($player) use ($team) {
+        $factory = $gender === 'female'
+            ? Player::factory()->female()
+            : Player::factory()->male();
+
+        $factory->count($count)->create()->each(function ($player) use ($team) {
             \DB::table('team_players')->insert([
                 'team_id'    => $team->id,
                 'player_id'  => $player->id,
@@ -132,8 +136,8 @@ class TeamTieValidationServiceTest extends TestCase
 
     public function test_gender_rule_male_fails_when_female_player_present(): void
     {
-        $malePlayer   = Player::factory()->create(['gender' => 'male']);
-        $femalePlayer = Player::factory()->create(['gender' => 'female']);
+        $malePlayer   = Player::factory()->male()->create();
+        $femalePlayer = Player::factory()->female()->create();
 
         $this->expectException(\InvalidArgumentException::class);
         $this->service->assertGenderRule(
@@ -147,7 +151,7 @@ class TeamTieValidationServiceTest extends TestCase
 
     public function test_gender_rule_female_passes_with_all_female_players(): void
     {
-        $players = Player::factory()->count(2)->create(['gender' => 'female']);
+        $players = Player::factory()->female()->count(2)->create();
         $this->service->assertGenderRule($players->pluck('id')->all(), 'female', 'singles');
         $this->assertTrue(true);
     }
@@ -156,7 +160,7 @@ class TeamTieValidationServiceTest extends TestCase
 
     public function test_gender_rule_mixed_fails_with_all_male_players(): void
     {
-        $players = Player::factory()->count(2)->create(['gender' => 'male']);
+        $players = Player::factory()->male()->count(2)->create();
         $this->expectException(\InvalidArgumentException::class);
         $this->service->assertGenderRule($players->pluck('id')->all(), 'mixed', 'mixed_doubles');
     }
@@ -165,8 +169,8 @@ class TeamTieValidationServiceTest extends TestCase
 
     public function test_gender_rule_mixed_passes_with_male_and_female(): void
     {
-        $male   = Player::factory()->create(['gender' => 'male']);
-        $female = Player::factory()->create(['gender' => 'female']);
+        $male   = Player::factory()->male()->create();
+        $female = Player::factory()->female()->create();
 
         $this->service->assertGenderRule([$male->id, $female->id], 'mixed', 'mixed_doubles');
         $this->assertTrue(true);
@@ -205,8 +209,8 @@ class TeamTieValidationServiceTest extends TestCase
         \App\Models\TeamFixturePlayer::create([
             'team_fixture_id' => $rubber->id,
             'slot_no'         => 1,
-            'team1_id'        => 1,
-            'team2_id'        => 2,
+            'team1_id'        => Player::factory()->create()->id,
+            'team2_id'        => Player::factory()->create()->id,
         ]);
 
         $this->service->assertTieComplete($tie->fresh());

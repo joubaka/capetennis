@@ -41,13 +41,21 @@ return new class extends Migration
             }
         });
 
-        // Add unique index for rubber idempotency (only if not already present)
-        try {
+        // Add unique index for rubber idempotency.
+        // Use SHOW INDEX for MySQL; fall back to try-catch for other drivers.
+        $driver = \DB::getDriverName();
+        $indexExists = false;
+
+        if ($driver === 'mysql' || $driver === 'mariadb') {
+            $indexExists = collect(\DB::select(
+                "SHOW INDEX FROM `team_fixtures` WHERE Key_name = 'team_fixtures_tie_rubber_unique'"
+            ))->isNotEmpty();
+        }
+
+        if (!$indexExists) {
             Schema::table('team_fixtures', function (Blueprint $table) {
                 $table->unique(['team_tie_id', 'rubber_sequence'], 'team_fixtures_tie_rubber_unique');
             });
-        } catch (\Throwable) {
-            // Index already exists — safe to ignore
         }
 
         // Add slot_no to team_fixture_players for deterministic pair ordering

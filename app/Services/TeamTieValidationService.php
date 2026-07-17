@@ -158,10 +158,18 @@ class TeamTieValidationService
             return;
         }
 
-        $genders = $players->pluck('gender')->filter()->map(fn($g) => strtolower($g));
+        // Normalise to string: 1 → 'male', 2 → 'female', string passthrough
+        $genders = $players->pluck('gender')->filter()->map(function ($g) {
+            if ($g === 1 || $g === '1') return 'male';
+            if ($g === 2 || $g === '2') return 'female';
+            return strtolower((string) $g);
+        });
 
         if ($genders->isEmpty()) {
-            // Gender not set on players — warn but allow
+            // Gender is not recorded for these players. Rather than blocking assignment,
+            // we log a warning and allow the operation. This is a deliberate fallback —
+            // operators can still manually validate gender compliance before publishing.
+            // If strict gender enforcement is required, ensure player gender is populated.
             \Log::warning("[TeamTieValidationService] Players have no gender set; skipping gender rule check.", [
                 'player_ids'  => $playerIds,
                 'rubber_code' => $rubberCode,

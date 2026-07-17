@@ -139,7 +139,9 @@ class TeamDrawGenerationService
             $top    = array_slice($ring, 0, $half - 1);
             $bottom = array_reverse(array_slice($ring, $half - 1));
 
-            // First match: pinned team vs last of ring
+            // First match: pinned team vs last of ring.
+            // Alternate which side the pinned team plays on each round to ensure
+            // fair home/away distribution across the full schedule.
             $firstHome = ($round % 2 === 0) ? $ring[$half - 1] : $pivot;
             $firstAway = ($round % 2 === 0) ? $pivot : $ring[$half - 1];
 

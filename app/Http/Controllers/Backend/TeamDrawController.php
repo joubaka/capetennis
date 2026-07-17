@@ -85,34 +85,43 @@ class TeamDrawController extends Controller
             'rubbers.*.is_required'           => 'boolean',
         ]);
 
-        // Ensure sequence values are unique within the submission
-        $sequences = array_column($validated['rubbers'], 'sequence');
-        if (count($sequences) !== count(array_unique($sequences))) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Rubber sequences must be unique within a format.',
-            ], 422);
-        }
+        try {
+            $format = DB::transaction(function () use ($validated, $event) {
+                // If marking as default, unset any existing default for this event
+                if (!empty($validated['is_default'])) {
+                    TeamEventFormat::where('event_id', $event->id)
+                        ->where('is_default', true)
+                        ->update(['is_default' => false]);
+                }
 
-        $format = DB::transaction(function () use ($validated, $event) {
-            $format = TeamEventFormat::create([
-                'event_id'           => $event->id,
-                'name'               => $validated['name'],
-                'min_roster_size'    => $validated['min_roster_size'],
-                'max_roster_size'    => $validated['max_roster_size'],
-                'allow_player_reuse' => $validated['allow_player_reuse'] ?? false,
-                'is_default'         => $validated['is_default'] ?? false,
-            ]);
+                $format = TeamEventFormat::create([
+                    'event_id'           => $event->id,
+                    'name'               => $validated['name'],
+                    'min_roster_size'    => $validated['min_roster_size'],
+                    'max_roster_size'    => $validated['max_roster_size'],
+                    'allow_player_reuse' => $validated['allow_player_reuse'] ?? false,
+                    'is_default'         => $validated['is_default'] ?? false,
+                ]);
 
-            foreach ($validated['rubbers'] as $rubberData) {
-                TeamEventFormatRubber::create(array_merge(
-                    $rubberData,
-                    ['format_id' => $format->id]
-                ));
+                foreach ($validated['rubbers'] as $rubberData) {
+                    TeamEventFormatRubber::create(array_merge(
+                        $rubberData,
+                        ['format_id' => $format->id]
+                    ));
+                }
+
+                return $format->load('rubbers');
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Unique constraint violation on rubber sequence (format_id, sequence)
+            if ($e->errorInfo[1] === 1062) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rubber sequences must be unique within a format.',
+                ], 422);
             }
-
-            return $format->load('rubbers');
-        });
+            throw $e;
+        }
 
         Log::info('[TeamDrawController] Format created', [
             'event_id'  => $event->id,
