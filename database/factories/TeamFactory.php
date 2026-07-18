@@ -16,6 +16,7 @@ class TeamFactory extends Factory
             'num_team_members' => $this->faker->numberBetween(4, 12),
             'year'             => date('Y'),
             'published'        => true,
+            'user_id'          => null,
             'region_id'        => null,
             'category_event_id'=> null,
             'noProfile'        => false,
