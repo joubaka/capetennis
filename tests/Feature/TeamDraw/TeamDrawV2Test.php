@@ -199,12 +199,14 @@ class TeamDrawV2Test extends TestCase
     {
         $event = $this->makeEvent();
 
+        // Duplicate sequences to trigger domain validation (passes basic validation but fails domain)
         $payload = [
             'name'            => 'Bad Format',
             'min_roster_size' => 1,
             'max_roster_size' => 12,
             'rubbers' => [
-                ['sequence' => 0, 'rubber_code' => 'singles', 'name' => 'S1', 'player_count_per_team' => 1],
+                ['sequence' => 1, 'rubber_code' => 'singles', 'name' => 'S1', 'player_count_per_team' => 1],
+                ['sequence' => 1, 'rubber_code' => 'doubles', 'name' => 'D1', 'player_count_per_team' => 2],
             ],
         ];
 
@@ -216,7 +218,7 @@ class TeamDrawV2Test extends TestCase
         $response->assertJsonStructure([
             'success',
             'message',
-            'errors' => ['rubbers.0.sequence'],
+            'errors' => ['rubbers.1.sequence'],
         ]);
     }
 
