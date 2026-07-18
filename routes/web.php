@@ -1177,7 +1177,7 @@ Route::delete(
   // level and in the view layer (blade flag-gating). Route-level middleware
   // is intentionally omitted to keep the API accessible for super-admins
   // configuring formats before the flag is globally enabled.
-  Route::prefix('backend/team-draw')->name('team-draw.')->group(function () {
+  Route::prefix('team-draw')->name('team-draw.')->group(function () {
     // Format management
     Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
     Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');
