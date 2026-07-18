@@ -36,4 +36,21 @@ final class RubberType
 
         return self::LEGACY_FIXTURE_TYPE_MAP[$legacyFixtureType] ?? null;
     }
+
+    /**
+     * Convert canonical rubber type to legacy numeric fixture_type.
+     * Returns null for unsupported or null input.
+     *
+     * @param  string|null  $rubberType
+     * @return int|null
+     */
+    public static function toLegacyFixtureType(?string $rubberType): ?int
+    {
+        if ($rubberType === null) {
+            return null;
+        }
+
+        $reverse = array_flip(self::LEGACY_FIXTURE_TYPE_MAP);
+        return $reverse[$rubberType] ?? null;
+    }
 }

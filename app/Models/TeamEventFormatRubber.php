@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\TeamDraw\RubberType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -32,12 +33,7 @@ class TeamEventFormatRubber extends Model
     ];
 
     /** Allowed rubber codes. */
-    public const RUBBER_CODES = [
-        'singles',
-        'reverse_singles',
-        'doubles',
-        'mixed_doubles',
-    ];
+    public const RUBBER_CODES = RubberType::ALL;
 
     // ─── Relations ──────────────────────────────────────────────────────────
 
@@ -50,16 +46,16 @@ class TeamEventFormatRubber extends Model
 
     public function isDoubles(): bool
     {
-        return in_array($this->rubber_code, ['doubles', 'mixed_doubles'], true);
+        return in_array($this->rubber_code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true);
     }
 
     public function isSingles(): bool
     {
-        return in_array($this->rubber_code, ['singles', 'reverse_singles'], true);
+        return in_array($this->rubber_code, [RubberType::SINGLES, RubberType::REVERSE_SINGLES], true);
     }
 
     public function playerCountPerTeam(): int
     {
-        return $this->player_count_per_team ?? ($this->isDoubles() ? 2 : 1);
+        return $this->player_count_per_team ?? RubberType::expectedPlayerCountPerTeam((string) $this->rubber_code);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\TeamDraw\RubberType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
@@ -45,12 +46,24 @@ class TeamFixture extends Model
    * ---------------------- */
   public function isDoubles(): bool
   {
-    return $this->fixture_type === 'doubles';
+    // Prefer rubber_code (v2 team draws) over legacy fixture_type
+    if ($this->rubber_code !== null) {
+      return in_array($this->rubber_code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true);
+    }
+
+    // Fall back to legacy integer fixture_type (1=singles, 2=doubles, 3=mixed_doubles, 4=reverse_singles)
+    return (int) $this->fixture_type === 2 || (int) $this->fixture_type === 3;
   }
 
   public function isSingles(): bool
   {
-    return $this->fixture_type === 'singles';
+    // Prefer rubber_code (v2 team draws) over legacy fixture_type
+    if ($this->rubber_code !== null) {
+      return in_array($this->rubber_code, [RubberType::SINGLES, RubberType::REVERSE_SINGLES], true);
+    }
+
+    // Fall back to legacy integer fixture_type (1=singles, 2=doubles, 3=mixed_doubles, 4=reverse_singles)
+    return (int) $this->fixture_type === 1 || (int) $this->fixture_type === 4;
   }
 
   /** ------------------------

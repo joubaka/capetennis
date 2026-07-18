@@ -101,7 +101,7 @@ class TeamTieGenerationService
                         'draw_id'               => $tie->draw_id,
                         'round_nr'              => $tie->round_nr,
                         'tie_nr'                => $tie->tie_nr,
-                        'fixture_type'          => $template->rubber_code,
+                        'fixture_type'          => \App\Domain\TeamDraw\RubberType::toLegacyFixtureType($template->rubber_code),
                         'rubber_code'           => $template->rubber_code,
                         'rubber_name'           => $template->name,
                         'gender_rule'           => $template->gender_rule,
