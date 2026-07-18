@@ -195,6 +195,31 @@ class TeamDrawV2Test extends TestCase
         $this->assertStringContainsStringIgnoringCase('sequence', $body['message']);
     }
 
+    public function test_store_format_returns_stable_field_key_errors_for_domain_validation(): void
+    {
+        $event = $this->makeEvent();
+
+        $payload = [
+            'name'            => 'Bad Format',
+            'min_roster_size' => 1,
+            'max_roster_size' => 12,
+            'rubbers' => [
+                ['sequence' => 0, 'rubber_code' => 'singles', 'name' => 'S1', 'player_count_per_team' => 1],
+            ],
+        ];
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$event->id}/formats", $payload)
+            ->assertStatus(422);
+
+        $response->assertJsonPath('success', false);
+        $response->assertJsonStructure([
+            'success',
+            'message',
+            'errors' => ['rubbers.0.sequence'],
+        ]);
+    }
+
     // ─── 3. Tie generation: correct pairings ───────────────────────────────
 
     public function test_generate_ties_creates_round_robin_pairings(): void

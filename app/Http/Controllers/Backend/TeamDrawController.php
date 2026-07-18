@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\TeamDraw\RubberType;
+use App\Domain\TeamDraw\TeamEventFormatDefinitionValidationException;
+use App\Domain\TeamDraw\TeamEventFormatDefinitionValidator;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\Event;
@@ -35,6 +38,7 @@ class TeamDrawController extends Controller
         private readonly TeamTieGenerationService   $tieGenerator,
         private readonly TeamDrawRegenerationService $regenerator,
         private readonly TeamTieValidationService   $validator,
+        private readonly TeamEventFormatDefinitionValidator $formatDefinitionValidator,
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -75,7 +79,7 @@ class TeamDrawController extends Controller
             'rubbers.*.rubber_code' => [
                 'required',
                 'string',
-                'in:' . implode(',', TeamEventFormatRubber::RUBBER_CODES),
+                'in:' . implode(',', RubberType::ALL),
             ],
             'rubbers.*.name'                  => 'required|string|max:100',
             'rubbers.*.gender_rule'           => 'nullable|string|in:male,female,mixed',
@@ -86,6 +90,8 @@ class TeamDrawController extends Controller
         ]);
 
         try {
+            $this->formatDefinitionValidator->validate($validated);
+
             $format = DB::transaction(function () use ($validated, $event) {
                 // If marking as default, unset any existing default for this event
                 if (!empty($validated['is_default'])) {
@@ -112,6 +118,17 @@ class TeamDrawController extends Controller
 
                 return $format->load('rubbers');
             });
+        } catch (TeamEventFormatDefinitionValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Illuminate\Database\QueryException $e) {
             // Detect duplicate key violation (MySQL 1062 / SQLSTATE 23000) for rubber sequence
             if ($e->getCode() === '23000' || ($e->errorInfo[1] ?? null) === 1062) {
