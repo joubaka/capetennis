@@ -18,6 +18,7 @@ class TeamFactory extends Factory
             'year'             => date('Y'),
             'published'        => true,
             'user_id'          => User::factory(),
+            'personal_team'    => false,
             'region_id'        => null,
             'category_event_id'=> null,
             'noProfile'        => false,
