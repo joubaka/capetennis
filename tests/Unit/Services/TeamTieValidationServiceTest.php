@@ -58,7 +58,7 @@ class TeamTieValidationServiceTest extends TestCase
         // Attach via Eloquent relationship with rank ordering
         foreach ($players as $rank => $player) {
             $team->players()->attach($player->id, [
-                'pay_status' => null,
+                'pay_status' => 0, // Default: unpaid
                 'rank'       => $rank + 1,
             ]);
         }
