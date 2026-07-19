@@ -85,5 +85,10 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('event-draw.view', function ($user, \App\Models\Event $event) {
             return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
         });
+
+        // Create a new draw (individual) for an event.
+        Gate::define('draw.create', function ($user, \App\Models\Event $event) {
+            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        });
     }
 }

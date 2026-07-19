@@ -293,7 +293,8 @@ class DrawController extends Controller
 
   public function add_draw_registration(Request $request, $id)
   {
-    $draw = Draw::find($id);
+    $draw = Draw::findOrFail($id);
+    $this->authorize('update', $draw);
 
     foreach ($request->players as $player) {
       $draw->registrations()->attach($player);
@@ -304,6 +305,9 @@ class DrawController extends Controller
 
   public function remove_draw_registration(Request $request, $id)
   {
+    $draw = Draw::findOrFail($request->draw_id);
+    $this->authorize('update', $draw);
+
     DrawRegistrations::where('registration_id', $id)
       ->where('draw_id', $request->draw_id)
       ->delete();
@@ -313,9 +317,10 @@ class DrawController extends Controller
 
   public function add_draw_registration_category(Request $request, $id)
   {
-    $draw = Draw::find($id);
+    $draw = Draw::findOrFail($id);
+    $this->authorize('update', $draw);
     $eventCategory = CategoryEvent::find($request->category);
-    $draw = Draw::find($id);
+    $draw = Draw::findOrFail($id);
     $eventCategory = CategoryEvent::find($request->category);
     foreach ($eventCategory->registrations as $key => $value) {
       $draw->registrations()->attach($value->id);
@@ -326,6 +331,9 @@ class DrawController extends Controller
 
   public function change_seed(Request $request, $id)
   {
+    $draw = Draw::findOrFail($id);
+    $this->authorize('update', $draw);
+
     $drawReg = DrawRegistrations::where('registration_id', $request->reg)
       ->where('draw_id', $id)
       ->first();
@@ -349,6 +357,7 @@ class DrawController extends Controller
   public function togglePublish($id)
   {
     $draw = Draw::findOrFail($id);
+    $this->authorize('publish', $draw);
 
     $draw->published = !$draw->published;
     $draw->save();
@@ -366,7 +375,8 @@ class DrawController extends Controller
     //     return $item->with('results');
     // })->get();
 
-    $draw = Draw::find($id);
+    $draw = Draw::findOrFail($id);
+    $this->authorize('publish', $draw);
 
     if ($draw->oop_published == 1) {
       $draw->oop_published = 0;
@@ -414,6 +424,7 @@ class DrawController extends Controller
   public function addVenueDraw($drawId)
   {
     $draw = Draw::findOrFail($drawId);
+    $this->authorize('update', $draw);
 
     $venueId = request('venue');
     $numCourts = request('numCourts');
@@ -429,7 +440,8 @@ class DrawController extends Controller
 
   public function removeVenueDraw($drawId)
   {
-    $draw = Draw::find($drawId);
+    $draw = Draw::findOrFail($drawId);
+    $this->authorize('update', $draw);
     $venueId = $_GET['venue'];
     $draw->venues()->detach([$venueId]);
     return 'success remove venue';
@@ -437,12 +449,14 @@ class DrawController extends Controller
 
   public function generateFromModal(Request $request)
   {
-
     $validated = $request->validate([
       'event_id' => 'required|exists:events,id',
       'draw_name' => 'required|string|max:255',
       'draw_format_id' => 'required|in:1,2,3',
     ]);
+
+    $event = \App\Models\Event::findOrFail($validated['event_id']);
+    $this->authorize('draw.create', $event);
 
     $draw = new Draw();
     $draw->event_id = $validated['event_id'];
@@ -548,6 +562,7 @@ class DrawController extends Controller
       'categoryEvent.category',
       'registrations.players',
     ])->findOrFail($id);
+    $this->authorize('view', $draw);
 
     $assignedIds = $draw->registrations->pluck('id');
 
@@ -562,12 +577,8 @@ class DrawController extends Controller
 
   public function players($id)
   {
-
-
-
     $draw = Draw::with(['categoryEvent.category', 'registrations.players'])->findOrFail($id);
-
-
+    $this->authorize('view', $draw);
 
     return view('backend.draw.manage-players', compact('draw'));
   }
@@ -586,9 +597,10 @@ class DrawController extends Controller
       'drawFixtures.registration1.players',
       'drawFixtures.registration2.players'
     ])->findOrFail($id);
+    $this->authorize('view', $draw);
 
-    $drawTypes = DrawType::all();
-    $drawFormats = DrawFormats::all();
+    $drawTypes    = DrawType::all();
+    $drawFormats  = DrawFormats::all();
 
     $currentFormat = $drawFormats->firstWhere('id', $draw->settings->draw_format_id)?->name ?? '';
     $supportsBoxes = Str::contains(strtolower($currentFormat), 'round robin');
@@ -655,6 +667,7 @@ class DrawController extends Controller
 
   public function getPlayers(Draw $draw)
   {
+    $this->authorize('view', $draw);
 
     return response()->json($draw->players()->with('team', 'category')->get());
   }
@@ -663,6 +676,8 @@ class DrawController extends Controller
 
   public function importFromCategory(Draw $draw)
   {
+    $this->authorize('update', $draw);
+
     $categoryEvent = $draw->categoryEvent;
 
     if (!$categoryEvent) {
@@ -684,12 +699,16 @@ class DrawController extends Controller
 
   public function addPlayerDraw(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
+
     $draw->registrations()->syncWithoutDetaching($request->player_id);
     return response()->noContent();
   }
 
   public function removePlayerDraw(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
+
     $draw->registrations()->detach($request->player_id);
     return response()->noContent();
   }
@@ -707,6 +726,8 @@ class DrawController extends Controller
 
   public function addPlayer(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
+
     $registrationId = $request->input('registration_id');
 
     // Fetch registration and validate
@@ -761,13 +782,13 @@ class DrawController extends Controller
 
   public function addCategoryPlayers(Request $request)
   {
-
     $request->validate([
       'category_id' => 'required|exists:category_events,id',
       'draw_id' => 'required|exists:draws,id',
     ]);
 
     $draw = Draw::with('registrations.players')->findOrFail($request->draw_id);
+    $this->authorize('update', $draw);
 
     $categoryEvent = CategoryEvent::with('registrations.players')->findOrFail($request->category_id);
 
@@ -794,18 +815,13 @@ class DrawController extends Controller
 
   public function addPlayerToDraw(Request $request)
   {
-
-
     $request->validate([
       'draw_id' => 'required|integer|exists:draws,id',
       'player_ids' => 'required|array',
-
     ]);
 
-
-
-
     $draw = Draw::findOrFail($request->draw_id);
+    $this->authorize('update', $draw);
 
     $added = 0;
     $skipped = 0;
@@ -840,8 +856,9 @@ class DrawController extends Controller
 
   public function getDrawPlayers(Draw $draw)
   {
+    $this->authorize('view', $draw);
 
-    $registrations = $draw->registrations; // assumes Draw has players() relation via Registration
+    $registrations = $draw->registrations;
 
     return view('backend.draw.partials.draw-players', compact('registrations', 'draw'));
   }
@@ -850,13 +867,17 @@ class DrawController extends Controller
 
   public function removePlayer(Request $request)
   {
-
     $request->validate([
-      'registration_id' => 'required|integer|exists:registrations,id',
       'draw_id' => 'required|integer|exists:draws,id',
     ]);
 
     $draw = Draw::findOrFail($request->draw_id);
+    $this->authorize('update', $draw);
+
+    $request->validate([
+      'registration_id' => 'required|integer|exists:registrations,id',
+    ]);
+
     $draw->registrations()->detach($request->registration_id);
 
     return response()->json(['message' => 'Player removed.']);
@@ -864,12 +885,12 @@ class DrawController extends Controller
 
   public function clearPlayers(Request $request)
   {
-
     $request->validate([
       'draw_id' => 'required|integer|exists:draws,id',
     ]);
 
     $draw = Draw::findOrFail($request->draw_id);
+    $this->authorize('update', $draw);
     $draw->registrations()->detach();
 
 
@@ -881,6 +902,7 @@ class DrawController extends Controller
 
   public function updateSettings(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
 
     // Save to draw_settings (create or update)
     DrawSetting::updateOrCreate(
@@ -955,6 +977,9 @@ class DrawController extends Controller
 
   public function updateSeeds(Request $request, $id)
   {
+    $draw = Draw::findOrFail($id);
+    $this->authorize('update', $draw);
+
     $data = $request->validate([
       'ordered_seeds' => 'required|array',
       'ordered_seeds.*.registration_id' => 'required|integer',
@@ -973,6 +998,7 @@ class DrawController extends Controller
   public function assignBoxNumbers(Request $request, $id)
   {
     $draw = Draw::with(['registrations.players', 'settings'])->findOrFail($id);
+    $this->authorize('update', $draw);
     $numBoxes = (int) $request->input('boxes', 2);
 
     $templates = $this->generateSnakeTemplates(8, 64);
@@ -1036,6 +1062,8 @@ class DrawController extends Controller
   public function generateRoundRobinFixtures(Request $request, $id)
   {
     $draw   = Draw::findOrFail($id);
+    $this->authorize('generateFixtures', $draw);
+
     $engine = app(EngineRouter::class);
 
     try {
@@ -1121,6 +1149,8 @@ class DrawController extends Controller
   }
 public function drawPreview(Draw $draw)
 {
+    $this->authorize('view', $draw);
+
     $builder = new DrawBuilder($draw);
     $builder->rankPlayers()->assignSeedingCodes();
  $fixtureMap =  $draw->drawFixtures->groupBy('bracket_id');
@@ -1143,6 +1173,7 @@ public function drawPreview(Draw $draw)
 
   public function getBoxMatrix(Draw $draw, $box)
   {
+    $this->authorize('view', $draw);
 
     $boxNumber = (int) $box;
     $registrations = $draw->registrations
@@ -1153,6 +1184,8 @@ public function drawPreview(Draw $draw)
 
 public function json(Draw $draw)
 {
+    $this->authorize('view', $draw);
+
     // Eager-load everything for the draw fixtures
     $draw->load([
         'drawFixtures.registration1.players',
@@ -1197,6 +1230,8 @@ public function json(Draw $draw)
 
   public function storeVenues(Request $request, Draw $draw)
   {
+    $this->authorize('update', $draw);
+
     $venueIds = $request->input('venue_id', []);
     $numCourts = $request->input('num_courts', []);
 
@@ -1236,6 +1271,8 @@ public function json(Draw $draw)
 
   public function editVenues(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $draw->load(['venues' => fn($q) => $q->withPivot('num_courts')]);
     $allVenues = Venue::all(['id', 'name']);
 
@@ -1262,10 +1299,12 @@ public function json(Draw $draw)
   }
   public function createDraw(Event $event, Request $request)
   {
+    $this->authorize('draw.create', $event);
+
     $draw = new Draw();
     $draw->event_id = $event->id;
     $draw->drawName = $request->input('drawName', 'New Draw');
-    $draw->draw_type_id = $request->input('draw_type_id'); // optional field
+    $draw->drawType_id = $request->input('draw_type_id'); // optional field
     $draw->save();
 
     return response()->json([
@@ -1275,6 +1314,8 @@ public function json(Draw $draw)
   }
   public function saveGroups(Request $request, Draw $draw)
   {
+    $this->authorize('modifyGroups', $draw);
+
     foreach ($request->groups as $g) {
 
       $groupId = $g['group_id'];
