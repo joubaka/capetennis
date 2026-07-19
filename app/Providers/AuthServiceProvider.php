@@ -265,5 +265,25 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('event-finance.convenor', function ($user, \App\Models\Event $event) {
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
+
+        // ── Event Email Authorization (EmailController) ──────────────────────────────
+        // Email operations are event-scoped and restricted to event admins/convenors.
+        // Sending bulk messages, previews, and delivery logs are authorized per event.
+
+        Gate::define('event-email.view', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-email.send', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-email.bulk-send', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-email.view-delivery', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
     }
 }
