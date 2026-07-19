@@ -168,6 +168,54 @@ class AuthServiceProvider extends ServiceProvider
             return $teamDrawPolicy()->updateTeamDraw($user, $draw);
         });
 
+        // ── Team Management (TeamController) ──────────────────────────────────
+        // Team-scoped abilities: resolve event through team → category → event.
+        // Admin or convenor for the event may manage teams within that event.
+
+        Gate::define('team.view', function ($user, \App\Models\Team $team) {
+            $event = optional(optional($team->category)->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('team.create', function ($user, \App\Models\CategoryEvent $categoryEvent) {
+            $event = optional($categoryEvent->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('team.update', function ($user, \App\Models\Team $team) {
+            $event = optional(optional($team->category)->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('team.delete', function ($user, \App\Models\Team $team) {
+            $event = optional(optional($team->category)->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('team.players.manage', function ($user, \App\Models\Team $team) {
+            $event = optional(optional($team->category)->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('team.admin', function ($user) {
+            return $user->hasRole('admin') || $user->hasRole('convenor');
+        });
+
         // ── Individual-fixture abilities (FixtureController) ──────────────────
         // Delegate to DrawPolicy for draw-scoped operations.
 

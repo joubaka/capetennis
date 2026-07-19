@@ -59,6 +59,15 @@ class TeamController extends Controller
      */
   public function store(Request $request)
   {
+    // Authorize: must provide category_event_id and be able to create team in that category
+    $categoryEventId = $request->input('category_event_id');
+    if ($categoryEventId) {
+      $categoryEvent = CategoryEvent::find($categoryEventId);
+      if ($categoryEvent) {
+        $this->authorize('team.create', $categoryEvent);
+      }
+    }
+
     $request->validate([
       'name' => 'required|string|max:255',
       'year' => 'nullable|integer',
@@ -137,6 +146,8 @@ class TeamController extends Controller
      */
     public function destroy($id)
     {
+        $team = Team::findOrFail($id);
+        $this->authorize('team.delete', $team);
 
         Team::where('id', $id)->delete();
         return 'deleted';
@@ -145,6 +156,9 @@ class TeamController extends Controller
   public function insertPlayer(Request $request)
   {
     $teamplayer = TeamPlayer::findOrFail($request->pivot);
+    $team = $teamplayer->team;
+    $this->authorize('team.players.manage', $team);
+
     $teamplayer->player_id = $request->player;
     $teamplayer->save();
 
@@ -179,6 +193,10 @@ class TeamController extends Controller
       'region_id' => 'required|integer|exists:team_regions,id',
       'published' => 'nullable|boolean',
     ]);
+
+    // Authorize: user must be able to create teams in this event context
+    // For region-based teams, we check the admin/convenor role
+    $this->authorize('team.admin', Event::class);
 
     Log::info('addToRegion: validated data', $validated);
 
@@ -241,6 +259,9 @@ class TeamController extends Controller
   public function order_player_list(Request $request)
   {
     $teamId = (int) $request->input('team_id');
+    $team = Team::findOrFail($teamId);
+    $this->authorize('team.players.manage', $team);
+
     $order = $request->input('order', []);
     $updated = collect();
 
@@ -313,6 +334,8 @@ class TeamController extends Controller
   public function publishTeam($id)
     {
         $team = Team::find($id);
+        $this->authorize('team.update', $team);
+
         if ($team->published == 1) {
             $team->published = 0;
         } else {
@@ -332,11 +355,14 @@ class TeamController extends Controller
         return redirect()->route('home')->withErrors('Please log in to continue.');
     }
 
+    // Verify authorization on the team
+    $team = \App\Models\Team::findOrFail($teamId);
+    $this->authorize('team.players.manage', $team);
+
     // ✅ Any authenticated user can register team players (same as individual registration)
     // No role restriction needed - users can register any player
 
     // load models (will 404 if missing)
-    $team = \App\Models\Team::findOrFail($teamId);
     $player = \App\Models\Player::findOrFail($playerId);
     $event = \App\Models\Event::findOrFail($eventId);
 
@@ -420,10 +446,18 @@ class TeamController extends Controller
 
   public function changeCategory(Request $request, $id)
     {
+        $team = Team::find($request->team);
+        $this->authorize('team.update', $team);
 
         $eventCategory = CategoryEvent::find($request->data);
 
-        $team = Team::find($request->team);
+        // Verify target category belongs to the same event as the team's current event
+        $teamEvent = optional(optional($team->category)->event);
+        $targetEvent = optional($eventCategory->event);
+
+        if (!$teamEvent || !$targetEvent || $teamEvent->id !== $targetEvent->id) {
+            abort(403);
+        }
 
         $team->category_event_id = $eventCategory->id;
 
@@ -434,6 +468,7 @@ class TeamController extends Controller
 
     public function importView()
     {
+        $this->authorize('team.admin', Event::class);
 
         return view('backend.import.noProfileImport');
     }
@@ -442,6 +477,8 @@ class TeamController extends Controller
 
   public function importNoProfile(Request $request)
   {
+    $this->authorize('team.admin', Event::class);
+
     $request->validate([
       'file' => 'required|file|mimes:xlsx,xls,csv',
     ]);
@@ -474,6 +511,8 @@ class TeamController extends Controller
       'team_players_no_profile' => fn($q) => $q->orderBy('rank'),
     ])->findOrFail($teamId);
 
+    $this->authorize('team.view', $team);
+
     return view('backend.adminPage.partials.team_players_table', compact('team'));
   }
 
@@ -483,6 +522,8 @@ class TeamController extends Controller
 
   public function downloadTemplate()
   {
+    $this->authorize('team.admin', Event::class);
+
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
 
@@ -525,19 +566,9 @@ class TeamController extends Controller
 
   public function changePayStatus(Request $request)
   {
-    $user = auth()->user();
-    if (!$user || !$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
-      return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
-    }
-
-    $teamplayer = TeamPlayer::find($request->pivot_id);
-
-    if (!$teamplayer) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Player not found'
-      ], 404);
-    }
+    $teamplayer = TeamPlayer::findOrFail($request->pivot_id);
+    $team = $teamplayer->team;
+    $this->authorize('team.players.manage', $team);
 
     $teamplayer->pay_status = $teamplayer->pay_status ? 0 : 1;
     $teamplayer->save();
@@ -555,12 +586,16 @@ class TeamController extends Controller
 
   public function showRankingImport(Event $event, Team $team)
   {
+    $this->authorize('team.view', $team);
+
     $rankingLists = $event->series->ranking_lists; // or however you link
     return view('backend.teams.partials.import-ranking', compact('event', 'team', 'rankingLists'));
   }
 
   public function importFromRanking(Request $request, Event $event, Team $team)
   {
+    $this->authorize('team.players.manage', $team);
+
     $request->validate([
       'ranking_list_id' => 'required|exists:ranking_lists,id',
     ]);
@@ -577,6 +612,7 @@ class TeamController extends Controller
   public function toggleNoProfile(Request $request, $id)
   {
     $team = Team::findOrFail($id);
+    $this->authorize('team.update', $team);
 
     // Flip state (or use passed value)
     $team->noProfile = $request->has('state')
@@ -595,10 +631,9 @@ class TeamController extends Controller
   }
   public function updateNoProfile(Request $request, $id)
   {
-    $np = NoProfileTeamPlayer::find($id);
-    if (!$np) {
-      return response()->json(['success' => false, 'message' => 'No-profile player not found'], 404);
-    }
+    $np = NoProfileTeamPlayer::findOrFail($id);
+    $team = $np->team;
+    $this->authorize('team.players.manage', $team);
 
     $np->update([
       'name' => $request->input('name'),
@@ -618,8 +653,11 @@ class TeamController extends Controller
       'team_id' => 'required|integer|exists:teams,id',
     ]);
 
+    $team = Team::findOrFail($validated['team_id']);
+    $this->authorize('team.players.manage', $team);
+
     DB::beginTransaction();
-    
+
     try {
       $slot = \App\Models\TeamPlayer::with('player')
         ->where('id', $validated['pivot_id'])
@@ -669,6 +707,8 @@ class TeamController extends Controller
   public function availablePlayers(Request $request)
   {
     $teamId = $request->team_id;
+    $team = Team::findOrFail($teamId);
+    $this->authorize('team.players.manage', $team);
 
     $assignedPlayerIds = TeamPlayer::where('team_id', $teamId)
       ->where('player_id', '!=', 0)
@@ -685,6 +725,9 @@ class TeamController extends Controller
       'player_ids' => 'required|array',
       'player_ids.*' => 'exists:players,id',
     ]);
+
+    $team = Team::findOrFail($data['team_id']);
+    $this->authorize('team.players.manage', $team);
 
     $nextRank = TeamPlayer::where('team_id', $data['team_id'])->max('rank') ?? 0;
 
@@ -707,6 +750,7 @@ class TeamController extends Controller
     $teamId = (int) $request->get('team_id');
 
     $team = Team::findOrFail($teamId);
+    $this->authorize('team.players.manage', $team);
 
     $slots = TeamPlayer::where('team_id', $teamId)
       ->orderBy('rank')
@@ -744,6 +788,9 @@ class TeamController extends Controller
       'slots.*' => 'nullable|integer',
       'preserve_payments' => 'nullable|boolean',
     ]);
+
+    $team = Team::findOrFail($data['team_id']);
+    $this->authorize('team.players.manage', $team);
 
     $teamId = (int) $data['team_id'];
     $preservePayments = (bool) ($data['preserve_payments'] ?? false);
@@ -813,7 +860,9 @@ class TeamController extends Controller
     $slot = TeamPlayer::with(['player'])
       ->findOrFail($pivotId);
 
-   
+    $team = $slot->team;
+    $this->authorize('team.players.manage', $team);
+
     $players = Player::orderBy('name')->get();
 
     logger()->info('Players loaded for replaceForm', [
@@ -855,12 +904,19 @@ class TeamController extends Controller
         ->withErrors('Order not found.');
     }
 
-    if ($order->pay_status == 1) {
-      return redirect()->route('events.success', $order->event_id);
-    }
-
+    // Verify the user owns this order
     if ($order->user_id !== $user->id) {
       abort(403);
+    }
+
+    // Verify authorization on the team if needed for event context
+    if ($order->team_id) {
+      $team = Team::findOrFail($order->team_id);
+      $this->authorize('team.players.manage', $team);
+    }
+
+    if ($order->pay_status == 1) {
+      return redirect()->route('events.success', $order->event_id);
     }
 
     $order = app(TeamPaymentService::class)->finalizePayment($order, [
@@ -900,6 +956,13 @@ class TeamController extends Controller
   public function teamHybridReserve(Request $request)
   {
     $order = TeamPaymentOrder::findOrFail($request->order_id);
+
+    // Verify the user is authorized for this team
+    if ($order->team_id) {
+      $team = Team::findOrFail($order->team_id);
+      $this->authorize('team.players.manage', $team);
+    }
+
     $order = app(TeamPaymentService::class)->reservePayment(
       $order,
       (float) $request->wallet_applied,
@@ -921,6 +984,12 @@ class TeamController extends Controller
     $order = \App\Models\TeamPaymentOrder::with('team', 'player', 'event', 'user')
       ->findOrFail($orderId);
 
+    // Verify the user is authorized for this team
+    if ($order->team_id) {
+      $team = Team::findOrFail($order->team_id);
+      $this->authorize('team.players.manage', $team);
+    }
+
     return view('frontend.payfast.check_out', [
       'type' => 'team',
       'orderId' => $order->id,
@@ -941,6 +1010,12 @@ class TeamController extends Controller
     }
 
     $order = \App\Models\TeamPaymentOrder::findOrFail($orderId);
+
+    // Verify the user is authorized for this team
+    if ($order->team_id) {
+      $team = Team::findOrFail($order->team_id);
+      $this->authorize('team.players.manage', $team);
+    }
 
     if ($order->pay_status == 1 || $order->payfast_paid) {
       return back()->with('success', 'Order already paid.');
