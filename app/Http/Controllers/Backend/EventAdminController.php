@@ -586,6 +586,8 @@ class EventAdminController extends Controller
 
   public function createIndividualDraw(Request $request, Event $event, FixtureService $fixtureService)
   {
+    $this->authorize('individual-draw.create', $event);
+
     \Log::debug('[createIndividualDraw] Incoming request', [
       'event_id' => $event->id,
       'request' => $request->all(),

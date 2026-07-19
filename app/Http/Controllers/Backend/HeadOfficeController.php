@@ -299,6 +299,9 @@ class HeadOfficeController extends Controller
     $event_id = $validatedData['event_id'];
     $drawType = $validatedData['drawType'];
 
+    $event = \App\Models\Event::findOrFail($event_id);
+    $this->authorize('team-draw.createFormat', $event);
+
     \Log::debug('[createFormatFixturesTeam] validated', compact('categories', 'event_id', 'drawType'));
 
     $regions = EventRegion::where('event_id', $event_id)
@@ -579,6 +582,8 @@ class HeadOfficeController extends Controller
    */
   public function printDrawsData(Request $request, Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $drawId = $request->input('draw_id');
 
     $draw = Draw::where('event_id', $event->id)
@@ -604,6 +609,8 @@ class HeadOfficeController extends Controller
    */
   public function printDrawsPdf(Request $request, Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $drawIds       = $request->input('draw_ids', []);
     $printType     = $request->input('print_type', 'fixtures');
     $withStandings = (bool) $request->input('include_standings', false);
