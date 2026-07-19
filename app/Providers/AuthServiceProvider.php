@@ -233,5 +233,37 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('category.manage', function ($user, \App\Models\CategoryEvent $categoryEvent) {
             return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
         });
+
+        // ── Event Finance Authorization (EventFinanceController) ─────────────────────
+        // Finance operations are event-scoped and restricted to event admins/convenors.
+        // Expenses, income, and convenor fees are only accessible within the authorized event.
+
+        Gate::define('event-finance.view', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-finance.manage', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-finance.expense', function ($user, \App\Models\EventExpense $expense) {
+            $event = optional($expense->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-finance.income', function ($user, \App\Models\EventIncomeItem $item) {
+            $event = optional($item->event);
+            if (!$event) {
+                return false;
+            }
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
+        Gate::define('event-finance.convenor', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
     }
 }
