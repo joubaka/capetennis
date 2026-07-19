@@ -91,6 +91,11 @@ class AuthServiceProvider extends ServiceProvider
             return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
         });
 
+        // Access draw-management pages that have no specific model context.
+        Gate::define('draw.admin', function ($user) {
+            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        });
+
         // ── Team-Fixture abilities ─────────────────────────────────────────────
         // All team-fixture gates resolve authorization through the fixture's draw
         // using the same event-admin + team-event scope as TeamDrawPolicy.
