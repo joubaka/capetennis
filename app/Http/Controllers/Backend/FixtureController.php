@@ -597,7 +597,12 @@ class FixtureController extends Controller
 
   public function ajax($id)
   {
-    $result = Fixture::find($id)->results;
+    $fixture = Fixture::findOrFail($id);
+    $authDraw = \App\Models\Draw::find($fixture->draw_id);
+    if ($authDraw) {
+      $this->authorize('fixture.view', $authDraw);
+    }
+    $result = $fixture->results;
     return $result;
   }
 
@@ -675,6 +680,15 @@ class FixtureController extends Controller
     // retreive all records from db
     $data['f'] = TeamFixture::whereIn('id', $ids)->get();
 
+    // Authorize: gate on the draw that owns the first fixture
+    $firstFixture = $data['f']->first();
+    if ($firstFixture) {
+      $authDraw = \App\Models\Draw::find($firstFixture->draw_id);
+      if ($authDraw) {
+        $this->authorize('fixture.view', $authDraw);
+      }
+    }
+
     // Sort defensively: some fixtures may not have a related schedule
     $data['fixtures'] = $data['f']->sortBy(function ($item) {
       return optional($item->schedule)->time ?? $item->scheduled_at ?? '00:00';
@@ -706,6 +720,9 @@ class FixtureController extends Controller
 
   public function ties(Request $request)
   {
+    $draw = \App\Models\Draw::findOrFail($request->draw);
+    $this->authorize('fixture.view', $draw);
+
     return TeamFixture::where('draw_id', $request->draw)
       ->with('region2name')
       ->with('region1name')
