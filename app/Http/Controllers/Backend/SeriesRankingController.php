@@ -31,6 +31,8 @@ class SeriesRankingController extends Controller
    */
   public function index(Series $series)
   {
+    $this->authorize('view', $series);
+
     $series->load(['events.categoryEvents']);
 
     $rankings = SeriesRanking::with([
@@ -348,6 +350,8 @@ class SeriesRankingController extends Controller
    */
   public function audit(Series $series)
   {
+    $this->authorize('view', $series);
+
     $eventIds = $series->events->pluck('id')->values()->toArray();
     $pointsMap = $series->points->pluck('score', 'position')->toArray();
     $categoryNames = Category::pluck('name', 'id')->toArray();
