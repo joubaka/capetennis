@@ -49,7 +49,7 @@ class TeamDrawRegenerationService
      * @param  bool                  $allowOverride      Unlock guard for locked ties.
      * @return array{ ties: Collection, rubbers: Collection }
      *
-     * @throws \RuntimeException if locked ties exist and override is false.
+     * @throws TeamDrawConflictException if locked ties exist and override is false.
      */
     public function regenerate(
         Draw           $draw,

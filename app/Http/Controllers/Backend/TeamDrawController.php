@@ -81,6 +81,38 @@ class TeamDrawController extends Controller
         return $this->requireTeamEvent($event) ?? $event;
     }
 
+    /**
+     * Verify every team in $teamIds either has no category_event_id (unscoped/global)
+     * or belongs to the draw's parent event via the CategoryEvent chain.
+     *
+     * Returns a 403 JSON response listing the offending IDs when any team is out of scope.
+     * Returns null when all teams pass.
+     */
+    private function requireTeamsInScope(array $teamIds, Event $event): ?JsonResponse
+    {
+        if (empty($teamIds)) {
+            return null;
+        }
+
+        $offending = Team::whereIn('id', $teamIds)
+            ->whereNotNull('category_event_id')
+            ->whereHas('category', function ($q) use ($event) {
+                $q->where('event_id', '!=', $event->id);
+            })
+            ->pluck('id')
+            ->all();
+
+        if (!empty($offending)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'One or more teams do not belong to this event.',
+                'offending_ids' => $offending,
+            ], 403);
+        }
+
+        return null;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Format Management
     // ─────────────────────────────────────────────────────────────────────────
@@ -265,6 +297,10 @@ class TeamDrawController extends Controller
             'team_ids.*' => 'integer|exists:teams,id',
         ]);
 
+        if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
+            return $scopeError;
+        }
+
         $draw->teams_in_draw()->sync($validated['team_ids']);
 
         return response()->json([
@@ -302,6 +338,10 @@ class TeamDrawController extends Controller
 
         // Resolve teams: from request override or from draw's sync'd list
         if (!empty($validated['team_ids'])) {
+            if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
+                return $scopeError;
+            }
+
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
             $teams = $draw->teams_in_draw;
@@ -429,6 +469,10 @@ class TeamDrawController extends Controller
         $regenerateRubbers  = (bool) ($validated['regenerate_rubbers'] ?? false);
 
         if (!empty($validated['team_ids'])) {
+            if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
+                return $scopeError;
+            }
+
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
             $teams = $draw->teams_in_draw;

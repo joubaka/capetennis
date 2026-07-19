@@ -38,7 +38,7 @@ class TeamDrawGenerationService
      * @param  TeamEventFormat|null      $format  Format to attach to the draw (optional).
      * @return Collection<int, TeamTie>
      *
-     * @throws \RuntimeException  if draw has published/completed ties and override is false.
+     * @throws TeamDrawConflictException  if draw has published/completed ties and override is false.
      */
     public function generate(
         Draw           $draw,

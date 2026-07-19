@@ -538,4 +538,75 @@ class TeamDrawAuthorizationTest extends TestCase
             ->postJson('/backend/team-draw/ties/99999/validate')
             ->assertNotFound();
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G. Cross-event team submission
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function sync_teams_rejects_teams_from_a_different_event(): void
+    {
+        // Create a category event that belongs to teamEventB (not teamEvent)
+        $catEventB = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEventB->id]);
+        $foreignTeam = Team::factory()->create(['category_event_id' => $catEventB->id]);
+
+        $localTeam = Team::factory()->create(['category_event_id' => null]); // unscoped
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$this->teamDraw->id}/sync-teams", [
+                'team_ids' => [$foreignTeam->id, $localTeam->id],
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        // Confirm no teams were synced to the draw
+        $this->assertDatabaseMissing('draw_teams', [
+            'draw_id' => $this->teamDraw->id,
+            'team_id' => $foreignTeam->id,
+        ]);
+    }
+
+    /** @test */
+    public function generate_ties_rejects_teams_from_a_different_event(): void
+    {
+        $catEventB  = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEventB->id]);
+        $foreignTeam = Team::factory()->create(['category_event_id' => $catEventB->id]);
+        $localTeam  = Team::factory()->create(['category_event_id' => null]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$this->teamDraw->id}/generate-ties", [
+                'team_ids' => [$foreignTeam->id, $localTeam->id],
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->teamDraw->id]);
+    }
+
+    /** @test */
+    public function sync_teams_allows_unscoped_teams_with_null_category_event(): void
+    {
+        $teams = Team::factory()->count(2)->create(['category_event_id' => null]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$this->teamDraw->id}/sync-teams", [
+                'team_ids' => $teams->pluck('id')->all(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
+    /** @test */
+    public function sync_teams_allows_teams_belonging_to_the_correct_event(): void
+    {
+        $catEvent = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEvent->id]);
+        $teams = Team::factory()->count(2)->create(['category_event_id' => $catEvent->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$this->teamDraw->id}/sync-teams", [
+                'team_ids' => $teams->pluck('id')->all(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
 }

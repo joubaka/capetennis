@@ -38,7 +38,7 @@ class TeamTieGenerationService
      * @param  bool     $allowOverride  If true, skip locked-tie guard.
      * @return Collection<int, TeamFixture>
      *
-     * @throws \RuntimeException          if tie is locked and override not set.
+     * @throws TeamDrawConflictException     if tie is locked and override not set.
      * @throws \InvalidArgumentException  if no format is attached to the draw.
      */
     public function generateForTie(TeamTie $tie, bool $allowOverride = false): Collection
