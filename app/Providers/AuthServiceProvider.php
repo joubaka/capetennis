@@ -90,5 +90,44 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('draw.create', function ($user, \App\Models\Event $event) {
             return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
         });
+
+        // ── Team-Fixture abilities ─────────────────────────────────────────────
+        // All team-fixture gates resolve authorization through the fixture's draw
+        // using the same event-admin + team-event scope as TeamDrawPolicy.
+
+        /** @param \App\Models\TeamFixture|\App\Models\Draw $subject */
+        $resolveTeamFixtureDraw = static function ($subject): ?\App\Models\Draw {
+            if ($subject instanceof \App\Models\Draw) {
+                return $subject;
+            }
+            return $subject->draw ?? $subject->draw()->first();
+        };
+
+        Gate::define('team-fixture.view', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+            $draw = $resolveTeamFixtureDraw($subject);
+            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+        });
+
+        Gate::define('team-fixture.update', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+            $draw = $resolveTeamFixtureDraw($subject);
+            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+        });
+
+        Gate::define('team-fixture.saveScore', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+            $draw = $resolveTeamFixtureDraw($subject);
+            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+        });
+
+        Gate::define('team-fixture.schedule', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+            $draw = $resolveTeamFixtureDraw($subject);
+            if (!$draw) {
+                return false;
+            }
+            // Schedule changes blocked when the draw is locked
+            if ($draw->locked) {
+                return false;
+            }
+            return $teamDrawPolicy()->updateTeamDraw($user, $draw);
+        });
     }
 }
