@@ -667,8 +667,8 @@ class EventFinanceController extends Controller
 
     public function updateConvenor(Request $request, EventConvenor $convenor)
     {
-        $event = optional($convenor->event);
-        $this->authorize('event-finance.convenor', $event ?? new \App\Models\Event());
+        $convenor->load('event');
+        $this->authorize('event-finance.convenor', $convenor->event);
 
         $validated = $request->validate([
             'role'             => 'nullable|string|max:20',
@@ -693,8 +693,8 @@ class EventFinanceController extends Controller
 
     public function destroyConvenor(EventConvenor $convenor)
     {
-        $event = optional($convenor->event);
-        $this->authorize('event-finance.convenor', $event ?? new \App\Models\Event());
+        $convenor->load('event');
+        $this->authorize('event-finance.convenor', $convenor->event);
 
         $id = $convenor->id;
         $convenor->delete();
@@ -748,8 +748,8 @@ class EventFinanceController extends Controller
 
     public function destroyVenueConvenor(EventVenueConvenor $venueConvenor)
     {
-        $event = optional($venueConvenor->event);
-        $this->authorize('event-finance.convenor', $event ?? new \App\Models\Event());
+        $venueConvenor->load('event');
+        $this->authorize('event-finance.convenor', $venueConvenor->event);
 
         $id   = $venueConvenor->id;
         $name = $venueConvenor->name;

@@ -7,7 +7,6 @@ use App\Models\EventAdmin;
 use App\Models\EventConvenor;
 use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
-use App\Models\ExpenseType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -17,254 +16,80 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected Event $event;
-    protected Event $otherEvent;
-    protected User $admin;
-    protected User $otherAdmin;
-    protected User $convenor;
-    protected User $ordinaryUser;
+    private User $admin;
+    private User $adminB;
+    private User $user;
+    private Event $eventA;
+    private Event $eventB;
+    private EventExpense $expenseA;
+    private EventIncomeItem $incomeA;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Create roles
-        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        Role::firstOrCreate(['name' => 'convenor', 'guard_name' => 'web']);
-
-        // Create users
         $this->admin = User::factory()->create();
         $this->admin->assignRole('admin');
-
-        $this->otherAdmin = User::factory()->create();
-        $this->otherAdmin->assignRole('admin');
-
-        $this->convenor = User::factory()->create();
-        $this->convenor->assignRole('convenor');
-
-        $this->ordinaryUser = User::factory()->create();
-
-        // Create events
-        $this->event = Event::factory()->create(['name' => 'Event A']);
-        $this->otherEvent = Event::factory()->create(['name' => 'Event B']);
-
-        // Make admin an event admin for $this->event
-        EventAdmin::create([
-            'user_id' => $this->admin->id,
-            'event_id' => $this->event->id,
-        ]);
-
-        // Make otherAdmin an event admin for $this->otherEvent
-        EventAdmin::create([
-            'user_id' => $this->otherAdmin->id,
-            'event_id' => $this->otherEvent->id,
-        ]);
-
-        // Make convenor an event convenor for $this->event
-        EventConvenor::create([
-            'user_id' => $this->convenor->id,
-            'event_id' => $this->event->id,
-        ]);
+        $this->adminB = User::factory()->create();
+        $this->adminB->assignRole('admin');
+        $this->user = User::factory()->create();
+        $this->eventA = Event::factory()->create();
+        $this->eventB = Event::factory()->create();
+        EventAdmin::create(['user_id' => $this->admin->id, 'event_id' => $this->eventA->id]);
+        EventAdmin::create(['user_id' => $this->adminB->id, 'event_id' => $this->eventB->id]);
+        $this->expenseA = EventExpense::create(['event_id' => $this->eventA->id, 'expense_type' => 'Equipment', 'amount' => 100]);
+        $this->incomeA = EventIncomeItem::create(['event_id' => $this->eventA->id, 'label' => 'Sponsorship', 'quantity' => 1, 'unit_price' => 500]);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Guest Rejected
-    // ──────────────────────────────────────────────────────────────────
+    public function test_view_guest_redirect() { $this->get(route('admin.events.finances', $this->eventA->id))->assertRedirect('login'); }
 
-    /** @test */
-    public function guest_redirected_on_finance_view()
-    {
-        $this->get(route('finance.index', $this->event->id))
-            ->assertRedirect('login');
-    }
+    public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Permitted Admin/Convenor Allowed Within Scope
-    // ──────────────────────────────────────────────────────────────────
+    public function test_view_cross_event_forbidden() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventB->id))->assertStatus(403); }
 
-    /** @test */
-    public function admin_can_view_finance_for_authorized_event()
-    {
-        $response = $this->actingAs($this->admin)
-            ->get(route('finance.index', $this->event->id));
+    public function test_view_user_forbidden() { $this->actingAs($this->user)->get(route('admin.events.finances', $this->eventA->id))->assertStatus(403); }
 
-        $response->assertSuccessful();
-    }
+    public function test_expense_store_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.store', $this->eventA->id), ['expense_type' => 'Equipment', 'amount' => 100])->assertRedirect(); $this->assertCount(2, EventExpense::where('event_id', $this->eventA->id)->get()); }
 
-    /** @test */
-    public function convenor_can_view_finance_for_authorized_event()
-    {
-        $response = $this->actingAs($this->convenor)
-            ->get(route('finance.index', $this->event->id));
+    public function test_expense_store_cross_event() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.store', $this->eventB->id), ['expense_type' => 'Equipment', 'amount' => 100])->assertStatus(403); }
 
-        $response->assertSuccessful();
-    }
+    public function test_expense_update_admin() { $this->actingAs($this->admin)->patch(route('admin.events.finances.expense.update', $this->expenseA->id), ['expense_type' => 'Equipment', 'amount' => 250])->assertRedirect(); $this->assertEquals(250, $this->expenseA->refresh()->amount); }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Ordinary User Receives 403
-    // ──────────────────────────────────────────────────────────────────
+    public function test_expense_update_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->patch(route('admin.events.finances.expense.update', $expenseB->id), ['expense_type' => 'Equipment', 'amount' => 250])->assertStatus(403); }
 
-    /** @test */
-    public function ordinary_user_receives_403_on_finance_view()
-    {
-        $response = $this->actingAs($this->ordinaryUser)
-            ->get(route('finance.index', $this->event->id));
+    public function test_expense_destroy_admin() { $this->actingAs($this->admin)->delete(route('admin.events.finances.expense.destroy', $this->expenseA->id))->assertRedirect(); $this->assertNull(EventExpense::find($this->expenseA->id)); }
 
-        $response->assertForbidden();
-    }
+    public function test_expense_destroy_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->delete(route('admin.events.finances.expense.destroy', $expenseB->id))->assertStatus(403); $this->assertNotNull(EventExpense::find($expenseB->id)); }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Cross-Event Isolation (Admin A cannot view Finance for Event B)
-    // ──────────────────────────────────────────────────────────────────
+    public function test_expense_approve_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.approve', $this->expenseA->id))->assertRedirect(); }
 
-    /** @test */
-    public function admin_cannot_view_finance_for_different_event()
-    {
-        $response = $this->actingAs($this->admin)
-            ->get(route('finance.index', $this->otherEvent->id));
+    public function test_expense_approve_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->post(route('admin.events.finances.expense.approve', $expenseB->id))->assertStatus(403); }
 
-        $response->assertForbidden();
-    }
+    public function test_expense_reimburse_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.reimburse', $this->expenseA->id))->assertRedirect(); }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Expense Management Scope Checks
-    // ──────────────────────────────────────────────────────────────────
+    public function test_expense_reimburse_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->post(route('admin.events.finances.expense.reimburse', $expenseB->id))->assertStatus(403); }
 
-    /** @test */
-    public function admin_can_store_expense_in_authorized_event()
-    {
-        // Ensure expense type exists
-        ExpenseType::factory()->create();
+    public function test_income_store_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.income.store', $this->eventA->id), ['label' => 'S', 'quantity' => 1, 'unit_price' => 500])->assertRedirect(); $this->assertCount(2, EventIncomeItem::where('event_id', $this->eventA->id)->get()); }
 
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.expense.store', $this->event->id), [
-                'expense_type' => 'Equipment',
-                'description' => 'Tennis rackets',
-                'amount' => 500,
-            ]);
+    public function test_income_store_cross_event() { $this->actingAs($this->admin)->post(route('admin.events.finances.income.store', $this->eventB->id), ['label' => 'S', 'quantity' => 1, 'unit_price' => 500])->assertStatus(403); }
 
-        // Expect success or a validation error (not 403)
-        $this->assertTrue($response->isSuccessful() || $response->status() === 422);
-    }
+    public function test_income_update_admin() { $this->actingAs($this->admin)->patch(route('admin.events.finances.income.update', $this->incomeA->id), ['unit_price' => 750])->assertRedirect(); }
 
-    /** @test */
-    public function admin_cannot_store_expense_in_different_event()
-    {
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.expense.store', $this->otherEvent->id), [
-                'expense_type' => 'Equipment',
-                'description' => 'Tennis rackets',
-                'amount' => 500,
-            ]);
+    public function test_income_update_cross_event() { $incomeB = EventIncomeItem::create(['event_id' => $this->eventB->id, 'label' => 'S', 'quantity' => 1, 'unit_price' => 500]); $this->actingAs($this->admin)->patch(route('admin.events.finances.income.update', $incomeB->id), ['unit_price' => 750])->assertStatus(403); }
 
-        $response->assertForbidden();
-    }
+    public function test_income_destroy_admin() { $this->actingAs($this->admin)->delete(route('admin.events.finances.income.destroy', $this->incomeA->id))->assertRedirect(); $this->assertNull(EventIncomeItem::find($this->incomeA->id)); }
 
-    /** @test */
-    public function ordinary_user_receives_403_on_store_expense()
-    {
-        $response = $this->actingAs($this->ordinaryUser)
-            ->post(route('finance.expense.store', $this->event->id), [
-                'expense_type' => 'Equipment',
-                'amount' => 500,
-            ]);
+    public function test_income_destroy_cross_event() { $incomeB = EventIncomeItem::create(['event_id' => $this->eventB->id, 'label' => 'S', 'quantity' => 1, 'unit_price' => 500]); $this->actingAs($this->admin)->delete(route('admin.events.finances.income.destroy', $incomeB->id))->assertStatus(403); $this->assertNotNull(EventIncomeItem::find($incomeB->id)); }
 
-        $response->assertForbidden();
-    }
+    public function test_convenor_store_admin() { $user = User::factory()->create(); $this->actingAs($this->admin)->post(route('admin.events.finances.convenor.store', $this->eventA->id), ['user_ids' => [$user->id]])->assertRedirect(); $this->assertTrue(EventConvenor::where('user_id', $user->id)->where('event_id', $this->eventA->id)->exists()); }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Income Item Management
-    // ──────────────────────────────────────────────────────────────────
+    public function test_convenor_store_cross_event() { $user = User::factory()->create(); $this->actingAs($this->admin)->post(route('admin.events.finances.convenor.store', $this->eventB->id), ['user_ids' => [$user->id]])->assertStatus(403); }
 
-    /** @test */
-    public function admin_can_store_income_item_in_authorized_event()
-    {
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.income.store', $this->event->id), [
-                'label' => 'Sponsorship',
-                'quantity' => 1,
-                'amount' => 1000,
-            ]);
+    public function test_convenor_update_admin() { $convenor = EventConvenor::create(['event_id' => $this->eventA->id, 'user_id' => User::factory()->create()->id]); $this->actingAs($this->admin)->patch(route('admin.events.finances.convenor.update', $convenor->id), ['role' => 'hulp'])->assertRedirect(); }
 
-        $this->assertTrue($response->isSuccessful() || $response->status() === 422);
-    }
+    public function test_convenor_update_cross_event() { $convenor = EventConvenor::create(['event_id' => $this->eventB->id, 'user_id' => User::factory()->create()->id]); $this->actingAs($this->admin)->patch(route('admin.events.finances.convenor.update', $convenor->id), ['role' => 'hulp'])->assertStatus(403); }
 
-    /** @test */
-    public function admin_cannot_store_income_item_in_different_event()
-    {
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.income.store', $this->otherEvent->id), [
-                'label' => 'Sponsorship',
-                'amount' => 1000,
-            ]);
+    public function test_convenor_destroy_admin() { $convenor = EventConvenor::create(['event_id' => $this->eventA->id, 'user_id' => User::factory()->create()->id]); $this->actingAs($this->admin)->delete(route('admin.events.finances.convenor.destroy', $convenor->id))->assertRedirect(); $this->assertNull(EventConvenor::find($convenor->id)); }
 
-        $response->assertForbidden();
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    // Test: Convenor Management
-    // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_can_store_convenor_in_authorized_event()
-    {
-        $newUser = User::factory()->create();
-
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.convenor.store', $this->event->id), [
-                'user_ids' => [$newUser->id],
-                'role' => 'Treasurer',
-            ]);
-
-        $this->assertTrue($response->isSuccessful() || $response->status() === 422);
-    }
-
-    /** @test */
-    public function admin_cannot_store_convenor_in_different_event()
-    {
-        $newUser = User::factory()->create();
-
-        $response = $this->actingAs($this->admin)
-            ->post(route('finance.convenor.store', $this->otherEvent->id), [
-                'user_ids' => [$newUser->id],
-                'role' => 'Treasurer',
-            ]);
-
-        $response->assertForbidden();
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    // Test: No Database Changes on Rejected Requests
-    // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function rejected_expense_store_makes_no_changes()
-    {
-        $initialCount = EventExpense::count();
-
-        $this->actingAs($this->ordinaryUser)
-            ->post(route('finance.expense.store', $this->event->id), [
-                'expense_type' => 'Equipment',
-                'amount' => 500,
-            ])
-            ->assertForbidden();
-
-        $this->assertEquals($initialCount, EventExpense::count());
-    }
-
-    /** @test */
-    public function rejected_income_store_makes_no_changes()
-    {
-        $initialCount = EventIncomeItem::count();
-
-        $this->actingAs($this->ordinaryUser)
-            ->post(route('finance.income.store', $this->event->id), [
-                'label' => 'Sponsorship',
-                'amount' => 1000,
-            ])
-            ->assertForbidden();
-
-        $this->assertEquals($initialCount, EventIncomeItem::count());
-    }
+    public function test_convenor_destroy_cross_event() { $convenor = EventConvenor::create(['event_id' => $this->eventB->id, 'user_id' => User::factory()->create()->id]); $this->actingAs($this->admin)->delete(route('admin.events.finances.convenor.destroy', $convenor->id))->assertStatus(403); $this->assertNotNull(EventConvenor::find($convenor->id)); }
 }
