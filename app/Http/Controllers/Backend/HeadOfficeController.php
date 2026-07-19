@@ -477,6 +477,8 @@ class HeadOfficeController extends Controller
 
   public function createSingleDrawTeam(Request $request, Event $event, FixtureService $fixtureService)
   {
+    $this->authorize('team-draw.createFormat', $event);
+
     $validated = $request->validate([
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
       'drawName'       => 'required|string|max:255',
@@ -506,6 +508,32 @@ class HeadOfficeController extends Controller
         'id'   => $draw->id,
         'name' => $draw->drawName,
       ],
+    ]);
+  }
+
+  public function previewSingleDrawTeam(Request $request, Event $event)
+  {
+    $this->authorize('team-draw.createFormat', $event);
+
+    $validated = $request->validate([
+      'draw_type_id'   => 'required|integer|exists:draw_types,id',
+      'drawName'       => 'required|string|max:255',
+      'category_ids'   => 'required|array|min:1',
+      'category_ids.*' => 'integer|exists:category_events,id',
+    ]);
+
+    $drawType = \App\Models\DrawType::find($validated['draw_type_id']);
+    $categories = \App\Models\CategoryEvent::whereIn('id', $validated['category_ids'])->get();
+
+    return response()->json([
+      'preview'    => true,
+      'drawName'   => $validated['drawName'],
+      'draw_type'  => [
+        'id'   => $drawType?->id,
+        'name' => $drawType?->name ?? $drawType?->drawType,
+      ],
+      'categories' => $categories->map(fn ($c) => ['id' => $c->id, 'name' => $c->name ?? $c->category]),
+      'event_id'   => $event->id,
     ]);
   }
 
