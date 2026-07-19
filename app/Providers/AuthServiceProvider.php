@@ -173,5 +173,12 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('fixture.update', function ($user, \App\Models\Draw $draw) {
             return app(\App\Policies\DrawPolicy::class)->update($user, $draw);
         });
+
+        // ── Category-event management (EventAdminController) ──────────────────
+        // Lock/unlock categories and add/remove players from category events.
+
+        Gate::define('category.manage', function ($user, \App\Models\CategoryEvent $categoryEvent) {
+            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        });
     }
 }
