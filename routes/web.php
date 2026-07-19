@@ -1173,11 +1173,10 @@ Route::delete(
     ->name('headoffice.recreateFixturesForDraw');
 
   // ─── Team Draw v2 routes ─────────────────────────────────────────────────
-  // Note: the team_draw_v2 feature flag is checked at the controller/service
-  // level and in the view layer (blade flag-gating). Route-level middleware
-  // is intentionally omitted to keep the API accessible for super-admins
-  // configuring formats before the flag is globally enabled.
-  Route::prefix('team-draw')->name('team-draw.')->group(function () {
+  // Protected by the 'auth' middleware inherited from the outer backend group.
+  // Every action additionally enforces object-level authorization via
+  // TeamDrawPolicy / Gate::define abilities (see TeamDrawController).
+  Route::prefix('team-draw')->name('team-draw.')->middleware('auth')->group(function () {
     // Format management
     Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
     Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');

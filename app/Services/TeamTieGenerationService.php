@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Domain\TeamDraw\RubberType;
+use App\Domain\TeamDraw\TeamDrawConflictException;
 use App\Models\TeamEventFormat;
 use App\Models\TeamEventFormatRubber;
 use App\Models\TeamFixture;
@@ -42,7 +44,7 @@ class TeamTieGenerationService
     public function generateForTie(TeamTie $tie, bool $allowOverride = false): Collection
     {
         if (!$allowOverride && $tie->isLocked()) {
-            throw new \RuntimeException(
+            throw new TeamDrawConflictException(
                 "Tie #{$tie->id} (status: {$tie->status}) is locked. " .
                 "Pass allowOverride=true to force rubber regeneration."
             );
@@ -74,7 +76,7 @@ class TeamTieGenerationService
         bool           $allowOverride = false
     ): Collection {
         if (!$allowOverride && $tie->isLocked()) {
-            throw new \RuntimeException(
+            throw new TeamDrawConflictException(
                 "Tie #{$tie->id} is locked and cannot be regenerated without override."
             );
         }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\TeamDraw\TeamDrawConflictException;
 use App\Models\Draw;
 use App\Models\Team;
 use App\Models\TeamEventFormat;
@@ -60,7 +61,7 @@ class TeamDrawRegenerationService
         $lockedCount = $draw->teamTies()->locked()->count();
 
         if ($lockedCount > 0 && !$allowOverride) {
-            throw new \RuntimeException(
+            throw new TeamDrawConflictException(
                 "Draw #{$draw->id} has {$lockedCount} published/completed tie(s). " .
                 "Confirm override to force regeneration."
             );

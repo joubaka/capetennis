@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\TeamDraw\RubberType;
+use App\Domain\TeamDraw\TeamDrawConflictException;
 use App\Domain\TeamDraw\TeamEventFormatDefinitionValidationException;
 use App\Domain\TeamDraw\TeamEventFormatDefinitionValidator;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\Event;
+use App\Models\EventType;
 use App\Models\Team;
 use App\Models\TeamEventFormat;
 use App\Models\TeamEventFormatRubber;
@@ -42,6 +44,44 @@ class TeamDrawController extends Controller
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Internal helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Verify the event is a team event.  Returns a 403 JSON response if not.
+     * Callers must `return` the response when this method returns non-null.
+     */
+    private function requireTeamEvent(Event $event): ?JsonResponse
+    {
+        if ((int) $event->eventTypeModel?->type !== EventType::TEAM) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Team-draw operations are only available for team events.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the parent event from a draw and verify it is a team event.
+     * Returns a 403 JSON response if the draw has no event or is not a team event.
+     */
+    private function requireTeamEventFromDraw(Draw $draw): Event|JsonResponse
+    {
+        $event = $draw->event()->with('eventTypeModel')->first();
+
+        if (!$event) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Draw does not belong to a known event.',
+            ], 403);
+        }
+
+        return $this->requireTeamEvent($event) ?? $event;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Format Management
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -52,6 +92,12 @@ class TeamDrawController extends Controller
      */
     public function listFormats(Event $event): JsonResponse
     {
+        if ($guard = $this->requireTeamEvent($event)) {
+            return $guard;
+        }
+
+        $this->authorize('team-draw.viewFormats', $event);
+
         $formats = TeamEventFormat::with('rubbers')
             ->forEvent($event->id)
             ->orderByDesc('event_id')   // event-specific before global
@@ -68,6 +114,12 @@ class TeamDrawController extends Controller
      */
     public function storeFormat(Request $request, Event $event): JsonResponse
     {
+        if ($guard = $this->requireTeamEvent($event)) {
+            return $guard;
+        }
+
+        $this->authorize('team-draw.createFormat', $event);
+
         $validated = $request->validate([
             'name'               => 'required|string|max:191',
             'min_roster_size'    => 'required|integer|min:1|max:12',
@@ -160,9 +212,25 @@ class TeamDrawController extends Controller
      */
     public function attachFormat(Request $request, Draw $draw): JsonResponse
     {
+        $event = $this->requireTeamEventFromDraw($draw);
+        if ($event instanceof JsonResponse) {
+            return $event;
+        }
+
+        $this->authorize('team-draw.updateTeamDraw', $draw);
+
         $validated = $request->validate([
             'format_id' => 'required|integer|exists:team_event_formats,id',
         ]);
+
+        // Verify the format belongs to the same event or is a global default.
+        $format = TeamEventFormat::find($validated['format_id']);
+        if ($format && $format->event_id !== null && $format->event_id !== $event->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The selected format does not belong to this event.',
+            ], 403);
+        }
 
         $draw->team_event_format_id = $validated['format_id'];
         $draw->save();
@@ -185,6 +253,13 @@ class TeamDrawController extends Controller
      */
     public function syncTeams(Request $request, Draw $draw): JsonResponse
     {
+        $event = $this->requireTeamEventFromDraw($draw);
+        if ($event instanceof JsonResponse) {
+            return $event;
+        }
+
+        $this->authorize('team-draw.updateTeamDraw', $draw);
+
         $validated = $request->validate([
             'team_ids'   => 'required|array|min:2',
             'team_ids.*' => 'integer|exists:teams,id',
@@ -210,6 +285,13 @@ class TeamDrawController extends Controller
      */
     public function generateTies(Request $request, Draw $draw): JsonResponse
     {
+        $event = $this->requireTeamEventFromDraw($draw);
+        if ($event instanceof JsonResponse) {
+            return $event;
+        }
+
+        $this->authorize('team-draw.generateTies', $draw);
+
         $validated = $request->validate([
             'team_ids'       => 'nullable|array|min:2',
             'team_ids.*'     => 'integer|exists:teams,id',
@@ -235,7 +317,7 @@ class TeamDrawController extends Controller
         try {
             $format = $draw->teamEventFormat;
             $ties   = $this->drawGenerator->generate($draw, $teams, $format, $allowOverride);
-        } catch (\RuntimeException $e) {
+        } catch (TeamDrawConflictException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -260,6 +342,13 @@ class TeamDrawController extends Controller
      */
     public function generateRubbers(Request $request, Draw $draw): JsonResponse
     {
+        $event = $this->requireTeamEventFromDraw($draw);
+        if ($event instanceof JsonResponse) {
+            return $event;
+        }
+
+        $this->authorize('team-draw.generateRubbers', $draw);
+
         $validated = $request->validate([
             'allow_override' => 'boolean',
         ]);
@@ -268,7 +357,7 @@ class TeamDrawController extends Controller
 
         try {
             $rubbers = $this->tieGenerator->generateForAllTies($draw, $allowOverride);
-        } catch (\RuntimeException $e) {
+        } catch (TeamDrawConflictException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -288,6 +377,8 @@ class TeamDrawController extends Controller
      */
     public function generateRubbersForTie(Request $request, TeamTie $tie): JsonResponse
     {
+        $this->authorize('generateRubbersForTie', $tie);
+
         $validated = $request->validate([
             'allow_override' => 'boolean',
         ]);
@@ -296,7 +387,7 @@ class TeamDrawController extends Controller
 
         try {
             $rubbers = $this->tieGenerator->generateForTie($tie, $allowOverride);
-        } catch (\RuntimeException $e) {
+        } catch (TeamDrawConflictException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -320,6 +411,13 @@ class TeamDrawController extends Controller
      */
     public function regenerate(Request $request, Draw $draw): JsonResponse
     {
+        $event = $this->requireTeamEventFromDraw($draw);
+        if ($event instanceof JsonResponse) {
+            return $event;
+        }
+
+        $this->authorize('team-draw.regenerate', $draw);
+
         $validated = $request->validate([
             'team_ids'           => 'nullable|array|min:2',
             'team_ids.*'         => 'integer|exists:teams,id',
@@ -351,7 +449,7 @@ class TeamDrawController extends Controller
                 $regenerateRubbers,
                 $allowOverride
             );
-        } catch (\RuntimeException $e) {
+        } catch (TeamDrawConflictException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -377,6 +475,8 @@ class TeamDrawController extends Controller
      */
     public function validateTie(TeamTie $tie): JsonResponse
     {
+        $this->authorize('validateTie', $tie);
+
         try {
             $this->validator->assertTieComplete($tie);
         } catch (\InvalidArgumentException $e) {
@@ -396,6 +496,8 @@ class TeamDrawController extends Controller
      */
     public function publishTie(TeamTie $tie): JsonResponse
     {
+        $this->authorize('publishTie', $tie);
+
         if ($tie->status !== TeamTie::STATUS_VALIDATED) {
             return response()->json([
                 'success' => false,
