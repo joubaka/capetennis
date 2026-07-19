@@ -129,5 +129,49 @@ class AuthServiceProvider extends ServiceProvider
             }
             return $teamDrawPolicy()->updateTeamDraw($user, $draw);
         });
+
+        // ── Team-Schedule abilities (TeamScheduleController) ──────────────────
+        // Draw-scoped: resolve the draw and delegate to TeamDrawPolicy.
+        // Event-scoped: require event-admin or higher role.
+
+        $resolveTeamScheduleDraw = static function ($subject): ?\App\Models\Draw {
+            if ($subject instanceof \App\Models\Draw) {
+                return $subject;
+            }
+            return null;
+        };
+
+        Gate::define('team-schedule.view', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamScheduleDraw) {
+            if ($subject instanceof \App\Models\Event) {
+                return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            }
+            $draw = $resolveTeamScheduleDraw($subject);
+            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+        });
+
+        Gate::define('team-schedule.manage', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamScheduleDraw) {
+            if ($subject instanceof \App\Models\Event) {
+                return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            }
+            $draw = $resolveTeamScheduleDraw($subject);
+            if (!$draw) {
+                return false;
+            }
+            if ($draw->locked) {
+                return false;
+            }
+            return $teamDrawPolicy()->updateTeamDraw($user, $draw);
+        });
+
+        // ── Individual-fixture abilities (FixtureController) ──────────────────
+        // Delegate to DrawPolicy for draw-scoped operations.
+
+        Gate::define('fixture.view', function ($user, \App\Models\Draw $draw) {
+            return app(\App\Policies\DrawPolicy::class)->view($user, $draw);
+        });
+
+        Gate::define('fixture.update', function ($user, \App\Models\Draw $draw) {
+            return app(\App\Policies\DrawPolicy::class)->update($user, $draw);
+        });
     }
 }

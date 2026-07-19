@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Models\Event;
 use App\Models\Venues;
+use App\Services\FixtureService;
 
 
 class TeamScheduleController extends Controller
@@ -20,7 +21,8 @@ class TeamScheduleController extends Controller
    */
   public function scheduleData(Draw $draw)
   {
-    
+    $this->authorize('team-schedule.view', $draw);
+
     $fixtures = TeamFixture::with(['team1', 'team2'])
       ->where('draw_id', $draw->id)
       ->get()
@@ -57,6 +59,8 @@ class TeamScheduleController extends Controller
    */
   public function saveFixture(Request $request, Draw $draw)
   {
+    $this->authorize('team-schedule.manage', $draw);
+
     $fx = TeamFixture::where('draw_id', $draw->id)->findOrFail($request->fixture_id);
     $fx->scheduled_at = $request->scheduled_at ? Carbon::parse($request->scheduled_at) : null;
     $fx->scheduled = 1;
@@ -73,6 +77,8 @@ class TeamScheduleController extends Controller
    */
   public function autoSchedule(Request $request, Draw $draw)
   {
+    $this->authorize('team-schedule.manage', $draw);
+
     $map = $request->input('rank_venue_map', []);
     // Example stub logic: loop fixtures, assign sequentially
     $fixtures = TeamFixture::where('draw_id', $draw->id)->get();
@@ -105,6 +111,8 @@ class TeamScheduleController extends Controller
    */
   public function clearSchedule(Draw $draw)
   {
+    $this->authorize('team-schedule.manage', $draw);
+
     TeamFixture::where('draw_id', $draw->id)->update([
       'scheduled_at' => null,
       'scheduled' => 0,
@@ -121,6 +129,8 @@ class TeamScheduleController extends Controller
    */
   public function resetSchedule(Request $request, Draw $draw)
   {
+    $this->authorize('team-schedule.manage', $draw);
+
     $this->clearSchedule($draw);
     return $this->autoSchedule($request, $draw);
   }
@@ -130,6 +140,8 @@ class TeamScheduleController extends Controller
    */
   public function saveRankVenues(Request $request, Draw $draw)
   {
+    $this->authorize('team-schedule.manage', $draw);
+
     $map = $request->input('rank_venue_map', []);
 
     RankVenueMapping::where('draw_id', $draw->id)->delete();
@@ -148,13 +160,16 @@ class TeamScheduleController extends Controller
 
   public function indexAll(Event $event)
   {
-   
+    $this->authorize('team-schedule.view', $event);
+
     $event->load('draws');
     return view('backend.team-schedule.all', compact('event'));
   }
 
   public function dataAll(Event $event)
   {
+    $this->authorize('team-schedule.view', $event);
+
     $event->load('draws');
 
     $data = [];
@@ -193,6 +208,8 @@ class TeamScheduleController extends Controller
 
   public function autoAll(Request $request, Event $event)
   {
+    $this->authorize('team-schedule.manage', $event);
+
     $scheduledCount = 0;
     $clashes = [];
     $skipped = [];
