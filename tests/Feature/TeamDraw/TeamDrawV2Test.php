@@ -4,11 +4,14 @@ namespace Tests\Feature\TeamDraw;
 
 use App\Models\Draw;
 use App\Models\Event;
+use App\Models\EventAdmin;
+use App\Models\EventType;
 use App\Models\Team;
 use App\Models\TeamEventFormat;
 use App\Models\TeamEventFormatRubber;
 use App\Models\TeamTie;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use App\Services\FeatureFlags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -49,6 +52,13 @@ class TeamDrawV2Test extends TestCase
 
         $this->admin = User::factory()->create()->assignRole('admin');
 
+        // Seed the eventtypes reference row that makeEvent() depends on
+        DB::table('eventtypes')->insert([
+            'id'   => 3,
+            'name' => 'team event',
+            'type' => EventType::TEAM,
+        ]);
+
         // Enable the feature flag globally for all tests in this class
         FeatureFlags::enable(FeatureFlags::TEAM_DRAW_V2);
     }
@@ -63,7 +73,9 @@ class TeamDrawV2Test extends TestCase
 
     private function makeEvent(): Event
     {
-        return Event::factory()->create(['eventType' => 3]);
+        $event = Event::factory()->create(['eventType' => 3]);
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $this->admin->id]);
+        return $event;
     }
 
     private function makeDraw(Event $event): Draw
@@ -100,6 +112,52 @@ class TeamDrawV2Test extends TestCase
             'name'                  => 'Doubles',
             'gender_rule'           => null,
             'player_count_per_team' => 2,
+            'is_required'           => true,
+        ]);
+
+        return $format->fresh('rubbers');
+    }
+
+    private function makeFormatWithAllCanonicalRubbers(?Event $event = null): TeamEventFormat
+    {
+        $format = TeamEventFormat::factory()->create([
+            'event_id' => $event?->id,
+            'name'     => 'All Canonical Rubbers',
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 1,
+            'rubber_code'           => 'singles',
+            'name'                  => 'Singles 1',
+            'player_count_per_team' => 1,
+            'is_required'           => true,
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 2,
+            'rubber_code'           => 'doubles',
+            'name'                  => 'Doubles',
+            'player_count_per_team' => 2,
+            'is_required'           => true,
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 3,
+            'rubber_code'           => 'mixed_doubles',
+            'name'                  => 'Mixed Doubles',
+            'player_count_per_team' => 2,
+            'is_required'           => true,
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 4,
+            'rubber_code'           => 'reverse_singles',
+            'name'                  => 'Reverse Singles',
+            'player_count_per_team' => 1,
             'is_required'           => true,
         ]);
 
@@ -355,9 +413,87 @@ class TeamDrawV2Test extends TestCase
 
         $this->assertCount(2, $rubbers);
         $this->assertEquals(1, $rubbers[0]->rubber_sequence);
-        $this->assertEquals('singles', $rubbers[0]->rubber_code);
+        $this->assertSame('singles', $rubbers[0]->rubber_code);
+        $this->assertSame(1, (int) $rubbers[0]->fixture_type);
         $this->assertEquals(2, $rubbers[1]->rubber_sequence);
-        $this->assertEquals('doubles', $rubbers[1]->rubber_code);
+        $this->assertSame('doubles', $rubbers[1]->rubber_code);
+        $this->assertSame(2, (int) $rubbers[1]->fixture_type);
+    }
+
+    public function test_generate_rubbers_maps_mixed_and_reverse_singles_fixture_types(): void
+    {
+        $event  = $this->makeEvent();
+        $format = $this->makeFormatWithAllCanonicalRubbers($event);
+        $draw   = $this->makeDraw($event);
+        $draw->team_event_format_id = $format->id;
+        $draw->save();
+
+        $teams = $this->makeTeams(2);
+        TeamTie::create([
+            'draw_id'      => $draw->id,
+            'round_nr'     => 1,
+            'tie_nr'       => 1,
+            'home_team_id' => $teams[0]->id,
+            'away_team_id' => $teams[1]->id,
+            'status'       => TeamTie::STATUS_DRAFT,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$draw->id}/generate-rubbers")
+            ->assertOk();
+
+        $rubbers = \App\Models\TeamFixture::where('draw_id', $draw->id)
+            ->orderBy('rubber_sequence')
+            ->get();
+
+        $this->assertCount(4, $rubbers);
+        $this->assertSame('mixed_doubles', $rubbers[2]->rubber_code);
+        $this->assertSame(3, (int) $rubbers[2]->fixture_type);
+        $this->assertSame('reverse_singles', $rubbers[3]->rubber_code);
+        $this->assertSame(4, (int) $rubbers[3]->fixture_type);
+    }
+
+    public function test_generate_rubbers_rejects_unsupported_canonical_code_without_persisting_invalid_fixture_type(): void
+    {
+        $event = $this->makeEvent();
+        $draw  = $this->makeDraw($event);
+
+        $format = TeamEventFormat::factory()->create([
+            'event_id' => $event->id,
+            'name'     => 'Invalid Rubber Format',
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 1,
+            'rubber_code'           => 'unsupported_legacy_code',
+            'name'                  => 'Unsupported',
+            'player_count_per_team' => 1,
+            'is_required'           => true,
+        ]);
+
+        $draw->team_event_format_id = $format->id;
+        $draw->save();
+
+        $teams = $this->makeTeams(2);
+        TeamTie::create([
+            'draw_id'      => $draw->id,
+            'round_nr'     => 1,
+            'tie_nr'       => 1,
+            'home_team_id' => $teams[0]->id,
+            'away_team_id' => $teams[1]->id,
+            'status'       => TeamTie::STATUS_DRAFT,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$draw->id}/generate-rubbers")
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseMissing('team_fixtures', [
+            'draw_id' => $draw->id,
+            'rubber_code' => 'unsupported_legacy_code',
+        ]);
     }
 
     // ─── 8. Rubber generation blocked for published tie ────────────────────
