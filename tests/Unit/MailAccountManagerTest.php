@@ -31,19 +31,17 @@ class MailAccountManagerTest extends TestCase
     }
 
     /** @test */
-    public function exhausted_smtp_accounts_do_not_fall_back_to_the_log_transport(): void
+    public function exhausted_managed_transports_do_not_fall_back_to_the_log_transport(): void
     {
         config([
             'mail.default' => 'smtp',
             'mail.mailers.smtp.host' => 'mail.capetennis.co.za',
         ]);
 
-        foreach (['smtp', 'noreply1', 'noreply2'] as $account) {
-            Cache::put("mail_count_{$account}", 500);
-        }
+        Cache::put('mail_count_ses', 500);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('All configured SMTP accounts have reached their daily limit.');
+        $this->expectExceptionMessage('All configured mail transports have reached their daily limit.');
 
         (new MailAccountManager())->getMailer();
     }
