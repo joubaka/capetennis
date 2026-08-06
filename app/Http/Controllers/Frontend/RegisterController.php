@@ -1184,17 +1184,17 @@ class RegisterController extends Controller
             abort(403, 'Unauthorized.');
         }
 
-        $registration = new Registration();
-        $registration->save();
-        $registration->players()->attach($request->player_id);
-        $order = 'admin';
-        $trans = RegisterController::update_transaction($request, $order);
-        $registration->categoryEvents()->attach($request->categoryEvent, [
-            'payfast_id' =>  'Admin',
-            'payment_status_id' => 0,
-            'user_id' => Auth::user()->id,
-            'pf_transaction_id' => $trans->id,
+        $validated = $request->validate([
+          'player_id' => ['required', 'integer', 'exists:players,id'],
+          'categoryEvent' => ['required', 'integer', 'exists:category_events,id'],
         ]);
+
+        $categoryEvent = CategoryEvent::findOrFail($validated['categoryEvent']);
+        app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin(
+          $categoryEvent,
+          (int) $validated['player_id'],
+          $user
+        );
 
         return 'success';
     }

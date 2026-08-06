@@ -494,9 +494,7 @@ class RegistrationPaymentController extends Controller
         ->with('info', 'This order has already been paid.');
     }
 
-    $order->wallet_reserved = 0;
-    $order->payfast_amount_due = 0;
-    $order->save();
+    app(PaymentOrchestrator::class)->cancelPayment($order);
 
     Log::info('HYBRID PAYMENT CANCELLED', [
       'order_id' => $orderId,
@@ -611,9 +609,11 @@ class RegistrationPaymentController extends Controller
         ->with('info', 'This order has already been paid.');
     }
 
-    $order->wallet_reserved = 0;
-    $order->payfast_amount_due = round((float) ($order->total_amount ?? 0), 2);
-    $order->save();
+    app(\App\Domain\Payments\Services\TeamPaymentService::class)->reservePayment(
+      $order,
+      0,
+      round((float) ($order->total_amount ?? 0), 2)
+    );
 
     return redirect()->route('team.payment.payfast', [
       'team' => $order->team_id,

@@ -87,6 +87,25 @@ class RegistrationRefundFlowTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_owner_cannot_submit_refund_for_active_registration(): void
+    {
+        $user = User::factory()->create();
+        $reg = CategoryEventRegistration::factory()->create([
+            'user_id' => $user->id,
+            'status' => 'active',
+            'payment_status_id' => 1,
+        ]);
+
+        $response = $this->actingAs($user)->post(
+            route('registrations.refund.request', $reg),
+            ['method' => 'wallet']
+        );
+
+        $response->assertSessionHasErrors();
+        $this->assertSame('active', $reg->fresh()->status);
+        $this->assertFalse($reg->fresh()->isRefundCompleted());
+    }
+
     public function test_invalid_refund_method_fails_validation(): void
     {
         $user = User::factory()->create();
