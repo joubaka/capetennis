@@ -29,6 +29,9 @@ class TeamFixtureController extends Controller
       'team2:id,name,surname',
       'region1Name:id,short_name',
       'region2Name:id,short_name',
+      'teamTie:id,draw_id,round_nr,tie_nr,home_team_id,away_team_id',
+      'teamTie.homeTeam:id,name',
+      'teamTie.awayTeam:id,name',
     ]);
 
     $dateCol = Schema::hasColumn('team_fixtures', 'scheduled_at')

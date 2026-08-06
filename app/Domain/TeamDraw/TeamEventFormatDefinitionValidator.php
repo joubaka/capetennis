@@ -87,6 +87,13 @@ final class TeamEventFormatDefinitionValidator
                 );
             }
 
+            if (in_array($type, [RubberType::REVERSE_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true) && empty($rubber['reverse_from_position'])) {
+                throw TeamEventFormatDefinitionValidationException::single(
+                    "rubbers.{$index}.reverse_from_position",
+                    "{$type} requires a reverse_from_position value."
+                );
+            }
+
             foreach (['singles_position', 'reverse_from_position'] as $positionField) {
                 if (array_key_exists($positionField, $rubber) && $rubber[$positionField] !== null) {
                     if ((int) $rubber[$positionField] < 1) {

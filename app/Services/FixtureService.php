@@ -1063,6 +1063,7 @@ class FixtureService
 
       $data = [
         'team_fixture_id' => $fixtureId,
+        'slot_no' => $i + 1,
         'team1_id' => null,
         'team1_no_profile_id' => null,
         'team2_id' => null,
@@ -1099,25 +1100,12 @@ class FixtureService
       'event_id' => $draw->event_id,
       'draw_name' => $draw->drawName,
       'draw_type_id' => $draw->drawType_id,
+      'category_event_id' => $draw->category_event_id,
     ]);
 
     $event = $draw->event()->with(['regions.teams.players'])->first();
     if (!$event) {
       \Log::error('[FixtureService::generateFixturesForDraw] ❌ Event not found', ['draw_id' => $draw->id]);
-      return [];
-    }
-
-    // ✅ Robust parser for category from drawName
-    $categoryName = $draw->category?->name;
-    if (!$categoryName && preg_match('/(U[\/\-\s]?\d+)\s*(Boys|Girls|Mixed)/i', $draw->drawName, $m)) {
-      $categoryName = sprintf('%s %s', strtoupper($m[1]), ucfirst(strtolower($m[2])));
-    }
-
-    if (!$categoryName) {
-      \Log::warning('[FixtureService::generateFixturesForDraw] ⚠️ No category detected', [
-        'draw_id' => $draw->id,
-        'draw_name' => $draw->drawName,
-      ]);
       return [];
     }
 
@@ -1129,24 +1117,64 @@ class FixtureService
     ];
     $type = $typeMap[$draw->drawType_id] ?? 'singles';
 
+    $categoryName = null;
+
+    if ($draw->category_event_id) {
+      $categoryName = \App\Models\CategoryEvent::query()
+        ->where('category_events.id', $draw->category_event_id)
+        ->join('categories', 'category_events.category_id', '=', 'categories.id')
+        ->value('categories.name');
+    }
+
+    if (!$categoryName && preg_match('/(U[\/\-\s]?\d+)\s*(Boys|Girls|Mixed)/i', $draw->drawName, $m)) {
+      $categoryName = sprintf('%s %s', strtoupper($m[1]), ucfirst(strtolower($m[2])));
+    }
+
+    if (!$categoryName) {
+      \Log::warning('[FixtureService::generateFixturesForDraw] ⚠️ No category detected', [
+        'draw_id' => $draw->id,
+        'draw_name' => $draw->drawName,
+        'category_event_id' => $draw->category_event_id,
+      ]);
+      return [];
+    }
+
+    $onlyCategories = [$categoryName];
+
+    if ($type === 'mixed') {
+      $age = (int) filter_var($categoryName, FILTER_SANITIZE_NUMBER_INT);
+      if ($age > 0) {
+        $onlyCategories = ["U/{$age} Mixed"];
+      }
+    }
+
     \Log::debug('[FixtureService::generateFixturesForDraw] Category + Type', [
       'category' => $categoryName,
+      'only_categories' => $onlyCategories,
       'type' => $type,
     ]);
 
-    $fixtures = $this->generateEventFixtures($event, 'perType', [$categoryName]);
+    $fixtures = $this->generateEventFixtures($event, 'perType', $onlyCategories);
     if (empty($fixtures)) {
-        return [];
+      return [];
     }
 
     $matches = [];
-    foreach ($fixtures as $cat => $fxList) {
-      $matches = array_merge($matches, array_filter($fxList, fn($fx) => $fx['type'] === $type));
+
+    if ($type === 'mixed') {
+      $mixedKey = $onlyCategories[0] ?? null;
+      $fxList = $mixedKey ? ($fixtures[$mixedKey] ?? []) : [];
+      $matches = array_values(array_filter($fxList, fn($fx) => ($fx['type'] ?? null) === 'mixed'));
+    } else {
+      foreach ($fixtures as $cat => $fxList) {
+        $matches = array_merge($matches, array_filter($fxList, fn($fx) => ($fx['type'] ?? null) === $type));
+      }
     }
 
     \Log::debug('[FixtureService::generateFixturesForDraw] ✅ Fixtures generated', [
       'draw_id' => $draw->id,
       'count' => count($matches),
+      'type' => $type,
     ]);
 
     return $matches;

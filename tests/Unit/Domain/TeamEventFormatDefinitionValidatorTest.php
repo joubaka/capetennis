@@ -88,6 +88,38 @@ class TeamEventFormatDefinitionValidatorTest extends TestCase
         ]));
     }
 
+    public function test_reverse_doubles_requires_two_players_per_team(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reverse_doubles requires 2 player(s) per team.');
+
+        $this->validator->validate($this->basePayload([
+            [
+                'sequence' => 1,
+                'rubber_code' => RubberType::REVERSE_DOUBLES,
+                'name' => 'Reverse Doubles',
+                'player_count_per_team' => 1,
+                'reverse_from_position' => 1,
+            ],
+        ]));
+    }
+
+    public function test_reverse_mixed_doubles_requires_two_players_per_team(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reverse_mixed_doubles requires 2 player(s) per team.');
+
+        $this->validator->validate($this->basePayload([
+            [
+                'sequence' => 1,
+                'rubber_code' => RubberType::REVERSE_MIXED_DOUBLES,
+                'name' => 'Reverse Mixed Doubles',
+                'player_count_per_team' => 1,
+                'reverse_from_position' => 1,
+            ],
+        ]));
+    }
+
     public function test_invalid_rubber_type_is_rejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);

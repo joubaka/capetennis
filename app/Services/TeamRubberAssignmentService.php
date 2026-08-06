@@ -88,7 +88,13 @@ class TeamRubberAssignmentService
             );
         }
 
-        return DB::transaction(function () use ($rubber, $homePlayerIds, $awayPlayerIds, $expectedPerTeam, $replace) {
+        $isReverseDoublesLike = in_array(
+            (string) $rubber->rubber_code,
+            [\App\Domain\TeamDraw\RubberType::REVERSE_DOUBLES, \App\Domain\TeamDraw\RubberType::REVERSE_MIXED_DOUBLES],
+            true
+        );
+
+        return DB::transaction(function () use ($rubber, $homePlayerIds, $awayPlayerIds, $expectedPerTeam, $replace, $isReverseDoublesLike) {
             if ($replace) {
                 $rubber->fixturePlayers()->delete();
             }
@@ -96,11 +102,13 @@ class TeamRubberAssignmentService
             $created = collect();
 
             for ($slot = 0; $slot < $expectedPerTeam; $slot++) {
+                $awayIndex = $isReverseDoublesLike ? ($expectedPerTeam - 1 - $slot) : $slot;
+
                 $player = TeamFixturePlayer::create([
                     'team_fixture_id' => $rubber->id,
                     'slot_no'         => $slot + 1,
                     'team1_id'        => $homePlayerIds[$slot] ?? null,
-                    'team2_id'        => $awayPlayerIds[$slot] ?? null,
+                    'team2_id'        => $awayPlayerIds[$awayIndex] ?? null,
                 ]);
                 $created->push($player);
             }

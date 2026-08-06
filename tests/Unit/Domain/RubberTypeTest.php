@@ -12,7 +12,9 @@ class RubberTypeTest extends TestCase
         $this->assertSame('singles', RubberType::SINGLES);
         $this->assertSame('reverse_singles', RubberType::REVERSE_SINGLES);
         $this->assertSame('doubles', RubberType::DOUBLES);
+        $this->assertSame('reverse_doubles', RubberType::REVERSE_DOUBLES);
         $this->assertSame('mixed_doubles', RubberType::MIXED_DOUBLES);
+        $this->assertSame('reverse_mixed_doubles', RubberType::REVERSE_MIXED_DOUBLES);
     }
 
     public function test_legacy_numeric_mapping_matches_repository_behavior(): void

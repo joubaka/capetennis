@@ -11,6 +11,7 @@ use App\Models\TeamTie;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\TeamPlayerAutoAssignService;
 
 /**
  * TeamTieGenerationService
@@ -27,6 +28,13 @@ use Illuminate\Support\Facades\Log;
  */
 class TeamTieGenerationService
 {
+    private TeamPlayerAutoAssignService $playerAssigner;
+
+    public function __construct(?TeamPlayerAutoAssignService $playerAssigner = null)
+    {
+        $this->playerAssigner = $playerAssigner ?? new TeamPlayerAutoAssignService();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
     // ─────────────────────────────────────────────────────────────────────────
@@ -93,6 +101,10 @@ class TeamTieGenerationService
         return DB::transaction(function () use ($tie, $rubberTemplates) {
             $created = collect();
 
+            // Ensure team relationships (and their players) are loaded once
+            $tie->loadMissing(['homeTeam.team_players.player', 'homeTeam.team_players_no_profile',
+                               'awayTeam.team_players.player', 'awayTeam.team_players_no_profile']);
+
             foreach ($rubberTemplates as $template) {
                 $rubber = TeamFixture::firstOrCreate(
                     [
@@ -112,6 +124,9 @@ class TeamTieGenerationService
                         'numSets'               => 3,
                     ]
                 );
+
+                // Auto-assign players from both teams into the rubber's player slots
+                $this->playerAssigner->assignForRubber($rubber, $tie, $template);
 
                 $created->push($rubber);
             }

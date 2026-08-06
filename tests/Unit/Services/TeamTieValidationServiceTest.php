@@ -175,6 +175,15 @@ class TeamTieValidationServiceTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_gender_rule_mixed_passes_for_reverse_mixed_doubles(): void
+    {
+        $male   = Player::factory()->male()->create();
+        $female = Player::factory()->female()->create();
+
+        $this->service->assertGenderRule([$male->id, $female->id], 'mixed', 'reverse_mixed_doubles');
+        $this->assertTrue(true);
+    }
+
     // ─── 11. Tie complete: passes with all rubbers assigned ───────────────
 
     public function test_assert_tie_complete_passes_when_all_rubbers_have_players(): void

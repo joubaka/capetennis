@@ -148,6 +148,7 @@ class TeamDrawV2Test extends TestCase
             'sequence'              => 3,
             'rubber_code'           => 'mixed_doubles',
             'name'                  => 'Mixed Doubles',
+            'gender_rule'           => 'mixed',
             'player_count_per_team' => 2,
             'is_required'           => true,
         ]);
@@ -155,6 +156,27 @@ class TeamDrawV2Test extends TestCase
         TeamEventFormatRubber::create([
             'format_id'             => $format->id,
             'sequence'              => 4,
+            'rubber_code'           => 'reverse_doubles',
+            'name'                  => 'Reverse Doubles',
+            'player_count_per_team' => 2,
+            'reverse_from_position' => 1,
+            'is_required'           => true,
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 5,
+            'rubber_code'           => 'reverse_mixed_doubles',
+            'name'                  => 'Reverse Mixed Doubles',
+            'gender_rule'           => 'mixed',
+            'player_count_per_team' => 2,
+            'reverse_from_position' => 1,
+            'is_required'           => true,
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 6,
             'rubber_code'           => 'reverse_singles',
             'name'                  => 'Reverse Singles',
             'player_count_per_team' => 1,
@@ -446,11 +468,71 @@ class TeamDrawV2Test extends TestCase
             ->orderBy('rubber_sequence')
             ->get();
 
-        $this->assertCount(4, $rubbers);
+        $this->assertCount(6, $rubbers);
         $this->assertSame('mixed_doubles', $rubbers[2]->rubber_code);
         $this->assertSame(3, (int) $rubbers[2]->fixture_type);
-        $this->assertSame('reverse_singles', $rubbers[3]->rubber_code);
-        $this->assertSame(4, (int) $rubbers[3]->fixture_type);
+        $this->assertSame('reverse_doubles', $rubbers[3]->rubber_code);
+        $this->assertSame('reverse_mixed_doubles', $rubbers[4]->rubber_code);
+        $this->assertSame('reverse_singles', $rubbers[5]->rubber_code);
+        $this->assertSame(4, (int) $rubbers[5]->fixture_type);
+    }
+
+    public function test_generate_rubbers_assigns_mixed_rubber_players_by_gender(): void
+    {
+        $event  = $this->makeEvent();
+        $format = TeamEventFormat::factory()->create([
+            'event_id' => $event->id,
+            'name'     => 'Mixed Only',
+        ]);
+
+        TeamEventFormatRubber::create([
+            'format_id'             => $format->id,
+            'sequence'              => 1,
+            'rubber_code'           => 'mixed_doubles',
+            'name'                  => 'Mixed Doubles',
+            'gender_rule'           => 'mixed',
+            'player_count_per_team' => 2,
+            'is_required'           => true,
+        ]);
+
+        $draw   = $this->makeDraw($event);
+        $draw->team_event_format_id = $format->id;
+        $draw->save();
+
+        $homeTeam = Team::factory()->create();
+        $awayTeam = Team::factory()->create();
+
+        $homeMale = \App\Models\Player::factory()->male()->create();
+        $homeFemale = \App\Models\Player::factory()->female()->create();
+        $awayMale = \App\Models\Player::factory()->male()->create();
+        $awayFemale = \App\Models\Player::factory()->female()->create();
+
+        $homeTeam->players()->attach($homeMale->id, ['pay_status' => 0, 'rank' => 1]);
+        $homeTeam->players()->attach($homeFemale->id, ['pay_status' => 0, 'rank' => 2]);
+        $awayTeam->players()->attach($awayMale->id, ['pay_status' => 0, 'rank' => 1]);
+        $awayTeam->players()->attach($awayFemale->id, ['pay_status' => 0, 'rank' => 2]);
+
+        TeamTie::create([
+            'draw_id'      => $draw->id,
+            'round_nr'     => 1,
+            'tie_nr'       => 1,
+            'home_team_id' => $homeTeam->id,
+            'away_team_id' => $awayTeam->id,
+            'status'       => TeamTie::STATUS_DRAFT,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/team-draw/{$draw->id}/generate-rubbers")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $rubber = \App\Models\TeamFixture::where('draw_id', $draw->id)->first();
+        $this->assertNotNull($rubber);
+        $this->assertCount(2, $rubber->fixturePlayers);
+        $this->assertSame($homeMale->id, $rubber->fixturePlayers[0]->team1_id);
+        $this->assertSame($awayMale->id, $rubber->fixturePlayers[0]->team2_id);
+        $this->assertSame($homeFemale->id, $rubber->fixturePlayers[1]->team1_id);
+        $this->assertSame($awayFemale->id, $rubber->fixturePlayers[1]->team2_id);
     }
 
     public function test_generate_rubbers_rejects_unsupported_canonical_code_without_persisting_invalid_fixture_type(): void

@@ -46,7 +46,12 @@ class TeamEventFormatRubber extends Model
 
     public function isDoubles(): bool
     {
-        return in_array($this->rubber_code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true);
+        return in_array($this->rubber_code, [
+            RubberType::DOUBLES,
+            RubberType::REVERSE_DOUBLES,
+            RubberType::MIXED_DOUBLES,
+            RubberType::REVERSE_MIXED_DOUBLES,
+        ], true);
     }
 
     public function isSingles(): bool

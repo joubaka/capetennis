@@ -91,6 +91,9 @@
 @php
 $homeClass = '';
 $awayClass = '';
+
+// Determine if this is a v2 tie-based rubber
+$isV2 = !is_null($fx->team_tie_id);
 @endphp
 
 @if($fx->fixtureResults->count())
@@ -110,6 +113,12 @@ $homeNames=[];
 $awayNames=[];
 $homeRegionShort = $fx->region1Name?->short_name ?? null;
 $awayRegionShort = $fx->region2Name?->short_name ?? null;
+
+// For v2 rubbers, use the tied team names as the context label
+if ($isV2) {
+    $homeRegionShort = optional(optional($fx->teamTie)->homeTeam)->name;
+    $awayRegionShort = optional(optional($fx->teamTie)->awayTeam)->name;
+}
 @endphp
 
 
@@ -163,8 +172,12 @@ elseif ($fpRow->team2_no_profile_id) {
 
 
 @php
-$homeLabel = count($homeNames)?collect($homeNames)->implode(' + '):'TBD';
-$awayLabel = count($awayNames)?collect($awayNames)->implode(' + '):'TBD';
+$homeLabel = count($homeNames)
+    ? collect($homeNames)->implode(' + ')
+    : ($isV2 ? (optional(optional($fx->teamTie)->homeTeam)->name ?? 'TBD') : 'TBD');
+$awayLabel = count($awayNames)
+    ? collect($awayNames)->implode(' + ')
+    : ($isV2 ? (optional(optional($fx->teamTie)->awayTeam)->name ?? 'TBD') : 'TBD');
 $display = $fx->scheduled_at ?? null;
 @endphp
 
@@ -173,7 +186,7 @@ $display = $fx->scheduled_at ?? null;
 <td>{{ $fx->id }}</td>
 <td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
 <td>{{ $fx->round_nr }}</td>
-<td>{{ $fx->home_rank_nr }}</td>
+<td>{{ $fx->home_rank_nr ?? ($isV2 ? ($fx->rubber_name ?? $fx->rubber_code ?? '—') : '—') }}</td>
 
 <td class="home-cell {{ $homeClass }}">
 ({{ $fx->home_rank_nr }}) {{ $homeLabel }}
