@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\RichTextSanitizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -67,6 +68,17 @@ class Event extends Model
   public function getEntryFeeAttribute()
   {
     return $this->attributes['entryFee'] ?? null;
+  }
+
+  public function setInformationAttribute(?string $value): void
+  {
+    $this->attributes['information'] = app(RichTextSanitizer::class)->sanitize($value);
+  }
+
+  public function getInformationAttribute(?string $value): ?string
+  {
+    // Sanitize historical content as it is read as well as all new writes.
+    return app(RichTextSanitizer::class)->sanitize($value);
   }
 
   /**
