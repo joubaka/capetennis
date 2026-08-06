@@ -43,6 +43,7 @@ use App\Http\Controllers\Backend\ScoreboardController;
 use App\Http\Controllers\Backend\SeriesController;
 use App\Http\Controllers\Backend\SettingsController;
 use App\Http\Controllers\Backend\TeamController;
+use App\Http\Controllers\Backend\TeamDrawController;
 use App\Http\Controllers\Backend\TeamFixtureController;
 use App\Http\Controllers\Backend\TeamScheduleController;
 use App\Http\Controllers\Backend\TeamSelectionController as BackendTeamSelectionController;
@@ -92,18 +93,8 @@ use App\Http\Controllers\Frontend\TeamFixtureFrontendController;
 $controller_path = 'App\Http\Controllers';
 
 // Temp: OPcache clear
-Route::get('/clear-opcache-ct2026', function () {
-    \Artisan::call('cache:clear');
-    \Artisan::call('view:clear');
-    \Artisan::call('route:clear');
-    \Artisan::call('config:clear');
-    return 'Cache cleared OK';
-});
-
 // Main Page Route
-Route::get('/getplayers', [HomeController::class, 'get_players'])->name('get.players');
 Route::get('/', [HomeController::class, 'index'])->name('home');
-Route::get('/mergePlayers', [HomeController::class, 'mergePlayers'])->name('merge.players');
 Route::get('/page-2', $controller_path . '\pages\Page2@index')->name('pages-page-2');
 Route::get(
   '/events/ajax/home',
@@ -114,9 +105,12 @@ Route::get(
 Route::get('/pages/misc-error', $controller_path . '\pages\MiscError@index')->name('pages-misc-error');
 
 //schedule controller
-Route::post('schedule/create', [ScheduleController::class, 'create'])->name('schedule.create');
-Route::get('schedule/save', [ScheduleController::class, 'save'])->name('schedule.save');
-Route::get('schedule/update/time', [ScheduleController::class, 'updateFixtureSchedule'])->name('schedule.update.time');
+Route::post('schedule/create', [ScheduleController::class, 'create'])
+  ->middleware('auth')->name('schedule.create');
+Route::get('schedule/save', [ScheduleController::class, 'save'])
+  ->middleware('auth')->name('schedule.save');
+Route::get('schedule/update/time', [ScheduleController::class, 'updateFixtureSchedule'])
+  ->middleware('auth')->name('schedule.update.time');
 
 // authentication
 Route::get('/auth/login-basic', $controller_path . '\authentications\LoginBasic@index')->name('auth-login-basic');
@@ -209,18 +203,23 @@ Route::prefix('team')->middleware('auth')->group(function () {
 
   // Team Fixtures — Admin HQ routes
 Route::get('backend/team-fixtures/create', [TeamFixtureController::class, 'create'])
+  ->middleware('auth')
   ->name('backend.team-fixtures.create');
 
 Route::post('backend/team-fixtures', [TeamFixtureController::class, 'store'])
+  ->middleware('auth')
   ->name('backend.team-fixtures.store');
 
 Route::post('backend/team-fixtures/{team_fixture}/insert-score', [TeamFixtureController::class, 'insertScore'])
+  ->middleware('auth')
   ->name('backend.team-fixtures.insertScore');
 
 
 
 
-Route::resource('reg', RegisterController::class);
+// Registration creation is public by design. The unused resource update and
+// delete endpoints must not be exposed.
+Route::resource('reg', RegisterController::class)->only(['store']);
 
 //event
 Route::get('events/success/{id}', [EventController::class, 'success'])->name('event.success');
@@ -234,7 +233,12 @@ Route::post('notify_team', [RegisterController::class, 'notify_team'])->name('no
 Route::get('events/cancel', [EventController::class, 'cancel'])->name('event.cancel');
 Route::get('events/ajax/userEvents/{id}', [EventController::class, 'userEventAjax'])->name('ajax.event.user');
 Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->name('ajax.series.all');
-Route::resource('events', EventController::class);
+// Event viewing remains public. Every event-management action requires an
+// authenticated user and is additionally authorized in EventController.
+Route::resource('events', EventController::class)->only(['index', 'show']);
+Route::resource('events', EventController::class)
+  ->only(['create', 'store', 'edit', 'update', 'destroy'])
+  ->middleware('auth');
 Route::get('events/{event}/results', [EventController::class, 'results'])->name('events.results');
 Route::post(
   '/registrations/{registration}/refund/process',
@@ -1171,6 +1175,26 @@ Route::delete(
   Route::post('/backend/headoffice/recreateFixtures/{draw}', [TeamFixtureController::class, 'recreateFixturesForDraw'])
     ->name('headoffice.recreateFixturesForDraw');
 
+  // ─── Team Draw v2 routes ─────────────────────────────────────────────────
+  // Protected by the 'auth' middleware inherited from the outer backend group.
+  // Every action additionally enforces object-level authorization via
+  // TeamDrawPolicy / Gate::define abilities (see TeamDrawController).
+  Route::prefix('team-draw')->name('team-draw.')->middleware('auth')->group(function () {
+    // Format management
+    Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
+    Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');
+    // Draw-level operations
+    Route::post('{draw}/attach-format',  [TeamDrawController::class, 'attachFormat'])->name('attach-format');
+    Route::post('{draw}/sync-teams',     [TeamDrawController::class, 'syncTeams'])->name('sync-teams');
+    Route::post('{draw}/generate-ties',  [TeamDrawController::class, 'generateTies'])->name('generate-ties');
+    Route::post('{draw}/generate-rubbers', [TeamDrawController::class, 'generateRubbers'])->name('generate-rubbers');
+    Route::post('{draw}/regenerate',     [TeamDrawController::class, 'regenerate'])->name('regenerate');
+    // Tie-level operations
+    Route::post('ties/{tie}/generate-rubbers', [TeamDrawController::class, 'generateRubbersForTie'])->name('ties.generate-rubbers');
+    Route::post('ties/{tie}/validate',         [TeamDrawController::class, 'validateTie'])->name('ties.validate');
+    Route::post('ties/{tie}/publish',          [TeamDrawController::class, 'publishTie'])->name('ties.publish');
+  });
+
   Route::post(
     'draw/{draw}/save-groups',
     [RoundRobinController::class, 'saveGroups']
@@ -1636,7 +1660,8 @@ Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 
 Route::get('frontend/fixtures/draw/show/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
 Route::get('frontend/fixtures/draw/indexRound/{event}/{round}/{type}', [FrontFixtureController::class, 'drawFixturesRound'])->name('frontend.fixtures.indexRound');
 Route::get('frontend/fixtures/draw/bracket/{id}', [FrontFixtureController::class, 'bracketFixtures'])->name('frontend.bracket.fixtures');
-Route::resource('file', FileController::class);
+Route::resource('file', FileController::class)
+  ->middleware(['auth', 'role:super-user|admin']);
 
 //draw (frontend)
 Route::get('frontend/draw/show/{id}', [EventController::class, 'showDraw'])->name('frontend.showDraw');
@@ -1675,7 +1700,7 @@ Route::prefix('region/{region}')->name('frontend.clothing.')->group(function () 
 Route::post(
   'backend/ranking-scores/{id}/school',
   [App\Http\Controllers\Backend\RankingController::class, 'setSchool']
-)->name('ranking-scores.school');
+)->middleware('auth')->name('ranking-scores.school');
 
 Route::get('/backend/team-fixtures/{fixture}/json', [TeamFixtureController::class, 'showJson'])
   ->name('backend.team-fixtures.json');
@@ -1683,6 +1708,7 @@ Route::get('/backend/team-fixtures/{fixture}/json', [TeamFixtureController::clas
 
 // routes/web.php
 Route::post('/fixtures/{fixture}/save-score', [FrontFixtureController::class, 'saveScore'])
+  ->middleware('auth')
   ->name('frontend.fixtures.saveScore');
 
 // routes/web.php
@@ -1696,16 +1722,23 @@ Route::get(
 Route::get('/backend/event/{event}/players/export-pdf', [EventAdminController::class, 'exportAllPlayersPdf'])->name('event.players.exportPdf');
 Route::get('/backend/event/{event}/players/exportExcel',[EventAdminController::class, 'exportPlayersExcel'])->name('event.players.exportExcel');
 
-Route::post('/backend/user/update', [UserController::class, 'update'])->name('backend.user.update');
+Route::post('/backend/user/update', [UserController::class, 'update'])
+  ->middleware('auth')
+  ->name('backend.user.update');
 
 Route::match(['patch', 'post'], '/backend/player/{id}', [PlayerController::class, 'update'])
+  ->middleware('auth')
   ->name('backend.player.update');
-Route::get('/backend/team-schedule/all/{event}', [TeamScheduleController::class, 'indexAll'])->name('backend.team-schedule.all');
-Route::get('/backend/team-schedule/all-data/{event}', [TeamScheduleController::class, 'dataAll'])->name('backend.team-schedule.all.data');
-Route::post('/backend/team-schedule/all-auto/{event}', [TeamScheduleController::class, 'autoAll'])->name('backend.team-schedule.all.auto');
+Route::get('/backend/team-schedule/all/{event}', [TeamScheduleController::class, 'indexAll'])
+  ->middleware('auth')->name('backend.team-schedule.all');
+Route::get('/backend/team-schedule/all-data/{event}', [TeamScheduleController::class, 'dataAll'])
+  ->middleware('auth')->name('backend.team-schedule.all.data');
+Route::post('/backend/team-schedule/all-auto/{event}', [TeamScheduleController::class, 'autoAll'])
+  ->middleware('auth')->name('backend.team-schedule.all.auto');
 
 // backend/team-fixtures/admin/{event}
 Route::get('backend/team-fixtures/admin/{event}', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'admin'])
+  ->middleware('auth')
   ->name('backend.team-fixtures.admin');
 
 Route::prefix('backend')->middleware('auth')->group(function () {

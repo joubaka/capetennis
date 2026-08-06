@@ -12,7 +12,6 @@
           </div>
           <div class="user-progress">
               <p class="text-success fw-semibold mb-0">
-          {{dd($team->team_players[$key])}}
                   @if($team->team_players[$key]->pay_status == 1)
                  
                   <span class="badge bg-label-success">Registered</span>

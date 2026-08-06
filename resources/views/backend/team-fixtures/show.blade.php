@@ -67,7 +67,6 @@
                   // profile player objects (nullable)
                   $homeProfile = $fp->player1 ?? null;
                   $awayProfile = $fp->player2 ?? null;
-              dd($homeProfile,$awayProfile);
                   // no-profile lookup (fallback)
                   $homeNo = $fp->team1_no_profile_id ? \App\Models\NoProfileTeamPlayer::find($fp->team1_no_profile_id) : null;
                   $awayNo = $fp->team2_no_profile_id ? \App\Models\NoProfileTeamPlayer::find($fp->team2_no_profile_id) : null;

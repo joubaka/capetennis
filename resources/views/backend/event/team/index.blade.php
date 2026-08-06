@@ -67,6 +67,14 @@
           Manage Categories
         </a>
 
+        <button type="button"
+                class="btn btn-outline-success"
+                id="sync-team-categories-btn"
+                data-url="{{ url('/backend/event/' . $event->id . '/import-teams') }}">
+          <i class="ti ti-upload me-1"></i>
+          Sync Categories from Teams
+        </button>
+
         <a href="{{ route('admin.events.announcements', $event) }}"
            class="btn btn-outline-warning">
           <i class="ti ti-megaphone me-1"></i>
@@ -168,4 +176,42 @@
 
 </div>
 
+<script>
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('#sync-team-categories-btn');
+    if (!btn) return;
+
+    const url = btn.getAttribute('data-url');
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    if (!url || !token) return;
+
+    if (!confirm('Sync categories from teams for this event?')) return;
+
+    btn.disabled = true;
+
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': token,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json'
+      }
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw data;
+        if (window.toastr) toastr.success(data.message || 'Categories synced successfully.');
+        else alert(data.message || 'Categories synced successfully.');
+      })
+      .catch((err) => {
+        const msg = err?.message || 'Failed to sync categories.';
+        if (window.toastr) toastr.error(msg);
+        else alert(msg);
+      })
+      .finally(() => {
+        btn.disabled = false;
+      });
+  });
+</script>
 

@@ -43,6 +43,12 @@
     createUrl: "{{ route('headoffice.createSingleDraw.team', $event) }}",
     backendDrawVenuesStoreTemplate: @json(route('backend.draw.venues.store', ['draw' => '__ID__'])),
     backendDrawVenuesJsonTemplate: @json(route('backend.draw.venues.json', ['draw' => '__ID__'])),
+    // v2 endpoints
+    teamDrawV2Enabled: @json($teamDrawV2Enabled ?? false),
+    formatsUrl: @json(route('team-draw.formats.index', $event)),
+    generateTiesUrlTemplate: @json(route('team-draw.generate-ties', ['draw' => '__DRAW_ID__'])),
+    generateRubbersUrlTemplate: @json(route('team-draw.generate-rubbers', ['draw' => '__DRAW_ID__'])),
+    attachFormatUrlTemplate: @json(route('team-draw.attach-format', ['draw' => '__DRAW_ID__'])),
   };
 
   $(function () {
@@ -238,17 +244,44 @@
             </div>
           </div>
 
+          @php
+            $standardCategories = [];
+            $mixedCategoryGroups = [];
+
+            foreach ($categories as $cat) {
+              $catName = trim($cat->name);
+              $catAge = $catName;
+              $catGender = null;
+
+              if (preg_match('/^(.*?)(?:\s*[-–]?\s*)(boys|girls|mixed)$/i', $catName, $matches)) {
+                $catAge = trim($matches[1]);
+                $catGender = strtolower($matches[2]);
+              }
+
+              $cat->parsed_age = $catAge;
+              $cat->parsed_gender = $catGender;
+
+              if (in_array($catGender, ['boys', 'girls'], true)) {
+                $mixedCategoryGroups[$catAge][$catGender][] = $cat;
+              } else {
+                $standardCategories[] = $cat;
+              }
+            }
+          @endphp
+
           {{-- Category --}}
-          <div class="mb-3">
+          <div class="mb-3" id="categorySection">
             <label class="form-label fw-bold">Category</label>
             <div class="d-flex flex-wrap gap-2">
-              @foreach($categories as $cat)
+              @foreach($standardCategories as $cat)
                 <div class="form-check form-check-inline">
                   <input class="form-check-input" type="radio"
                          name="category_choice"
                          id="cat{{ $cat->pivot_id }}"
                          value="{{ $cat->pivot_id }}"
-                         data-pivot-id="{{ $cat->pivot_id }}">
+                         data-pivot-id="{{ $cat->pivot_id }}"
+                         data-age="{{ $cat->parsed_age }}"
+                         data-gender="{{ $cat->parsed_gender }}">
                   <label class="form-check-label" for="cat{{ $cat->pivot_id }}">
                     {{ $cat->name }}
                   </label>
@@ -256,6 +289,89 @@
               @endforeach
             </div>
           </div>
+
+          <div class="mb-3 d-none" id="type3Categories">
+            <label class="form-label fw-bold">Mixed Doubles Pairing</label>
+            <div class="alert alert-info py-2 px-3">
+              Choose one boys category and one girls category for the same age group.
+            </div>
+
+            @if(empty($mixedCategoryGroups))
+              <div class="alert alert-warning mb-0">
+                No boys/girls category pairs are available for this event.
+              </div>
+            @else
+              @foreach($mixedCategoryGroups as $age => $genders)
+                <div class="card mb-3 border">
+                  <div class="card-header py-2">
+                    <strong>{{ $age }}</strong>
+                  </div>
+                  <div class="card-body">
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <h6 class="mb-2">Boys</h6>
+                        <div class="d-grid gap-2">
+                          @forelse(($genders['boys'] ?? []) as $cat)
+                            <label class="form-check form-check-inline border rounded p-2 m-0 w-100">
+                              <input class="form-check-input me-2" type="radio"
+                                     name="category_choice_boys"
+                                     value="{{ $cat->pivot_id }}"
+                                     data-pivot-id="{{ $cat->pivot_id }}"
+                                     data-age="{{ $cat->parsed_age }}"
+                                     data-gender="{{ $cat->parsed_gender }}">
+                              <span class="form-check-label">{{ $cat->name }}</span>
+                            </label>
+                          @empty
+                            <div class="text-muted small">No boys category for this age group.</div>
+                          @endforelse
+                        </div>
+                      </div>
+                      <div class="col-md-6">
+                        <h6 class="mb-2">Girls</h6>
+                        <div class="d-grid gap-2">
+                          @forelse(($genders['girls'] ?? []) as $cat)
+                            <label class="form-check form-check-inline border rounded p-2 m-0 w-100">
+                              <input class="form-check-input me-2" type="radio"
+                                     name="category_choice_girls"
+                                     value="{{ $cat->pivot_id }}"
+                                     data-pivot-id="{{ $cat->pivot_id }}"
+                                     data-age="{{ $cat->parsed_age }}"
+                                     data-gender="{{ $cat->parsed_gender }}">
+                              <span class="form-check-label">{{ $cat->name }}</span>
+                            </label>
+                          @empty
+                            <div class="text-muted small">No girls category for this age group.</div>
+                          @endforelse
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              @endforeach
+            @endif
+          </div>
+
+          <div class="mb-3 d-none" id="mixedPlaceholder">
+            <div class="alert alert-secondary mb-0">
+              Select a mixed draw type to choose boys and girls categories.
+            </div>
+          </div>
+
+          {{-- Format selection (v2 only, loaded async) --}}
+          @if($teamDrawV2Enabled ?? false)
+          <div class="mb-3" id="formatSelectGroup">
+            <label for="format_id" class="form-label fw-bold">Tie Format <span class="text-muted fw-normal">(optional – attach later)</span></label>
+            <select id="format_id" name="format_id" class="form-select">
+              <option value="">— Select format —</option>
+              @foreach($availableFormats ?? [] as $fmt)
+                <option value="{{ $fmt->id }}">{{ $fmt->name }}</option>
+              @endforeach
+            </select>
+            <div class="form-text">
+              Defines the rubber sequence (singles, doubles, mixed, etc.) for each tie.
+            </div>
+          </div>
+          @endif
 
         </div>
 
@@ -305,5 +421,6 @@
       if (idx > 0) el.remove();
     });
   });
+
 </script>
 

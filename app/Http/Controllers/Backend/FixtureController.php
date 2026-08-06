@@ -44,6 +44,10 @@ class FixtureController extends Controller
   public function updatePlayersNames(Request $request, $id)
   {
     $draw = Draw::find($id);
+    if ($draw) {
+      $this->authorize('fixture.update', $draw);
+    }
+
     $feedback = [];
 
     foreach ($draw->fixtures as $fixture) {
@@ -201,6 +205,17 @@ class FixtureController extends Controller
 
   public function insertResult(Request $request)
   {
+    // Authorize based on the draw that owns this fixture
+    $fixtureForAuth = $request->type === 'team'
+      ? TeamFixture::find($request->fixture_id)
+      : Fixture::find($request->fixture_id);
+    if ($fixtureForAuth) {
+      $drawForAuth = \App\Models\Draw::find($fixtureForAuth->draw_id);
+      if ($drawForAuth) {
+        $this->authorize('fixture.update', $drawForAuth);
+      }
+    }
+
     $responce = null;
 
     // Lock guard for individual fixture types
@@ -513,6 +528,17 @@ class FixtureController extends Controller
 
   public function updateResult(Request $request)
   {
+    // Authorize based on the draw that owns this fixture
+    $fixtureForAuth = $request->type === 'team'
+      ? TeamFixture::find($request->fixture_id)
+      : Fixture::find($request->fixture_id);
+    if ($fixtureForAuth) {
+      $drawForAuth = \App\Models\Draw::find($fixtureForAuth->draw_id);
+      if ($drawForAuth) {
+        $this->authorize('fixture.update', $drawForAuth);
+      }
+    }
+
     if ($request->type == 'team') {
       $fixture = TeamFixture::find($request->fixture_id);
       TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
@@ -571,12 +597,24 @@ class FixtureController extends Controller
 
   public function ajax($id)
   {
-    $result = Fixture::find($id)->results;
+    $fixture = Fixture::findOrFail($id);
+    $authDraw = \App\Models\Draw::find($fixture->draw_id);
+    if ($authDraw) {
+      $this->authorize('fixture.view', $authDraw);
+    }
+    $result = $fixture->results;
     return $result;
   }
 
   public function deleteResult($id)
   {
+    $tf = TeamFixture::find($id);
+    if ($tf) {
+      $drawForAuth = \App\Models\Draw::find($tf->draw_id);
+      if ($drawForAuth) {
+        $this->authorize('fixture.update', $drawForAuth);
+      }
+    }
 
     TeamFixtureResult::where('team_fixture_id', $id)->delete();
     return redirect()->back();
@@ -589,6 +627,9 @@ class FixtureController extends Controller
     }
 
     $draw = \App\Models\Draw::find($fixture->draw_id);
+    if ($draw) {
+      $this->authorize('fixture.update', $draw);
+    }
 
     if ($draw && $draw->locked) {
       return response()->json(['message' => 'Draw is locked.'], 403);
@@ -618,8 +659,12 @@ class FixtureController extends Controller
   public function fixtures_create_pdf(Request $request)
   {
     // retreive all records from db
-    $data['fixtures'] = Draw::find($request->fixtures)->fixtures;
-    $data['name'] = Draw::find($request->fixtures)->events->name . ' ' . Draw::find($request->fixtures)->drawName;
+    $draw = Draw::find($request->fixtures);
+    if ($draw) {
+      $this->authorize('fixture.view', $draw);
+    }
+    $data['fixtures'] = $draw ? $draw->fixtures : collect();
+    $data['name'] = $draw ? $draw->events->name . ' ' . $draw->drawName : 'Fixtures';
     //return $name;
 
     $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data);
@@ -634,6 +679,15 @@ class FixtureController extends Controller
     $ids = $request->input('fixtures');
     // retreive all records from db
     $data['f'] = TeamFixture::whereIn('id', $ids)->get();
+
+    // Authorize: gate on the draw that owns the first fixture
+    $firstFixture = $data['f']->first();
+    if ($firstFixture) {
+      $authDraw = \App\Models\Draw::find($firstFixture->draw_id);
+      if ($authDraw) {
+        $this->authorize('fixture.view', $authDraw);
+      }
+    }
 
     // Sort defensively: some fixtures may not have a related schedule
     $data['fixtures'] = $data['f']->sortBy(function ($item) {
@@ -666,6 +720,9 @@ class FixtureController extends Controller
 
   public function ties(Request $request)
   {
+    $draw = \App\Models\Draw::findOrFail($request->draw);
+    $this->authorize('fixture.view', $draw);
+
     return TeamFixture::where('draw_id', $request->draw)
       ->with('region2name')
       ->with('region1name')
@@ -676,6 +733,12 @@ class FixtureController extends Controller
   public function updatePlayer(Request $request)
   {
     $fixture = TeamFixture::find($_GET['fixture']);
+    if ($fixture) {
+      $drawForAuth = \App\Models\Draw::find($fixture->draw_id);
+      if ($drawForAuth) {
+        $this->authorize('fixture.update', $drawForAuth);
+      }
+    }
 
     if ($fixture->fixture_type == 1 || $fixture->fixture_type == 4) {
       $fixture = TeamFixturePlayer::where('team_fixture_id', $fixture->id)->first();
@@ -692,6 +755,8 @@ class FixtureController extends Controller
   {
     $venue = Venues::find($venue_id);
     $event = Event::find($event_id);
+    $this->authorize('event-draw.view', $event);
+
     // dd($userRegistrations);
     $eventDraws = $event->draws->sortByDesc('published');
 
@@ -723,6 +788,9 @@ class FixtureController extends Controller
   public function autoScheduleFixtures($draw_id, Request $request)
   {
     $draw = Draw::find($request->drawId);
+    if ($draw) {
+      $this->authorize('fixture.update', $draw);
+    }
     $day = $request->daySelected;
     $daySelectedDate = $request->daySelectedDate;
     $event = $draw->events;

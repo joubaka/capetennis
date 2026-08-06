@@ -84,6 +84,7 @@ class EventAdminController extends Controller
       'transactions.user',
     ])->findOrFail($id);
 
+    $this->authorize('event-draw.view', $event);
 
     $userid = Auth::id();
     $administrator = $event->event_admins->contains('user_id', $userid);
@@ -245,8 +246,9 @@ class EventAdminController extends Controller
   public function getEventCategoryData(Request $request)
   {
     $event = Event::find($request->event_id);
-
-
+    if ($event) {
+      $this->authorize('event-draw.view', $event);
+    }
 
     $categoryEvent = CategoryEvent::find($request->categoryEvent);
     $draws = Draw::where('drawName', $request->categoryName)
@@ -457,6 +459,7 @@ class EventAdminController extends Controller
   public function main($id)
   {
     $event = Event::findOrFail($id);
+    $this->authorize('event-draw.view', $event);
 
     $draws = Draw::where('event_id', $id)
       ->withCount('registrations')
@@ -468,16 +471,17 @@ class EventAdminController extends Controller
 
   public function entries($id)
   {
-
     $event = Event::with('eventCategories.registrations.players')->findOrFail($id);
+    $this->authorize('event-draw.view', $event);
+
     return view('backend.adminPage.partials.entries', compact('event'));
   }
 
 
   public function draws($id)
   {
-    dd($id);
     $event = Event::findOrFail($id);
+    $this->authorize('event-draw.view', $event);
 
     $draws = Draw::where('event_id', $id)
       ->withCount('registrations')
@@ -490,7 +494,8 @@ class EventAdminController extends Controller
 
   public function generateFixtures(Request $request, Event $event, FixtureService $fixtureService)
   {
-   
+    $this->authorize('draw.create', $event);
+
     $mode = $request->string('mode', 'perType')->toString();
     $onlyCategories = $request->input('onlyCategories'); // array|null
 
@@ -531,6 +536,8 @@ class EventAdminController extends Controller
 
   public function createSingleDraw(Request $request, Event $event, FixtureService $fixtureService)
   {
+    $this->authorize('draw.create', $event);
+
     \Log::debug('[createSingleDraw] Incoming request', [
       'event_id' => $event->id,
       'request' => $request->all(),
@@ -586,6 +593,8 @@ class EventAdminController extends Controller
 
   public function createIndividualDraw(Request $request, Event $event, FixtureService $fixtureService)
   {
+    $this->authorize('individual-draw.create', $event);
+
     \Log::debug('[createIndividualDraw] Incoming request', [
       'event_id' => $event->id,
       'request' => $request->all(),
@@ -632,6 +641,8 @@ class EventAdminController extends Controller
       'regions.teams.team_players_no_profile'
     ])->findOrFail($eventId);
 
+    $this->authorize('event-draw.view', $event);
+
     $pdf = Pdf::loadView('backend.event.exports.all-players-pdf', compact('event'))
       ->setPaper('A4', 'portrait');
 
@@ -644,11 +655,15 @@ class EventAdminController extends Controller
       'regions.teams.players'
     ])->findOrFail($eventId);
 
+    $this->authorize('event-draw.view', $event);
+
     return Excel::download(new EventPlayersExport($event), "event_players_{$event->id}.xlsx");
 
   }
   public function importTeamCategoryEvents(Event $event)
   {
+    $this->authorize('draw.create', $event);
+
     Log::info("🎾 Importing team categories for event {$event->id}");
 
     // Ensure event->regions, teams, and players are loaded
@@ -729,6 +744,8 @@ class EventAdminController extends Controller
   }
   public function overview(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     // =====================
     // Base relations (always)
     // =====================
@@ -1044,6 +1061,8 @@ class EventAdminController extends Controller
 
   public function entries_new(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
@@ -1059,6 +1078,8 @@ class EventAdminController extends Controller
 
   public function lockCategory(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     $categoryEvent->update(['locked_at' => now()]);
 
     return response()->json([
@@ -1069,6 +1090,8 @@ class EventAdminController extends Controller
 
   public function unlockCategory(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     $categoryEvent->update(['locked_at' => null]);
 
     return response()->json([
@@ -1082,6 +1105,8 @@ class EventAdminController extends Controller
     Request $request,
     CategoryEvent $categoryEvent
   ) {
+    $this->authorize('category.manage', $categoryEvent);
+
     abort_if($categoryEvent->isLocked(), 403);
 
     $request->validate([
@@ -1126,6 +1151,8 @@ class EventAdminController extends Controller
     Registration $registration,
     Request $request
   ) {
+    $this->authorize('category.manage', $categoryEvent);
+
     abort_if($categoryEvent->isLocked(), 403);
 
     $cer = $categoryEvent->categoryEventRegistrations()
@@ -1144,6 +1171,8 @@ class EventAdminController extends Controller
   }
   public function settings(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $event->load([
       'categoryEvents.category',
       'venues',
@@ -1154,6 +1183,8 @@ class EventAdminController extends Controller
 
   public function fixtures(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $event->load([
       'draws.categoryEvent.category',
       'draws.groups',

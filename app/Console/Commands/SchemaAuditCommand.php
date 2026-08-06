@@ -165,6 +165,9 @@ class SchemaAuditCommand extends Command
 
         $orphanCer = DB::table("category_event_registrations as cer")
             ->leftJoin("category_events as ce", "cer.category_event_id", "=", "ce.id")
+            // Historical soft-deleted rows are intentionally retained for
+            // auditability and are not active integrity violations.
+            ->whereNull("cer.deleted_at")
             ->whereNull("ce.id")
             ->count();
         if ($orphanCer > 0) {

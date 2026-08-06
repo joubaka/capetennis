@@ -16,6 +16,7 @@ class TeamFixturePlayer extends Model
 
     protected $fillable = [
       'team_fixture_id',
+      'slot_no',
       'team1_id',
       'team2_id',
       'team1_no_profile_id',

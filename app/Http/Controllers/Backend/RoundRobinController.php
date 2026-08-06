@@ -33,6 +33,8 @@ class RoundRobinController extends Controller
   // ============================================================
   public function showd(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $engine = new \App\Services\BracketEngine($draw);
     $svgData = $engine->build();
 
@@ -298,6 +300,8 @@ class RoundRobinController extends Controller
 
   public function adminScoresPage(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $fixtures = Fixture::where('draw_id', $draw->id)
       //->where('stage', 'RR')
       ->with([
@@ -1268,6 +1272,8 @@ class RoundRobinController extends Controller
   // ============================================================
   public function mainBracket(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $eventType = $draw->event->eventType ?? null;
     $isEmpty = request()->boolean('empty');
 
@@ -1297,6 +1303,8 @@ class RoundRobinController extends Controller
 
   public function plateBracket(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $data = $this->builder->getMainAndPlateFixtures($draw);
 
     return view('backend.draw.roundrobin.plate-bracket', [
@@ -1467,6 +1475,8 @@ class RoundRobinController extends Controller
    */
   public function groupsData(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $groups = $draw->groups()
       ->with(['registrations.players'])
       ->orderBy('name')
@@ -1488,6 +1498,8 @@ class RoundRobinController extends Controller
    */
   public function availablePlayersData(Draw $draw)
   {
+    $this->authorize('view', $draw);
+
     $assignedRegIds = $draw->groups()
       ->with('registrations')
       ->get()

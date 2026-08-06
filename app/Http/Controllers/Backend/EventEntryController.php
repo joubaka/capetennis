@@ -32,6 +32,8 @@ class EventEntryController extends Controller
    */
   public function index(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
@@ -49,6 +51,8 @@ class EventEntryController extends Controller
    */
   public function lock(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     $this->entryService->lockCategory($categoryEvent, auth()->user());
 
     return response()->json([
@@ -62,6 +66,8 @@ class EventEntryController extends Controller
    */
   public function unlock(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     $this->entryService->unlockCategory($categoryEvent, auth()->user());
 
     return response()->json([
@@ -79,6 +85,8 @@ class EventEntryController extends Controller
 
   public function addPlayer(Request $request, CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     $data = $request->validate([
       'registration_id' => ['required', 'exists:players,id'],
     ]);
@@ -108,6 +116,8 @@ class EventEntryController extends Controller
    */
   public function removePlayer(CategoryEvent $categoryEvent, Registration $registration)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     if ($categoryEvent->isLocked()) {
       return response()->json([
         'success' => false,
@@ -136,8 +146,9 @@ class EventEntryController extends Controller
    */
   public function exportEvent(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     return Excel::download(
-      new EventEntriesExport($event),
       "event_{$event->id}_entries.xlsx"
     );
   }
@@ -147,6 +158,8 @@ class EventEntryController extends Controller
    */
   public function exportCategory(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     return Excel::download(
       new CategoryEntriesExport($categoryEvent),
       "category_{$categoryEvent->id}_entries.xlsx"
@@ -173,6 +186,10 @@ class EventEntryController extends Controller
       'from_name' => 'required|string|max:100',
       'reply_to' => 'required|email|max:255',
     ]);
+
+    // Authorize via the parent event
+    $authEvent = Event::findOrFail($data['event_id']);
+    $this->authorize('event-draw.view', $authEvent);
 
     Log::info('📨 Bulk email request validated', [
       'payload' => collect($data)->except('message'),
@@ -292,6 +309,8 @@ class EventEntryController extends Controller
 
   public function availableRegistrations(CategoryEvent $categoryEvent)
   {
+    $this->authorize('category.manage', $categoryEvent);
+
     return Player::query()
       ->orderBy('name')
       ->orderBy('surname')
@@ -307,6 +326,11 @@ class EventEntryController extends Controller
   public function movePlayer(Request $request, $entryId)
   {
     $entry = \App\Models\CategoryEventRegistration::findOrFail($entryId);
+
+    // Authorize via the source category event
+    if ($entry->categoryEvent) {
+      $this->authorize('category.manage', $entry->categoryEvent);
+    }
 
     $request->validate([
       'new_category_id' => ['required', 'exists:category_events,id']
@@ -353,9 +377,7 @@ class EventEntryController extends Controller
    */
   public function entryDetails(CategoryEventRegistration $entry)
   {
-    if (! auth()->user()->hasRole('super-user')) {
-      return response()->json(['error' => 'Forbidden'], 403);
-    }
+    $this->authorize('event-draw.view', $entry->categoryEvent?->event ?? new Event());
 
     $entry->load(['registration.players', 'categoryEvent.category', 'categoryEvent.event']);
 

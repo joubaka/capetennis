@@ -32,25 +32,58 @@
   // CREATE DRAW — Auto-name
   // =====================================================
 
+  function getCategoryLabel($input) {
+    if (!$input.length) {
+      return '';
+    }
+
+    return ($input.data('age') || $('label[for="' + $input.attr('id') + '"]').text().trim() || '').toString().trim();
+  }
+
   function updateDrawName() {
-    let selectedType = $('input[name="draw_type_id"]:checked');
-    let typeText = selectedType.closest('.switch').find('.switch-label').text().trim();
+    var selectedType = $('input[name="draw_type_id"]:checked');
+    var typeText = '';
+    if (selectedType.length) {
+      typeText = $('label[for="' + selectedType.attr('id') + '"]').text().trim();
+    }
 
-    let selectedCat = $('input[name="category_choice"]:checked');
-    let catText = selectedCat.data('age')
-      || selectedCat.closest('.switch').find('.switch-label').text().trim();
+    var name = '';
 
-    let name = '';
+    if (selectedType.val() == "3") {
+      var selectedBoy = $('input[name="category_choice_boys"]:checked').first();
+      var selectedGirl = $('input[name="category_choice_girls"]:checked').first();
+      var catText = getCategoryLabel(selectedBoy) || getCategoryLabel(selectedGirl);
 
-    if (selectedCat.length) name += catText;
+      if (catText) {
+        name += catText;
+      }
 
-    if (selectedType.val() == "3" && selectedCat.length) {
-      name += ' – ' + typeText + ' (Boys & Girls)';
-    } else if (typeText) {
-      name += ' – ' + typeText;
+      if (typeText) {
+        name += (name ? ' – ' : '') + typeText;
+      }
+    } else {
+      var selectedCat = $('input[name="category_choice"]:checked');
+      var catText = getCategoryLabel(selectedCat);
+
+      if (catText) name += catText;
+      if (typeText) name += (name ? ' – ' : '') + typeText;
     }
 
     $('#drawName').val(name);
+  }
+
+  function setMixedVisibility(isMixed) {
+    if (isMixed) {
+      $('#categorySection').addClass('d-none');
+      $('#mixedPlaceholder').addClass('d-none');
+      $('#type3Categories').removeClass('d-none');
+      $('input[name="category_choice"]').prop('checked', false);
+    } else {
+      $('#type3Categories').addClass('d-none');
+      $('#mixedPlaceholder').addClass('d-none');
+      $('#categorySection').removeClass('d-none');
+      $('input[name="category_choice_boys"], input[name="category_choice_girls"]').prop('checked', false);
+    }
   }
 
   // =====================================================
@@ -61,28 +94,16 @@
     let selectedVal = $(this).val();
     let isMixed = $(this).data('mixed') == 1;
 
-    if (selectedVal == "3") {
-      $('#categorySection').addClass('d-none');
-      $('#mixedPlaceholder').addClass('d-none');
-      $('#type3Categories').removeClass('d-none');
-      $('input[name="category_choice"]').prop('checked', false);
-
-    } else if (isMixed) {
-      $('#type3Categories').addClass('d-none');
-      $('#categorySection').addClass('d-none');
-      $('#mixedPlaceholder').removeClass('d-none');
-      $('input[name="category_choice"]').prop('checked', false);
-
-    } else {
-      $('#type3Categories').addClass('d-none');
-      $('#mixedPlaceholder').addClass('d-none');
-      $('#categorySection').removeClass('d-none');
-    }
-
+    setMixedVisibility(selectedVal == "3" || isMixed);
     updateDrawName();
   });
 
-  $(document).on('change', 'input[name="category_choice"]', updateDrawName);
+  $(document).on('change', 'input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"]', updateDrawName);
+
+  // Auto-populate draw name when modal opens (based on default-checked radios)
+  $(document).on('shown.bs.modal', '#createDrawModal', function () {
+    updateDrawName();
+  });
 
   // =====================================================
   // CREATE DRAW — Form submit
@@ -95,19 +116,30 @@
     if (!drawName) { toastr.error('Please enter a draw name'); return; }
 
     const $selectedType = $('input[name="draw_type_id"]:checked');
+    const isMixedDraw = $selectedType.val() == "3";
     const $selectedCat  = $('input[name="category_choice"]:checked');
+    const $selectedBoy  = $('input[name="category_choice_boys"]:checked');
+    const $selectedGirl = $('input[name="category_choice_girls"]:checked');
 
     if (!$selectedType.length) { toastr.error('Please select a draw type'); return; }
-    if (!$selectedCat.length)  { toastr.error('Please select a category'); return; }
 
     // Build category_ids[] from data attributes
     let categoryIds = [];
 
-    if ($selectedType.val() == "3") {
-      // Type 3 (mixed): data-ids is a JSON array [boysPivot, girlsPivot]
-      categoryIds = $selectedCat.data('ids') || [];
+    if (isMixedDraw) {
+      if (!$selectedBoy.length || !$selectedGirl.length) {
+        toastr.error('Please select both a boys category and a girls category');
+        return;
+      }
+
+      const boyId = $selectedBoy.data('pivot-id');
+      const girlId = $selectedGirl.data('pivot-id');
+
+      if (boyId) categoryIds.push(boyId);
+      if (girlId && categoryIds.indexOf(girlId) === -1) categoryIds.push(girlId);
     } else {
-      // Standard: data-pivot-id is a single category_events.id
+      if (!$selectedCat.length) { toastr.error('Please select a category'); return; }
+
       const pivotId = $selectedCat.data('pivot-id');
       if (pivotId) categoryIds = [pivotId];
     }

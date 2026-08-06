@@ -28,6 +28,8 @@ class EventFinanceController extends Controller
 
     public function index(Event $event)
     {
+        $this->authorize('event-finance.view', $event);
+
         // ── Registration income (from PayFast transactions) ──────────────
         // Uses the same logic as EventTransactionController (source of truth):
         //   - Excludes test transactions (is_test = false)
@@ -275,6 +277,8 @@ class EventFinanceController extends Controller
 
     public function storeExpense(Request $request, Event $event)
     {
+        $this->authorize('event-finance.manage', $event);
+
         $validated = $request->validate([
             'expense_type'            => 'required|string|max:50',
             'paid_by_convenor_ids'    => 'nullable|array',
@@ -336,6 +340,8 @@ class EventFinanceController extends Controller
 
     public function updateExpense(Request $request, EventExpense $expense)
     {
+        $this->authorize('event-finance.expense', $expense);
+
         $validated = $request->validate([
             'expense_type'          => 'required|string|max:50',
             'paid_by_convenor_id'   => 'nullable|exists:event_convenors,id',
@@ -373,6 +379,8 @@ class EventFinanceController extends Controller
 
     public function destroyExpense(EventExpense $expense)
     {
+        $this->authorize('event-finance.expense', $expense);
+
         if ($expense->receipt_path) {
             Storage::disk('public')->delete($expense->receipt_path);
         }
@@ -392,6 +400,8 @@ class EventFinanceController extends Controller
 
     public function approveExpense(EventExpense $expense)
     {
+        $this->authorize('event-finance.expense', $expense);
+
         $expense->update([
             'approved_at' => now(),
             'approved_by' => Auth::id(),
@@ -404,6 +414,8 @@ class EventFinanceController extends Controller
 
     public function reimburseExpense(EventExpense $expense)
     {
+        $this->authorize('event-finance.expense', $expense);
+
         $expense->update([
             'reimbursed_at' => now(),
             'reimbursed_by' => Auth::id(),
@@ -420,6 +432,8 @@ class EventFinanceController extends Controller
 
     public function storeIncomeItem(Request $request, Event $event)
     {
+        $this->authorize('event-finance.manage', $event);
+
         $validated = $request->validate([
             'label'      => 'required|string|max:255',
             'quantity'   => 'nullable|numeric|min:0',
@@ -450,6 +464,8 @@ class EventFinanceController extends Controller
 
     public function updateIncomeItem(Request $request, EventIncomeItem $item)
     {
+        $this->authorize('event-finance.income', $item);
+
         $validated = $request->validate([
             'label'      => 'required|string|max:255',
             'quantity'   => 'nullable|numeric|min:0',
@@ -472,6 +488,8 @@ class EventFinanceController extends Controller
 
     public function destroyIncomeItem(EventIncomeItem $item)
     {
+        $this->authorize('event-finance.income', $item);
+
         $item->delete();
 
         return request()->wantsJson()
@@ -581,6 +599,8 @@ class EventFinanceController extends Controller
 
     public function storeConvenor(Request $request, Event $event)
     {
+        $this->authorize('event-finance.convenor', $event);
+
         $request->validate([
             'user_ids'         => 'required|array|min:1',
             'user_ids.*'       => 'integer|exists:users,id',
@@ -647,6 +667,9 @@ class EventFinanceController extends Controller
 
     public function updateConvenor(Request $request, EventConvenor $convenor)
     {
+        $convenor->load('event');
+        $this->authorize('event-finance.convenor', $convenor->event);
+
         $validated = $request->validate([
             'role'             => 'nullable|string|max:20',
             'profit_share_pct' => 'nullable|numeric|min:0|max:100',
@@ -670,6 +693,9 @@ class EventFinanceController extends Controller
 
     public function destroyConvenor(EventConvenor $convenor)
     {
+        $convenor->load('event');
+        $this->authorize('event-finance.convenor', $convenor->event);
+
         $id = $convenor->id;
         $convenor->delete();
 
@@ -684,6 +710,8 @@ class EventFinanceController extends Controller
 
     public function storeVenueConvenor(Request $request, Event $event)
     {
+        $this->authorize('event-finance.convenor', $event);
+
         $validated = $request->validate([
             'name' => 'required|string|max:150',
         ]);
@@ -720,6 +748,9 @@ class EventFinanceController extends Controller
 
     public function destroyVenueConvenor(EventVenueConvenor $venueConvenor)
     {
+        $venueConvenor->load('event');
+        $this->authorize('event-finance.convenor', $venueConvenor->event);
+
         $id   = $venueConvenor->id;
         $name = $venueConvenor->name;
         $venueConvenor->delete();

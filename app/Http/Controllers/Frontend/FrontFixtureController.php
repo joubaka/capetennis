@@ -341,6 +341,8 @@ class FrontFixtureController extends Controller
 
   public function saveScore(Request $request, TeamFixture $fixture)
   {
+    $this->authorize('team-fixture.saveScore', $fixture);
+
     $rules = [];
     for ($i = 1; $i <= 3; $i++) {
       $rules["set{$i}_home"] = 'nullable|integer|min:0';

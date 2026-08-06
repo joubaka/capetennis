@@ -5,7 +5,6 @@ use App\Classes\MonradFeedin;
 
 
 ?>
-{{dd($printDraw)}}
 {!!$printDraw!!}
 @php
 
@@ -22,4 +21,4 @@ Brackets::get_bracket_17_24($draw, 7);
 
 Brackets::get_bracket_25_32($draw, 8);
 
-@endphp 
+@endphp

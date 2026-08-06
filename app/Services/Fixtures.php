@@ -199,7 +199,7 @@ class Fixtures
 
 
 
-    $teamNum = count($team1) / 2;
+    $teamNum = min(count($team1) / 2, count($team2) / 2);
     for ($i = 0; $i < $teamNum; $i++) {
       $fixture = new TeamFixture();
       $fixture->fixture_type = $fixture_type;
@@ -899,41 +899,71 @@ class Fixtures
   public static function createMixedFixtures($draw, $fixture_type, $region1, $region2, $team1, $team2, $count, $tie, $round)
   {
 
-    $numPlayersInTeam = count($team1['boys'][0]['team_players']);
-    // dd('check your numplayers in code');
+    $boysCount = min(count($team1['boys'][0]['team_players'] ?? []), count($team2['boys'][0]['team_players'] ?? []));
+    $girlsCount = min(count($team1['girls'][0]['team_players'] ?? []), count($team2['girls'][0]['team_players'] ?? []));
+    $numPlayersInTeam = min($boysCount, $girlsCount);
+
+    \Log::debug('[Fixtures::createMixedFixtures] setup', [
+      'draw_id' => $draw->id,
+      'draw_name' => $draw->drawName,
+      'fixture_type' => $fixture_type,
+      'region1_id' => $region1->region_id ?? null,
+      'region2_id' => $region2->region_id ?? null,
+      'boys_count' => $boysCount,
+      'girls_count' => $girlsCount,
+      'pairs_to_create' => $numPlayersInTeam,
+      'team1_boys_team_id' => $team1['boys'][0]['id'] ?? null,
+      'team1_girls_team_id' => $team1['girls'][0]['id'] ?? null,
+      'team2_boys_team_id' => $team2['boys'][0]['id'] ?? null,
+      'team2_girls_team_id' => $team2['girls'][0]['id'] ?? null,
+    ]);
+
     for ($i = 0; $i < $numPlayersInTeam; $i++) {
       $fixture = new TeamFixture();
-      $fixture->fixture_type = $fixture_type;
+      $fixture->fixture_type = 3;
       $fixture->draw_id = $draw->id;
       $fixture->numSets = 3;
       $fixture->match_nr = $count;
       $fixture->round_nr = $round;
       $fixture->rank_nr = ($i + 1);
+      $fixture->home_rank_nr = ($i + 1);
+      $fixture->away_rank_nr = ($i + 1);
       $fixture->region1 = $region1->region_id;
       $fixture->tie_nr = ($tie + 1);
       $fixture->region2 = $region2->region_id;
       $fixture->age = $draw->drawName;
       $fixture->save();
 
+      $homeBoyId = $team1['boys'][0]['team_players'][$i]['player_id'] ?? null;
+      $homeGirlId = $team1['girls'][0]['team_players'][$i]['player_id'] ?? null;
+      $awayBoyId = $team2['boys'][0]['team_players'][$i]['player_id'] ?? null;
+      $awayGirlId = $team2['girls'][0]['team_players'][$i]['player_id'] ?? null;
 
+      $teamFixturePlayer = new TeamFixturePlayer();
+      $teamFixturePlayer->slot_no = 1;
+      $teamFixturePlayer->team1_id = $homeBoyId;
+      $teamFixturePlayer->team2_id = $awayBoyId;
+      $teamFixturePlayer->team_fixture_id = $fixture->id;
+      $teamFixturePlayer->save();
 
-        $teamFixturePlayer = new TeamFixturePlayer();
-        $teamFixturePlayer->team1_id = $team1['boys'][0]['team_players'][$i]['player_id'];
-        $teamFixturePlayer->team2_id = $team2['boys'][0]['team_players'][$i]['player_id'];;
-        $teamFixturePlayer->team_fixture_id = $fixture->id;
-        $teamFixturePlayer->save();
+      $teamFixturePlayer = new TeamFixturePlayer();
+      $teamFixturePlayer->slot_no = 2;
+      $teamFixturePlayer->team1_id = $homeGirlId;
+      $teamFixturePlayer->team2_id = $awayGirlId;
+      $teamFixturePlayer->team_fixture_id = $fixture->id;
+      $teamFixturePlayer->save();
 
-        $teamFixturePlayer = new TeamFixturePlayer();
-        $teamFixturePlayer->team1_id = $team1['boys'][0]['team_players'][$i]['player_id'];
-        $teamFixturePlayer->team2_id = $team2['girls'][0]['team_players'][$i]['player_id'];;
-        $teamFixturePlayer->team_fixture_id = $fixture->id;
-        $teamFixturePlayer->save();
-
-
+      \Log::debug('[Fixtures::createMixedFixtures] fixture rows created', [
+        'fixture_id' => $fixture->id,
+        'match_nr' => $fixture->match_nr,
+        'home_boy_id' => $homeBoyId,
+        'home_girl_id' => $homeGirlId,
+        'away_boy_id' => $awayBoyId,
+        'away_girl_id' => $awayGirlId,
+      ]);
 
       $count++;
     }
-
 
     return $count;
   }

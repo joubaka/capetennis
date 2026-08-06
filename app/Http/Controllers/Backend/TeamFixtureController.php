@@ -29,6 +29,9 @@ class TeamFixtureController extends Controller
       'team2:id,name,surname',
       'region1Name:id,short_name',
       'region2Name:id,short_name',
+      'teamTie:id,draw_id,round_nr,tie_nr,home_team_id,away_team_id',
+      'teamTie.homeTeam:id,name',
+      'teamTie.awayTeam:id,name',
     ]);
 
     $dateCol = Schema::hasColumn('team_fixtures', 'scheduled_at')
@@ -126,6 +129,8 @@ class TeamFixtureController extends Controller
    */
   public function admin(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     // ensure related data is available
     $event->load(['draws', 'regions.teams']);
 
@@ -175,6 +180,9 @@ class TeamFixtureController extends Controller
 
     $fx = new TeamFixture();
     $fx->draw_id = $validated['draw_id'];
+    // Authorize against the draw before creating the fixture
+    $draw = \App\Models\Draw::findOrFail($validated['draw_id']);
+    $this->authorize('team-fixture.update', $draw);
     // store team ids as expected by model fields (field names may vary per schema)
     $fx->team1_ids = $validated['home_team_id'];
     $fx->team2_ids = $validated['away_team_id'];
@@ -199,7 +207,7 @@ class TeamFixtureController extends Controller
    */
   public function insertScore(Request $request, TeamFixture $team_fixture)
   {
-    $rules = [];
+    $this->authorize('team-fixture.saveScore', $team_fixture);
     for ($i = 1; $i <= 3; $i++) {
       $rules["set{$i}_home"] = 'nullable|integer|min:0';
       $rules["set{$i}_away"] = 'nullable|integer|min:0';
@@ -252,6 +260,8 @@ class TeamFixtureController extends Controller
 
   public function show(TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.view', $team_fixture);
+
     $team_fixture->loadMissing([
       'draw:id,drawName,event_id',
       'draw.event:id,name',
@@ -265,6 +275,8 @@ class TeamFixtureController extends Controller
 
   public function edit(TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.view', $team_fixture);
+
     $team_fixture->loadMissing(['homeTeam', 'awayTeam', 'venue']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
 
@@ -276,6 +288,8 @@ class TeamFixtureController extends Controller
 
   public function update(Request $request, TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.update', $team_fixture);
+
     $rules = [];
     for ($i = 1; $i <= 3; $i++) {
       $rules["set{$i}_home"] = 'nullable|integer|min:0';
@@ -351,6 +365,8 @@ class TeamFixtureController extends Controller
 
   public function destroy(TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.update', $team_fixture);
+
     $team_fixture->delete();
 
     return redirect()
@@ -360,6 +376,8 @@ class TeamFixtureController extends Controller
 
   public function destroyResult(TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.saveScore', $team_fixture);
+
     $team_fixture->fixtureResults()->delete();
 
     if (request()->ajax()) {
@@ -378,6 +396,8 @@ class TeamFixtureController extends Controller
 
   public function updatePlayers(Request $request, TeamFixture $team_fixture)
   {
+    $this->authorize('team-fixture.update', $team_fixture);
+
     if ($team_fixture->fixture_type === 'singles') {
       $rules = [
         'home_players' => 'array|max:1',
@@ -436,6 +456,8 @@ class TeamFixtureController extends Controller
 
   public function showJson(TeamFixture $fixture)
   {
+    $this->authorize('team-fixture.view', $fixture);
+
     return response()->json([
       'id' => $fixture->id,
       'team1_ids' => $fixture->team1_ids ? explode(',', $fixture->team1_ids) : [],
@@ -445,6 +467,8 @@ class TeamFixtureController extends Controller
 
   public function schedulePage(Draw $draw)
   {
+    $this->authorize('team-fixture.view', $draw);
+
     $draw->load(['event', 'venues']);
     return view('backend.team-schedule.schedule', [
       'draw' => $draw,
@@ -454,6 +478,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleData(Draw $draw)
   {
+    $this->authorize('team-fixture.view', $draw);
+
     $fixtures = TeamFixture::with(['fixturePlayers.player1', 'fixturePlayers.player2', 'draw', 'venue'])
       ->where('draw_id', $draw->id)
       ->orderByRaw('COALESCE(NULLIF(round_nr, ""), 9999) + 0 ASC')
@@ -537,6 +563,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleSave(Request $request, Draw $draw)
   {
+    $this->authorize('team-fixture.schedule', $draw);
+
     $data = $request->validate([
       'fixture_id' => 'required|integer|exists:team_fixtures,id',
       'scheduled_at' => 'nullable|date',
@@ -562,6 +590,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleBulk(Request $request, Draw $draw)
   {
+    $this->authorize('team-fixture.schedule', $draw);
+
     $data = $request->validate([
       'rows' => 'required|array',
       'rows.*.id' => 'required|integer|exists:team_fixtures,id',
@@ -598,6 +628,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleAuto(Request $request, Draw $draw)
   {
+    $this->authorize('team-fixture.schedule', $draw);
+
     $data = $request->validate([
       'start' => 'required|date',
       'end' => 'required|date|after:start',
@@ -786,6 +818,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleClear(Draw $draw)
   {
+    $this->authorize('team-fixture.schedule', $draw);
+
     TeamFixture::where('draw_id', $draw->id)
       ->update([
           'scheduled_at' => null,
@@ -803,6 +837,8 @@ class TeamFixtureController extends Controller
 
   public function scheduleReset(Request $request, Draw $draw)
   {
+    $this->authorize('team-fixture.schedule', $draw);
+
     TeamFixture::where('draw_id', $draw->id)
       ->update([
           'scheduled_at' => null,
@@ -864,6 +900,7 @@ class TeamFixtureController extends Controller
     try {
       // 1️⃣ Load the Draw record
       $draw = \App\Models\Draw::with('event')->findOrFail($drawId);
+      $this->authorize('team-fixture.update', $draw);
 
       // 2️⃣ Run the service to rebuild only this draw
       app(\App\Services\FixtureService::class)->rebuildForDraw($draw);
@@ -975,6 +1012,9 @@ class TeamFixtureController extends Controller
         'new_id' => 'required|string',
         'side' => 'nullable|in:home,away,both',
     ]);
+
+    $event = \App\Models\Event::findOrFail($data['event_id']);
+    $this->authorize('individual-draw.create', $event); // reuse admin/convenor gate
 
     if ($data['old_id'] === $data['new_id']) {
         if ($request->ajax()) {

@@ -25,6 +25,13 @@ class EmailController extends Controller
 
   public function sendEmail(Request $request)
   {
+    // Resolve event and authorize
+    $eventId = $request->event_id;
+    if ($eventId) {
+      $event = Event::findOrFail($eventId);
+      $this->authorize('event-email.bulk-send', $event);
+    }
+
     // 🧩 Automatically pick mailer
     $mailer = app(MailAccountManager::class)->getMailer();
 
@@ -717,6 +724,24 @@ class EmailController extends Controller
   /** ✅ All players across all events in a series */
   public function sendToSeriesPlayers(Request $request, Series $series)
   {
+    // Authorize: user must be admin for at least one event in the series
+    $eventIds = $series->events()->pluck('id')->toArray();
+    if (empty($eventIds)) {
+      abort(403);
+    }
+
+    $authorized = false;
+    foreach ($eventIds as $eventId) {
+      $event = Event::find($eventId);
+      if ($event && auth()->user()->can('event-email.send', $event)) {
+        $authorized = true;
+        break;
+      }
+    }
+    if (!$authorized) {
+      abort(403);
+    }
+
     $mailer = app(MailAccountManager::class)->getMailer();
 
     $request->validate([
@@ -973,6 +998,9 @@ class EmailController extends Controller
   /** ✅ AJAX helpers */
   public function getPlayers($eventId)
   {
+    $event = Event::findOrFail($eventId);
+    $this->authorize('event-email.view', $event);
+
     try {
       $event = Event::with(['registrations.players', 'region_in_events.teams.players'])->findOrFail($eventId);
 
@@ -1000,6 +1028,7 @@ class EmailController extends Controller
   public function getTeams($eventId)
   {
     $event = Event::with('region_in_events.teams.regions')->findOrFail($eventId);
+    $this->authorize('event-email.view', $event);
 
     $teams = $event->region_in_events
       ->flatMap(fn($region) => $region->teams)
@@ -1016,6 +1045,7 @@ class EmailController extends Controller
   public function getRegions($eventId)
   {
     $event = Event::with('regions')->findOrFail($eventId);
+    $this->authorize('event-email.view', $event);
 
     $regions = $event->regions
       ->map(fn($r) => [

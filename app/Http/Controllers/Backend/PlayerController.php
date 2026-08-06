@@ -201,6 +201,12 @@ class PlayerController extends Controller
   {
     $player = Player::findOrFail($id);
 
+    abort_unless(
+      (int) $player->userId === (int) auth()->id()
+      || auth()->user()->hasAnyRole(['super-user', 'admin', 'convenor']),
+      403
+    );
+
     // ✅ AJAX update from modal
     if ($request->ajax()) {
       $validated = $request->validate([

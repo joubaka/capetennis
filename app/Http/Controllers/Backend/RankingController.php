@@ -23,7 +23,7 @@ class RankingController extends Controller
 {
   public function index()
   {
-    dd('index');
+    abort(404);
   }
 
   public function rankingsIndex()
@@ -38,7 +38,7 @@ class RankingController extends Controller
 
   public function create()
   {
-    dd('hallo');
+    abort(404);
   }
 
   public function store(Request $request)
@@ -465,9 +465,15 @@ class RankingController extends Controller
   }
   public function setSchool(Request $request, $id)
   {
+    abort_unless(auth()->user()->hasAnyRole(['super-user', 'admin']), 403);
+
     $score = RankingScores::findOrFail($id);
 
-    $group = $request->input('group'); // 'primary', 'high', 'clear'
+    $validated = $request->validate([
+      'group' => ['required', 'in:primary,high,clear'],
+    ]);
+
+    $group = $validated['group'];
 
     $score->primarySchool = ($group === 'primary') ? 1 : 0;
     $score->highSchool = ($group === 'high') ? 1 : 0;

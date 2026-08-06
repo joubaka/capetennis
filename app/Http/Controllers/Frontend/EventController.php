@@ -51,7 +51,7 @@ class EventController extends Controller
      */
     public function create()
     {
-        dd('create');
+        abort(404);
     }
 
     /**
@@ -62,6 +62,8 @@ class EventController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('event.create');
+
         //return $request;
         $event = new Event();
         $event->name = $request->name;
@@ -480,6 +482,8 @@ return view('frontend.event.show', compact(
       'draws.venues',
     ])->findOrFail($id);
 
+    $this->authorize('event.manage', $event);
+
     // Optional safety: prevent editing events not assigned to a series
     // (enable if you want strict series control)
     /*
@@ -506,6 +510,7 @@ return view('frontend.event.show', compact(
   public function update(Request $request, $id)
   {
     $event = Event::findOrFail($id);
+    $this->authorize('event.manage', $event);
 
     // Accept serialized "data=" or normal form data
     $payload = $request->has('data')
@@ -596,6 +601,8 @@ return view('frontend.event.show', compact(
 
   public function destroy($id)
     {
+      $event = Event::findOrFail($id);
+      $this->authorize('event.manage', $event);
     }
 
     public function success($id)

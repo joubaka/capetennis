@@ -41,7 +41,7 @@ class RegisterController extends Controller
      */
     public function index()
     {
-        dd('index');
+        abort(404);
     }
 
   /**
@@ -153,7 +153,7 @@ class RegisterController extends Controller
 
     public function create()
     {
-        dd('index');
+        abort(404);
     }
 
 
