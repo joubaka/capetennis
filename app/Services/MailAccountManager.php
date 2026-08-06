@@ -6,7 +6,14 @@ use Illuminate\Support\Facades\Cache;
 
 class MailAccountManager
 {
-  protected array $accounts = ['smtp', 'noreply1', 'noreply2'];
+  /**
+   * Mail transports available for managed application email.
+   *
+   * SES is the sole production transport. Keeping SMTP accounts out of this
+   * list prevents queued mail from bypassing MAIL_MAILER and connecting to
+   * the legacy Mailgun SMTP endpoint.
+   */
+  protected array $accounts = ['ses'];
   protected int $limit = 500; // per day limit per account
 
   public function getMailer(): string
