@@ -8,7 +8,14 @@ use Illuminate\Support\Facades\Log;
 
 class MailAccountManager
 {
-  protected array $accounts = ['smtp', 'noreply1', 'noreply2'];
+  /**
+   * Mail transports available for managed application email.
+   *
+   * SES is the sole production transport. Keeping SMTP accounts out of this
+   * list prevents queued mail from bypassing MAIL_MAILER and connecting to
+   * the legacy Mailgun SMTP endpoint.
+   */
+  protected array $accounts = ['ses'];
   protected int $limit = 500; // per day limit per account
 
   public function getMailer(): string
@@ -37,9 +44,9 @@ class MailAccountManager
     // Never silently use the log transport here. Callers treat a transport
     // that returns successfully as sent, which would create false delivery
     // records while no email had left the application.
-    Log::error('[MailAccountManager] All SMTP accounts exhausted for today.');
+    Log::error('[MailAccountManager] All configured mail transports exhausted for today.');
 
-    throw new RuntimeException('All configured SMTP accounts have reached their daily limit.');
+    throw new RuntimeException('All configured mail transports have reached their daily limit.');
   }
 
   public function resetDailyCounts(): void
