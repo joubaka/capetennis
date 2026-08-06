@@ -8,7 +8,8 @@
   ],
   "license": "MIT",
   "require": {
-    "php": "^8.0.2|^8.5",
+    "php": ">=8.0.2 <8.5",
+    "aws/aws-sdk-php": "^3.388",
     "barryvdh/laravel-dompdf": "^2.0",
     "bavix/laravel-wallet": "^9.6",
     "fedeisas/laravel-mail-css-inliner": "^5.2",
