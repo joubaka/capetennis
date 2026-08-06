@@ -483,8 +483,6 @@ class EventAdminController extends Controller
     $event = Event::findOrFail($id);
     $this->authorize('event-draw.view', $event);
 
-    dd($id);
-
     $draws = Draw::where('event_id', $id)
       ->withCount('registrations')
       ->get();

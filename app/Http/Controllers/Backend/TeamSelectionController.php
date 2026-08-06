@@ -68,7 +68,6 @@ class TeamSelectionController extends Controller
         //dd($draws);
 
         //dd($data['categories'][0]['teams'][0]['players'][0]['teamResultsTeam2'][0]);
-dd($data);
         return View('backend.teamSelection.selection-index', $data);
     }
 }

@@ -143,7 +143,6 @@ class DrawController extends Controller
       // dd('showdraw 6',$data);
       return view('backend.draw.individual.draw-show-individual', $data);
     } else {
-      dd('showdraw else', $data['draw']);
       return view('backend.draw.individual.draw-show-individual', $data);
     }
   }
@@ -504,10 +503,6 @@ class DrawController extends Controller
 
     $categoryEvent = \App\Models\CategoryEvent::findOrFail($request->category_event_id);
     $this->authorize('draw.create', \App\Models\Event::findOrFail($categoryEvent->event_id));
-
-    dd($request);
-    // Optional: get the event ID from the CategoryEvent relation
-    $categoryEvent = \App\Models\CategoryEvent::findOrFail($request->category_event_id);
 
     $draw = Draw::create([
       'drawName' => $request->draw_name,
