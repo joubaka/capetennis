@@ -1,6 +1,6 @@
 @import '../../scss/_bootstrap-extended/include';
 @import '../../scss/_custom-variables/libs';
-@import 'swiper/css/bundle';
+@import url('~swiper/swiper-bundle.css');
 
 .swiper {
   width: 100%;

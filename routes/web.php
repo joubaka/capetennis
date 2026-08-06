@@ -158,6 +158,11 @@ Route::post(
   [RegistrationPaymentController::class, 'applyWallet']
 )->middleware('auth')->name('registration.hybrid.apply-wallet');
 
+Route::get(
+  '/registration/checkout/{order}',
+  [RegistrationPaymentController::class, 'checkout']
+)->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.checkout');
+
 Route::post(
   '/registration/hybrid/complete/{orderId}',
   [RegistrationPaymentController::class, 'hybridComplete']
@@ -1535,10 +1540,12 @@ Route::delete(
   Route::resource('regionTeam', RegionTeamController::class);
 
   //settings
-  Route::post('settings/single', [SettingsController::class, 'storeSingle'])->name('settings.store.single');
-  Route::post('settings/template', [SettingsController::class, 'storeTemplate'])->name('settings.store.template');
-  Route::post('settings/content', [SettingsController::class, 'storeContent'])->name('settings.store.content');
-  Route::resource('settings', SettingsController::class);
+  Route::middleware('role:super-user')->group(function () {
+    Route::post('settings/single', [SettingsController::class, 'storeSingle'])->name('settings.store.single');
+    Route::post('settings/template', [SettingsController::class, 'storeTemplate'])->name('settings.store.template');
+    Route::post('settings/content', [SettingsController::class, 'storeContent'])->name('settings.store.content');
+    Route::resource('settings', SettingsController::class);
+  });
 
   //email
   Route::post('email/send', [EmailController::class, 'sendEmail'])->name('email.send');

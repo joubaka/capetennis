@@ -550,12 +550,11 @@ class CategoryEventRegistration extends Model
 
     $payment = $this->paymentInfo();
     if (empty($payment)) {
-      return 0.0;
+      return max(0, round((float) ($this->refund_gross ?? 0), 2));
     }
 
     $gross = round((float) ($payment['gross'] ?? 0) + (float) ($payment['wallet_paid'] ?? 0), 2);
-    $alreadyRefunded = (float) ($this->refund_gross ?? 0);
-    return max(0, round($gross - $alreadyRefunded, 2));
+    return max(0, $gross);
   }
 
   public function canRequestRefund(): bool

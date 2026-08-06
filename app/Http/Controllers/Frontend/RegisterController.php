@@ -407,6 +407,12 @@ class RegisterController extends Controller
       return response('Ignored', 200);
     }
 
+    // Route the legacy PayFast callback through the canonical payment adapter.
+    app(RegistrationPaymentController::class)->handlePayfastSuccess($data);
+
+    return response('OK', 200);
+
+    if (false) { // Legacy inline implementation retained temporarily for rollback reference.
     try {
 
       DB::transaction(function () use ($data) {
@@ -636,6 +642,8 @@ class RegisterController extends Controller
         'order_id' => $data['custom_int5'] ?? null,
         'trace' => $e->getTraceAsString(),
       ]);
+    }
+
     }
 
     return response('OK', 200)
@@ -1176,17 +1184,17 @@ class RegisterController extends Controller
             abort(403, 'Unauthorized.');
         }
 
-        $registration = new Registration();
-        $registration->save();
-        $registration->players()->attach($request->player_id);
-        $order = 'admin';
-        $trans = RegisterController::update_transaction($request, $order);
-        $registration->categoryEvents()->attach($request->categoryEvent, [
-            'payfast_id' =>  'Admin',
-            'payment_status_id' => 0,
-            'user_id' => Auth::user()->id,
-            'pf_transaction_id' => $trans->id,
+        $validated = $request->validate([
+          'player_id' => ['required', 'integer', 'exists:players,id'],
+          'categoryEvent' => ['required', 'integer', 'exists:category_events,id'],
         ]);
+
+        $categoryEvent = CategoryEvent::findOrFail($validated['categoryEvent']);
+        app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin(
+          $categoryEvent,
+          (int) $validated['player_id'],
+          $user
+        );
 
         return 'success';
     }
@@ -1557,7 +1565,9 @@ class RegisterController extends Controller
       'payfast_due'     => $totalFee,
     ]);
 
-    return view('frontend.payfast.check_out', compact('request', 'payfast'));
+    $order = $regorder->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
+
+    return view('frontend.payfast.check_out', compact('request', 'payfast', 'order'));
   }
 
 

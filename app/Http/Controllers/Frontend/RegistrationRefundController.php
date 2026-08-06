@@ -81,6 +81,13 @@ class RegistrationRefundController extends Controller
       abort(403);
     }
 
+    // The refund endpoint must never double as a withdrawal endpoint. Without
+    // this guard, a crafted POST could refund an active entry that remained in
+    // draws and entry lists.
+    if ($registration->status !== 'withdrawn') {
+      return back()->withErrors('Registration must be withdrawn before requesting a refund.');
+    }
+
     // Duplicate protection
     if ($registration->isRefundCompleted()) {
       Log::info('REFUND BLOCKED: Already completed', [
@@ -237,18 +244,22 @@ class RegistrationRefundController extends Controller
 
     // Wrap the initial status write in a transaction with pessimistic lock
     // so that concurrent requests cannot both set the status to 'pending'.
-    app(RefundRequestService::class)->requestRegistrationRefund($registration, [
-      'refund_method' => 'bank',
-      'refund_status' => CategoryEventRegistration::REFUND_PENDING,
-      'refund_gross' => $gross,
-      'refund_fee' => $fee,
-      'refund_net' => $net,
-      'refund_account_name' => $request->account_name,
-      'refund_bank_name' => $request->bank_name,
-      'refund_account_number' => $request->account_number,
-      'refund_branch_code' => $request->branch_code,
-      'refund_account_type' => $request->account_type,
-    ]);
+    try {
+      app(RefundRequestService::class)->requestRegistrationRefund($registration, [
+        'refund_method' => 'bank',
+        'refund_status' => CategoryEventRegistration::REFUND_PENDING,
+        'refund_gross' => $gross,
+        'refund_fee' => $fee,
+        'refund_net' => $net,
+        'refund_account_name' => $request->account_name,
+        'refund_bank_name' => $request->bank_name,
+        'refund_account_number' => $request->account_number,
+        'refund_branch_code' => $request->branch_code,
+        'refund_account_type' => $request->account_type,
+      ]);
+    } catch (RefundAlreadyProcessedException $e) {
+      return back()->with('success', 'Refund already requested.');
+    }
 
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $payment['pf_payment_id'] ?? null;

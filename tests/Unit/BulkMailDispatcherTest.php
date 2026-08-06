@@ -19,9 +19,7 @@ class BulkMailDispatcherTest extends TestCase
         parent::setUp();
         Queue::fake();
     }
-
-    /** @test */
-    public function it_dispatches_emails_to_valid_recipients()
+    public function test_it_dispatches_emails_to_valid_recipients()
     {
         $dispatcher = new BulkMailDispatcher();
 
@@ -54,9 +52,7 @@ class BulkMailDispatcherTest extends TestCase
             'status' => 'queued',
         ]);
     }
-
-    /** @test */
-    public function it_deduplicates_recipients_within_same_dispatch()
+    public function test_it_deduplicates_recipients_within_same_dispatch()
     {
         $dispatcher = new BulkMailDispatcher();
 
@@ -78,9 +74,7 @@ class BulkMailDispatcherTest extends TestCase
         $this->assertEquals(2, $stats['queued']);
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
-
-    /** @test */
-    public function it_skips_invalid_email_addresses()
+    public function test_it_skips_invalid_email_addresses()
     {
         $dispatcher = new BulkMailDispatcher();
 
@@ -103,9 +97,7 @@ class BulkMailDispatcherTest extends TestCase
         $this->assertEquals(2, $stats['queued']);
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
-
-    /** @test */
-    public function it_prevents_duplicate_sends_for_same_mail_type_and_related_record()
+    public function test_it_prevents_duplicate_sends_for_same_mail_type_and_related_record()
     {
         $announcement = Announcement::create([
             'title' => 'Test',
@@ -152,9 +144,7 @@ class BulkMailDispatcherTest extends TestCase
             'status' => 'skipped',
         ]);
     }
-
-    /** @test */
-    public function it_allows_duplicates_when_flag_is_true()
+    public function test_it_allows_duplicates_when_flag_is_true()
     {
         $dispatcher = new BulkMailDispatcher();
 
@@ -181,9 +171,7 @@ class BulkMailDispatcherTest extends TestCase
 
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
-
-    /** @test */
-    public function it_handles_different_recipient_formats()
+    public function test_it_handles_different_recipient_formats()
     {
         $dispatcher = new BulkMailDispatcher();
 
@@ -205,9 +193,7 @@ class BulkMailDispatcherTest extends TestCase
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'array@example.com', 'recipient_name' => 'Array User']);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'object@example.com', 'recipient_name' => 'Object User']);
     }
-
-    /** @test */
-    public function it_resends_only_failed_emails()
+    public function test_it_resends_only_failed_emails()
     {
         $dispatcher = new BulkMailDispatcher();
 

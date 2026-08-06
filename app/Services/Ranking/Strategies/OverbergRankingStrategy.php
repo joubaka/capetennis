@@ -12,7 +12,7 @@ class OverbergRankingStrategy implements RankingStrategy
     Collection $placements,
     array $pointsMap,
     Series $series,
-    int $bestN
+    int $bestN = 2
   ): array {
 
     /*
@@ -37,7 +37,7 @@ class OverbergRankingStrategy implements RankingStrategy
      * - both wins
      * - only when auto_award_rule is enabled on the series
      */
-    if ($series->auto_award_rule ?? false) foreach ($byPlayer as $playerId => $legs) {
+    if ($series->auto_award_rule ?? true) foreach ($byPlayer as $playerId => $legs) {
       if ($legs->count() === 2 && $legs->where('position', 1)->count() === 2) {
 
         $autoPlayerId = (int) $playerId;

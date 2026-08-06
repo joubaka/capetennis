@@ -42,11 +42,11 @@
       use App\Models\CategoryEvent;
       use App\Models\Event;
 
-      $orderId = (int) request('custom_int5');
+      $orderId = (int) ($order->id ?? request('custom_int5'));
 
-      $order = $orderId
+      $order = isset($order) ? $order : ($orderId
           ? RegistrationOrder::with('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet')->find($orderId)
-          : null;
+          : null);
 
       abort_if(!$order, 404);
 
@@ -335,9 +335,9 @@ $(function () {
             return;
           }
 
-          // Important: signature must be regenerated server-side after amount changes.
-          // Reload checkout so amount + signature always match.
-          window.location.reload();
+          // Regenerate the amount and PayFast signature without replaying the
+          // original registration POST (which would create another order).
+          window.location.assign(@json(route('registration.checkout', ['order' => $orderId])));
         }
       },
       error: function (xhr) {

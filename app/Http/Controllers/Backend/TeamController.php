@@ -366,6 +366,12 @@ class TeamController extends Controller
     $player = \App\Models\Player::findOrFail($playerId);
     $event = \App\Models\Event::findOrFail($eventId);
 
+    abort_unless((int) optional($team->category)->event_id === (int) $event->id, 404);
+    abort_unless(
+      TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->exists(),
+      404
+    );
+
     // compute fees (adapt the regionFee computation to your schema)
     $entryFee = (float) ($event->entryFee ?? 0);
     $regionFee = 0;

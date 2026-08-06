@@ -51,7 +51,7 @@ toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton:
 @if(session('warning'))
   toastr.warning(@json(session('warning')));
 @endif
-@if($errors->any())
+@if(isset($errors) && $errors->any())
   toastr.error(@json($errors->first()));
 @endif
 </script>

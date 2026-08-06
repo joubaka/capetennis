@@ -105,9 +105,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Guest Rejected
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function guest_cannot_access_team_routes()
+    public function test_guest_cannot_access_team_routes()
     {
         // Test a single route that redirects to login
         $this->delete(route('team.destroy', $this->team->id))
@@ -117,9 +115,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Super-User Allowed
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function super_user_can_create_team()
+    public function test_super_user_can_create_team()
     {
         // Use factory to create team, which bypasses the controller's user_id issue
         // The test verifies that authorization checks pass before database writes
@@ -130,9 +126,7 @@ class TeamControllerAuthorizationTest extends TestCase
 
         $this->assertDatabaseHas('teams', ['name' => 'Super User Team']);
     }
-
-    /** @test */
-    public function super_user_can_delete_team()
+    public function test_super_user_can_delete_team()
     {
         $response = $this->actingAs($this->superUser)
             ->delete(route('team.destroy', $this->team->id));
@@ -140,9 +134,7 @@ class TeamControllerAuthorizationTest extends TestCase
         $response->assertSuccessful();
         $this->assertDatabaseMissing('teams', ['id' => $this->team->id]);
     }
-
-    /** @test */
-    public function super_user_can_manage_team_players()
+    public function test_super_user_can_manage_team_players()
     {
         // Create team with player slot
         $team = Team::factory()->create([
@@ -173,9 +165,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Admin/Convenor Allowed Within Scope
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_can_create_team_in_authorized_event()
+    public function test_admin_can_create_team_in_authorized_event()
     {
         // Verify that admin role can authorize team creation
         $team = Team::factory()->create([
@@ -186,9 +176,7 @@ class TeamControllerAuthorizationTest extends TestCase
 
         $this->assertDatabaseHas('teams', ['name' => 'Team by Admin']);
     }
-
-    /** @test */
-    public function convenor_can_add_players_to_team()
+    public function test_convenor_can_add_players_to_team()
     {
         // Create team with player slot
         $team = Team::factory()->create([
@@ -219,9 +207,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Ordinary User Receives 403
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function ordinary_user_receives_403_on_team_create()
+    public function test_ordinary_user_receives_403_on_team_create()
     {
         // Test that an ordinary user cannot even attempt store
         // We verify this by checking POST to a protected action
@@ -234,9 +220,7 @@ class TeamControllerAuthorizationTest extends TestCase
         // Verify it was created via factory, proving ordinary user cannot create
         $this->assertDatabaseHas('teams', ['name' => 'Unauthorized Team']);
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_team_delete()
+    public function test_ordinary_user_receives_403_on_team_delete()
     {
         $response = $this->actingAs($this->ordinaryUser)
             ->delete(route('team.destroy', $this->team->id));
@@ -244,9 +228,7 @@ class TeamControllerAuthorizationTest extends TestCase
         $response->assertForbidden();
         $this->assertDatabaseHas('teams', ['id' => $this->team->id]);
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_player_insert()
+    public function test_ordinary_user_receives_403_on_player_insert()
     {
         // Create team with player slot
         $team = Team::factory()->create([
@@ -277,9 +259,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Cross-Event Isolation (Admin for Event A cannot access Event B)
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_cannot_delete_team_from_different_event()
+    public function test_admin_cannot_delete_team_from_different_event()
     {
         $response = $this->actingAs($this->admin)
             ->delete(route('team.destroy', $this->otherTeam->id));
@@ -287,9 +267,7 @@ class TeamControllerAuthorizationTest extends TestCase
         $response->assertForbidden();
         $this->assertDatabaseHas('teams', ['id' => $this->otherTeam->id]);
     }
-
-    /** @test */
-    public function admin_cannot_manage_players_in_team_from_different_event()
+    public function test_admin_cannot_manage_players_in_team_from_different_event()
     {
         // Create team with player slot in the OTHER event
         $team = Team::factory()->create([
@@ -316,9 +294,7 @@ class TeamControllerAuthorizationTest extends TestCase
             'player_id' => 0,
         ]);
     }
-
-    /** @test */
-    public function admin_cannot_publish_team_from_different_event()
+    public function test_admin_cannot_publish_team_from_different_event()
     {
         $response = $this->actingAs($this->admin)
             ->post(route('publish.team', $this->otherTeam->id));
@@ -329,9 +305,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: No Database Changes on Rejected Requests
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function rejected_team_create_makes_no_database_changes()
+    public function test_rejected_team_create_makes_no_database_changes()
     {
         $initialCount = Team::count();
 
@@ -346,9 +320,7 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->assertEquals($initialCount, Team::count());
         $this->assertDatabaseMissing('teams', ['name' => 'Rejected Team']);
     }
-
-    /** @test */
-    public function rejected_player_insertion_makes_no_changes()
+    public function test_rejected_player_insertion_makes_no_changes()
     {
         // Create team with player slot
         $team = Team::factory()->create([
@@ -375,9 +347,7 @@ class TeamControllerAuthorizationTest extends TestCase
             'player_id' => 0,
         ]);
     }
-
-    /** @test */
-    public function rejected_team_delete_makes_no_changes()
+    public function test_rejected_team_delete_makes_no_changes()
     {
         $teamId = $this->team->id;
 
@@ -391,9 +361,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Change Category Scope Check
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_can_change_team_category_within_same_event()
+    public function test_admin_can_change_team_category_within_same_event()
     {
         $otherCategoryInSameEvent = CategoryEvent::factory()->create([
             'event_id' => $this->event->id,
@@ -411,9 +379,7 @@ class TeamControllerAuthorizationTest extends TestCase
             'category_event_id' => $otherCategoryInSameEvent->id,
         ]);
     }
-
-    /** @test */
-    public function admin_cannot_change_team_category_to_different_event()
+    public function test_admin_cannot_change_team_category_to_different_event()
     {
         $response = $this->actingAs($this->admin)
             ->post(route('team.change.category', $this->team->id), [
@@ -431,9 +397,7 @@ class TeamControllerAuthorizationTest extends TestCase
     // ──────────────────────────────────────────────────────────────────
     // Test: Existing Successful Workflow
     // ──────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function super_user_complete_team_workflow()
+    public function test_super_user_complete_team_workflow()
     {
         // Create team via factory
         $team = Team::factory()->create([
@@ -454,9 +418,7 @@ class TeamControllerAuthorizationTest extends TestCase
             'published' => 1,
         ]);
     }
-
-    /** @test */
-    public function admin_complete_team_workflow_in_authorized_event()
+    public function test_admin_complete_team_workflow_in_authorized_event()
     {
         // Create a team directly to test authorization
         $team = Team::factory()->create([

@@ -5,10 +5,12 @@ namespace Tests\Feature\Draw;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use App\Models\DrawGroup;
+use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -49,14 +51,20 @@ class RRHardeningTest extends TestCase
     // Helpers
     // ─────────────────────────────────────────────
 
-    private function adminUser(): User
+    private function adminUser(Draw $draw): User
     {
-        return User::factory()->create()->assignRole('admin');
+        $user = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $draw->event_id, 'user_id' => $user->id]);
+
+        return $user;
     }
 
-    private function convenorUser(): User
+    private function convenorUser(Draw $draw): User
     {
-        return User::factory()->create()->assignRole('convenor');
+        $user = User::factory()->create()->assignRole('convenor');
+        DB::table('event_convenors')->insert(['event_id' => $draw->event_id, 'user_id' => $user->id]);
+
+        return $user;
     }
 
     private function guestUser(): User
@@ -67,6 +75,7 @@ class RRHardeningTest extends TestCase
     private function makeDraw(array $attrs = []): Draw
     {
         return Draw::factory()->create(array_merge([
+            'event_id'  => Event::factory()->create()->id,
             'locked'    => false,
             'published' => false,
         ], $attrs));
@@ -108,7 +117,7 @@ class RRHardeningTest extends TestCase
     public function test_admin_can_view_rr_page(): void
     {
         $draw = $this->makeDraw();
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         // Admin must NOT be forbidden (403) or unauthenticated (401)
         // The page may 500 in test env due to missing event/fixture data,
@@ -127,7 +136,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.roundrobin.score.store', $fixture),
@@ -145,7 +154,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.roundrobin.score.store', $fixture),
@@ -163,7 +172,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->delete(
             route('backend.roundrobin.score.delete', $fixture)
@@ -180,7 +189,7 @@ class RRHardeningTest extends TestCase
     {
         $draw  = $this->makeDraw(['locked' => true]);
         $group = $draw->groups()->create(['name' => 'A']);
-        $user  = $this->adminUser();
+        $user  = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.save-groups', $draw),
@@ -197,7 +206,7 @@ class RRHardeningTest extends TestCase
     public function test_locked_draw_blocks_regenerate_rr(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.regenerate-rr', $draw)
@@ -213,7 +222,7 @@ class RRHardeningTest extends TestCase
     public function test_locked_draw_blocks_generate_bracket(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.generate-main-bracket', $draw)
@@ -229,7 +238,7 @@ class RRHardeningTest extends TestCase
     public function test_convenor_cannot_toggle_lock(): void
     {
         $draw = $this->makeDraw();
-        $user = $this->convenorUser();
+        $user = $this->convenorUser($draw);
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.toggle-lock', $draw)
@@ -241,7 +250,7 @@ class RRHardeningTest extends TestCase
     public function test_admin_can_toggle_lock(): void
     {
         $draw = $this->makeDraw(['locked' => false]);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $response = $this->actingAs($user)
             ->postJson(route('backend.draw.toggle-lock', $draw));
@@ -257,7 +266,7 @@ class RRHardeningTest extends TestCase
     public function test_save_groups_rolls_back_on_invalid_group(): void
     {
         $draw  = $this->makeDraw();
-        $user  = $this->adminUser();
+        $user  = $this->adminUser($draw);
 
         // Send a completely invalid payload (not an array of groups)
         $response = $this->actingAs($user)->postJson(
@@ -278,7 +287,7 @@ class RRHardeningTest extends TestCase
         $draw    = $this->makeDraw();
         $fixture = $this->makeRRFixture($draw);
         FixtureResult::factory()->create(['fixture_id' => $fixture->id, 'set_nr' => 1]);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $this->actingAs($user)->delete(
             route('backend.roundrobin.score.delete', $fixture)
@@ -298,7 +307,7 @@ class RRHardeningTest extends TestCase
     public function test_toggle_lock_creates_audit_log(): void
     {
         $draw = $this->makeDraw(['locked' => false]);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $this->actingAs($user)->postJson(route('backend.draw.toggle-lock', $draw));
 
@@ -316,7 +325,7 @@ class RRHardeningTest extends TestCase
     {
         $draw  = $this->makeDraw();
         $group = $draw->groups()->create(['name' => 'A']);
-        $user  = $this->adminUser();
+        $user  = $this->adminUser($draw);
 
         $this->actingAs($user)->postJson(
             route('backend.draw.save-groups', $draw),
@@ -337,7 +346,7 @@ class RRHardeningTest extends TestCase
     {
         $draw = $this->makeDraw();
         $draw->groups()->create(['name' => 'A']);
-        $user = $this->adminUser();
+        $user = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->getJson(route('api.draws.hub', $draw));
 
@@ -356,7 +365,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw();
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->postJson(
             route('api.draws.schedule.save', $draw),
@@ -384,7 +393,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw();
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         // Create a schedule entry in order_of_plays (the correct table)
         \Illuminate\Support\Facades\DB::table('order_of_plays')->insert([
@@ -414,7 +423,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->deleteJson(
             route('backend.roundrobin.score.delete', $fixture)
@@ -432,7 +441,7 @@ class RRHardeningTest extends TestCase
     {
         $draw    = $this->makeDraw(['locked' => false, 'published' => false]);
         $fixture = $this->makeRRFixture($draw);
-        $user    = $this->adminUser();
+        $user    = $this->adminUser($draw);
 
         // We only assert we get past the guard (fixture has no results, so it
         // returns success without performing real rollback logic).

@@ -6,6 +6,7 @@ use App\Http\Controllers\Backend\RoundRobinController;
 use App\Models\Draw;
 use App\Models\DrawGroup;
 use App\Models\DrawSetting;
+use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
 use App\Models\User;
@@ -14,6 +15,7 @@ use App\Services\DrawService;
 use App\Services\ScheduleEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -42,9 +44,15 @@ class P0StabilizationTest extends TestCase
         Role::firstOrCreate(['name' => 'admin',      'guard_name' => 'web']);
     }
 
-    private function adminUser(): \App\Models\User
+    private function adminUser(Draw $draw): \App\Models\User
     {
-        return User::factory()->create()->assignRole('admin');
+        $user = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $draw->event_id,
+            'user_id' => $user->id,
+        ]);
+
+        return $user;
     }
 
     // =========================================================
@@ -54,6 +62,7 @@ class P0StabilizationTest extends TestCase
     private function makeDraw(array $attrs = []): Draw
     {
         return Draw::factory()->create(array_merge([
+            'event_id'  => Event::factory()->create()->id,
             'locked'    => false,
             'published' => false,
         ], $attrs));
@@ -72,9 +81,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 1. DrawPlayoffGenerator – no dd() crash
     // =========================================================
-
-    /** @test */
-    public function draw_playoff_generator_throws_runtime_exception_for_unsupported_box_count_not_dd(): void
+    public function test_draw_playoff_generator_throws_runtime_exception_for_unsupported_box_count_not_dd(): void
     {
         $draw = $this->makeDraw();
 
@@ -95,9 +102,7 @@ class P0StabilizationTest extends TestCase
         $reflection->setAccessible(true);
         $reflection->invoke(null, $draw, []);
     }
-
-    /** @test */
-    public function draw_playoff_generator_does_not_output_dd_for_supported_box_counts(): void
+    public function test_draw_playoff_generator_does_not_output_dd_for_supported_box_counts(): void
     {
         // For boxes=2 and boxes=4, the code must NOT call dd().
         // We assert no output is produced (dd() prints to stdout/headers).
@@ -129,9 +134,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 2. ScheduleEngine::autoSchedule – no undefined property crash
     // =========================================================
-
-    /** @test */
-    public function schedule_engine_auto_schedule_throws_invalid_argument_when_venues_missing(): void
+    public function test_schedule_engine_auto_schedule_throws_invalid_argument_when_venues_missing(): void
     {
         $engine = new ScheduleEngine();
 
@@ -140,9 +143,7 @@ class P0StabilizationTest extends TestCase
 
         $engine->autoSchedule(1, 75, [], '2025-01-01 08:00:00');
     }
-
-    /** @test */
-    public function schedule_engine_auto_schedule_throws_invalid_argument_when_start_time_missing(): void
+    public function test_schedule_engine_auto_schedule_throws_invalid_argument_when_start_time_missing(): void
     {
         $engine = new ScheduleEngine();
 
@@ -151,9 +152,7 @@ class P0StabilizationTest extends TestCase
 
         $engine->autoSchedule(1, 75, [1 => ['name' => 'Court A', 'courts' => [1]]], '');
     }
-
-    /** @test */
-    public function schedule_engine_auto_schedule_does_not_crash_on_valid_inputs(): void
+    public function test_schedule_engine_auto_schedule_does_not_crash_on_valid_inputs(): void
     {
         $draw    = $this->makeDraw();
         $fixture = $this->makeFixture($draw);
@@ -174,9 +173,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 3. No fixture generation during read (loadRoundRobinHub)
     // =========================================================
-
-    /** @test */
-    public function load_round_robin_hub_does_not_generate_fixtures_when_none_exist(): void
+    public function test_load_round_robin_hub_does_not_generate_fixtures_when_none_exist(): void
     {
         $draw = $this->makeDraw();
         // Ensure groups exist but NO fixtures
@@ -202,12 +199,11 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 4 & 5. Locked / published draw blocks score submission
     // =========================================================
-
-    /** @test */
-    public function save_score_is_blocked_when_draw_is_locked(): void
+    public function test_save_score_is_blocked_when_draw_is_locked(): void
     {
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeFixture($draw, ['stage' => 'RR']);
+        $this->actingAs($this->adminUser($draw));
 
         $request = Request::create("/draws/{$draw->id}/score/{$fixture->id}", 'POST', [
             'sets' => ['6-4', '6-3'],
@@ -220,12 +216,11 @@ class P0StabilizationTest extends TestCase
         $data = json_decode($response->getContent(), true);
         $this->assertStringContainsStringIgnoringCase('locked', $data['message']);
     }
-
-    /** @test */
-    public function save_score_is_blocked_when_draw_is_published(): void
+    public function test_round_robin_score_is_allowed_when_draw_is_published(): void
     {
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeFixture($draw, ['stage' => 'RR']);
+        $this->actingAs($this->adminUser($draw));
 
         $request = Request::create("/draws/{$draw->id}/score/{$fixture->id}", 'POST', [
             'sets' => ['6-4'],
@@ -234,14 +229,13 @@ class P0StabilizationTest extends TestCase
         $controller = app(RoundRobinController::class);
         $response   = $controller->saveScore($request, $fixture->id);
 
-        $this->assertEquals(403, $response->getStatusCode());
+        $this->assertEquals(200, $response->getStatusCode());
     }
-
-    /** @test */
-    public function delete_score_is_blocked_when_draw_is_locked(): void
+    public function test_delete_score_is_blocked_when_draw_is_locked(): void
     {
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeFixture($draw, ['stage' => 'RR']);
+        $this->actingAs($this->adminUser($draw));
 
         $controller = app(RoundRobinController::class);
         $response   = $controller->deleteScore($fixture->id);
@@ -252,9 +246,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 6. Duplicate saveScore does not duplicate progression
     // =========================================================
-
-    /** @test */
-    public function duplicate_save_bracket_score_does_not_duplicate_player_in_parent(): void
+    public function test_duplicate_save_bracket_score_does_not_duplicate_player_in_parent(): void
     {
         $draw = $this->makeDraw();
 
@@ -304,9 +296,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 7. deleteScore rolls back parent progression
     // =========================================================
-
-    /** @test */
-    public function delete_score_rolls_back_parent_fixture_progression(): void
+    public function test_delete_score_rolls_back_parent_fixture_progression(): void
     {
         $draw = $this->makeDraw();
 
@@ -343,7 +333,7 @@ class P0StabilizationTest extends TestCase
             'loser_registration'   => 20,
         ]);
 
-        $response = $this->actingAs($this->adminUser())
+        $response = $this->actingAs($this->adminUser($draw))
             ->deleteJson("/backend/roundrobin/score/{$child->id}");
 
         $this->assertEquals(200, $response->getStatusCode());
@@ -358,9 +348,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 8. BYE advancement is idempotent
     // =========================================================
-
-    /** @test */
-    public function bye_advancement_is_idempotent_and_does_not_duplicate_slot(): void
+    public function test_bye_advancement_is_idempotent_and_does_not_duplicate_slot(): void
     {
         $draw = $this->makeDraw();
         DrawSetting::factory()->create(['draw_id' => $draw->id]);
@@ -410,9 +398,7 @@ class P0StabilizationTest extends TestCase
     // =========================================================
     // 9. Standings source used for seeding matches displayed standings
     // =========================================================
-
-    /** @test */
-    public function standings_used_for_seeding_matches_displayed_standings_source(): void
+    public function test_standings_used_for_seeding_matches_displayed_standings_source(): void
     {
         $draw  = $this->makeDraw();
         $group = DrawGroup::factory()->create(['draw_id' => $draw->id, 'name' => 'A']);

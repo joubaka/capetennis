@@ -3,10 +3,12 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
+use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -24,14 +26,18 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         Role::firstOrCreate(['name' => 'admin',      'guard_name' => 'web']);
     }
 
-    private function adminUser(): User
+    private function adminUser(Draw $draw): User
     {
-        return User::factory()->create()->assignRole('admin');
+        $user = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $draw->event_id, 'user_id' => $user->id]);
+
+        return $user;
     }
 
     private function makeDraw(array $attrs = []): Draw
     {
         return Draw::factory()->create(array_merge([
+            'event_id' => Event::factory()->create()->id,
             'locked'    => false,
             'published' => false,
         ], $attrs));
@@ -61,7 +67,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeFixture($draw);
 
-        $response = $this->actingAs($this->adminUser())
+        $response = $this->actingAs($this->adminUser($draw))
             ->deleteJson($this->deleteScoreRoute($draw, $fixture));
 
         $response->assertOk()
@@ -77,7 +83,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeFixture($draw);
 
-        $response = $this->actingAs($this->adminUser())
+        $response = $this->actingAs($this->adminUser($draw))
             ->deleteJson($this->deleteScoreRoute($draw, $fixture));
 
         $response->assertForbidden();
@@ -102,7 +108,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
             'loser_registration'   => $fixture->registration2_id,
         ]);
 
-        $response = $this->actingAs($this->adminUser())
+        $response = $this->actingAs($this->adminUser($draw))
             ->deleteJson($this->deleteScoreRoute($draw, $fixture));
 
         $response->assertOk()

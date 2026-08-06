@@ -72,6 +72,17 @@ class DrawControllerAuthorizationTest extends TestCase
         $this->admin        = User::factory()->create()->assignRole('admin');
         $this->convenor     = User::factory()->create()->assignRole('convenor');
         $this->ordinaryUser = User::factory()->create();
+
+        DB::table('event_admins')->insert([
+            'event_id' => $this->event->id,
+            'user_id' => $this->admin->id,
+        ]);
+        DB::table('event_convenors')->insert([
+            'event_id' => $this->event->id,
+            'user_id' => $this->convenor->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

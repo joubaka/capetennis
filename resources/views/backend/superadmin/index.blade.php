@@ -23,84 +23,75 @@
 @section('page-style')
 <style>
   .divide-x .col + .col { border-left: 1px solid rgba(0,0,0,.07); }
+  .sa-shell { --sa-border: rgba(75, 70, 92, .10); }
+  .sa-hero { background: linear-gradient(135deg, rgba(105,108,255,.12), rgba(40,199,111,.06)); border: 1px solid rgba(105,108,255,.14); }
+  .sa-hero .sa-title { font-size: 1.4rem; letter-spacing: -.02em; }
+  .sa-kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .75rem; }
+  .sa-kpi { position: relative; min-height: 112px; padding: 1rem; border: 1px solid var(--sa-border); border-radius: .75rem; background: var(--bs-card-bg); transition: transform .15s ease, box-shadow .15s ease; }
+  .sa-kpi:hover { transform: translateY(-2px); box-shadow: 0 .35rem 1rem rgba(75,70,92,.09); }
+  .sa-kpi-icon { width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center; border-radius: .55rem; margin-bottom: .65rem; }
+  .sa-kpi-value { font-size: 1.35rem; font-weight: 700; line-height: 1; color: var(--bs-heading-color); }
+  .sa-kpi-label { margin-top: .35rem; color: var(--bs-secondary-color); font-size: .78rem; }
+  .sa-kpi-meta { position: absolute; right: .75rem; top: .75rem; font-size: .68rem; }
+  .sa-main-card { border: 1px solid var(--sa-border); overflow: hidden; }
+  .sa-tabs-wrap { overflow: visible; }
+  #sa-main-tabs { flex-wrap: wrap !important; min-width: 0; }
+  #sa-main-tabs .nav-link { white-space: nowrap; padding: .9rem 1rem; border: 0; border-bottom: 2px solid transparent; }
+  #sa-main-tabs .nav-link.active { border-bottom-color: var(--bs-primary); background: rgba(105,108,255,.06); }
+  .sa-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .65rem; }
+  .sa-status-item { display: flex; align-items: center; gap: .65rem; padding: .75rem; border-radius: .65rem; border: 1px solid var(--sa-border); background: var(--bs-card-bg); }
+  .sa-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .65rem; }
+  .sa-action { display: flex; align-items: center; gap: .75rem; padding: .8rem; border: 1px solid var(--sa-border); border-radius: .65rem; color: inherit; background: var(--bs-card-bg); text-align: left; }
+  .sa-action:hover { color: var(--bs-primary); border-color: rgba(105,108,255,.35); background: rgba(105,108,255,.04); }
+  .sa-action > i { font-size: 1.2rem; width: 1.4rem; text-align: center; }
+  @media (max-width: 1199.98px) { .sa-kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 991.98px) { .sa-tabs-wrap { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; } #sa-main-tabs { flex-wrap: nowrap !important; min-width: max-content; } }
+  @media (max-width: 767.98px) { .sa-kpi-grid, .sa-status-grid { grid-template-columns: repeat(2, 1fr); } .sa-action-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 419.98px) { .sa-kpi-grid, .sa-status-grid { grid-template-columns: 1fr; } }
 </style>
 @endsection
 
 @section('content')
 
 {{-- ═══════════════ PAGE HEADER ═══════════════ --}}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <div>
-    <h5 class="mb-0"><i class="ti ti-shield-chevron me-2 text-primary"></i>Super Admin Dashboard</h5>
-    <small class="text-muted">Cape Tennis system settings, agreements, and users</small>
-  </div>
-  <span class="badge bg-label-primary"><i class="ti ti-user me-1"></i>{{ auth()->user()->name }}</span>
-</div>
 @php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
-
-{{-- ═══════════════ STAT STRIP ═══════════════ --}}
-<div class="card mb-3">
-  <div class="card-body py-2 px-3">
-    <div class="row g-0 text-center divide-x">
-      <div class="col">
-        <a href="{{ url('backend/user') }}" class="text-decoration-none">
-          <div class="py-2">
-            <div class="fw-bold fs-5">{{ number_format($totalUsers) }}</div>
-            <small class="text-muted">Users</small>
-            <div><span class="badge bg-label-success" style="font-size:.7rem;">+{{ $newUsersThisWeek }} wk</span></div>
-          </div>
-        </a>
+<div class="sa-shell">
+<div class="card sa-hero mb-3">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+    <div class="d-flex align-items-center gap-3">
+      <span class="avatar avatar-md bg-primary rounded"><i class="ti ti-shield-chevron fs-3 text-white"></i></span>
+      <div>
+        <h4 class="sa-title mb-1">Super Admin Control Centre</h4>
+        <div class="text-muted">Operations, finance, access and platform health in one place</div>
       </div>
-      <div class="col">
-        <a href="{{ url('backend/player') }}" class="text-decoration-none">
-          <div class="py-2">
-            <div class="fw-bold fs-5">{{ number_format($totalPlayers) }}</div>
-            <small class="text-muted">Players</small>
-            <div><span class="badge bg-label-success" style="font-size:.7rem;">+{{ $newPlayersThisWeek }} wk</span></div>
-          </div>
-        </a>
-      </div>
-      <div class="col">
-        <a href="{{ url('backend/event') }}" class="text-decoration-none">
-          <div class="py-2">
-            <div class="fw-bold fs-5">{{ number_format($activeEvents) }} <small class="text-muted fw-normal fs-6">/ {{ number_format($totalEvents) }}</small></div>
-            <small class="text-muted">Active / Total Events</small>
-          </div>
-        </a>
-      </div>
-      <div class="col">
-        <div class="py-2">
-          <div class="fw-bold fs-5">{{ number_format($totalRegistrations) }}</div>
-          <small class="text-muted">Registrations</small>
-          <div><span class="badge bg-label-danger" style="font-size:.7rem;">+{{ $recentRegistrations }} 30d</span></div>
-        </div>
-      </div>
-      <div class="col">
-        <button type="button" class="btn btn-link p-0 text-decoration-none w-100"
-                onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
-          <div class="py-2">
-            <div class="fw-bold fs-5 {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div>
-            <small class="text-muted">Pending Refunds</small>
-          </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      @if($totalPending > 0)
+        <button class="btn btn-danger btn-sm" type="button" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
+          <i class="ti ti-alert-circle me-1"></i>{{ $totalPending }} refund{{ $totalPending === 1 ? '' : 's' }} need attention
         </button>
-      </div>
-      <div class="col">
-        <div class="py-2">
-          <div class="fw-bold fs-5">{{ number_format($agreementStats['total_acceptances']) }}</div>
-          <small class="text-muted">CoC Accepted</small>
-          @if($agreementStats['pending_players'] > 0)
-            <div><span class="badge bg-label-warning" style="font-size:.7rem;">{{ $agreementStats['pending_players'] }} pending</span></div>
-          @endif
-        </div>
-      </div>
+      @else
+        <span class="badge bg-label-success px-3 py-2"><i class="ti ti-circle-check me-1"></i>No urgent refunds</span>
+      @endif
+      <span class="badge bg-label-primary px-3 py-2"><i class="ti ti-user me-1"></i>{{ auth()->user()->name }}</span>
     </div>
   </div>
 </div>
 
+{{-- ═══════════════ STAT STRIP ═══════════════ --}}
+<div class="sa-kpi-grid mb-3">
+  <a href="{{ url('backend/user') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-users"></i></span><span class="badge bg-label-success sa-kpi-meta">+{{ $newUsersThisWeek }} wk</span><div class="sa-kpi-value">{{ number_format($totalUsers) }}</div><div class="sa-kpi-label">Users</div></a>
+  <a href="{{ url('backend/player') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-success"><i class="ti ti-user-check"></i></span><span class="badge bg-label-success sa-kpi-meta">+{{ $newPlayersThisWeek }} wk</span><div class="sa-kpi-value">{{ number_format($totalPlayers) }}</div><div class="sa-kpi-label">Player profiles</div></a>
+  <a href="{{ url('backend/event') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-info"><i class="ti ti-calendar-event"></i></span><span class="badge bg-label-secondary sa-kpi-meta">{{ number_format($totalEvents) }} total</span><div class="sa-kpi-value">{{ number_format($activeEvents) }}</div><div class="sa-kpi-label">Active events</div></a>
+  <div class="sa-kpi"><span class="sa-kpi-icon bg-label-warning"><i class="ti ti-ticket"></i></span><span class="badge bg-label-info sa-kpi-meta">+{{ $recentRegistrations }} 30d</span><div class="sa-kpi-value">{{ number_format($totalRegistrations) }}</div><div class="sa-kpi-label">Registrations</div></div>
+  <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()"><span class="sa-kpi-icon {{ $totalPending > 0 ? 'bg-label-danger' : 'bg-label-success' }}"><i class="ti ti-cash-banknote"></i></span><div class="sa-kpi-value {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div><div class="sa-kpi-label">Pending refunds</div></button>
+  <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-agreements')).show()"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-file-certificate"></i></span>@if($agreementStats['pending_players'] > 0)<span class="badge bg-label-warning sa-kpi-meta">{{ number_format($agreementStats['pending_players']) }} pending</span>@endif<div class="sa-kpi-value">{{ number_format($agreementStats['total_acceptances']) }}</div><div class="sa-kpi-label">Conduct accepted</div></button>
+</div>
+
 
 {{-- ═══════════════ MAIN TABS ═══════════════ --}}
-<div class="card">
-  <div class="card-header p-0 border-bottom-0">
+<div class="card sa-main-card">
+  <div class="card-header p-0 border-bottom-0 sa-tabs-wrap">
     <ul class="nav nav-tabs card-header-tabs px-3 pt-2 flex-wrap" id="sa-main-tabs" role="tablist">
       <li class="nav-item" role="presentation">
         <button class="nav-link active" id="sa-tab-overview" data-bs-toggle="tab"
@@ -174,13 +165,12 @@
     <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
 
       {{-- Profile Status compact strip --}}
-      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-        <small class="text-muted me-1"><i class="ti ti-user-circle me-1"></i>Profile Status:</small>
-        <span class="badge bg-label-success px-3 py-2"><i class="ti ti-circle-check me-1"></i>{{ number_format($profileStats['up_to_date']) }} Up to Date</span>
-        <span class="badge bg-label-warning px-3 py-2"><i class="ti ti-clock me-1"></i>{{ number_format($profileStats['needs_update']) }} Needs Update</span>
-        <span class="badge bg-label-danger px-3 py-2"><i class="ti ti-alert-circle me-1"></i>{{ number_format($profileStats['incomplete']) }} Incomplete</span>
-        <span class="badge bg-label-secondary px-3 py-2"><i class="ti ti-user-off me-1"></i>{{ number_format($profileStats['never_updated']) }} Never Updated</span>
-        <a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-secondary ms-auto">Manage Players</a>
+      <div class="d-flex justify-content-between align-items-center mb-2"><h6 class="mb-0">Player profile health</h6><a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-secondary">Manage players</a></div>
+      <div class="sa-status-grid mb-4">
+        <div class="sa-status-item"><span class="avatar avatar-sm bg-label-success"><i class="ti ti-circle-check"></i></span><div><strong>{{ number_format($profileStats['up_to_date']) }}</strong><small class="d-block text-muted">Up to date</small></div></div>
+        <div class="sa-status-item"><span class="avatar avatar-sm bg-label-warning"><i class="ti ti-clock"></i></span><div><strong>{{ number_format($profileStats['needs_update']) }}</strong><small class="d-block text-muted">Needs update</small></div></div>
+        <div class="sa-status-item"><span class="avatar avatar-sm bg-label-danger"><i class="ti ti-alert-circle"></i></span><div><strong>{{ number_format($profileStats['incomplete']) }}</strong><small class="d-block text-muted">Incomplete</small></div></div>
+        <div class="sa-status-item"><span class="avatar avatar-sm bg-label-secondary"><i class="ti ti-user-off"></i></span><div><strong>{{ number_format($profileStats['never_updated']) }}</strong><small class="d-block text-muted">Never updated</small></div></div>
       </div>
 
       <div class="row">
@@ -191,39 +181,39 @@
               <h5 class="mb-0">Quick Actions</h5>
             </div>
             <div class="card-body">
-              <div class="d-flex flex-wrap gap-2">
-                <a href="{{ url('backend/user') }}" class="btn btn-outline-primary btn-sm">
+              <div class="sa-action-grid">
+                <a href="{{ url('backend/user') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-users me-1"></i>Manage Users
                 </a>
-                <a href="{{ url('backend/player') }}" class="btn btn-outline-success btn-sm">
+                <a href="{{ url('backend/player') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-user-check me-1"></i>Manage Players
                 </a>
-                <a href="{{ url('backend/event') }}" class="btn btn-outline-info btn-sm">
+                <a href="{{ url('backend/event') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-calendar-event me-1"></i>Events
                 </a>
-                <a href="{{ url('backend/series') }}" class="btn btn-outline-secondary btn-sm">
+                <a href="{{ url('backend/series') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-timeline me-1"></i>Series
                 </a>
-                <a href="{{ url('backend/league') }}" class="btn btn-outline-warning btn-sm">
+                <a href="{{ url('backend/league') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-trophy me-1"></i>League
                 </a>
-                <button type="button" class="btn btn-outline-dark btn-sm"
+                <button type="button" class="sa-action"
                         onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-settings')).show()">
                   <i class="ti ti-settings me-1"></i>Site Settings
                 </button>
-                <a href="{{ url('backend/eventPhoto') }}" class="btn btn-outline-secondary btn-sm">
+                <a href="{{ url('backend/eventPhoto') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-photo me-1"></i>Photos
                 </a>
-                <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-danger btn-sm">
+                <a href="{{ route('admin.refunds.bank.index') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-cash-banknote me-1"></i>Bank Refunds
                   @if($totalPending > 0)
                     <span class="badge bg-danger ms-1">{{ $totalPending }}</span>
                   @endif
                 </a>
-                <a href="{{ route('platform.health') }}" class="btn btn-outline-dark btn-sm">
+                <a href="{{ route('platform.health') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-heart-rate-monitor me-1"></i>Platform Health
                 </a>
-                <button type="button" class="btn btn-outline-danger btn-sm"
+                <button type="button" class="sa-action"
                         onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
                   <i class="ti ti-gavel me-1"></i>Disciplinary
                   @if($disciplinaryStats['active_suspensions'] > 0)
@@ -451,6 +441,11 @@
       <div class="tab-content">
 
         <div class="tab-pane fade show active" id="sa-wpane-pending" role="tabpanel">
+          @if($withdrawalPendingRefunds->isEmpty() && $withdrawalPendingTeamRefunds->isEmpty())
+            <div class="alert alert-success border-0 rounded-0 mb-0" role="status">
+              <i class="ti ti-check-circle me-1"></i> All clear — no pending bank refunds.
+            </div>
+          @endif
           <div class="table-responsive">
             <table class="table table-hover mb-0" id="dt-w-pending">
               <thead class="table-light">
@@ -466,7 +461,7 @@
                 </tr>
               </thead>
               <tbody>
-                @forelse($withdrawalPendingRefunds as $refund)
+                @foreach($withdrawalPendingRefunds as $refund)
                   <tr>
                     <td><span class="badge bg-label-secondary">REG-{{ $refund->id }}</span></td>
                     <td>{{ $refund->display_name }}</td>
@@ -496,9 +491,7 @@
                       </div>
                     </td>
                   </tr>
-                @empty
-                  <tr class="d-none"><td colspan="8"><span class="text-success">All clear</span> — no pending bank refunds.</td></tr>
-                @endforelse
+                @endforeach
                 @foreach($withdrawalPendingTeamRefunds as $t)
                   <tr>
                     <td><span class="badge bg-label-warning">TEAM-{{ $t->id }}</span></td>
@@ -1447,7 +1440,10 @@
           </thead>
           <tbody>
             @forelse($wallets as $wallet)
-              @php $walletOwner = $wallet->payable; @endphp
+              @php
+                $walletOwner = $wallet->payable;
+                $walletBalance = (float) $wallet->computed_balance;
+              @endphp
               <tr>
                 <td>
                   @if($walletOwner)
@@ -1459,18 +1455,18 @@
                   @endif
                 </td>
                 <td><small class="text-muted">{{ $walletOwner->email ?? '—' }}</small></td>
-                <td class="text-end fw-bold {{ $wallet->balance > 0 ? 'text-success' : ($wallet->balance < 0 ? 'text-danger' : 'text-muted') }}">
-                  R {{ number_format($wallet->balance, 2) }}
+                <td class="text-end fw-bold {{ $walletBalance > 0 ? 'text-success' : ($walletBalance < 0 ? 'text-danger' : 'text-muted') }}">
+                  R {{ number_format($walletBalance, 2) }}
                 </td>
                 <td class="text-center">
-                  <span class="badge bg-label-secondary">{{ $wallet->transactions->count() }}</span>
+                  <span class="badge bg-label-secondary">{{ $wallet->transactions_count }}</span>
                 </td>
                 <td class="text-center">
                   <div class="d-flex gap-1 justify-content-center">
                     <button type="button" class="btn btn-sm btn-outline-primary btn-wallet-add-tx"
                       data-user-id="{{ $wallet->payable_id }}"
                       data-user-name="{{ $walletOwner->name ?? '' }}"
-                      data-wallet-balance="R {{ number_format($wallet->balance, 2) }}"
+                      data-wallet-balance="R {{ number_format($walletBalance, 2) }}"
                       title="Add Transaction">
                       <i class="ti ti-plus me-1"></i>Transact
                     </button>
@@ -1698,6 +1694,7 @@
 
   </div>{{-- /tab-content --}}
 </div>{{-- /main tabs card --}}
+</div>{{-- /.sa-shell --}}
 
 {{-- ── Withdrawal / Refund Detail Modal ───────────────────────────── --}}
 <div class="modal fade" id="modal-activity-detail" tabindex="-1" aria-labelledby="modal-activity-detail-label" aria-hidden="true">

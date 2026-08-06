@@ -93,6 +93,7 @@ class PayfastServiceTest extends TestCase
 
         Log::shouldReceive('error')->once();
         Log::shouldReceive('info')->zeroOrMoreTimes();
+        Log::shouldReceive('debug')->zeroOrMoreTimes();
 
         $payfast = $this->makePayfast();
         $result  = $payfast->refundQuery('PF-TIMEOUT');
@@ -168,7 +169,7 @@ class PayfastServiceTest extends TestCase
     public function test_refund_still_works_after_headers_refactor(): void
     {
         Http::fake([
-            'api.payfast.co.za/refunds' => Http::response(['success' => true], 200),
+            'api.payfast.co.za/refunds/PF-REFUND-99' => Http::response(['success' => true], 200),
         ]);
 
         $payfast = $this->makePayfast();
@@ -181,7 +182,7 @@ class PayfastServiceTest extends TestCase
     public function test_refund_sends_required_headers_after_refactor(): void
     {
         Http::fake([
-            'api.payfast.co.za/refunds' => Http::response(['success' => true], 200),
+            'api.payfast.co.za/refunds/PF-REFUND-HDR' => Http::response(['success' => true], 200),
         ]);
 
         $payfast = $this->makePayfast();

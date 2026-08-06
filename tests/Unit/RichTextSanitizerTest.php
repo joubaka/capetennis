@@ -9,8 +9,7 @@ use Tests\TestCase;
 
 class RichTextSanitizerTest extends TestCase
 {
-    /** @test */
-    public function it_removes_scripts_event_handlers_and_unsafe_urls(): void
+    public function test_it_removes_scripts_event_handlers_and_unsafe_urls(): void
     {
         $dirty = '<p onclick="alert(1)">Hello <strong>world</strong></p>'
             . '<script>alert(1)</script>'
@@ -23,9 +22,7 @@ class RichTextSanitizerTest extends TestCase
         $this->assertStringNotContainsString('onclick', $clean);
         $this->assertStringNotContainsString('javascript:', $clean);
     }
-
-    /** @test */
-    public function announcement_and_event_models_sanitize_new_and_legacy_content(): void
+    public function test_announcement_and_event_models_sanitize_new_and_legacy_content(): void
     {
         $announcement = new Announcement();
         $announcement->message = '<p>Safe</p><img src=x onerror=alert(1)>';

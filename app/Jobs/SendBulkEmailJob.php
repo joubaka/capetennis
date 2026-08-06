@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -48,7 +49,7 @@ class SendBulkEmailJob implements ShouldQueue
      */
     public function middleware(): array
     {
-        return [];
+        return [new RateLimited('outbound-mail')];
     }
 
     /**

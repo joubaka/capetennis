@@ -54,13 +54,14 @@ class PaymentOrchestrator
                     }
 
                     $walletReserved = (float) ($locked->wallet_reserved ?? 0);
+                    $walletTransaction = null;
                     if ($walletReserved > 0 && !(bool) ($locked->wallet_debited ?? false)) {
                     $wallet = $locked->user?->wallet;
                     if (!$wallet) {
                         throw new \RuntimeException('Cannot process payment: user wallet not found.');
                     }
 
-                        $this->ledgerService->appendWalletDebit(
+                        $walletTransaction = $this->ledgerService->appendWalletDebit(
                             $wallet,
                             $walletReserved,
                             $context['wallet_source_type'] ?? $this->defaultWalletSourceType($locked),
@@ -80,6 +81,15 @@ class PaymentOrchestrator
 
                     if (array_key_exists('payfast_amount_due', $context)) {
                         $locked->payfast_amount_due = round((float) $context['payfast_amount_due'], 2);
+                    }
+
+                    if (array_key_exists('payment_method', $locked->getAttributes())) {
+                        $locked->payment_method = $context['payment_method']
+                            ?? ($walletReserved > 0 ? 'hybrid' : 'payfast');
+                    }
+
+                    if ($walletTransaction && array_key_exists('wallet_transaction_id', $locked->getAttributes())) {
+                        $locked->wallet_transaction_id = $walletTransaction->id;
                     }
 
                     $locked->save();

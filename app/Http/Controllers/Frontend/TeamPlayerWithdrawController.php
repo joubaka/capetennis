@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Refunds\Services\RefundExecutionService;
+use App\Domain\Finance\Services\RefundRequestService;
 use App\Models\Player;
 use App\Models\SiteSetting;
 use App\Models\Team;
@@ -40,6 +41,10 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('You do not own this player profile.');
     }
 
+    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+      abort(404, 'Team does not belong to this event.');
+    }
+
     // Find the team slot for this player
     $teamPlayer = TeamPlayer::where('team_id', $team->id)
       ->where('player_id', $player->id)
@@ -68,6 +73,11 @@ class TeamPlayerWithdrawController extends Controller
           ->with('success', 'Player withdrawn from team (payment marked as unpaid). Please choose refund method.');
       }
 
+      // No refund workflow follows a late withdrawal, so free the roster slot now.
+      // Otherwise the player remains listed on the team despite the success message.
+      $teamPlayer->player_id = 0;
+      $teamPlayer->save();
+
       return back()->with('success', 'Player withdrawn from team. Refund is not available because the withdrawal deadline has passed. For assistance, contact support@capetennis.co.za.');
     }
 
@@ -92,6 +102,18 @@ class TeamPlayerWithdrawController extends Controller
 
     if (!($isOwner || $isSuperUser)) {
       abort(403);
+    }
+
+    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+      abort(404, 'Team does not belong to this event.');
+    }
+
+    $teamPlayer = TeamPlayer::where('team_id', $team->id)
+      ->where('player_id', $player->id)
+      ->first();
+
+    if (!$teamPlayer || (int) $teamPlayer->pay_status === 1) {
+      return back()->withErrors('Player must be withdrawn before requesting a refund.');
     }
 
     // Load payment order if exists
@@ -140,12 +162,20 @@ class TeamPlayerWithdrawController extends Controller
       abort(403);
     }
 
+    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+      abort(404, 'Team does not belong to this event.');
+    }
+
     $teamPlayer = TeamPlayer::where('team_id', $team->id)
       ->where('player_id', $player->id)
       ->first();
 
     if (!$teamPlayer) {
       return back()->withErrors('Team player not found.');
+    }
+
+    if ((int) $teamPlayer->pay_status === 1) {
+      return back()->withErrors('Player must be withdrawn before requesting a refund.');
     }
 
     $order = TeamPaymentOrder::where('team_id', $team->id)
@@ -157,15 +187,7 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('Payment order not found.');
     }
 
-    // Idempotency: pessimistic lock before any state check
-    try {
-      DB::transaction(function () use ($order) {
-        TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
-        if ($order->isRefundCompleted() || $order->isRefundPending()) {
-          throw new \App\Exceptions\RefundAlreadyProcessedException('Refund already processed or pending.');
-        }
-      });
-    } catch (\App\Exceptions\RefundAlreadyProcessedException $e) {
+    if ($order->isRefundCompleted() || $order->isRefundPending()) {
       return back()->with('success', 'Refund already processed.');
     }
 
@@ -194,25 +216,6 @@ class TeamPlayerWithdrawController extends Controller
     // WALLET
     if ($request->input('method') === 'wallet') {
       try {
-        DB::transaction(function () use ($order, $teamPlayer) {
-          // Pessimistic lock prevents concurrent double-refund
-          TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
-          if ($order->isRefundCompleted() || $order->isRefundPending()) {
-            throw new \App\Exceptions\RefundAlreadyProcessedException();
-          }
-
-          // Clear team player slot
-          $teamPlayer->player_id = 0;
-          $teamPlayer->pay_status = 0;
-          $teamPlayer->save();
-
-          // Mark order as unpaid so slot is freed
-          $order->pay_status = 0;
-          $order->payfast_paid = false;
-          $order->wallet_debited = false;
-          $order->save();
-        });
-
         $wallet = $order->user->wallet;
 
         if (!$wallet) {
@@ -240,6 +243,10 @@ class TeamPlayerWithdrawController extends Controller
             'refund_net'    => $net,
           ]
         );
+
+        // Only free the slot after the canonical refund transaction succeeds.
+        // Keep the order's paid flags intact as an audit record of the original payment.
+        $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
 
         $teamRefEventName = optional($order->event)->name ?? 'Team Refund';
 
@@ -293,13 +300,8 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     // BANK: persist bank refund details and mark refund pending
-    DB::transaction(function () use ($order, $teamPlayer, $request, $gross, $fee, $net) {
-      TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
-      $teamPlayer->player_id = 0;
-      $teamPlayer->pay_status = 0;
-      $teamPlayer->save();
-
-      $order->update([
+    try {
+      app(RefundRequestService::class)->requestTeamRefund($order, [
         'pay_status' => 0,
         'refund_method' => 'bank',
         'refund_status' => 'pending',
@@ -312,7 +314,10 @@ class TeamPlayerWithdrawController extends Controller
         'refund_branch_code' => $request->branch_code ?? null,
         'refund_account_type' => $request->account_type ?? null,
       ]);
-    });
+      $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
+    } catch (RefundAlreadyProcessedException $e) {
+      return back()->with('success', 'Refund already processed.');
+    }
 
     // ── Auto-refund via PayFast if original payment was PayFast ──
     $pfPaymentId = $order->payfast_pf_payment_id ?? null;

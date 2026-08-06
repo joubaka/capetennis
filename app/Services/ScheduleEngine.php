@@ -126,8 +126,6 @@ class ScheduleEngine
    */
   public function autoSchedule(int $drawId, int $duration = 75, array $venues = [], string $startTime = '')
   {
-    $this->assertSchedulable($drawId);
-
     if (empty($venues)) {
       throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a non-empty $venues array.');
     }
@@ -135,6 +133,8 @@ class ScheduleEngine
     if (empty($startTime)) {
       throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a $startTime string.');
     }
+
+    $this->assertSchedulable($drawId);
 
     // Fetch fixtures by round, then by match order
     $fixtures = Fixture::where('draw_id', $drawId)

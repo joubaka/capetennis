@@ -94,9 +94,12 @@ class TeamPaymentOrder extends Model
    */
   public function maxRefundableAmount(): float
   {
+    if ($this->isRefundCompleted()) {
+      return 0.0;
+    }
+
     $paid = (float) $this->total_amount;
-    $alreadyRefunded = (float) ($this->refund_gross ?? 0);
-    return max(0, round($paid - $alreadyRefunded, 2));
+    return max(0, round($paid, 2));
   }
 }
 

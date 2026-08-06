@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  * 
  * Renamed from InterproDrawBuilder as it's used for multiple event types.
  */
-class DrawService
+class InterproDrawBuilder
 {
   // ============================================================
   // PUBLIC: ROUND ROBIN HUB (MATRIX + OOP + STANDINGS)
