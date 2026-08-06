@@ -103,7 +103,7 @@ class RegistrationPaymentController extends Controller
 
     // Wallet-only payment
     if ($payfastDue <= 0) {
-      return redirect()->route('registration.hybrid.complete', ['orderId' => $orderId]);
+      return $this->hybridComplete($orderId);
     }
 
     $remaining = $payfastDue;
