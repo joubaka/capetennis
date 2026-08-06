@@ -158,6 +158,11 @@ Route::post(
   [RegistrationPaymentController::class, 'applyWallet']
 )->middleware('auth')->name('registration.hybrid.apply-wallet');
 
+Route::get(
+  '/registration/checkout/{order}',
+  [RegistrationPaymentController::class, 'checkout']
+)->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.checkout');
+
 Route::post(
   '/registration/hybrid/complete/{orderId}',
   [RegistrationPaymentController::class, 'hybridComplete']

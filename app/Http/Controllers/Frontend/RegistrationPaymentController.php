@@ -15,6 +15,30 @@ use App\Services\Wallet\WalletService;
 class RegistrationPaymentController extends Controller
 {
   /**
+   * Render an existing order without replaying the registration POST.
+   */
+  public function checkout(RegistrationOrder $order)
+  {
+    abort_unless((int) $order->user_id === (int) auth()->id(), 403);
+
+    if ((int) $order->pay_status === 1 || $order->payfast_paid) {
+      return redirect()->route('frontend.registration.success', ['order' => $order->id]);
+    }
+
+    if (isset($order->status) && $order->status === 'cancelled') {
+      return redirect()->back()->withErrors('This order has been cancelled and cannot be paid.');
+    }
+
+    $order->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
+    abort_if($order->items->isEmpty(), 404);
+
+    $payfast = new \App\Services\Payfast();
+    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
+
+    return view('frontend.payfast.check_out', compact('order', 'payfast'));
+  }
+
+  /**
    * Hybrid Wallet + PayFast
    */
   public function hybridPay(Request $request)
@@ -185,9 +209,11 @@ class RegistrationPaymentController extends Controller
     $remaining = round($total - $walletApplied, 2);
 
     try {
-      $order->wallet_reserved = $walletApplied;
-      $order->payfast_amount_due = $remaining;
-      $order->save();
+      $order = app(PaymentOrchestrator::class)->initiatePayment(
+        $order,
+        $walletApplied,
+        $remaining
+      );
 
       Log::info('WALLET APPLIED TO ORDER', [
         'order_id' => $order->id,

@@ -1565,7 +1565,9 @@ class RegisterController extends Controller
       'payfast_due'     => $totalFee,
     ]);
 
-    return view('frontend.payfast.check_out', compact('request', 'payfast'));
+    $order = $regorder->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
+
+    return view('frontend.payfast.check_out', compact('request', 'payfast', 'order'));
   }
 
 
