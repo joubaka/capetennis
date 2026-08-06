@@ -407,6 +407,12 @@ class RegisterController extends Controller
       return response('Ignored', 200);
     }
 
+    // Route the legacy PayFast callback through the canonical payment adapter.
+    app(RegistrationPaymentController::class)->handlePayfastSuccess($data);
+
+    return response('OK', 200);
+
+    if (false) { // Legacy inline implementation retained temporarily for rollback reference.
     try {
 
       DB::transaction(function () use ($data) {
@@ -636,6 +642,8 @@ class RegisterController extends Controller
         'order_id' => $data['custom_int5'] ?? null,
         'trace' => $e->getTraceAsString(),
       ]);
+    }
+
     }
 
     return response('OK', 200)

@@ -4,9 +4,11 @@ namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
 use App\Models\DrawGroup;
+use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -28,19 +30,26 @@ class DrawLockHardeningTest extends TestCase
         Role::firstOrCreate(['name' => 'convenor',   'guard_name' => 'web']);
     }
 
-    private function admin(): User
+    private function admin(Draw $draw): User
     {
-        return User::factory()->create()->assignRole('admin');
+        if (! $draw->event_id) {
+            $draw->update(['event_id' => Event::factory()->create()->id]);
+        }
+
+        $user = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $draw->event_id, 'user_id' => $user->id]);
+
+        return $user;
     }
 
     private function lockedDraw(): Draw
     {
-        return Draw::factory()->create(['locked' => 1, 'published' => 0]);
+        return Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'locked' => 1, 'published' => 0]);
     }
 
     private function unlockedDraw(): Draw
     {
-        return Draw::factory()->create(['locked' => 0, 'published' => 0]);
+        return Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'locked' => 0, 'published' => 0]);
     }
 
     // ─── saveGroups ──────────────────────────────────────────────────
@@ -50,7 +59,7 @@ class DrawLockHardeningTest extends TestCase
         $draw = $this->lockedDraw();
         $group = DrawGroup::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.save-groups', $draw), [
                 'groups' => [['group_id' => $group->id, 'registration_ids' => []]],
             ])
@@ -62,7 +71,7 @@ class DrawLockHardeningTest extends TestCase
         $draw  = $this->unlockedDraw();
         $group = DrawGroup::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.save-groups', $draw), [
                 'groups' => [['group_id' => $group->id, 'registration_ids' => []]],
             ])
@@ -75,7 +84,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = $this->lockedDraw();
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.regenerate-rr', $draw))
             ->assertForbidden();
     }
@@ -84,7 +93,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = Draw::factory()->create(['locked' => 0, 'published' => 1]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.regenerate-rr', $draw))
             ->assertForbidden();
     }
@@ -96,7 +105,7 @@ class DrawLockHardeningTest extends TestCase
         $draw    = $this->lockedDraw();
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.roundrobin.score.store', $fixture), [
                 'sets' => ['6-3'],
             ])
@@ -108,7 +117,7 @@ class DrawLockHardeningTest extends TestCase
         $draw    = Draw::factory()->create(['locked' => 0, 'published' => 1]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.roundrobin.score.store', $fixture), [
                 'sets' => ['6-3'],
             ])
@@ -122,7 +131,7 @@ class DrawLockHardeningTest extends TestCase
         $draw    = $this->lockedDraw();
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->deleteJson(route('backend.roundrobin.score.delete', $fixture))
             ->assertForbidden();
     }
@@ -132,7 +141,7 @@ class DrawLockHardeningTest extends TestCase
         $draw    = Draw::factory()->create(['locked' => 0, 'published' => 1]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->deleteJson(route('backend.roundrobin.score.delete', $fixture))
             ->assertForbidden();
     }
@@ -143,7 +152,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = $this->lockedDraw();
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.update-settings', $draw), ['boxes' => 2])
             ->assertForbidden();
     }
@@ -152,7 +161,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = $this->unlockedDraw();
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.update-settings', $draw), ['boxes' => 2])
             ->assertOk();
     }
@@ -163,7 +172,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = $this->lockedDraw();
 
-        $this->actingAs($this->admin())
+        $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.update-notes', $draw), [
                 'notes' => ['general' => 'Test note'],
             ])
@@ -176,7 +185,7 @@ class DrawLockHardeningTest extends TestCase
     {
         $draw = $this->unlockedDraw();
 
-        $response = $this->actingAs($this->admin())
+        $response = $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.toggle-lock', $draw))
             ->assertOk()
             ->assertJsonStructure([

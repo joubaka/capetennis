@@ -4,10 +4,12 @@ namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
+use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -45,9 +47,16 @@ class BracketHardeningTest extends TestCase
     // Helpers
     // ─────────────────────────────────────────────
 
-    private function adminUser(): User
+    private function adminUser(Draw $draw): User
     {
-        return User::factory()->create()->assignRole('admin');
+        $user = User::factory()->create()->assignRole('admin');
+
+        DB::table('event_admins')->insert([
+            'event_id' => $draw->event_id,
+            'user_id' => $user->id,
+        ]);
+
+        return $user;
     }
 
     private function guestUser(): User
@@ -58,6 +67,7 @@ class BracketHardeningTest extends TestCase
     private function makeDraw(array $attrs = []): Draw
     {
         return Draw::factory()->create(array_merge([
+            'event_id' => Event::factory()->create()->id,
             'locked'    => false,
             'published' => false,
         ], $attrs));
@@ -114,7 +124,7 @@ class BracketHardeningTest extends TestCase
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeBracketFixture($draw);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3']])
              ->assertStatus(403);
     }
@@ -128,7 +138,7 @@ class BracketHardeningTest extends TestCase
         $draw    = $this->makeDraw(['published' => true]);
         $fixture = $this->makeBracketFixture($draw);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3']])
              ->assertStatus(403);
     }
@@ -142,7 +152,7 @@ class BracketHardeningTest extends TestCase
         $draw    = $this->makeDraw(['locked' => true]);
         $fixture = $this->makeBracketFixture($draw);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->deleteJson($this->scoreUrl($draw, $fixture))
              ->assertStatus(403);
     }
@@ -155,7 +165,7 @@ class BracketHardeningTest extends TestCase
     {
         $draw = $this->makeDraw(['locked' => true]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson("/backend/draw/{$draw->id}/generate-main-bracket")
              ->assertStatus(403)
              ->assertJson(['success' => false]);
@@ -169,7 +179,7 @@ class BracketHardeningTest extends TestCase
     {
         $draw = $this->makeDraw(['locked' => true]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson("/backend/draw/{$draw->id}/generate-second-third-bracket")
              ->assertStatus(403)
              ->assertJson(['success' => false]);
@@ -183,7 +193,7 @@ class BracketHardeningTest extends TestCase
     {
         $draw = $this->makeDraw(['published' => true]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson("/backend/draw/{$draw->id}/generate-main-bracket")
              ->assertStatus(403)
              ->assertJson(['success' => false]);
@@ -197,7 +207,7 @@ class BracketHardeningTest extends TestCase
     {
         $draw = $this->makeDraw();
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->getJson("/api/draws/{$draw->id}/brackets")
              ->assertOk()
              ->assertJsonStructure(['success', 'stages']);
@@ -212,7 +222,7 @@ class BracketHardeningTest extends TestCase
         $draw    = $this->makeDraw();
         $fixture = $this->makeBracketFixture($draw);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3', '6-4']]);
 
         $this->assertDatabaseHas('draw_audit_logs', [
@@ -231,7 +241,7 @@ class BracketHardeningTest extends TestCase
         $draw    = $this->makeDraw();
         $fixture = $this->makeBracketFixture($draw, ['match_status' => 1]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->deleteJson($this->scoreUrl($draw, $fixture));
 
         $this->assertDatabaseHas('draw_audit_logs', [
@@ -255,7 +265,7 @@ class BracketHardeningTest extends TestCase
 
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->deleteJson($this->scoreUrl($draw, $fixture))
              ->assertOk()
              ->assertJson(['success' => true]);
@@ -288,7 +298,7 @@ class BracketHardeningTest extends TestCase
 
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
-        $this->actingAs($this->adminUser())
+        $this->actingAs($this->adminUser($draw))
              ->deleteJson($this->scoreUrl($draw, $fixture))
              ->assertOk();
 

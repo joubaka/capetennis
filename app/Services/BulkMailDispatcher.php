@@ -59,7 +59,7 @@ class BulkMailDispatcher
                 continue;
             }
 
-            // Check for duplicates within this batch only
+            // Check for duplicates within this batch.
             if (!$allowDuplicates && isset($seenInBatch[$recipient['email']])) {
                 $stats['duplicate']++;
                 $stats['skipped']++;
@@ -73,6 +73,32 @@ class BulkMailDispatcher
             }
 
             $seenInBatch[$recipient['email']] = true;
+
+            // Also prevent a retry or repeated request from queueing the same
+            // logical message again. Failed/skipped attempts remain retryable.
+            if (!$allowDuplicates && BulkEmailLog::query()
+                ->where('mail_type', $mailType)
+                ->where('related_type', $related ? get_class($related) : null)
+                ->where('related_id', $related?->id ?? null)
+                ->where('recipient_email', $recipient['email'])
+                ->whereIn('status', ['queued', 'sent'])
+                ->exists()) {
+                BulkEmailLog::create([
+                    'mail_type' => $mailType,
+                    'related_type' => $related ? get_class($related) : null,
+                    'related_id' => $related?->id ?? null,
+                    'recipient_email' => $recipient['email'],
+                    'recipient_name' => $recipient['name'] ?? null,
+                    'status' => 'skipped',
+                    'error_message' => 'Duplicate email suppressed',
+                    'payload' => $payload,
+                    'skipped_at' => now(),
+                ]);
+
+                $stats['duplicate']++;
+                $stats['skipped']++;
+                continue;
+            }
 
             // Create log entry
             $log = BulkEmailLog::create([

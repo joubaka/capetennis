@@ -219,12 +219,14 @@ mix.version();
  |--------------------------------------------------------------------------
  */
 
-mix.browserSync({
-  proxy: 'http://localhost/ct/public',
-  files: [
-    'app/**/*.php',
-    'resources/views/**/*.blade.php',
-    'public/js/**/*.js',
-    'public/css/**/*.css'
-  ]
-});
+if (!mix.inProduction()) {
+  mix.browserSync({
+    proxy: 'http://localhost/ct/public',
+    files: [
+      'app/**/*.php',
+      'resources/views/**/*.blade.php',
+      'public/js/**/*.js',
+      'public/css/**/*.css'
+    ]
+  });
+}

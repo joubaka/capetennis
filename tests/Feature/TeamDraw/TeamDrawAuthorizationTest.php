@@ -130,74 +130,54 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // A. Authentication — guest receives redirect or 401
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function guest_cannot_list_formats(): void
+    public function test_guest_cannot_list_formats(): void
     {
         $this->getJson("/backend/team-draw/{$this->teamEvent->id}/formats")
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_store_format(): void
+    public function test_guest_cannot_store_format(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamEvent->id}/formats", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_attach_format(): void
+    public function test_guest_cannot_attach_format(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamDraw->id}/attach-format", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_sync_teams(): void
+    public function test_guest_cannot_sync_teams(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamDraw->id}/sync-teams", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_generate_ties(): void
+    public function test_guest_cannot_generate_ties(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamDraw->id}/generate-ties", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_generate_rubbers(): void
+    public function test_guest_cannot_generate_rubbers(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamDraw->id}/generate-rubbers", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_regenerate(): void
+    public function test_guest_cannot_regenerate(): void
     {
         $this->postJson("/backend/team-draw/{$this->teamDraw->id}/regenerate", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_generate_rubbers_for_tie(): void
+    public function test_guest_cannot_generate_rubbers_for_tie(): void
     {
         $tie = $this->makeTie($this->teamDraw);
         $this->postJson("/backend/team-draw/ties/{$tie->id}/generate-rubbers", [])
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_validate_tie(): void
+    public function test_guest_cannot_validate_tie(): void
     {
         $tie = $this->makeTie($this->teamDraw);
         $this->postJson("/backend/team-draw/ties/{$tie->id}/validate")
             ->assertUnauthorized();
     }
-
-    /** @test */
-    public function guest_cannot_publish_tie(): void
+    public function test_guest_cannot_publish_tie(): void
     {
         $tie = $this->makeTie($this->teamDraw, TeamTie::STATUS_VALIDATED);
         $this->postJson("/backend/team-draw/ties/{$tie->id}/publish")
@@ -207,41 +187,31 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // B. Roles — super-user / admin / ordinary / convenor
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function super_user_can_list_formats(): void
+    public function test_super_user_can_list_formats(): void
     {
         $this->actingAs($this->superUser)
             ->getJson("/backend/team-draw/{$this->teamEvent->id}/formats")
             ->assertOk();
     }
-
-    /** @test */
-    public function permitted_admin_can_list_formats(): void
+    public function test_permitted_admin_can_list_formats(): void
     {
         $this->actingAs($this->admin)
             ->getJson("/backend/team-draw/{$this->teamEvent->id}/formats")
             ->assertOk();
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_list_formats(): void
+    public function test_ordinary_user_receives_403_on_list_formats(): void
     {
         $this->actingAs($this->ordinaryUser)
             ->getJson("/backend/team-draw/{$this->teamEvent->id}/formats")
             ->assertForbidden();
     }
-
-    /** @test */
-    public function convenor_receives_403_on_list_formats(): void
+    public function test_convenor_receives_403_on_list_formats(): void
     {
         $this->actingAs($this->convenor)
             ->getJson("/backend/team-draw/{$this->teamEvent->id}/formats")
             ->assertForbidden();
     }
-
-    /** @test */
-    public function super_user_can_store_format(): void
+    public function test_super_user_can_store_format(): void
     {
         $payload = [
             'name'            => 'Su Format',
@@ -256,9 +226,7 @@ class TeamDrawAuthorizationTest extends TestCase
             ->postJson("/backend/team-draw/{$this->teamEvent->id}/formats", $payload)
             ->assertStatus(201);
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_store_format(): void
+    public function test_ordinary_user_receives_403_on_store_format(): void
     {
         $this->actingAs($this->ordinaryUser)
             ->postJson("/backend/team-draw/{$this->teamEvent->id}/formats", [
@@ -269,9 +237,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_event_formats', ['name' => 'X', 'event_id' => $this->teamEvent->id]);
     }
-
-    /** @test */
-    public function permitted_admin_can_generate_ties(): void
+    public function test_permitted_admin_can_generate_ties(): void
     {
         $teams = Team::factory()->count(4)->create();
 
@@ -282,9 +248,7 @@ class TeamDrawAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_generate_ties(): void
+    public function test_ordinary_user_receives_403_on_generate_ties(): void
     {
         $teams = Team::factory()->count(2)->create();
 
@@ -296,9 +260,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->teamDraw->id]);
     }
-
-    /** @test */
-    public function convenor_receives_403_on_generate_ties(): void
+    public function test_convenor_receives_403_on_generate_ties(): void
     {
         $teams = Team::factory()->count(2)->create();
 
@@ -310,9 +272,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->teamDraw->id]);
     }
-
-    /** @test */
-    public function super_user_can_validate_tie(): void
+    public function test_super_user_can_validate_tie(): void
     {
         $this->teamDraw->team_event_format_id = $this->format->id;
         $this->teamDraw->save();
@@ -324,9 +284,7 @@ class TeamDrawAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
     }
-
-    /** @test */
-    public function ordinary_user_receives_403_on_validate_tie(): void
+    public function test_ordinary_user_receives_403_on_validate_tie(): void
     {
         $tie = $this->makeTie($this->teamDraw);
 
@@ -340,17 +298,13 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // C. Admin event scope — admin for event A cannot act on event B
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_for_event_a_cannot_list_formats_for_event_b(): void
+    public function test_admin_for_event_a_cannot_list_formats_for_event_b(): void
     {
         $this->actingAs($this->admin)
             ->getJson("/backend/team-draw/{$this->teamEventB->id}/formats")
             ->assertForbidden();
     }
-
-    /** @test */
-    public function admin_for_event_a_cannot_create_format_for_event_b(): void
+    public function test_admin_for_event_a_cannot_create_format_for_event_b(): void
     {
         $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/{$this->teamEventB->id}/formats", [
@@ -361,9 +315,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_event_formats', ['name' => 'X', 'event_id' => $this->teamEventB->id]);
     }
-
-    /** @test */
-    public function admin_for_event_a_cannot_attach_format_to_draw_in_event_b(): void
+    public function test_admin_for_event_a_cannot_attach_format_to_draw_in_event_b(): void
     {
         $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/{$this->teamDrawB->id}/attach-format", [
@@ -376,9 +328,7 @@ class TeamDrawAuthorizationTest extends TestCase
             'team_event_format_id' => $this->format->id,
         ]);
     }
-
-    /** @test */
-    public function admin_for_event_a_cannot_generate_ties_for_draw_in_event_b(): void
+    public function test_admin_for_event_a_cannot_generate_ties_for_draw_in_event_b(): void
     {
         $teams = Team::factory()->count(2)->create();
 
@@ -390,9 +340,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->teamDrawB->id]);
     }
-
-    /** @test */
-    public function admin_for_event_a_cannot_validate_tie_in_event_b(): void
+    public function test_admin_for_event_a_cannot_validate_tie_in_event_b(): void
     {
         $tie = $this->makeTie($this->teamDrawB);
 
@@ -402,9 +350,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseHas('team_ties', ['id' => $tie->id, 'status' => TeamTie::STATUS_DRAFT]);
     }
-
-    /** @test */
-    public function admin_for_event_a_cannot_publish_tie_in_event_b(): void
+    public function test_admin_for_event_a_cannot_publish_tie_in_event_b(): void
     {
         $tie = $this->makeTie($this->teamDrawB, TeamTie::STATUS_VALIDATED);
 
@@ -418,9 +364,7 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // D. Event-type isolation — team-draw endpoints reject individual events
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function list_formats_rejected_for_individual_event(): void
+    public function test_list_formats_rejected_for_individual_event(): void
     {
         DB::table('event_admins')->insert(['event_id' => $this->individualEvent->id, 'user_id' => $this->admin->id]);
 
@@ -428,9 +372,7 @@ class TeamDrawAuthorizationTest extends TestCase
             ->getJson("/backend/team-draw/{$this->individualEvent->id}/formats")
             ->assertForbidden();
     }
-
-    /** @test */
-    public function create_format_rejected_for_individual_event(): void
+    public function test_create_format_rejected_for_individual_event(): void
     {
         DB::table('event_admins')->insert(['event_id' => $this->individualEvent->id, 'user_id' => $this->admin->id]);
 
@@ -443,9 +385,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_event_formats', ['event_id' => $this->individualEvent->id]);
     }
-
-    /** @test */
-    public function generate_ties_rejected_for_individual_event_draw(): void
+    public function test_generate_ties_rejected_for_individual_event_draw(): void
     {
         DB::table('event_admins')->insert(['event_id' => $this->individualEvent->id, 'user_id' => $this->admin->id]);
         $teams = Team::factory()->count(2)->create();
@@ -458,9 +398,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->individualDraw->id]);
     }
-
-    /** @test */
-    public function generate_rubbers_rejected_for_individual_event_draw(): void
+    public function test_generate_rubbers_rejected_for_individual_event_draw(): void
     {
         DB::table('event_admins')->insert(['event_id' => $this->individualEvent->id, 'user_id' => $this->admin->id]);
 
@@ -472,9 +410,7 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // E. Cross-event object isolation
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function admin_cannot_attach_format_from_different_event(): void
+    public function test_admin_cannot_attach_format_from_different_event(): void
     {
         $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/{$this->teamDraw->id}/attach-format", [
@@ -487,9 +423,7 @@ class TeamDrawAuthorizationTest extends TestCase
             'team_event_format_id' => $this->formatB->id,
         ]);
     }
-
-    /** @test */
-    public function validate_tie_belonging_to_another_draw_event_is_rejected(): void
+    public function test_validate_tie_belonging_to_another_draw_event_is_rejected(): void
     {
         // admin for event A tries to validate tie in event B draw
         $tieB = $this->makeTie($this->teamDrawB);
@@ -500,9 +434,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseHas('team_ties', ['id' => $tieB->id, 'status' => TeamTie::STATUS_DRAFT]);
     }
-
-    /** @test */
-    public function generate_rubbers_for_tie_in_another_event_is_rejected(): void
+    public function test_generate_rubbers_for_tie_in_another_event_is_rejected(): void
     {
         $tieB = $this->makeTie($this->teamDrawB);
 
@@ -514,25 +446,19 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // F. Object integrity — missing records
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function list_formats_returns_404_for_unknown_event(): void
+    public function test_list_formats_returns_404_for_unknown_event(): void
     {
         $this->actingAs($this->superUser)
             ->getJson('/backend/team-draw/99999/formats')
             ->assertNotFound();
     }
-
-    /** @test */
-    public function generate_ties_returns_404_for_unknown_draw(): void
+    public function test_generate_ties_returns_404_for_unknown_draw(): void
     {
         $this->actingAs($this->superUser)
             ->postJson('/backend/team-draw/99999/generate-ties', ['team_ids' => [1, 2]])
             ->assertNotFound();
     }
-
-    /** @test */
-    public function validate_tie_returns_404_for_unknown_tie(): void
+    public function test_validate_tie_returns_404_for_unknown_tie(): void
     {
         $this->actingAs($this->superUser)
             ->postJson('/backend/team-draw/ties/99999/validate')
@@ -542,9 +468,7 @@ class TeamDrawAuthorizationTest extends TestCase
     // ─────────────────────────────────────────────────────────────────────────
     // G. Cross-event team submission
     // ─────────────────────────────────────────────────────────────────────────
-
-    /** @test */
-    public function sync_teams_rejects_teams_from_a_different_event(): void
+    public function test_sync_teams_rejects_teams_from_a_different_event(): void
     {
         // Create a category event that belongs to teamEventB (not teamEvent)
         $catEventB = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEventB->id]);
@@ -565,9 +489,7 @@ class TeamDrawAuthorizationTest extends TestCase
             'team_id' => $foreignTeam->id,
         ]);
     }
-
-    /** @test */
-    public function generate_ties_rejects_teams_from_a_different_event(): void
+    public function test_generate_ties_rejects_teams_from_a_different_event(): void
     {
         $catEventB  = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEventB->id]);
         $foreignTeam = Team::factory()->create(['category_event_id' => $catEventB->id]);
@@ -582,9 +504,7 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $this->assertDatabaseMissing('team_ties', ['draw_id' => $this->teamDraw->id]);
     }
-
-    /** @test */
-    public function sync_teams_allows_unscoped_teams_with_null_category_event(): void
+    public function test_sync_teams_allows_unscoped_teams_with_null_category_event(): void
     {
         $teams = Team::factory()->count(2)->create(['category_event_id' => null]);
 
@@ -595,9 +515,7 @@ class TeamDrawAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
     }
-
-    /** @test */
-    public function sync_teams_allows_teams_belonging_to_the_correct_event(): void
+    public function test_sync_teams_allows_teams_belonging_to_the_correct_event(): void
     {
         $catEvent = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->teamEvent->id]);
         $teams = Team::factory()->count(2)->create(['category_event_id' => $catEvent->id]);

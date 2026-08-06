@@ -12,9 +12,7 @@ use Tests\TestCase;
 class EventAnnouncementEmailTest extends TestCase
 {
     use RefreshDatabase;
-
-    /** @test */
-    public function successful_job_updates_log_to_sent()
+    public function test_successful_job_updates_log_to_sent()
     {
         $log = BulkEmailLog::create([
             'mail_type' => 'event_announcement',
@@ -33,9 +31,7 @@ class EventAnnouncementEmailTest extends TestCase
         $this->assertEquals('sent', $log->fresh()->status);
         $this->assertNotNull($log->fresh()->sent_at);
     }
-
-    /** @test */
-    public function failed_job_updates_log_to_failed()
+    public function test_failed_job_updates_log_to_failed()
     {
         $log = BulkEmailLog::create([
             'mail_type' => 'event_announcement',
@@ -55,9 +51,7 @@ class EventAnnouncementEmailTest extends TestCase
         $this->assertNotNull($log->fresh()->failed_at);
         $this->assertEquals('SMTP connection failed', $log->fresh()->error_message);
     }
-
-    /** @test */
-    public function log_can_be_marked_as_skipped()
+    public function test_log_can_be_marked_as_skipped()
     {
         $log = BulkEmailLog::create([
             'mail_type' => 'event_announcement',
@@ -73,9 +67,7 @@ class EventAnnouncementEmailTest extends TestCase
         $this->assertNotNull($log->fresh()->skipped_at);
         $this->assertEquals('Duplicate email', $log->fresh()->error_message);
     }
-
-    /** @test */
-    public function bulk_email_log_scopes_work_correctly()
+    public function test_bulk_email_log_scopes_work_correctly()
     {
         BulkEmailLog::create(['mail_type' => 'test', 'recipient_email' => 'queued@test.com', 'status' => 'queued']);
         BulkEmailLog::create(['mail_type' => 'test', 'recipient_email' => 'sent@test.com', 'status' => 'sent', 'sent_at' => now()]);

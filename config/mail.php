@@ -155,6 +155,7 @@ return [
         // SMTP connection batch size: max emails per connection before reconnect
         // Set to 8 to stay under Exim's 10-message-per-connection limit
         'batch_threshold' => env('BULK_MAIL_BATCH_THRESHOLD', 8),
+        'rate_per_second' => env('MAIL_RATE_PER_SECOND', 14),
 
         // Maximum retries for failed bulk emails
         'max_tries' => env('BULK_MAIL_MAX_TRIES', 3),

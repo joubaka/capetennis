@@ -15,9 +15,7 @@ class MailAccountManagerTest extends TestCase
 
         Cache::flush();
     }
-
-    /** @test */
-    public function mailtrap_sandbox_always_uses_the_primary_smtp_mailer(): void
+    public function test_mailtrap_sandbox_always_uses_the_primary_smtp_mailer(): void
     {
         config([
             'mail.default' => 'smtp',
@@ -29,9 +27,7 @@ class MailAccountManagerTest extends TestCase
         $this->assertSame('smtp', (new MailAccountManager())->getMailer());
         $this->assertSame(500, Cache::get('mail_count_smtp'));
     }
-
-    /** @test */
-    public function exhausted_managed_transports_do_not_fall_back_to_the_log_transport(): void
+    public function test_exhausted_managed_transports_do_not_fall_back_to_the_log_transport(): void
     {
         config([
             'mail.default' => 'smtp',

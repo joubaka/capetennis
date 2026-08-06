@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Frontend;
 
+use App\Domain\Payments\Services\PaymentOrchestrator;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -86,12 +87,11 @@ class RegistrationPaymentController extends Controller
 
     } else {
 
-      DB::transaction(function () use ($order, $walletReserved, $payfastDue) {
-        $order->wallet_reserved    = $walletReserved;
-        $order->payfast_amount_due = $payfastDue;
-        $order->wallet_debited     = false;
-        $order->save();
-      });
+      $order = app(PaymentOrchestrator::class)->initiatePayment(
+        $order,
+        $walletReserved,
+        $payfastDue
+      );
 
       Log::info('HYBRID RESERVED', [
         'order_id'        => $order->id,
@@ -399,55 +399,24 @@ class RegistrationPaymentController extends Controller
 
     try {
 
-      DB::transaction(function () use ($order, $payfastData) {
+      $method = (float) $order->wallet_reserved > 0 ? 'hybrid' : 'payfast';
+      $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+        'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
+        'payfast_amount_due' => $amountGross,
+        'payment_method' => $method,
+        'wallet_source_type' => 'event_registration_wallet_payment',
+        'wallet_meta' => ['order_id' => $order->id],
+      ]);
 
-        $walletTx = null;
-
-        // Debit reserved wallet portion once
-        if ($order->wallet_reserved > 0 && !$order->wallet_debited) {
-
-          Log::info('PAYFAST DEBITING WALLET', [
-            'order_id' => $order->id,
-            'amount' => $order->wallet_reserved,
-            'wallet_balance_before' => $order->user->wallet->balance
-          ]);
-
-          $walletTx = app(WalletService::class)->debit(
-            $order->user->wallet,
-            $order->wallet_reserved,
-            'event_registration_wallet_payment',
-            $order->id,
-            ['order_id' => $order->id]
-          );
-
-          $order->wallet_debited = true;
-        }
-
-        $pfPaymentId = $payfastData['pf_payment_id'] ?? null;
-
-        // Determine payment method
-        $method = 'payfast';
-        if ($walletTx !== null) {
-          $method = 'hybrid';
-        }
-
-        // Mark order fully paid
-        $order->payfast_paid          = true;
-        $order->pay_status            = 1;
-        $order->payfast_pf_payment_id = $pfPaymentId;
-        $order->payment_method        = $method;
-        $order->wallet_transaction_id = $walletTx?->id;
-        $order->save();
-
-        Log::info('PAYFAST ORDER MARKED PAID', [
-          'order_id'       => $order->id,
-          'pf_payment_id'  => $pfPaymentId,
-          'payment_method' => $method,
-        ]);
-
-        // Attach registrations with real ledger linkage
-        $this->markOrderPaid($order->id, $method, $pfPaymentId, $walletTx);
-      });
+      $walletTx = $order->wallet_transaction_id
+        ? \App\Models\WalletTransaction::find($order->wallet_transaction_id)
+        : null;
+      $this->markOrderPaid(
+        $order->id,
+        $method,
+        $payfastData['pf_payment_id'] ?? null,
+        $walletTx
+      );
 
     } catch (\Throwable $e) {
 

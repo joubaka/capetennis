@@ -7,6 +7,7 @@ use App\Domain\Payments\Services\RegistrationPaymentService;
 use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Models\CategoryEventRegistration;
 use App\Models\RegistrationOrder;
+use App\Models\RegistrationOrderItems;
 use App\Models\TeamPaymentOrder;
 use App\Models\User;
 use App\Models\Wallet;
@@ -65,6 +66,11 @@ class LegacyAdapterCallsCanonicalServicesTest extends TestCase
             'payfast_amount_due' => 100,
             'pay_status'         => false,
         ]);
+        $item = new RegistrationOrderItems();
+        $item->forceFill([
+            'order_id' => $order->id,
+            'item_price' => 100,
+        ])->save();
 
         $mock = Mockery::mock(PaymentOrchestrator::class)->makePartial();
         $mock->shouldReceive('initiatePayment')
@@ -125,6 +131,8 @@ class LegacyAdapterCallsCanonicalServicesTest extends TestCase
         $reg = CategoryEventRegistration::factory()->create([
             'refund_method' => 'bank',
             'refund_status' => 'pending',
+            'refund_gross' => 100,
+            'refund_net' => 90,
             'pf_transaction_id' => null,
         ]);
 
@@ -236,15 +244,15 @@ class LegacyAdapterCallsCanonicalServicesTest extends TestCase
         );
 
         $this->assertStringContainsString(
-            'PaymentOrchestrator',
+            'RegistrationPaymentController',
             $source,
-            'RegisterController must import or reference PaymentOrchestrator'
+            'RegisterController must delegate to the canonical registration payment adapter'
         );
 
         $this->assertStringContainsString(
-            'finalizePayment',
+            'handlePayfastSuccess',
             $source,
-            'RegisterController notify handler must call finalizePayment()'
+            'RegisterController notify handler must delegate payment finalization'
         );
     }
 

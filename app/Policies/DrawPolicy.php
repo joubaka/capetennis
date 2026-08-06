@@ -7,12 +7,23 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    private function canManage(User $user, Draw $draw, bool $allowConvenor = true): bool
+    {
+        if ($user->hasRole('admin') && $user->is_event_admin($draw->event_id)) {
+            return true;
+        }
+
+        return $allowConvenor
+            && $user->hasRole('convenor')
+            && $user->is_convenor($draw->event_id);
+    }
+
     /**
      * View the draw admin hub.
      */
     public function view(User $user, Draw $draw): bool
     {
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -24,7 +35,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -36,7 +47,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -48,7 +59,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -60,7 +71,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin']);
+        return $this->canManage($user, $draw, false);
     }
 
     /**
@@ -72,7 +83,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -84,7 +95,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -96,7 +107,7 @@ class DrawPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 
     /**
@@ -104,7 +115,7 @@ class DrawPolicy
      */
     public function publish(User $user, Draw $draw): bool
     {
-        return $user->hasAnyRole(['super-user', 'admin']);
+        return $this->canManage($user, $draw, false);
     }
 
     /**
@@ -112,7 +123,7 @@ class DrawPolicy
      */
     public function lockToggle(User $user, Draw $draw): bool
     {
-        return $user->hasAnyRole(['super-user', 'admin']);
+        return $this->canManage($user, $draw, false);
     }
 
     /**
@@ -120,6 +131,6 @@ class DrawPolicy
      */
     public function editNotes(User $user, Draw $draw): bool
     {
-        return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+        return $this->canManage($user, $draw);
     }
 }

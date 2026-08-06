@@ -87,9 +87,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 1 — 4-player Round Robin: full standings
     // ==================================================================
-
-    /** @test */
-    public function four_player_rr_generates_correct_fixture_count(): void
+    public function test_four_player_rr_generates_correct_fixture_count(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2, 3, 4]);
@@ -104,9 +102,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertCount(6, $fixtures, '4-player RR should produce 6 fixtures');
         $this->assertTrue($fixtures->every(fn($f) => $f->draw_group_id === $group->id));
     }
-
-    /** @test */
-    public function four_player_rr_standings_ranks_by_wins(): void
+    public function test_four_player_rr_standings_ranks_by_wins(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [10, 20, 30, 40]);
@@ -132,9 +128,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals(10, $standings[0]['reg_id'], 'Player 10 (most wins) should be ranked 1st');
         $this->assertGreaterThan(0, $standings[0]['wins']);
     }
-
-    /** @test */
-    public function four_player_rr_standings_tiebreak_by_sets_pct(): void
+    public function test_four_player_rr_standings_tiebreak_by_sets_pct(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2, 3, 4]);
@@ -169,9 +163,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 2 — 8-player playoff: bracket structure
     // ==================================================================
-
-    /** @test */
-    public function main_4group_playoff_creates_correct_structure(): void
+    public function test_main_4group_playoff_creates_correct_structure(): void
     {
         $draw  = $this->makeDraw();
         $seeds = ['A1' => 1, 'B1' => 2, 'C1' => 3, 'D1' => 4];
@@ -199,9 +191,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals($result['third']->id, $result['sf1']->loser_parent_fixture_id);
         $this->assertEquals($result['third']->id, $result['sf2']->loser_parent_fixture_id);
     }
-
-    /** @test */
-    public function main_2group_playoff_creates_correct_structure(): void
+    public function test_main_2group_playoff_creates_correct_structure(): void
     {
         $draw  = $this->makeDraw();
         $seeds = ['A1' => 1, 'A2' => 2, 'B1' => 3, 'B2' => 4];
@@ -214,9 +204,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals(3, $result['sf2']->registration1_id);
         $this->assertEquals(2, $result['sf2']->registration2_id);
     }
-
-    /** @test */
-    public function playoff_winner_advances_to_final(): void
+    public function test_playoff_winner_advances_to_final(): void
     {
         $draw  = $this->makeDraw();
         $seeds = ['A1' => 10, 'B1' => 20, 'C1' => 30, 'D1' => 40];
@@ -233,9 +221,7 @@ class GoldenTournamentTest extends TestCase
         $final = $r['final']->fresh();
         $this->assertEquals(10, $final->registration1_id, 'Winner should advance into final slot 1');
     }
-
-    /** @test */
-    public function playoff_loser_advances_to_third_place(): void
+    public function test_playoff_loser_advances_to_third_place(): void
     {
         $draw  = $this->makeDraw();
         $seeds = ['A1' => 10, 'B1' => 20, 'C1' => 30, 'D1' => 40];
@@ -253,9 +239,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 3 — Feed-in / consolation routing
     // ==================================================================
-
-    /** @test */
-    public function plate_bracket_creates_correct_qf_sf_structure(): void
+    public function test_plate_bracket_creates_correct_qf_sf_structure(): void
     {
         $draw  = $this->makeDraw();
         $seeds = [
@@ -281,9 +265,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals($result['sf1']->id, $result['qf1']->parent_fixture_id);
         $this->assertEquals($result['sf1']->id, $result['qf2']->parent_fixture_id);
     }
-
-    /** @test */
-    public function plate_bracket_throws_on_missing_seeds(): void
+    public function test_plate_bracket_throws_on_missing_seeds(): void
     {
         $draw = $this->makeDraw();
 
@@ -296,9 +278,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 4 — BYE advancement
     // ==================================================================
-
-    /** @test */
-    public function bye_advancement_advances_lone_player_to_next_round(): void
+    public function test_bye_advancement_advances_lone_player_to_next_round(): void
     {
         $draw = $this->makeDraw();
 
@@ -339,9 +319,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals(10, $sf1->winner_registration, 'BYE fixture should have winner set');
         $this->assertEquals(10, $final->registration1_id, 'BYE winner should advance to parent slot 1');
     }
-
-    /** @test */
-    public function bye_advancement_does_not_advance_when_both_slots_empty(): void
+    public function test_bye_advancement_does_not_advance_when_both_slots_empty(): void
     {
         $draw = $this->makeDraw();
 
@@ -359,9 +337,7 @@ class GoldenTournamentTest extends TestCase
         $fx->refresh();
         $this->assertNull($fx->winner_registration, 'Double-BYE fixture should not have a winner');
     }
-
-    /** @test */
-    public function bye_advancement_is_idempotent(): void
+    public function test_bye_advancement_is_idempotent(): void
     {
         $draw = $this->makeDraw();
 
@@ -394,9 +370,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 5 — 2-box playoff seeding
     // ==================================================================
-
-    /** @test */
-    public function two_box_playoff_invalid_seed_layout_throws(): void
+    public function test_two_box_playoff_invalid_seed_layout_throws(): void
     {
         $draw = $this->makeDraw();
 
@@ -409,9 +383,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 6 — 4-box playoff seeding (covered by scenario 2)
     // ==================================================================
-
-    /** @test */
-    public function four_box_playoff_uses_a1_b1_c1_d1_pattern(): void
+    public function test_four_box_playoff_uses_a1_b1_c1_d1_pattern(): void
     {
         $draw  = $this->makeDraw();
         $seeds = ['A1' => 100, 'B1' => 200, 'C1' => 300, 'D1' => 400];
@@ -429,9 +401,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 7 — Locked draw: mutations blocked
     // ==================================================================
-
-    /** @test */
-    public function locked_draw_blocks_rr_generation(): void
+    public function test_locked_draw_blocks_rr_generation(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
         $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -441,9 +411,7 @@ class GoldenTournamentTest extends TestCase
 
         app(RoundRobinGenerationService::class)->generate($draw);
     }
-
-    /** @test */
-    public function locked_draw_blocks_playoff_generation(): void
+    public function test_locked_draw_blocks_playoff_generation(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
 
@@ -452,9 +420,7 @@ class GoldenTournamentTest extends TestCase
 
         app(PlayoffGenerationService::class)->createMainBracket($draw, ['A1' => 1, 'B1' => 2, 'C1' => 3, 'D1' => 4]);
     }
-
-    /** @test */
-    public function locked_draw_blocks_progression(): void
+    public function test_locked_draw_blocks_progression(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
 
@@ -475,9 +441,7 @@ class GoldenTournamentTest extends TestCase
 
         app(FixtureProgressionService::class)->advance($fx, 10, 20);
     }
-
-    /** @test */
-    public function draw_guard_require_mutable_throws_on_locked_draw(): void
+    public function test_draw_guard_require_mutable_throws_on_locked_draw(): void
     {
         $draw = $this->makeDraw(['locked' => true]);
         $this->expectException(\RuntimeException::class);
@@ -487,9 +451,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 8 — Duplicate progression idempotency
     // ==================================================================
-
-    /** @test */
-    public function duplicate_progression_does_not_overwrite_occupied_slot(): void
+    public function test_duplicate_progression_does_not_overwrite_occupied_slot(): void
     {
         $draw = $this->makeDraw();
 
@@ -549,9 +511,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 9 — Delete-score rollback
     // ==================================================================
-
-    /** @test */
-    public function rollback_clears_winner_from_parent_and_child(): void
+    public function test_rollback_clears_winner_from_parent_and_child(): void
     {
         $draw = $this->makeDraw();
 
@@ -594,9 +554,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertEquals(0, $child->match_status, 'Child match_status must be reset to 0');
         $this->assertNull($parent->registration1_id, 'Parent slot must be cleared after rollback');
     }
-
-    /** @test */
-    public function rollback_is_noop_when_parent_has_different_player_in_slot(): void
+    public function test_rollback_is_noop_when_parent_has_different_player_in_slot(): void
     {
         $draw = $this->makeDraw();
 
@@ -639,9 +597,7 @@ class GoldenTournamentTest extends TestCase
     // ==================================================================
     // SCENARIO 10 — Standings tiebreak edge cases
     // ==================================================================
-
-    /** @test */
-    public function standings_handles_all_players_at_zero_wins(): void
+    public function test_standings_handles_all_players_at_zero_wins(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2, 3, 4]);
@@ -658,9 +614,7 @@ class GoldenTournamentTest extends TestCase
             'All players should have 0 wins'
         );
     }
-
-    /** @test */
-    public function standings_head_to_head_breaks_tie_between_two_equal_players(): void
+    public function test_standings_head_to_head_breaks_tie_between_two_equal_players(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2]);
@@ -687,9 +641,7 @@ class GoldenTournamentTest extends TestCase
         // With only 2 players the winner of H2H is ranked first
         $this->assertEquals(1, $standings[0]['reg_id'], 'H2H winner must be ranked first');
     }
-
-    /** @test */
-    public function standings_for_draw_returns_keyed_by_group_id(): void
+    public function test_standings_for_draw_returns_keyed_by_group_id(): void
     {
         $draw   = $this->makeDraw();
         $groupA = $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -704,9 +656,7 @@ class GoldenTournamentTest extends TestCase
         $this->assertCount(3, $standings[$groupA->id]);
         $this->assertCount(3, $standings[$groupB->id]);
     }
-
-    /** @test */
-    public function qualifiers_returns_top_n_per_group(): void
+    public function test_qualifiers_returns_top_n_per_group(): void
     {
         $draw   = $this->makeDraw();
         $groupA = $this->makeGroup($draw, 'A', [1, 2, 3, 4]);

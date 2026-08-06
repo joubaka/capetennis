@@ -608,6 +608,8 @@ class FixtureController extends Controller
 
   public function deleteResult($id)
   {
+    $this->authorize('team.admin');
+
     $tf = TeamFixture::find($id);
     if ($tf) {
       $drawForAuth = \App\Models\Draw::find($tf->draw_id);
@@ -621,6 +623,8 @@ class FixtureController extends Controller
   }
   public function deleteIndResult($id)
   {
+    $this->authorize('team.admin');
+
     $fixture = Fixture::find($id);
     if (! $fixture) {
       return response()->json(['message' => 'Fixture not found.'], 404);

@@ -118,9 +118,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 1. LEGACY mode — canonical never called
     // ==================================================================
-
-    /** @test */
-    public function legacy_mode_never_calls_canonical_rr(): void
+    public function test_legacy_mode_never_calls_canonical_rr(): void
     {
         $draw   = $this->makeDraw();
         $this->makeGroup($draw, 'A', [1, 2, 3, 4]);
@@ -143,9 +141,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 2. CANONICAL mode — legacy callable never invoked
     // ==================================================================
-
-    /** @test */
-    public function canonical_mode_never_calls_legacy_fn(): void
+    public function test_canonical_mode_never_calls_legacy_fn(): void
     {
         $draw   = $this->makeDraw();
         $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -165,9 +161,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 3. HYBRID mode — routes to canonical and runs internal comparison
     // ==================================================================
-
-    /** @test */
-    public function hybrid_mode_runs_canonical_and_does_not_call_legacy_fn_for_rr(): void
+    public function test_hybrid_mode_runs_canonical_and_does_not_call_legacy_fn_for_rr(): void
     {
         $draw   = $this->makeDraw();
         $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -195,9 +189,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 4. HYBRID auto-fallback fires when canonical throws
     // ==================================================================
-
-    /** @test */
-    public function hybrid_auto_fallback_fires_when_canonical_throws(): void
+    public function test_hybrid_auto_fallback_fires_when_canonical_throws(): void
     {
         $draw   = $this->makeDraw();
         $router = $this->routerInMode(EngineRouter::MODE_HYBRID);
@@ -219,9 +211,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 5. HYBRID mismatch logged when standings orders differ
     // ==================================================================
-
-    /** @test */
-    public function hybrid_logs_mismatch_when_standings_orders_differ(): void
+    public function test_hybrid_logs_mismatch_when_standings_orders_differ(): void
     {
         $draw   = $this->makeDraw();
         $group  = $this->makeGroup($draw, 'A', [10, 20, 30]);
@@ -248,9 +238,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 6. HYBRID mismatch written to DB
     // ==================================================================
-
-    /** @test */
-    public function hybrid_mismatch_is_persisted_to_db(): void
+    public function test_hybrid_mismatch_is_persisted_to_db(): void
     {
         $draw   = $this->makeDraw();
         $group  = $this->makeGroup($draw, 'A', [10, 20, 30]);
@@ -279,9 +267,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 7. RR: canonical and legacy generate same fixture count
     // ==================================================================
-
-    /** @test */
-    public function canonical_and_legacy_rr_generate_same_fixture_count(): void
+    public function test_canonical_and_legacy_rr_generate_same_fixture_count(): void
     {
         // Canonical run
         $drawCanon = $this->makeDraw();
@@ -307,9 +293,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 8. Standings: canonical and legacy agree on winner-takes-all
     // ==================================================================
-
-    /** @test */
-    public function canonical_and_legacy_standings_agree_on_winner(): void
+    public function test_canonical_and_legacy_standings_agree_on_winner(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -344,9 +328,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 9. Progression: canonical advances winner to parent
     // ==================================================================
-
-    /** @test */
-    public function canonical_progression_places_winner_in_parent(): void
+    public function test_canonical_progression_places_winner_in_parent(): void
     {
         $draw   = $this->makeDraw();
         $parent = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 200]);
@@ -373,9 +355,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 10. Rollback: canonical clears parent slot
     // ==================================================================
-
-    /** @test */
-    public function canonical_rollback_clears_parent_slot(): void
+    public function test_canonical_rollback_clears_parent_slot(): void
     {
         $draw   = $this->makeDraw();
         $parent = Fixture::factory()->create([
@@ -404,9 +384,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 11. BYE: canonical advances lone player
     // ==================================================================
-
-    /** @test */
-    public function canonical_bye_advancement_advances_lone_player(): void
+    public function test_canonical_bye_advancement_advances_lone_player(): void
     {
         $draw   = $this->makeDraw();
         $parent = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 200]);
@@ -431,9 +409,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 12. Fallback count increments when canonical throws
     // ==================================================================
-
-    /** @test */
-    public function fallback_count_increments_when_canonical_throws(): void
+    public function test_fallback_count_increments_when_canonical_throws(): void
     {
         $draw   = $this->makeDraw(['locked' => true]);
         $router = $this->routerInMode(EngineRouter::MODE_HYBRID);
@@ -446,9 +422,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 13. resetCounters resets static state
     // ==================================================================
-
-    /** @test */
-    public function reset_counters_clears_static_state(): void
+    public function test_reset_counters_clears_static_state(): void
     {
         $draw   = $this->makeDraw(['locked' => true]);
         $router = $this->routerInMode(EngineRouter::MODE_HYBRID);
@@ -466,9 +440,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 14. Snapshot entries do NOT count as mismatches
     // ==================================================================
-
-    /** @test */
-    public function snapshot_entries_are_not_counted_as_mismatches(): void
+    public function test_snapshot_entries_are_not_counted_as_mismatches(): void
     {
         $draw  = $this->makeDraw();
         $group = $this->makeGroup($draw, 'A', [1, 2, 3]);
@@ -488,9 +460,7 @@ class EngineParityTest extends TestCase
     // ==================================================================
     // 15. clearLogs truncates DB table
     // ==================================================================
-
-    /** @test */
-    public function clear_logs_truncates_comparison_table(): void
+    public function test_clear_logs_truncates_comparison_table(): void
     {
         EngineComparisonLog::create([
             'operation'     => 'rr_generation',

@@ -11,6 +11,6 @@ interface RankingStrategy
     Collection $placements,
     array $pointsMap,
     Series $series,
-    int $bestN
+    int $bestN = 2
   ): array;
 }
