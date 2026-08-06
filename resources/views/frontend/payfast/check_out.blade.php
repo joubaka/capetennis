@@ -307,7 +307,7 @@ $(function () {
     $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Applying...');
 
     $.ajax({
-      url: APP_URL + '/registration/hybrid/apply-wallet',
+      url: @json(route('registration.hybrid.apply-wallet')),
       type: 'POST',
       xhrFields: {
         withCredentials: true  // 🔐 Ensure session cookies are sent with AJAX request
@@ -318,6 +318,23 @@ $(function () {
       },
       success: function (res) {
         if (res.success) {
+          if (res.wallet_covers_all) {
+            var $form = $('<form>', {
+              method: 'POST',
+              action: @json(route('registration.hybrid.complete', ['orderId' => $orderId]))
+            });
+
+            $form.append($('<input>', {
+              type: 'hidden',
+              name: '_token',
+              value: $('meta[name="csrf-token"]').attr('content')
+            }));
+
+            $('body').append($form);
+            $form.trigger('submit');
+            return;
+          }
+
           // Important: signature must be regenerated server-side after amount changes.
           // Reload checkout so amount + signature always match.
           window.location.reload();
