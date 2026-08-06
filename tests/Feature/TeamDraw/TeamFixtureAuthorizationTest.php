@@ -109,7 +109,7 @@ class TeamFixtureAuthorizationTest extends TestCase
     public function test_guest_cannot_insert_score(): void
     {
         $this->postJson(route('backend.team-fixtures.insertScore', $this->fixture))
-            ->assertStatus(403); // API guest gets 403 in this app
+            ->assertUnauthorized();
     }
 
     public function test_ordinary_user_cannot_insert_score(): void

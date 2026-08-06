@@ -25,7 +25,7 @@ class FileController extends Controller
      */
     public function index(): View
     {
-       dd('index');
+       abort(404);
     }
 
     /**

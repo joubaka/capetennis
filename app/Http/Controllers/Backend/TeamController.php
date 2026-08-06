@@ -446,12 +446,13 @@ class TeamController extends Controller
 
   public function changeCategory(Request $request, $id)
     {
-        $team = Team::find($request->team);
+        $team = Team::findOrFail($request->team);
         $this->authorize('team.update', $team);
 
-        $eventCategory = CategoryEvent::find($request->data);
+        $eventCategory = CategoryEvent::findOrFail($request->data);
 
-        // Verify target category belongs to the same event as the team's current event
+        // Authorization on the current team does not grant access to move it
+        // into a different event. Enforce event isolation on the destination.
         $teamEvent = optional(optional($team->category)->event);
         $targetEvent = optional($eventCategory->event);
 
@@ -460,10 +461,9 @@ class TeamController extends Controller
         }
 
         $team->category_event_id = $eventCategory->id;
-
         $team->save();
 
-        return $team->category->category->name;
+        return $team->category?->category?->name ?? $eventCategory->category?->name ?? $eventCategory->name ?? 'Updated';
     }
 
     public function importView()

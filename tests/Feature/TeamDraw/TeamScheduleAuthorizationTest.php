@@ -167,9 +167,8 @@ class TeamScheduleAuthorizationTest extends TestCase
 
     public function test_guest_cannot_view_all_schedule(): void
     {
-        // Route has no auth middleware; gate denies unauthenticated user with 403
         $this->getJson(route('backend.team-schedule.all', $this->teamEvent))
-            ->assertForbidden();
+            ->assertUnauthorized();
     }
 
     public function test_ordinary_user_cannot_view_all_schedule(): void
