@@ -204,38 +204,6 @@ console.log('[EVENT_DATA]', window.EVENT_DATA);
 
 
 
-@if(session('success'))
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: 'success',
-    title: @json(session('success')),
-    showConfirmButton: false,
-    timer: 3500,
-    timerProgressBar: true
-  });
-});
-</script>
-@endif
-
-@if($errors->any())
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: 'error',
-    title: @json($errors->first()),
-    showConfirmButton: false,
-    timer: 5000,
-    timerProgressBar: true
-  });
-});
-</script>
-
-@endif
 <script>
 $(document).on('click', '.deleteFileButton', function (e) {
   e.preventDefault();
