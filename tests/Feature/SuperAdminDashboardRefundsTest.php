@@ -58,6 +58,31 @@ class SuperAdminDashboardRefundsTest extends TestCase
         $response->assertSee('Pending Bank Refunds');
     }
 
+    public function test_ordinary_user_cannot_change_platform_settings(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post(route('settings.store.single'), [
+            'key' => 'registration_open',
+            'value' => '0',
+        ])->assertForbidden();
+    }
+
+    public function test_payfast_diagnostic_redacts_credentials_outside_production(): void
+    {
+        config()->set('services.payfast.sandbox', true);
+        config()->set('services.payfast.passphrase_sandbox', 'DO_NOT_EXPOSE_THIS_SECRET');
+        config()->set('services.payfast.merchant_key_sandbox', 'DO_NOT_EXPOSE_THIS_KEY');
+
+        $response = $this->actingAs($this->superUser())
+            ->get(route('backend.superadmin.payfast-signature-check'));
+
+        $response->assertOk()
+            ->assertDontSee('DO_NOT_EXPOSE_THIS_SECRET')
+            ->assertDontSee('DO_NOT_EXPOSE_THIS_KEY')
+            ->assertSee('[REDACTED]');
+    }
+
     // -----------------------------------------------------------------------
     // "All clear" shown when no pending bank refunds
     // -----------------------------------------------------------------------

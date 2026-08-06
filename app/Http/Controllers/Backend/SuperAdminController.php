@@ -19,7 +19,6 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use App\Models\Withdrawals;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -52,7 +51,7 @@ class SuperAdminController extends Controller
         $newPlayersThisWeek  = Player::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
 
         // ── Pending withdrawals (legacy Withdrawals model count) ────────────
-        $pendingWithdrawals = Withdrawals::count();
+        $pendingWithdrawals = 0;
 
         // ── Withdrawal / Refund data for Withdrawals tab ─────────────────────
         $withdrawalPendingRefunds = CategoryEventRegistration::with([
@@ -77,6 +76,7 @@ class SuperAdminController extends Controller
             ->where('refund_method', 'bank')
             ->where('refund_status', 'completed')
             ->orderByDesc('refunded_at')
+            ->limit(250)
             ->get();
 
         $withdrawalWalletRefunds = CategoryEventRegistration::with([
@@ -91,6 +91,7 @@ class SuperAdminController extends Controller
                   ->orWhereNull('refund_method');
             })
             ->orderByDesc('withdrawn_at')
+            ->limit(250)
             ->get();
 
         $withdrawalPendingTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
@@ -103,7 +104,11 @@ class SuperAdminController extends Controller
             ->where('refund_method', 'bank')
             ->where('refund_status', 'completed')
             ->orderByDesc('refunded_at')
+            ->limit(250)
             ->get();
+
+        $pendingWithdrawals = $withdrawalPendingRefunds->count()
+            + $withdrawalPendingTeamRefunds->count();
 
         // ── Agreement statistics ─────────────────────────────────────────────
         $activeAgreement = Agreement::where('is_active', 1)->latest()->first();
@@ -207,13 +212,13 @@ class SuperAdminController extends Controller
             ->count();
 
         // ── Financial Dashboard (all events) — uses canonical FinancialLedgerService ──
-        $allEvents = Event::with(['incomeItems'])->orderByDesc('start_date')->get();
-
-        $financeYears = $allEvents
-            ->filter(fn ($e) => $e->start_date)
-            ->map(fn ($e) => (string) \Carbon\Carbon::parse($e->start_date)->year)
-            ->unique()
-            ->sort()
+        $financeYears = Event::query()
+            ->whereNotNull('start_date')
+            ->selectRaw('YEAR(start_date) as finance_year')
+            ->distinct()
+            ->orderBy('finance_year')
+            ->pluck('finance_year')
+            ->map(fn ($year) => (string) $year)
             ->values();
 
         $financeYear = $request->input('finance_year');
@@ -221,9 +226,10 @@ class SuperAdminController extends Controller
             $financeYear = $financeYears->last() ?? (string) now()->year;
         }
 
-        $eventsForYear = $allEvents->filter(
-            fn ($e) => $e->start_date && (string) \Carbon\Carbon::parse($e->start_date)->year === $financeYear
-        );
+        $eventsForYear = Event::with('incomeItems')
+            ->whereYear('start_date', (int) $financeYear)
+            ->orderByDesc('start_date')
+            ->get();
 
         $financeByEvent = $eventsForYear->map(
             fn ($event) => $this->ledger->buildFySummaryRow($event)
@@ -245,10 +251,19 @@ class SuperAdminController extends Controller
         $registrationSettings = SiteSetting::where('group', SiteSetting::GROUP_REGISTRATION)->get()->pluck('value', 'key')->toArray();
 
         // ── Wallets (for the Wallets tab) ─────────────────────────────────────
-        $wallets = Wallet::with(['payable', 'transactions'])
+        $wallets = Wallet::query()
+            ->with('payable')
+            ->withCount('transactions')
+            ->select('wallets.*')
+            ->selectSub(function ($query) {
+                $query->from('wallet_transactions')
+                    ->selectRaw("COALESCE(SUM(CASE WHEN type = 'credit' THEN amount ELSE -amount END), 0)")
+                    ->whereColumn('wallet_transactions.wallet_id', 'wallets.id');
+            }, 'computed_balance')
             ->where('payable_type', 'like', '%User%')
+            ->orderByDesc('computed_balance')
+            ->limit(500)
             ->get()
-            ->sortByDesc('balance')
             ->values();
 
         // ── Disciplinary stats ─────────────────────────────────────────────
@@ -277,6 +292,7 @@ class SuperAdminController extends Controller
             ->whereNull('lifted_at')
             ->where('ends_at', '>', Carbon::today()->toDateString())
             ->orderBy('ends_at')
+            ->limit(250)
             ->get();
 
         return view('backend.superadmin.index', compact(
@@ -327,6 +343,8 @@ class SuperAdminController extends Controller
      */
     public function payfastSignatureCheck()
     {
+        abort_if(app()->environment('production'), 404);
+
         $payfast = new \App\Services\Payfast();
 
         $isSandbox = config('services.payfast.sandbox', false);
@@ -384,14 +402,25 @@ class SuperAdminController extends Controller
 
         $signature = md5($pfOutput);
 
+        $safeBreakdown = collect($fieldBreakdown)->map(function (array $field) {
+            if (in_array($field['key'], ['merchant_key', 'passphrase'], true)) {
+                $field['raw_value'] = '[REDACTED]';
+                $field['encoded_value'] = '[REDACTED]';
+                $field['pair'] = $field['key'] . '=[REDACTED]';
+            }
+            return $field;
+        })->values();
+        $safeOutput = preg_replace('/(merchant_key|passphrase)=[^&]*/', '$1=[REDACTED]', $pfOutput);
+
         return response()->json([
             'step1_mode'              => $isSandbox ? 'sandbox' : 'live',
             'step2_merchant_id'       => $payfast->id,
             'step3_passphrase_set'    => !empty($passphrase),
             'step3_passphrase_len'    => strlen($passphrase ?? ''),
             'step4_sorted_field_keys' => array_keys($data),
-            'step5_field_breakdown'   => $fieldBreakdown,
-            'step6_full_string'       => $pfOutput,
+            'step5_field_breakdown'   => $safeBreakdown,
+            'step6_full_string'       => $safeOutput,
+            'security_note'           => 'Secrets are redacted. Never paste live credentials into third-party tools.',
             'step7_signature_md5'     => $signature,
             'HOW_TO_VERIFY'           => [
                 '1_copy_string'  => 'Copy step6_full_string exactly',

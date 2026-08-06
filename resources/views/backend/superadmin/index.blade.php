@@ -1447,7 +1447,10 @@
           </thead>
           <tbody>
             @forelse($wallets as $wallet)
-              @php $walletOwner = $wallet->payable; @endphp
+              @php
+                $walletOwner = $wallet->payable;
+                $walletBalance = (float) $wallet->computed_balance;
+              @endphp
               <tr>
                 <td>
                   @if($walletOwner)
@@ -1459,18 +1462,18 @@
                   @endif
                 </td>
                 <td><small class="text-muted">{{ $walletOwner->email ?? '—' }}</small></td>
-                <td class="text-end fw-bold {{ $wallet->balance > 0 ? 'text-success' : ($wallet->balance < 0 ? 'text-danger' : 'text-muted') }}">
-                  R {{ number_format($wallet->balance, 2) }}
+                <td class="text-end fw-bold {{ $walletBalance > 0 ? 'text-success' : ($walletBalance < 0 ? 'text-danger' : 'text-muted') }}">
+                  R {{ number_format($walletBalance, 2) }}
                 </td>
                 <td class="text-center">
-                  <span class="badge bg-label-secondary">{{ $wallet->transactions->count() }}</span>
+                  <span class="badge bg-label-secondary">{{ $wallet->transactions_count }}</span>
                 </td>
                 <td class="text-center">
                   <div class="d-flex gap-1 justify-content-center">
                     <button type="button" class="btn btn-sm btn-outline-primary btn-wallet-add-tx"
                       data-user-id="{{ $wallet->payable_id }}"
                       data-user-name="{{ $walletOwner->name ?? '' }}"
-                      data-wallet-balance="R {{ number_format($wallet->balance, 2) }}"
+                      data-wallet-balance="R {{ number_format($walletBalance, 2) }}"
                       title="Add Transaction">
                       <i class="ti ti-plus me-1"></i>Transact
                     </button>
