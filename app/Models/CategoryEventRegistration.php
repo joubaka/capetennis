@@ -582,15 +582,25 @@ class CategoryEventRegistration extends Model
         ->queue(new \App\Mail\WithdrawalPlayerMail($this, $initiatedBy));
     }
 
-    // --- Admin email: refund details go to super-users only (not event admins) ---
+    // --- Admin email: notify platform super-users and this event's admins ---
     $superUserEmails = \App\Models\User::role('super-user')
       ->pluck('email')
       ->filter()
       ->map('strtolower')
+      ->values();
+
+    $eventAdminEmails = $this->categoryEvent?->event?->admins
+      ?->pluck('email')
+      ->filter()
+      ->map('strtolower')
+      ->values() ?? collect();
+
+    $adminEmails = $superUserEmails
+      ->merge($eventAdminEmails)
       ->unique()
       ->values();
 
-    foreach ($superUserEmails as $email) {
+    foreach ($adminEmails as $email) {
       \Illuminate\Support\Facades\Mail::to($email)
         ->queue(new \App\Mail\WithdrawalAdminMail($this, $initiatedBy));
     }

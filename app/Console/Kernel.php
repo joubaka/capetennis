@@ -25,6 +25,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('refunds:send-bank-reminders')
             ->dailyAt('08:00')
             ->withoutOverlapping();
+
+        // Send event-scoped withdrawal summaries only when the previous day had withdrawals.
+        $schedule->command('withdrawals:send-daily-summary')
+            ->dailyAt('06:00')
+            ->withoutOverlapping();
     }
 
     /**
