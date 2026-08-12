@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\DailyWithdrawalSummaryMail;
 use App\Models\CategoryEventRegistration;
 use App\Models\User;
+use App\Models\SiteSetting;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
@@ -16,6 +17,10 @@ class SendDailyWithdrawalSummary extends Command
 
     public function handle(): int
     {
+        if (! SiteSetting::emailEnabled('admin_email_on_daily_withdrawal_summary')) {
+            $this->info('Daily withdrawal summary email is disabled.');
+            return self::SUCCESS;
+        }
         $from = now()->subDay()->startOfDay();
         $until = $from->copy()->addDay();
 

@@ -1133,6 +1133,53 @@
 
               </div>
             </div>
+
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0"><i class="ti ti-adjustments me-1 text-info"></i> Automated Action Emails</h5>
+                <small class="text-muted">Global on/off controls for transactional and scheduled emails. Turning a switch off stops future messages of that type.</small>
+              </div>
+              <div class="card-body">
+                @php
+                  $automatedEmailToggles = [
+                    'player_email_on_admin_entry' => ['Admin-created registration', 'Player', 'Sent when an administrator adds a player without payment.'],
+                    'player_email_on_reinstatement' => ['Registration reinstated', 'Player', 'Sent after an administrator cancels a withdrawal.'],
+                    'player_email_on_team_registration' => ['Team registration confirmed', 'Payer', 'Sent when a team-player payment is confirmed.'],
+                    'player_email_on_team_withdrawal' => ['Team withdrawal confirmation', 'Payer', 'Sent when a player is removed from a team entry.'],
+                    'player_email_on_team_refund_request' => ['Team refund requested', 'Payer', 'Sent when a manual refund request is recorded.'],
+                    'player_email_on_team_refund_completed' => ['Team refund completed', 'Payer', 'Sent when a team refund completes.'],
+                    'player_email_on_wallet_refund' => ['Wallet refund completed', 'Player', 'Sent after an individual wallet refund.'],
+                    'player_email_on_payfast_refund' => ['PayFast refund completed', 'Player', 'Sent after an individual PayFast refund.'],
+                    'player_email_on_bank_details_request' => ['Bank details required', 'Player', 'Secure request for missing bank details.'],
+                    'player_email_on_bank_refund_reminder' => ['Bank refund reminder', 'Player & super admins', 'Scheduled reminder while a bank refund remains pending.'],
+                    'player_email_on_bank_refund_completed' => ['Bank refund completed', 'Player', 'Sent after an individual bank refund is marked complete.'],
+                    'admin_email_on_daily_withdrawal_summary' => ['Daily withdrawal summary', 'Super & event admins', 'Previous-day withdrawal digest.'],
+                  ];
+                @endphp
+                <div class="row g-3">
+                  @foreach($automatedEmailToggles as $key => [$label, $recipient, $description])
+                    <div class="col-lg-6">
+                      <div class="d-flex align-items-center justify-content-between border rounded p-3 h-100">
+                        <div class="pe-3">
+                          <label class="form-label mb-0 fw-semibold" for="sa-{{ $key }}">{{ $label }}</label>
+                          <div><span class="badge bg-label-secondary mt-1">To: {{ $recipient }}</span></div>
+                          <small class="text-muted d-block mt-1">{{ $description }}</small>
+                        </div>
+                        <div class="form-check form-switch ms-2">
+                          <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
+                                 id="sa-{{ $key }}" name="{{ $key }}" value="1"
+                                 data-setting-key="{{ $key }}"
+                                 {{ old($key, $emailSettings[$key] ?? '1') == '1' ? 'checked' : '' }}>
+                        </div>
+                      </div>
+                    </div>
+                  @endforeach
+                </div>
+                <div class="alert alert-light border mt-3 mb-0">
+                  Password reset, email verification, and other account-security messages cannot be disabled here. Event announcements and bulk event emails are manually initiated and therefore have no automatic switch.
+                </div>
+              </div>
+            </div>
           </div>{{-- /email --}}
 
           {{-- ════ B: REGISTRATION & WITHDRAWAL ════ --}}

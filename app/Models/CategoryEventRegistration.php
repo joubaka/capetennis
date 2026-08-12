@@ -584,6 +584,10 @@ class CategoryEventRegistration extends Model
     }
 
     // --- Admin email: notify platform super-users and this event's admins ---
+    if (! SiteSetting::emailEnabled('email_on_withdrawal')) {
+      return;
+    }
+
     $superUserEmails = \App\Models\User::role('super-user')
       ->pluck('email')
       ->filter()

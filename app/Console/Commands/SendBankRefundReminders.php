@@ -30,6 +30,11 @@ class SendBankRefundReminders extends Command
 
     public function handle(): int
     {
+        if (! SiteSetting::emailEnabled('player_email_on_bank_refund_reminder')) {
+            $this->info('Bank refund reminder email is disabled.');
+            return self::SUCCESS;
+        }
+
         $days = (int) $this->option('days');
 
         $stale = CategoryEventRegistration::where('refund_method', 'bank')

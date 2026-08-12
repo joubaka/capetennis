@@ -4,13 +4,14 @@ namespace App\Listeners;
 
 use App\Domain\Entries\Events\EntryCreated;
 use App\Mail\AdminEntryCreatedMail;
+use App\Models\SiteSetting;
 use Illuminate\Support\Facades\Mail;
 
 class SendAdminEntryCreatedConfirmation
 {
     public function handle(EntryCreated $event): void
     {
-        if ($event->source !== 'admin') {
+        if ($event->source !== 'admin' || ! SiteSetting::emailEnabled('player_email_on_admin_entry')) {
             return;
         }
 

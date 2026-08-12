@@ -363,7 +363,9 @@ class SuperAdminFinanceController extends Controller
 
                 try {
                     $registration->load(['categoryEvent.event', 'categoryEvent.category', 'players', 'user']);
-                    Mail::to($user->email)->send(new WalletRefundConfirmationMail($registration));
+                    if (SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
+                        Mail::to($user->email)->send(new WalletRefundConfirmationMail($registration));
+                    }
                 } catch (\Throwable $mailEx) {
                     Log::warning('ADMIN FULL REFUND: wallet confirmation email failed', [
                         'registration_id' => $registration->id,

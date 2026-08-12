@@ -207,7 +207,7 @@ class RegistrationRefundController extends Controller
         // Send wallet refund confirmation email to the player
         $playerEmail = optional($registration->players->first())->email
                     ?? $registration->user?->email;
-        if ($playerEmail) {
+        if ($playerEmail && SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
           \Illuminate\Support\Facades\Mail::to($playerEmail)
             ->queue(new \App\Mail\WalletRefundConfirmationMail($registration));
         }
@@ -353,7 +353,7 @@ class RegistrationRefundController extends Controller
           // Notify the player that their PayFast refund has been processed
           $playerEmail = optional($registration->players->first())->email
                       ?? $registration->user?->email;
-          if ($playerEmail) {
+          if ($playerEmail && SiteSetting::emailEnabled('player_email_on_payfast_refund')) {
             Mail::to($playerEmail)->queue(new \App\Mail\PayFastRefundConfirmationMail($registration));
           }
 
@@ -728,7 +728,7 @@ class RegistrationRefundController extends Controller
         // Notify the player that their refund has been processed
         $playerEmail = optional($registration->players->first())->email
                     ?? optional($registration->user)->email;
-        if ($playerEmail) {
+        if ($playerEmail && SiteSetting::emailEnabled('player_email_on_bank_refund_completed')) {
           Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
         }
 
@@ -759,7 +759,7 @@ class RegistrationRefundController extends Controller
     // Notify the player that their bank refund has been processed
     $playerEmail = optional($registration->players->first())->email
                 ?? optional($registration->user)->email;
-    if ($playerEmail) {
+    if ($playerEmail && SiteSetting::emailEnabled('player_email_on_bank_refund_completed')) {
       Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
     }
 

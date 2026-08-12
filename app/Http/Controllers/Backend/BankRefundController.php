@@ -7,6 +7,7 @@ use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Domain\Refunds\Services\TeamRefundCalculator;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
+use App\Models\SiteSetting;
 use App\Mail\BankDetailsRequestMail;
 use App\Exceptions\RefundAlreadyProcessedException;
 use Illuminate\Http\Request;
@@ -139,6 +140,9 @@ class BankRefundController extends Controller
       ->where('refund_status', 'pending')
       ->get();
 
+    if (! SiteSetting::emailEnabled('player_email_on_bank_details_request')) {
+      return back()->with('success', 'Bank details request email is disabled in Super Admin settings.');
+    }
     Mail::to($user->email)->queue(new BankDetailsRequestMail($user, $pendingRegistrations));
 
     Log::info('BANK DETAILS REQUEST EMAIL SENT', [
@@ -305,7 +309,7 @@ class BankRefundController extends Controller
         // Notify the player that their refund has been processed
         $playerEmail = optional($registration->players->first())->email
                     ?? optional($registration->user)->email;
-        if ($playerEmail) {
+        if ($playerEmail && SiteSetting::emailEnabled('player_email_on_bank_refund_completed')) {
           Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
         }
 
@@ -331,7 +335,7 @@ class BankRefundController extends Controller
     // Notify the player that their bank refund has been processed
     $playerEmail = optional($registration->players->first())->email
                 ?? optional($registration->user)->email;
-    if ($playerEmail) {
+    if ($playerEmail && SiteSetting::emailEnabled('player_email_on_bank_refund_completed')) {
       Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
     }
 
@@ -610,7 +614,7 @@ class BankRefundController extends Controller
       // Notify the player
       $playerEmail = optional($registration->players->first())->email
                   ?? optional($registration->user)->email;
-      if ($playerEmail) {
+      if ($playerEmail && SiteSetting::emailEnabled('player_email_on_bank_refund_completed')) {
         Mail::to($playerEmail)->queue(new \App\Mail\BankRefundConfirmationMail($registration));
       }
 

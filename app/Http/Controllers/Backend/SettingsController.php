@@ -74,12 +74,16 @@ class SettingsController extends Controller
         SiteSetting::set('email_on_team_withdrawal', $request->boolean('email_on_team_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('email_on_wallet_topup', $request->boolean('email_on_wallet_topup') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('email_on_bank_refund_request', $request->boolean('email_on_bank_refund_request') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+        SiteSetting::set('email_on_violation', $request->boolean('email_on_violation') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('admin_notification_email', $request->input('admin_notification_email') ?? 'support@capetennis.co.za', SiteSetting::GROUP_EMAIL);
 
         // Player confirmation emails
         SiteSetting::set('player_email_on_registration', $request->boolean('player_email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('player_email_on_withdrawal', $request->boolean('player_email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('player_email_on_move', $request->boolean('player_email_on_move') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+        foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $key) {
+            SiteSetting::set($key, $request->boolean($key) ? '1' : '0', SiteSetting::GROUP_EMAIL);
+        }
 
         // Registration & withdrawal behaviour
         SiteSetting::set('registration_open', $request->boolean('registration_open') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
@@ -112,6 +116,7 @@ class SettingsController extends Controller
             'email_on_team_withdrawal'     => [SiteSetting::GROUP_EMAIL, 'boolean'],
             'email_on_wallet_topup'        => [SiteSetting::GROUP_EMAIL, 'boolean'],
             'email_on_bank_refund_request' => [SiteSetting::GROUP_EMAIL, 'boolean'],
+            'email_on_violation'           => [SiteSetting::GROUP_EMAIL, 'boolean'],
             'player_email_on_registration' => [SiteSetting::GROUP_EMAIL, 'boolean'],
             'player_email_on_withdrawal'   => [SiteSetting::GROUP_EMAIL, 'boolean'],
             'player_email_on_move'         => [SiteSetting::GROUP_EMAIL, 'boolean'],
@@ -122,6 +127,9 @@ class SettingsController extends Controller
             'require_terms'                => [SiteSetting::GROUP_GENERAL, 'boolean'],
             'require_profile_update'       => [SiteSetting::GROUP_GENERAL, 'boolean'],
         ];
+        foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $emailKey) {
+            $allowedKeys[$emailKey] = [SiteSetting::GROUP_EMAIL, 'boolean'];
+        }
 
         $request->validate(['key' => 'required|string', 'value' => 'required|in:0,1']);
 

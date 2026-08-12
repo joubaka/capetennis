@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPaymentOrder;
+use App\Models\SiteSetting;
 use App\Models\User;
 use App\Services\TeamCommunicationService;
 use App\Listeners\SendTeamRegistrationConfirmation;
@@ -48,6 +49,32 @@ class TeamCommunicationTest extends TestCase
         foreach ([$order->user->email, $super->email, $admin->email] as $email) {
             Mail::assertQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($email));
         }
+    }
+
+    public function test_disabled_team_registration_email_is_not_queued(): void
+    {
+        Mail::fake();
+        SiteSetting::set('player_email_on_team_registration', '0', SiteSetting::GROUP_EMAIL);
+        $order = $this->order();
+
+        app(SendTeamRegistrationConfirmation::class)->handle(new PaymentCompleted($order));
+
+        Mail::assertNothingQueued();
+    }
+
+    public function test_player_and_admin_team_withdrawal_switches_apply_independently(): void
+    {
+        Mail::fake();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $order = $this->order();
+        $super = User::factory()->create(['email' => 'super@example.test'])->assignRole('super-user');
+        SiteSetting::set('player_email_on_team_withdrawal', '0', SiteSetting::GROUP_EMAIL);
+        SiteSetting::set('email_on_team_withdrawal', '1', SiteSetting::GROUP_EMAIL);
+
+        app(TeamCommunicationService::class)->withdrawal($order->fresh());
+
+        Mail::assertQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($super->email));
+        Mail::assertNotQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($order->user->email));
     }
 
     private function order(): TeamPaymentOrder

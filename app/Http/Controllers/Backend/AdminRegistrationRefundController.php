@@ -203,7 +203,7 @@ class AdminRegistrationRefundController extends Controller
         // Notify the player/payer of the wallet credit
         $playerEmail = optional($registration->players->first())->email
                     ?? optional($registration->user)->email;
-        if ($playerEmail) {
+        if ($playerEmail && SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
           \Illuminate\Support\Facades\Mail::to($playerEmail)
             ->queue(new \App\Mail\WalletRefundConfirmationMail($registration));
         }
@@ -290,7 +290,7 @@ class AdminRegistrationRefundController extends Controller
         // Notify the player that their PayFast refund has been processed
         $playerEmail = optional($registration->players->first())->email
                     ?? optional($registration->user)->email;
-        if ($playerEmail) {
+        if ($playerEmail && SiteSetting::emailEnabled('player_email_on_payfast_refund')) {
           Mail::to($playerEmail)->queue(new \App\Mail\PayFastRefundConfirmationMail($registration));
         }
 
@@ -357,7 +357,7 @@ class AdminRegistrationRefundController extends Controller
     // Notify the player that their registration has been reinstated
     $playerEmail = optional($registration->players->first())->email
                 ?? optional($registration->user)->email;
-    if ($playerEmail) {
+    if ($playerEmail && SiteSetting::emailEnabled('player_email_on_reinstatement')) {
       Mail::to($playerEmail)->queue(new \App\Mail\RegistrationReinstatedMail($registration));
     }
 

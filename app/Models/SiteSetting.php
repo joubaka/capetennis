@@ -16,6 +16,24 @@ class SiteSetting extends Model
     public const GROUP_EMAIL        = 'email';
     public const GROUP_REGISTRATION = 'registration';
 
+    public const AUTOMATED_EMAIL_TOGGLES = [
+        'player_email_on_registration',
+        'player_email_on_admin_entry',
+        'player_email_on_withdrawal',
+        'player_email_on_move',
+        'player_email_on_reinstatement',
+        'player_email_on_team_registration',
+        'player_email_on_team_withdrawal',
+        'player_email_on_team_refund_request',
+        'player_email_on_team_refund_completed',
+        'player_email_on_wallet_refund',
+        'player_email_on_payfast_refund',
+        'player_email_on_bank_details_request',
+        'player_email_on_bank_refund_reminder',
+        'player_email_on_bank_refund_completed',
+        'admin_email_on_daily_withdrawal_summary',
+    ];
+
     /**
      * PayFast payment method mapping.
      * Keys = what PayFast sends in ITN, Values = our setting key suffix.
@@ -103,6 +121,11 @@ class SiteSetting extends Model
         $vatRate    = (float) static::get('payfast_vat_rate', 14);
 
         return round((($amount * $percentage / 100) + $flatFee) * (1 + $vatRate / 100), 2);
+    }
+
+    public static function emailEnabled(string $key): bool
+    {
+        return static::get($key, '1') === '1';
     }
 
     /**
