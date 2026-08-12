@@ -137,6 +137,10 @@ class RegistrationRefundController extends Controller
       'method' => $request->input('method'),
     ]);
 
+    if ($request->input('method') === 'bank' && $payfastGross <= 0) {
+      return back()->withErrors('Wallet-funded payments can only be refunded to the wallet.');
+    }
+
     // =====================================================
     // WALLET REFUND
     // =====================================================

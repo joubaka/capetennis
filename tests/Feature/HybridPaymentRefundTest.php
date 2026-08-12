@@ -73,6 +73,59 @@ class HybridPaymentRefundTest extends TestCase
         $this->assertEquals(100.00, $walletNet);
     }
 
+    public function test_wallet_only_payment_info_does_not_count_wallet_amount_as_payfast_gross(): void
+    {
+        $user = User::factory()->create();
+        $registration = $this->withdrawnReg([
+            'user_id' => $user->id,
+            'payment_status_id' => 1,
+            'payment_method' => 'wallet',
+        ]);
+
+        $order = \App\Models\RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 285,
+            'wallet_debited' => true,
+            'pay_status' => 1,
+        ]);
+        \Illuminate\Support\Facades\DB::table('registration_order_items')->insert([
+            'order_id' => $order->id,
+            'registration_id' => $registration->registration_id,
+            'category_event_id' => $registration->category_event_id,
+            'item_price' => 285,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payment = $registration->fresh()->paymentInfo();
+
+        $this->assertSame(0.0, $payment['gross']);
+        $this->assertSame(285.0, $payment['wallet_paid']);
+        $this->assertSame(285.0, $payment['total_paid']);
+        $this->assertSame(285.0, round($payment['gross'] + $payment['wallet_paid'], 2));
+
+        $this->actingAs($user);
+
+        $this->get(route('registrations.refund.choose', $registration))
+            ->assertOk()
+            ->assertSee('Total Paid:</strong> R285.00', false)
+            ->assertSee('Withdrawal fee (10%):</strong> R28.50', false)
+            ->assertSee('R256.50')
+            ->assertDontSee('Refund PayFast Portion');
+
+        $this->post(route('registrations.refund.request', $registration), [
+                'method' => 'bank',
+                'account_name' => 'Test Account',
+                'bank_name' => 'Test Bank',
+                'account_number' => '1234567890',
+                'branch_code' => '123456',
+                'account_type' => 'savings',
+            ])
+            ->assertSessionHasErrors();
+
+        $this->assertSame('not_refunded', $registration->fresh()->refund_status);
+    }
+
     // -----------------------------------------------------------------------
     // Duplicate-refund protection
     // -----------------------------------------------------------------------

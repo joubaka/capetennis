@@ -252,10 +252,11 @@ class CategoryEventRegistration extends Model
         'payment_method'  => 'wallet',
         'pf_payment_id'   => null,
         'transaction_id'  => null,
-        // Per-registration amounts
-        'gross'           => $walletPerReg,
+        // PayFast portion (zero for wallet-only payments)
+        'gross'           => 0.00,
         'fee'             => 0.00,
-        'net'             => $walletPerReg,
+        'net'             => 0.00,
+        // Wallet contribution
         'wallet_paid'     => $walletPerReg,
         'total_paid'      => $walletPerReg,
         // Meta

@@ -60,12 +60,14 @@
         @if(($walletPaid ?? 0) > 0)
           <p class="mb-1 text-muted small">
             <i class="ti ti-wallet me-1"></i> Wallet: R{{ number_format($walletPaid, 2) }}
-            &nbsp;|&nbsp;
-            <i class="ti ti-credit-card me-1"></i> PayFast: R{{ number_format($payfastGross, 2) }}
+            @if(($payfastGross ?? 0) > 0)
+              &nbsp;|&nbsp;
+              <i class="ti ti-credit-card me-1"></i> PayFast: R{{ number_format($payfastGross, 2) }}
+            @endif
           </p>
         @endif
         <p class="mb-1 text-muted">
-          <strong>Refund fee (PayFast):</strong> R{{ number_format($fee, 2) }}
+          <strong>Withdrawal fee (10%):</strong> R{{ number_format($fee, 2) }}
         </p>
         <p class="fs-5 mt-2">
           You will receive:
@@ -96,18 +98,20 @@
         </small>
       </form>
 
+      @if(($payfastGross ?? 0) > 0)
       {{-- BANK REFUND BUTTON --}}
       <button type="button"
               class="btn btn-outline-primary w-100"
               data-bs-toggle="modal"
               data-bs-target="#bankRefundModal">
         <i class="ti ti-building-bank me-1"></i>
-        Refund to Bank Account
+        Refund PayFast Portion
       </button>
 
       <small class="text-muted d-block mt-1">
         Bank refunds are processed manually and may take 2–3 business days.
       </small>
+      @endif
 
     </div>
   </div>
@@ -115,6 +119,7 @@
 
 
 {{-- ================= BANK REFUND MODAL ================= --}}
+@if(($payfastGross ?? 0) > 0)
 <div class="modal fade" id="bankRefundModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -198,5 +203,6 @@
     </div>
   </div>
 </div>
+@endif
 
 @endsection
