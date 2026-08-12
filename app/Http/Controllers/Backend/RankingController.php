@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Backend;
 
-use App\Services\Ranking\Rank;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
@@ -12,9 +11,9 @@ use App\Models\Point;
 use App\Models\Position;
 use App\Models\RankingList;
 use App\Models\RankingListCategoryEvent;
-use App\Models\RankingScores;
 use App\Models\Series;
-use App\Services\SeriesRanker;
+use App\Domain\Ranking\Enums\RankingStatus;
+use App\Domain\Ranking\Services\RankingRebuildService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -48,8 +47,12 @@ class RankingController extends Controller
 
   public function show($id)
   {
-   
-    $series = Series::find($id);
+    $series = Series::findOrFail($id);
+    $this->authorize('view', $series);
+
+    return redirect()->route('ranking.series.list', $series);
+
+    /*
 
     $series->load([
       'events' => fn($q) => $q->withCount('registrations')->orderBy('start_date'),
@@ -73,7 +76,7 @@ class RankingController extends Controller
     // $report['lists'][..]['feedback'] = short UI messages
 // $report['debug'] = full trace you can stream to logs or render for admins
 
-    return view('backend.ranking.admin', compact('series', 'series_categories', 'categories', 'points','report'));
+    return view('backend.ranking.admin', compact('series', 'series_categories', 'categories', 'points','report')); */
   }
 
   public function edit($id)
@@ -93,8 +96,11 @@ class RankingController extends Controller
 
   public function ranking_frontend_show($id)
   {
+    $series = Series::whereKey($id)
+      ->where('leaderboard_published', true)
+      ->firstOrFail();
 
-    $series = Series::find($id);
+    $runId = $this->publishedRunId($series);
 
     // Load series rankings similar to SeriesRankingController@index
     $rankings = \App\Models\SeriesRanking::with([
@@ -103,6 +109,8 @@ class RankingController extends Controller
       'category'
     ])
       ->where('series_id', $series->id)
+      ->where('status', RankingStatus::Published->value)
+      ->when($runId, fn($query) => $query->where('run_id', $runId))
       ->orderBy('category_id')
       ->orderBy('rank_position')
       ->get();
@@ -114,10 +122,19 @@ class RankingController extends Controller
 
   public function playerDetail(Series $series, Player $player)
   {
+    abort_unless($series->leaderboard_published, 404);
+
+    $runId = $this->publishedRunId($series);
+
     $rankingRecord = \App\Models\SeriesRanking::with(['category'])
       ->where('series_id', $series->id)
       ->where('player_id', $player->id)
+      ->where('status', RankingStatus::Published->value)
+      ->when($runId, fn($query) => $query->where('run_id', $runId))
+      ->orderBy('rank_position')
       ->first();
+
+    abort_unless($rankingRecord, 404);
 
     $eventsById = $series->events()
       ->select('id', 'name', 'start_date')
@@ -250,11 +267,13 @@ class RankingController extends Controller
   // RankingController@calculate
   public function calculate(Request $request, $seriesId)
   {
-    
     $series = Series::with(['ranking_lists.rank_cats'])->findOrFail($seriesId);
+    $this->authorize('update', $series);
 
-    $rank = new Rank($seriesId);
-    $report = $rank->test($series);
+    $report = app(RankingRebuildService::class)->rebuild($series, [
+      'dryRun' => $request->boolean('dry_run'),
+      'walkoversExcluded' => $request->boolean('exclude_walkovers'),
+    ]);
 
     // If the request is AJAX / expects JSON -> keep your current JSON response
     if ($request->expectsJson() || $request->ajax()) {
@@ -271,8 +290,9 @@ class RankingController extends Controller
 
   public function details($id)
   {
-    $player = Player::find($id);
-    $series = Series::find(request('series'));
+    $player = Player::findOrFail($id);
+    $series = Series::findOrFail(request('series'));
+    $this->authorize('view', $series);
 
     $events = $series->events->pluck('id');
     $eventCats = CategoryEvent::whereIn('event_id', $events)->get()->groupBy('category_id');
@@ -293,14 +313,15 @@ class RankingController extends Controller
 
   public function add_ranking_list($series_id)
   {
-    $rank = new Rank($series_id);
-    $rank->create_Ranking_List_Normal();
+    $series = Series::findOrFail($series_id);
+    $this->authorize('update', $series);
 
-    return 'Ranking lists created';
+    abort(410, 'Legacy ranking-list generation has been retired. Create canonical ranking lists explicitly.');
   }
 
   public function storeList(Request $request, Series $series)
   {
+    $this->authorize('update', $series);
     $data = $request->validate([
       'name' => ['required', 'string', 'max:100'],
       'category_id' => ['required', 'integer', 'exists:categories,id'],
@@ -317,6 +338,7 @@ class RankingController extends Controller
 
   public function renameList(Request $request, RankingList $rankingList)
   {
+    $this->authorize('update', $rankingList->series);
     $data = $request->validate([
       'name' => ['required', 'string', 'max:100'],
     ]);
@@ -328,6 +350,7 @@ class RankingController extends Controller
 
   public function destroyList(RankingList $rankingList)
   {
+    $this->authorize('update', $rankingList->series);
     DB::transaction(function () use ($rankingList) {
       $rankingList->rank_cats()->delete();
       $rankingList->ranking_scores()->delete();
@@ -339,12 +362,20 @@ class RankingController extends Controller
 
   public function add_category_to_ranklist(Request $request, RankingList $rankingList)
   {
-    
+    $this->authorize('update', $rankingList->series);
     $data = $request->validate([
       'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
     ]);
 
    
+
+    $categoryEvent = CategoryEvent::with('event')->findOrFail($data['category_event_id']);
+    abort_unless(
+      (int) $categoryEvent->event?->series_id === (int) $rankingList->series_id
+        && (int) $categoryEvent->category_id === (int) $rankingList->category_id,
+      422,
+      'The category event must belong to this series and ranking-list category.'
+    );
 
     $rankingList->rank_cats()->firstOrCreate(
       ['category_event_id' => $data['category_event_id']]
@@ -356,6 +387,7 @@ class RankingController extends Controller
 
   public function delete_category_from_ranklist(Request $request, RankingList $rankingList)
   {
+    $this->authorize('update', $rankingList->series);
     $data = $request->validate([
       'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
     ]);
@@ -367,16 +399,22 @@ class RankingController extends Controller
 
   public function updateListOrder(Request $request, RankingList $rankingList)
   {
+    $this->authorize('update', $rankingList->series);
     $data = $request->validate([
       'order' => ['required', 'array', 'min:1'],
       'order.*' => ['integer', 'exists:category_events,id'],
     ]);
 
+    $linkedIds = $rankingList->rank_cats()->pluck('category_event_id')->map(fn($id) => (int) $id)->sort()->values();
+    $requestedIds = collect($data['order'])->map(fn($id) => (int) $id)->unique()->sort()->values();
+    abort_unless($requestedIds->count() === count($data['order']) && $requestedIds->all() === $linkedIds->all(), 422,
+      'The order must contain every linked category event exactly once.');
+
     DB::transaction(function () use ($rankingList, $data) {
       foreach ($data['order'] as $i => $catEventId) {
         $rankingList->rank_cats()
           ->where('category_event_id', $catEventId)
-          ->update(['order' => $i + 1]);
+          ->update(['sort_order' => $i + 1]);
       }
     });
 
@@ -385,6 +423,11 @@ class RankingController extends Controller
   // RankingController
   public function results(Series $series)
   {
+    $this->authorize('view', $series);
+
+    return redirect()->route('ranking.series.list', $series);
+
+    /* Legacy ranking_scores implementation retained temporarily for reference.
 
     // Load series with events, categories, results and players
     $series->load([
@@ -445,48 +488,36 @@ class RankingController extends Controller
     });
 
 
-    return view('backend.ranking.results', compact('series'));
+    return view('backend.ranking.results', compact('series')); */
   }
 
   public function removeCategory(\App\Models\RankingList $list, \Illuminate\Http\Request $request)
   {
-    
-    $series = $list->series;
-    $categoryId = CategoryEvent::find($request->input('category_event_id'))->category->id; // or 'category_id' if that's the field name
-  
-    RankingList::where('series_id', $series->id)
-      ->where('category_id', $categoryId)
-      ->get();
+    $this->authorize('update', $list->series);
+
+    $data = $request->validate([
+      'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
+    ]);
+
+    $deleted = $list->rank_cats()
+      ->where('category_event_id', $data['category_event_id'])
+      ->delete();
 
     return response()->json([
       'ok' => true,
-      'message' => "Category {$categoryId} removed from list {$list->id}"
+      'deleted' => $deleted,
+      'message' => $deleted ? 'Category event removed from ranking list.' : 'Category event was not linked.'
     ]);
   }
   public function setSchool(Request $request, $id)
   {
     abort_unless(auth()->user()->hasAnyRole(['super-user', 'admin']), 403);
 
-    $score = RankingScores::findOrFail($id);
-
-    $validated = $request->validate([
-      'group' => ['required', 'in:primary,high,clear'],
-    ]);
-
-    $group = $validated['group'];
-
-    $score->primarySchool = ($group === 'primary') ? 1 : 0;
-    $score->highSchool = ($group === 'high') ? 1 : 0;
-    $score->save();
-
-    return response()->json([
-      'ok' => true,
-      'primary' => $score->primarySchool,
-      'high' => $score->highSchool,
-    ]);
+    abort(410, 'Legacy ranking-score grouping has been retired.');
   }
   public function points(Series $series)
   {
+    $this->authorize('view', $series);
     $points = Point::where('series_id', $series->id)
       ->orderBy('position')
       ->get()
@@ -506,12 +537,15 @@ class RankingController extends Controller
 
   public function updatePoints(Request $request, Series $series)
   {
-    
+    $this->authorize('update', $series);
     $data = $request->validate([
       'points' => ['required', 'array'],
       'points.*.position' => ['required', 'integer', 'min:1', 'max:50'],
       'points.*.score' => ['required', 'integer', 'min:0'],
     ]);
+
+    abort_if(collect($data['points'])->pluck('position')->duplicates()->isNotEmpty(), 422,
+      'Each finishing position may only appear once.');
 
     DB::transaction(function () use ($series, $data) {
 
@@ -536,6 +570,16 @@ class RankingController extends Controller
       'status' => 'ok',
       'message' => 'Points template saved',
     ]);
+  }
+
+  private function publishedRunId(Series $series): ?string
+  {
+    return \App\Models\SeriesRanking::where('series_id', $series->id)
+      ->where('status', RankingStatus::Published->value)
+      ->whereNotNull('run_id')
+      ->orderByDesc('published_at')
+      ->orderByDesc('updated_at')
+      ->value('run_id');
   }
 
 

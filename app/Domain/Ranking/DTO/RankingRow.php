@@ -29,6 +29,6 @@ final class RankingRow
         public readonly int   $bestSingle,
         public readonly int   $positionsSum,
         public readonly bool  $autoAward    = false,
-        public readonly array $tiebreakNotes = [],
+        public array          $tiebreakNotes = [],
     ) {}
 }

@@ -8,7 +8,9 @@ use App\Domain\Ranking\DTO\RankingRow;
 use App\Domain\Ranking\Services\RankingCalculationService;
 use App\Models\RankingList;
 use App\Models\Series;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\Player;
+use App\Models\Registration;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -38,7 +40,7 @@ use Tests\TestCase;
  */
 class RankingCalculationServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     private Series $series;
     private RankingList $list;
@@ -487,5 +489,110 @@ class RankingCalculationServiceTest extends TestCase
         $detail = $result->audit['player_details'][0];
         $this->assertArrayHasKey('counting_legs', $detail);
         $this->assertArrayHasKey('dropped_legs', $detail);
+    }
+
+    public function test_best_n_must_be_positive(): void
+    {
+        $this->list->update(['best_num_of_scores' => 0]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Best-N must be at least 1');
+
+        $this->service()->calculate($this->list);
+    }
+
+    public function test_duplicate_player_placement_is_rejected(): void
+    {
+        $this->seedPositions([[1, 101, 1], [1, 101, 2]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Duplicate player placements');
+
+        $this->service()->calculate($this->list);
+    }
+
+    public function test_multiple_event_winners_are_rejected(): void
+    {
+        $this->seedPositions([[1, 101, 1], [2, 101, 1]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Multiple first-place finishers');
+
+        $this->service()->calculate($this->list);
+    }
+
+    public function test_tiebreak_reason_is_recorded(): void
+    {
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 2], [2, 102, 2],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertStringContainsString(
+            'most counting-event wins',
+            $this->rowFor($result, 1)->tiebreakNotes[0]
+        );
+    }
+
+    public function test_withdrawn_event_leg_is_excluded_from_source_data(): void
+    {
+        $player = Player::factory()->create();
+        $registration = Registration::factory()->create();
+        $this->seedPositions([[$player->id, 101, 1]]);
+
+        DB::table('player_registrations')->insert([
+            'registration_id' => $registration->id,
+            'player_id' => $player->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('category_event_registrations')->insert([
+            'category_event_id' => 101,
+            'registration_id' => $registration->id,
+            'status' => 'withdrawn',
+            'withdrawn_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertNull($this->rowFor($result, $player->id));
+    }
+
+    public function test_duplicate_points_positions_are_rejected(): void
+    {
+        DB::table('points')->insert([
+            'series_id' => $this->series->id,
+            'position' => 1,
+            'score' => 900,
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Duplicate point mappings');
+
+        $this->service()->calculate($this->list);
+    }
+
+    public function test_points_cannot_increase_for_lower_position(): void
+    {
+        DB::table('points')->where('series_id', $this->series->id)->where('position', 3)->update(['score' => 900]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not increase');
+
+        $this->service()->calculate($this->list);
+    }
+
+    public function test_auto_award_requires_second_place_points(): void
+    {
+        DB::table('points')->where('series_id', $this->series->id)->where('position', 2)->delete();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('requires second-place points');
+
+        $this->service()->calculate($this->list);
     }
 }

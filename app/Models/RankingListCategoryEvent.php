@@ -22,4 +22,3 @@ class RankingListCategoryEvent extends Model
     return $this->belongsTo(CategoryEvent::class, 'category_event_id');
   }
 }
-

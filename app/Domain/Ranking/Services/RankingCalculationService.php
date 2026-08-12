@@ -52,11 +52,40 @@ final class RankingCalculationService
             ?? $series?->best_num_of_scores
             ?? 9999);
 
+        if ($bestN < 1) {
+            throw new \InvalidArgumentException('Best-N must be at least 1.');
+        }
+
         // Points map: position → score
         $pointsMap = $this->loadPointsMap($series);
 
+        $duplicatePointPositions = \DB::table('points')
+            ->where('series_id', $series->id)
+            ->select('position')
+            ->groupBy('position')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('position');
+        if ($duplicatePointPositions->isNotEmpty()) {
+            throw new \RuntimeException('Duplicate point mappings exist for position(s): ' . $duplicatePointPositions->implode(', '));
+        }
+
         if ($pointsMap->isEmpty()) {
             $warnings[] = 'No points template found for this series.';
+        } elseif (!$pointsMap->has(1)) {
+            throw new \InvalidArgumentException('The points template must define first-place points.');
+        } elseif ($pointsMap->contains(fn($score) => (int) $score < 0)) {
+            throw new \InvalidArgumentException('Ranking points may not be negative.');
+        }
+
+        $orderedScores = $pointsMap->sortKeys()->values();
+        for ($i = 1; $i < $orderedScores->count(); $i++) {
+            if ((int) $orderedScores[$i] > (int) $orderedScores[$i - 1]) {
+                throw new \InvalidArgumentException('Ranking points must not increase for a lower finishing position.');
+            }
+        }
+
+        if (($series?->auto_award_rule ?? false) && !$pointsMap->has(2)) {
+            throw new \InvalidArgumentException('The 2-of-3 auto-award rule requires second-place points.');
         }
 
         // Load raw legs
@@ -145,8 +174,32 @@ final class RankingCalculationService
             ->join('category_events as ce', 'ce.id', '=', 'p.category_event_id')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
             ->whereIn('p.category_event_id', $ceIds)
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('category_event_registrations as cer')
+                    ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+                    ->whereColumn('cer.category_event_id', 'p.category_event_id')
+                    ->whereColumn('pr.player_id', 'p.player_id')
+                    ->where(function ($withdrawn) {
+                        $withdrawn->where('cer.status', 'withdrawn')
+                            ->orWhereNotNull('cer.withdrawn_at');
+                    });
+            })
             ->select('p.player_id', 'p.category_event_id', 'p.position', 'e.start_date')
             ->get();
+
+        $duplicates = $rows->groupBy(fn($row) => $row->player_id . ':' . $row->category_event_id)
+            ->filter(fn(Collection $group) => $group->count() > 1);
+        if ($duplicates->isNotEmpty()) {
+            throw new \RuntimeException('Duplicate player placements exist for category event(s): ' . $duplicates->keys()->implode(', '));
+        }
+
+        $multipleWinners = $rows->where('position', 1)
+            ->groupBy('category_event_id')
+            ->filter(fn(Collection $group) => $group->count() > 1);
+        if ($multipleWinners->isNotEmpty()) {
+            throw new \RuntimeException('Multiple first-place finishers exist for category event(s): ' . $multipleWinners->keys()->implode(', '));
+        }
 
         $legs = $rows->map(function ($r) use ($pointsMap, &$missingPositions) {
             $pos = (int) $r->position;
@@ -367,6 +420,16 @@ final class RankingCalculationService
                     return 0;
                 });
 
+                foreach ($arr as $index => $row) {
+                    $peer = $arr[$index - 1] ?? $arr[$index + 1] ?? null;
+                    if ($peer) {
+                        $criterion = $this->tiebreakCriterion($row, $peer, $byPlayer);
+                        $row->tiebreakNotes = [$criterion
+                            ? "Tied on {$pts} points; ordered by {$criterion}."
+                            : "Tied on {$pts} points; all configured tiebreaks remain equal."];
+                    }
+                }
+
                 return collect($arr);
             })->values();
 
@@ -414,6 +477,19 @@ final class RankingCalculationService
         $bDate = $this->earliestWinDate($byPlayer[$b->playerId] ?? []);
 
         return $aDate === $bDate;
+    }
+
+    private function tiebreakCriterion(RankingRow $a, RankingRow $b, array $byPlayer): ?string
+    {
+        if ($a->wins !== $b->wins) return 'most counting-event wins';
+        if ($a->bestSingle !== $b->bestSingle) return 'highest single-event score';
+        if ($a->positionsSum !== $b->positionsSum) return 'lowest sum of counting positions';
+
+        $aDate = $this->earliestWinDate($byPlayer[$a->playerId] ?? []);
+        $bDate = $this->earliestWinDate($byPlayer[$b->playerId] ?? []);
+        if ($aDate !== $bDate) return 'earliest event win';
+
+        return null;
     }
 
     // ------------------------------------------------------------------

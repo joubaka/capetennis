@@ -8,10 +8,12 @@ use App\Models\CategoryEventRegistration;
 use App\Models\Draw;
 use App\Models\TeamTie;
 use App\Models\Wallet;
+use App\Models\Series;
 use App\Policies\DrawPolicy;
 use App\Policies\RegistrationPolicy;
 use App\Policies\TeamDrawPolicy;
 use App\Policies\WalletPolicy;
+use App\Policies\SeriesPolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -25,6 +27,7 @@ class AuthServiceProvider extends ServiceProvider
         Draw::class => DrawPolicy::class,
         TeamTie::class => TeamDrawPolicy::class,
         Wallet::class => WalletPolicy::class,
+        Series::class => SeriesPolicy::class,
     ];
 
     /**

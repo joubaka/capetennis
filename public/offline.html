@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12358f">
+  <title>Cape Tennis | Offline</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; font-family: Arial, sans-serif; color: #17213c; background: #f5f7fb; }
+    main { width: min(100%, 460px); padding: 36px 28px; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px rgba(18,53,143,.12); text-align: center; }
+    img { width: 88px; height: 88px; }
+    h1 { margin: 18px 0 10px; font-size: 1.55rem; }
+    p { margin: 0 0 22px; line-height: 1.55; color: #5b6275; }
+    button { border: 0; border-radius: 10px; padding: 12px 20px; color: #fff; background: #12358f; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/assets/img/pwa/cape-tennis-app.svg" alt="Cape Tennis">
+    <h1>You’re offline</h1>
+    <p>Reconnect to the internet to view current entries, draws, fixtures and account information.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+</body>
+</html>

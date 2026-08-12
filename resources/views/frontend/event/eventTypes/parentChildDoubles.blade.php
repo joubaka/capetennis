@@ -202,7 +202,7 @@
             <div class="card-header"> <small class="card-text text-uppercase">Series</small></div>
             <div class="card-body">
 
-                <a href="{{route('ranking.frontend.show',$event->series->id)}}" class="btn bg-label-success btn-sm">{{$event->series->name}} Ranking list</a>
+                <a href="{{route('frontend.ranking.show',$event->series->id)}}" class="btn bg-label-success btn-sm">{{$event->series->name}} Ranking list</a>
 
             </div>
         </div>

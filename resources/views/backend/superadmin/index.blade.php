@@ -165,7 +165,13 @@
     <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
 
       {{-- Profile Status compact strip --}}
-      <div class="d-flex justify-content-between align-items-center mb-2"><h6 class="mb-0">Player profile health</h6><a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-secondary">Manage players</a></div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h6 class="mb-0">Player profile health</h6>
+        <div class="d-flex gap-2">
+          <a href="{{ route('superadmin.player-duplicates.index') }}" class="btn btn-sm btn-outline-warning"><i class="ti ti-user-search me-1"></i>Check duplicates</a>
+          <a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-secondary">Manage players</a>
+        </div>
+      </div>
       <div class="sa-status-grid mb-4">
         <div class="sa-status-item"><span class="avatar avatar-sm bg-label-success"><i class="ti ti-circle-check"></i></span><div><strong>{{ number_format($profileStats['up_to_date']) }}</strong><small class="d-block text-muted">Up to date</small></div></div>
         <div class="sa-status-item"><span class="avatar avatar-sm bg-label-warning"><i class="ti ti-clock"></i></span><div><strong>{{ number_format($profileStats['needs_update']) }}</strong><small class="d-block text-muted">Needs update</small></div></div>

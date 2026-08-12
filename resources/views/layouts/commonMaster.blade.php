@@ -32,6 +32,12 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="{{ asset('assets/img/favicon/favicon.ico') }}" />
+  <link rel="manifest" href="{{ asset('manifest.webmanifest') }}" />
+  <link rel="apple-touch-icon" href="{{ asset('assets/img/pwa/cape-tennis-app-192.png') }}" />
+  <meta name="theme-color" content="#12358f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Cape Tennis" />
 
   <!-- Styles -->
   @include('layouts/sections/styles')
@@ -48,6 +54,8 @@
 
   <!-- Vuexy scripts -->
   @include('layouts/sections/scripts')
+
+  @include('layouts.sections.pwa-install')
 
 
 </body>

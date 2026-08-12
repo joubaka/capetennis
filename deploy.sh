@@ -143,7 +143,7 @@ backup_environment() {
 pull_code() {
     log "INFO" "Pulling latest code from repository..."
     cd "$APP_PATH"
-    git fetch origin || log "WARNING" "git fetch failed"
+    git fetch origin || error_exit "git fetch failed"
 
     # Ensure we are on the configured branch
     if git rev-parse --verify "$GIT_BRANCH" >/dev/null 2>&1; then
@@ -152,7 +152,7 @@ pull_code() {
         git checkout -b "$GIT_BRANCH" origin/"$GIT_BRANCH" || log "WARNING" "Could not create/check out branch $GIT_BRANCH"
     fi
 
-    git pull origin "$GIT_BRANCH" || log "WARNING" "Failed to pull from origin/$GIT_BRANCH"
+    git pull --ff-only origin "$GIT_BRANCH" || error_exit "Failed to fast-forward from origin/$GIT_BRANCH"
 
     log "INFO" "Code pulled successfully (branch: $GIT_BRANCH)"
 }
@@ -193,10 +193,30 @@ run_migrations() {
         return
     fi
     
-    log "INFO" "Running database migrations..."
+    if [ "${RUN_MIGRATIONS:-false}" != true ]; then
+        log "INFO" "Migrations disabled by deploy.config"
+        return
+    fi
+
+    if [ -z "${MIGRATION_PATHS:-}" ]; then
+        error_exit "RUN_MIGRATIONS=true requires an explicit MIGRATION_PATHS allowlist"
+    fi
+
+    log "INFO" "Running approved database migrations..."
     cd "$APP_PATH"
-    
-    php artisan migrate --force || error_exit "Migrations failed"
+
+    for migration_path in $MIGRATION_PATHS; do
+        case "$migration_path" in
+            database/migrations/*.php) ;;
+            *) error_exit "Invalid migration path: $migration_path" ;;
+        esac
+
+        if [ ! -f "$APP_PATH/$migration_path" ]; then
+            error_exit "Approved migration not found: $migration_path"
+        fi
+
+        php artisan migrate --force --path="$migration_path" || error_exit "Migration failed: $migration_path"
+    done
     
     log "INFO" "Migrations completed"
 }
@@ -289,7 +309,8 @@ sync_public_html() {
     done
 
     # Sync root-level files (service workers, manifest, favicon, etc.)
-    for file in firebase-messaging-sw.js manifest.json mix-manifest.json favicon.ico robots.txt; do
+    root_files="${SYNC_ROOT_FILES:-firebase-messaging-sw.js manifest.json mix-manifest.json favicon.ico robots.txt}"
+    for file in $root_files; do
         if [ -f "$APP_PATH/public/$file" ]; then
             cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"
             log "INFO" "   Copied $file"

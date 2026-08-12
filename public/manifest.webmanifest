@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Cape Tennis",
+  "short_name": "Cape Tennis",
+  "description": "Cape Tennis events, entries, draws, fixtures and player information.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#12358f",
+  "categories": ["sports", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/img/pwa/cape-tennis-app-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/img/pwa/cape-tennis-app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/img/pwa/cape-tennis-app.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

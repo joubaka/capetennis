@@ -67,6 +67,7 @@ final class RankingRebuildService
         $totalRows = 0;
 
         DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows) {
+            DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
             $lists = $series->ranking_lists()->with(['category', 'series'])->get();
 
@@ -76,6 +77,8 @@ final class RankingRebuildService
             }
 
             foreach ($lists as $list) {
+                $this->validateListOwnership($series, $list->id, $list->category_id);
+
                 $listOptions = array_merge($options, [
                     // Per-list best-N takes priority over global override
                     'bestN' => $options['bestN'] ?? $list->best_num_of_scores ?? $series->best_num_of_scores ?? 9999,
@@ -209,5 +212,24 @@ final class RankingRebuildService
             ], $row->droppedLegs),
             'tiebreak_notes' => $row->tiebreakNotes,
         ];
+    }
+
+    private function validateListOwnership(Series $series, int $rankingListId, int $categoryId): void
+    {
+        $invalid = DB::table('ranking_list_category_events as rlce')
+            ->join('category_events as ce', 'ce.id', '=', 'rlce.category_event_id')
+            ->join('events as e', 'e.id', '=', 'ce.event_id')
+            ->where('rlce.ranking_list_id', $rankingListId)
+            ->where(function ($query) use ($series, $categoryId) {
+                $query->where('e.series_id', '!=', $series->id)
+                    ->orWhere('ce.category_id', '!=', $categoryId);
+            })
+            ->pluck('rlce.category_event_id');
+
+        if ($invalid->isNotEmpty()) {
+            throw new \RuntimeException(
+                "Ranking list {$rankingListId} contains category events outside its series/category: " . $invalid->implode(', ')
+            );
+        }
     }
 }

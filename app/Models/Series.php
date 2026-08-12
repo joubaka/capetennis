@@ -23,6 +23,7 @@ class Series extends Model
     'year' => 'integer',
     'best_of' => 'integer',
     'published' => 'boolean',
+    'leaderboard_published' => 'boolean',
     'auto_award_rule' => 'boolean',
   ];
 

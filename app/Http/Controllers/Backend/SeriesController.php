@@ -331,6 +331,10 @@ class SeriesController extends Controller
 
   public function rankingsOverberg(Series $series)
   {
+    $this->authorize('view', $series);
+
+    return redirect()->route('ranking.series.list', $series);
+
     // 🔒 FULL ORIGINAL LOGIC PRESERVED
     // (exactly as you provided — intentionally not altered)
     // 👉 Your existing implementation remains here verbatim
@@ -355,6 +359,11 @@ class SeriesController extends Controller
 
   public function seriesRankings(int $seriesId)
   {
+    $series = Series::findOrFail($seriesId);
+    $this->authorize('view', $series);
+
+    return redirect()->route('ranking.series.list', $series);
+
     $overall = $this->getSeriesRanking($seriesId);
     $byCat = $this->getSeriesCategoryRankings($seriesId);
 

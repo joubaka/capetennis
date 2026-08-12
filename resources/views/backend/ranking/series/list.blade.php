@@ -46,6 +46,14 @@
         <div class="text-muted">
           {{ $series->name }} ({{ $series->year }})
         </div>
+        <div class="mt-2 d-flex gap-2 align-items-center flex-wrap">
+          <span class="badge bg-label-{{ $activeStatus === 'published' ? 'success' : ($activeStatus === 'reviewed' ? 'info' : ($activeStatus === 'calculated' ? 'warning' : 'secondary')) }}">
+            {{ $activeStatus ? ucfirst($activeStatus) : 'No ranking run' }}
+          </span>
+          @if($activeRunId)
+            <small class="text-muted">Run {{ $activeRunId }}</small>
+          @endif
+        </div>
       </div>
 
       <div class="d-flex gap-2">
@@ -64,6 +72,26 @@
         <button id="rebuild-ranking" class="btn btn-warning">
           <i class="ti ti-refresh me-1"></i> Rebuild Rankings
         </button>
+
+        @if($activeStatus === 'calculated')
+          <button class="btn btn-info ranking-lifecycle-action"
+                  data-url="{{ route('ranking.series.ranking.review', $series) }}"
+                  data-confirm="Mark this complete run as reviewed?">
+            <i class="ti ti-check me-1"></i> Mark Reviewed
+          </button>
+        @elseif($activeStatus === 'reviewed')
+          <button class="btn btn-success ranking-lifecycle-action"
+                  data-url="{{ route('ranking.series.ranking.publish', $series) }}"
+                  data-confirm="Publish this reviewed run to the public leaderboard?">
+            <i class="ti ti-world-upload me-1"></i> Publish
+          </button>
+        @elseif($activeStatus === 'published' && $hasArchivedSnapshot)
+          <button class="btn btn-outline-danger ranking-lifecycle-action"
+                  data-url="{{ route('ranking.series.ranking.rollback', $series) }}"
+                  data-confirm="Roll back to the previous published snapshot?">
+            <i class="ti ti-history me-1"></i> Roll Back
+          </button>
+        @endif
       </div>
     </div>
   </div>
@@ -235,21 +263,49 @@ document.getElementById('rebuild-ranking')?.addEventListener('click', () => {
   const btn = document.getElementById('rebuild-ranking');
   btn.disabled = true;
 
-  fetch('{{ route('ranking.series.rebuild', $series) }}?legacy=1', {
+  fetch('{{ route('ranking.series.rebuild', $series) }}', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': '{{ csrf_token() }}'
     }
   })
-  .then(r => r.json())
+  .then(async response => {
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || 'Failed to rebuild rankings');
+    return payload;
+  })
   .then(r => {
     toastr.success(r.message);
     location.reload();
   })
-  .catch(() => {
-    toastr.error('Failed to rebuild rankings');
+  .catch(error => {
+    toastr.error(error.message || 'Failed to rebuild rankings');
     btn.disabled = false;
+  });
+});
+
+document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
+  button.addEventListener('click', async () => {
+    if (!window.confirm(button.dataset.confirm)) return;
+
+    button.disabled = true;
+    try {
+      const response = await fetch(button.dataset.url, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Ranking action failed');
+      toastr.success(payload.message);
+      location.reload();
+    } catch (error) {
+      toastr.error(error.message || 'Ranking action failed');
+      button.disabled = false;
+    }
   });
 });
 

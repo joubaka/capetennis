@@ -34,21 +34,52 @@ final class RankingPublicationService
      */
     public function markReviewed(Series $series, int $userId): void
     {
-        $updated = SeriesRanking::where('series_id', $series->id)
-            ->where('status', RankingStatus::Calculated->value)
-            ->update([
-                'status'      => RankingStatus::Reviewed->value,
-                'reviewed_by' => $userId,
-                'reviewed_at' => now(),
+        DB::transaction(function () use ($series, $userId) {
+            DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
+
+            $runId = SeriesRanking::where('series_id', $series->id)
+                ->where('status', RankingStatus::Calculated->value)
+                ->whereNotNull('run_id')
+                ->orderByDesc('created_at')
+                ->value('run_id');
+
+            if (!$runId) {
+                throw new \RuntimeException("No completed calculated ranking run found for series {$series->id}.");
+            }
+
+            $expectedLists = $series->ranking_lists()->count();
+            $runLists = SeriesRanking::where('series_id', $series->id)
+                ->where('run_id', $runId)
+                ->where('status', RankingStatus::Calculated->value)
+                ->distinct('ranking_list_id')
+                ->count('ranking_list_id');
+
+            if ($expectedLists === 0 || $runLists !== $expectedLists) {
+                throw new \RuntimeException(
+                    "Ranking run {$runId} is incomplete: {$runLists} of {$expectedLists} ranking lists contain rows."
+                );
+            }
+
+            $updated = SeriesRanking::where('series_id', $series->id)
+                ->where('run_id', $runId)
+                ->where('status', RankingStatus::Calculated->value)
+                ->update([
+                    'status'      => RankingStatus::Reviewed->value,
+                    'reviewed_by' => $userId,
+                    'reviewed_at' => now(),
+                ]);
+
+            Log::info('[RankingPublication] Marked reviewed', [
+                'series_id' => $series->id,
+                'run_id'    => $runId,
+                'rows'      => $updated,
+                'user_id'   => $userId,
             ]);
 
-        Log::info('[RankingPublication] Marked reviewed', [
-            'series_id' => $series->id,
-            'rows'      => $updated,
-            'user_id'   => $userId,
-        ]);
-
-        $this->auditor->recordStatusChange($series, RankingStatus::Calculated, RankingStatus::Reviewed, $userId);
+            $this->auditor->recordStatusChange($series, RankingStatus::Calculated, RankingStatus::Reviewed, $userId, [
+                'run_id' => $runId,
+            ]);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -69,16 +100,21 @@ final class RankingPublicationService
     public function publish(Series $series, int $userId): void
     {
         DB::transaction(function () use ($series, $userId) {
+            DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
-            $reviewedCount = SeriesRanking::where('series_id', $series->id)
+            $reviewedRuns = SeriesRanking::where('series_id', $series->id)
                 ->where('status', RankingStatus::Reviewed->value)
-                ->count();
+                ->whereNotNull('run_id')
+                ->distinct()
+                ->pluck('run_id');
 
-            if ($reviewedCount === 0) {
+            if ($reviewedRuns->count() !== 1) {
                 throw new \RuntimeException(
-                    "No reviewed ranking rows found for series {$series->id}. Run and review a rebuild first."
+                    "Expected exactly one reviewed ranking run for series {$series->id}; found {$reviewedRuns->count()}."
                 );
             }
+
+            $runId = $reviewedRuns->first();
 
             // Archive old Published rows
             $archived = SeriesRanking::where('series_id', $series->id)
@@ -87,6 +123,7 @@ final class RankingPublicationService
 
             // Promote Reviewed → Published
             $published = SeriesRanking::where('series_id', $series->id)
+                ->where('run_id', $runId)
                 ->where('status', RankingStatus::Reviewed->value)
                 ->update([
                     'status'       => RankingStatus::Published->value,
@@ -94,14 +131,21 @@ final class RankingPublicationService
                     'published_at' => now(),
                 ]);
 
+            DB::table('series')
+                ->where('id', $series->id)
+                ->update(['leaderboard_published' => true]);
+
             Log::info('[RankingPublication] Published', [
                 'series_id' => $series->id,
+                'run_id'    => $runId,
                 'published' => $published,
                 'archived'  => $archived,
                 'user_id'   => $userId,
             ]);
 
-            $this->auditor->recordStatusChange($series, RankingStatus::Reviewed, RankingStatus::Published, $userId);
+            $this->auditor->recordStatusChange($series, RankingStatus::Reviewed, RankingStatus::Published, $userId, [
+                'run_id' => $runId,
+            ]);
         });
     }
 
@@ -116,32 +160,54 @@ final class RankingPublicationService
     public function rollback(Series $series, int $userId): void
     {
         DB::transaction(function () use ($series, $userId) {
+            DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
-            $publishedCount = SeriesRanking::where('series_id', $series->id)
+            $publishedRuns = SeriesRanking::where('series_id', $series->id)
                 ->where('status', RankingStatus::Published->value)
-                ->count();
+                ->whereNotNull('run_id')
+                ->distinct()
+                ->pluck('run_id');
 
-            if ($publishedCount === 0) {
+            if ($publishedRuns->isEmpty()) {
                 throw new \RuntimeException("No published ranking found for series {$series->id}.");
             }
 
-            // Remove the current publication
-            SeriesRanking::where('series_id', $series->id)
-                ->where('status', RankingStatus::Published->value)
-                ->delete();
+            if ($publishedRuns->count() !== 1) {
+                throw new \RuntimeException(
+                    "Cannot roll back series {$series->id}: multiple published ranking runs are active."
+                );
+            }
 
-            // Restore the most recent archived run
+            $currentRunId = $publishedRuns->first();
+
             $latestRunId = SeriesRanking::where('series_id', $series->id)
                 ->where('status', RankingStatus::Archived->value)
+                ->whereNotNull('run_id')
+                ->where('run_id', '!=', $currentRunId)
                 ->orderByDesc('updated_at')
                 ->value('run_id');
 
-            if ($latestRunId) {
-                SeriesRanking::where('series_id', $series->id)
-                    ->where('status', RankingStatus::Archived->value)
-                    ->where('run_id', $latestRunId)
-                    ->update(['status' => RankingStatus::Published->value]);
+            if (!$latestRunId) {
+                throw new \RuntimeException("No archived ranking snapshot is available for series {$series->id}.");
             }
+
+            SeriesRanking::where('series_id', $series->id)
+                ->where('status', RankingStatus::Published->value)
+                ->where('run_id', $currentRunId)
+                ->update(['status' => RankingStatus::Archived->value]);
+
+            SeriesRanking::where('series_id', $series->id)
+                ->where('status', RankingStatus::Archived->value)
+                ->where('run_id', $latestRunId)
+                ->update([
+                    'status'       => RankingStatus::Published->value,
+                    'published_by' => $userId,
+                    'published_at' => now(),
+                ]);
+
+            DB::table('series')
+                ->where('id', $series->id)
+                ->update(['leaderboard_published' => true]);
 
             Log::info('[RankingPublication] Rolled back', [
                 'series_id'       => $series->id,

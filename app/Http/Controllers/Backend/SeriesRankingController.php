@@ -35,37 +35,50 @@ class SeriesRankingController extends Controller
 
     $series->load(['events.categoryEvents']);
 
+    $activeRunId = SeriesRanking::where('series_id', $series->id)
+      ->whereIn('status', ['calculated', 'reviewed', 'published'])
+      ->whereNotNull('run_id')
+      ->orderByDesc('updated_at')
+      ->value('run_id');
+
     $rankings = SeriesRanking::with([
       'registration.players',
       'player',
       'category'
     ])
       ->where('series_id', $series->id)
+      ->when($activeRunId, fn($query) => $query->where('run_id', $activeRunId))
       ->orderBy('category_id')
       ->orderBy('rank_position')
       ->get();
 
     $categories = $rankings->pluck('category')->unique('id');
+    $activeStatus = $rankings->first()?->status;
+    $hasArchivedSnapshot = SeriesRanking::where('series_id', $series->id)
+      ->where('status', 'archived')
+      ->whereNotNull('run_id')
+      ->exists();
 
     return view('backend.ranking.series.list', [
       'series' => $series,
       'rankings' => $rankings,
       'categories' => $categories,
+      'activeRunId' => $activeRunId,
+      'activeStatus' => $activeStatus,
+      'hasArchivedSnapshot' => $hasArchivedSnapshot,
     ]);
   }
 
   /**
    * Rebuild the ranking list for a series using the canonical pipeline.
    * Pass ?dry_run=1 to preview without writing.
-   * Pass ?legacy=1 to force the legacy rebuild path (kept for parity testing).
+   * Legacy rebuild requests are rejected; all writes use the canonical pipeline.
    */
   public function rebuild(Request $request, Series $series)
   {
     $this->authorize('update', $series);
 
-    if ($request->boolean('legacy')) {
-      return $this->rebuildLegacy($request, $series);
-    }
+    abort_if($request->boolean('legacy'), 410, 'The legacy ranking rebuild has been retired.');
 
     $options = [
       'dryRun'            => $request->boolean('dry_run'),
@@ -136,6 +149,8 @@ class SeriesRankingController extends Controller
 
       private function rebuildLegacy(Request $request, Series $series)
       {
+        abort(410, 'The legacy ranking rebuild has been retired.');
+
         DB::transaction(function () use ($series, $request) {
           $runId = 'sr-' . $series->id . '-' . now()->format('YmdHis') . '-' . substr(md5((string) microtime(true)), 0, 6);
 

@@ -67,13 +67,23 @@ final class RankingAuditService
      */
     public function buildReport(Series $series): array
     {
+        $activeRunId = SeriesRanking::where('series_id', $series->id)
+            ->whereIn('status', [
+                RankingStatus::Calculated->value,
+                RankingStatus::Reviewed->value,
+                RankingStatus::Published->value,
+            ])
+            ->whereNotNull('run_id')
+            ->orderByDesc('updated_at')
+            ->value('run_id');
+
         $lists      = $series->ranking_lists()->with(['category'])->get();
         $pointsMap  = DB::table('points')
             ->where('series_id', $series->id)
             ->pluck('score', 'position')
             ->all();
 
-        $listReports = $lists->map(function ($list) use ($series, $pointsMap) {
+        $listReports = $lists->map(function ($list) use ($series, $pointsMap, $activeRunId) {
             $ceIds = DB::table('ranking_list_category_events')
                 ->where('ranking_list_id', $list->id)
                 ->pluck('category_event_id');
@@ -85,6 +95,7 @@ final class RankingAuditService
                     RankingStatus::Reviewed->value,
                     RankingStatus::Published->value,
                 ])
+                ->when($activeRunId, fn($query) => $query->where('run_id', $activeRunId))
                 ->orderBy('rank_position')
                 ->get();
 
@@ -140,6 +151,7 @@ final class RankingAuditService
                 'best_n'    => $series->best_num_of_scores,
                 'auto_award_rule' => $series->auto_award_rule,
             ],
+            'active_run_id'       => $activeRunId,
             'lists'               => $listReports->values()->all(),
             'publication_history' => $publicationHistory,
         ];
@@ -220,7 +232,10 @@ final class RankingAuditService
     {
         $eventsWithData = collect();
         foreach ($rows as $row) {
-            $legs = $row->meta_json['counting_legs'] ?? [];
+            $legs = array_merge(
+                $row->meta_json['counting_legs'] ?? [],
+                $row->meta_json['dropped_legs'] ?? []
+            );
             foreach ($legs as $leg) {
                 $eventsWithData->push($leg['category_event_id']);
             }

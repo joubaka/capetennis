@@ -40,10 +40,16 @@
         </div>
 
         <div class="card-body d-grid gap-2">
-          <a href="{{ route('ranking.frontend.show', $series) }}"
-             class="btn btn-success">
-            View Rankings
-          </a>
+          @if($series->leaderboard_published)
+            <a href="{{ route('frontend.ranking.show', $series) }}"
+               class="btn btn-success">
+              View Published Rankings
+            </a>
+          @else
+            <button type="button" class="btn btn-outline-secondary" disabled>
+              Public Rankings Not Published
+            </button>
+          @endif
 
           <form method="POST" action="{{ route('ranking.calculate', $series) }}">
             @csrf
@@ -75,7 +81,7 @@
     Series Settings
   </a>
 
-  <a href="{{ route('ranking.points.update', $series) }}"
+  <a href="{{ route('ranking.points', $series) }}"
      class="btn btn-outline-primary">
     Points Allocation
   </a>

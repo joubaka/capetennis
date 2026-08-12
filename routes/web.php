@@ -442,6 +442,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   // Super Admin Financial Dashboard
   Route::middleware('role:super-user')->group(function () {
+    Route::get('superadmin/player-duplicates', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'index'])
+      ->name('superadmin.player-duplicates.index');
+
+    Route::post('superadmin/player-duplicates/merge', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'merge'])
+      ->name('superadmin.player-duplicates.merge');
+
     Route::get('superadmin/finances', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'index'])
       ->name('superadmin.finances');
 
@@ -1289,7 +1295,7 @@ Route::delete(
 
       Route::post(
         'lists/{rankingList}/order',
-        [RankingController::class, 'update_ranklist_order']
+        [RankingController::class, 'updateListOrder']
       )->name('lists.order');
 
     Route::delete('/ranking/lists/{list}/remove-category', [RankingController::class, 'removeCategory'])
@@ -1299,12 +1305,6 @@ Route::delete(
     | Frontend leaderboard
     |--------------------------------------------------------------------------
     */
-    Route::get(
-      'frontend/show/{series}',
-      [RankingController::class, 'ranking_frontend_show']
-    )->name('frontend.show');
-
-
     /*
     |--------------------------------------------------------------------------
     | Series settings (SERIES responsibility)
@@ -1691,12 +1691,14 @@ Route::get('/admin/draws/format-options/{id}', function ($id) {
   $option = \App\Models\DrawFormatOption::where('draw_format_id', $id)->first();
   return response()->json($option);
 });
-Route::get('backend/ranking/{series}/results', [RankingController::class, 'results'])
-  ->name('backend.ranking.results');
-Route::get('ranking/{series}/results', [RankingController::class, 'results'])
-  ->name('rankings.results');
-Route::get('backend/ranking/{series}/getSeriesData', [SeriesController::class, 'seriesRankings'])
-  ->name('backend.ranking.series.data');
+Route::middleware('auth')->group(function () {
+  Route::get('backend/ranking/{series}', [RankingController::class, 'show'])
+    ->name('backend.ranking.show');
+  Route::get('backend/ranking/{series}/results', [RankingController::class, 'results'])
+    ->name('backend.ranking.results');
+  Route::get('backend/ranking/{series}/getSeriesData', [SeriesController::class, 'seriesRankings'])
+    ->name('backend.ranking.series.data');
+});
 
 
 

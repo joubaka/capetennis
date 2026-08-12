@@ -6,8 +6,11 @@ use App\Domain\Ranking\Enums\RankingStatus;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Models\Series;
 use App\Models\SeriesRanking;
+use App\Models\RankingList;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\Event;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -26,7 +29,7 @@ use Tests\TestCase;
  */
 class RankingPublicationTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
 
     private User $admin;
 
@@ -43,14 +46,19 @@ class RankingPublicationTest extends TestCase
 
     private function makeSeries(): Series
     {
-        return Series::factory()->create(['best_num_of_scores' => 2, 'auto_award_rule' => false]);
+        $series = Series::factory()->create(['best_num_of_scores' => 2, 'auto_award_rule' => false]);
+        RankingList::factory()->create(['series_id' => $series->id, 'category_id' => 1]);
+
+        return $series;
     }
 
     private function seedRows(Series $series, string $status, int $count = 3, string $runId = 'test-run'): void
     {
+        $listId = $series->ranking_lists()->value('id');
         for ($i = 1; $i <= $count; $i++) {
             SeriesRanking::create([
                 'series_id'     => $series->id,
+                'ranking_list_id' => $listId,
                 'category_id'   => 1,
                 'player_id'     => $i,
                 'rank_position' => $i,
@@ -90,6 +98,8 @@ class RankingPublicationTest extends TestCase
         $this->seedRows($series, RankingStatus::Reviewed->value);
 
         $this->service()->publish($series, $this->admin->id);
+
+        $this->assertTrue($series->fresh()->leaderboard_published);
 
         $this->assertEquals(
             3,
@@ -152,6 +162,59 @@ class RankingPublicationTest extends TestCase
                 ->where('run_id', 'run-previous')
                 ->count()
         );
+        $this->assertEquals(
+            3,
+            SeriesRanking::where('series_id', $series->id)
+                ->where('status', RankingStatus::Archived->value)
+                ->where('run_id', 'run-current')
+                ->count()
+        );
+    }
+
+    public function test_rollback_without_archive_preserves_current_publication(): void
+    {
+        $series = $this->makeSeries();
+        $this->seedRows($series, RankingStatus::Published->value, 3, 'run-current');
+
+        try {
+            $this->service()->rollback($series, $this->admin->id);
+            $this->fail('Rollback should fail when no archived snapshot exists.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('No archived ranking snapshot', $exception->getMessage());
+        }
+
+        $this->assertSame(3, SeriesRanking::where('series_id', $series->id)
+            ->where('status', RankingStatus::Published->value)->count());
+    }
+
+    public function test_publish_rejects_mixed_reviewed_runs(): void
+    {
+        $series = $this->makeSeries();
+        $this->seedRows($series, RankingStatus::Reviewed->value, 1, 'run-a');
+        $this->seedRows($series, RankingStatus::Reviewed->value, 1, 'run-b');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('exactly one reviewed ranking run');
+
+        $this->service()->publish($series, $this->admin->id);
+    }
+
+    public function test_rollback_rejects_multiple_active_published_runs_without_changing_them(): void
+    {
+        $series = $this->makeSeries();
+        $this->seedRows($series, RankingStatus::Published->value, 1, 'run-a');
+        $this->seedRows($series, RankingStatus::Published->value, 1, 'run-b');
+        $this->seedRows($series, RankingStatus::Archived->value, 1, 'run-old');
+
+        try {
+            $this->service()->rollback($series, $this->admin->id);
+            $this->fail('Rollback should reject multiple active published runs.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('multiple published ranking runs', $exception->getMessage());
+        }
+
+        $this->assertSame(2, SeriesRanking::where('series_id', $series->id)
+            ->where('status', RankingStatus::Published->value)->count());
     }
 
     // ------------------------------------------------------------------
@@ -218,5 +281,30 @@ class RankingPublicationTest extends TestCase
 
         $this->postJson("/backend/ranking/series/{$series->id}/review")
              ->assertStatus(401);
+    }
+
+    public function test_admin_cannot_review_a_series_outside_their_events(): void
+    {
+        $series = $this->makeSeries();
+        Event::factory()->create(['series_id' => $series->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/ranking/series/{$series->id}/review")
+            ->assertForbidden();
+    }
+
+    public function test_event_admin_can_review_their_series(): void
+    {
+        $series = $this->makeSeries();
+        $event = Event::factory()->create(['series_id' => $series->id]);
+        \Illuminate\Support\Facades\DB::table('event_admins')->insert([
+            'event_id' => $event->id,
+            'user_id' => $this->admin->id,
+        ]);
+        $this->seedRows($series, RankingStatus::Calculated->value, runId: 'run-authorized');
+
+        $this->actingAs($this->admin)
+            ->postJson("/backend/ranking/series/{$series->id}/review")
+            ->assertOk();
     }
 }
