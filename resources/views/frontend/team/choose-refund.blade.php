@@ -58,7 +58,7 @@
           <strong>Paid:</strong> R{{ number_format($gross, 2) }}
         </p>
         <p class="mb-1 text-muted">
-          <strong>Refund fee (10%):</strong> R{{ number_format($fee, 2) }}
+          <strong>Withdrawal fee (10%):</strong> R{{ number_format($fee, 2) }}
         </p>
         <p class="fs-5 mt-2">
           You will receive:
@@ -89,6 +89,7 @@
         </small>
       </form>
 
+      @if(($payfastNet ?? 0) > 0)
       {{-- BANK REFUND BUTTON --}}
       <button type="button"
               class="btn btn-outline-primary w-100"
@@ -101,6 +102,7 @@
       <small class="text-muted d-block mt-1">
         Bank refunds are processed manually and may take 2–3 business days.
       </small>
+      @endif
 
     </div>
   </div>
@@ -108,6 +110,7 @@
 
 
 {{-- ================= BANK REFUND MODAL ================= --}}
+@if(($payfastNet ?? 0) > 0)
 <div class="modal fade" id="bankRefundModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -191,5 +194,6 @@
     </div>
   </div>
 </div>
+@endif
 
 @endsection

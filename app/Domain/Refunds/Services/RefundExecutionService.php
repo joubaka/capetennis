@@ -150,6 +150,45 @@ class RefundExecutionService
 
         return $completed;
     }
+
+    public function executeSplitRefund(
+        Model $refundEntity,
+        ?Wallet $wallet,
+        float $walletAmount,
+        string $sourceType,
+        int $sourceId,
+        array $meta = [],
+        array $statusOverrides = []
+    ): Model {
+        $entityClass = get_class($refundEntity);
+
+        return FinanceMutationScope::run('refund_state_write', function () use ($entityClass, $refundEntity, $wallet, $walletAmount, $sourceType, $sourceId, $meta, $statusOverrides) {
+            return DB::transaction(function () use ($entityClass, $refundEntity, $wallet, $walletAmount, $sourceType, $sourceId, $meta, $statusOverrides) {
+                $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+                if (($locked->refund_status ?? null) === 'completed') {
+                    return $locked;
+                }
+
+                if ($walletAmount > 0) {
+                    if (! $wallet) {
+                        throw new \RuntimeException('Wallet not found for split refund.');
+                    }
+                    $this->ledgerService->appendWalletCredit($wallet, $walletAmount, $sourceType, $sourceId, $meta);
+                }
+
+                $locked->fill($statusOverrides + [
+                    'refund_method' => 'payfast',
+                    'refund_status' => 'completed',
+                    'refunded_at' => now(),
+                ]);
+                $locked->refund_status = 'completed';
+                $locked->refunded_at = now();
+                $locked->save();
+
+                return $locked;
+            });
+        });
+    }
     private function supportsAttribute(Model $model, string $attribute): bool
     {
         return array_key_exists($attribute, $model->getAttributes())

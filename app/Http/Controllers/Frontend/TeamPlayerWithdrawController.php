@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Refunds\Services\RefundExecutionService;
+use App\Domain\Refunds\Services\TeamRefundCalculator;
 use App\Domain\Finance\Services\RefundRequestService;
 use App\Models\Player;
 use App\Models\SiteSetting;
@@ -131,11 +132,9 @@ class TeamPlayerWithdrawController extends Controller
       return redirect()->route('events.show', [$eventId])->with('success', 'Player withdrawn (no payment to refund).');
     }
 
-    $gross = (float) $order->total_amount;
-    $fee = SiteSetting::calculatePayfastFee($gross);
-    $net = round($gross - $fee, 2);
+    ['gross' => $gross, 'fee' => $fee, 'net' => $net, 'payfastGross' => $payfastGross, 'payfastNet' => $payfastNet] = app(TeamRefundCalculator::class)->calculate($order);
 
-    return view('frontend.team.choose-refund', compact('team', 'player', 'eventId', 'order', 'gross', 'fee', 'net'));
+    return view('frontend.team.choose-refund', compact('team', 'player', 'eventId', 'order', 'gross', 'fee', 'net', 'payfastGross', 'payfastNet'));
   }
 
   public function storeRefund(Request $request, Team $team, Player $player, $eventId)
@@ -204,9 +203,18 @@ class TeamPlayerWithdrawController extends Controller
       'account_type' => 'required_if:method,bank|in:cheque,savings,business',
     ]);
 
-    $gross = (float) $order->total_amount;
-    $fee = SiteSetting::calculatePayfastFee($gross);
-    $net = round($gross - $fee, 2);
+    [
+      'gross' => $gross,
+      'fee' => $fee,
+      'net' => $net,
+      'payfastGross' => $payfastGross,
+      'payfastNet' => $payfastNet,
+      'walletNet' => $walletNet,
+    ] = app(TeamRefundCalculator::class)->calculate($order);
+
+    if ($request->input('method') === 'bank' && $payfastNet <= 0) {
+      return back()->withErrors('Wallet-funded team payments can only be refunded to the wallet.');
+    }
 
     // Over-refund guard
     if ($order->maxRefundableAmount() <= 0) {
@@ -325,22 +333,30 @@ class TeamPlayerWithdrawController extends Controller
     if (!empty($pfPaymentId)) {
       try {
         $payfast = new \App\Services\Payfast();
-        $result = $payfast->refund($pfPaymentId, $net, 'Team withdrawal refund');
+        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Team withdrawal refund');
 
         Log::info('TEAM PAYFAST AUTO REFUND ATTEMPT', [
           'order_id' => $order->id,
           'pf_payment_id' => $pfPaymentId,
-          'amount' => $net,
+          'amount' => $payfastNet,
           'result' => $result,
         ]);
 
         if ($result['success']) {
-          app(RefundExecutionService::class)->executeBankRefund($order, [
+          app(RefundExecutionService::class)->executeSplitRefund(
+            $order,
+            $order->user?->wallet,
+            $walletNet,
+            'team_player_hybrid_refund',
+            $order->id,
+            ['team_id' => $team->id, 'player_id' => $player->id, 'gross' => $gross, 'fee' => $fee],
+            [
             'refund_method' => 'payfast',
             'refund_gross'  => $gross,
             'refund_fee'    => $fee,
             'refund_net'    => $net,
-          ]);
+            ]
+          );
 
           activity('refund')
             ->performedOn($order)
