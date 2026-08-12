@@ -109,8 +109,13 @@ class RankingController extends Controller
       'category'
     ])
       ->where('series_id', $series->id)
-      ->where('status', RankingStatus::Published->value)
-      ->when($runId, fn($query) => $query->where('run_id', $runId))
+      ->when(
+        $runId,
+        fn($query) => $query
+          ->where('status', RankingStatus::Published->value)
+          ->where('run_id', $runId),
+        fn($query) => $query->whereNull('run_id')
+      )
       ->orderBy('category_id')
       ->orderBy('rank_position')
       ->get();
@@ -129,8 +134,13 @@ class RankingController extends Controller
     $rankingRecord = \App\Models\SeriesRanking::with(['category'])
       ->where('series_id', $series->id)
       ->where('player_id', $player->id)
-      ->where('status', RankingStatus::Published->value)
-      ->when($runId, fn($query) => $query->where('run_id', $runId))
+      ->when(
+        $runId,
+        fn($query) => $query
+          ->where('status', RankingStatus::Published->value)
+          ->where('run_id', $runId),
+        fn($query) => $query->whereNull('run_id')
+      )
       ->orderBy('rank_position')
       ->first();
 

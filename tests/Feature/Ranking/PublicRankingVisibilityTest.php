@@ -53,13 +53,33 @@ class PublicRankingVisibilityTest extends TestCase
         $this->get(route('frontend.ranking.player-detail', [$series, $player]))->assertNotFound();
     }
 
+    public function test_published_legacy_leaderboard_without_run_ids_remains_visible(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create();
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $legacy = Player::factory()->create(['name' => 'Legacy Published Player']);
+        $draft = Player::factory()->create(['name' => 'Canonical Draft Player']);
+
+        $this->row($series, $list, $category, $legacy, RankingStatus::Calculated, null);
+        $this->row($series, $list, $category, $draft, RankingStatus::Calculated, 'run-draft');
+
+        $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()
+            ->assertSee('Legacy Published Player')
+            ->assertDontSee('Canonical Draft Player');
+
+        $this->get(route('frontend.ranking.player-detail', [$series, $legacy]))->assertOk();
+        $this->get(route('frontend.ranking.player-detail', [$series, $draft]))->assertNotFound();
+    }
+
     private function row(
         Series $series,
         RankingList $list,
         Category $category,
         Player $player,
         RankingStatus $status,
-        string $runId,
+        ?string $runId,
         $publishedAt = null,
     ): void {
         SeriesRanking::create([
