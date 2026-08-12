@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Events\AnnouncementPost;
+use App\Events\PaymentCompleted;
+use App\Domain\Entries\Events\EntryCreated;
 
 use App\Events\UserRegistered;
 use App\Listeners\SendAnouncementEmail;
@@ -14,6 +16,8 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use App\Listeners\LogSuccessfulLogin;
 use App\Listeners\LogFailedLogin;
+use App\Listeners\SendTeamRegistrationConfirmation;
+use App\Listeners\SendAdminEntryCreatedConfirmation;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 
@@ -33,6 +37,12 @@ class EventServiceProvider extends ServiceProvider
         ],
         AnnouncementPost::class => [
              SendAnouncementEmail::class,
+        ],
+        PaymentCompleted::class => [
+            SendTeamRegistrationConfirmation::class,
+        ],
+        EntryCreated::class => [
+            SendAdminEntryCreatedConfirmation::class,
         ],
         // Auth events
         Login::class => [

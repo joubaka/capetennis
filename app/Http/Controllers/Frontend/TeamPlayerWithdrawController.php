@@ -67,6 +67,16 @@ class TeamPlayerWithdrawController extends Controller
       $teamPlayer->pay_status = 0;
       $teamPlayer->save();
 
+      $withdrawalOrder = TeamPaymentOrder::where('team_id', $team->id)
+        ->where('player_id', $player->id)
+        ->where('event_id', $eventId)
+        ->first();
+      if ($withdrawalOrder) {
+        app(\App\Services\TeamCommunicationService::class)->withdrawal($withdrawalOrder, [
+          'refund_available' => $refundAllowed,
+        ]);
+      }
+
       if ($refundAllowed) {
         // Redirect user to refund choice so they can select wallet or bank refund
         return redirect()
@@ -279,6 +289,10 @@ class TeamPlayerWithdrawController extends Controller
           'amount' => $net,
         ]);
 
+        app(\App\Services\TeamCommunicationService::class)->player($order->fresh(), 'refund_completed', [
+          'gross' => $gross, 'fee' => $fee, 'net' => $net, 'wallet_net' => $net,
+        ]);
+
         activity('refund')
           ->performedOn($order)
           ->causedBy($user)
@@ -358,6 +372,11 @@ class TeamPlayerWithdrawController extends Controller
             ]
           );
 
+          app(\App\Services\TeamCommunicationService::class)->player($order->fresh(), 'refund_completed', [
+            'gross' => $gross, 'fee' => $fee, 'net' => $net,
+            'payfast_net' => $payfastNet, 'wallet_net' => $walletNet,
+          ]);
+
           activity('refund')
             ->performedOn($order)
             ->causedBy($user)
@@ -394,6 +413,10 @@ class TeamPlayerWithdrawController extends Controller
       'order_id' => $order->id,
       'amount' => $net,
       'bank_name' => $request->bank_name ?? null,
+    ]);
+
+    app(\App\Services\TeamCommunicationService::class)->player($order->fresh(), 'refund_requested', [
+      'gross' => $gross, 'fee' => $fee, 'net' => $net,
     ]);
 
     activity('refund')

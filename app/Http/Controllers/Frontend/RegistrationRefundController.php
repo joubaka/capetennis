@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\RefundMethodRequest;
 use App\Domain\Finance\Services\RefundRequestService;
 use App\Domain\Refunds\Services\RefundExecutionService;
+use App\Domain\Refunds\Services\TeamRefundCalculator;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
 use App\Models\SiteSetting;
@@ -537,7 +538,11 @@ class RegistrationRefundController extends Controller
     if (!empty($pfPaymentId)) {
       try {
         $payfast = new \App\Services\Payfast();
-        $amount = $order->refund_net ?? $order->refund_gross ?? 0;
+        $allocation = app(TeamRefundCalculator::class)->calculate($order);
+        $amount = $allocation['payfastNet'];
+        if ($amount <= 0) {
+          return back()->withErrors('No PayFast-funded amount is available to refund. Please process manually.');
+        }
 
         $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
 
@@ -556,11 +561,24 @@ class RegistrationRefundController extends Controller
           return back()->withErrors('PayFast refund failed: ' . ($result['error'] ?? 'Unknown error') . '. Please process manually.');
         }
 
-        app(RefundExecutionService::class)->executeBankRefund($order, [
-          'refund_method' => 'bank',
-          'refund_gross' => $order->refund_gross,
-          'refund_fee' => $order->refund_fee,
-          'refund_net' => $order->refund_net,
+        app(RefundExecutionService::class)->executeSplitRefund(
+          $order,
+          $order->user?->wallet,
+          $allocation['walletNet'],
+          'team_player_hybrid_refund',
+          $order->id,
+          ['team_id' => $order->team_id, 'player_id' => $order->player_id],
+          [
+            'refund_method' => 'payfast',
+            'refund_gross' => $allocation['gross'],
+            'refund_fee' => $allocation['fee'],
+            'refund_net' => $allocation['net'],
+          ]
+        );
+
+        app(\App\Services\TeamCommunicationService::class)->player($order->fresh(), 'refund_completed', [
+          'gross' => $allocation['gross'], 'fee' => $allocation['fee'], 'net' => $allocation['net'],
+          'payfast_net' => $allocation['payfastNet'], 'wallet_net' => $allocation['walletNet'],
         ]);
 
         activity('refund')
@@ -586,11 +604,15 @@ class RegistrationRefundController extends Controller
     }
 
     // No PayFast transaction — mark as completed (manual)
-    app(RefundExecutionService::class)->executeBankRefund($order, [
+    $completed = app(RefundExecutionService::class)->executeBankRefund($order, [
       'refund_method' => 'bank',
       'refund_gross' => $order->refund_gross,
       'refund_fee' => $order->refund_fee,
       'refund_net' => $order->refund_net,
+    ]);
+
+    app(\App\Services\TeamCommunicationService::class)->player($completed, 'refund_completed', [
+      'gross' => $completed->refund_gross, 'fee' => $completed->refund_fee, 'net' => $completed->refund_net,
     ]);
 
     return back()->with('success', 'Team bank refund marked as completed.');

@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AdminEntryCreatedMail;
 use App\Models\CategoryEvent;
 use App\Models\Player;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -15,6 +17,7 @@ class AdminRegistrationCreationTest extends TestCase
 
     public function test_admin_registration_is_created_as_paid_through_canonical_entry_service(): void
     {
+        Mail::fake();
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin = User::factory()->create();
         $admin->assignRole('admin');
@@ -32,5 +35,7 @@ class AdminRegistrationCreationTest extends TestCase
             'status' => 'active',
             'payment_status_id' => 1,
         ]);
+
+        Mail::assertQueued(AdminEntryCreatedMail::class, fn ($mail) => $mail->hasTo($player->email));
     }
 }

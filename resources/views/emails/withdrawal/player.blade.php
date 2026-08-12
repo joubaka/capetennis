@@ -35,7 +35,7 @@ Your refund has been processed.
 
 - **Refund method:** {{ ucfirst($registration->refund_method) }}  
 - **Amount paid:** R{{ number_format($registration->refund_gross, 2) }}  
-- **Refund fee (PayFast):** R{{ number_format($registration->refund_fee, 2) }}  
+- **Withdrawal fee:** R{{ number_format($registration->refund_fee, 2) }}
 - **Amount refunded:** R{{ number_format($registration->refund_net, 2) }}  
 - **Refunded on:** {{ $registration->refunded_at?->format('d M Y H:i') ?? '–' }}
 
@@ -44,11 +44,11 @@ Your refund is **pending** and will be processed shortly.
 
 - **Refund method:** {{ ucfirst($registration->refund_method) }}  
 - **Amount paid:** R{{ number_format($registration->refund_gross, 2) }}  
-- **Refund fee (PayFast):** R{{ number_format($registration->refund_fee, 2) }}  
+- **Withdrawal fee:** R{{ number_format($registration->refund_fee, 2) }}
 - **Amount to be refunded:** R{{ number_format($registration->refund_net, 2) }}
 
 @else
-No refund has been issued for this withdrawal.
+No refund has been processed yet. If this paid withdrawal is eligible, follow the refund instructions shown after withdrawal or contact support.
 
 @if (! $registration->is_paid)
 *(Registration was not paid.)*
