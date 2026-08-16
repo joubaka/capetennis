@@ -9,21 +9,34 @@ return new class extends Migration
     public function up(): void
     {
         // Add format reference to draws
-        Schema::table('draws', function (Blueprint $table) {
-            if (!Schema::hasColumn('draws', 'team_event_format_id')) {
+        if (! Schema::hasColumn('draws', 'team_event_format_id')) {
+            Schema::table('draws', function (Blueprint $table) {
                 $table->unsignedBigInteger('team_event_format_id')->nullable()->after('engine_mode');
-                $table->foreign('team_event_format_id')
-                      ->references('id')->on('team_event_formats')
-                      ->nullOnDelete();
-            }
-        });
+            });
+        }
+
+        $this->ensureForeignKey(
+            'draws',
+            'draws_team_event_format_id_foreign',
+            'team_event_format_id',
+            'team_event_formats'
+        );
 
         // Add tie/rubber metadata columns to team_fixtures
-        Schema::table('team_fixtures', function (Blueprint $table) {
-            if (!Schema::hasColumn('team_fixtures', 'team_tie_id')) {
+        if (! Schema::hasColumn('team_fixtures', 'team_tie_id')) {
+            Schema::table('team_fixtures', function (Blueprint $table) {
                 $table->unsignedBigInteger('team_tie_id')->nullable()->after('draw_id')->index();
-                $table->foreign('team_tie_id')->references('id')->on('team_ties')->nullOnDelete();
-            }
+            });
+        }
+
+        $this->ensureForeignKey(
+            'team_fixtures',
+            'team_fixtures_team_tie_id_foreign',
+            'team_tie_id',
+            'team_ties'
+        );
+
+        Schema::table('team_fixtures', function (Blueprint $table) {
             if (!Schema::hasColumn('team_fixtures', 'rubber_sequence')) {
                 $table->unsignedTinyInteger('rubber_sequence')->nullable();
             }
@@ -43,14 +56,8 @@ return new class extends Migration
 
         // Add unique index for rubber idempotency.
         // Use SHOW INDEX for MySQL; fall back to try-catch for other drivers.
-        $driver = \DB::getDriverName();
-        $indexExists = false;
-
-        if ($driver === 'mysql' || $driver === 'mariadb') {
-            $indexExists = collect(\DB::select(
-                "SHOW INDEX FROM `team_fixtures` WHERE Key_name = 'team_fixtures_tie_rubber_unique'"
-            ))->isNotEmpty();
-        }
+        $indexExists = collect(Schema::getIndexes('team_fixtures'))
+            ->contains(fn (array $index) => ($index['name'] ?? null) === 'team_fixtures_tie_rubber_unique');
 
         if (!$indexExists) {
             Schema::table('team_fixtures', function (Blueprint $table) {
@@ -89,6 +96,27 @@ return new class extends Migration
                 try { $table->dropForeign(['team_event_format_id']); } catch (\Throwable) {}
                 $table->dropColumn('team_event_format_id');
             }
+        });
+    }
+
+    private function ensureForeignKey(
+        string $tableName,
+        string $name,
+        string $column,
+        string $parentTable,
+    ): void {
+        $exists = collect(Schema::getForeignKeys($tableName))
+            ->contains(fn (array $foreignKey) => ($foreignKey['name'] ?? null) === $name);
+
+        if ($exists) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($name, $column, $parentTable) {
+            $table->foreign($column, $name)
+                ->references('id')
+                ->on($parentTable)
+                ->nullOnDelete();
         });
     }
 };
