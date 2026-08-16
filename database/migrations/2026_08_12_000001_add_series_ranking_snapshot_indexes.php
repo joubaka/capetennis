@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -33,7 +34,18 @@ return new class extends Migration
 
     private function indexExists(string $indexName): bool
     {
-        return collect(Schema::getIndexes('series_rankings'))
-            ->contains(fn (array $index) => ($index['name'] ?? null) === $indexName);
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return collect(DB::select(
+                'SHOW INDEX FROM `series_rankings` WHERE Key_name = ?',
+                [$indexName]
+            ))->isNotEmpty();
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            return collect(DB::select('PRAGMA index_list("series_rankings")'))
+                ->contains(fn (object $index) => $index->name === $indexName);
+        }
+
+        return false;
     }
 };

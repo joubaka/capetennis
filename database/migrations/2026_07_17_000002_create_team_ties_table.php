@@ -65,8 +65,7 @@ return new class extends Migration
         string $parentTable,
         string $onDelete,
     ): void {
-        $exists = collect(Schema::getForeignKeys('team_ties'))
-            ->contains(fn (array $foreignKey) => ($foreignKey['name'] ?? null) === $name);
+        $exists = $this->foreignKeyExists($name, $column);
 
         if ($exists) {
             return;
@@ -81,5 +80,24 @@ return new class extends Migration
                 $foreign->cascadeOnDelete();
             }
         });
+    }
+
+    private function foreignKeyExists(string $name, string $column): bool
+    {
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return DB::selectOne(
+                'SELECT 1 AS found FROM information_schema.KEY_COLUMN_USAGE '
+                .'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? '
+                .'AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1',
+                ['team_ties', $name]
+            ) !== null;
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            return collect(DB::select('PRAGMA foreign_key_list("team_ties")'))
+                ->contains(fn (object $foreignKey) => $foreignKey->from === $column);
+        }
+
+        return false;
     }
 };

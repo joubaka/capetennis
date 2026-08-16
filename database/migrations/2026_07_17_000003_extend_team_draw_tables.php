@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -56,8 +57,7 @@ return new class extends Migration
 
         // Add unique index for rubber idempotency.
         // Use SHOW INDEX for MySQL; fall back to try-catch for other drivers.
-        $indexExists = collect(Schema::getIndexes('team_fixtures'))
-            ->contains(fn (array $index) => ($index['name'] ?? null) === 'team_fixtures_tie_rubber_unique');
+        $indexExists = $this->indexExists('team_fixtures', 'team_fixtures_tie_rubber_unique');
 
         if (!$indexExists) {
             Schema::table('team_fixtures', function (Blueprint $table) {
@@ -105,8 +105,7 @@ return new class extends Migration
         string $column,
         string $parentTable,
     ): void {
-        $exists = collect(Schema::getForeignKeys($tableName))
-            ->contains(fn (array $foreignKey) => ($foreignKey['name'] ?? null) === $name);
+        $exists = $this->foreignKeyExists($tableName, $name, $column);
 
         if ($exists) {
             return;
@@ -118,6 +117,40 @@ return new class extends Migration
                 ->on($parentTable)
                 ->nullOnDelete();
         });
+    }
+
+    private function foreignKeyExists(string $tableName, string $name, string $column): bool
+    {
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return DB::selectOne(
+                'SELECT 1 AS found FROM information_schema.KEY_COLUMN_USAGE '
+                .'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? '
+                .'AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1',
+                [$tableName, $name]
+            ) !== null;
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            $foreignKeys = DB::select(sprintf('PRAGMA foreign_key_list("%s")', $tableName));
+
+            return collect($foreignKeys)->contains(fn (object $foreignKey) => $foreignKey->from === $column);
+        }
+
+        return false;
+    }
+
+    private function indexExists(string $tableName, string $name): bool
+    {
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return collect(DB::select("SHOW INDEX FROM `{$tableName}` WHERE Key_name = ?", [$name]))->isNotEmpty();
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            return collect(DB::select(sprintf('PRAGMA index_list("%s")', $tableName)))
+                ->contains(fn (object $index) => $index->name === $name);
+        }
+
+        return false;
     }
 };
 
