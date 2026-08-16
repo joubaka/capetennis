@@ -32,7 +32,7 @@ class HomeController extends Controller
         $dup_players = Player::all()->groupBy('full_name')->filter(function ($item) {
             return $item->count() > 1;
         });
-dd($dup_players);
+        throw new \RuntimeException('This legacy duplicate-player maintenance action is disabled.');
         foreach ($dup_players as $name => $profiles) {
 
             foreach ($profiles as $key => $profile) {
@@ -86,11 +86,12 @@ dd($dup_players);
 
         if(isset($p)){
 
-            dd($p);
+            throw new \RuntimeException('This legacy duplicate-player maintenance action is disabled.');
         }else{
-               dd( $dup_players = Player::all()->groupBy('full_name')->filter(function ($item) {
+               throw new \RuntimeException('This legacy duplicate-player maintenance action is disabled.'); /*
+               $dup_players = Player::all()->groupBy('full_name')->filter(function ($item) {
             return $item->count() > 1;
-        }));
+        }); */
 
 
 
@@ -162,7 +163,7 @@ dd($dup_players);
         $dup_players = Player::with('registrations')->get()->groupBy('full_name')->filter(function ($item) {
             return $item->count() > 1;
         });
-        dd($p);
+        throw new \RuntimeException('This legacy duplicate-player maintenance action is disabled.');
 
     }
 

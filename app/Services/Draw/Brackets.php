@@ -928,7 +928,7 @@ class Brackets
             break;
         }
       } else {
-        return dd('error - no bracket' . $fixture);
+        throw new \RuntimeException('Unable to generate draw: no valid bracket is available for the fixture.');
       }
       if (!$match_nr == 0) {
         $fix = Fixture::where('match_nr', $match_nr)

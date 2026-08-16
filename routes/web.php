@@ -983,9 +983,9 @@ Route::delete(
   //wallet
   Route::post('/wallet/refund', [WalletController::class, 'refund'])->middleware('role:super-user|admin|convenor')->name('wallet.refund');
   Route::post('/wallet/refund/bulk', [WalletController::class, 'refundBulk'])->middleware('role:super-user|admin|convenor')->name('wallet.refund.bulk');
-  Route::get('/wallet/{id}/transaction/create', [WalletTransactionController::class, 'create'])->name('transaction.create');
+  Route::get('/wallet/{id}/transaction/create', [WalletTransactionController::class, 'create'])->middleware('role:super-user')->name('transaction.create');
   Route::get('/wallet/{id}', [WalletController::class, 'show'])->middleware('role:super-user|admin')->name('wallet.show');
-  Route::post('/wallet/{id}/transaction', [WalletTransactionController::class, 'store'])->name('wallet.transaction.store');
+  Route::post('/wallet/{id}/transaction', [WalletTransactionController::class, 'store'])->middleware('role:super-user')->name('wallet.transaction.store');
 
   //event
   Route::post('event/saveCategories', [BackendEventController::class, 'saveCategories'])->name('save.categories');

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Backend;
 
-use App\Domain\Payments\Services\LedgerService;
+use App\Domain\Refunds\Services\RefundExecutionService;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\TeamPaymentOrder;
@@ -13,6 +13,10 @@ use Illuminate\Http\Request;
 
 class WalletController extends Controller
 {
+    public function __construct(private RefundExecutionService $refundExecutionService)
+    {
+    }
+
     /**
      * List all user wallets.
      */
@@ -70,22 +74,25 @@ class WalletController extends Controller
         $player = $teamPlayer->player;
         $team = $teamPlayer->team;
 
-        // Find the payment order - try with event_id first, then without
-        $eventId = optional($team->category)->event_id;
+        $eventId = (int) optional($team->category)->event_id;
+        if ($eventId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Team event could not be resolved.'], 422);
+        }
+
+        $this->authorizeEventRefund($user, $eventId);
+
+        if ((int) $teamPlayer->pay_status === 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Player must be withdrawn before a refund can be processed.',
+            ], 409);
+        }
 
         $order = TeamPaymentOrder::where('team_id', $team->id)
             ->where('player_id', $player->id)
-            ->when($eventId, fn($q) => $q->where('event_id', $eventId))
+            ->where('event_id', $eventId)
             ->where('pay_status', true)
             ->first();
-
-        // Fallback: find any paid order for this player+team
-        if (!$order) {
-            $order = TeamPaymentOrder::where('team_id', $team->id)
-                ->where('player_id', $player->id)
-                ->where('pay_status', true)
-                ->first();
-        }
 
         if (!$order) {
             return response()->json([
@@ -136,22 +143,20 @@ class WalletController extends Controller
             'initiated_by' => 'wallet_controller_refund',
         ];
 
-        app(LedgerService::class)->appendWalletCredit(
+        $this->refundExecutionService->executeWalletRefund(
+            $order,
             $wallet,
             $refundAmount,
             'team_refund',
-            $user->id,
-            $meta
+            $order->id,
+            $meta,
+            [
+                'refund_method' => 'wallet',
+                'refund_gross' => $refundAmount,
+                'refund_fee' => 0,
+                'refund_net' => $refundAmount,
+            ]
         );
-
-        // Update order refund status
-        $order->update([
-            'refund_method' => 'wallet',
-            'refund_status' => 'completed',
-            'refund_gross' => $refundAmount,
-            'refund_net' => $refundAmount,
-            'refunded_at' => now(),
-        ]);
 
         // Log activity
         activity('wallet')
@@ -186,6 +191,12 @@ class WalletController extends Controller
         ]);
 
         $team = Team::with(['team_players.player.users'])->findOrFail($request->team_id);
+        $eventId = (int) optional($team->category)->event_id;
+        if ($eventId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Team event could not be resolved.'], 422);
+        }
+
+        $this->authorizeEventRefund($user, $eventId);
         $refundedCount = 0;
         $errors = [];
         $totalRefunded = 0;
@@ -197,10 +208,16 @@ class WalletController extends Controller
 
             $player = $teamPlayer->player;
 
+            if ((int) $teamPlayer->pay_status === 1) {
+                $errors[] = "{$player->name} must be withdrawn before refunding.";
+                continue;
+            }
+
             // Find the payment order
             $order = TeamPaymentOrder::where('team_id', $team->id)
                 ->where('player_id', $player->id)
-                ->where('event_id', $team->category->event_id ?? null)
+                ->where('event_id', $eventId)
+                ->where('pay_status', true)
                 ->first();
 
             if (!$order || $order->maxRefundableAmount() <= 0) {
@@ -231,21 +248,20 @@ class WalletController extends Controller
                 'initiated_by' => 'wallet_controller_bulk_refund',
             ];
 
-            app(LedgerService::class)->appendWalletCredit(
+            $this->refundExecutionService->executeWalletRefund(
+                $order,
                 $wallet,
                 $refundAmount,
                 'team_refund',
-                $user->id,
-                $meta
+                $order->id,
+                $meta,
+                [
+                    'refund_method' => 'wallet',
+                    'refund_gross' => $refundAmount,
+                    'refund_fee' => 0,
+                    'refund_net' => $refundAmount,
+                ]
             );
-
-            $order->update([
-                'refund_method' => 'wallet',
-                'refund_status' => 'completed',
-                'refund_gross' => $refundAmount,
-                'refund_net' => $refundAmount,
-                'refunded_at' => now(),
-            ]);
 
             $refundedCount++;
             $totalRefunded += $refundAmount;
@@ -258,6 +274,18 @@ class WalletController extends Controller
             'total_amount' => $totalRefunded,
             'errors' => $errors,
         ]);
+    }
+
+    private function authorizeEventRefund(User $user, int $eventId): void
+    {
+        if ($user->hasRole('super-user')) {
+            return;
+        }
+
+        $authorized = ($user->hasRole('admin') && $user->is_event_admin($eventId))
+            || ($user->hasRole('convenor') && $user->is_convenor($eventId));
+
+        abort_unless($authorized, 403, 'You are not authorized to refund payments for this event.');
     }
 
 }

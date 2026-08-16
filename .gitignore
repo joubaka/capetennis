@@ -3,6 +3,12 @@
 # --------------------------------------
 /node_modules
 /public/hot
+
+# Local payment exports and diagnostic dumps may contain personal or financial data.
+/payfast_export.csv
+/tdox.txt
+/test_output.txt
+/tout.txt
 /public/storage
 /storage/*.key
 /vendor

@@ -146,7 +146,7 @@ class Fixtures
         $teamFixturePlayer->team2_id = $team2[$i]->id;
         $teamFixturePlayer->team_fixture_id = $fixture->id;
         if (!$teamFixturePlayer->save()) {
-          dd('error');
+          throw new \RuntimeException('Fixture generation failed because the bracket configuration is invalid.');
         }
       }
       $count++;
@@ -178,7 +178,7 @@ class Fixtures
         $teamFixturePlayer->team_fixture_id = $fixture->id;
 
         if (!$teamFixturePlayer->save()) {
-          dd('error');
+          throw new \RuntimeException('Fixture generation failed because the bracket configuration is invalid.');
         }
         $teamFixturePlayer = new TeamFixturePlayer();
         $teamFixturePlayer->team1_id = $team1[($i + 1)]->id;
@@ -186,7 +186,7 @@ class Fixtures
         $teamFixturePlayer->team_fixture_id = $fixture->id;
 
         if (!$teamFixturePlayer->save()) {
-          dd('error');
+          throw new \RuntimeException('Fixture generation failed because the bracket configuration is invalid.');
         }
       }
       $count++;
@@ -220,7 +220,7 @@ class Fixtures
         $teamFixturePlayer->team_fixture_id = $fixture->id;
 
         if (!$teamFixturePlayer->save()) {
-          dd('error');
+          throw new \RuntimeException('Fixture generation failed because the bracket configuration is invalid.');
         }
         $teamFixturePlayer = new TeamFixturePlayer();
         $teamFixturePlayer->team1_id = $team1[($i + $teamNum)]->id;
@@ -228,7 +228,7 @@ class Fixtures
         $teamFixturePlayer->team_fixture_id = $fixture->id;
 
         if (!$teamFixturePlayer->save()) {
-          dd('error');
+          throw new \RuntimeException('Fixture generation failed because the bracket configuration is invalid.');
         }
       }
       $count++;
@@ -648,7 +648,7 @@ class Fixtures
 
               break;
             default:
-              dd($result->fixtures->team1[0]->teams);
+              throw new \RuntimeException('Fixture generation produced an invalid team assignment.');
               break;
           }
         } else {
@@ -727,7 +727,7 @@ class Fixtures
             }
           }
         } else {
-          dd($times);
+          throw new \RuntimeException('Fixture scheduling produced an invalid time allocation.');
         }
       }
     }

@@ -297,7 +297,7 @@ class PlatformHealthService
             $output = new \Symfony\Component\Console\Output\BufferedOutput();
             Artisan::call('migrate:status', ['--no-ansi' => true], $output);
             $migOut  = $output->fetch();
-            $pending = substr_count($migOut, '| No ');
+            $pending = preg_match_all('/\bPending\s*$/mi', $migOut);
             $items[] = $this->item('Pending Migrations', (string)$pending,
                 $pending > 0 ? 'critical' : 'ok');
         } catch (\Throwable $e) {

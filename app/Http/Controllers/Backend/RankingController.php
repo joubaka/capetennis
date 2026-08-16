@@ -122,7 +122,63 @@ class RankingController extends Controller
 
     $categories = $rankings->pluck('category')->unique('id');
 
-    return view('frontend.ranking.show_ranking', compact('series', 'rankings', 'categories'));
+    $categoryEventIds = $rankings->flatMap(function ($ranking) {
+      $meta = $ranking->meta_json ?? [];
+      if (is_string($meta)) {
+        $meta = json_decode($meta, true) ?: [];
+      }
+
+      return collect($meta['counting_legs'] ?? [])
+        ->merge($meta['dropped_legs'] ?? [])
+        ->pluck('category_event_id');
+    })->filter()->unique()->values();
+
+    $eventIdsByCategoryEvent = CategoryEvent::query()
+      ->whereIn('id', $categoryEventIds)
+      ->pluck('event_id', 'id');
+
+    $displayLegsByRanking = $rankings->mapWithKeys(function ($ranking) use ($eventIdsByCategoryEvent) {
+      $meta = $ranking->meta_json ?? [];
+      if (is_string($meta)) {
+        $meta = json_decode($meta, true) ?: [];
+      }
+
+      $normalise = function (array $leg, string $status) use ($eventIdsByCategoryEvent) {
+        $categoryEventId = $leg['category_event_id'] ?? null;
+
+        return [
+          'event_id' => $leg['event_id'] ?? $eventIdsByCategoryEvent->get($categoryEventId) ?? $categoryEventId,
+          'points' => (float) ($leg['points'] ?? 0),
+          'position' => $leg['position'] ?? null,
+          'status' => $status,
+          'synthetic' => (bool) ($leg['synthetic'] ?? false),
+        ];
+      };
+
+      if (array_key_exists('counting_legs', $meta) || array_key_exists('dropped_legs', $meta)) {
+        $legs = collect($meta['counting_legs'] ?? [])
+          ->map(fn ($leg) => $normalise($leg, 'counted'))
+          ->concat(collect($meta['dropped_legs'] ?? [])->map(fn ($leg) => $normalise($leg, 'dropped')))
+          ->values();
+      } else {
+        $legs = collect($meta['legs'] ?? [])->map(function ($leg) use ($normalise) {
+          $status = ($leg['status'] ?? null) === 'dropped' || ($leg['colour'] ?? null) === 'red'
+            ? 'dropped'
+            : 'counted';
+
+          return $normalise($leg, $status);
+        })->values();
+      }
+
+      return [$ranking->id => $legs];
+    });
+
+    return view('frontend.ranking.show_ranking', compact(
+      'series',
+      'rankings',
+      'categories',
+      'displayLegsByRanking'
+    ));
   }
 
   public function playerDetail(Series $series, Player $player)

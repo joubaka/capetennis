@@ -38,9 +38,10 @@ class PreflightCommand extends Command
         try {
             $output = new \Symfony\Component\Console\Output\BufferedOutput();
             Artisan::call('migrate:status', ['--no-ansi' => true], $output);
-            $pending = substr_count($output->fetch(), '| No ');
+            $statusOutput = $output->fetch();
+            $pending = preg_match_all('/\bPending\s*$/mi', $statusOutput);
             if ($pending > 0) {
-                $blockers[] = "⛔ {$pending} pending migration(s) — run: php artisan migrate";
+                $blockers[] = "⛔ {$pending} pending migration(s) — inspect and deploy only approved migration paths";
             } else {
                 $this->info('  ✅ Migrations: all applied');
             }

@@ -4,10 +4,13 @@ namespace Tests\Feature\Ranking;
 
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Models\Category;
+use App\Models\CategoryEvent;
+use App\Models\Event;
 use App\Models\Player;
 use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
+use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -73,6 +76,62 @@ class PublicRankingVisibilityTest extends TestCase
         $this->get(route('frontend.ranking.player-detail', [$series, $draft]))->assertNotFound();
     }
 
+    public function test_public_and_authenticated_leaderboards_show_counted_and_dropped_event_scores(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create(['name' => 'u/10 Girls - A division']);
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $player = Player::factory()->create(['name' => 'Nicola', 'surname' => 'Middleton']);
+        $countedEvent = Event::factory()->create(['series_id' => $series->id]);
+        $droppedEvent = Event::factory()->create(['series_id' => $series->id]);
+        $countedCategoryEvent = CategoryEvent::factory()->create([
+            'event_id' => $countedEvent->id,
+            'category_id' => $category->id,
+        ]);
+        $droppedCategoryEvent = CategoryEvent::factory()->create([
+            'event_id' => $droppedEvent->id,
+            'category_id' => $category->id,
+        ]);
+
+        $this->row(
+            $series,
+            $list,
+            $category,
+            $player,
+            RankingStatus::Published,
+            'run-live',
+            now(),
+            [
+                'counting_legs' => [[
+                    'category_event_id' => $countedCategoryEvent->id,
+                    'position' => 1,
+                    'points' => 100,
+                    'synthetic' => false,
+                ]],
+                'dropped_legs' => [[
+                    'category_event_id' => $droppedCategoryEvent->id,
+                    'position' => 4,
+                    'points' => 40,
+                ]],
+            ]
+        );
+
+        foreach ([null, User::factory()->create()] as $user) {
+            if ($user) {
+                $this->actingAs($user);
+            }
+
+            $this->get(route('frontend.ranking.show', $series))
+                ->assertOk()
+                ->assertSee('Total points')
+                ->assertSee('Scores per event')
+                ->assertSee("100 (E{$countedEvent->id})")
+                ->assertSee("40 (E{$droppedEvent->id})")
+                ->assertSee('public-ranking-score--counted', false)
+                ->assertSee('public-ranking-score--dropped', false);
+        }
+    }
+
     private function row(
         Series $series,
         RankingList $list,
@@ -81,6 +140,7 @@ class PublicRankingVisibilityTest extends TestCase
         RankingStatus $status,
         ?string $runId,
         $publishedAt = null,
+        array $meta = [],
     ): void {
         SeriesRanking::create([
             'series_id' => $series->id,
@@ -92,7 +152,7 @@ class PublicRankingVisibilityTest extends TestCase
             'status' => $status->value,
             'run_id' => $runId,
             'published_at' => $publishedAt,
-            'meta_json' => [],
+            'meta_json' => $meta,
         ]);
     }
 }
