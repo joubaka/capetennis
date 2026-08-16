@@ -478,7 +478,7 @@ class RegistrationPaymentController extends Controller
    */
   public function hybridCancel(int $orderId)
   {
-    $order = RegistrationOrder::find($orderId);
+    $order = RegistrationOrder::with('items.category_event')->find($orderId);
 
     if (!$order) {
       return redirect()->route('events.index')->withErrors('Order not found.');
@@ -501,8 +501,10 @@ class RegistrationPaymentController extends Controller
       'user_id'  => auth()->id(),
     ]);
 
+    $eventId = optional($order->items->first()?->category_event)->event_id;
+
     return redirect()
-      ->route('events.index')
+      ->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
       ->withErrors('Payment cancelled. No wallet funds were deducted.');
   }
 

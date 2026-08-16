@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
+use App\Models\CategoryEvent;
+use App\Models\Event;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -89,5 +91,42 @@ class RegistrationWalletCheckoutTest extends TestCase
         ])->actingAs($otherUser)
             ->get(route('registration.checkout', ['order' => $order->id]))
             ->assertForbidden();
+    }
+
+    public function test_checkout_cancel_returns_to_the_orders_event_and_releases_reservation(): void
+    {
+        $user = User::factory()->create();
+        $event = Event::factory()->create();
+        $categoryEvent = CategoryEvent::factory()->for($event)->create();
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 125,
+            'payfast_amount_due' => 25,
+            'pay_status' => false,
+            'payfast_paid' => false,
+            'wallet_debited' => false,
+        ]);
+        $item = new RegistrationOrderItems();
+        $item->forceFill([
+            'order_id' => $order->id,
+            'category_event_id' => $categoryEvent->id,
+            'item_price' => 150,
+        ])->save();
+
+        $this->actingAs($user)
+            ->get(route('registration.hybrid.cancel', ['orderId' => $order->id]))
+            ->assertRedirect(route('events.show', ['event' => $event->id]));
+
+        $this->assertDatabaseHas('registration_orders', [
+            'id' => $order->id,
+            'wallet_reserved' => 0,
+            'payfast_amount_due' => 0,
+        ]);
+    }
+
+    public function test_events_index_redirects_to_the_working_home_page(): void
+    {
+        $this->get(route('events.index'))
+            ->assertRedirect(route('home'));
     }
 }
