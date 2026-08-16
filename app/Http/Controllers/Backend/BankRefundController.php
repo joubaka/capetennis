@@ -32,7 +32,7 @@ class BankRefundController extends Controller
       ->where('refund_method', 'bank')
       ->where('refund_status', 'pending')
       ->orderBy('updated_at')
-      ->get();
+      ->paginate(25, ['*'], 'pending_page');
 
     $completedRefunds = CategoryEventRegistration::with([
       'categoryEvent.event',
@@ -42,23 +42,49 @@ class BankRefundController extends Controller
     ])
       ->where('refund_method', 'bank')
       ->where('refund_status', 'completed')
-      ->orderBy('updated_at')
-      ->get();
+      ->orderByDesc('refunded_at')
+      ->paginate(25, ['*'], 'processed_page');
+
+    $waivedRefunds = CategoryEventRegistration::with([
+      'categoryEvent.event',
+      'players',
+      'user',
+    ])
+      ->where('refund_method', 'bank')
+      ->where('refund_status', 'waived')
+      ->orderByDesc('refund_waived_at')
+      ->paginate(25, ['*'], 'waived_page');
 
     // Team refunds
     $pendingTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
       ->where('refund_method', 'bank')
       ->where('refund_status', 'pending')
       ->orderBy('updated_at')
+      ->limit(100)
       ->get();
 
     $completedTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
       ->where('refund_method', 'bank')
       ->where('refund_status', 'completed')
-      ->orderBy('updated_at')
+      ->orderByDesc('refunded_at')
+      ->limit(100)
       ->get();
 
-    return view('backend.refunds.bank', compact('refunds', 'completedRefunds', 'pendingTeamRefunds', 'completedTeamRefunds'));
+    $waivedTeamRefunds = TeamPaymentOrder::with(['team', 'player', 'user', 'event'])
+      ->where('refund_method', 'bank')
+      ->where('refund_status', 'waived')
+      ->orderByDesc('refund_waived_at')
+      ->limit(100)
+      ->get();
+
+    return view('backend.refunds.bank', compact(
+      'refunds',
+      'completedRefunds',
+      'waivedRefunds',
+      'pendingTeamRefunds',
+      'completedTeamRefunds',
+      'waivedTeamRefunds'
+    ));
   }
 
   /**
@@ -115,7 +141,7 @@ class BankRefundController extends Controller
 
     if ($result['success']) {
       $status = $result['data']['status'] ?? $result['data']['refund_status'] ?? 'unknown';
-      return back()->with('pf_query_result', "PayFast status for {$pfPaymentId}: {$status}");
+      return back()->with('pf_query_result', "Current PayFast status for {$pfPaymentId}: {$status}. Cape Tennis' processed flag alone is not settlement confirmation.");
     }
 
     return back()->withErrors('PayFast query failed: ' . ($result['error'] ?? 'Unknown error'));
@@ -483,6 +509,64 @@ class BankRefundController extends Controller
     return back()->with('success', 'Team bank refund marked as completed.');
   }
 
+  public function waive(Request $request, CategoryEventRegistration $registration)
+  {
+    if ($registration->refund_method !== 'bank') {
+      return back()->withErrors(['refund' => 'Only a pending bank refund can be waived.']);
+    }
+
+    $validated = $request->validate([
+      'reason' => ['required', 'string', 'min:5', 'max:500'],
+    ]);
+
+    $waived = app(RefundExecutionService::class)->waiveRefund(
+      $registration,
+      (int) auth()->id(),
+      $validated['reason']
+    );
+
+    activity('refund')
+      ->performedOn($waived)
+      ->causedBy(auth()->user())
+      ->withProperties([
+        'registration_id' => $waived->id,
+        'reason' => $validated['reason'],
+        'refund_net' => $waived->refund_net,
+      ])
+      ->log('Pending refund waived without payment');
+
+    return back()->with('success', 'Refund waived. No payment was recorded.');
+  }
+
+  public function waiveTeam(Request $request, TeamPaymentOrder $order)
+  {
+    if ($order->refund_method !== 'bank') {
+      return back()->withErrors(['refund' => 'Only a pending bank refund can be waived.']);
+    }
+
+    $validated = $request->validate([
+      'reason' => ['required', 'string', 'min:5', 'max:500'],
+    ]);
+
+    $waived = app(RefundExecutionService::class)->waiveRefund(
+      $order,
+      (int) auth()->id(),
+      $validated['reason']
+    );
+
+    activity('refund')
+      ->performedOn($waived)
+      ->causedBy(auth()->user())
+      ->withProperties([
+        'order_id' => $waived->id,
+        'reason' => $validated['reason'],
+        'refund_net' => $waived->refund_net,
+      ])
+      ->log('Pending team refund waived without payment');
+
+    return back()->with('success', 'Team refund waived. No payment was recorded.');
+  }
+
   /**
    * Bulk-complete: mark a set of selected pending bank refunds as completed.
    * For each registration that has a PayFast payment ID, a PayFast refund is
@@ -577,7 +661,7 @@ class BankRefundController extends Controller
               }
             }
           } else {
-            Log::warning('BULK PAYFAST REFUND FAILED — marking completed for manual processing', [
+            Log::warning('BULK PAYFAST REFUND FAILED — leaving pending for follow-up', [
               'registration_id' => $registration->id,
               'error'           => $result['error'] ?? 'unknown',
             ]);
@@ -588,6 +672,10 @@ class BankRefundController extends Controller
             'error'           => $e->getMessage(),
           ]);
         }
+      }
+
+      if (!empty($pfPaymentId) && !$refundedViaPayfast) {
+        continue;
       }
 
       app(RefundExecutionService::class)->executeBankRefund($registration, [

@@ -333,12 +333,22 @@ Route::middleware(['auth', 'role:super-user'])
       App\Http\Controllers\Backend\BankRefundController::class,
       'complete'
     ])->name('bank.complete');
+
+    Route::post('{registration}/waive', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'waive'
+    ])->name('bank.waive');
     
     // Mark a team refund as completed
     Route::post('team/{order}/complete', [
       App\Http\Controllers\Backend\BankRefundController::class,
       'completeTeam'
     ])->name('bank.complete.team');
+
+    Route::post('team/{order}/waive', [
+      App\Http\Controllers\Backend\BankRefundController::class,
+      'waiveTeam'
+    ])->name('bank.waive.team');
 
     Route::get('{registration}/payfast-query', [
       App\Http\Controllers\Backend\BankRefundController::class,

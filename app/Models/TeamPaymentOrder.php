@@ -25,6 +25,9 @@ class TeamPaymentOrder extends Model
     'refund_fee',
     'refund_net',
     'refunded_at',
+    'refund_waived_at',
+    'refund_waived_by',
+    'refund_waiver_reason',
     'refund_account_name',
     'refund_bank_name',
     'refund_account_number',
@@ -45,6 +48,8 @@ class TeamPaymentOrder extends Model
     'refund_fee' => 'float',
     'refund_net' => 'float',
     'refunded_at' => 'datetime',
+    'refund_waived_at' => 'datetime',
+    'refund_waived_by' => 'integer',
     'refund_account_number' => 'encrypted',
   ];
 
@@ -82,6 +87,11 @@ class TeamPaymentOrder extends Model
     return $this->refund_status === 'pending';
   }
 
+  public function isRefundWaived(): bool
+  {
+    return $this->refund_status === 'waived';
+  }
+
   public function hasRefund(): bool
   {
     return !in_array($this->refund_status, [null, '', 'not_refunded']);
@@ -94,7 +104,7 @@ class TeamPaymentOrder extends Model
    */
   public function maxRefundableAmount(): float
   {
-    if ($this->isRefundCompleted()) {
+    if ($this->isRefundCompleted() || $this->isRefundWaived()) {
       return 0.0;
     }
 

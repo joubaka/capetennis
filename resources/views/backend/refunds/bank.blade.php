@@ -5,7 +5,17 @@
 @section('content')
 <div class="container-xl">
 
-  <h4 class="mb-3">Pending Bank Refunds</h4>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h4 class="mb-1">Refund Operations</h4>
+      <p class="text-muted mb-0">Process pending refunds and keep a clear audit trail. “Processed” records an action in Cape Tennis; use PayFast Status to verify provider settlement.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <span class="badge bg-label-warning">{{ $refunds->total() + $pendingTeamRefunds->count() }} pending</span>
+      <span class="badge bg-label-success">{{ $completedRefunds->total() + $completedTeamRefunds->count() }} processed</span>
+      <span class="badge bg-label-secondary">{{ $waivedRefunds->total() + $waivedTeamRefunds->count() }} waived</span>
+    </div>
+  </div>
 
   @if(session('pf_query_result'))
     <div class="alert alert-info alert-dismissible fade show" role="alert">
@@ -39,7 +49,7 @@
 
   @if((empty($refunds) || $refunds->isEmpty()) && (empty($pendingTeamRefunds) || $pendingTeamRefunds->isEmpty()))
     <div class="alert alert-success">
-      No pending bank refunds 🎉
+      <i class="ti ti-circle-check me-1"></i>No pending refunds require action.
     </div>
   @else
 
@@ -126,7 +136,7 @@
                       class="d-inline me-1">
                   @csrf
                   <button class="btn btn-sm btn-warning text-dark" title="Submit refund via PayFast API">
-                    💳 PayFast Refund
+                    <i class="ti ti-credit-card-refund me-1"></i>Submit to PayFast
                   </button>
                 </form>
               @else
@@ -136,10 +146,17 @@
                       class="d-inline">
                   @csrf
                   <button class="btn btn-sm btn-success">
-                    ✔ Mark Paid
+                    <i class="ti ti-check me-1"></i>Record manual payment
                   </button>
                 </form>
               @endif
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger js-waive-refund"
+                      data-waive-url="{{ route('admin.refunds.bank.waive', $reg) }}"
+                      data-refund-name="{{ $reg->display_name }}"
+                      title="Close without paying">
+                <i class="ti ti-ban me-1"></i>Waive
+              </button>
             </td>
           </tr>
         @endforeach
@@ -170,15 +187,22 @@
                   <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Process PayFast refund of R{{ number_format($t->refund_net, 2) }}? This will submit to PayFast.');" class="d-inline me-1">
                     @csrf
                     <button class="btn btn-sm btn-warning text-dark" title="Submit refund via PayFast API">
-                      💳 PayFast Refund
+                    <i class="ti ti-credit-card-refund me-1"></i>Submit to PayFast
                     </button>
                   </form>
                 @else
-                  <form method="POST" action="{{ route('bank.complete.team', $t) }}" onsubmit="return confirm('Mark this team bank refund as paid?');">
+                  <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}" onsubmit="return confirm('Record this team bank refund as manually paid?');" class="d-inline">
                     @csrf
-                    <button class="btn btn-sm btn-success">✔ Mark Paid</button>
+                    <button class="btn btn-sm btn-success"><i class="ti ti-check me-1"></i>Record manual payment</button>
                   </form>
                 @endif
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger js-waive-refund"
+                        data-waive-url="{{ route('admin.refunds.bank.waive.team', $t) }}"
+                        data-refund-name="{{ optional($t->player)->name ?? 'Team refund #' . $t->id }}"
+                        title="Close without paying">
+                  <i class="ti ti-ban me-1"></i>Waive
+                </button>
               </td>
             </tr>
           @endforeach
@@ -188,12 +212,16 @@
       </table>
     </div>
   </div>
+  @if($refunds->hasPages())
+    <div class="mt-3">{{ $refunds->links() }}</div>
+  @endif
 
   @endif
 
   {{-- Completed Refunds --}}
   @if(!empty($completedRefunds) && $completedRefunds->count())
-    <h4 class="mt-4 mb-3">Completed Bank Refunds</h4>
+    <h4 class="mt-4 mb-1">Processed Refunds</h4>
+    <p class="text-muted">These were recorded as processed by Cape Tennis. PayFast rows should still be checked for their current provider status.</p>
     <div class="card">
       <div class="table-responsive">
         <table class="table table-striped align-middle">
@@ -204,7 +232,8 @@
               <th>User</th>
               <th>PayFast ID</th>
               <th>Net Refunded</th>
-              <th>Refunded At</th>
+              <th>Recorded At</th>
+              <th>Status</th>
               <th></th>
             </tr>
           </thead>
@@ -223,6 +252,13 @@
                 <td><code>{{ $reg->pf_transaction_id ?? '—' }}</code></td>
                 <td class="fw-bold text-success">R{{ number_format($reg->refund_net, 2) }}</td>
                 <td>{{ optional($reg->refunded_at)->format('Y-m-d') }}</td>
+                <td>
+                  @if($reg->pf_transaction_id)
+                    <span class="badge bg-label-info">Submitted to PayFast</span>
+                  @else
+                    <span class="badge bg-label-success">Manual payment recorded</span>
+                  @endif
+                </td>
                 <td class="text-end">
                   @if($reg->pf_transaction_id)
                     <a href="{{ route('admin.refunds.bank.payfast-query', $reg) }}"
@@ -238,7 +274,121 @@
         </table>
       </div>
     </div>
+    @if($completedRefunds->hasPages())
+      <div class="mt-3">{{ $completedRefunds->links() }}</div>
+    @endif
   @endif
 
+  @if(($waivedRefunds->count() + $waivedTeamRefunds->count()) > 0)
+    <h4 class="mt-4 mb-1">Waived Refunds</h4>
+    <p class="text-muted">Closed without payment. These records remain visible for audit purposes.</p>
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Player</th>
+              <th>Amount not paid</th>
+              <th>Waived at</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($waivedRefunds as $reg)
+              <tr>
+                <td>{{ optional($reg->categoryEvent?->event)->name ?? '—' }}</td>
+                <td>{{ $reg->display_name }}</td>
+                <td>R{{ number_format($reg->refund_net, 2) }}</td>
+                <td>{{ optional($reg->refund_waived_at)->format('Y-m-d H:i') }}</td>
+                <td class="text-wrap" style="min-width: 16rem">{{ $reg->refund_waiver_reason }}</td>
+              </tr>
+            @endforeach
+            @foreach($completedTeamRefunds as $order)
+              <tr>
+                <td>
+                  <strong>{{ optional($order->event)->name ?? '—' }}</strong><br>
+                  <small class="text-muted">Team refund</small>
+                </td>
+                <td>{{ optional($order->player)->name ?? 'Team refund #' . $order->id }}</td>
+                <td>
+                  {{ $order->user->name ?? '—' }}<br>
+                  <small class="text-muted">{{ $order->user->email ?? '' }}</small>
+                </td>
+                <td><code>{{ $order->payfast_pf_payment_id ?? '—' }}</code></td>
+                <td class="fw-bold text-success">R{{ number_format($order->refund_net, 2) }}</td>
+                <td>{{ optional($order->refunded_at)->format('Y-m-d') }}</td>
+                <td>
+                  @if($order->payfast_pf_payment_id)
+                    <span class="badge bg-label-info">Submitted to PayFast</span>
+                  @else
+                    <span class="badge bg-label-success">Manual payment recorded</span>
+                  @endif
+                </td>
+                <td></td>
+              </tr>
+            @endforeach
+            @foreach($waivedTeamRefunds as $order)
+              <tr>
+                <td>{{ optional($order->event)->name ?? '—' }}</td>
+                <td>{{ optional($order->player)->name ?? 'Team refund #' . $order->id }}</td>
+                <td>R{{ number_format($order->refund_net, 2) }}</td>
+                <td>{{ optional($order->refund_waived_at)->format('Y-m-d H:i') }}</td>
+                <td class="text-wrap" style="min-width: 16rem">{{ $order->refund_waiver_reason }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+    @if($waivedRefunds->hasPages())
+      <div class="mt-3">{{ $waivedRefunds->links() }}</div>
+    @endif
+  @endif
+
+  <div class="modal fade" id="waiveRefundModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form method="POST" id="waiveRefundForm" class="modal-content">
+        @csrf
+        <div class="modal-header">
+          <h5 class="modal-title">Waive refund</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning">
+            <strong>No money will be paid.</strong> This closes the pending refund and keeps it in the audit history.
+          </div>
+          <p id="waiveRefundName" class="fw-semibold"></p>
+          <label for="waiveReason" class="form-label">Reason <span class="text-danger">*</span></label>
+          <textarea id="waiveReason" name="reason" class="form-control" rows="3" minlength="5" maxlength="500" required placeholder="Why is this refund being waived?"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger"><i class="ti ti-ban me-1"></i>Waive without payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </div>
+@endsection
+
+@section('page-script')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const modalElement = document.getElementById('waiveRefundModal');
+  const form = document.getElementById('waiveRefundForm');
+  const name = document.getElementById('waiveRefundName');
+  const reason = document.getElementById('waiveReason');
+
+  document.querySelectorAll('.js-waive-refund').forEach(function (button) {
+    button.addEventListener('click', function () {
+      form.action = button.dataset.waiveUrl;
+      name.textContent = button.dataset.refundName;
+      reason.value = '';
+      bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    });
+  });
+});
+</script>
 @endsection

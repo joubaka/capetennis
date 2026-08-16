@@ -11,6 +11,7 @@ class CategoryEventRegistration extends Model
 
   public const REFUND_PENDING = 'pending';
   public const REFUND_COMPLETED = 'completed';
+  public const REFUND_WAIVED = 'waived';
 
   use HasFactory;
   use SoftDeletes;
@@ -59,6 +60,9 @@ class CategoryEventRegistration extends Model
     'refund_fee',
     'refund_net',
     'refunded_at',
+    'refund_waived_at',
+    'refund_waived_by',
+    'refund_waiver_reason',
 
     // Bank refund details
     'refund_account_name',
@@ -76,6 +80,8 @@ class CategoryEventRegistration extends Model
     'refund_account_number' => 'encrypted',
     'withdrawn_at'         => 'datetime',
     'refunded_at'          => 'datetime',
+    'refund_waived_at'     => 'datetime',
+    'refund_waived_by'     => 'integer',
     'refund_gross'         => 'float',
     'refund_fee'           => 'float',
     'refund_net'           => 'float',
@@ -523,6 +529,11 @@ class CategoryEventRegistration extends Model
     return $this->refund_status === 'completed';
   }
 
+  public function isRefundWaived(): bool
+  {
+    return $this->refund_status === self::REFUND_WAIVED;
+  }
+
   public function hasRefund(): bool
   {
     return !in_array($this->refund_status, [null, '', 'not_refunded']);
@@ -545,7 +556,7 @@ class CategoryEventRegistration extends Model
    */
   public function maxRefundableAmount(): float
   {
-    if ($this->isRefundCompleted()) {
+    if ($this->isRefundCompleted() || $this->isRefundWaived()) {
       return 0.0;
     }
 

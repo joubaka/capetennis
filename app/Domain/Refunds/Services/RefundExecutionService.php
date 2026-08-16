@@ -8,6 +8,7 @@ use App\Models\Wallet;
 use App\Support\FinanceMutationScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
@@ -149,6 +150,41 @@ class RefundExecutionService
         }
 
         return $completed;
+    }
+
+    /**
+     * Close a pending refund without moving money.
+     *
+     * A waiver is deliberately distinct from a completed refund: refunded_at
+     * remains null and no RefundCompleted event or ledger entry is created.
+     */
+    public function waiveRefund(Model $refundEntity, int $waivedBy, string $reason): Model
+    {
+        $entityClass = get_class($refundEntity);
+
+        return FinanceMutationScope::run('refund_state_write', function () use ($entityClass, $refundEntity, $waivedBy, $reason) {
+            return DB::transaction(function () use ($entityClass, $refundEntity, $waivedBy, $reason) {
+                /** @var Model $locked */
+                $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+
+                if (($locked->refund_status ?? null) !== 'pending') {
+                    throw ValidationException::withMessages([
+                        'refund' => 'Only a pending refund can be waived.',
+                    ]);
+                }
+
+                $locked->fill([
+                    'refund_status' => 'waived',
+                    'refund_waived_at' => now(),
+                    'refund_waived_by' => $waivedBy,
+                    'refund_waiver_reason' => trim($reason),
+                    'refunded_at' => null,
+                ]);
+                $locked->save();
+
+                return $locked;
+            });
+        });
     }
 
     public function executeSplitRefund(
