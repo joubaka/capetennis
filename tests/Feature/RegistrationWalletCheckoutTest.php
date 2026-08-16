@@ -67,7 +67,9 @@ class RegistrationWalletCheckoutTest extends TestCase
 
         $checkout->assertOk()
             ->assertSee('Pay R 310.62 with PayFast', false)
-            ->assertSee('name="amount" value="310.62"', false);
+            ->assertSee('name="amount" value="310.62"', false)
+            ->assertSee('href="'.route('registration.hybrid.cancel', ['orderId' => $order->id]).'"', false)
+            ->assertDontSee('href="'.route('pay.now.payfast').'"', false);
         $this->assertDatabaseCount('registration_orders', 1);
     }
 

@@ -291,8 +291,8 @@
 
   </div>
 
-  <a href="{{ url()->previous() }}" class="btn btn-warning mt-4">
-    Back
+  <a href="{{ $cancelUrl }}" class="btn btn-warning mt-4">
+    Cancel and go back
   </a>
 
 </div>
