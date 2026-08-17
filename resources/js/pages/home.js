@@ -82,10 +82,10 @@ $(function () {
         .removeClass('d-none')
         .html(`
           <span class="badge ${isPublished ? 'bg-label-success' : 'bg-label-warning'}">
-            ${event.admin_status.publication}
+            Event status: ${event.admin_status.publication}
           </span>
           <span class="badge ${entriesAreOpen ? 'bg-label-info' : 'bg-label-secondary'}">
-            ${event.admin_status.entries}
+            Entries: ${event.admin_status.entries}
           </span>
         `);
     }

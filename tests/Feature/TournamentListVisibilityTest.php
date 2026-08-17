@@ -56,7 +56,27 @@ class TournamentListVisibilityTest extends TestCase
 
         $response->assertOk()
             ->assertJsonFragment(['id' => $firstDraft->id])
-            ->assertJsonFragment(['id' => $secondDraft->id]);
+            ->assertJsonFragment(['id' => $secondDraft->id])
+            ->assertJsonFragment([
+                'publication' => 'Unpublished',
+                'entries' => 'Sign-up open',
+            ]);
+    }
+
+    public function test_admin_sees_publication_status_on_visible_tournaments(): void
+    {
+        $admin = User::factory()->create()->assignRole('admin');
+        $published = Event::factory()->create(['name' => 'Admin Visible Tournament']);
+
+        $response = $this->actingAs($admin)
+            ->getJson(route('home.events.get', ['period' => 'all']));
+
+        $response->assertOk()
+            ->assertJsonFragment(['id' => $published->id])
+            ->assertJsonFragment([
+                'publication' => 'Published',
+                'entries' => 'Sign-up open',
+            ]);
     }
 
     public function test_unassigned_admin_cannot_open_an_unpublished_tournament_directly(): void

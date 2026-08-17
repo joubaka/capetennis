@@ -277,6 +277,7 @@ class HomeController extends Controller
     $events = $query->get();
     $user = $request->user();
     $isSuperUser = $user?->hasRole('super-user') ?? false;
+    $canViewAllStatuses = $user?->hasAnyRole(['super-user', 'admin']) ?? false;
     $managedEventIds = $user && !$isSuperUser
       ? EventAdmin::query()
         ->where('user_id', $user->id)
@@ -284,8 +285,8 @@ class HomeController extends Controller
         ->flip()
       : collect();
 
-    $events->each(function (Event $event) use ($isSuperUser, $managedEventIds) {
-      if (!$isSuperUser && !$managedEventIds->has($event->id)) {
+    $events->each(function (Event $event) use ($canViewAllStatuses, $managedEventIds) {
+      if (!$canViewAllStatuses && !$managedEventIds->has($event->id)) {
         return;
       }
 
