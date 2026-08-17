@@ -19,6 +19,8 @@ use App\Models\UserPlayer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class HomeController extends Controller
 {
@@ -249,10 +251,24 @@ class HomeController extends Controller
 
   public function get_events(Request $request)
   {
+    $startedAt = hrtime(true);
+    $requestId = (string) Str::uuid();
     $period = in_array($request->get('period'), ['upcoming', 'past', 'all'], true)
       ? $request->get('period')
       : 'upcoming';
     $search = mb_substr(trim((string) $request->get('search', '')), 0, 100);
+
+    $eventLog = Log::channel('home-events');
+    $eventLog->info('Home event feed request started.', [
+      'request_id' => $requestId,
+      'user_id' => $request->user()?->id,
+      'authenticated' => $request->user() !== null,
+      'period' => $period,
+      'page' => max(1, (int) $request->get('page', 1)),
+      'search_length' => mb_strlen($search),
+    ]);
+
+    try {
 
     $query = Event::query()
       ->visibleTo($request->user())
@@ -327,7 +343,7 @@ class HomeController extends Controller
       return $payload;
     })->values();
 
-    return response()->json([
+    $response = response()->json([
       'data' => $data,
       'meta' => [
         'current_page' => $events->currentPage(),
@@ -336,6 +352,33 @@ class HomeController extends Controller
         'total' => $events->total(),
       ],
     ]);
+
+    $durationMs = round((hrtime(true) - $startedAt) / 1_000_000, 2);
+    $eventLog->info('Home event feed request completed.', [
+      'request_id' => $requestId,
+      'user_id' => $request->user()?->id,
+      'period' => $period,
+      'page' => $events->currentPage(),
+      'last_page' => $events->lastPage(),
+      'returned_count' => $data->count(),
+      'total_count' => $events->total(),
+      'duration_ms' => $durationMs,
+    ]);
+
+    return $response->header('X-Home-Events-Request-Id', $requestId);
+    } catch (\Throwable $exception) {
+      $eventLog->error('Home event feed request failed.', [
+        'request_id' => $requestId,
+        'user_id' => $request->user()?->id,
+        'period' => $period,
+        'page' => max(1, (int) $request->get('page', 1)),
+        'exception' => $exception::class,
+        'message' => $exception->getMessage(),
+        'duration_ms' => round((hrtime(true) - $startedAt) / 1_000_000, 2),
+      ]);
+
+      throw $exception;
+    }
   }
 
   private function entriesAreOpen(Event $event): bool

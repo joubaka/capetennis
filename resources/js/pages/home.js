@@ -16,6 +16,11 @@ debug('Bundle evaluated', {
   pageUrl: window.location.href
 });
 
+window.homeEventsRuntime = {
+  version: '2026-08-17.1',
+  initialized: false
+};
+
 $(function () {
   const getEvents = window.routes?.homeGetEvents;
   const showEvent = window.routes?.eventShow;
@@ -29,6 +34,7 @@ $(function () {
     eventListPresent: $('#eventList').length === 1,
     templatePresent: $('#eventInfo').children().length > 0
   });
+  window.homeEventsRuntime.initialized = true;
 
   if (!getEvents || !showEvent) {
     debugError('Required home routes are not defined', {
@@ -187,12 +193,13 @@ $(function () {
     }
 
     activeRequest = $.ajax({ url: getEvents, data: { period, search, page } })
-      .done(function (response) {
+      .done(function (response, _status, xhr) {
         const events = Array.isArray(response?.data) ? response.data : [];
         const meta = response?.meta || {};
 
         debug('Request succeeded', {
           requestId,
+          serverRequestId: xhr.getResponseHeader?.('X-Home-Events-Request-Id') || null,
           responseType: Array.isArray(response) ? 'array' : typeof response,
           hasDataArray: Array.isArray(response?.data),
           eventCount: events.length,
@@ -239,6 +246,7 @@ $(function () {
         $results.text('Unavailable');
         debugError('Request failed', {
           requestId,
+          serverRequestId: xhr.getResponseHeader?.('X-Home-Events-Request-Id') || null,
           httpStatus: xhr.status,
           statusText: xhr.statusText,
           ajaxStatus: status,
