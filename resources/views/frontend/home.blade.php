@@ -50,8 +50,17 @@
     overflow: hidden;
   }
   .event-card-header { background: #004177; padding: 1.15rem 1.35rem; }
-  .event-name { color: #fff; display: inline-block; line-height: 1.35; overflow-wrap: anywhere; }
-  .event-name:hover { color: #fff; text-decoration: underline; text-underline-offset: .2rem; }
+  .event-name {
+    border-radius: .35rem;
+    color: #fff;
+    display: inline-block;
+    line-height: 1.35;
+    margin: -.2rem -.35rem;
+    overflow-wrap: anywhere;
+    padding: .2rem .35rem;
+    transition: background-color .2s ease;
+  }
+  .event-name:hover { background: rgba(255,255,255,.14); color: #fff; text-decoration: none; }
   .event-card-body { align-items: center; display: grid; gap: 1.5rem; grid-template-columns: 9rem minmax(0, 1fr); }
   .event-logo-wrap { align-items: center; display: flex; justify-content: center; min-height: 8rem; }
   .event-logo { height: 8rem; max-width: 9rem; object-fit: contain; width: 100%; }
