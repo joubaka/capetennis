@@ -1,6 +1,6 @@
 @extends('layouts/layoutMaster')
 
-@section('title', 'Create Event')
+@section('title', $isCopy ? 'Copy Event' : 'Create Event')
 
 @section('vendor-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
@@ -16,7 +16,7 @@
 <div class="container-xl">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">Create New Event</h4>
+    <h4 class="mb-0">{{ $isCopy ? 'Copy Event' : 'Create New Event' }}</h4>
   </div>
 
   @if ($errors->any())
@@ -35,6 +35,10 @@
 
     @csrf
 
+    @if ($isCopy)
+      <input type="hidden" name="source_event_id" value="{{ $sourceEvent?->id }}">
+    @endif
+
     <div class="row g-4">
 
       {{-- ================= LEFT SIDE ================= --}}
@@ -51,7 +55,7 @@
               <label class="form-label">Event Name <span class="text-danger">*</span></label>
               <input name="name"
                      class="form-control @error('name') is-invalid @enderror"
-                     value="{{ old('name') }}"
+                     value="{{ old('name', $isCopy ? (($sourceEvent?->name ?? '') . ' (Copy)') : '') }}"
                      required>
               @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
@@ -63,7 +67,7 @@
                 <input type="date"
                        name="start_date"
                        class="form-control @error('start_date') is-invalid @enderror"
-                       value="{{ old('start_date') }}">
+                       value="{{ old('start_date', optional($sourceEvent?->start_date)->format('Y-m-d')) }}">
                 @error('start_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
               <div class="col">
@@ -71,7 +75,7 @@
                 <input type="date"
                        name="end_date"
                        class="form-control @error('end_date') is-invalid @enderror"
-                       value="{{ old('end_date') }}">
+                       value="{{ old('end_date', optional($sourceEvent?->end_date)->format('Y-m-d')) }}">
                 @error('end_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
             </div>
@@ -84,7 +88,7 @@
                       required>
                 <option value="">— Select type —</option>
                 @foreach($eventTypes as $type)
-                  <option value="{{ $type->id }}" @selected(old('eventType') == $type->id)>
+                  <option value="{{ $type->id }}" @selected(old('eventType', $sourceEvent?->eventType) == $type->id)>
                     {{ $type->name }}
                   </option>
                 @endforeach
@@ -97,7 +101,7 @@
               <label class="form-label">Information</label>
               <textarea name="information"
                         class="form-control"
-                        rows="4">{{ old('information') }}</textarea>
+                        rows="4">{{ old('information', $sourceEvent?->information ?? '') }}</textarea>
             </div>
 
             {{-- Venue Notes --}}
@@ -105,7 +109,7 @@
               <label class="form-label">Venue Notes</label>
               <textarea name="venue_notes"
                         class="form-control"
-                        rows="3">{{ old('venue_notes') }}</textarea>
+                        rows="3">{{ old('venue_notes', $sourceEvent?->venue_notes ?? '') }}</textarea>
             </div>
 
             {{-- Logo --}}
@@ -137,7 +141,7 @@
               <input type="number"
                      name="entryFee"
                      class="form-control"
-                     value="{{ old('entryFee') }}">
+                     value="{{ old('entryFee', $sourceEvent?->entryFee ?? '') }}">
             </div>
 
             {{-- Deadline --}}
@@ -146,7 +150,7 @@
               <input type="number"
                      name="deadline"
                      class="form-control"
-                     value="{{ old('deadline') }}">
+                     value="{{ old('deadline', $sourceEvent?->deadline ?? '') }}">
             </div>
 
             {{-- Withdrawal Deadline --}}
@@ -155,7 +159,7 @@
               <input type="datetime-local"
                      name="withdrawal_deadline"
                      class="form-control"
-                     value="{{ old('withdrawal_deadline') }}">
+                     value="{{ old('withdrawal_deadline', optional($sourceEvent?->withdrawal_deadline)->format('Y-m-d\TH:i')) }}">
             </div>
 
             {{-- Organizer --}}
@@ -164,7 +168,7 @@
               <input type="text"
                      name="organizer"
                      class="form-control"
-                     value="{{ old('organizer') }}">
+                     value="{{ old('organizer', $sourceEvent?->organizer ?? '') }}">
             </div>
 
             {{-- Email --}}
@@ -173,7 +177,7 @@
               <input type="email"
                      name="email"
                      class="form-control @error('email') is-invalid @enderror"
-                     value="{{ old('email') }}">
+                     value="{{ old('email', $sourceEvent?->email ?? '') }}">
               @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
@@ -186,7 +190,7 @@
                       data-placeholder="Select admins">
                 @foreach($users as $user)
                   <option value="{{ $user->id }}"
-                    @selected(is_array(old('admins')) && in_array($user->id, old('admins')))>
+                    @selected(is_array(old('admins', $adminIds ?? [])) ? in_array($user->id, old('admins', $adminIds ?? [])) : in_array($user->id, $adminIds ?? []))>
                     {{ $user->name }} ({{ $user->email }})
                   </option>
                 @endforeach
@@ -199,7 +203,7 @@
                      type="checkbox"
                      name="published"
                      value="1"
-                     @checked(old('published'))>
+                     @checked(old('published', false))>
               <label class="form-check-label">Published</label>
             </div>
 
@@ -209,7 +213,7 @@
                      type="checkbox"
                      name="signUp"
                      value="1"
-                     @checked(old('signUp'))>
+                     @checked(old('signUp', false))>
               <label class="form-check-label">Allow Sign-Up</label>
             </div>
 
@@ -225,7 +229,7 @@
         Cancel
       </a>
       <button type="submit" class="btn btn-primary">
-        Create Event
+        {{ $isCopy ? 'Save Copied Event' : 'Create Event' }}
       </button>
     </div>
 

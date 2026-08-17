@@ -461,10 +461,7 @@ $(function () {
           targets: 4,
           render: function (data, type, full) {
             var admin = '<a href="' + APP_URL + '/backend/event/' + full.id + '/overview" class="btn btn-sm btn-secondary me-1">Dashboard</a>';
-            var copy = '<form method="POST" action="' + APP_URL + '/backend/event/' + full.id + '/copy" class="d-inline" onsubmit="return confirm(\'Copy this event?\')">' 
-              + '<input type="hidden" name="_token" value="' + CSRF + '">'
-              + '<button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-copy me-1"></i>Copy</button>'
-              + '</form>';
+            var copy = '<a href="' + APP_URL + '/backend/event/' + full.id + '/copy" class="btn btn-sm btn-outline-primary"><i class="ti ti-copy me-1"></i>Copy</a>';
             return admin + copy;
           }
         },

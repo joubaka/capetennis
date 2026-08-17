@@ -169,11 +169,21 @@ class EventController extends Controller
     $eventTypes = EventType::orderBy('name')->get();
     $users = User::orderBy('name')->get();
 
-    return view('backend.event.create', compact('eventTypes', 'users'));
+    return view('backend.event.create', [
+      'eventTypes'  => $eventTypes,
+      'users'       => $users,
+      'adminIds'    => [],
+      'sourceEvent' => null,
+      'isCopy'      => false,
+    ]);
   }
 
   public function store(Request $request)
   {
+    if ($request->filled('source_event_id') && !auth()->user()->hasRole('super-user')) {
+      abort(403, 'Only super users can duplicate events.');
+    }
+
     $data = $request->validate([
       'name'                => 'required|string|max:255',
       'start_date'          => 'nullable|date',
@@ -189,6 +199,7 @@ class EventController extends Controller
       'logo_upload'         => 'nullable|image|max:2048',
       'admins'              => 'nullable|array',
       'admins.*'            => 'integer|exists:users,id',
+      'source_event_id'     => 'nullable|integer|exists:events,id',
     ]);
 
     $logo = null;
@@ -217,15 +228,48 @@ class EventController extends Controller
       'signUp'              => $request->boolean('signUp'),
     ]);
 
-    if (!empty($data['admins'])) {
-      $event->admins()->sync($data['admins']);
+    $sourceEvent = null;
+    if (!empty($data['source_event_id'])) {
+      $sourceEvent = Event::with([
+        'categoryEvents',
+        'admins:id',
+      ])->findOrFail($data['source_event_id']);
     }
 
-    Log::info('✅ Event created', ['event_id' => $event->id, 'user_id' => auth()->id()]);
+    $newAdmins = [];
+    if ($request->has('admins')) {
+      $newAdmins = $data['admins'] ?? [];
+    } elseif (!$sourceEvent) {
+      $newAdmins = [];
+    }
+
+    if ($sourceEvent && empty($newAdmins)) {
+      $newAdmins = $sourceEvent->admins->pluck('id')->toArray();
+    }
+
+    if ($sourceEvent) {
+      DB::transaction(function () use ($event, $sourceEvent, $newAdmins) {
+        $sourceEvent->categoryEvents->each(function ($categoryEvent) use ($event) {
+          $newCat = $categoryEvent->replicate();
+          $newCat->event_id = $event->id;
+          $newCat->save();
+        });
+
+        $event->admins()->sync($newAdmins);
+      });
+    } else {
+      $event->admins()->sync($newAdmins);
+    }
+
+    Log::info('✅ Event created', [
+      'event_id'          => $event->id,
+      'user_id'           => auth()->id(),
+      'source_event_id'   => optional($sourceEvent)->id,
+    ]);
 
     return redirect()
       ->route('admin.events.overview', $event)
-      ->with('success', 'Event created successfully.');
+      ->with('success', $sourceEvent ? 'Copied event saved successfully.' : 'Event created successfully.');
   }
 
   public function edit(Event $event)
@@ -340,26 +384,22 @@ class EventController extends Controller
 
   public function copyEvent(Event $event)
   {
-    $newEvent = $event->replicate();
-    $newEvent->name = $event->name . ' (Copy)';
-    $newEvent->published = 0;
-    $newEvent->signUp = 0;
-    $newEvent->results_published = 0;
-    $newEvent->save();
+    if (!auth()->user()->hasRole('super-user')) {
+      abort(403, 'Only super users can duplicate events.');
+    }
 
-    $event->categoryEvents()->each(function ($categoryEvent) use ($newEvent) {
-      $newCat = $categoryEvent->replicate();
-      $newCat->event_id = $newEvent->id;
-      $newCat->save();
-    });
+    $eventTypes = EventType::orderBy('name')->get();
+    $users = User::orderBy('name')->get();
+    $adminIds = $event->admins()->pluck('users.id')->toArray();
 
-    $event->admins()->get()->each(function ($admin) use ($newEvent) {
-      $newEvent->admins()->attach($admin->id);
-    });
-
-    return redirect()
-      ->route('admin.events.overview', $newEvent)
-      ->with('success', 'Event copied successfully.');
+    return view('backend.event.create', [
+      'event'       => $event,
+      'eventTypes'  => $eventTypes,
+      'users'       => $users,
+      'adminIds'    => $adminIds,
+      'sourceEvent' => $event,
+      'isCopy'      => true,
+    ]);
   }
 
 }

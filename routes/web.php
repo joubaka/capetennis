@@ -1793,7 +1793,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('{event}/fixtures', [EventAdminController::class, 'fixtures'])
       ->name('admin.events.individual.hq');
 
-    Route::post('{event}/copy', [BackendEventController::class, 'copyEvent'])
+    Route::get('{event}/copy', [BackendEventController::class, 'copyEvent'])
+      ->middleware('role:super-user')
       ->name('admin.events.copy');
   });
 
