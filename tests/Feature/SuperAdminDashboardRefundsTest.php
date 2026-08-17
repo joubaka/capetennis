@@ -58,6 +58,16 @@ class SuperAdminDashboardRefundsTest extends TestCase
         $response->assertSee('Pending Bank Refunds');
     }
 
+    public function test_event_quick_actions_link_to_the_dashboard_event_list(): void
+    {
+        $response = $this->actingAs($this->superUser())
+            ->get(route('backend.superadmin.index'));
+
+        $response->assertOk()
+            ->assertSee('href="'.route('backend.dashboard').'#tab-events"', false)
+            ->assertDontSee('href="'.url('backend/event').'"', false);
+    }
+
     public function test_ordinary_user_cannot_change_platform_settings(): void
     {
         $user = User::factory()->create();

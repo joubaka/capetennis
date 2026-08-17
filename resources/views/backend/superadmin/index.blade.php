@@ -82,7 +82,7 @@
 <div class="sa-kpi-grid mb-3">
   <a href="{{ url('backend/user') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-users"></i></span><span class="badge bg-label-success sa-kpi-meta">+{{ $newUsersThisWeek }} wk</span><div class="sa-kpi-value">{{ number_format($totalUsers) }}</div><div class="sa-kpi-label">Users</div></a>
   <a href="{{ url('backend/player') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-success"><i class="ti ti-user-check"></i></span><span class="badge bg-label-success sa-kpi-meta">+{{ $newPlayersThisWeek }} wk</span><div class="sa-kpi-value">{{ number_format($totalPlayers) }}</div><div class="sa-kpi-label">Player profiles</div></a>
-  <a href="{{ url('backend/event') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-info"><i class="ti ti-calendar-event"></i></span><span class="badge bg-label-secondary sa-kpi-meta">{{ number_format($totalEvents) }} total</span><div class="sa-kpi-value">{{ number_format($activeEvents) }}</div><div class="sa-kpi-label">Active events</div></a>
+  <a href="{{ route('backend.dashboard') }}#tab-events" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-info"><i class="ti ti-calendar-event"></i></span><span class="badge bg-label-secondary sa-kpi-meta">{{ number_format($totalEvents) }} total</span><div class="sa-kpi-value">{{ number_format($activeEvents) }}</div><div class="sa-kpi-label">Active events</div></a>
   <div class="sa-kpi"><span class="sa-kpi-icon bg-label-warning"><i class="ti ti-ticket"></i></span><span class="badge bg-label-info sa-kpi-meta">+{{ $recentRegistrations }} 30d</span><div class="sa-kpi-value">{{ number_format($totalRegistrations) }}</div><div class="sa-kpi-label">Registrations</div></div>
   <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()"><span class="sa-kpi-icon {{ $totalPending > 0 ? 'bg-label-danger' : 'bg-label-success' }}"><i class="ti ti-cash-banknote"></i></span><div class="sa-kpi-value {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div><div class="sa-kpi-label">Pending refunds</div></button>
   <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-agreements')).show()"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-file-certificate"></i></span>@if($agreementStats['pending_players'] > 0)<span class="badge bg-label-warning sa-kpi-meta">{{ number_format($agreementStats['pending_players']) }} pending</span>@endif<div class="sa-kpi-value">{{ number_format($agreementStats['total_acceptances']) }}</div><div class="sa-kpi-label">Conduct accepted</div></button>
@@ -194,7 +194,7 @@
                 <a href="{{ url('backend/player') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-user-check me-1"></i>Manage Players
                 </a>
-                <a href="{{ url('backend/event') }}" class="sa-action text-decoration-none">
+                <a href="{{ route('backend.dashboard') }}#tab-events" class="sa-action text-decoration-none">
                   <i class="ti ti-calendar-event me-1"></i>Events
                 </a>
                 <a href="{{ url('backend/series') }}" class="sa-action text-decoration-none">

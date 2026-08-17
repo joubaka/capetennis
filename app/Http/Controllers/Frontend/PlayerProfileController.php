@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Frontend;
 use App\Http\Controllers\Controller;
 use App\Models\Player;
 use App\Models\User;
+use App\Services\PlayerIdentityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class PlayerProfileController extends Controller
 {
+    public function __construct(private readonly PlayerIdentityService $playerIdentity) {}
+
     /**
      * Show the form to create a new player profile.
      */
@@ -45,22 +48,10 @@ class PlayerProfileController extends Controller
         $dob = $validated['dateOfBirth'];
         $gender = (int) $validated['gender'];
 
-        $player = DB::transaction(function () use ($user, $name, $surname, $dob, $gender, $validated) {
+        $result = DB::transaction(function () use ($user, $name, $surname, $dob, $gender, $validated) {
             User::where('id', $user->id)->lockForUpdate()->first();
 
-            $existingPlayer = Player::query()
-                ->where('userId', $user->id)
-                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
-                ->whereRaw('LOWER(TRIM(surname)) = ?', [mb_strtolower($surname)])
-                ->whereDate('dateOfBirth', $dob)
-                ->where('gender', $gender)
-                ->first();
-
-            if ($existingPlayer) {
-                return $existingPlayer;
-            }
-
-            return Player::create([
+            return $this->playerIdentity->findOrCreate([
                 'name'        => $name,
                 'surname'     => $surname,
                 'dateOfBirth' => $dob,
@@ -71,10 +62,14 @@ class PlayerProfileController extends Controller
             ]);
         });
 
+        $player = $result['player'];
+
         $user->players()->syncWithoutDetaching($player->id);
 
         return redirect()->route('backend.dashboard')
-            ->with('success', "Player profile for \"{$player->name} {$player->surname}\" created successfully.");
+            ->with('success', $result['created']
+                ? "Player profile for \"{$player->name} {$player->surname}\" created successfully."
+                : "The existing profile for \"{$player->name} {$player->surname}\" was linked to your account.");
     }
 
     /**
@@ -159,6 +154,13 @@ class PlayerProfileController extends Controller
 
         // Convert gender string to database integer (1 = Male, 2 = Female)
         $validated['gender'] = $validated['gender'] === 'Male' ? 1 : 2;
+
+        $this->playerIdentity->ensureAvailable(
+            $validated['name'],
+            $validated['surname'],
+            $validated['dateOfBirth'],
+            $player->id
+        );
 
         $player->update($validated);
         $player->markProfileUpdated();

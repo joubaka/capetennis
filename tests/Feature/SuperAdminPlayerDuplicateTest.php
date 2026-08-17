@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Player;
 use App\Models\User;
+use App\Services\PlayerDuplicateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Mockery;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -48,6 +51,22 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             ->assertSee('parent@example.test')
             ->assertSee('player@example.test')
             ->assertSee("#{$second->id}");
+    }
+
+    public function test_duplicate_review_uses_sized_bootstrap_pagination_controls(): void
+    {
+        $paginator = new LengthAwarePaginator([], 26, 25, 1, [
+            'path' => route('superadmin.player-duplicates.index'),
+        ]);
+        $duplicates = Mockery::mock(PlayerDuplicateService::class);
+        $duplicates->shouldReceive('candidates')->once()->andReturn($paginator);
+        $this->app->instance(PlayerDuplicateService::class, $duplicates);
+
+        $this->actingAs($this->superUser)
+            ->get(route('superadmin.player-duplicates.index'))
+            ->assertOk()
+            ->assertSee('class="pagination"', false)
+            ->assertDontSee('w-5 h-5', false);
     }
 
     public function test_approved_merge_transfers_owner_and_deletes_only_empty_profile(): void

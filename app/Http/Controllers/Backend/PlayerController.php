@@ -21,12 +21,16 @@ use App\Models\TeamPlayer;
 use App\Models\User;
 use App\Models\UserPlayer;
 use App\Services\DisciplinaryService;
+use App\Services\PlayerIdentityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class PlayerController extends Controller
 {
-    public function __construct(protected DisciplinaryService $disciplinaryService) {}
+    public function __construct(
+      protected DisciplinaryService $disciplinaryService,
+      protected PlayerIdentityService $playerIdentity,
+    ) {}
 
     /**
      * Display the players management page.
@@ -106,19 +110,19 @@ class PlayerController extends Controller
       'email' => 'nullable|email'
     ]);
 
-    // Create the Player
-    $player = new Player();
-    $player->name = $request->player_name;
-    $player->surname = $request->player_surname;
-    $player->dateOfBirth = $request->dob;
-    $player->gender = (int)$request->gender;
-    $player->userId = Auth::id();
-    $player->cellNr = $request->cell_nr;
-    $player->email = $request->email;
-    $player->save();
+    $result = $this->playerIdentity->findOrCreate([
+      'name' => $validated['player_name'],
+      'surname' => $validated['player_surname'],
+      'dateOfBirth' => $validated['dob'],
+      'gender' => (int) $validated['gender'],
+      'userId' => Auth::id(),
+      'cellNr' => $validated['cell_nr'] ?? null,
+      'email' => $validated['email'] ?? null,
+    ]);
+    $player = $result['player'];
 
     $notification = [
-      'message' => 'Player added successfully',
+      'message' => $result['created'] ? 'Player added successfully' : 'Existing player profile selected',
       'alert-type' => 'info'
     ];
 
@@ -159,8 +163,9 @@ class PlayerController extends Controller
           'gender' => $player->gender,
           'cellNr' => $player->cellNr,
           'email' => $player->email,
-          'message' => 'Player added successfully'
-        ], 201);
+          'message' => $result['created'] ? 'Player added successfully' : 'Existing player profile selected',
+          'created' => $result['created'],
+        ], $result['created'] ? 201 : 200);
       }
       
       return $player;
@@ -216,6 +221,13 @@ class PlayerController extends Controller
         'cell_nr' => 'nullable|string|max:50',
       ]);
 
+      $this->playerIdentity->ensureAvailable(
+        $validated['name'],
+        $validated['surname'],
+        (string) $player->dateOfBirth,
+        $player->id
+      );
+
       $player->fill([
         'name' => $validated['name'],
         'surname' => $validated['surname'],
@@ -240,6 +252,13 @@ class PlayerController extends Controller
       'gender' => 'nullable|string|max:10',
       'coach' => 'nullable|string|max:255',
     ]);
+
+    $this->playerIdentity->ensureAvailable(
+      $validated['player_name'],
+      $validated['player_surname'],
+      $validated['dob'] ?? (string) $player->dateOfBirth,
+      $player->id
+    );
 
     $player->update([
       'name' => $validated['player_name'],

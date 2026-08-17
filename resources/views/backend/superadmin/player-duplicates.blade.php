@@ -97,6 +97,6 @@
     <div class="card"><div class="card-body text-center py-5"><h5>No duplicate name candidates found</h5><p class="text-muted mb-0">The scan found no repeated first-name and surname combinations.</p></div></div>
   @endforelse
 
-  {{ $candidateGroups->links() }}
+  {{ $candidateGroups->links('pagination::bootstrap-5') }}
 </div>
 @endsection
