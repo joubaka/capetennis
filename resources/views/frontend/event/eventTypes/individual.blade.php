@@ -41,6 +41,8 @@
   $eDate ||
   $formatEntryLine ||
   $formatWithdrawalLine ||
+  $event->entryFee !== null ||
+  $event->eventCategories->isNotEmpty() ||
   $event->organizer ||
   $event->email
 )
@@ -49,6 +51,10 @@
     <small class="text-uppercase">About</small>
 
     <ul class="list-unstyled mt-3">
+
+      @if($event->entryFee !== null || $event->eventCategories->contains(fn ($categoryEvent) => $categoryEvent->entry_fee !== null))
+        @include('frontend.event.partials.entry-fees')
+      @endif
 
       @if($sDate)
         <li class="mb-2">

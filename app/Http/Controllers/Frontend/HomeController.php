@@ -251,7 +251,7 @@ class HomeController extends Controller
     $search = $request->get('search');
 
     $query = Event::query()
-      ->where('published', 1);
+      ->visibleTo($request->user());
 
     // 🔍 SEARCH FILTER
     if (!empty($search)) {

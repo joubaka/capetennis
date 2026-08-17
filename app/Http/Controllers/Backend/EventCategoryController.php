@@ -16,6 +16,8 @@ class EventCategoryController extends Controller
    */
   public function index(Event $event)
   {
+    $this->authorize('event-category.manage', $event);
+
     // Load category events sorted alphabetically by category name
     $categoryEvents = $event->categoryEvents()
       ->join('categories', 'categories.id', '=', 'category_events.category_id')
@@ -51,6 +53,8 @@ class EventCategoryController extends Controller
    */
   public function attach(Request $request, Event $event)
   {
+    $this->authorize('event-category.manage', $event);
+
     $validated = $request->validate([
       'category_ids' => ['required', 'array', 'min:1'],
       'category_ids.*' => ['integer', 'exists:categories,id'],
@@ -75,6 +79,8 @@ class EventCategoryController extends Controller
    */
   public function createAndAttach(Request $request, Event $event)
   {
+    $this->authorize('event-category.manage', $event);
+
     $data = $request->validate([
       'name' => 'required|string|max:255|unique:categories,name',
     ]);
@@ -95,6 +101,8 @@ class EventCategoryController extends Controller
    */
   public function destroy(CategoryEvent $categoryEvent)
   {
+    $this->authorize('event-category.manage', $categoryEvent->event);
+
     if ($categoryEvent->activeRegistrations()->exists()) {
       return response()->json([
         'message' => 'Category has players and cannot be removed.'
@@ -113,6 +121,8 @@ class EventCategoryController extends Controller
    */
   public function cleanup(Event $event)
   {
+    $this->authorize('event-category.manage', $event);
+
     $removed = $event->categoryEvents()
       ->whereDoesntHave('categoryEventRegistrations')
       ->delete();

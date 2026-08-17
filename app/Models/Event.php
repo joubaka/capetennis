@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\RichTextSanitizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use App\Models\EventType;
 use App\Models\EventIncomeItem;
@@ -185,6 +186,27 @@ class Event extends Model
   {
     return $this->belongsToMany(User::class, 'event_admins')
       ->withPivot('event_id');
+  }
+
+  /**
+   * Limit tournament discovery to published events, assigned event admins,
+   * and super users who may manage every event.
+   */
+  public function scopeVisibleTo(Builder $query, ?User $user): Builder
+  {
+    if ($user?->hasRole('super-user')) {
+      return $query;
+    }
+
+    return $query->where(function (Builder $visibilityQuery) use ($user) {
+      $visibilityQuery->where('published', true);
+
+      if ($user) {
+        $visibilityQuery->orWhereHas('admins', function (Builder $adminQuery) use ($user) {
+          $adminQuery->where('users.id', $user->id);
+        });
+      }
+    });
   }
 
   public function event_admins()

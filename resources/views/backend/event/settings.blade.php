@@ -17,12 +17,26 @@
 @section('content')
 <style>
   .select2-container { z-index: 1055; }
-  .logo-preview { max-height: 90px; }
+  .settings-shell { max-width: 1180px; margin-inline: auto; }
+  .settings-hero { border: 0; background: linear-gradient(135deg, rgba(105, 108, 255, .12), rgba(105, 108, 255, .03)); }
+  .settings-card { border: 0; box-shadow: 0 .125rem .5rem rgba(34, 48, 62, .06); }
+  .settings-card .card-header { padding-bottom: .25rem; border-bottom: 0; }
+  .section-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .5rem; color: var(--bs-primary); background: rgba(105, 108, 255, .12); flex: 0 0 auto; }
+  .logo-preview-wrap { min-height: 152px; background: var(--bs-body-bg); border: 1px dashed var(--bs-border-color); border-radius: .5rem; }
+  .logo-preview { max-width: 180px; max-height: 112px; object-fit: contain; }
+  .save-status { min-width: 118px; }
+  .form-label { font-weight: 500; }
+  .field-help { margin-top: .35rem; font-size: .8125rem; color: var(--bs-secondary-color); }
+  @media (max-width: 767.98px) {
+    .settings-hero .card-body { padding: 1.25rem; }
+    .settings-card .card-body { padding: 1.25rem; }
+    .save-status { min-width: 0; }
+  }
 </style>
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
-<div class="container-xl">
+<div class="container-xl settings-shell">
 
 <form method="POST"
       action="{{ route('admin.events.settings.update', $event) }}"
@@ -30,73 +44,91 @@
 @csrf
 @method('PATCH')
 
-{{-- HEADER --}}
-<div class="card mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h4 class="mb-0">Event Settings</h4>
-    <button class="btn btn-primary btn-sm">
-      <i class="ti ti-device-floppy me-1"></i> Save Logo
-    </button>
+<div class="card settings-hero mb-4">
+  <div class="card-body d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+    <div>
+      <div class="text-primary fw-semibold small text-uppercase mb-1">Event management</div>
+      <h3 class="mb-1">Event settings</h3>
+      <p class="text-muted mb-0">Manage {{ $event->name }} from one place.</p>
+    </div>
+    <div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
+      <i class="ti ti-circle-check"></i>
+      <span>All changes saved</span>
+    </div>
   </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-4">
 
-{{-- EVENT --}}
-<div class="col-lg-12">
-  <div class="card">
-    <div class="card-header"><h5 class="mb-0">Event</h5></div>
-    <div class="card-body">
+{{-- BASICS --}}
+<div class="col-12">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-adjustments-horizontal"></i></span>
+      <div><h5 class="mb-1">Basics & visibility</h5><p class="text-muted small mb-0">The event identity and what visitors can access.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <label class="form-label" for="event-name">Event name</label>
+          <input id="event-name" class="form-control autosave" name="name" value="{{ $event->name }}">
 
-      <label class="form-label">Event Name</label>
-      <input class="form-control autosave" name="name" value="{{ $event->name }}">
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="form-label" for="event-type">Event type</label>
+              <select id="event-type" class="form-select autosave" name="eventType">
+                @foreach(\App\Models\EventType::all() as $type)
+                  <option value="{{ $type->id }}" @selected($event->eventType == $type->id)>{{ $type->name }}</option>
+                @endforeach
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="entry-status">Entry status</label>
+              <select id="entry-status" class="form-select autosave" name="status">
+                <option value="draft" @selected($event->status === 'draft')>Draft</option>
+                <option value="open" @selected($event->status === 'open')>Open</option>
+                <option value="closed" @selected($event->status === 'closed')>Closed</option>
+              </select>
+            </div>
+          </div>
 
-      <div class="d-flex gap-4 mt-3">
+          <div class="d-flex flex-column flex-sm-row gap-3 gap-sm-5 mt-4 p-3 rounded bg-body">
         <div class="form-check form-switch">
           <input class="form-check-input autosave" type="checkbox"
-                 name="published" {{ $event->published ? 'checked' : '' }}>
-          <label class="form-check-label">Published</label>
+                 id="event-published" name="published" {{ $event->published ? 'checked' : '' }}>
+          <label class="form-check-label fw-semibold" for="event-published">Published</label>
+          <div class="field-help mt-0">Show the event publicly.</div>
         </div>
 
         <div class="form-check form-switch">
           <input class="form-check-input autosave" type="checkbox"
-                 name="signUp" {{ $event->signUp ? 'checked' : '' }}>
-          <label class="form-check-label">Signup Open</label>
+                 id="signup-open" name="signUp" {{ $event->signUp ? 'checked' : '' }}>
+          <label class="form-check-label fw-semibold" for="signup-open">Signup open</label>
+          <div class="field-help mt-0">Allow players to enter.</div>
         </div>
       </div>
+        </div>
 
-    </div>
-  </div>
-</div>
-
-{{-- LOGO --}}
-<div class="col-lg-6">
-  <div class="card h-100">
-    <div class="card-header">
-      <h5 class="mb-0">Event Logo</h5>
-    </div>
-
-    <div class="card-body">
-
-      {{-- CURRENT LOGO PREVIEW --}}
-      <div class="mb-3 text-center">
+        <div class="col-lg-4">
+          <label class="form-label">Event logo</label>
+          <div class="logo-preview-wrap d-flex align-items-center justify-content-center p-3 mb-3">
         @if($event->logo)
           <img
             id="logo-preview"
             src="{{ asset('assets/img/logos/'.$event->logo) }}"
-            class="logo-preview img-fluid border rounded mb-2"
+            class="logo-preview img-fluid"
+            alt="Current event logo"
           >
         @else
           <img
             id="logo-preview"
             src="{{ asset('assets/img/placeholder-logo.png') }}"
-            class="logo-preview img-fluid border rounded mb-2"
+            class="logo-preview img-fluid"
+            alt="No event logo selected"
           >
         @endif
       </div>
-
-      {{-- EXISTING LOGOS --}}
-      <label class="form-label">Choose Existing Logo</label>
+      <label class="form-label" for="logo-existing-select">Choose an existing logo</label>
       <select
         class="form-select mb-3"
         name="logo_existing"
@@ -113,110 +145,95 @@
           </option>
         @endforeach
       </select>
-
-      {{-- UPLOAD --}}
-      <label class="form-label">Upload New Logo</label>
+      <label class="form-label" for="logo-upload">Or upload a new logo</label>
       <input
+        id="logo-upload"
         type="file"
         class="form-control"
         name="logo_upload"
         accept="image/*">
-
-      <small class="text-muted d-block mt-2">
-        Selecting an existing logo or uploading a new one will replace the current logo.
-        Click <strong>Save Logo</strong> to apply.
-      </small>
-
+      <div class="field-help">Your selection is applied automatically. Maximum file size: 2 MB.</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-
 {{-- INFORMATION --}}
-<div class="col-lg-12">
-  <div class="card">
-    <div class="card-header"><h5 class="mb-0">Event Information</h5></div>
-    <div class="card-body">
+<div class="col-12">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-file-description"></i></span>
+      <div><h5 class="mb-1">Public information</h5><p class="text-muted small mb-0">The description players and parents will see on the event page.</p></div>
+    </div>
+    <div class="card-body pt-3">
       <div id="info-editor">{!! $event->information !!}</div>
     </div>
   </div>
 </div>
 
-{{-- GENERAL --}}
-<div class="col-lg-6">
-  <div class="card h-100">
-    <div class="card-header"><h5 class="mb-0">General</h5></div>
-    <div class="card-body">
-
-      <label class="form-label">Entry Status</label>
-      <select class="form-select autosave" name="status">
-        <option value="draft" @selected($event->status === 'draft')>Draft</option>
-        <option value="open" @selected($event->status === 'open')>Open</option>
-        <option value="closed" @selected($event->status === 'closed')>Closed</option>
-      </select>
-
-      <label class="form-label mt-3">Default Entry Fee</label>
-      <input class="form-control autosave" name="entryFee" value="{{ $event->entryFee }}">
-
-      <label class="form-label mt-3">Event Type</label>
-      <select class="form-select autosave" name="eventType">
-        @foreach(\App\Models\EventType::all() as $type)
-          <option value="{{ $type->id }}" @selected($event->eventType == $type->id)>
-            {{ $type->name }}
-          </option>
-        @endforeach
-      </select>
-
-    </div>
-  </div>
-</div>
-
 {{-- DATES --}}
-<div class="col-lg-6">
-  <div class="card h-100">
-    <div class="card-header"><h5 class="mb-0">Dates & Registration</h5></div>
-    <div class="card-body">
-
-      <label class="form-label">Start Date</label>
+<div class="col-12">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-calendar-event"></i></span>
+      <div><h5 class="mb-1">Schedule & registration</h5><p class="text-muted small mb-0">Set the event dates, deadlines, fee and organizer contact.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-3">
+        <div class="col-md-6">
+      <label class="form-label" for="start-date">Start date</label>
       <input type="date" class="form-control autosave"
-             name="start_date"
+             id="start-date" name="start_date"
              value="{{ optional($event->start_date)->format('Y-m-d') }}">
-
-      <label class="form-label mt-3">End Date</label>
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="end-date">End date</label>
       <input type="date" class="form-control autosave"
-             name="end_date"
+             id="end-date" name="end_date"
              value="{{ optional($event->end_date)->format('Y-m-d') }}">
-
-      <label class="form-label mt-3">Registration Deadline</label>
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="registration-deadline">Registration deadline</label>
       <div class="input-group">
         <input type="number" class="form-control autosave"
-               name="deadline" min="0" value="{{ $event->deadline }}">
+               id="registration-deadline" name="deadline" min="0" value="{{ $event->deadline }}">
         <span class="input-group-text">days before start</span>
       </div>
-      <small class="text-muted" id="registration-closure-text"></small>
-
-      <label class="form-label mt-3">Withdrawal Deadline</label>
+      <div class="field-help" id="registration-closure-text"></div>
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="withdrawal-deadline">Withdrawal deadline</label>
       <div class="input-group">
         <input type="number" class="form-control autosave"
-               name="withdrawal_days" min="0"
+               id="withdrawal-deadline" name="withdrawal_days" min="0"
                value="{{ $event->withdrawal_deadline
                  ? $event->start_date?->diffInDays($event->withdrawal_deadline)
                  : '' }}">
         <span class="input-group-text">days before start</span>
       </div>
-      <small class="text-muted" id="withdrawal-closure-text"></small>
-
-      <label class="form-label mt-3">Organizer Email</label>
-      <input class="form-control autosave" name="email" value="{{ $event->email }}">
-
+      <div class="field-help" id="withdrawal-closure-text"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="entry-fee">Default entry fee</label>
+          <div class="input-group"><span class="input-group-text">R</span><input id="entry-fee" type="number" min="0" class="form-control autosave" name="entryFee" value="{{ $event->entryFee }}"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="organizer-email">Organizer email</label>
+          <input id="organizer-email" type="email" class="form-control autosave" name="email" value="{{ $event->email }}">
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 {{-- ADMINS --}}
-<div class="col-lg-6">
-  <div class="card">
-    <div class="card-header"><h5 class="mb-0">Event Admins</h5></div>
+<div class="col-lg-5">
+  <div class="card settings-card h-100">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-shield-lock"></i></span>
+      <div><h5 class="mb-1">Event admins</h5><p class="text-muted small mb-0">Full event management access.</p></div>
+    </div>
     <div class="card-body">
       <select class="form-select select2-admins"
               name="admins" multiple
@@ -237,9 +254,12 @@
   $convenors = \App\Models\EventConvenor::where('event_id', $event->id)->with('user')->get();
   $convenorIds = $convenors->pluck('user_id')->toArray();
 @endphp
-<div class="col-lg-6">
-  <div class="card">
-    <div class="card-header"><h5 class="mb-0">Event Directors</h5></div>
+<div class="col-lg-7">
+  <div class="card settings-card h-100">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-users"></i></span>
+      <div><h5 class="mb-1">Event directors</h5><p class="text-muted small mb-0">Time-limited operational access for tournament staff.</p></div>
+    </div>
     <div class="card-body">
       <select class="form-select select2-convenors"
               name="convenors" multiple
@@ -252,15 +272,15 @@
         @endforeach
       </select>
 
-      <div class="row mt-3">
-        <div class="col-6">
-          <label class="form-label">Event Director Access Starts</label>
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label">Access starts</label>
           <input type="datetime-local" class="form-control autosave"
                  name="convenor_starts_at"
                  value="{{ optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
         </div>
-        <div class="col-6">
-          <label class="form-label">Event Director Access Expires</label>
+        <div class="col-md-6">
+          <label class="form-label">Access expires</label>
           <input type="datetime-local" class="form-control autosave"
                  name="convenor_expires_at"
                  value="{{ optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
@@ -314,6 +334,21 @@ $(function () {
 
   let saveTimer = null;
 
+  function setSaveStatus(state, message) {
+    const states = {
+      saved:  { className: 'text-success', icon: 'ti-circle-check' },
+      saving: { className: 'text-primary', icon: 'ti-loader-2' },
+      error:  { className: 'text-danger', icon: 'ti-alert-circle' }
+    };
+    const status = states[state] || states.saved;
+    $('#save-status')
+      .removeClass('text-success text-primary text-danger')
+      .addClass(status.className)
+      .find('i')
+      .attr('class', `ti ${status.icon}${state === 'saving' ? ' ti-spin' : ''}`);
+    $('#save-status span').text(message);
+  }
+
   /* =========================
      HELPERS
   ========================= */
@@ -329,6 +364,7 @@ $(function () {
   function autosave() {
 
     console.log('⏳ Autosave triggered (debounced)');
+    setSaveStatus('saving', 'Saving changes…');
     clearTimeout(saveTimer);
 
     saveTimer = setTimeout(function () {
@@ -389,6 +425,7 @@ $(function () {
       })
       .done(function (res) {
         console.log('✅ Saved response:', res);
+        setSaveStatus('saved', 'All changes saved');
         toastr.success('Saved');
         updatePreviews();
       })
@@ -401,6 +438,7 @@ $(function () {
           console.table(xhr.responseJSON.errors);
         }
 
+        setSaveStatus('error', 'Changes not saved');
         toastr.error('Save failed');
       });
 
@@ -437,6 +475,7 @@ $(function () {
   let infoTimer = null;
 
   quill.on('text-change', function () {
+    setSaveStatus('saving', 'Saving information…');
     clearTimeout(infoTimer);
 
     infoTimer = setTimeout(function () {
@@ -457,10 +496,12 @@ $(function () {
       })
       .done(() => {
         console.log('✅ Info saved');
+        setSaveStatus('saved', 'All changes saved');
         toastr.success('Info saved');
       })
       .fail((xhr) => {
         console.error('❌ Info save failed', xhr.responseText);
+        setSaveStatus('error', 'Information not saved');
         toastr.error('Info save failed');
       });
 
@@ -535,6 +576,7 @@ $('#logo-existing-select').on('change', function () {
 $('[name="logo_upload"], #logo-existing-select').on('change', function () {
 
   console.log('🖼 Logo autosave triggered');
+  setSaveStatus('saving', 'Saving logo…');
 
   const formData = new FormData();
   formData.append('_method', 'PATCH');
@@ -558,10 +600,12 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
   })
   .done(() => {
     console.log('✅ Logo autosaved');
+    setSaveStatus('saved', 'All changes saved');
     toastr.success('Logo saved');
   })
   .fail((xhr) => {
     console.error('❌ Logo autosave failed', xhr.responseText);
+    setSaveStatus('error', 'Logo not saved');
     toastr.error('Logo save failed');
   });
 

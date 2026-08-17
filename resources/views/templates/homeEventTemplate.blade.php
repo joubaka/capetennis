@@ -1,9 +1,10 @@
 <div class="d-none" id="eventInfo">
   <div class="card mb-4">
     <div class="card-header eventHeader" style="background-color:#004177">
-      <h3>
+      <h3 class="mb-2">
         <a class="eventName p-2 rounded"></a>
       </h3>
+      <div class="event-admin-status d-none d-flex flex-wrap gap-2"></div>
     </div>
 
     <div class="card-body mt-2">

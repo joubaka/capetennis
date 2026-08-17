@@ -75,6 +75,20 @@ $(function () {
       .attr('href', showEvent + event.id)
       .addClass('text-white');
 
+    const isPublished = event.published === true || Number(event.published) === 1;
+    if (!isPublished) {
+      const signupEnabled = event.signUp === true || Number(event.signUp) === 1;
+
+      card.find('.event-admin-status')
+        .removeClass('d-none')
+        .html(`
+          <span class="badge bg-label-warning">Unpublished</span>
+          <span class="badge ${signupEnabled ? 'bg-label-success' : 'bg-label-secondary'}">
+            Sign-up ${signupEnabled ? 'enabled' : 'disabled'}
+          </span>
+        `);
+    }
+
     card.find('.start_date')
       .text(startDate.toLocaleDateString('en-US', dateOptions));
 

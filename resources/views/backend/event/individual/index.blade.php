@@ -74,11 +74,19 @@
           Event Settings
         </a>
 
-        <a href="{{ route('admin.events.categories', $event) }}"
-           class="btn btn-outline-primary">
-          <i class="ti ti-list-details me-1"></i>
-          Manage Categories
-        </a>
+        @can('event-category.manage', $event)
+          <a href="{{ route('admin.events.categories', $event) }}"
+             class="btn btn-outline-primary">
+            <i class="ti ti-list-details me-1"></i>
+            Manage Categories
+          </a>
+
+          @if(auth()->user()->hasRole('super-user'))
+            <div class="small text-muted text-center" data-testid="category-admin-only-note">
+              <i class="ti ti-lock me-1"></i>Category setup: event admins and super users only
+            </div>
+          @endif
+        @endcan
 
         <a href="{{ route('admin.events.announcements', $event) }}"
            class="btn btn-outline-info">

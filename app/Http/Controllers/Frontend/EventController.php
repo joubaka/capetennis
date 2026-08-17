@@ -143,10 +143,14 @@ class EventController extends Controller
       'series_id' => $event->series_id,
     ]);
 
-    // Block unpublished events from public access (admins may still view)
+    // Draft events are limited to their assigned admins and super users.
     $user = Auth::user();
-    $isAdmin = $user && method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user'));
-    if (!$isAdmin && (!$event->published || $event->published === '0')) {
+    $canViewEvent = Event::query()
+      ->visibleTo($user)
+      ->whereKey($event->getKey())
+      ->exists();
+
+    if (!$canViewEvent) {
         return response()->view('frontend.event.unavailable', ['event' => $event], 404);
     }
 
