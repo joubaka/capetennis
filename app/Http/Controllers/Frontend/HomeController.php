@@ -170,12 +170,13 @@ class HomeController extends Controller
 
     public function index()
     {
+        $series = Series::query()
+            ->where('leaderboard_published', true)
+            ->orderByDesc('year')
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
-        $users = User::all();
-        $events = Event::all();
-        $eventTypes = EventType::all();
-        $series = Series::all();
-        return view('frontend.home', compact('events', 'users', 'eventTypes', 'series'));
+        return view('frontend.home', compact('series'));
     }
 
     /**
@@ -248,11 +249,24 @@ class HomeController extends Controller
 
   public function get_events(Request $request)
   {
-    $period = $request->get('period', 'upcoming');
-    $search = $request->get('search');
+    $period = in_array($request->get('period'), ['upcoming', 'past', 'all'], true)
+      ? $request->get('period')
+      : 'upcoming';
+    $search = mb_substr(trim((string) $request->get('search', '')), 0, 100);
 
     $query = Event::query()
-      ->visibleTo($request->user());
+      ->visibleTo($request->user())
+      ->select([
+        'id',
+        'name',
+        'start_date',
+        'end_date',
+        'deadline',
+        'logo',
+        'published',
+        'signUp',
+        'status',
+      ]);
 
     // 🔍 SEARCH FILTER
     if (!empty($search)) {
@@ -274,7 +288,7 @@ class HomeController extends Controller
       $query->orderBy('start_date', 'desc');
     }
 
-    $events = $query->get();
+    $events = $query->paginate(20);
     $user = $request->user();
     $isSuperUser = $user?->hasRole('super-user') ?? false;
     $canViewAllStatuses = $user?->hasAnyRole(['super-user', 'admin']) ?? false;
@@ -285,7 +299,7 @@ class HomeController extends Controller
         ->flip()
       : collect();
 
-    $events->each(function (Event $event) use ($canViewAllStatuses, $managedEventIds) {
+    $events->getCollection()->each(function (Event $event) use ($canViewAllStatuses, $managedEventIds) {
       if (!$canViewAllStatuses && !$managedEventIds->has($event->id)) {
         return;
       }
@@ -296,7 +310,32 @@ class HomeController extends Controller
       ]);
     });
 
-    return $events;
+    $data = $events->getCollection()->map(function (Event $event) {
+      $payload = [
+        'id' => $event->id,
+        'name' => $event->name,
+        'start_date' => $event->start_date?->toDateString(),
+        'end_date' => $event->end_date?->toDateString(),
+        'deadline' => $event->deadline,
+        'logo' => $event->logo,
+      ];
+
+      if ($event->getAttribute('admin_status')) {
+        $payload['admin_status'] = $event->getAttribute('admin_status');
+      }
+
+      return $payload;
+    })->values();
+
+    return response()->json([
+      'data' => $data,
+      'meta' => [
+        'current_page' => $events->currentPage(),
+        'last_page' => $events->lastPage(),
+        'per_page' => $events->perPage(),
+        'total' => $events->total(),
+      ],
+    ]);
   }
 
   private function entriesAreOpen(Event $event): bool

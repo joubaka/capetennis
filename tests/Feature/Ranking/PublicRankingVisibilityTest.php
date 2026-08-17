@@ -18,6 +18,28 @@ class PublicRankingVisibilityTest extends TestCase
 {
     use DatabaseTransactions;
 
+    public function test_public_rankings_index_lists_only_published_series(): void
+    {
+        $published = Series::query()->create([
+            'name' => 'Visible Junior Series 2026',
+            'year' => 2026,
+            'leaderboard_published' => true,
+        ]);
+        $hidden = Series::query()->create([
+            'name' => 'Private Draft Series',
+            'leaderboard_published' => false,
+        ]);
+
+        $this->get(route('rankings.index'))
+            ->assertOk()
+            ->assertSee('Published series rankings')
+            ->assertSee('Only currently published leaderboards are listed.')
+            ->assertSee($published->name)
+            ->assertSee(route('frontend.ranking.show', $published), false)
+            ->assertDontSee($hidden->name)
+            ->assertSee('View leaderboard');
+    }
+
     public function test_public_leaderboard_only_shows_latest_published_run(): void
     {
         $series = Series::factory()->create(['leaderboard_published' => true]);

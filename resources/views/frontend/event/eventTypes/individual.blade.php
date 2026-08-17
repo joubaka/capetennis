@@ -56,70 +56,8 @@
   {{-- RIGHT COLUMN --}}
   <div class="col-xl-4 col-lg-5 col-md-5">
 
-  {{-- ABOUT --}}
-@if(
-  $sDate ||
-  $eDate ||
-  $formatEntryLine ||
-  $formatWithdrawalLine ||
-  $event->entryFee !== null ||
-  $event->eventCategories->isNotEmpty() ||
-  $event->organizer ||
-  $event->email
-)
-<div class="card event-section-card mb-4">
-  <div class="card-body">
-    <h5 class="mb-1">At a glance</h5>
-    <p class="text-muted small mb-4">Key dates, fees and contact details.</p>
-
-    <div>
-
-      @if($event->entryFee !== null || $event->eventCategories->contains(fn ($categoryEvent) => $categoryEvent->entry_fee !== null))
-        <div class="event-fact-row">
-          <span class="event-fact-icon"><i class="ti ti-cash"></i></span>
-          <div class="flex-grow-1">
-            <span class="event-fact-label">Cost</span>
-            <ul class="list-unstyled mb-0">@include('frontend.event.partials.entry-fees')</ul>
-          </div>
-        </div>
-      @endif
-
-      @if($sDate)
-        <div class="event-fact-row">
-          <span class="event-fact-icon"><i class="ti ti-calendar-event"></i></span>
-          <div><span class="event-fact-label">Tournament dates</span><strong>{{ $sDate }}</strong>@if($eDate && $eDate !== $sDate)<span class="d-block text-muted small">to {{ $eDate }}</span>@endif</div>
-        </div>
-      @endif
-
-      @if($formatEntryLine)
-        <div class="event-fact-row">
-          <span class="event-fact-icon"><i class="ti ti-clock-hour-4"></i></span>
-          <div><span class="event-fact-label">Entries close</span><strong>{{ $formatEntryLine }}</strong></div>
-        </div>
-      @endif
-
-      @if($formatWithdrawalLine)
-        <div class="event-fact-row">
-          <span class="event-fact-icon"><i class="ti ti-calendar-cancel"></i></span>
-          <div><span class="event-fact-label">Withdrawals close</span><strong>{{ $formatWithdrawalLine }}</strong></div>
-        </div>
-      @endif
-
-    </div>
-
-    @if($event->organizer || $event->email)
-      <div class="event-fact-row">
-        <span class="event-fact-icon"><i class="ti ti-address-book"></i></span>
-        <div class="min-w-0">
-          <span class="event-fact-label">Event contact</span>
-          @if($event->organizer)<strong class="d-block">{{ $event->organizer }}</strong>@endif
-          @if($event->email)<a class="small text-break" href="mailto:{{ $event->email }}">{{ $event->email }}</a>@endif
-        </div>
-      </div>
-    @endif
-  </div>
-</div>
-@endif
+    {{-- ABOUT --}}
+    @include('frontend.event.partials.event-about')
 
     {{-- RESULTS --}}
     @if($event->results_published == 1)

@@ -1,54 +1,35 @@
 <div class="d-none" id="eventInfo">
-  <div class="card mb-4">
-    <div class="card-header eventHeader" style="background-color:#004177">
-      <h3 class="mb-2">
-        <a class="eventName p-2 rounded"></a>
-      </h3>
-      <div class="event-admin-status d-none d-flex flex-wrap gap-2"></div>
-    </div>
-
-    <div class="card-body mt-2">
-      <div class="row m-2">
-
-        {{-- Logo --}}
-        <div class="col-xl-6 order-0 order-xl-0">
-          <div class="logo"></div>
+  <article class="card event-card mb-4">
+    <header class="event-card-header">
+      <h2 class="h4 mb-0"><a class="eventName event-name stretched-link"></a></h2>
+      <div class="event-admin-status d-none d-flex flex-wrap gap-2 mt-2"></div>
+    </header>
+    <div class="card-body p-3 p-lg-4">
+      <div class="event-card-body">
+        <div class="event-logo-wrap logo">
+          <i class="ti ti-ball-tennis event-logo-placeholder" aria-hidden="true"></i>
         </div>
-
-        {{-- Dates --}}
-        <div class="col-xl-6 order-1 order-xl-0">
-
-          <div class="mb-2">
-            <h6 class="mb-1">
-              <span class="me-2">Event start:</span>
-              <span class="start_date badge bg-label-success"></span>
-            </h6>
+        <div class="event-details">
+          <dl class="event-dates">
+            <div class="event-date">
+              <dt>Event start:</dt>
+              <dd><span class="event-date-value start_date"></span></dd>
+            </div>
+            <div class="event-date">
+              <dt>Event end:</dt>
+              <dd><span class="event-date-value end_date"></span></dd>
+            </div>
+            <div class="event-date deadline-date">
+              <dt>Deadline:</dt>
+              <dd><span class="event-date-value deadline"></span></dd>
+            </div>
+          </dl>
+          <div class="event-card-footer">
+            <span class="text-muted small">View tournament details and entry information</span>
+            <div class="buttons"></div>
           </div>
-
-          <div class="mb-2 pt-1">
-            <h6 class="mb-1">
-              <span class="me-2">Event end:</span>
-              <span class="end_date badge bg-label-success"></span>
-            </h6>
-          </div>
-
-          <div class="mb-3 pt-1">
-            <h6 class="mb-1">
-              <span class="me-2">Deadline:</span>
-              <span class="badge bg-label-warning deadline"></span>
-            </h6>
-          </div>
-
         </div>
-
-        {{-- Actions --}}
-        <div class="col-12 order-2 order-xl-0 buttons">
-          <button class="btn btn-label-success cancel-subscription waves-effect">
-            Sign-Up
-          </button>
-        </div>
-
       </div>
     </div>
-  </div>
+  </article>
 </div>
