@@ -19,6 +19,122 @@
 {{-- ================= PAGE CSS ================= --}}
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-profile.css') }}">
+<style>
+  .individual-event-view .event-section-card {
+    border: 0;
+    box-shadow: 0 .125rem .5rem rgba(47, 43, 61, .08);
+  }
+
+  .individual-event-view .event-section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+  }
+
+  .individual-event-view .event-section-icon,
+  .individual-event-view .event-fact-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: .65rem;
+    background: rgba(40, 199, 111, .12);
+    color: #28c76f;
+  }
+
+  .individual-event-view .event-information-content {
+    color: #4b465c;
+    font-size: .975rem;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+  }
+
+  .individual-event-view .event-information-content > :last-child {
+    margin-bottom: 0;
+  }
+
+  .individual-event-view .event-information-content p {
+    margin-bottom: 1rem;
+  }
+
+  .individual-event-view .event-information-content h1,
+  .individual-event-view .event-information-content h2,
+  .individual-event-view .event-information-content h3,
+  .individual-event-view .event-information-content h4,
+  .individual-event-view .event-information-content h5,
+  .individual-event-view .event-information-content h6 {
+    margin-top: 1.75rem;
+    margin-bottom: .65rem;
+    color: #2f2b3d;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .individual-event-view .event-information-content ul,
+  .individual-event-view .event-information-content ol {
+    padding-left: 1.3rem;
+    margin-bottom: 1rem;
+  }
+
+  .individual-event-view .event-information-content li + li {
+    margin-top: .35rem;
+  }
+
+  .individual-event-view .event-fact-row {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    padding: .8rem 0;
+    border-bottom: 1px solid rgba(75, 70, 92, .1);
+  }
+
+  .individual-event-view .event-fact-row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .individual-event-view .event-fact-row:first-child {
+    padding-top: 0;
+  }
+
+  .individual-event-view .event-fact-icon {
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: .55rem;
+    background: rgba(115, 103, 240, .1);
+    color: #7367f0;
+  }
+
+  .individual-event-view .event-fact-label {
+    display: block;
+    margin-bottom: .15rem;
+    color: #a5a2ad;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .individual-event-view .event-document {
+    padding: .75rem;
+    border: 1px solid rgba(75, 70, 92, .12);
+    border-radius: .5rem;
+  }
+
+  @media (max-width: 767.98px) {
+    .individual-event-view .card-body,
+    .individual-event-view .event-card-padding {
+      padding: 1.1rem !important;
+    }
+
+    .individual-event-view .event-information-content {
+      font-size: .925rem;
+      line-height: 1.65;
+    }
+  }
+</style>
 @endsection
 
 {{-- ================= VENDOR JS ================= --}}
@@ -64,6 +180,14 @@
 
             <ul class="list-inline d-flex gap-2 flex-wrap">
               @if($event->isIndividual())
+                <li class="badge {{ $event->published ? 'bg-label-success' : 'bg-label-secondary' }}">
+                  <i class="ti {{ $event->published ? 'ti-world-check' : 'ti-eye-off' }} me-1"></i>
+                  Publication: {{ $event->published ? 'Published' : 'Unpublished' }}
+                </li>
+                <li class="badge {{ $signUp === 'open' ? 'bg-label-success' : 'bg-label-danger' }}">
+                  <i class="ti {{ $signUp === 'open' ? 'ti-user-check' : 'ti-user-x' }} me-1"></i>
+                  Sign-up: {{ $signUp === 'open' ? 'Open' : 'Not open' }}
+                </li>
                 <li class="badge bg-label-success">
                   <i class="ti ti-users"></i>
                   Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->where('payment_status_id', 1)->count() }}

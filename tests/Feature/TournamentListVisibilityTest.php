@@ -22,6 +22,8 @@ class TournamentListVisibilityTest extends TestCase
         $response->assertOk()
             ->assertJsonFragment(['id' => $published->id])
             ->assertJsonMissing(['id' => $draft->id]);
+
+        $this->assertArrayNotHasKey('admin_status', $response->json('0'));
     }
 
     public function test_assigned_admin_sees_their_draft_but_not_another_tournament_draft(): void
@@ -36,7 +38,11 @@ class TournamentListVisibilityTest extends TestCase
 
         $response->assertOk()
             ->assertJsonFragment(['id' => $assignedDraft->id])
-            ->assertJsonMissing(['id' => $otherDraft->id]);
+            ->assertJsonMissing(['id' => $otherDraft->id])
+            ->assertJsonFragment([
+                'publication' => 'Unpublished',
+                'entries' => 'Sign-up open',
+            ]);
     }
 
     public function test_super_user_sees_all_draft_tournaments(): void

@@ -1,34 +1,55 @@
 
-<div class="row">
+<div class="row individual-event-view">
 
   {{-- LEFT COLUMN --}}
   <div class="col-xl-8 col-lg-7 col-md-7">
 
-    {{-- ANNOUNCEMENTS --}}
-    <div class="card p-4 mb-4">
-      <h5 class="mb-4">Announcements</h5>
-
-      @forelse($event->announcements as $a)
-        <div class="card shadow-none border border-primary mb-3">
-          <div class="card-body">
-            {!! $a->message !!}
-            <p class="mt-2">
-              <small class="text-muted">
-                <mark>Announcement · {{ $a->created_at->format('d M Y H:i') }}</mark>
-              </small>
-            </p>
+    {{-- INFORMATION --}}
+    <div class="card event-section-card mb-4">
+      <div class="card-body event-card-padding p-4 p-xl-5">
+        <div class="event-section-heading mb-4">
+          <span class="event-section-icon"><i class="ti ti-info-circle fs-4"></i></span>
+          <div>
+            <h4 class="mb-1">Event information</h4>
+            <p class="text-muted mb-0">Please review these details before entering the tournament.</p>
           </div>
         </div>
-      @empty
-        <p class="text-muted">No announcements yet.</p>
-      @endforelse
+
+        @if(filled(strip_tags($event->information ?? '')))
+          <div class="event-information-content">
+            {!! $event->information !!}
+          </div>
+        @else
+          <div class="alert alert-secondary mb-0" role="status">
+            The organiser has not added further event information yet.
+          </div>
+        @endif
+      </div>
     </div>
 
-    {{-- INFORMATION --}}
-    <div class="card p-4 mb-4">
-      <h5 class="mb-3">Information</h5>
-      {!! $event->information !!}
-    </div>
+    {{-- ANNOUNCEMENTS --}}
+    @if($event->announcements->isNotEmpty())
+      <div class="card event-section-card mb-4">
+        <div class="card-body event-card-padding p-4">
+          <div class="event-section-heading mb-4">
+            <span class="event-section-icon"><i class="ti ti-speakerphone fs-4"></i></span>
+            <div>
+              <h5 class="mb-1">Latest announcements</h5>
+              <p class="text-muted mb-0">Updates published by the event organiser.</p>
+            </div>
+          </div>
+
+          @foreach($event->announcements as $a)
+            <div class="alert alert-primary mb-3">
+              <div class="event-information-content">{!! $a->message !!}</div>
+              <div class="small text-muted mt-2">
+                <i class="ti ti-clock me-1"></i>{{ $a->created_at->format('d M Y, H:i') }}
+              </div>
+            </div>
+          @endforeach
+        </div>
+      </div>
+    @endif
 
   </div>
 
@@ -46,65 +67,55 @@
   $event->organizer ||
   $event->email
 )
-<div class="card mb-4">
+<div class="card event-section-card mb-4">
   <div class="card-body">
-    <small class="text-uppercase">About</small>
+    <h5 class="mb-1">At a glance</h5>
+    <p class="text-muted small mb-4">Key dates, fees and contact details.</p>
 
-    <ul class="list-unstyled mt-3">
+    <div>
 
       @if($event->entryFee !== null || $event->eventCategories->contains(fn ($categoryEvent) => $categoryEvent->entry_fee !== null))
-        @include('frontend.event.partials.entry-fees')
+        <div class="event-fact-row">
+          <span class="event-fact-icon"><i class="ti ti-cash"></i></span>
+          <div class="flex-grow-1">
+            <span class="event-fact-label">Cost</span>
+            <ul class="list-unstyled mb-0">@include('frontend.event.partials.entry-fees')</ul>
+          </div>
+        </div>
       @endif
 
       @if($sDate)
-        <li class="mb-2">
-          <strong>Start:</strong>
-          <span class="badge bg-label-success">{{ $sDate }}</span>
-        </li>
-      @endif
-
-      @if($eDate)
-        <li class="mb-2">
-          <strong>End:</strong>
-          <span class="badge bg-label-success">{{ $eDate }}</span>
-        </li>
+        <div class="event-fact-row">
+          <span class="event-fact-icon"><i class="ti ti-calendar-event"></i></span>
+          <div><span class="event-fact-label">Tournament dates</span><strong>{{ $sDate }}</strong>@if($eDate && $eDate !== $sDate)<span class="d-block text-muted small">to {{ $eDate }}</span>@endif</div>
+        </div>
       @endif
 
       @if($formatEntryLine)
-        <li class="mb-2">
-          <strong>Entry deadline:</strong>
-          <span class="badge bg-label-warning">{{ $formatEntryLine }}</span>
-        </li>
+        <div class="event-fact-row">
+          <span class="event-fact-icon"><i class="ti ti-clock-hour-4"></i></span>
+          <div><span class="event-fact-label">Entries close</span><strong>{{ $formatEntryLine }}</strong></div>
+        </div>
       @endif
 
       @if($formatWithdrawalLine)
-        <li class="mb-2">
-          <strong>Withdrawal deadline:</strong>
-          <span class="badge bg-label-danger">{{ $formatWithdrawalLine }}</span>
-        </li>
+        <div class="event-fact-row">
+          <span class="event-fact-icon"><i class="ti ti-calendar-cancel"></i></span>
+          <div><span class="event-fact-label">Withdrawals close</span><strong>{{ $formatWithdrawalLine }}</strong></div>
+        </div>
       @endif
 
-    </ul>
+    </div>
 
     @if($event->organizer || $event->email)
-      <small class="text-uppercase">Contact</small>
-
-      <ul class="list-unstyled mt-3">
-
-        @if($event->organizer)
-          <li class="mb-2">
-            <strong>Organizer:</strong> {{ $event->organizer }}
-          </li>
-        @endif
-
-        @if($event->email)
-          <li class="mb-2">
-            <strong>Email:</strong>
-            <a href="mailto:{{ $event->email }}">{{ $event->email }}</a>
-          </li>
-        @endif
-
-      </ul>
+      <div class="event-fact-row">
+        <span class="event-fact-icon"><i class="ti ti-address-book"></i></span>
+        <div class="min-w-0">
+          <span class="event-fact-label">Event contact</span>
+          @if($event->organizer)<strong class="d-block">{{ $event->organizer }}</strong>@endif
+          @if($event->email)<a class="small text-break" href="mailto:{{ $event->email }}">{{ $event->email }}</a>@endif
+        </div>
+      </div>
     @endif
   </div>
 </div>
@@ -125,9 +136,12 @@
     @endif
 
     {{-- DOCUMENTS --}}
-    <div class="card mb-4">
+    <div class="card event-section-card mb-4">
       <div class="card-header d-flex justify-content-between">
-        <small class="text-uppercase">Documents</small>
+        <div>
+          <h5 class="mb-1">Event documents</h5>
+          <p class="text-muted small mb-0">Downloads supplied by the organiser.</p>
+        </div>
 
         @auth
           @if(auth()->user()->is_admin($event->id)->count() > 0 || auth()->id() == 584)
@@ -140,8 +154,11 @@
 
       <div class="card-body">
         @forelse($event->files as $file)
-          <div class="d-flex justify-content-between align-items-center mb-2 file">
-            <a href="{{ route('file.show', $file->id) }}">{{ $file->name }}</a>
+          <div class="event-document d-flex justify-content-between align-items-center gap-2 mb-2 file">
+            <a class="d-flex align-items-center gap-2 text-break" href="{{ route('file.show', $file->id) }}">
+              <i class="ti ti-file-description fs-4 text-primary"></i>
+              <span>{{ $file->name }}</span>
+            </a>
 
             @can('admin')
               @if(auth()->id() == $event->admin || auth()->id() == 584)
@@ -154,7 +171,10 @@
             @endcan
           </div>
         @empty
-          <p class="text-muted">No documents uploaded.</p>
+          <div class="text-center py-3">
+            <i class="ti ti-file-off fs-2 text-muted"></i>
+            <p class="text-muted small mb-0 mt-2">No event documents are available yet.</p>
+          </div>
         @endforelse
       </div>
     </div>

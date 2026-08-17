@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
+use App\Models\EventAdmin;
 use App\Models\EventType;
 use App\Models\Player;
 use App\Models\PlayerRegistration;
@@ -273,7 +274,42 @@ class HomeController extends Controller
       $query->orderBy('start_date', 'desc');
     }
 
-    return $query->get();
+    $events = $query->get();
+    $user = $request->user();
+    $isSuperUser = $user?->hasRole('super-user') ?? false;
+    $managedEventIds = $user && !$isSuperUser
+      ? EventAdmin::query()
+        ->where('user_id', $user->id)
+        ->pluck('event_id')
+        ->flip()
+      : collect();
+
+    $events->each(function (Event $event) use ($isSuperUser, $managedEventIds) {
+      if (!$isSuperUser && !$managedEventIds->has($event->id)) {
+        return;
+      }
+
+      $event->setAttribute('admin_status', [
+        'publication' => $event->published ? 'Published' : 'Unpublished',
+        'entries' => $this->entriesAreOpen($event) ? 'Sign-up open' : 'Sign-up closed',
+      ]);
+    });
+
+    return $events;
+  }
+
+  private function entriesAreOpen(Event $event): bool
+  {
+    if (!$event->signUp || in_array($event->status, ['closed', 'draft'], true) || !$event->start_date) {
+      return false;
+    }
+
+    $entryCloseAt = $event->start_date
+      ->copy()
+      ->subDays(is_numeric($event->deadline) ? (int) $event->deadline : 0)
+      ->endOfDay();
+
+    return now()->lte($entryCloseAt);
   }
 
 
