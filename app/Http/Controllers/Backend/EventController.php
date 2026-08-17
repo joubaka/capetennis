@@ -202,38 +202,23 @@ class EventController extends Controller
       'source_event_id'     => 'nullable|integer|exists:events,id',
     ]);
 
-    $logo = null;
-    if ($request->hasFile('logo_upload')) {
-      $file     = $request->file('logo_upload');
-      $filename = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
-        . '.' . $file->getClientOriginalExtension();
-      $file->move(public_path('assets/img/logos'), $filename);
-      $logo = $filename;
-    }
-
-    $event = Event::create([
-      'name'                => $data['name'],
-      'start_date'          => $data['start_date'] ?? null,
-      'end_date'            => $data['end_date'] ?? null,
-      'information'         => $data['information'] ?? null,
-      'venue_notes'         => $data['venue_notes'] ?? null,
-      'entryFee'            => $data['entryFee'] ?? null,
-      'deadline'            => $data['deadline'] ?? null,
-      'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
-      'eventType'           => $data['eventType'],
-      'email'               => $data['email'] ?? null,
-      'organizer'           => $data['organizer'] ?? null,
-      'logo'                => $logo,
-      'published'           => $request->boolean('published'),
-      'signUp'              => $request->boolean('signUp'),
-    ]);
-
     $sourceEvent = null;
     if (!empty($data['source_event_id'])) {
       $sourceEvent = Event::with([
         'categoryEvents',
         'admins:id',
       ])->findOrFail($data['source_event_id']);
+    }
+
+    // Production's legacy schema requires a non-null logo. A copied event
+    // keeps the source logo unless the user uploads a replacement.
+    $logo = $sourceEvent?->logo ?? '';
+    if ($request->hasFile('logo_upload')) {
+      $file     = $request->file('logo_upload');
+      $filename = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
+        . '.' . $file->getClientOriginalExtension();
+      $file->move(public_path('assets/img/logos'), $filename);
+      $logo = $filename;
     }
 
     $newAdmins = [];
@@ -247,19 +232,37 @@ class EventController extends Controller
       $newAdmins = $sourceEvent->admins->pluck('id')->toArray();
     }
 
-    if ($sourceEvent) {
-      DB::transaction(function () use ($event, $sourceEvent, $newAdmins) {
+    $event = DB::transaction(function () use ($data, $request, $logo, $sourceEvent, $newAdmins) {
+      $event = Event::create([
+        'name'                => $data['name'],
+        'start_date'          => $data['start_date'] ?? null,
+        'end_date'            => $data['end_date'] ?? null,
+        'information'         => $data['information'] ?? null,
+        'venue_notes'         => $data['venue_notes'] ?? null,
+        'entryFee'            => $data['entryFee'] ?? null,
+        'deadline'            => $data['deadline'] ?? null,
+        'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
+        'eventType'           => $data['eventType'],
+        'email'               => $data['email'] ?? null,
+        'organizer'           => $data['organizer'] ?? null,
+        'logo'                => $logo,
+        'published'           => $request->boolean('published'),
+        'signUp'              => $request->boolean('signUp'),
+      ]);
+
+      if ($sourceEvent) {
         $sourceEvent->categoryEvents->each(function ($categoryEvent) use ($event) {
           $newCat = $categoryEvent->replicate();
           $newCat->event_id = $event->id;
           $newCat->save();
         });
 
-        $event->admins()->sync($newAdmins);
-      });
-    } else {
+      }
+
       $event->admins()->sync($newAdmins);
-    }
+
+      return $event;
+    });
 
     Log::info('✅ Event created', [
       'event_id'          => $event->id,
