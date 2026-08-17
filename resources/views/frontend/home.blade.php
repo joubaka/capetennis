@@ -184,5 +184,51 @@
 @endsection
 
 @section('page-script')
-  <script src="{{ asset(mix('js/home.js')) }}"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      const prefix = '[HomeEvents]';
+      const bundleUrl = @json(asset(mix('js/home.js')));
+
+      console.info(`${prefix} Bootstrap diagnostics`, {
+        pageUrl: window.location.href,
+        documentReadyState: document.readyState,
+        jqueryAvailable: typeof window.jQuery === 'function',
+        routes: {
+          homeGetEvents: window.routes?.homeGetEvents || null,
+          eventShow: window.routes?.eventShow || null
+        },
+        assetBase: window.assetBase || null,
+        bundleUrl
+      });
+
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target !== window) {
+          console.error(`${prefix} Resource failed to load`, {
+            tagName: event.target.tagName || null,
+            source: event.target.src || event.target.href || null
+          });
+          return;
+        }
+
+        console.error(`${prefix} Uncaught JavaScript error`, {
+          message: event.message || null,
+          source: event.filename || null,
+          line: event.lineno || null,
+          column: event.colno || null
+        });
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (event) {
+        console.error(`${prefix} Unhandled promise rejection`, {
+          reason: event.reason instanceof Error ? event.reason.message : String(event.reason)
+        });
+      });
+    })();
+  </script>
+  <script
+    src="{{ asset(mix('js/home.js')) }}"
+    onload="console.info('[HomeEvents] Bundle asset loaded')"
+    onerror="console.error('[HomeEvents] Bundle asset failed to load', { source: this.src })"></script>
 @endsection
