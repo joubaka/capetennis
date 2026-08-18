@@ -45,8 +45,8 @@ class RankingCalculationServiceTest extends TestCase
     private Series $series;
     private RankingList $list;
 
-    /** @var array<int, array> Positions rows keyed by category_event_id */
-    private array $positionRows = [];
+    /** @var array<string, int> Registration IDs keyed by player and category event. */
+    private array $resultRegistrationIds = [];
 
     protected function setUp(): void
     {
@@ -81,7 +81,7 @@ class RankingCalculationServiceTest extends TestCase
         return app(RankingCalculationService::class);
     }
 
-    /** Insert fake position rows and link CEs to the ranking list. */
+    /** Insert final event results and link their category events to the ranking list. */
     private function seedPositions(array $rows): void
     {
         // rows: [player_id, category_event_id, position, event_date]
@@ -117,12 +117,30 @@ class RankingCalculationServiceTest extends TestCase
         }
 
         foreach ($rows as [$playerId, $ceId, $position]) {
-            DB::table('positions')->insert([
-                'player_id'        => $playerId,
-                'category_event_id'=> $ceId,
-                'position'         => $position,
+            $categoryEvent = DB::table('category_events')->where('id', $ceId)->first();
+            $registration = Registration::factory()->create();
+
+            DB::table('player_registrations')->insert([
+                'registration_id' => $registration->id,
+                'player_id'       => $playerId,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+            DB::table('category_event_registrations')->insert([
+                'category_event_id' => $ceId,
+                'registration_id'   => $registration->id,
+                'status'            => 'active',
                 'created_at'       => now(), 'updated_at' => now(),
             ]);
+            DB::table('category_results')->insert([
+                'event_id'        => $categoryEvent->event_id,
+                'category_id'     => $categoryEvent->category_id,
+                'registration_id' => $registration->id,
+                'position'        => $position,
+                'created_at'      => now(), 'updated_at' => now(),
+            ]);
+
+            $this->resultRegistrationIds["{$playerId}:{$ceId}"] = $registration->id;
         }
     }
 
@@ -272,11 +290,11 @@ class RankingCalculationServiceTest extends TestCase
             ['ranking_list_id' => $this->list->id, 'category_event_id' => $ce2, 'created_at' => now(), 'updated_at' => now()],
         ]);
 
-        DB::table('positions')->insert([
-            ['player_id' => 1, 'category_event_id' => $ce1, 'position' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['player_id' => 1, 'category_event_id' => $ce2, 'position' => 3, 'created_at' => now(), 'updated_at' => now()],
-            ['player_id' => 2, 'category_event_id' => $ce1, 'position' => 3, 'created_at' => now(), 'updated_at' => now()],
-            ['player_id' => 2, 'category_event_id' => $ce2, 'position' => 1, 'created_at' => now(), 'updated_at' => now()],
+        $this->seedPositions([
+            [1, $ce1, 1],
+            [1, $ce2, 3],
+            [2, $ce1, 3],
+            [2, $ce2, 1],
         ]);
 
         $result = $this->service()->calculate($this->list);
@@ -539,23 +557,16 @@ class RankingCalculationServiceTest extends TestCase
     public function test_withdrawn_event_leg_is_excluded_from_source_data(): void
     {
         $player = Player::factory()->create();
-        $registration = Registration::factory()->create();
         $this->seedPositions([[$player->id, 101, 1]]);
 
-        DB::table('player_registrations')->insert([
-            'registration_id' => $registration->id,
-            'player_id' => $player->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        DB::table('category_event_registrations')->insert([
-            'category_event_id' => 101,
-            'registration_id' => $registration->id,
-            'status' => 'withdrawn',
-            'withdrawn_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        DB::table('category_event_registrations')
+            ->where('category_event_id', 101)
+            ->where('registration_id', $this->resultRegistrationIds["{$player->id}:101"])
+            ->update([
+                'status' => 'withdrawn',
+                'withdrawn_at' => now(),
+                'updated_at' => now(),
+            ]);
 
         $result = $this->service()->calculate($this->list);
 

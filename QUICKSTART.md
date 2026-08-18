@@ -37,25 +37,27 @@ Deploy pulls code from app directory and syncs public/ assets to web root.
 ### Linux (Production)
 
 ```bash
-# Make executable
+# One-time setup from the application directory
 chmod +x deploy.sh
+./deploy.sh --install-command
 
-# Deploy to production
-./deploy.sh production
+# Every deployment after setup
+deploy main
 
 # Skip migrations
-./deploy.sh production --skip-migrations
+deploy main --skip-migrations
 
 # Combined
-./deploy.sh production --skip-migrations --skip-deps
+deploy main --skip-migrations --skip-deps
 ```
 
 **First time setup:**
-1. Edit `deploy.sh` lines 5-11
-2. Set `APP_PATH` to your Laravel app
-3. Set `PUBLIC_HTML` to your web root
-4. `chmod +x deploy.sh`
-5. Run it
+1. Confirm `APP_PATH`, `PUBLIC_HTML`, `GIT_BRANCH`, `DEPLOY_BRANCHES`, and the explicit `MIGRATION_PATHS` allowlist in `deploy.config`.
+2. Run `chmod +x deploy.sh && ./deploy.sh --install-command`.
+3. If prompted, add `$HOME/.local/bin` to your shell `PATH` and sign in again.
+4. Run `deploy main`.
+
+`deploy main` checks that the production worktree is clean, fetches and fast-forwards `origin/main`, installs locked Composer dependencies, clears caches, runs only the approved migration files, publishes and syncs public assets, rebuilds caches, and signals queue workers to restart. It deliberately does not run every pending migration.
 
 ## What Happens During Deploy
 
@@ -64,11 +66,12 @@ chmod +x deploy.sh
 ✅ Pull latest code (Linux only, git)  
 ✅ Install Composer dependencies  
 ✅ Clear all caches  
-✅ Run database migrations  
+✅ Run explicitly approved database migrations
 ✅ Create storage symlink  
 ✅ Set file permissions  
 ✅ Cache config & routes  
 ✅ **Sync assets** (CSS, JS, images → `public_html`)  
+✅ Restart queue workers
 ✅ Restart services (optional)
 
 ## Finding Your Web Root
@@ -108,13 +111,7 @@ Logs:      ct/logs/deploy_YYYY-MM-DD_*.log
 
 ## Branch Names
 
-Common branches to deploy from:
-- `main` - Primary production branch
-- `player-update` - Feature branch
-- `version-2` - Version 2 (if using)
-- `develop` - Development branch
-
-Edit script to change branch before deploying.
+Only branches listed in `DEPLOY_BRANCHES` in `deploy.config` can be deployed. Production currently allows `main` only.
 
 ## Automated Deployments
 

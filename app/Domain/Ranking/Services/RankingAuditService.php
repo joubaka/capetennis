@@ -258,10 +258,14 @@ final class RankingAuditService
     private function identifyMissingPoints(Collection $ceIds, array $pointsMap): array
     {
         // Positions present in results for these CEs that have no points entry
-        $positions = DB::table('positions')
-            ->whereIn('category_event_id', $ceIds)
+        $positions = DB::table('category_results as cr')
+            ->join('category_events as ce', function ($join) {
+                $join->on('ce.event_id', '=', 'cr.event_id')
+                    ->on('ce.category_id', '=', 'cr.category_id');
+            })
+            ->whereIn('ce.id', $ceIds)
             ->distinct()
-            ->pluck('position');
+            ->pluck('cr.position');
 
         return $positions->filter(fn($pos) => !isset($pointsMap[$pos]))->values()->all();
     }

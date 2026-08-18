@@ -1,6 +1,7 @@
 #!/bin/bash
 # Laravel Deploy Script (Linux/Production)
-# Usage: ./deploy.sh [environment] [--skip-migrations] [--skip-deps]
+# Usage: deploy <branch> [environment] [--skip-migrations] [--skip-deps]
+#        ./deploy.sh <branch> [environment] [--skip-migrations] [--skip-deps]
 
 set -e  # Exit on error
 
@@ -9,15 +10,25 @@ set -e  # Exit on error
 # ------------------
 APP_PATH="/var/www/capetennis"
 PUBLIC_HTML="/home/user/public_html"  # Shared hosting web root - CUSTOMIZE FOR YOUR SETUP or set in deploy.config
-ENVIRONMENT="${1:-production}"
+ENVIRONMENT="production"
 SKIP_MIGRATIONS=false
 SKIP_DEPS=false
 GIT_BRANCH="main"  # Change to "player-update", "version-2", etc. as needed or set in deploy.config
+DEPLOY_BRANCHES="main"
 COMPARE_ONLY=false
 ONLY_JS=false
+INSTALL_COMMAND=false
+SHOW_HELP=false
+REQUESTED_BRANCH=""
 
 # Determine script directory (used to locate deploy.config)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SCRIPT_SOURCE" ]; do
+    SOURCE_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SOURCE_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 CONFIG_LOADED=false
 
 # If a deploy.config file exists next to this script, source it to override defaults
@@ -26,6 +37,9 @@ if [ -f "$SCRIPT_DIR/deploy.config" ]; then
     source "$SCRIPT_DIR/deploy.config"
     CONFIG_LOADED=true
 fi
+
+# deploy.config may define the default deployment environment.
+ENVIRONMENT="${DEPLOY_ENV:-$ENVIRONMENT}"
 
 # Expand leading tilde in APP_PATH and PUBLIC_HTML if present
 if [[ "$APP_PATH" == ~* ]]; then
@@ -40,21 +54,117 @@ if [ -z "$APP_PATH" ]; then
     APP_PATH="$(pwd)"
 fi
 
+# Parse arguments. A positional environment remains supported for backwards
+# compatibility, while `deploy main` treats `main` as the requested branch.
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        production|staging|development|local)
+            ENVIRONMENT="$1"
+            ;;
+        --branch)
+            [ "$#" -ge 2 ] || { echo "Missing value for --branch" >&2; exit 2; }
+            REQUESTED_BRANCH="$2"
+            shift
+            ;;
+        --branch=*) REQUESTED_BRANCH="${1#*=}" ;;
+        --skip-migrations) SKIP_MIGRATIONS=true ;;
+        --skip-deps) SKIP_DEPS=true ;;
+        --compare) COMPARE_ONLY=true ;;
+        --only-js) ONLY_JS=true ;;
+        --install-command) INSTALL_COMMAND=true ;;
+        -h|--help) SHOW_HELP=true ;;
+        -*) echo "Unknown deploy option: $1" >&2; exit 2 ;;
+        *)
+            if [ -n "$REQUESTED_BRANCH" ]; then
+                echo "Only one deployment branch may be supplied" >&2
+                exit 2
+            fi
+            REQUESTED_BRANCH="$1"
+            ;;
+    esac
+    shift
+done
+
+if [ -n "$REQUESTED_BRANCH" ]; then
+    case "$REQUESTED_BRANCH" in
+        *[!A-Za-z0-9._/-]*|""|/*|*..*)
+            echo "Invalid deployment branch: $REQUESTED_BRANCH" >&2
+            exit 2
+            ;;
+    esac
+
+    BRANCH_ALLOWED=false
+    for allowed_branch in ${DEPLOY_BRANCHES:-$GIT_BRANCH}; do
+        if [ "$REQUESTED_BRANCH" = "$allowed_branch" ]; then
+            BRANCH_ALLOWED=true
+            break
+        fi
+    done
+    if [ "$BRANCH_ALLOWED" != true ]; then
+        echo "Branch '$REQUESTED_BRANCH' is not approved by DEPLOY_BRANCHES" >&2
+        exit 2
+    fi
+    GIT_BRANCH="$REQUESTED_BRANCH"
+fi
+
+show_usage() {
+    cat <<'EOF'
+Cape Tennis production deployment
+
+Usage:
+  deploy main [--skip-migrations] [--skip-deps]
+  ./deploy.sh main [production] [options]
+  ./deploy.sh --install-command
+
+The deployment pulls the approved branch with --ff-only, installs locked
+Composer dependencies, runs only migration paths allowlisted in deploy.config,
+refreshes Laravel caches, publishes/syncs assets, and restarts queue workers.
+EOF
+}
+
+install_deploy_command() {
+    local install_dir="${DEPLOY_COMMAND_DIR:-$HOME/.local/bin}"
+    local command_path="$install_dir/deploy"
+
+    mkdir -p "$install_dir"
+
+    if [ -e "$command_path" ] || [ -L "$command_path" ]; then
+        if [ -L "$command_path" ] && [ "$(readlink -f "$command_path")" = "$SCRIPT_DIR/deploy.sh" ]; then
+            echo "deploy command is already installed at $command_path"
+        else
+            echo "Refusing to replace existing command: $command_path" >&2
+            exit 1
+        fi
+    else
+        ln -s "$SCRIPT_DIR/deploy.sh" "$command_path"
+        echo "Installed deploy command at $command_path"
+    fi
+
+    case ":$PATH:" in
+        *":$install_dir:"*) ;;
+        *)
+            echo "Add this directory to PATH before using the command:"
+            echo "  export PATH=\"$install_dir:\$PATH\""
+            ;;
+    esac
+    echo "You can now run: deploy main"
+}
+
+if [ "$SHOW_HELP" = true ]; then
+    show_usage
+    exit 0
+fi
+
+if [ "$INSTALL_COMMAND" = true ]; then
+    install_deploy_command
+    exit 0
+fi
+
 # Derived paths (must be set after APP_PATH is finalized)
 ENV_FILE="$APP_PATH/.env"
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 LOG_FILE="$APP_PATH/logs/deploy_$TIMESTAMP.log"
 BACKUP_PATH="$APP_PATH/backups/backup_$TIMESTAMP"
-
-# Parse additional arguments
-for arg in "$@"; do
-    case $arg in
-        --skip-migrations) SKIP_MIGRATIONS=true ;;
-        --skip-deps) SKIP_DEPS=true ;;
-        --compare) COMPARE_ONLY=true ;;
-        --only-js) ONLY_JS=true ;;
-    esac
-done
 
 # Ensure logs and backups directories exist (use finalized APP_PATH)
 mkdir -p "$APP_PATH/logs"
@@ -143,16 +253,29 @@ backup_environment() {
 pull_code() {
     log "INFO" "Pulling latest code from repository..."
     cd "$APP_PATH"
-    git fetch origin || error_exit "git fetch failed"
 
-    # Ensure we are on the configured branch
-    if git rev-parse --verify "$GIT_BRANCH" >/dev/null 2>&1; then
-        git checkout "$GIT_BRANCH" || git checkout -b "$GIT_BRANCH" origin/"$GIT_BRANCH"
-    else
-        git checkout -b "$GIT_BRANCH" origin/"$GIT_BRANCH" || log "WARNING" "Could not create/check out branch $GIT_BRANCH"
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || error_exit "$APP_PATH is not a Git working tree"
+    if [ -n "$(git status --porcelain)" ]; then
+        error_exit "Deployment stopped: the production working tree is not clean"
     fi
 
+    git fetch origin || error_exit "git fetch failed"
+
+    # Ensure we are on the configured branch. Never continue on another branch
+    # when checkout fails.
+    if git show-ref --verify --quiet "refs/heads/$GIT_BRANCH"; then
+        git checkout "$GIT_BRANCH" || error_exit "Could not check out branch $GIT_BRANCH"
+    elif git show-ref --verify --quiet "refs/remotes/origin/$GIT_BRANCH"; then
+        git checkout -b "$GIT_BRANCH" --track "origin/$GIT_BRANCH" || error_exit "Could not create local branch $GIT_BRANCH"
+    else
+        error_exit "Approved branch origin/$GIT_BRANCH does not exist"
+    fi
+
+    [ "$(git branch --show-current)" = "$GIT_BRANCH" ] || error_exit "Deployment is not on branch $GIT_BRANCH"
+
     git pull --ff-only origin "$GIT_BRANCH" || error_exit "Failed to fast-forward from origin/$GIT_BRANCH"
+
+    [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$GIT_BRANCH")" ] || error_exit "Local branch does not match origin/$GIT_BRANCH"
 
     log "INFO" "Code pulled successfully (branch: $GIT_BRANCH)"
 }
@@ -247,6 +370,14 @@ optimize_application() {
     fi
     
     log "INFO" "Application optimized"
+}
+
+# Tell long-running queue workers to reload the newly deployed application.
+restart_queue_workers() {
+    log "INFO" "Restarting queue workers..."
+    cd "$APP_PATH"
+    php artisan queue:restart || error_exit "Queue worker restart signal failed"
+    log "INFO" "Queue worker restart signal sent"
 }
 
 # Publish assets
@@ -348,6 +479,7 @@ main() {
     update_permissions
     sync_public_html
     optimize_application
+    restart_queue_workers
     restart_services
     
     log "INFO" "========== DEPLOYMENT COMPLETED SUCCESSFULLY =========="

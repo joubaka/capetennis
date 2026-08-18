@@ -57,6 +57,8 @@ Thumbs.db
 # --------------------------------------
 # Cache / logs
 # --------------------------------------
+/logs/
+/backups/
 /bootstrap/cache/*.php
 /storage/logs/*.log
 /storage/framework/cache/*

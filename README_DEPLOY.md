@@ -51,16 +51,14 @@ $GIT_BRANCH = "main"
 ### Linux/Production
 
 ```bash
-# 1. Edit deploy.sh, set these:
-APP_PATH="/var/www/capetennis"
-PUBLIC_HTML="/home/user/public_html"        # Your web root
-GIT_BRANCH="main"
+# 1. Confirm deploy.config has the correct paths, approved branch, and migration allowlist.
 
-# 2. Make executable
+# 2. Install the command once
 chmod +x deploy.sh
+./deploy.sh --install-command
 
-# 3. Run
-./deploy.sh production
+# 3. Deploy thereafter
+deploy main
 ```
 
 ## Deployment Steps
@@ -70,12 +68,12 @@ chmod +x deploy.sh
 3. ✅ Pull Latest Code (git pull)
 4. ✅ Install Dependencies (composer install)
 5. ✅ Clear Caches (config, route, view)
-6. ✅ Run Migrations (database updates)
+6. ✅ Run Explicitly Approved Migrations (database updates)
 7. ✅ Publish Assets (storage link)
 8. ✅ Update Permissions (755)
 9. ✅ Optimize Application (cache routes, config)
 10. ✅ **Sync Public Assets** (CSS, JS, images → web root)
-11. ✅ Restart Services (optional)
+11. ✅ Restart Queue Workers and Services (where configured)
 
 ## Branch Support
 
@@ -106,11 +104,10 @@ GIT_BRANCH="version-2"
 
 ### Linux
 ```bash
-./deploy.sh                                # Default (production env)
-./deploy.sh development                   # Dev environment
-./deploy.sh production --skip-migrations   # Skip migrations
-./deploy.sh production --skip-deps         # Skip composer
-./deploy.sh production --skip-migrations --skip-deps
+deploy main                                # Pull and deploy approved main branch
+deploy main --skip-migrations              # Skip approved migrations
+deploy main --skip-deps                    # Skip Composer install
+deploy main --skip-migrations --skip-deps
 ```
 
 ## Logging

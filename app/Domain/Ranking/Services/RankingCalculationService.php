@@ -170,22 +170,34 @@ final class RankingCalculationService
 
         $missingPositions = [];
 
-        $rows = \DB::table('positions as p')
-            ->join('category_events as ce', 'ce.id', '=', 'p.category_event_id')
+        $rows = \DB::table('category_results as cr')
+            ->join('category_events as ce', function ($join) {
+                $join->on('ce.event_id', '=', 'cr.event_id')
+                    ->on('ce.category_id', '=', 'cr.category_id');
+            })
             ->join('events as e', 'e.id', '=', 'ce.event_id')
-            ->whereIn('p.category_event_id', $ceIds)
+            ->join('player_registrations as pr', 'pr.registration_id', '=', 'cr.registration_id')
+            ->whereIn('ce.id', $ceIds)
             ->whereNotExists(function ($query) {
                 $query->selectRaw('1')
                     ->from('category_event_registrations as cer')
-                    ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
-                    ->whereColumn('cer.category_event_id', 'p.category_event_id')
-                    ->whereColumn('pr.player_id', 'p.player_id')
+                    ->whereColumn('cer.category_event_id', 'ce.id')
+                    ->whereColumn('cer.registration_id', 'cr.registration_id')
                     ->where(function ($withdrawn) {
-                        $withdrawn->where('cer.status', 'withdrawn')
+                        $withdrawn->whereIn('cer.status', [
+                            'withdrawn',
+                            'withdrawn_pending_refund',
+                            'withdrawn_refunded',
+                        ])
                             ->orWhereNotNull('cer.withdrawn_at');
                     });
             })
-            ->select('p.player_id', 'p.category_event_id', 'p.position', 'e.start_date')
+            ->select(
+                'pr.player_id',
+                'ce.id as category_event_id',
+                'cr.position',
+                'e.start_date'
+            )
             ->get();
 
         $duplicates = $rows->groupBy(fn($row) => $row->player_id . ':' . $row->category_event_id)

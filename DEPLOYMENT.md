@@ -47,23 +47,24 @@ Automated deployment scripts for your Cape Tennis Laravel application.
 ### Linux Deployment
 
 ```bash
-# Make script executable (first time only)
+# Make script executable and install the command (first time only)
 chmod +x deploy.sh
+./deploy.sh --install-command
 
-# Basic deployment (production environment)
-./deploy.sh
+# Basic deployment (production main branch)
+deploy main
 
 # Development deployment
-./deploy.sh development
+./deploy.sh main development
 
 # Skip migrations
-./deploy.sh production --skip-migrations
+deploy main --skip-migrations
 
 # Skip dependencies
-./deploy.sh production --skip-deps
+deploy main --skip-deps
 
 # Combine options
-./deploy.sh production --skip-migrations --skip-deps
+deploy main --skip-migrations --skip-deps
 ```
 
 ## What Each Script Does
@@ -75,11 +76,11 @@ chmod +x deploy.sh
 3. **Pull Code** (Linux only) - Fetches latest code from Git repository
 4. **Install Dependencies** - Runs `composer install`
 5. **Clear Cache** - Clears all Laravel caches
-6. **Run Migrations** - Executes pending database migrations
+6. **Run Migrations** - Executes only migration files explicitly allowlisted in `deploy.config`
 7. **Publish Assets** - Creates storage symlink
 8. **Update Permissions** - Sets proper file permissions
 9. **Optimize** - Caches routes, config, and events
-10. **Restart Services** - Restarts web services (production only)
+10. **Restart Services** - Signals queue workers and restarts configured web services
 
 ## Configuration
 
