@@ -37,6 +37,11 @@
   .toggle-row .toggle-info { flex: 1; }
   .toggle-row .toggle-info strong { font-size: .875rem; display: block; margin-bottom: .15rem; }
   .toggle-row .toggle-info small { color: #6c757d; font-size: .78rem; }
+  .ranking-publication-action { flex: 0 0 auto; }
+  @media (max-width: 575.98px) {
+    .ranking-publication-row { flex-direction: column; }
+    .ranking-publication-action { width: 100%; }
+  }
   /* Tab nav styling */
   .settings-tabs .nav-link {
     color: #6c757d;
@@ -144,14 +149,68 @@
 
             <div class="settings-section-title">Visibility & Rules</div>
 
-            <div class="toggle-row">
+            <div class="toggle-row ranking-publication-row">
               <div class="toggle-info">
-                <strong>Rankings Published</strong>
-                <small>Controls whether the leaderboard is visible to the public.</small>
+                <strong>
+                  Ranking Publication
+                  @if($activeRankingStatus === 'published')
+                    <span class="badge bg-label-success ms-1">Published</span>
+                  @elseif($activeRankingStatus === 'reviewed')
+                    <span class="badge bg-label-info ms-1">Reviewed</span>
+                  @elseif($activeRankingStatus === 'calculated')
+                    <span class="badge bg-label-warning ms-1">Calculated</span>
+                  @else
+                    <span class="badge bg-label-secondary ms-1">Not ready</span>
+                  @endif
+                </strong>
+                @if($activeRankingStatus === 'published')
+                  <small>The current ranking run is published and can be shown publicly.</small>
+                @elseif($activeRankingStatus === 'reviewed')
+                  <small>The ranking has been reviewed and is ready to publish.</small>
+                @elseif($activeRankingStatus === 'calculated')
+                  <small>Review the calculated ranking before publishing it.</small>
+                @else
+                  <small>Build the ranking list before it can be reviewed and published.</small>
+                @endif
+              </div>
+
+              @if($activeRankingStatus === 'reviewed')
+                <button type="button"
+                        class="btn btn-success btn-sm ranking-publication-action ranking-lifecycle-action"
+                        data-url="{{ route('ranking.series.ranking.publish', $series) }}"
+                        data-confirm="Publish this reviewed ranking to the public leaderboard?">
+                  <i class="ti ti-world-upload me-1"></i>Publish Rankings
+                </button>
+              @elseif($activeRankingStatus === 'calculated')
+                <button type="button"
+                        class="btn btn-info btn-sm ranking-publication-action ranking-lifecycle-action"
+                        data-url="{{ route('ranking.series.ranking.review', $series) }}"
+                        data-confirm="Mark this calculated ranking as reviewed?">
+                  <i class="ti ti-check me-1"></i>Mark Reviewed
+                </button>
+              @else
+                <a href="{{ route('ranking.series.list', $series) }}"
+                   class="btn btn-outline-primary btn-sm ranking-publication-action">
+                  <i class="ti ti-list me-1"></i>{{ $activeRankingStatus === 'published' ? 'View Rankings' : 'Manage Rankings' }}
+                </a>
+              @endif
+            </div>
+
+            <div class="toggle-row mt-2">
+              <div class="toggle-info">
+                <strong>Public Leaderboard Visible</strong>
+                <small>
+                  @if($hasPublishedRanking)
+                    Show or hide the published ranking on the public website.
+                  @else
+                    This becomes available after a reviewed ranking is published.
+                  @endif
+                </small>
               </div>
               <div class="form-check form-switch mt-1">
                 <input class="form-check-input" type="checkbox" name="leaderboard_published" id="leaderboard_published"
-                       {{ $series->leaderboard_published ? 'checked' : '' }}>
+                       {{ $hasPublishedRanking && $series->leaderboard_published ? 'checked' : '' }}
+                       {{ $hasPublishedRanking ? '' : 'disabled' }}>
               </div>
             </div>
 
@@ -278,7 +337,7 @@
     const btn = document.getElementById('save-series-btn');
     btn.disabled = true;
 
-    fetch('{{ route('series.update', $series) }}', {
+    fetch('{{ route('ranking.series.update', $series) }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
       body: JSON.stringify({
@@ -290,10 +349,38 @@
         auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
       })
     })
-    .then(r => r.json())
+    .then(async response => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Failed to save series settings');
+      return payload;
+    })
     .then(r => toastr.success(r.message || 'Series settings saved'))
-    .catch(() => toastr.error('Failed to save series settings'))
+    .catch(error => toastr.error(error.message || 'Failed to save series settings'))
     .finally(() => btn.disabled = false);
+  });
+
+  document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm)) return;
+
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+          }
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Ranking action failed');
+        toastr.success(payload.message);
+        location.reload();
+      } catch (error) {
+        toastr.error(error.message || 'Ranking action failed');
+        button.disabled = false;
+      }
+    });
   });
 
   // ── Points Allocation ─────────────────────────────────

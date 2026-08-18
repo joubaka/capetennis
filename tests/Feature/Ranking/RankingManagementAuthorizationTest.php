@@ -165,6 +165,77 @@ class RankingManagementAuthorizationTest extends TestCase
             ->assertDontSee('Roll Back');
     }
 
+    public function test_series_settings_supports_reviewing_and_publishing_from_the_same_page(): void
+    {
+        [$list, $series] = $this->rankingListFixture();
+        $player = \App\Models\Player::factory()->create();
+        SeriesRanking::create([
+            'series_id' => $series->id,
+            'ranking_list_id' => $list->id,
+            'category_id' => $list->category_id,
+            'player_id' => $player->id,
+            'rank_position' => 1,
+            'total_points' => 1000,
+            'status' => 'calculated',
+            'run_id' => 'run-settings-publication',
+            'meta_json' => [],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertSee('Mark Reviewed')
+            ->assertSee('Public Leaderboard Visible')
+            ->assertDontSee('>Publish Rankings<', false);
+
+        $this->postJson(route('ranking.series.ranking.review', $series))
+            ->assertOk();
+
+        $this->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertSee('Publish Rankings');
+
+        $this->postJson(route('ranking.series.ranking.publish', $series))
+            ->assertOk();
+
+        $this->assertDatabaseHas('series_rankings', [
+            'series_id' => $series->id,
+            'run_id' => 'run-settings-publication',
+            'status' => 'published',
+        ]);
+        $this->assertTrue($series->fresh()->leaderboard_published);
+    }
+
+    public function test_settings_cannot_show_a_leaderboard_without_a_published_ranking_run(): void
+    {
+        [, $series] = $this->rankingListFixture();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('ranking.series.update', $series), [
+                'best_num_of_scores' => 3,
+                'leaderboard_published' => 1,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Publish the reviewed ranking before making the public leaderboard visible.');
+
+        $this->assertFalse($series->fresh()->leaderboard_published);
+    }
+
+    public function test_ordinary_user_cannot_open_or_update_series_ranking_settings(): void
+    {
+        [, $series] = $this->rankingListFixture();
+        $ordinaryUser = User::factory()->create();
+
+        $this->actingAs($ordinaryUser)
+            ->get(route('series.settings', $series))
+            ->assertForbidden();
+
+        $this->postJson(route('ranking.series.update', $series), [
+            'best_num_of_scores' => 3,
+            'leaderboard_published' => 1,
+        ])->assertForbidden();
+    }
+
     private function rankingListFixture(): array
     {
         $series = Series::factory()->create();

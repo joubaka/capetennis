@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\Ranking\Enums\RankingStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Point;
@@ -209,6 +210,8 @@ class SeriesController extends Controller
 
   public function settings(Series $series)
   {
+    $this->authorize('update', $series);
+
     $positions = range(1, 50);
 
     // Ensure a RankingList row exists for every category that has SeriesRanking rows
@@ -225,10 +228,30 @@ class SeriesController extends Controller
     $series->load(['points', 'ranking_lists.category']);
     $rankTypes = RankType::orderBy('type')->get();
 
+    $activeRankingStatus = SeriesRanking::where('series_id', $series->id)
+      ->whereIn('status', [
+        RankingStatus::Calculated->value,
+        RankingStatus::Reviewed->value,
+      ])
+      ->whereNotNull('run_id')
+      ->orderByDesc('updated_at')
+      ->value('status');
+
+    $hasPublishedRanking = SeriesRanking::where('series_id', $series->id)
+      ->where('status', RankingStatus::Published->value)
+      ->whereNotNull('run_id')
+      ->exists();
+
+    if ($activeRankingStatus === null && $hasPublishedRanking) {
+      $activeRankingStatus = RankingStatus::Published->value;
+    }
+
     return view('backend.series.series-settings', compact(
       'series',
       'positions',
-      'rankTypes'
+      'rankTypes',
+      'activeRankingStatus',
+      'hasPublishedRanking'
     ));
   }
 
@@ -251,9 +274,9 @@ class SeriesController extends Controller
     return response()->json(['status' => 'ok', 'message' => 'Category counts saved']);
   }
 
-  public function update(Request $request, int $id)
+  public function update(Request $request, Series $series)
   {
-    $series = Series::findOrFail($id);
+    $this->authorize('update', $series);
 
     $data = $request->validate([
       'name' => ['sometimes', 'string', 'max:255'],
@@ -280,6 +303,19 @@ class SeriesController extends Controller
     // Don't overwrite rank_type if it came through as null (disabled select)
     if (array_key_exists('rank_type', $data) && $data['rank_type'] === null) {
       unset($data['rank_type']);
+    }
+
+    if (
+      ($data['leaderboard_published'] ?? 0) === 1 &&
+      ! SeriesRanking::where('series_id', $series->id)
+        ->where('status', RankingStatus::Published->value)
+        ->whereNotNull('run_id')
+        ->exists()
+    ) {
+      return response()->json([
+        'status' => 'error',
+        'message' => 'Publish the reviewed ranking before making the public leaderboard visible.',
+      ], 422);
     }
 
     $series->update($data);
