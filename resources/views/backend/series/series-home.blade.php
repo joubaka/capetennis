@@ -45,9 +45,24 @@
                class="btn btn-success">
               View Published Rankings
             </a>
+          @elseif($activeRankingStatus === 'reviewed')
+            <button type="button"
+                    class="btn btn-success ranking-lifecycle-action"
+                    data-url="{{ route('ranking.series.ranking.publish', $series) }}"
+                    data-confirm="Publish this reviewed ranking to the public leaderboard?">
+              <i class="ti ti-world-upload me-1"></i>Publish Rankings
+            </button>
+          @elseif($activeRankingStatus === 'calculated')
+            <button type="button"
+                    class="btn btn-info ranking-lifecycle-action"
+                    data-url="{{ route('ranking.series.ranking.review', $series) }}"
+                    data-confirm="Mark this calculated ranking as reviewed? You can publish it here after review.">
+              <i class="ti ti-check me-1"></i>Mark Rankings Reviewed
+            </button>
+            <small class="text-muted">Review is required before rankings can be published.</small>
           @else
             <button type="button" class="btn btn-outline-secondary" disabled>
-              Public Rankings Not Published
+              No Rankings Ready to Publish
             </button>
           @endif
 
@@ -214,6 +229,32 @@
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
+    button.addEventListener('click', async function () {
+      if (!window.confirm(button.dataset.confirm)) return;
+
+      button.disabled = true;
+
+      try {
+        const response = await fetch(button.dataset.url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+          },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Ranking action failed.');
+
+        toastr.success(payload.message);
+        window.location.reload();
+      } catch (error) {
+        toastr.error(error.message || 'Ranking action failed.');
+        button.disabled = false;
+      }
+    });
+  });
+
   const quill = new Quill('#seriesEmailEditor', {
     theme: 'snow',
     placeholder: 'Compose your message...',

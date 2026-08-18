@@ -266,6 +266,44 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertTrue($series->fresh()->leaderboard_published);
     }
 
+    public function test_series_dashboard_exposes_the_safe_review_then_publish_flow(): void
+    {
+        [$list, $series] = $this->rankingListFixture();
+        $player = \App\Models\Player::factory()->create();
+        $ranking = SeriesRanking::create([
+            'series_id' => $series->id,
+            'ranking_list_id' => $list->id,
+            'category_id' => $list->category_id,
+            'player_id' => $player->id,
+            'rank_position' => 1,
+            'total_points' => 1000,
+            'status' => 'calculated',
+            'run_id' => 'run-dashboard-publication',
+            'meta_json' => [],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('series.show', $series))
+            ->assertOk()
+            ->assertSee('Mark Rankings Reviewed')
+            ->assertDontSee('>Publish Rankings<', false);
+
+        $ranking->update(['status' => 'reviewed']);
+
+        $this->get(route('series.show', $series))
+            ->assertOk()
+            ->assertSee('Publish Rankings')
+            ->assertSee(route('ranking.series.ranking.publish', $series), false);
+
+        $this->postJson(route('ranking.series.ranking.publish', $series))
+            ->assertOk();
+
+        $this->get(route('series.show', $series))
+            ->assertOk()
+            ->assertSee('View Published Rankings')
+            ->assertDontSee('>Publish Rankings<', false);
+    }
+
     public function test_settings_cannot_show_a_leaderboard_without_a_published_ranking_run(): void
     {
         [, $series] = $this->rankingListFixture();

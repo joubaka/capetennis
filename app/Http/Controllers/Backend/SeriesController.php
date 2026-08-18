@@ -65,6 +65,21 @@ class SeriesController extends Controller
       'rankType',
     ])->findOrFail($id);
 
+    $this->authorize('view', $series);
+
+    $activeRankingStatus = SeriesRanking::where('series_id', $series->id)
+      ->whereIn('status', [
+        RankingStatus::Calculated->value,
+        RankingStatus::Reviewed->value,
+      ])
+      ->whereNotNull('run_id')
+      ->orderByDesc('updated_at')
+      ->value('status');
+
+    if ($activeRankingStatus === null && $series->leaderboard_published) {
+      $activeRankingStatus = RankingStatus::Published->value;
+    }
+
     $stats = [
       'events' => $series->events->count(),
       'published' => (bool) $series->leaderboard_published,
@@ -72,7 +87,7 @@ class SeriesController extends Controller
       'rank_type' => optional($series->rankType)->name ?? $series->rank_type,
     ];
 
-    return view('backend.series.series-home', compact('series', 'stats'));
+    return view('backend.series.series-home', compact('series', 'stats', 'activeRankingStatus'));
   }
 
   public function destroy(int $id)
