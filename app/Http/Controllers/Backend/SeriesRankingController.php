@@ -87,10 +87,18 @@ class SeriesRankingController extends Controller
 
     $report = app(RankingRebuildService::class)->rebuild($series, $options);
 
+    if ($report['total_rows'] === 0) {
+      return response()->json([
+        'message' => collect($report['warnings'])->first()
+          ?? 'No ranking rows were created. Check that the series has saved results and ranking categories.',
+        'report' => $report,
+      ], 422);
+    }
+
     return response()->json([
       'message' => $options['dryRun']
         ? 'Dry-run complete (no rows written).'
-        : 'Rankings rebuilt successfully.',
+        : "Rankings rebuilt successfully ({$report['total_rows']} ranking rows created).",
       'report'  => $report,
     ]);
   }

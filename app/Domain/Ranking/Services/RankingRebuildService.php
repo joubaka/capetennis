@@ -5,6 +5,7 @@ namespace App\Domain\Ranking\Services;
 use App\Domain\Ranking\DTO\RankingResult;
 use App\Domain\Ranking\DTO\RankingRow;
 use App\Domain\Ranking\Enums\RankingStatus;
+use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use Illuminate\Support\Collection;
@@ -49,6 +50,7 @@ final class RankingRebuildService
      *   lists: array,
      *   total_rows: int,
      *   warnings: string[],
+     *   topology: array{created_lists: int, linked_category_events: int},
      * }
      */
     public function rebuild(Series $series, array $options = []): array
@@ -65,15 +67,29 @@ final class RankingRebuildService
         $listReports = [];
         $globalWarnings = [];
         $totalRows = 0;
+        $topology = [
+            'created_lists' => 0,
+            'linked_category_events' => 0,
+        ];
 
-        DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows) {
+        DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows, &$topology) {
             DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
             $lists = $series->ranking_lists()->with(['category', 'series'])->get();
 
             if ($lists->isEmpty()) {
-                $globalWarnings[] = 'No ranking lists found for this series.';
-                return;
+                if ($dryRun) {
+                    $globalWarnings[] = 'No ranking lists found. Run a normal rebuild once to create them from the saved event results.';
+                    return;
+                }
+
+                $topology = $this->bootstrapListsFromResults($series);
+                $lists = $series->ranking_lists()->with(['category', 'series'])->get();
+
+                if ($lists->isEmpty()) {
+                    $globalWarnings[] = 'No ranking lists could be created because this series has no saved category results.';
+                    return;
+                }
             }
 
             foreach ($lists as $list) {
@@ -127,6 +143,7 @@ final class RankingRebuildService
             'lists'      => $listReports,
             'total_rows' => $totalRows,
             'warnings'   => $globalWarnings,
+            'topology'   => $topology,
         ];
 
         // Record audit log entry
@@ -140,6 +157,62 @@ final class RankingRebuildService
         ]);
 
         return $report;
+    }
+
+    /**
+     * Create canonical lists for older series that already have final results
+     * but pre-date ranking-list setup.
+     *
+     * This only runs when the series has no lists at all, so an intentionally
+     * curated existing list is never expanded or changed by a rebuild.
+     *
+     * @return array{created_lists: int, linked_category_events: int}
+     */
+    private function bootstrapListsFromResults(Series $series): array
+    {
+        $categoryEvents = DB::table('category_events as ce')
+            ->join('events as e', 'e.id', '=', 'ce.event_id')
+            ->join('category_results as cr', function ($join) {
+                $join->on('cr.event_id', '=', 'ce.event_id')
+                    ->on('cr.category_id', '=', 'ce.category_id');
+            })
+            ->where('e.series_id', $series->id)
+            ->select('ce.id', 'ce.category_id', 'e.start_date')
+            ->groupBy('ce.id', 'ce.category_id', 'e.start_date')
+            ->orderBy('e.start_date')
+            ->orderBy('ce.id')
+            ->get()
+            ->groupBy('category_id');
+
+        $createdLists = 0;
+        $linkedCategoryEvents = 0;
+        $now = now();
+
+        foreach ($categoryEvents as $categoryId => $events) {
+            $list = RankingList::firstOrCreate([
+                'series_id' => $series->id,
+                'category_id' => (int) $categoryId,
+            ]);
+
+            if ($list->wasRecentlyCreated) {
+                $createdLists++;
+            }
+
+            foreach ($events->values() as $index => $categoryEvent) {
+                $linkedCategoryEvents += DB::table('ranking_list_category_events')->insertOrIgnore([
+                    'ranking_list_id' => $list->id,
+                    'category_event_id' => $categoryEvent->id,
+                    'sort_order' => $index + 1,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        }
+
+        return [
+            'created_lists' => $createdLists,
+            'linked_category_events' => $linkedCategoryEvents,
+        ];
     }
 
     // ------------------------------------------------------------------

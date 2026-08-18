@@ -266,6 +266,7 @@ document.getElementById('rebuild-ranking')?.addEventListener('click', () => {
   fetch('{{ route('ranking.series.rebuild', $series) }}', {
     method: 'POST',
     headers: {
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': '{{ csrf_token() }}'
     }
