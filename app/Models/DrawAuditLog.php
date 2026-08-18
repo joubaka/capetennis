@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Audit\AuditWriter;
 use Illuminate\Database\Eloquent\Model;
 
 class DrawAuditLog extends Model
@@ -33,12 +34,24 @@ class DrawAuditLog extends Model
      */
     public static function record(int $drawId, string $action, ?int $fixtureId = null, array $payload = []): void
     {
-        static::create([
+        $legacy = static::create([
             'draw_id'    => $drawId,
             'user_id'    => auth()->id(),
             'action'     => $action,
             'fixture_id' => $fixtureId,
             'payload'    => $payload ?: null,
         ]);
+
+        app(AuditWriter::class)->record([
+            'category' => 'draw',
+            'action' => 'draw.'.$action,
+            'subject_type' => Draw::class,
+            'subject_id' => $drawId,
+            'after' => $payload ?: null,
+            'metadata' => [
+                'fixture_id' => $fixtureId,
+                'legacy_draw_audit_id' => $legacy->id,
+            ],
+        ], true);
     }
 }

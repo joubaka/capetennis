@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use App\Support\Audit\AuditWriter;
 use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
@@ -106,7 +108,9 @@ class UserController extends Controller
    */
   public function destroy(User $user)
   {
-    $user->delete();
+    DB::transaction(function () use ($user): void {
+      $user->delete();
+    });
 
     return response()->json([
       'success' => true,
@@ -128,7 +132,18 @@ class UserController extends Controller
     }
 
     $roleName = $request->input('role');
-    $user->removeRole($roleName);
+    DB::transaction(function () use ($user, $roleName): void {
+      $before = $user->getRoleNames()->values()->all();
+      $user->removeRole($roleName);
+      app(AuditWriter::class)->record([
+        'category' => 'security',
+        'action' => 'user.role-removed',
+        'subject' => $user,
+        'before' => ['roles' => $before],
+        'after' => ['roles' => $user->fresh()->getRoleNames()->values()->all()],
+        'reason' => "Removed role {$roleName}",
+      ], true);
+    });
 
     return response()->json([
         'success' => true,
@@ -150,7 +165,18 @@ class UserController extends Controller
     }
 
     $roleName = $request->input('role');
-    $user->assignRole($roleName);
+    DB::transaction(function () use ($user, $roleName): void {
+      $before = $user->getRoleNames()->values()->all();
+      $user->assignRole($roleName);
+      app(AuditWriter::class)->record([
+        'category' => 'security',
+        'action' => 'user.role-assigned',
+        'subject' => $user,
+        'before' => ['roles' => $before],
+        'after' => ['roles' => $user->fresh()->getRoleNames()->values()->all()],
+        'reason' => "Assigned role {$roleName}",
+      ], true);
+    });
 
     return response()->json([
         'success' => true,

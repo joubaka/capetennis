@@ -7,6 +7,7 @@ use App\Models\Series;
 use App\Models\SeriesRanking;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use App\Support\Audit\AuditWriter;
 
 /**
  * RankingAuditService
@@ -31,6 +32,14 @@ final class RankingAuditService
             'created_at'  => now(),
             'updated_at'  => now(),
         ]);
+
+        app(AuditWriter::class)->record([
+            'category' => 'ranking',
+            'action' => 'ranking.rebuilt',
+            'subject' => $series,
+            'after' => $report,
+            'batch_id' => $runId,
+        ], true);
     }
 
     public function recordStatusChange(
@@ -49,6 +58,16 @@ final class RankingAuditService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        app(AuditWriter::class)->record([
+            'category' => 'ranking',
+            'action' => 'ranking.status-changed',
+            'subject' => $series,
+            'actor_id' => $userId,
+            'before' => ['status' => $from->value],
+            'after' => ['status' => $to->value],
+            'metadata' => $extra,
+        ], true);
     }
 
     // ------------------------------------------------------------------

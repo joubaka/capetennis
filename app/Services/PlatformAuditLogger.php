@@ -6,6 +6,8 @@ use App\Models\PlatformAuditLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Str;
+use App\Support\Audit\AuditContext;
+use App\Support\Audit\AuditWriter;
 
 /**
  * PlatformAuditLogger
@@ -73,10 +75,20 @@ class PlatformAuditLogger
                 'subject_id'   => $subject ? ($subject->id ?? null) : null,
                 'before'       => is_array($before) ? $before : (is_object($before) ? (array)$before : ($before !== null ? ['value' => $before] : null)),
                 'after'        => is_array($after)  ? $after  : (is_object($after)  ? (array)$after  : ($after  !== null ? ['value' => $after]  : null)),
-                'request_id'   => Request::header('X-Request-Id') ?? Str::uuid()->toString(),
+                'request_id'   => app(AuditContext::class)->requestId() ?? Request::header('X-Request-Id') ?? Str::uuid()->toString(),
                 'engine_mode'  => config('engine.mode', env('ENGINE_MODE', 'legacy')),
                 'metadata'     => !empty($meta) ? $meta : null,
                 'created_at'   => now(),
+            ]);
+
+            app(AuditWriter::class)->record([
+                'category' => 'platform',
+                'action' => $action,
+                'subject' => $subject,
+                'before' => $before,
+                'after' => $after,
+                'metadata' => array_merge($meta, ['engine_mode' => config('engine.mode', env('ENGINE_MODE', 'legacy'))]),
+                'actor_id' => $userId,
             ]);
         } catch (\Throwable $e) {
             // Never let audit logging break the main flow

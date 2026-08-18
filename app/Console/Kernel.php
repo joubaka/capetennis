@@ -30,6 +30,14 @@ class Kernel extends ConsoleKernel
         $schedule->command('withdrawals:send-daily-summary')
             ->dailyAt('06:00')
             ->withoutOverlapping();
+
+        $schedule->command('audit:seal')
+            ->dailyAt('00:15')
+            ->withoutOverlapping();
+
+        $schedule->command('audit:prune --apply')
+            ->dailyAt('02:30')
+            ->withoutOverlapping();
     }
 
     /**

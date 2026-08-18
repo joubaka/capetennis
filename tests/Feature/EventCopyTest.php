@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\Event;
+use App\Models\EventType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,7 @@ class EventCopyTest extends TestCase
         DB::table('eventtypes')->insert([
             'id' => 1,
             'name' => 'Individual',
-            'type' => 'individual',
+            'type' => EventType::INDIVIDUAL,
         ]);
 
         $source = Event::factory()->create([
@@ -44,7 +45,11 @@ class EventCopyTest extends TestCase
             'source_event_id' => $source->id,
             'name' => 'Copied Event',
             'eventType' => 1,
+            'entryFee' => 175,
+            'deadline' => 0,
         ]);
+
+        $response->assertSessionHasNoErrors();
 
         $copy = Event::where('name', 'Copied Event')->firstOrFail();
 

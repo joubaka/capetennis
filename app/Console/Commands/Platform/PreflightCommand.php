@@ -6,6 +6,8 @@ use App\Services\PlatformHealthService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
+use App\Support\Audit\AuditDailyDigest;
 
 /**
  * platform:preflight
@@ -122,6 +124,32 @@ class PreflightCommand extends Command
             }
         } catch (\Throwable $e) {
             $warnings[] = "⚠️  Could not check mismatches: " . $e->getMessage();
+        }
+
+        // 7. Canonical audit availability and previous-day integrity seal
+        $this->line('  Checking canonical audit integrity...');
+        try {
+            if (! Schema::hasTable('audit_events') || ! Schema::hasTable('audit_daily_seals')) {
+                $blockers[] = '⛔ Canonical audit tables are missing — apply only the approved audit migrations before release';
+            } else {
+                $yesterday = now()->subDay()->toDateString();
+                $seal = DB::table('audit_daily_seals')->where('audit_date', $yesterday)->first();
+                if (! $seal) {
+                    $warnings[] = "⚠️  No audit integrity seal exists for {$yesterday} — run audit:seal {$yesterday}";
+                } else {
+                    $digest = app(AuditDailyDigest::class)->calculate($yesterday);
+                    $valid = $digest['integrity_failures'] === 0
+                        && hash_equals((string) $seal->digest, $digest['digest'])
+                        && (int) $seal->event_count === $digest['event_count'];
+                    if (! $valid) {
+                        $blockers[] = "⛔ Audit integrity verification failed for {$yesterday} — investigate before release";
+                    } else {
+                        $this->info("  ✅ Audit integrity: {$digest['event_count']} events verified for {$yesterday}");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $blockers[] = '⛔ Could not verify canonical audit integrity: '.$e->getMessage();
         }
 
         // ---------------------------------------------------------------

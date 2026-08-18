@@ -101,6 +101,10 @@ Route::get(
   [HomeController::class, 'homeEvents']
 )->name('events.ajax.home');
 
+Route::post('audit/interactions', [\App\Http\Controllers\AuditInteractionController::class, 'store'])
+  ->middleware('throttle:60,1')
+  ->name('audit.interactions.store');
+
 // pages
 Route::get('/pages/misc-error', $controller_path . '\pages\MiscError@index')->name('pages-misc-error');
 
@@ -435,6 +439,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Super Admin Dashboard
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {
+    Route::get('superadmin/audit', [\App\Http\Controllers\Backend\AuditEventController::class, 'index'])
+      ->name('superadmin.audit.index');
+    Route::get('superadmin/audit/export', [\App\Http\Controllers\Backend\AuditEventController::class, 'export'])
+      ->name('superadmin.audit.export');
+    Route::get('superadmin/audit/{auditEvent}', [\App\Http\Controllers\Backend\AuditEventController::class, 'show'])
+      ->whereNumber('auditEvent')
+      ->name('superadmin.audit.show');
+
     Route::get('platform/health',     [\App\Http\Controllers\Backend\PlatformHealthController::class, 'index'])
       ->name('platform.health');
     Route::get('platform/health/api', [\App\Http\Controllers\Backend\PlatformHealthController::class, 'api'])

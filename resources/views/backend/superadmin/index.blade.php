@@ -796,6 +796,11 @@
 
     {{-- ══ TAB: AUDIT & ACTIVITY ══ --}}
     <div class="tab-pane fade p-3" id="sa-pane-audit" role="tabpanel">
+      <div class="d-flex justify-content-end px-3 pt-3">
+        <a href="{{ route('superadmin.audit.index') }}" class="btn btn-primary btn-sm">
+          <i class="ti ti-shield-search me-1"></i>Open full Audit Centre
+        </a>
+      </div>
       <ul class="nav nav-tabs px-3 pt-2" id="sa-audit-tabs" role="tablist">
         <li class="nav-item" role="presentation">
           <button class="nav-link active" id="sa-tab-login" data-bs-toggle="tab"

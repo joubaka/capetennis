@@ -56,6 +56,7 @@
   @include('layouts/sections/scripts')
 
   @include('layouts.sections.pwa-install')
+  @include('layouts.sections.audit-interactions')
 
 
 </body>
