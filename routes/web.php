@@ -1624,12 +1624,8 @@ Route::delete(
 
 
 
-  Route::get('series/publishLeaderboard/{id}', [SeriesController::class, 'togglePublish'])->name('series.publish.leaderboard');
-  
   Route::get('/{series}/rankings', [SeriesController::class, 'rankingsOverberg'])->name('series.rankings'); // Rankings view
   Route::get('/{series}/settings', [SeriesController::class, 'settings'])->name('series.settings'); // Settings form
-  Route::patch('/series/{series}/publish', [SeriesController::class, 'publish'])->name('series.publish');
-  Route::patch('/series/{series}/unpublish', [SeriesController::class, 'unpublish'])->name('series.unpublish');
   Route::patch('/series/{series}/category-best-num', [SeriesController::class, 'updateCategoryBestNum'])->name('series.category-best-num');
 
   Route::post('/series/{series}/email-players', [EmailController::class, 'sendToSeriesPlayers'])->name('series.email.players');

@@ -169,6 +169,7 @@ final class RankingCalculationService
         }
 
         $missingPositions = [];
+        $maxMappedPosition = (int) ($pointsMap->keys()->max() ?? 0);
 
         $rows = \DB::table('category_results as cr')
             ->join('category_events as ce', function ($join) {
@@ -213,9 +214,11 @@ final class RankingCalculationService
             throw new \RuntimeException('Multiple first-place finishers exist for category event(s): ' . $multipleWinners->keys()->implode(', '));
         }
 
-        $legs = $rows->map(function ($r) use ($pointsMap, &$missingPositions) {
+        $legs = $rows->map(function ($r) use ($pointsMap, $maxMappedPosition, &$missingPositions) {
             $pos = (int) $r->position;
-            if (!$pointsMap->has($pos)) {
+            // Positions below the configured points-paying range legitimately
+            // earn zero. A gap inside that range is a broken points template.
+            if ($pos > 0 && $pos <= $maxMappedPosition && !$pointsMap->has($pos)) {
                 $missingPositions[$pos] = true;
             }
             return new RankingLeg(
@@ -228,7 +231,9 @@ final class RankingCalculationService
         });
 
         if (!empty($missingPositions)) {
-            $warnings[] = 'Positions without a points mapping: ' . implode(', ', array_keys($missingPositions));
+            throw new \RuntimeException(
+                'Positions without a points mapping: ' . implode(', ', array_keys($missingPositions))
+            );
         }
 
         return $legs;

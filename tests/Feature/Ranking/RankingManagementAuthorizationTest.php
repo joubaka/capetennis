@@ -35,6 +35,32 @@ class RankingManagementAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_invalid_rebuild_returns_validation_error_and_preserves_existing_rows(): void
+    {
+        [$list, $series] = $this->rankingListFixture();
+        $series->update(['best_num_of_scores' => 0, 'auto_award_rule' => false]);
+        $list->update(['best_num_of_scores' => null]);
+        $player = \App\Models\Player::factory()->create();
+        $legacy = SeriesRanking::create([
+            'series_id' => $series->id,
+            'ranking_list_id' => null,
+            'category_id' => $list->category_id,
+            'player_id' => $player->id,
+            'rank_position' => 1,
+            'total_points' => 1000,
+            'status' => 'calculated',
+            'run_id' => null,
+            'meta_json' => [],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('ranking.series.rebuild', $series))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Best-N must be at least 1.');
+
+        $this->assertDatabaseHas('series_rankings', ['id' => $legacy->id]);
+    }
+
     public function test_legacy_ranking_mutations_are_retired(): void
     {
         $this->artisan('ranking:rebuild-legacy', ['series_id' => 999])
@@ -85,6 +111,29 @@ class RankingManagementAuthorizationTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_same_named_category_from_the_same_series_can_be_attached(): void
+    {
+        [$list, $series] = $this->rankingListFixture();
+        $list->category->update(['name' => 'U/13 Girls']);
+        $event = Event::factory()->create(['series_id' => $series->id]);
+        $equivalentCategory = Category::factory()->create(['name' => '  u/13   GIRLS ']);
+        $categoryEvent = CategoryEvent::factory()->create([
+            'event_id' => $event->id,
+            'category_id' => $equivalentCategory->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('ranking.lists.add-category', $list), [
+                'category_event_id' => $categoryEvent->id,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('ranking_list_category_events', [
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $categoryEvent->id,
+        ]);
+    }
+
     public function test_list_order_requires_exact_linked_set_and_persists_sort_order(): void
     {
         [$list, $series] = $this->rankingListFixture();
@@ -122,6 +171,17 @@ class RankingManagementAuthorizationTest extends TestCase
         $series = Series::factory()->create();
 
         $this->get("/ranking/{$series->id}/results")->assertNotFound();
+    }
+
+    public function test_legacy_visibility_mutation_routes_are_not_registered(): void
+    {
+        $series = Series::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->get("/backend/series/publishLeaderboard/{$series->id}")
+            ->assertNotFound();
+        $this->patch("/backend/series/{$series->id}/publish")->assertNotFound();
+        $this->patch("/backend/series/{$series->id}/unpublish")->assertNotFound();
     }
 
     public function test_legacy_authenticated_ranking_pages_redirect_to_canonical_list(): void
@@ -221,6 +281,44 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertFalse($series->fresh()->leaderboard_published);
     }
 
+    public function test_settings_preserve_a_visible_legacy_ranking_without_creating_empty_lists(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $event = Event::factory()->create(['series_id' => $series->id]);
+        \Illuminate\Support\Facades\DB::table('event_admins')->insert([
+            'event_id' => $event->id,
+            'user_id' => $this->admin->id,
+        ]);
+        $category = Category::factory()->create();
+        $player = \App\Models\Player::factory()->create();
+        SeriesRanking::create([
+            'series_id' => $series->id,
+            'ranking_list_id' => null,
+            'category_id' => $category->id,
+            'player_id' => $player->id,
+            'rank_position' => 1,
+            'total_points' => 1000,
+            'status' => 'calculated',
+            'run_id' => null,
+            'meta_json' => [],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertSee('id="leaderboard_published"', false)
+            ->assertSee('checked', false);
+
+        $this->assertSame(0, $series->ranking_lists()->count());
+
+        $this->postJson(route('ranking.series.update', $series), [
+            'best_num_of_scores' => 2,
+            'leaderboard_published' => 1,
+        ])->assertOk();
+
+        $this->assertTrue($series->fresh()->leaderboard_published);
+    }
+
     public function test_ordinary_user_cannot_open_or_update_series_ranking_settings(): void
     {
         [, $series] = $this->rankingListFixture();
@@ -233,6 +331,10 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->postJson(route('ranking.series.update', $series), [
             'best_num_of_scores' => 3,
             'leaderboard_published' => 1,
+        ])->assertForbidden();
+
+        $this->patchJson(route('series.category-best-num', $series), [
+            'category_best' => [$series->ranking_lists()->value('id') => 3],
         ])->assertForbidden();
     }
 

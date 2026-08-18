@@ -85,9 +85,19 @@ class SeriesRankingController extends Controller
       'walkoversExcluded' => $request->boolean('exclude_walkovers'),
     ];
 
-    $report = app(RankingRebuildService::class)->rebuild($series, $options);
+    try {
+      $report = app(RankingRebuildService::class)->rebuild($series, $options);
+    } catch (\InvalidArgumentException|\RuntimeException $exception) {
+      Log::warning('[RankingRebuild] validation failed', [
+        'series_id' => $series->id,
+        'user_id' => auth()->id(),
+        'message' => $exception->getMessage(),
+      ]);
 
-    if ($report['total_rows'] === 0) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
+
+    if ($report['total_rows'] === 0 || (!$options['dryRun'] && !$report['persisted'])) {
       return response()->json([
         'message' => collect($report['warnings'])->first()
           ?? 'No ranking rows were created. Check that the series has saved results and ranking categories.',

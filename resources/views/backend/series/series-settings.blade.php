@@ -335,19 +335,25 @@
   // ── General Settings ──────────────────────────────────
   document.getElementById('save-series-btn').addEventListener('click', () => {
     const btn = document.getElementById('save-series-btn');
+    const leaderboardToggle = document.getElementById('leaderboard_published');
     btn.disabled = true;
+
+    const payload = {
+      name:                 document.querySelector('[name="name"]').value,
+      year:                 document.querySelector('[name="year"]').value,
+      best_num_of_scores:   document.querySelector('[name="best_num_of_scores"]').value,
+      rank_type:            document.querySelector('[name="rank_type"]:not([disabled])') ? document.querySelector('[name="rank_type"]').value : null,
+      auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
+    };
+
+    if (!leaderboardToggle.disabled) {
+      payload.leaderboard_published = leaderboardToggle.checked ? 1 : 0;
+    }
 
     fetch('{{ route('ranking.series.update', $series) }}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-      body: JSON.stringify({
-        name:                 document.querySelector('[name="name"]').value,
-        year:                 document.querySelector('[name="year"]').value,
-        best_num_of_scores:   document.querySelector('[name="best_num_of_scores"]').value,
-        rank_type:            document.querySelector('[name="rank_type"]:not([disabled])') ? document.querySelector('[name="rank_type"]').value : null,
-        leaderboard_published: document.getElementById('leaderboard_published').checked ? 1 : 0,
-        auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
-      })
+      body: JSON.stringify(payload)
     })
     .then(async response => {
       const payload = await response.json();

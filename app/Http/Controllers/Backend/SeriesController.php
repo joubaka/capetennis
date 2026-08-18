@@ -214,17 +214,6 @@ class SeriesController extends Controller
 
     $positions = range(1, 50);
 
-    // Ensure a RankingList row exists for every category that has SeriesRanking rows
-    $categoryIds = SeriesRanking::where('series_id', $series->id)
-      ->distinct()
-      ->pluck('category_id');
-
-    foreach ($categoryIds as $catId) {
-      RankingList::firstOrCreate(
-        ['series_id' => $series->id, 'category_id' => $catId]
-      );
-    }
-
     $series->load(['points', 'ranking_lists.category']);
     $rankTypes = RankType::orderBy('type')->get();
 
@@ -237,12 +226,18 @@ class SeriesController extends Controller
       ->orderByDesc('updated_at')
       ->value('status');
 
-    $hasPublishedRanking = SeriesRanking::where('series_id', $series->id)
+    $hasCanonicalPublishedRanking = SeriesRanking::where('series_id', $series->id)
       ->where('status', RankingStatus::Published->value)
       ->whereNotNull('run_id')
       ->exists();
 
-    if ($activeRankingStatus === null && $hasPublishedRanking) {
+    $hasLegacyRanking = SeriesRanking::where('series_id', $series->id)
+      ->whereNull('run_id')
+      ->exists();
+
+    $hasPublishedRanking = $hasCanonicalPublishedRanking || $hasLegacyRanking;
+
+    if ($activeRankingStatus === null && $series->leaderboard_published && $hasPublishedRanking) {
       $activeRankingStatus = RankingStatus::Published->value;
     }
 
@@ -257,6 +252,8 @@ class SeriesController extends Controller
 
   public function updateCategoryBestNum(Request $request, Series $series)
   {
+    $this->authorize('update', $series);
+
     $data = $request->validate([
       'category_best' => ['required', 'array'],
       'category_best.*' => ['nullable', 'integer', 'min:1', 'max:99'],
@@ -308,8 +305,12 @@ class SeriesController extends Controller
     if (
       ($data['leaderboard_published'] ?? 0) === 1 &&
       ! SeriesRanking::where('series_id', $series->id)
-        ->where('status', RankingStatus::Published->value)
-        ->whereNotNull('run_id')
+        ->where(function ($query) {
+          $query->where(function ($canonical) {
+            $canonical->where('status', RankingStatus::Published->value)
+              ->whereNotNull('run_id');
+          })->orWhereNull('run_id');
+        })
         ->exists()
     ) {
       return response()->json([
@@ -324,41 +325,6 @@ class SeriesController extends Controller
       'status' => 'ok',
       'message' => 'Series settings saved',
     ]);
-  }
-
-  /* =====================================================
-   |  PUBLISHING
-   ===================================================== */
-
-  public function publish(Series $series)
-  {
-    $series->update(['leaderboard_published' => 1]);
-
-    return response()->json([
-      'success' => true,
-      'leaderboard_published' => 1,
-      'message' => 'Rankings published.'
-    ]);
-  }
-
-  public function unpublish(Series $series)
-  {
-    $series->update(['leaderboard_published' => 0]);
-
-    return response()->json([
-      'success' => true,
-      'leaderboard_published' => 0,
-      'message' => 'Rankings unpublished.'
-    ]);
-  }
-
-  public function togglePublish(int $id)
-  {
-    $series = Series::findOrFail($id);
-    $series->leaderboard_published = !$series->leaderboard_published;
-    $series->save();
-
-    return response()->json($series);
   }
 
   /* =====================================================

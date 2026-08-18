@@ -336,17 +336,35 @@ class RankingController extends Controller
     $series = Series::with(['ranking_lists.rank_cats'])->findOrFail($seriesId);
     $this->authorize('update', $series);
 
-    $report = app(RankingRebuildService::class)->rebuild($series, [
-      'dryRun' => $request->boolean('dry_run'),
-      'walkoversExcluded' => $request->boolean('exclude_walkovers'),
-    ]);
+    try {
+      $report = app(RankingRebuildService::class)->rebuild($series, [
+        'dryRun' => $request->boolean('dry_run'),
+        'walkoversExcluded' => $request->boolean('exclude_walkovers'),
+      ]);
+    } catch (\InvalidArgumentException|\RuntimeException $exception) {
+      if ($request->expectsJson() || $request->ajax()) {
+        return response()->json(['message' => $exception->getMessage()], 422);
+      }
+
+      return back()->withErrors(['ranking' => $exception->getMessage()]);
+    }
+
+    $failed = $report['total_rows'] === 0
+      || (!$request->boolean('dry_run') && !$report['persisted']);
 
     // If the request is AJAX / expects JSON -> keep your current JSON response
     if ($request->expectsJson() || $request->ajax()) {
-      return response()->json(['report' => $report]);
+      return response()->json(['report' => $report], $failed ? 422 : 200);
     }
 
     // Otherwise, go back to the Rankings Admin screen and show the banner
+    if ($failed) {
+      return back()->withErrors([
+        'ranking' => collect($report['warnings'])->first()
+          ?? 'No replacement ranking rows were created. Existing rankings were preserved.',
+      ]);
+    }
+
     return back()->with('calc_report', $report);
     // or, if you prefer an explicit route:
     // return redirect()->route('ranking.lists.index', $seriesId)->with('calc_report', $report);
@@ -435,10 +453,13 @@ class RankingController extends Controller
 
    
 
-    $categoryEvent = CategoryEvent::with('event')->findOrFail($data['category_event_id']);
+    $categoryEvent = CategoryEvent::with(['event', 'category'])->findOrFail($data['category_event_id']);
+    $listCategoryName = $this->normalizeCategoryName((string) $rankingList->category?->name);
+    $eventCategoryName = $this->normalizeCategoryName((string) $categoryEvent->category?->name);
     abort_unless(
       (int) $categoryEvent->event?->series_id === (int) $rankingList->series_id
-        && (int) $categoryEvent->category_id === (int) $rankingList->category_id,
+        && $listCategoryName !== ''
+        && $listCategoryName === $eventCategoryName,
       422,
       'The category event must belong to this series and ranking-list category.'
     );
@@ -646,6 +667,11 @@ class RankingController extends Controller
       ->orderByDesc('published_at')
       ->orderByDesc('updated_at')
       ->value('run_id');
+  }
+
+  private function normalizeCategoryName(string $name): string
+  {
+    return mb_strtolower(preg_replace('/\s+/', ' ', trim($name)) ?? '');
   }
 
 

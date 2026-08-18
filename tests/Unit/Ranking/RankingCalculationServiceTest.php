@@ -597,6 +597,18 @@ class RankingCalculationServiceTest extends TestCase
         $this->service()->calculate($this->list);
     }
 
+    public function test_gap_inside_points_template_is_rejected_when_results_use_it(): void
+    {
+        $player = Player::factory()->create();
+        DB::table('points')->where('series_id', $this->series->id)->where('position', 3)->delete();
+        $this->seedPositions([[$player->id, 1, 3]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Positions without a points mapping: 3');
+
+        $this->service()->calculate($this->list);
+    }
+
     public function test_auto_award_requires_second_place_points(): void
     {
         DB::table('points')->where('series_id', $this->series->id)->where('position', 2)->delete();

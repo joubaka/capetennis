@@ -51,6 +51,7 @@ final class RankingRebuildService
      *   total_rows: int,
      *   warnings: string[],
      *   topology: array{created_lists: int, linked_category_events: int},
+     *   persisted: bool,
      * }
      */
     public function rebuild(Series $series, array $options = []): array
@@ -71,8 +72,9 @@ final class RankingRebuildService
             'created_lists' => 0,
             'linked_category_events' => 0,
         ];
+        $persisted = false;
 
-        DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows, &$topology) {
+        DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows, &$topology, &$persisted) {
             DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
             $lists = $series->ranking_lists()->with(['category', 'series'])->get();
@@ -92,8 +94,21 @@ final class RankingRebuildService
                 }
             }
 
+            if (!$dryRun) {
+                $linked = $this->linkEmptyListsFromResults($series, $lists);
+                $topology['linked_category_events'] += $linked;
+
+                if ($linked > 0) {
+                    $lists = $series->ranking_lists()->with(['category', 'series'])->get();
+                }
+            }
+
+            /** @var array<int, RankingResult> $calculatedResults */
+            $calculatedResults = [];
+            $emptyListIds = [];
+
             foreach ($lists as $list) {
-                $this->validateListOwnership($series, $list->id, $list->category_id);
+                $this->validateListOwnership($series, $list);
 
                 $listOptions = array_merge($options, [
                     // Per-list best-N takes priority over global override
@@ -102,14 +117,13 @@ final class RankingRebuildService
 
                 // Run calculation
                 $result = $this->calculator->calculate($list, $listOptions);
-
-                // Persist unless dry-run
-                if (!$dryRun) {
-                    $this->persist($series, $list->id, $result, $runId);
-                }
+                $calculatedResults[$list->id] = $result;
 
                 $rowCount    = $result->rows->count();
                 $totalRows  += $rowCount;
+                if ($rowCount === 0) {
+                    $emptyListIds[] = $list->id;
+                }
 
                 $listReports[] = [
                     'ranking_list_id' => $list->id,
@@ -134,6 +148,34 @@ final class RankingRebuildService
                     'warnings'        => count($result->warnings),
                 ]);
             }
+
+            if ($dryRun) {
+                return;
+            }
+
+            if ($totalRows === 0) {
+                $globalWarnings[] = 'No replacement ranking rows were calculated. Existing ranking rows were preserved.';
+                return;
+            }
+
+            if ($emptyListIds !== []) {
+                $globalWarnings[] = 'Rebuild was not persisted because ranking list(s) produced no rows: '
+                    . implode(', ', $emptyListIds) . '. Existing ranking rows were preserved.';
+                return;
+            }
+
+            // All lists passed preflight. Only now may the current calculated
+            // snapshot be replaced.
+            SeriesRanking::where('series_id', $series->id)
+                ->whereNull('ranking_list_id')
+                ->where('status', '!=', RankingStatus::Published->value)
+                ->delete();
+
+            foreach ($lists as $list) {
+                $this->persist($series, $list->id, $calculatedResults[$list->id], $runId);
+            }
+
+            $persisted = true;
         });
 
         $report = [
@@ -144,6 +186,7 @@ final class RankingRebuildService
             'total_rows' => $totalRows,
             'warnings'   => $globalWarnings,
             'topology'   => $topology,
+            'persisted'  => $persisted,
         ];
 
         // Record audit log entry
@@ -172,26 +215,28 @@ final class RankingRebuildService
     {
         $categoryEvents = DB::table('category_events as ce')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
+            ->join('categories as c', 'c.id', '=', 'ce.category_id')
             ->join('category_results as cr', function ($join) {
                 $join->on('cr.event_id', '=', 'ce.event_id')
                     ->on('cr.category_id', '=', 'ce.category_id');
             })
             ->where('e.series_id', $series->id)
-            ->select('ce.id', 'ce.category_id', 'e.start_date')
-            ->groupBy('ce.id', 'ce.category_id', 'e.start_date')
+            ->select('ce.id', 'ce.category_id', 'c.name as category_name', 'e.start_date')
+            ->groupBy('ce.id', 'ce.category_id', 'c.name', 'e.start_date')
             ->orderBy('e.start_date')
             ->orderBy('ce.id')
             ->get()
-            ->groupBy('category_id');
+            ->groupBy(fn($categoryEvent) => $this->normalizeCategoryName($categoryEvent->category_name));
 
         $createdLists = 0;
         $linkedCategoryEvents = 0;
         $now = now();
 
-        foreach ($categoryEvents as $categoryId => $events) {
+        foreach ($categoryEvents as $events) {
+            $categoryId = (int) $events->first()->category_id;
             $list = RankingList::firstOrCreate([
                 'series_id' => $series->id,
-                'category_id' => (int) $categoryId,
+                'category_id' => $categoryId,
             ]);
 
             if ($list->wasRecentlyCreated) {
@@ -215,6 +260,51 @@ final class RankingRebuildService
         ];
     }
 
+    /**
+     * Repair only completely empty historical lists. Curated lists that already
+     * contain at least one event are never expanded automatically.
+     */
+    private function linkEmptyListsFromResults(Series $series, Collection $lists): int
+    {
+        $emptyLists = $lists->filter(fn(RankingList $list) => !$list->rank_cats()->exists());
+        if ($emptyLists->isEmpty()) {
+            return 0;
+        }
+
+        $eventsByName = DB::table('category_events as ce')
+            ->join('events as e', 'e.id', '=', 'ce.event_id')
+            ->join('categories as c', 'c.id', '=', 'ce.category_id')
+            ->join('category_results as cr', function ($join) {
+                $join->on('cr.event_id', '=', 'ce.event_id')
+                    ->on('cr.category_id', '=', 'ce.category_id');
+            })
+            ->where('e.series_id', $series->id)
+            ->select('ce.id', 'c.name as category_name', 'e.start_date')
+            ->groupBy('ce.id', 'c.name', 'e.start_date')
+            ->orderBy('e.start_date')
+            ->orderBy('ce.id')
+            ->get()
+            ->groupBy(fn($categoryEvent) => $this->normalizeCategoryName($categoryEvent->category_name));
+
+        $linked = 0;
+        $now = now();
+
+        foreach ($emptyLists as $list) {
+            $categoryName = $this->normalizeCategoryName((string) $list->category?->name);
+            foreach ($eventsByName->get($categoryName, collect())->values() as $index => $categoryEvent) {
+                $linked += DB::table('ranking_list_category_events')->insertOrIgnore([
+                    'ranking_list_id' => $list->id,
+                    'category_event_id' => $categoryEvent->id,
+                    'sort_order' => $index + 1,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        }
+
+        return $linked;
+    }
+
     // ------------------------------------------------------------------
     // Persistence
     // ------------------------------------------------------------------
@@ -228,15 +318,6 @@ final class RankingRebuildService
             ->where('ranking_list_id', $rankingListId)
             ->where('status', '!=', RankingStatus::Published->value)
             ->delete();
-
-        // Also delete legacy rows (ranking_list_id = null) for the same series + category
-        if ($categoryId) {
-            SeriesRanking::where('series_id', $series->id)
-                ->whereNull('ranking_list_id')
-                ->where('category_id', $categoryId)
-                ->where('status', '!=', RankingStatus::Published->value)
-                ->delete();
-        }
 
         $now = now();
 
@@ -287,22 +368,31 @@ final class RankingRebuildService
         ];
     }
 
-    private function validateListOwnership(Series $series, int $rankingListId, int $categoryId): void
+    private function validateListOwnership(Series $series, RankingList $list): void
     {
-        $invalid = DB::table('ranking_list_category_events as rlce')
+        $linkedEvents = DB::table('ranking_list_category_events as rlce')
             ->join('category_events as ce', 'ce.id', '=', 'rlce.category_event_id')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
-            ->where('rlce.ranking_list_id', $rankingListId)
-            ->where(function ($query) use ($series, $categoryId) {
-                $query->where('e.series_id', '!=', $series->id)
-                    ->orWhere('ce.category_id', '!=', $categoryId);
-            })
-            ->pluck('rlce.category_event_id');
+            ->join('categories as c', 'c.id', '=', 'ce.category_id')
+            ->where('rlce.ranking_list_id', $list->id)
+            ->select('rlce.category_event_id', 'e.series_id', 'c.name as category_name')
+            ->get();
+
+        $expectedName = $this->normalizeCategoryName((string) $list->category?->name);
+        $invalid = $linkedEvents->filter(fn($event) =>
+            (int) $event->series_id !== (int) $series->id
+            || $this->normalizeCategoryName((string) $event->category_name) !== $expectedName
+        )->pluck('category_event_id');
 
         if ($invalid->isNotEmpty()) {
             throw new \RuntimeException(
-                "Ranking list {$rankingListId} contains category events outside its series/category: " . $invalid->implode(', ')
+                "Ranking list {$list->id} contains category events outside its series/category: " . $invalid->implode(', ')
             );
         }
+    }
+
+    private function normalizeCategoryName(string $name): string
+    {
+        return mb_strtolower(preg_replace('/\s+/', ' ', trim($name)) ?? '');
     }
 }
