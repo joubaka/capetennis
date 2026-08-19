@@ -63,6 +63,7 @@ class DrawManagementRegressionTest extends TestCase
         $this->assertSame(['POST'], Route::getRoutes()->getByName('draw.insert.result')->methods());
         $this->assertSame(['POST'], Route::getRoutes()->getByName('draw.update.result')->methods());
         $this->assertSame(['POST'], Route::getRoutes()->getByName('fixture.update.players')->methods());
+        $this->assertSame(['POST'], Route::getRoutes()->getByName('update-player-names')->methods());
         $this->assertSame(['POST'], Route::getRoutes()->getByName('save.draw.venues')->methods());
     }
 }

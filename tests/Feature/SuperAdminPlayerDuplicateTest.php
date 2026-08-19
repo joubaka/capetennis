@@ -94,22 +94,22 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             ->assertOk()->assertSee('class="pagination"', false)->assertDontSee('w-5 h-5', false);
     }
 
-    public function test_duplicate_queue_supports_all_records_and_auto_resolvable_ranking_filter(): void
+    public function test_duplicate_queue_supports_all_records_and_automatic_resolution_filter(): void
     {
         $paginator = new LengthAwarePaginator([], 0, 400, 1, [
             'path' => route('superadmin.player-duplicates.index'),
         ]);
         $duplicates = Mockery::mock(PlayerDuplicateService::class);
-        $duplicates->shouldReceive('candidates')->once()->with(400, false, 'ranking_auto')->andReturn($paginator);
+        $duplicates->shouldReceive('candidates')->once()->with(400, false, 'auto_resolvable')->andReturn($paginator);
         $this->app->instance(PlayerDuplicateService::class, $duplicates);
 
         $this->actingAs($this->superUser)
             ->get(route('superadmin.player-duplicates.index', [
                 'per_page' => 'all',
-                'merge_filter' => 'ranking_auto',
+                'merge_filter' => 'auto_resolvable',
             ]))
             ->assertOk()
-            ->assertSee('Auto-resolvable rankings')
+            ->assertSee('Can resolve automatically')
             ->assertSee('All matching (max 400)')
             ->assertSee('value="all" selected', false);
     }
@@ -749,6 +749,10 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $this->assertFalse($analysis['can_merge']);
         $this->assertContains('tournament_registration_overlap', collect($analysis['blockers'])->pluck('domain')->all());
         $this->assertDatabaseHas('players', ['id' => $remove->id]);
+        $this->actingAs($this->superUser)
+            ->get(route('superadmin.player-duplicates.review', [$keep, $remove], false))
+            ->assertOk()
+            ->assertSee('require manual review');
     }
 
     public function test_paid_registration_is_retained_and_abandoned_unpaid_overlap_is_withdrawn_during_merge(): void

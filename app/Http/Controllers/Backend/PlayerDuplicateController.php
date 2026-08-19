@@ -21,7 +21,7 @@ class PlayerDuplicateController extends Controller
             ? $request->string('per_page')->toString()
             : '25';
         $perPage = $perPageOption === 'all' ? 400 : (int) $perPageOption;
-        $mergeFilter = in_array($request->string('merge_filter')->toString(), ['all', 'ranking_auto'], true)
+        $mergeFilter = in_array($request->string('merge_filter')->toString(), ['all', 'auto_resolvable', 'ranking_auto'], true)
             ? $request->string('merge_filter')->toString()
             : 'all';
 

@@ -17,7 +17,7 @@ use Tests\TestCase;
  * Routes under test:
  *   POST  fixture/deleteResult/{id}           (deleteResult)
  *   POST  fixture/deleteIndResult/{id}        (deleteIndResult)
- *   GET   fixture/update/player/names/{id}    (updatePlayersNames)
+ *   POST  fixture/update/player/names/{id}    (updatePlayersNames)
  *   GET   fixture/pdf/create                  (fixtures_create_pdf)
  *   POST  fixtures/create/auto/{draw_id}      (autoScheduleFixtures)
  *
@@ -113,28 +113,28 @@ class FixtureControllerAuthorizationTest extends TestCase
 
     public function test_guest_cannot_update_player_names(): void
     {
-        $this->getJson(route('update-player-names', $this->draw->id))
+        $this->postJson(route('update-player-names', $this->draw->id))
             ->assertStatus(401);
     }
 
     public function test_ordinary_user_cannot_update_player_names(): void
     {
         $this->actingAs($this->ordinaryUser)
-            ->getJson(route('update-player-names', $this->draw->id))
+            ->postJson(route('update-player-names', $this->draw->id))
             ->assertForbidden();
     }
 
     public function test_admin_of_other_event_cannot_update_player_names(): void
     {
         $this->actingAs($this->adminOther)
-            ->getJson(route('update-player-names', $this->draw->id))
+            ->postJson(route('update-player-names', $this->draw->id))
             ->assertForbidden();
     }
 
     public function test_event_admin_can_update_player_names(): void
     {
         $response = $this->actingAs($this->admin)
-            ->getJson(route('update-player-names', $this->draw->id));
+            ->postJson(route('update-player-names', $this->draw->id));
 
         $this->assertNotEquals(401, $response->status());
         $this->assertNotEquals(403, $response->status());
@@ -143,7 +143,7 @@ class FixtureControllerAuthorizationTest extends TestCase
     public function test_super_user_can_update_player_names(): void
     {
         $response = $this->actingAs($this->superUser)
-            ->getJson(route('update-player-names', $this->draw->id));
+            ->postJson(route('update-player-names', $this->draw->id));
 
         $this->assertNotEquals(401, $response->status());
         $this->assertNotEquals(403, $response->status());

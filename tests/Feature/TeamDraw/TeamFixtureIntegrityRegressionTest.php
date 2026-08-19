@@ -135,4 +135,54 @@ class TeamFixtureIntegrityRegressionTest extends TestCase
             'match_loser_id' => null,
         ]);
     }
+
+    public function test_legacy_team_score_route_is_post_only_and_idempotent(): void
+    {
+        $fixture = TeamFixture::create([
+            'draw_id' => $this->draw->id,
+            'match_nr' => 2,
+            'round_nr' => 1,
+            'tie_nr' => 1,
+            'fixture_type' => 1,
+            'rubber_sequence' => 2,
+        ]);
+        $payload = [
+            'type' => 'team',
+            'fixture_id' => $fixture->id,
+            'set_player1' => [6, 6],
+            'set_player2' => [3, 4],
+        ];
+
+        $this->actingAs($this->superUser)
+            ->get(route('draw.insert.result', $payload));
+        $this->assertDatabaseMissing('team_fixture_results', [
+            'team_fixture_id' => $fixture->id,
+        ]);
+        $this->postJson(route('draw.insert.result'), $payload)->assertOk();
+        $this->postJson(route('draw.insert.result'), $payload)->assertOk();
+
+        $this->assertSame(2, DB::table('team_fixture_results')
+            ->where('team_fixture_id', $fixture->id)->count());
+    }
+
+    public function test_team_score_rejects_an_unpaired_set(): void
+    {
+        $fixture = TeamFixture::create([
+            'draw_id' => $this->draw->id,
+            'match_nr' => 3,
+            'round_nr' => 1,
+            'tie_nr' => 1,
+            'fixture_type' => 1,
+            'rubber_sequence' => 3,
+        ]);
+
+        $this->actingAs($this->superUser)
+            ->postJson(route('backend.team-fixtures.insertScore', $fixture), [
+                'set1_home' => 6,
+            ])->assertUnprocessable();
+
+        $this->assertDatabaseMissing('team_fixture_results', [
+            'team_fixture_id' => $fixture->id,
+        ]);
+    }
 }

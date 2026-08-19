@@ -38,6 +38,21 @@
                   <div class="text-muted mt-1">Series lifecycle: {{ collect($context['series_status_counts'])->map(fn($count, $status) => $status.': '.$count)->implode(', ') }}</div>
                 </div>
               @endforeach
+            @elseif(($blocker['contexts'][0]['type'] ?? null) === 'tournament_registration_overlap')
+              @foreach($blocker['contexts'] as $context)
+                <div class="border rounded bg-white p-2 mt-2 small">
+                  <strong>{{ $context['event_name'] ?? 'Event #'.($context['event_id'] ?? 'unknown') }} / {{ $context['category_name'] ?? 'category #'.($context['category_id'] ?? 'unknown') }}</strong>
+                  <div class="text-muted">Category event #{{ $context['category_event_id'] }}</div>
+                  <div class="mt-1">
+                    @foreach($context['entries'] ?? [] as $entry)
+                      <span class="badge bg-label-{{ $entry['paid'] ? 'warning' : 'secondary' }} me-1">
+                        entry #{{ $entry['entry_id'] }} · registration #{{ $entry['registration_id'] }} · player #{{ $entry['player_id'] }} · {{ $entry['status'] ?: 'blank status' }}{{ $entry['paid'] ? ' · paid' : '' }}
+                      </span>
+                    @endforeach
+                  </div>
+                  <div class="text-danger mt-1">The entries are not an unambiguous paid-versus-abandoned pair, so they require manual review.</div>
+                </div>
+              @endforeach
             @else
             <div class="table-responsive mt-2">
               <table class="table table-sm table-bordered bg-white mb-1">

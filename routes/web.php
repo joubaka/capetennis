@@ -1153,7 +1153,7 @@ Route::delete(
   Route::post('fixture/updateResult', [FixtureController::class, 'updateResult'])->name('draw.update.result');
   Route::post('fixture/deleteResult/{id}', [FixtureController::class, 'deleteResult'])->name('draw.delete.result');
   Route::post('fixture/deleteIndResult/{id}', [FixtureController::class, 'deleteIndResult'])->name('draw.delete.ind.result');
-  Route::get('fixture/update/player/names/{id}', [FixtureController::class, 'updatePlayersNames'])->name('update-player-names');
+  Route::post('fixture/update/player/names/{id}', [FixtureController::class, 'updatePlayersNames'])->name('update-player-names');
 
   Route::get('fixture/ajax/{id}', [FixtureController::class, 'ajax'])->name('fixture.ajax');
   Route::get('fixture/rounds', [FixtureController::class, 'rounds'])->name('fixture.rounds');

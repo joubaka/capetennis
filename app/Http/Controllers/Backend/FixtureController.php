@@ -45,10 +45,8 @@ class FixtureController extends Controller
    */
   public function updatePlayersNames(Request $request, $id)
   {
-    $draw = Draw::find($id);
-    if ($draw) {
-      $this->authorize('fixture.update', $draw);
-    }
+    $draw = Draw::findOrFail($id);
+    $this->authorize('fixture.update', $draw);
 
     $feedback = [];
 

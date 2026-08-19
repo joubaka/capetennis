@@ -40,9 +40,9 @@
         <div class="btn-group" role="group" aria-label="Candidate merge filter">
           <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption])) }}"
              class="btn btn-sm {{ $mergeFilter === 'all' ? 'btn-primary' : 'btn-outline-primary' }}">All candidates</a>
-          <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption, 'merge_filter' => 'ranking_auto'])) }}"
-             class="btn btn-sm {{ $mergeFilter === 'ranking_auto' ? 'btn-warning' : 'btn-outline-warning' }}">
-            <i class="ti ti-refresh me-1"></i>Auto-resolvable rankings
+          <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption, 'merge_filter' => 'auto_resolvable'])) }}"
+             class="btn btn-sm {{ in_array($mergeFilter, ['auto_resolvable', 'ranking_auto'], true) ? 'btn-warning' : 'btn-outline-warning' }}">
+            <i class="ti ti-wand me-1"></i>Can resolve automatically
           </a>
         </div>
         <form method="GET" action="{{ route('superadmin.player-duplicates.index') }}" class="d-flex align-items-end gap-2">

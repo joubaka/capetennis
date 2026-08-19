@@ -92,22 +92,43 @@ class PlayerDuplicateService
     {
         $query = $this->candidatePairQuery($includeReviewed);
 
-        if ($filter === 'ranking_auto') {
+        if (in_array($filter, ['auto_resolvable', 'ranking_auto'], true)) {
             $scanLimit = 1000;
             $rows = $query->orderBy('first_player_id')->orderBy('second_player_id')
                 ->limit($scanLimit + 1)->get();
             if ($rows->count() > $scanLimit) {
                 throw ValidationException::withMessages([
-                    'filter' => "More than {$scanLimit} duplicate pairs exist. Review or dismiss older candidates before running the ranking auto-resolution filter.",
+                    'filter' => "More than {$scanLimit} duplicate pairs exist. Review or dismiss older candidates before running the automatic-resolution filter.",
                 ]);
             }
 
-            $eligibleKeys = $this->rankingAutoResolvablePairKeys($rows);
+            $rankingKeys = $this->rankingAutoResolvablePairKeys($rows);
+            $registrationKeys = $this->registrationOverlapCandidatePairKeys($rows);
+            $eligibleKeys = $rankingKeys->merge($registrationKeys);
             $rows = $rows->filter(fn ($pair) => $eligibleKeys->has(
                 $this->candidatePairKey($pair->first_player_id, $pair->second_player_id)
             ))->values();
-            $hydratedRows = $this->hydrateCandidateRows($rows, $eligibleKeys)
-                ->filter(fn ($pair) => $this->recommendedCandidateIsMergeable($pair))
+            $hydratedRows = $this->hydrateCandidateRows($rows, $rankingKeys)
+                ->filter(function ($pair) use ($rankingKeys, $registrationKeys) {
+                    /** @var Player $first */
+                    $first = $pair->first['player'];
+                    /** @var Player $second */
+                    $second = $pair->second['player'];
+                    $keep = $pair->recommended_keep_id === $first->id ? $first : $second;
+                    $remove = $keep->is($first) ? $second : $first;
+                    $key = $this->candidatePairKey($first->id, $second->id);
+                    if ($rankingKeys->has($key)) {
+                        return $this->recommendedCandidateIsMergeable($pair);
+                    }
+
+                    if (! $registrationKeys->has($key)) {
+                        return false;
+                    }
+
+                    $resolutions = $this->autoResolvableRegistrationOverlaps($keep, $remove);
+
+                    return $resolutions !== [] && $this->collisionBlockers($keep, $remove, $resolutions) === [];
+                })
                 ->values();
             $page = LengthAwarePaginator::resolveCurrentPage();
             $pageRows = $hydratedRows->slice(($page - 1) * $perPage, $perPage)->values();
@@ -127,6 +148,114 @@ class PlayerDuplicateService
         $pairs->setCollection($this->hydrateCandidateRows($pairs->getCollection()));
 
         return $pairs;
+    }
+
+    /**
+     * Cheaply narrow the candidate set to likely paid-versus-abandoned pairs.
+     * The full result/refund/fixture safety analysis still runs afterwards.
+     */
+    private function registrationOverlapCandidatePairKeys(Collection $candidateRows): Collection
+    {
+        foreach (['player_registrations', 'category_event_registrations', 'registration_order_items', 'registration_orders'] as $table) {
+            if (! Schema::hasTable($table)) {
+                return collect();
+            }
+        }
+
+        if ($candidateRows->isEmpty()) {
+            return collect();
+        }
+
+        $candidateKeys = $candidateRows->mapWithKeys(fn ($pair) => [
+            $this->candidatePairKey($pair->first_player_id, $pair->second_player_id) => true,
+        ]);
+        $playerIds = $candidateRows->flatMap(fn ($pair) => [
+            (int) $pair->first_player_id, (int) $pair->second_player_id,
+        ])->unique()->values();
+
+        $query = DB::table('player_registrations as pr1')
+            ->join('category_event_registrations as cer1', 'cer1.registration_id', '=', 'pr1.registration_id')
+            ->join('category_event_registrations as cer2', function ($join) {
+                $join->on('cer2.category_event_id', '=', 'cer1.category_event_id')
+                    ->whereColumn('cer2.registration_id', '<>', 'cer1.registration_id');
+            })
+            ->join('player_registrations as pr2', function ($join) {
+                $join->on('pr2.registration_id', '=', 'cer2.registration_id')
+                    ->whereColumn('pr1.player_id', '<', 'pr2.player_id');
+            })
+            ->join('registration_order_items as roi1', function ($join) {
+                $join->on('roi1.registration_id', '=', 'cer1.registration_id')
+                    ->on('roi1.category_event_id', '=', 'cer1.category_event_id');
+            })
+            ->join('registration_orders as ro1', 'ro1.id', '=', 'roi1.order_id')
+            ->join('registration_order_items as roi2', function ($join) {
+                $join->on('roi2.registration_id', '=', 'cer2.registration_id')
+                    ->on('roi2.category_event_id', '=', 'cer2.category_event_id');
+            })
+            ->join('registration_orders as ro2', 'ro2.id', '=', 'roi2.order_id')
+            ->whereIn('pr1.player_id', $playerIds)
+            ->whereIn('pr2.player_id', $playerIds)
+            ->whereNotNull('cer1.user_id')
+            ->whereColumn('cer1.user_id', 'cer2.user_id')
+            ->where(function ($directions) {
+                $directions->where(function ($direction) {
+                    $this->whereRegistrationEntryAuthoritative($direction, 'cer1', 'ro1');
+                    $this->whereRegistrationEntryLooksAbandoned($direction, 'cer2', 'ro2');
+                })->orWhere(function ($direction) {
+                    $this->whereRegistrationEntryAuthoritative($direction, 'cer2', 'ro2');
+                    $this->whereRegistrationEntryLooksAbandoned($direction, 'cer1', 'ro1');
+                });
+            })
+            ->distinct()
+            ->get(['pr1.player_id as first_player_id', 'pr2.player_id as second_player_id']);
+
+        return $query->mapWithKeys(function ($pair) use ($candidateKeys) {
+            $key = $this->candidatePairKey($pair->first_player_id, $pair->second_player_id);
+
+            return $candidateKeys->has($key) ? [$key => true] : [];
+        });
+    }
+
+    private function whereRegistrationEntryAuthoritative($query, string $entry, string $order): void
+    {
+        $query->where(function ($paid) use ($entry, $order) {
+            $paid->where("{$entry}.payment_status_id", 1)
+                ->orWhereNotNull("{$entry}.pf_transaction_id")
+                ->orWhereNotNull("{$entry}.wallet_transaction_id")
+                ->orWhere("{$order}.pay_status", true)
+                ->orWhere("{$order}.payfast_paid", true)
+                ->orWhere("{$order}.wallet_debited", true)
+                ->orWhere("{$order}.wallet_reserved", '>', 0)
+                ->orWhereNotNull("{$order}.payfast_pf_payment_id")
+                ->orWhereNotNull("{$order}.wallet_transaction_id");
+        });
+    }
+
+    private function whereRegistrationEntryLooksAbandoned($query, string $entry, string $order): void
+    {
+        $query->where(function ($unpaid) use ($entry) {
+            $unpaid->whereNull("{$entry}.payment_status_id")->orWhere("{$entry}.payment_status_id", '<>', 1);
+        })->whereNull("{$entry}.pf_transaction_id")
+            ->whereNull("{$entry}.wallet_transaction_id")
+            ->where(function ($refund) use ($entry) {
+                $refund->whereNull("{$entry}.refund_status")->orWhereIn("{$entry}.refund_status", ['', 'not_refunded']);
+            })
+            ->where(function ($refund) use ($entry) {
+                $refund->whereNull("{$entry}.refund_gross")->orWhere("{$entry}.refund_gross", 0);
+            })
+            ->where(function ($refund) use ($entry) {
+                $refund->whereNull("{$entry}.refund_fee")->orWhere("{$entry}.refund_fee", 0);
+            })
+            ->where(function ($refund) use ($entry) {
+                $refund->whereNull("{$entry}.refund_net")->orWhere("{$entry}.refund_net", 0);
+            })
+            ->whereNull("{$entry}.refunded_at")
+            ->where("{$order}.pay_status", false)
+            ->where("{$order}.payfast_paid", false)
+            ->where("{$order}.wallet_debited", false)
+            ->where("{$order}.wallet_reserved", 0)
+            ->whereNull("{$order}.payfast_pf_payment_id")
+            ->whereNull("{$order}.wallet_transaction_id");
     }
 
     /** @return array<int, array{first_id:int, second_id:int}> */

@@ -57,14 +57,20 @@
                         @endforeach
                       </div>
                       <div class="text-muted mt-1">Series lifecycle: {{ collect($context['series_status_counts'])->map(fn($count, $status) => $status.': '.$count)->implode(', ') }}</div>
+                    @elseif(($context['type'] ?? null) === 'tournament_registration_overlap')
+                      <strong>{{ $context['event_name'] ?? 'Event #'.($context['event_id'] ?? 'unknown') }} / {{ $context['category_name'] ?? 'category #'.($context['category_id'] ?? 'unknown') }}</strong>
+                      <div class="text-muted">Category event #{{ $context['category_event_id'] }}</div>
+                      @foreach($context['entries'] ?? [] as $entry)
+                        <span class="badge bg-label-{{ $entry['paid'] ? 'warning' : 'secondary' }} me-1">registration #{{ $entry['registration_id'] }} · {{ $entry['status'] ?: 'blank' }}{{ $entry['paid'] ? ' · paid' : '' }}</span>
+                      @endforeach
                     @else
-                      <strong>Fixture #{{ $context['fixture_id'] ?: 'unknown' }}</strong>
-                      @if($context['event_id'])
-                        — Event #{{ $context['event_id'] }} {{ $context['event_name'] ?: 'Unnamed event' }}
+                      <strong>Fixture #{{ $context['fixture_id'] ?? 'unknown' }}</strong>
+                      @if($context['event_id'] ?? null)
+                        — Event #{{ $context['event_id'] }} {{ $context['event_name'] ?? 'Unnamed event' }}
                       @else
                         — no linked event
                       @endif
-                      <span class="badge bg-label-{{ $context['result_count'] > 0 ? 'danger' : 'secondary' }} ms-1">{{ $context['result_count'] }} result rows</span>
+                      <span class="badge bg-label-{{ ($context['result_count'] ?? 0) > 0 ? 'danger' : 'secondary' }} ms-1">{{ $context['result_count'] ?? 0 }} result rows</span>
                     @endif
                   </div>
                 @endforeach
