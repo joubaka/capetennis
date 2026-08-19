@@ -257,10 +257,11 @@ class DrawController extends Controller
         'individual_fixtures_deleted' => $counts[0],
         'team_fixtures_deleted' => $counts[1],
       ]);
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
+      report($e);
       return response()->json([
         'success' => false,
-        'message' => '❌ Error deleting draw: ' . $e->getMessage(),
+        'message' => 'The draw could not be deleted. No partial deletion was applied.',
       ], 500);
     }
   }

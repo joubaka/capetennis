@@ -6,6 +6,7 @@ use App\Domain\Draws\Guards\DrawGuard;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 /**
  * DrawPublicationService
@@ -26,10 +27,11 @@ final class DrawPublicationService
     {
         DrawGuard::requireGenerated($draw, 'publish');
 
-        $draw->published = true;
-        $draw->save();
-
-        DrawAuditLog::record($draw->id, 'published', null, ['published' => true]);
+        DB::transaction(function () use ($draw) {
+            $draw->published = true;
+            $draw->save();
+            DrawAuditLog::record($draw->id, 'published', null, ['published' => true]);
+        });
 
         Log::info('[DrawPublication] Draw published', ['draw_id' => $draw->id]);
     }
@@ -43,10 +45,11 @@ final class DrawPublicationService
     {
         DrawGuard::requireMutable($draw, 'unpublish');
 
-        $draw->published = false;
-        $draw->save();
-
-        DrawAuditLog::record($draw->id, 'unpublished', null, ['published' => false]);
+        DB::transaction(function () use ($draw) {
+            $draw->published = false;
+            $draw->save();
+            DrawAuditLog::record($draw->id, 'unpublished', null, ['published' => false]);
+        });
 
         Log::info('[DrawPublication] Draw unpublished', ['draw_id' => $draw->id]);
     }
