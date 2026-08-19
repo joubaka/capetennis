@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Bavix\Wallet\WalletConfigure;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\URL;
@@ -44,6 +45,10 @@ class AppServiceProvider extends ServiceProvider
    */
   public function register()
   {
+    // Cape Tennis owns its wallet schema and ledger migrations. Registering
+    // Bavix's bundled migrations would recreate/alter incompatible tables.
+    WalletConfigure::ignoreMigrations();
+
     // ✅ Override Fortify login redirect behaviour
     $this->app->singleton(LoginResponse::class, CustomLoginResponse::class);
 

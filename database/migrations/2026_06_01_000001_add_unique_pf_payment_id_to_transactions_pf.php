@@ -17,12 +17,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Guard: skip if index already present
-        $indexes = DB::select(
-            "SHOW INDEX FROM transactions_pf WHERE Key_name = 'transactions_pf_pf_payment_id_unique'"
-        );
-
-        if (!empty($indexes)) {
+        if (! Schema::hasTable('transactions_pf')
+            || ! Schema::hasColumn('transactions_pf', 'pf_payment_id')
+            || collect(Schema::getIndexes('transactions_pf'))->contains(
+                fn (array $index): bool => ($index['name'] ?? null) === 'transactions_pf_pf_payment_id_unique'
+            )) {
             return;
         }
 
