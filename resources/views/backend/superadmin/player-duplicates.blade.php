@@ -27,7 +27,7 @@
 
   <div class="alert alert-info d-flex gap-2 align-items-start">
     <i class="ti ti-shield-check fs-4"></i>
-    <div><strong>Protected bulk merging.</strong> Strong matches where only one profile has linked history can be selected and merged together with one Super Admin confirmation. The system never silently merges profiles; ambiguous matches, conflicting dates of birth, results, rankings or financial collisions stay blocked for review.</div>
+    <div><strong>Protected bulk merging.</strong> Select any candidate to use its recommended keep/remove plan, or review every quick candidate across all pages. Every selected plan is checked for identity, linked history, tournament results, rankings and financial collisions before confirmation.</div>
   </div>
 
   <form id="bulk-merge-selection" method="POST" action="{{ route('superadmin.player-duplicates.bulk-review') }}" class="card mb-4">
@@ -35,7 +35,7 @@
     <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3 py-3">
       <label class="form-check mb-0">
         <input class="form-check-input" type="checkbox" id="select-all-quick" autocomplete="off">
-        <span class="form-check-label"><strong>Select visible quick candidates</strong><span class="d-block small text-muted">Use the all-pages button to include every unreviewed quick match.</span></span>
+        <span class="form-check-label"><strong>Select all visible suggested plans</strong><span class="d-block small text-muted">Checked cards use the displayed “Recommended keep” direction. The all-pages button remains limited to quick candidates.</span></span>
       </label>
       <div class="d-flex flex-wrap gap-2">
         <button type="submit" id="review-all-merges" name="selection_scope" value="all" data-selection-scope="all" class="btn btn-primary">
@@ -69,11 +69,11 @@
           <span class="badge bg-label-primary ms-1">Recommended keep #{{ $pair->recommended_keep_id }}</span>
         </div>
         <div class="d-flex align-items-center gap-2">
+          <label class="form-check mb-0 me-1">
+            <input class="form-check-input js-bulk-pair" form="bulk-merge-selection" type="checkbox" name="pairs[]" value="{{ $first['player']->id }}:{{ $second['player']->id }}" autocomplete="off" aria-label="Use the suggested merge plan for profiles #{{ $first['player']->id }} and #{{ $second['player']->id }}">
+            <span class="form-check-label small">Use suggested</span>
+          </label>
           @if($pair->quick_merge)
-            <label class="form-check mb-0 me-1">
-              <input class="form-check-input js-bulk-pair" form="bulk-merge-selection" type="checkbox" name="pairs[]" value="{{ $first['player']->id }}:{{ $second['player']->id }}" autocomplete="off" aria-label="Select profiles #{{ $first['player']->id }} and #{{ $second['player']->id }} for bulk merge">
-              <span class="form-check-label small">Select</span>
-            </label>
             <span class="badge bg-label-primary"><i class="ti ti-bolt me-1"></i>Quick merge eligible</span>
           @endif
           @if($pair->decision)
@@ -224,6 +224,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (show) visible++;
     });
     emptyState.classList.toggle('d-none', visible > 0);
+    updateBulkSelection();
   });
 
   var pairCheckboxes = Array.from(document.querySelectorAll('.js-bulk-pair'));
@@ -237,15 +238,23 @@ document.addEventListener('DOMContentLoaded', function () {
   var progressPercent = document.getElementById('bulk-review-progress-percent');
   var progressLabel = document.getElementById('bulk-review-progress-label');
   var progressDetail = document.getElementById('bulk-review-progress-detail');
+  function visiblePairCheckboxes() {
+    return pairCheckboxes.filter(function (checkbox) {
+      var card = checkbox.closest('.duplicate-candidate-card');
+      return card && !card.classList.contains('d-none');
+    });
+  }
   function updateBulkSelection() {
     var count = pairCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+    var visibleCheckboxes = visiblePairCheckboxes();
+    var visibleChecked = visibleCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
     selectedCount.textContent = count;
     bulkButton.disabled = count === 0;
-    selectAll.checked = pairCheckboxes.length > 0 && count === pairCheckboxes.length;
-    selectAll.indeterminate = count > 0 && count < pairCheckboxes.length;
+    selectAll.checked = visibleCheckboxes.length > 0 && visibleChecked === visibleCheckboxes.length;
+    selectAll.indeterminate = visibleChecked > 0 && visibleChecked < visibleCheckboxes.length;
   }
   selectAll.addEventListener('change', function () {
-    pairCheckboxes.forEach(function (checkbox) { checkbox.checked = selectAll.checked; });
+    visiblePairCheckboxes().forEach(function (checkbox) { checkbox.checked = selectAll.checked; });
     updateBulkSelection();
   });
   pairCheckboxes.forEach(function (checkbox) {

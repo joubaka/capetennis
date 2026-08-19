@@ -16,7 +16,7 @@
 
   <div class="alert alert-warning d-flex gap-2 align-items-start">
     <i class="ti ti-alert-triangle fs-4"></i>
-    <div><strong>Unsafe pairs are skipped before confirmation.</strong> The remaining ready group is one atomic action: every ready pair is checked again before any profile is removed. If one of those changes or fails, none of the ready group is merged.</div>
+    <div><strong>Unsafe plans are skipped before confirmation.</strong> The remaining ready group follows the suggested keep/remove directions as one atomic action. Every plan is checked again before any profile is removed.</div>
   </div>
 
   @if($batch['skipped'])
@@ -79,7 +79,7 @@
     <div class="card-header text-success"><i class="ti ti-circle-check me-1"></i><strong>Ready to merge ({{ count($batch['analyses']) }})</strong></div>
     <div class="table-responsive">
       <table class="table align-middle mb-0">
-        <thead><tr><th>Keep canonical profile</th><th>Remove empty duplicate</th><th>History protected</th><th>Automatic profile values</th></tr></thead>
+        <thead><tr><th>Keep canonical profile</th><th>Merge and remove source</th><th>History protected</th><th>Automatic profile values</th></tr></thead>
         <tbody>
         @foreach($batch['analyses'] as $analysis)
           @php
@@ -96,7 +96,7 @@
                 <div class="small text-primary mt-1"><i class="ti ti-route me-1"></i>{{ $analysis['overlap_resolution'] }}</div>
               @endif
             </td>
-            <td><strong>#{{ $analysis['remove']->id }} {{ $analysis['remove']->full_name }}</strong><div class="small text-muted">No linked history</div></td>
+            <td><strong>#{{ $analysis['remove']->id }} {{ $analysis['remove']->full_name }}</strong><div class="small text-muted">{{ $analysis['impact']['remove']['usage_total'] }} linked records will move</div></td>
             <td>
               <span class="badge bg-label-primary">{{ $registrationHistoryCount }} registration/result references</span>
               <div class="small text-muted mt-1">Registration IDs, tournament results and ranking attribution remain attached to #{{ $analysis['keep']->id }}.</div>
@@ -117,6 +117,7 @@
 
   <form method="POST" action="{{ route('superadmin.player-duplicates.bulk-merge') }}" class="card">
     @csrf
+    <input type="hidden" name="batch_mode" value="{{ $batch['mode'] ?? 'quick' }}">
     <input type="hidden" name="batch_digest" value="{{ $batch['digest'] }}">
     @foreach($batch['analyses'] as $index => $analysis)
       <input type="hidden" name="pairs[{{ $index }}][first_id]" value="{{ min($analysis['keep']->id, $analysis['remove']->id) }}">

@@ -435,6 +435,7 @@ class PlayerDuplicateService
 
         $readyAnalyses = $eligibleIndexes()->map(fn (int $index) => $items[$index]['analysis'])->values();
         $batch = $this->batchPayload($readyAnalyses);
+        $batch['mode'] = 'quick';
         $batch['selected_count'] = $items->count();
         $batch['skipped'] = $items->filter(fn (array $item) => $item['reasons'] !== [])
             ->map(function (array $item) {
@@ -555,6 +556,134 @@ class PlayerDuplicateService
         }
 
         return collect($batch)->only(['analyses', 'digest', 'confirmation_phrase'])->all();
+    }
+
+    /** @param array<int, array{first_id:int, second_id:int}> $pairs */
+    public function plannedMergeBatchReview(array $pairs): array
+    {
+        if ($pairs === []) {
+            throw ValidationException::withMessages(['pairs' => 'Select at least one suggested merge.']);
+        }
+
+        $items = collect($pairs)->map(function (array $pair) {
+            $first = Player::find((int) $pair['first_id']);
+            $second = Player::find((int) $pair['second_id']);
+            if (! $first || ! $second) {
+                return ['pair' => $pair, 'analysis' => null, 'reasons' => ['One or both profiles no longer exist.']];
+            }
+
+            try {
+                $keep = $this->recommendedKeep($first, $second);
+                $remove = $keep->is($first) ? $second : $first;
+                $analysis = $this->analyze($keep, $remove);
+
+                return [
+                    'pair' => $pair,
+                    'analysis' => $analysis,
+                    'reasons' => collect($analysis['blockers'])->pluck('message')->unique()->values()->all(),
+                ];
+            } catch (ValidationException $exception) {
+                return [
+                    'pair' => $pair,
+                    'analysis' => null,
+                    'reasons' => collect($exception->errors())->flatten()->unique()->values()->all(),
+                ];
+            }
+        })->values();
+
+        $eligible = fn () => $items->keys()->filter(
+            fn (int $index) => $items[$index]['analysis'] !== null && $items[$index]['reasons'] === []
+        );
+        $eligible()->groupBy(fn (int $index) => $items[$index]['analysis']['remove']->id)
+            ->filter(fn (Collection $indexes) => $indexes->count() > 1)
+            ->each(fn (Collection $indexes) => $this->rejectPlannedIndexes(
+                $items, $indexes, 'The same source profile appears in more than one selected plan.'
+            ));
+        $eligible()->groupBy(fn (int $index) => $items[$index]['analysis']['keep']->id)
+            ->filter(fn (Collection $indexes) => $indexes->count() > 1)
+            ->each(fn (Collection $indexes) => $this->rejectPlannedIndexes(
+                $items, $indexes, 'Multiple history-bearing profiles target the same canonical profile. Merge this cluster one step at a time.'
+            ));
+        $active = $eligible();
+        $removeIds = $active->map(fn (int $index) => $items[$index]['analysis']['remove']->id);
+        $mixedIds = $active->map(fn (int $index) => $items[$index]['analysis']['keep']->id)
+            ->intersect($removeIds)->unique();
+        foreach ($active as $index) {
+            $analysis = $items[$index]['analysis'];
+            if ($mixedIds->contains($analysis['keep']->id) || $mixedIds->contains($analysis['remove']->id)) {
+                $this->rejectPlannedIndexes(
+                    $items, collect([$index]), 'A profile cannot be retained in one selected plan and removed in another.'
+                );
+            }
+        }
+
+        $batch = $this->batchPayload($eligible()->map(fn (int $index) => $items[$index]['analysis'])->values());
+        $batch['mode'] = 'planned';
+        $batch['selected_count'] = $items->count();
+        $batch['skipped'] = $items->filter(fn (array $item) => $item['reasons'] !== [])
+            ->map(fn (array $item) => [
+                'first_id' => (int) $item['pair']['first_id'],
+                'second_id' => (int) $item['pair']['second_id'],
+                'keep' => $item['analysis']['keep'] ?? null,
+                'remove' => $item['analysis']['remove'] ?? null,
+                'reasons' => $item['reasons'],
+                'contexts' => $item['analysis']
+                    ? collect($item['analysis']['blockers'])->flatMap(fn (array $blocker) => $blocker['contexts'] ?? [])->values()->all()
+                    : [],
+            ])->values()->all();
+
+        return $batch;
+    }
+
+    private function rejectPlannedIndexes(Collection $items, Collection $indexes, string $reason): void
+    {
+        foreach ($indexes as $index) {
+            $item = $items->get($index);
+            $item['reasons'][] = $reason;
+            $items->put($index, $item);
+        }
+    }
+
+    /** @param array<int, array{first_id:int, second_id:int}> $pairs */
+    public function plannedMergeBatchAnalysis(array $pairs): array
+    {
+        $batch = $this->plannedMergeBatchReview($pairs);
+        if ($batch['skipped'] !== []) {
+            throw ValidationException::withMessages(['pairs' => 'One or more suggested plans are no longer safe. Review the refreshed selection.']);
+        }
+
+        return collect($batch)->only(['analyses', 'digest', 'confirmation_phrase'])->all();
+    }
+
+    /** @param array<int, array{first_id:int, second_id:int}> $pairs */
+    public function mergePlannedBatch(array $pairs, User $approvedBy, string $expectedDigest, string $reason): int
+    {
+        $this->assertTransactionalStorage([
+            'players', 'user_players', 'player_merge_audits', 'player_duplicate_decisions', 'activity_log',
+            ...array_keys($this->availableReferences()),
+        ]);
+
+        return DB::transaction(function () use ($pairs, $approvedBy, $expectedDigest, $reason) {
+            $playerIds = collect($pairs)->flatMap(fn (array $pair) => [$pair['first_id'], $pair['second_id']])
+                ->unique()->sort()->values();
+            Player::whereIn('id', $playerIds)->orderBy('id')->lockForUpdate()->get();
+            $batch = $this->plannedMergeBatchAnalysis($pairs);
+            if (! hash_equals($batch['digest'], $expectedDigest)) {
+                throw ValidationException::withMessages([
+                    'confirmation' => 'One or more profiles or linked records changed after review. Nothing was merged.',
+                ]);
+            }
+
+            foreach ($batch['analyses'] as $analysis) {
+                $fieldSources = collect($analysis['fields'])
+                    ->mapWithKeys(fn (array $field, string $name) => [$name => $field['recommended']])->all();
+                $this->executeAnalyzedMerge(
+                    $analysis['keep'], $analysis['remove'], $approvedBy, $fieldSources, $analysis, $reason
+                );
+            }
+
+            return count($batch['analyses']);
+        }, 3);
     }
 
     /**
@@ -780,87 +909,98 @@ class PlayerDuplicateService
                 ]);
             }
 
-            $keptBefore = $this->playerSnapshot($keep);
-            $removedSnapshot = $this->playerSnapshot($remove);
-            $manifest = [];
-            $sourceUserIds = $this->sourceUserIds($remove);
+            return $this->executeAnalyzedMerge($keep, $remove, $approvedBy, $fieldSources, $analysis, $reason);
+        }, 3);
+    }
 
-            foreach ($sourceUserIds as $userId) {
-                if (! DB::table('user_players')->where(['user_id' => $userId, 'player_id' => $keep->id])->exists()) {
-                    DB::table('user_players')->insert([
-                        'user_id' => $userId, 'player_id' => $keep->id, 'created_at' => now(), 'updated_at' => now(),
-                    ]);
-                }
-            }
-            $removedOwnerLinks = DB::table('user_players')->where('player_id', $remove->id)->count();
-            DB::table('user_players')->where('player_id', $remove->id)->delete();
-            $manifest['user_players'] = [
-                'transferred_user_ids' => $sourceUserIds->values()->all(),
-                'removed_source_links' => $removedOwnerLinks,
-            ];
+    private function executeAnalyzedMerge(
+        Player $keep,
+        Player $remove,
+        User $approvedBy,
+        array $fieldSources,
+        array $analysis,
+        string $reason
+    ): Player {
+        $keptBefore = $this->playerSnapshot($keep);
+        $removedSnapshot = $this->playerSnapshot($remove);
+        $manifest = [];
+        $sourceUserIds = $this->sourceUserIds($remove);
 
-            foreach ($this->availableReferences() as $table => $columns) {
-                foreach ($columns as $column) {
-                    $query = DB::table($table)->where($column, $remove->id);
-                    $rowIds = Schema::hasColumn($table, 'id')
-                        ? (clone $query)->pluck('id')->map(fn ($id) => (int) $id)->all()
-                        : [];
-                    $count = $query->update([$column => $keep->id]);
-                    if ($count > 0) {
-                        $manifest[$table][$column] = ['count' => $count, 'row_ids' => $rowIds];
-                    }
-                }
-            }
-
-            foreach (self::PROFILE_FIELDS as $field) {
-                $source = $fieldSources[$field] ?? $analysis['fields'][$field]['recommended'];
-                if ($source === 'remove') {
-                    $keep->{$field} = $remove->{$field};
-                }
-            }
-            if (! $keep->userId && $remove->userId) {
-                $keep->userId = $remove->userId;
-            }
-            $keep->profile_complete = $keep->isProfileComplete();
-            $keep->save();
-
-            $remaining = $this->usage($remove->id);
-            if (array_sum($remaining) > 0 || DB::table('user_players')->where('player_id', $remove->id)->exists()) {
-                throw ValidationException::withMessages([
-                    'remove_player_id' => 'The source profile still has linked records. Nothing was deleted; the reference registry must be updated before retrying.',
+        foreach ($sourceUserIds as $userId) {
+            if (! DB::table('user_players')->where(['user_id' => $userId, 'player_id' => $keep->id])->exists()) {
+                DB::table('user_players')->insert([
+                    'user_id' => $userId, 'player_id' => $keep->id, 'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
+        }
+        $removedOwnerLinks = DB::table('user_players')->where('player_id', $remove->id)->count();
+        DB::table('user_players')->where('player_id', $remove->id)->delete();
+        $manifest['user_players'] = [
+            'transferred_user_ids' => $sourceUserIds->values()->all(),
+            'removed_source_links' => $removedOwnerLinks,
+        ];
 
-            $remove->delete();
-            PlayerMergeAudit::create([
-                'kept_player_id' => $keep->id,
-                'removed_player_id' => $removedSnapshot['id'],
-                'approved_by' => $approvedBy->id,
-                'reason' => $reason,
-                'status' => 'completed',
-                'kept_before_snapshot' => $keptBefore,
-                'removed_snapshot' => $removedSnapshot,
-                'field_resolutions' => collect(self::PROFILE_FIELDS)
-                    ->mapWithKeys(fn ($field) => [$field => $fieldSources[$field] ?? $analysis['fields'][$field]['recommended']])->all(),
-                'impact_snapshot' => $this->serializableImpact($analysis['impact']),
-                'change_manifest' => $manifest,
-                'merged_at' => now(),
+        foreach ($this->availableReferences() as $table => $columns) {
+            foreach ($columns as $column) {
+                $query = DB::table($table)->where($column, $remove->id);
+                $rowIds = Schema::hasColumn($table, 'id')
+                    ? (clone $query)->pluck('id')->map(fn ($id) => (int) $id)->all()
+                    : [];
+                $count = $query->update([$column => $keep->id]);
+                if ($count > 0) {
+                    $manifest[$table][$column] = ['count' => $count, 'row_ids' => $rowIds];
+                }
+            }
+        }
+
+        foreach (self::PROFILE_FIELDS as $field) {
+            $source = $fieldSources[$field] ?? $analysis['fields'][$field]['recommended'];
+            if ($source === 'remove') {
+                $keep->{$field} = $remove->{$field};
+            }
+        }
+        if (! $keep->userId && $remove->userId) {
+            $keep->userId = $remove->userId;
+        }
+        $keep->profile_complete = $keep->isProfileComplete();
+        $keep->save();
+
+        $remaining = $this->usage($remove->id);
+        if (array_sum($remaining) > 0 || DB::table('user_players')->where('player_id', $remove->id)->exists()) {
+            throw ValidationException::withMessages([
+                'remove_player_id' => 'The source profile still has linked records. Nothing was deleted; the reference registry must be updated before retrying.',
             ]);
+        }
 
-            PlayerDuplicateDecision::query()
-                ->where('first_player_id', $remove->id)->orWhere('second_player_id', $remove->id)->delete();
+        $remove->delete();
+        PlayerMergeAudit::create([
+            'kept_player_id' => $keep->id,
+            'removed_player_id' => $removedSnapshot['id'],
+            'approved_by' => $approvedBy->id,
+            'reason' => $reason,
+            'status' => 'completed',
+            'kept_before_snapshot' => $keptBefore,
+            'removed_snapshot' => $removedSnapshot,
+            'field_resolutions' => collect(self::PROFILE_FIELDS)
+                ->mapWithKeys(fn ($field) => [$field => $fieldSources[$field] ?? $analysis['fields'][$field]['recommended']])->all(),
+            'impact_snapshot' => $this->serializableImpact($analysis['impact']),
+            'change_manifest' => $manifest,
+            'merged_at' => now(),
+        ]);
 
-            activity('player-profile-merge')->causedBy($approvedBy)->performedOn($keep)
-                ->withProperties([
-                    'kept_player_id' => $keep->id,
-                    'removed_player' => $removedSnapshot,
-                    'transferred_user_ids' => $sourceUserIds->values()->all(),
-                    'reason' => $reason,
-                    'change_manifest' => $manifest,
-                ])->log('Duplicate player profile merged');
+        PlayerDuplicateDecision::query()
+            ->where('first_player_id', $remove->id)->orWhere('second_player_id', $remove->id)->delete();
 
-            return $keep->refresh();
-        }, 3);
+        activity('player-profile-merge')->causedBy($approvedBy)->performedOn($keep)
+            ->withProperties([
+                'kept_player_id' => $keep->id,
+                'removed_player' => $removedSnapshot,
+                'transferred_user_ids' => $sourceUserIds->values()->all(),
+                'reason' => $reason,
+                'change_manifest' => $manifest,
+            ])->log('Duplicate player profile merged');
+
+        return $keep->refresh();
     }
 
     /** @param array<int, string> $tables */

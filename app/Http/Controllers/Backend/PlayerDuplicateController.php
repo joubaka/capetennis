@@ -67,9 +67,11 @@ class PlayerDuplicateController extends Controller
             $pairs = $this->parsePairTokens($validated['pairs']);
         }
 
-        return view('backend.superadmin.player-duplicate-bulk-review', [
-            'batch' => $duplicates->quickMergeBatchReview($pairs),
-        ]);
+        $batch = (($scope['selection_scope'] ?? 'page') === 'all')
+            ? $duplicates->quickMergeBatchReview($pairs)
+            : $duplicates->plannedMergeBatchReview($pairs);
+
+        return view('backend.superadmin.player-duplicate-bulk-review', compact('batch'));
     }
 
     public function bulkMerge(Request $request, PlayerDuplicateService $duplicates): RedirectResponse
@@ -81,6 +83,7 @@ class PlayerDuplicateController extends Controller
             'batch_digest' => ['required', 'string', 'size:64'],
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'confirmation' => ['required', 'string', 'max:100'],
+            'batch_mode' => ['required', Rule::in(['quick', 'planned'])],
         ]);
 
         $pairs = collect($validated['pairs'])->map(fn (array $pair) => [
@@ -92,19 +95,22 @@ class PlayerDuplicateController extends Controller
                 'pairs' => 'Each merge must contain two different player profiles.',
             ]);
         }
-        $batch = $duplicates->quickMergeBatchAnalysis($pairs);
+        $batch = $validated['batch_mode'] === 'planned'
+            ? $duplicates->plannedMergeBatchAnalysis($pairs)
+            : $duplicates->quickMergeBatchAnalysis($pairs);
         if (! hash_equals($batch['confirmation_phrase'], trim($validated['confirmation']))) {
             return back()->withInput()->withErrors([
                 'confirmation' => "Type exactly: {$batch['confirmation_phrase']}",
             ]);
         }
 
-        $merged = $duplicates->mergeQuickBatch(
-            $pairs,
-            $request->user(),
-            $validated['batch_digest'],
-            $validated['reason'],
-        );
+        $merged = $validated['batch_mode'] === 'planned'
+            ? $duplicates->mergePlannedBatch(
+                $pairs, $request->user(), $validated['batch_digest'], $validated['reason']
+            )
+            : $duplicates->mergeQuickBatch(
+                $pairs, $request->user(), $validated['batch_digest'], $validated['reason']
+            );
 
         return redirect()->route('superadmin.player-duplicates.index')
             ->with('success', $merged === 1

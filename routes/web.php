@@ -109,12 +109,6 @@ Route::post('audit/interactions', [\App\Http\Controllers\AuditInteractionControl
 Route::get('/pages/misc-error', $controller_path . '\pages\MiscError@index')->name('pages-misc-error');
 
 //schedule controller
-Route::post('schedule/create', [ScheduleController::class, 'create'])
-  ->middleware('auth')->name('schedule.create');
-Route::get('schedule/save', [ScheduleController::class, 'save'])
-  ->middleware('auth')->name('schedule.save');
-Route::get('schedule/update/time', [ScheduleController::class, 'updateFixtureSchedule'])
-  ->middleware('auth')->name('schedule.update.time');
 
 // authentication
 Route::get('/auth/login-basic', $controller_path . '\authentications\LoginBasic@index')->name('auth-login-basic');
@@ -1461,8 +1455,8 @@ Route::delete(
   Route::get('draw/index/{id}', [DrawController::class, 'draw_index'])->name('event.draw.index');
   Route::get('draw/getPdf/{id}', [DrawController::class, 'getPDF'])->name('event.draw.get.pdf');
   Route::get('draw/ajax/venues/{eventId}', [DrawController::class, 'getAjaxVenues'])->name('get.ajax.venues');
-  Route::get('draw/venue/add/{drawId}', [DrawController::class, 'addVenueDraw'])->name('add.venue.draw');
-  Route::get('draw/venue/remove/{drawId}', [DrawController::class, 'removeVenueDraw'])->name('remove.venue.draw');
+  Route::post('draw/venue/add/{drawId}', [DrawController::class, 'addVenueDraw'])->name('add.venue.draw');
+  Route::delete('draw/venue/remove/{drawId}', [DrawController::class, 'removeVenueDraw'])->name('remove.venue.draw');
 
   Route::post('draw/{event}/create', [DrawController::class, 'createDraw'])
     ->name('backend.draw.create');
@@ -1470,13 +1464,12 @@ Route::delete(
 
 
 
-  Route::get('/draws/{drawid}/players', [DrawController::class, 'getDrawPlayers']);
-  Route::post('/draws/import-category', [DrawController::class, 'importFromCategory']);
-  Route::post('/draws/add-player', [DrawController::class, 'addPlayerDraw']);
+  Route::post('/draws/{draw}/import-category', [DrawController::class, 'importFromCategory'])->name('draws.import-category');
+  Route::post('/draws/{draw}/add-player', [DrawController::class, 'addPlayerDraw'])->name('draws.add-player');
   Route::get('/admin/draws/{id}/preview', [DrawController::class, 'getDrawPreview']);
 
   Route::post('/admin/draws/remove-player', [DrawController::class, 'removePlayer'])->name('admin.draws.removePlayer');
-  Route::get('/draws/clear-all-players', [DrawController::class, 'clearPlayers'])->name('draws.clear-players');
+  Route::delete('/draws/clear-all-players', [DrawController::class, 'clearPlayers'])->name('draws.clear-players');
   Route::get('/draws/box-matrix/{draw}/{box}', [DrawController::class, 'getBoxMatrix'])->name('draw.box.matrix');
   Route::get('/draws/box-matrix/{draw}', [DrawController::class, 'boxMatrix'])->name('draw.box.matrix.single');
   Route::get('/draw/{draw}/group-standings', [DrawController::class, 'groupStandings']);

@@ -1,6 +1,11 @@
+@php
+  $auditInteractionEndpoint = \Illuminate\Support\Facades\Route::has('audit.interactions.store')
+    ? route('audit.interactions.store')
+    : null;
+@endphp
 <script>
 (() => {
-  const endpoint = @json(route('audit.interactions.store'));
+  const endpoint = @json($auditInteractionEndpoint);
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   if (!endpoint || !csrf || !navigator.sendBeacon) return;
 

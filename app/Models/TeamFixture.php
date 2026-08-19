@@ -32,6 +32,9 @@ class TeamFixture extends Model
     'age',
     'scheduled',
     'scheduled_at',
+    'venue_id',
+    'court_label',
+    'duration_min',
     // v2 rubber fields
     'team_tie_id',
     'rubber_sequence',
@@ -141,12 +144,26 @@ class TeamFixture extends Model
    * ---------------------- */
   public function homeTeam()
   {
-    return $this->belongsTo(Team::class, 'home_team_id');
+    return $this->hasOneThrough(
+      Team::class,
+      TeamTie::class,
+      'id',
+      'id',
+      'team_tie_id',
+      'home_team_id'
+    );
   }
 
   public function awayTeam()
   {
-    return $this->belongsTo(Team::class, 'away_team_id');
+    return $this->hasOneThrough(
+      Team::class,
+      TeamTie::class,
+      'id',
+      'id',
+      'team_tie_id',
+      'away_team_id'
+    );
   }
 
   public function teamTie()

@@ -26,7 +26,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="m-0">Fixtures HQ{{ isset($event) ? ' — '.$event->name : '' }}</h4>
     <div>
-      <a href="{{ route('backend.team-fixtures.create') }}" class="btn btn-outline-secondary">Full Create Page</a>
+      <a href="{{ route('backend.team-fixtures.create') }}" class="btn btn-outline-secondary">Create Rubber</a>
     </div>
   </div>
 
@@ -83,12 +83,12 @@
 
         <div class="col-md-2">
           <label class="form-label">Round</label>
-          <input name="round_nr" class="form-control" />
+          <input name="round_nr" type="number" min="1" value="1" class="form-control" required />
         </div>
 
         <div class="col-md-2">
           <label class="form-label">Tie</label>
-          <input name="tie_nr" class="form-control" />
+          <input name="tie_nr" type="number" min="1" value="1" class="form-control" required />
         </div>
 
         <div class="col-md-2">
@@ -122,8 +122,8 @@
               <td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
               <td>{{ $fx->round_nr ?? '—' }}</td>
               <td>{{ $fx->tie_nr ?? '—' }}</td>
-              <td>{{ $fx->team1->pluck('name')->implode(' + ') ?: 'TBD' }}</td>
-              <td>{{ $fx->team2->pluck('name')->implode(' + ') ?: 'TBD' }}</td>
+              <td>{{ $fx->teamTie?->homeTeam?->name ?? 'Legacy / TBD' }}</td>
+              <td>{{ $fx->teamTie?->awayTeam?->name ?? 'Legacy / TBD' }}</td>
               <td class="scheduled">
                 {{ $fx->scheduled_at ? \Carbon\Carbon::parse($fx->scheduled_at)->format('Y-m-d H:i') : '—' }}
               </td>
@@ -135,8 +135,8 @@
                   <button type="button"
                           class="btn btn-sm btn-primary open-score-modal"
                           data-id="{{ $fx->id }}"
-                          data-home="{{ $fx->team1->pluck('name')->implode(' + ') }}"
-                          data-away="{{ $fx->team2->pluck('name')->implode(' + ') }}"
+                          data-home="{{ $fx->teamTie?->homeTeam?->name ?? 'Home' }}"
+                          data-away="{{ $fx->teamTie?->awayTeam?->name ?? 'Away' }}"
                           data-bs-toggle="modal"
                           data-bs-target="#scoreModal">
                     Insert Scores

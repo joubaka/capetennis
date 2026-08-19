@@ -121,7 +121,7 @@ $(function () {
 
     $.ajax({
       url: url,
-      method: 'GET',
+      method: 'DELETE',
       headers: { 'X-CSRF-TOKEN': csrf },
       data: { draw_id: drawId },
       success: function (data) {

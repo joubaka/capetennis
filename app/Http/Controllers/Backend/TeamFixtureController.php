@@ -9,6 +9,7 @@ use App\Models\Draw;
 use App\Models\Player;
 use App\Models\Venue;
 use App\Models\Team;
+use App\Models\TeamTie;
 use App\Models\TeamFixturePlayer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +18,9 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Models\NoProfileTeamPlayer;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
+use App\Domain\Draws\Guards\DrawGuard;
 
 class TeamFixtureController extends Controller
 {
@@ -150,11 +153,14 @@ class TeamFixtureController extends Controller
 
     $draws = $event->draws()->orderBy('id')->get(['id', 'drawName']);
     // collect teams across regions for this event (if teams are region-scoped)
-    $teams = Team::whereIn('region_id', $event->regions->pluck('id'))->orderBy('name')->get(['id', 'name']);
+    $teams = Team::where(function ($query) use ($event) {
+      $query->whereHas('category', fn($category) => $category->where('event_id', $event->id))
+        ->orWhereIn('region_id', $event->regions->pluck('id'));
+    })->orderBy('name')->get(['id', 'name']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
 
     // fixtures belonging to any draw of this event
-    $fixtures = TeamFixture::with(['draw', 'team1', 'team2', 'venue'])
+    $fixtures = TeamFixture::with(['draw', 'team1', 'team2', 'venue', 'teamTie.homeTeam', 'teamTie.awayTeam'])
       ->whereIn('draw_id', $draws->pluck('id'))
       ->orderBy('scheduled_at', 'asc')
       ->get();
@@ -187,20 +193,20 @@ class TeamFixtureController extends Controller
       'draw_id' => 'required|integer|exists:draws,id',
       'home_team_id' => 'required|integer|exists:teams,id',
       'away_team_id' => 'required|integer|exists:teams,id|different:home_team_id',
-      'round_nr' => 'nullable',
-      'tie_nr' => 'nullable',
+      'round_nr' => 'required|integer|min:1',
+      'tie_nr' => 'required|integer|min:1',
       'scheduled_at' => 'nullable|date',
       'venue_id' => 'nullable|integer|exists:venues,id',
       'court_label' => 'nullable|string|max:50',
       'duration_min' => 'nullable|integer|min:10|max:480',
-      'fixture_type' => 'nullable|string|max:20',
+      'fixture_type' => 'nullable|integer|in:1,2,3,4',
     ]);
 
-    $fx = new TeamFixture();
-    $fx->draw_id = $validated['draw_id'];
-    // Authorize against the draw before creating the fixture
     $draw = \App\Models\Draw::findOrFail($validated['draw_id']);
     $this->authorize('team-fixture.update', $draw);
+    DrawGuard::requireMutable($draw, 'create team fixture');
+    DrawGuard::requireUnpublished($draw, 'create team fixture');
+
     $teamEventIds = Team::whereIn('id', [
       $validated['home_team_id'],
       $validated['away_team_id'],
@@ -212,18 +218,57 @@ class TeamFixtureController extends Controller
         'home_team_id' => 'Both teams must belong to the draw event.',
       ])->withInput();
     }
-    // store team ids as expected by model fields (field names may vary per schema)
-    $fx->team1_ids = $validated['home_team_id'];
-    $fx->team2_ids = $validated['away_team_id'];
-    $fx->round_nr = $validated['round_nr'] ?? null;
-    $fx->tie_nr = $validated['tie_nr'] ?? null;
-    $fx->scheduled_at = $validated['scheduled_at'] ?? null;
-    $fx->venue_id = $validated['venue_id'] ?? null;
-    $fx->court_label = $validated['court_label'] ?? null;
-    $fx->duration_min = $validated['duration_min'] ?? null;
-    $fx->fixture_type = $validated['fixture_type'] ?? null;
-    $fx->scheduled = $fx->scheduled_at ? 1 : 0;
-    $fx->save();
+
+    $fx = DB::transaction(function () use ($validated, $draw) {
+      $tieNumberInUse = TeamTie::where('draw_id', $draw->id)
+        ->where('round_nr', $validated['round_nr'])
+        ->where('tie_nr', $validated['tie_nr'])
+        ->where(function ($query) use ($validated) {
+          $query->where('home_team_id', '!=', $validated['home_team_id'])
+            ->orWhere('away_team_id', '!=', $validated['away_team_id']);
+        })->exists();
+
+      if ($tieNumberInUse) {
+        throw ValidationException::withMessages([
+          'tie_nr' => 'This tie number is already used by another pairing in the round.',
+        ]);
+      }
+
+      $tie = TeamTie::query()->firstOrCreate([
+        'draw_id' => $draw->id,
+        'round_nr' => $validated['round_nr'],
+        'home_team_id' => $validated['home_team_id'],
+        'away_team_id' => $validated['away_team_id'],
+      ], [
+        'tie_nr' => $validated['tie_nr'],
+        'status' => TeamTie::STATUS_DRAFT,
+      ]);
+
+      if ((int) $tie->tie_nr !== (int) $validated['tie_nr']) {
+        throw ValidationException::withMessages([
+          'tie_nr' => 'These teams already have a different tie number in this round.',
+        ]);
+      }
+
+      $tie = TeamTie::whereKey($tie->id)->lockForUpdate()->firstOrFail();
+      $sequence = ((int) $tie->rubbers()->max('rubber_sequence')) + 1;
+      $matchNr = ((int) TeamFixture::where('draw_id', $draw->id)->max('match_nr')) + 1;
+
+      return TeamFixture::create([
+        'draw_id' => $draw->id,
+        'team_tie_id' => $tie->id,
+        'round_nr' => $tie->round_nr,
+        'tie_nr' => $tie->tie_nr,
+        'match_nr' => $matchNr,
+        'rubber_sequence' => $sequence,
+        'fixture_type' => $validated['fixture_type'] ?? 1,
+        'scheduled_at' => $validated['scheduled_at'] ?? null,
+        'venue_id' => $validated['venue_id'] ?? null,
+        'court_label' => $validated['court_label'] ?? null,
+        'duration_min' => $validated['duration_min'] ?? null,
+        'scheduled' => empty($validated['scheduled_at']) ? 0 : 1,
+      ]);
+    });
 
     return redirect()
       ->route('backend.team-fixtures.admin', $fx->draw?->event?->id ?? null)
@@ -260,36 +305,7 @@ class TeamFixtureController extends Controller
     }
     $validated = $request->validate($rules);
 
-    foreach (range(1, 3) as $i) {
-      $home = $validated["set{$i}_home"] ?? null;
-      $away = $validated["set{$i}_away"] ?? null;
-
-      if ($home !== null || $away !== null) {
-        $winnerId = null;
-        $loserId = null;
-        if ($home > $away) {
-          $winnerId = 1;
-          $loserId = 2;
-        } elseif ($away > $home) {
-          $winnerId = 2;
-          $loserId = 1;
-        }
-
-        TeamFixtureResult::updateOrCreate(
-          ['team_fixture_id' => $team_fixture->id, 'set_nr' => $i],
-          [
-            'team1_score' => $home,
-            'team2_score' => $away,
-            'match_winner_id' => $winnerId,
-            'match_loser_id' => $loserId,
-          ]
-        );
-      } else {
-        TeamFixtureResult::where('team_fixture_id', $team_fixture->id)
-          ->where('set_nr', $i)
-          ->delete();
-      }
-    }
+    $this->persistResults($team_fixture, $validated);
 
     if ($request->ajax()) {
       $team_fixture->load('fixtureResults');
@@ -321,7 +337,7 @@ class TeamFixtureController extends Controller
 
   public function edit(TeamFixture $team_fixture)
   {
-    $this->authorize('team-fixture.view', $team_fixture);
+    $this->authorize('team-fixture.update', $team_fixture);
 
     $team_fixture->loadMissing(['homeTeam', 'awayTeam', 'venue']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
@@ -336,7 +352,12 @@ class TeamFixtureController extends Controller
   {
     $this->authorize('team-fixture.update', $team_fixture);
 
-    $rules = [];
+    $rules = [
+      'scheduled_at' => ['nullable', 'date'],
+      'venue_id' => ['nullable', 'integer', 'exists:venues,id'],
+      'court_label' => ['nullable', 'string', 'max:50'],
+      'duration_min' => ['nullable', 'integer', 'min:10', 'max:480'],
+    ];
     for ($i = 1; $i <= 3; $i++) {
       $rules["set{$i}_home"] = 'nullable|integer|min:0';
       $rules["set{$i}_away"] = 'nullable|integer|min:0';
@@ -344,37 +365,15 @@ class TeamFixtureController extends Controller
 
     $validated = $request->validate($rules);
 
-    foreach (range(1, 3) as $i) {
-      $home = $validated["set{$i}_home"] ?? null;
-      $away = $validated["set{$i}_away"] ?? null;
+    $team_fixture->update([
+      'scheduled_at' => $validated['scheduled_at'] ?? null,
+      'venue_id' => $validated['venue_id'] ?? null,
+      'court_label' => $validated['court_label'] ?? null,
+      'duration_min' => $validated['duration_min'] ?? null,
+      'scheduled' => empty($validated['scheduled_at']) ? 0 : 1,
+    ]);
 
-      if ($home !== null || $away !== null) {
-        $winnerId = null;
-        $loserId = null;
-
-        if ($home > $away) {
-          $winnerId = 1;
-          $loserId = 2;
-        } elseif ($away > $home) {
-          $winnerId = 2;
-          $loserId = 1;
-        }
-
-        TeamFixtureResult::updateOrCreate(
-          ['team_fixture_id' => $team_fixture->id, 'set_nr' => $i],
-          [
-            'team1_score' => $home,
-            'team2_score' => $away,
-            'match_winner_id' => $winnerId,
-            'match_loser_id' => $loserId,
-          ]
-        );
-      } else {
-        TeamFixtureResult::where('team_fixture_id', $team_fixture->id)
-          ->where('set_nr', $i)
-          ->delete();
-      }
-    }
+    $this->persistResults($team_fixture, $validated);
 
     if ($request->ajax()) {
       $team_fixture->load('fixtureResults');
@@ -444,14 +443,21 @@ class TeamFixtureController extends Controller
   {
     $this->authorize('team-fixture.update', $team_fixture);
 
-    if ($team_fixture->fixture_type === 'singles') {
+    $team_fixture->loadMissing('teamTie');
+    if (! $team_fixture->teamTie) {
+      return response()->json([
+        'message' => 'This legacy fixture has no team tie and cannot accept roster assignments.',
+      ], 422);
+    }
+
+    if ($team_fixture->isSingles()) {
       $rules = [
         'home_players' => 'array|max:1',
         'home_players.*' => 'integer|exists:players,id',
         'away_players' => 'array|max:1',
         'away_players.*' => 'integer|exists:players,id',
       ];
-    } elseif ($team_fixture->fixture_type === 'doubles') {
+    } elseif ($team_fixture->isDoubles()) {
       $rules = [
         'home_players' => 'array|max:2',
         'home_players.*' => 'integer|exists:players,id',
@@ -472,6 +478,19 @@ class TeamFixtureController extends Controller
     $homePlayers = $validated['home_players'] ?? [];
     $awayPlayers = $validated['away_players'] ?? [];
 
+    $validHome = DB::table('team_players')
+      ->where('team_id', $team_fixture->teamTie->home_team_id)
+      ->whereIn('player_id', $homePlayers)->pluck('player_id')->map(fn($id) => (int) $id)->all();
+    $validAway = DB::table('team_players')
+      ->where('team_id', $team_fixture->teamTie->away_team_id)
+      ->whereIn('player_id', $awayPlayers)->pluck('player_id')->map(fn($id) => (int) $id)->all();
+
+    if (array_diff($homePlayers, $validHome) || array_diff($awayPlayers, $validAway)) {
+      throw ValidationException::withMessages([
+        'home_players' => 'Every selected player must belong to the corresponding team roster.',
+      ]);
+    }
+
     // ✅ Delete using Eloquent (fires events)
     $team_fixture->fixturePlayers()->each(fn($p) => $p->delete());
 
@@ -480,6 +499,7 @@ class TeamFixtureController extends Controller
     for ($i = 0; $i < $max; $i++) {
         TeamFixturePlayer::create([
             'team_fixture_id' => $team_fixture->id,
+            'slot_no' => $i + 1,
             'team1_id' => $homePlayers[$i] ?? null,
             'team2_id' => $awayPlayers[$i] ?? null,
         ]);
@@ -506,8 +526,8 @@ class TeamFixtureController extends Controller
 
     return response()->json([
       'id' => $fixture->id,
-      'team1_ids' => $fixture->team1_ids ? explode(',', $fixture->team1_ids) : [],
-      'team2_ids' => $fixture->team2_ids ? explode(',', $fixture->team2_ids) : [],
+      'team1_ids' => $fixture->fixturePlayers()->whereNotNull('team1_id')->pluck('team1_id')->values(),
+      'team2_ids' => $fixture->fixturePlayers()->whereNotNull('team2_id')->pluck('team2_id')->values(),
     ]);
   }
 
@@ -1207,6 +1227,41 @@ class TeamFixtureController extends Controller
 
     // Non-AJAX: redirect back to caller head office page (preserve UX)
     return redirect()->route('headOffice.show', $data['event_id'])->with('success', $message);
+  }
+
+  private function persistResults(TeamFixture $fixture, array $validated): void
+  {
+    DB::transaction(function () use ($fixture, $validated) {
+      TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+
+      foreach (range(1, 3) as $setNumber) {
+        $home = $validated["set{$setNumber}_home"] ?? null;
+        $away = $validated["set{$setNumber}_away"] ?? null;
+        $results = TeamFixtureResult::where('team_fixture_id', $fixture->id)
+          ->where('set_nr', $setNumber)->orderBy('id')->get();
+
+        if ($home === null && $away === null) {
+          TeamFixtureResult::whereIn('id', $results->pluck('id'))->delete();
+          continue;
+        }
+
+        $result = $results->shift() ?? new TeamFixtureResult();
+        $result->fill([
+          'team_fixture_id' => $fixture->id,
+          'set_nr' => $setNumber,
+          'team1_score' => $home,
+          'team2_score' => $away,
+          // These legacy columns were historically populated with side numbers 1/2,
+          // even though they are named as entity IDs. Scores are the canonical source.
+          'match_winner_id' => null,
+          'match_loser_id' => null,
+        ])->save();
+
+        if ($results->isNotEmpty()) {
+          TeamFixtureResult::whereIn('id', $results->pluck('id'))->delete();
+        }
+      }
+    });
   }
 
   public function playerFixtures(Request $request): JsonResponse

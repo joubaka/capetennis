@@ -210,6 +210,7 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $payload = [
             'pairs' => $pairs,
             'batch_digest' => $batch['digest'],
+            'batch_mode' => 'quick',
             'reason' => 'Confirmed duplicate profiles in one reviewed batch.',
             'confirmation' => $batch['confirmation_phrase'],
         ];
@@ -247,6 +248,45 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         ])->assertOk()
             ->assertSee('26 selected: 26 ready and 0 skipped')
             ->assertSee('<code>MERGE</code>', false);
+    }
+
+    public function test_selected_two_history_candidate_uses_suggested_plan_in_one_bulk_confirmation(): void
+    {
+        $keep = Player::factory()->create([
+            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01', 'email' => 'same@example.test',
+        ]);
+        $remove = Player::factory()->create([
+            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01', 'email' => 'same@example.test',
+        ]);
+        foreach ([$keep, $remove] as $player) {
+            $registrationId = DB::table('registrations')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
+            DB::table('player_registrations')->insert([
+                'registration_id' => $registrationId, 'player_id' => $player->id,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $pairs = [['first_id' => $keep->id, 'second_id' => $remove->id]];
+        $batch = app(PlayerDuplicateService::class)->plannedMergeBatchAnalysis($pairs);
+
+        $this->actingAs($this->superUser)->post(route('superadmin.player-duplicates.bulk-review'), [
+            'pairs' => ["{$keep->id}:{$remove->id}"],
+            'selection_scope' => 'page',
+        ])->assertOk()
+            ->assertSee('1 selected: 1 ready and 0 skipped')
+            ->assertSee('name="batch_mode" value="planned"', false)
+            ->assertSee('1 linked records will move');
+
+        $this->actingAs($this->superUser)->post(route('superadmin.player-duplicates.bulk-merge'), [
+            'pairs' => $pairs,
+            'batch_digest' => $batch['digest'],
+            'batch_mode' => 'planned',
+            'reason' => 'Confirmed suggested merge plan after reviewing both histories.',
+            'confirmation' => 'MERGE',
+        ])->assertRedirect(route('superadmin.player-duplicates.index'));
+
+        $this->assertDatabaseMissing('players', ['id' => $remove->id]);
+        $this->assertDatabaseHas('player_registrations', ['player_id' => $keep->id]);
+        $this->assertDatabaseCount('player_merge_audits', 1);
     }
 
     public function test_bulk_quick_merge_routes_identical_overlap_to_one_canonical_keeper(): void
@@ -380,6 +420,7 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             ->post(route('superadmin.player-duplicates.bulk-merge'), [
                 'pairs' => $pairs,
                 'batch_digest' => $batch['digest'],
+                'batch_mode' => 'quick',
                 'reason' => 'Confirmed duplicate profiles in one reviewed batch.',
                 'confirmation' => $batch['confirmation_phrase'],
             ])->assertSessionHasErrors('confirmation');
@@ -441,6 +482,7 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             ->post(route('superadmin.player-duplicates.bulk-merge'), [
                 'pairs' => [['first_id' => $safeKeep->id, 'second_id' => $safeEmpty->id]],
                 'batch_digest' => $review['digest'],
+                'batch_mode' => 'quick',
                 'reason' => 'Merged ready candidates and skipped the documented blocked pair.',
                 'confirmation' => $review['confirmation_phrase'],
             ])->assertRedirect(route('superadmin.player-duplicates.index'));

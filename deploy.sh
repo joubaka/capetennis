@@ -350,9 +350,9 @@ clear_cache() {
     cd "$APP_PATH"
     
     php artisan cache:clear || true
-    php artisan route:clear || true
-    php artisan config:clear || true
-    php artisan view:clear || true
+    php artisan route:clear || error_exit "Route cache clear failed"
+    php artisan config:clear || error_exit "Configuration cache clear failed"
+    php artisan view:clear || error_exit "Compiled view clear failed"
     
     log "INFO" "Cache cleared"
 }
@@ -362,8 +362,8 @@ optimize_application() {
     log "INFO" "Optimizing application..."
     cd "$APP_PATH"
     
-    php artisan config:cache || true
-    php artisan route:cache || true
+    php artisan config:cache || error_exit "Configuration cache rebuild failed"
+    php artisan route:cache || error_exit "Route cache rebuild failed"
     
     if [ "$ENVIRONMENT" = "production" ]; then
         php artisan event:cache || true

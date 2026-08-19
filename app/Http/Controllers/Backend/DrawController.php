@@ -25,6 +25,7 @@ use App\Services\DrawBuilder;
 use App\Domain\Engine\EngineRouter;
 use App\Domain\Draws\Services\DrawLockService;
 use App\Domain\Draws\Services\DrawPublicationService;
+use App\Domain\Draws\Guards\DrawGuard;
 use App\Models\DrawAuditLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -467,29 +468,37 @@ class DrawController extends Controller
     return $draw->venues->pluck('id')->toArray();
   }
 
-  public function addVenueDraw($drawId)
+  public function addVenueDraw(Request $request, $drawId)
   {
     $draw = Draw::findOrFail($drawId);
     $this->authorize('update', $draw);
+    DrawGuard::requireMutable($draw, 'assign venue');
+    DrawGuard::requireUnpublished($draw, 'assign venue');
 
-    $venueId = request('venue');
-    $numCourts = request('numCourts');
+    $validated = $request->validate([
+      'venue' => ['required', 'integer', 'exists:venues,id'],
+      'numCourts' => ['required', 'integer', 'min:1', 'max:100'],
+    ]);
 
     // If exists → updates
     // If not → inserts
     $draw->venues()->syncWithoutDetaching([
-      $venueId => ['num_courts' => $numCourts]
+      $validated['venue'] => ['num_courts' => $validated['numCourts']]
     ]);
 
     return 'success save venue';
   }
 
-  public function removeVenueDraw($drawId)
+  public function removeVenueDraw(Request $request, $drawId)
   {
     $draw = Draw::findOrFail($drawId);
     $this->authorize('update', $draw);
-    $venueId = $_GET['venue'];
-    $draw->venues()->detach([$venueId]);
+    DrawGuard::requireMutable($draw, 'remove venue');
+    DrawGuard::requireUnpublished($draw, 'remove venue');
+    $validated = $request->validate([
+      'venue' => ['required', 'integer', 'exists:venues,id'],
+    ]);
+    $draw->venues()->detach([$validated['venue']]);
     return 'success remove venue';
   }
 
@@ -597,11 +606,12 @@ class DrawController extends Controller
 
     $request->validate([
       'players' => 'required|array',
-      'players.*' => 'exists:players,id',
+      'players.*' => 'integer|distinct|exists:registrations,id',
     ]);
 
     foreach ($request->players as $playerId) {
-      $draw->players()->syncWithoutDetaching($playerId);
+      $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
+      $draw->registrations()->syncWithoutDetaching($playerId);
     }
 
     return redirect()->back()->with('success', 'Players added to draw.');
@@ -679,8 +689,8 @@ class DrawController extends Controller
           ? $indexInCycle + 1
           : $numBoxes - $indexInCycle;
 
+        // Preview the computed layout in memory. Persist only via assignBoxNumbers().
         $reg->pivot->box_number = $boxNumber;
-        $reg->pivot->save();
       }
     }
 
@@ -719,7 +729,7 @@ class DrawController extends Controller
   {
     $this->authorize('view', $draw);
 
-    return response()->json($draw->players()->with('team', 'category')->get());
+    return response()->json($draw->registrations()->with('players')->get());
   }
 
 
@@ -1018,12 +1028,7 @@ class DrawController extends Controller
       return $aSeed <=> $bSeed;
     })->values();
 
-    // Reset all box numbers
-    foreach ($registrations as $reg) {
-      $draw->registrations()->updateExistingPivot($reg->id, ['box_number' => null]);
-    }
-
-    // Serpentine box assignment
+    // Preview only. Assignment is persisted by the CSRF-protected POST endpoint.
     $splitBoxes = [];
     foreach ($registrations as $i => $registration) {
       $cycle = (int) floor($i / $numBoxes);
@@ -1035,14 +1040,7 @@ class DrawController extends Controller
 
       $splitBoxes[$boxNumber][] = $registration;
 
-      $draw->registrations()->updateExistingPivot($registration->id, [
-        'box_number' => $boxNumber,
-      ]);
     }
-
-    // Save box count
-    $draw->settings->boxes = $numBoxes;
-    $draw->settings->save();
 
     return view('backend.draw.partials.split-box-preview', [
       'splitBoxes' => collect($splitBoxes)->sortKeys(),
@@ -1077,7 +1075,12 @@ class DrawController extends Controller
   {
     $draw = Draw::with(['registrations.players', 'settings'])->findOrFail($id);
     $this->authorize('update', $draw);
-    $numBoxes = (int) $request->input('boxes', 2);
+    DrawGuard::requireMutable($draw, 'assign boxes');
+    DrawGuard::requireUnpublished($draw, 'assign boxes');
+    $validated = $request->validate([
+      'boxes' => ['required', 'integer', 'min:1', 'max:8'],
+    ]);
+    $numBoxes = (int) $validated['boxes'];
 
     $templates = $this->generateSnakeTemplates(8, 64);
     $template = $templates[$numBoxes] ?? null;
@@ -1103,6 +1106,8 @@ class DrawController extends Controller
           ->update(['box_number' => $box]);
       }
     }
+
+    $draw->settings()->updateOrCreate([], ['boxes' => $numBoxes]);
 
     return response()->json(['message' => 'Box numbers assigned.']);
   }
