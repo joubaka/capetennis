@@ -1662,7 +1662,7 @@ Route::delete(
   Route::post('result/saveOrder/{id}', [ResultController::class, 'saveOrder'])->name('result.save.order');
   Route::post('result/reset/', [ResultController::class, 'resetPositions'])->name('positions.reset');
   Route::get('result/show/{id}', [ResultController::class, 'show'])->name('result.show');
-  Route::get('result/publish/{id}', [ResultController::class, 'publishResults'])->name('result.publish');
+  Route::post('result/publish/{id}', [ResultController::class, 'publishResults'])->name('result.publish');
   Route::get('result/details/{id}', [RankingController::class, 'details'])->name('result.details'); // legacy link kept
 
   //point (left as-is)

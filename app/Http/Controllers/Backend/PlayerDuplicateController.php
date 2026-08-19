@@ -12,6 +12,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class PlayerDuplicateController extends Controller
 {
@@ -161,6 +162,13 @@ class PlayerDuplicateController extends Controller
             $validated['impact_digest'],
             $validated['reason'],
         );
+
+        Log::info('Player duplicate merge request completed', [
+            'kept_player_id' => $keep->id,
+            'removed_player_id' => $remove->id,
+            'approved_by' => $request->user()->id,
+            'redirect_route' => 'superadmin.player-duplicates.index',
+        ]);
 
         return redirect()->route('superadmin.player-duplicates.index')
             ->with('success', "Profile #{$remove->id} was merged into profile #{$keep->id}.");

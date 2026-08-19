@@ -426,12 +426,6 @@ class EntryService
                 'withdrawn_at' => now(),
                 'withdrawn_by' => $actingUser->id,
                 'withdrawal_reason' => Str::limit($reason, 1000, ''),
-                'refund_status' => 'not_refunded',
-                'refund_method' => null,
-                'refund_gross' => 0,
-                'refund_fee' => 0,
-                'refund_net' => 0,
-                'refunded_at' => null,
             ]);
 
             activity('player-profile-merge')

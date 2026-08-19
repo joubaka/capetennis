@@ -8,38 +8,70 @@ use App\Models\Event;
 use App\Models\Position;
 use App\Models\Registration;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ResultController extends Controller
 {
   public function resetPositions(Request $request)
   {
-    $categoryId = $request->input('category_event_id');
+    $validated = $request->validate([
+      'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
+    ]);
+    $category = CategoryEvent::with('event')->findOrFail($validated['category_event_id']);
+    $this->authorize('event.manage', $category->event);
 
-    Position::where('category_event_id', $categoryId)->delete();
+    Position::where('category_event_id', $category->id)->delete();
 
     return response()->json(['status' => 'deleted']);
   }
   public function saveOrder(Request $request, $id)
   {
-
-    $categoryEvent = CategoryEvent::find($id);
-    Position::where('category_event_id', $categoryEvent->id)->delete();
-
-    $order = $request->order;
-
-    foreach ($order as $key => $value) {
-      $position = new Position();
-      $position->category_event_id = $categoryEvent->id;
-      $position->player_id = $value;
-      $position->position = ($key + 1);
-      if (is_null($request->rrscore)) {
-      } else {
-        $position->round_robin_score = $request->rrscore[$key];
-      }
-
-
-      $position->save();
+    if (is_array($request->input('order.0'))) {
+      $request->merge([
+        'order' => collect($request->input('order', []))
+          ->pluck('id')
+          ->all(),
+      ]);
     }
+
+    $validated = $request->validate([
+      'order' => ['required', 'array', 'min:1'],
+      'order.*' => ['required', 'integer', 'distinct', 'exists:players,id'],
+      'rrscore' => ['nullable', 'array'],
+      'rrscore.*' => ['nullable', 'numeric'],
+    ]);
+    $categoryEvent = CategoryEvent::with('event')->findOrFail($id);
+    $this->authorize('event.manage', $categoryEvent->event);
+
+    $order = array_map('intval', $validated['order']);
+    $registeredPlayers = DB::table('category_event_registrations as cer')
+      ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+      ->where('cer.category_event_id', $categoryEvent->id)
+      ->whereIn('pr.player_id', $order)
+      ->pluck('pr.player_id')
+      ->map(fn ($playerId) => (int) $playerId)
+      ->unique()
+      ->all();
+    if (array_diff($order, $registeredPlayers)) {
+      throw ValidationException::withMessages([
+        'order' => 'Every positioned player must be registered in this event category.',
+      ]);
+    }
+
+    DB::transaction(function () use ($categoryEvent, $order, $validated): void {
+      Position::where('category_event_id', $categoryEvent->id)->delete();
+      foreach ($order as $key => $playerId) {
+        Position::create([
+          'category_event_id' => $categoryEvent->id,
+          'player_id' => $playerId,
+          'position' => $key + 1,
+          'round_robin_score' => $validated['rrscore'][$key] ?? null,
+        ]);
+      }
+    });
+
+    return response()->json(['status' => 'saved']);
   }
 
   public function show($id)
@@ -51,19 +83,15 @@ class ResultController extends Controller
 
   public function publishResults($id)
   {
-    $event = Event::find($id);
-    if ($event->results_published == 1) {
-      $event->results_published = 2;
-      $event->save();
-    } else {
-      $event->results_published = 1;
-      $event->save();
-    }
+    $event = Event::findOrFail($id);
+    $this->authorize('event.manage', $event);
+    $event->results_published = ! $event->results_published;
+    $event->save();
 
     if (request()->ajax() || request()->wantsJson()) {
       return 'published';
     }
 
-    return back()->with('success', $event->results_published == 1 ? 'Results published.' : 'Results unpublished.');
+    return back()->with('success', $event->results_published ? 'Results published.' : 'Results unpublished.');
   }
 }
