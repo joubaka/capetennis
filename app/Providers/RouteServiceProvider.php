@@ -50,5 +50,12 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
+
+        RateLimiter::for('jta-results', function (Request $request) {
+            $tokenId = $request->user()?->currentAccessToken()?->getKey();
+
+            return Limit::perMinute((int) config('integrations.jta.rate_limit_per_minute', 60))
+                ->by($tokenId ? 'token:'.$tokenId : 'ip:'.$request->ip());
+        });
     }
 }

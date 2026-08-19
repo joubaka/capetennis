@@ -47,6 +47,7 @@ class CleanupOrphanFixturesCommand extends BaseCleanupCommand
     protected function fix(object $row): void
     {
         // Delete linked fixture_results first (FK safety)
+        DB::table("order_of_plays")->where("fixture_id", $row->id)->delete();
         DB::table("fixture_results")->where("fixture_id", $row->id)->delete();
         DB::table("fixtures")->where("id", $row->id)->delete();
     }

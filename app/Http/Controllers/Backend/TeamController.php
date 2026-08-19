@@ -366,6 +366,12 @@ class TeamController extends Controller
     $player = \App\Models\Player::findOrFail($playerId);
     $event = \App\Models\Event::findOrFail($eventId);
 
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible($player, $event);
+    } catch (\RuntimeException $exception) {
+      return redirect()->back()->withErrors($exception->getMessage());
+    }
+
     abort_unless((int) optional($team->category)->event_id === (int) $event->id, 404);
     abort_unless(
       TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->exists(),
@@ -921,6 +927,12 @@ class TeamController extends Controller
       $this->authorize('team.players.manage', $team);
     }
 
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('events.index')->withErrors($exception->getMessage());
+    }
+
     if ($order->pay_status == 1) {
       return redirect()->route('events.success', $order->event_id);
     }
@@ -969,6 +981,12 @@ class TeamController extends Controller
       $this->authorize('team.players.manage', $team);
     }
 
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+    } catch (\RuntimeException $exception) {
+      return back()->withErrors($exception->getMessage());
+    }
+
     $order = app(TeamPaymentService::class)->reservePayment(
       $order,
       (float) $request->wallet_applied,
@@ -996,6 +1014,12 @@ class TeamController extends Controller
       $this->authorize('team.players.manage', $team);
     }
 
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+    } catch (\RuntimeException $exception) {
+      return redirect()->back()->withErrors($exception->getMessage());
+    }
+
     return view('frontend.payfast.check_out', [
       'type' => 'team',
       'orderId' => $order->id,
@@ -1021,6 +1045,12 @@ class TeamController extends Controller
     if ($order->team_id) {
       $team = Team::findOrFail($order->team_id);
       $this->authorize('team.players.manage', $team);
+    }
+
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+    } catch (\RuntimeException $exception) {
+      return back()->withErrors($exception->getMessage());
     }
 
     if ($order->pay_status == 1 || $order->payfast_paid) {

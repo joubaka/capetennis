@@ -4,6 +4,7 @@ namespace App\Domain\Draws\Services;
 
 use App\Domain\Draws\Guards\DrawGuard;
 use App\Models\Draw;
+use App\Models\DrawAuditLog;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -28,6 +29,8 @@ final class DrawLockService
         $draw->locked = true;
         $draw->save();
 
+        DrawAuditLog::record($draw->id, 'locked', null, ['locked' => true]);
+
         Log::info('[DrawLock] Draw locked', ['draw_id' => $draw->id]);
     }
 
@@ -39,6 +42,8 @@ final class DrawLockService
     {
         $draw->locked = false;
         $draw->save();
+
+        DrawAuditLog::record($draw->id, 'unlocked', null, ['locked' => false]);
 
         Log::info('[DrawLock] Draw unlocked', ['draw_id' => $draw->id]);
     }

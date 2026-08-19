@@ -1253,6 +1253,21 @@
                     </div>
                   </div>
 
+                  <div class="col-md-6">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3 h-100">
+                      <div>
+                        <label class="form-label mb-0" for="sa-disciplinary-system-enabled">Disciplinary Case System</label>
+                        <br><small class="text-muted">Allow incident reporting, responses, panel actions, decisions and appeals. Disabling preserves all records and active sanctions.</small>
+                      </div>
+                      <div class="form-check form-switch ms-3">
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
+                               id="sa-disciplinary-system-enabled" name="disciplinary_system_enabled" value="1"
+                               data-setting-key="disciplinary_system_enabled"
+                               {{ old('disciplinary_system_enabled', $generalSettings['disciplinary_system_enabled'] ?? '1') == '1' ? 'checked' : '' }}>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </div>
@@ -1557,11 +1572,11 @@
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h5 class="mb-0"><i class="ti ti-gavel me-2 text-danger"></i>Disciplinary Overview</h5>
         <div class="d-flex gap-2">
-          <a href="{{ route('backend.disciplinary.index') }}" class="btn btn-sm btn-outline-secondary">
-            <i class="ti ti-list me-1"></i>Full Log
+          <a href="{{ route('backend.disciplinary.cases.index') }}" class="btn btn-sm btn-primary">
+            <i class="ti ti-scale me-1"></i>Case Centre
           </a>
-          <a href="{{ route('backend.disciplinary.create') }}" class="btn btn-sm btn-primary">
-            <i class="ti ti-plus me-1"></i>Record Violation
+          <a href="{{ route('backend.disciplinary.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="ti ti-history me-1"></i>Legacy Points
           </a>
           <a href="{{ route('backend.disciplinary.settings') }}" class="btn btn-sm btn-outline-secondary">
             <i class="ti ti-settings me-1"></i>Settings

@@ -3,7 +3,10 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
+use App\Models\CategoryEvent;
 use App\Models\Event;
+use App\Models\Fixture;
+use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -112,6 +115,8 @@ class DrawControllerAuthorizationTest extends TestCase
 
     public function test_admin_can_toggle_publish(): void
     {
+        Fixture::factory()->create(['draw_id' => $this->draw->id]);
+
         $this->actingAs($this->admin)
             ->postJson(route('draw.toggle.publish', $this->draw->id))
             ->assertOk()
@@ -120,9 +125,21 @@ class DrawControllerAuthorizationTest extends TestCase
 
     public function test_super_user_can_toggle_publish(): void
     {
+        Fixture::factory()->create(['draw_id' => $this->draw->id]);
+
         $this->actingAs($this->superUser)
             ->postJson(route('draw.toggle.publish', $this->draw->id))
             ->assertOk();
+    }
+
+    public function test_generated_graph_is_required_before_publish(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson(route('draw.toggle.publish', $this->draw->id))
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        $this->assertEquals(0, $this->draw->fresh()->published);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -342,6 +359,54 @@ class DrawControllerAuthorizationTest extends TestCase
                 'draw_id'    => $this->draw->id,
                 'player_ids' => [999],
             ])->assertForbidden();
+    }
+
+    public function test_admin_cannot_add_registration_from_another_event(): void
+    {
+        $otherEvent = Event::factory()->create();
+        $category = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $registration = Registration::factory()->create();
+        DB::table('category_event_registrations')->insert([
+            'category_event_id' => $category->id,
+            'registration_id' => $registration->id,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.draws.addPlayerToDraw'), [
+                'draw_id' => $this->draw->id,
+                'player_ids' => [$registration->id],
+            ])->assertUnprocessable();
+
+        $this->assertDatabaseMissing('draw_registrations', [
+            'draw_id' => $this->draw->id,
+            'registration_id' => $registration->id,
+        ]);
+    }
+
+    public function test_bulk_seed_change_cannot_update_registration_in_another_draw(): void
+    {
+        $registration = Registration::factory()->create();
+        $otherDraw = Draw::factory()->create(['event_id' => $this->event->id]);
+        DB::table('draw_registrations')->insert([
+            'draw_id' => $otherDraw->id,
+            'registration_id' => $registration->id,
+            'seed' => 7,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('change.all.seeds'), [
+                'draw_id' => $this->draw->id,
+                'neworder' => [$registration->id],
+            ])->assertUnprocessable();
+
+        $this->assertDatabaseHas('draw_registrations', [
+            'draw_id' => $otherDraw->id,
+            'registration_id' => $registration->id,
+            'seed' => 7,
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

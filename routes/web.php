@@ -419,15 +419,17 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   });
 
   // Disciplinary & Suspension Tracker
-  Route::prefix('disciplinary')->middleware('role:super-user|admin')->group(function () {
+  // Legacy points tracker is retained for historical compatibility and is now
+  // super-user only. Event administrators use the scoped case workflow below.
+  Route::prefix('disciplinary')->middleware('role:super-user')->group(function () {
     Route::get('/', [DisciplinaryController::class, 'index'])->name('backend.disciplinary.index');
-    Route::get('/create', [DisciplinaryController::class, 'create'])->name('backend.disciplinary.create');
-    Route::post('/', [DisciplinaryController::class, 'store'])->name('backend.disciplinary.store');
+    Route::get('/create', [DisciplinaryController::class, 'create'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.create');
+    Route::post('/', [DisciplinaryController::class, 'store'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.store');
     Route::get('/player/{playerId}', [DisciplinaryController::class, 'playerProfile'])->name('backend.disciplinary.player');
-    Route::get('/violation/{id}/edit', [DisciplinaryController::class, 'editViolation'])->name('backend.disciplinary.violation.edit');
-    Route::put('/violation/{id}', [DisciplinaryController::class, 'updateViolation'])->name('backend.disciplinary.violation.update');
-    Route::delete('/violation/{id}', [DisciplinaryController::class, 'destroyViolation'])->name('backend.disciplinary.violation.destroy');
-    Route::post('/suspension/{suspensionId}/lift', [DisciplinaryController::class, 'liftSuspension'])->name('backend.disciplinary.suspension.lift');
+    Route::get('/violation/{id}/edit', [DisciplinaryController::class, 'editViolation'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.violation.edit');
+    Route::put('/violation/{id}', [DisciplinaryController::class, 'updateViolation'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.violation.update');
+    Route::delete('/violation/{id}', [DisciplinaryController::class, 'destroyViolation'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.violation.destroy');
+    Route::post('/suspension/{suspensionId}/lift', [DisciplinaryController::class, 'liftSuspension'])->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)->name('backend.disciplinary.suspension.lift');
     // Settings
     Route::get('/settings', [DisciplineSettingsController::class, 'index'])->name('backend.disciplinary.settings');
     Route::post('/settings', [DisciplineSettingsController::class, 'updateSettings'])->name('backend.disciplinary.settings.update');
@@ -466,6 +468,24 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   Route::middleware('role:super-user')->group(function () {
     Route::get('superadmin/player-duplicates', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'index'])
       ->name('superadmin.player-duplicates.index');
+
+    Route::get('superadmin/player-duplicates/{first}/{second}/quick-review', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'quickReview'])
+      ->whereNumber(['first', 'second'])
+      ->name('superadmin.player-duplicates.quick-review');
+
+    Route::post('superadmin/player-duplicates/bulk-review', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'bulkReview'])
+      ->name('superadmin.player-duplicates.bulk-review');
+
+    Route::post('superadmin/player-duplicates/bulk-merge', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'bulkMerge'])
+      ->name('superadmin.player-duplicates.bulk-merge');
+
+    Route::get('superadmin/player-duplicates/{first}/{second}', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'review'])
+      ->whereNumber(['first', 'second'])
+      ->name('superadmin.player-duplicates.review');
+
+    Route::post('superadmin/player-duplicates/{first}/{second}/decision', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'decision'])
+      ->whereNumber(['first', 'second'])
+      ->name('superadmin.player-duplicates.decision');
 
     Route::post('superadmin/player-duplicates/merge', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'merge'])
       ->name('superadmin.player-duplicates.merge');
@@ -1730,6 +1750,7 @@ Route::post(
 )->middleware('auth')->name('ranking-scores.school');
 
 Route::get('/backend/team-fixtures/{fixture}/json', [TeamFixtureController::class, 'showJson'])
+  ->middleware('auth')
   ->name('backend.team-fixtures.json');
 
 
@@ -1805,6 +1826,54 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->middleware('role:super-user')
       ->name('admin.events.copy');
   });
+
+  // Panel-led disciplinary case management. Event access is enforced by policy;
+  // global rule/settings routes above remain a separate super-user concern.
+  Route::middleware('role:super-user|admin')->group(function () {
+    Route::get('disciplinary-cases', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'index'])
+      ->name('backend.disciplinary.cases.index');
+    Route::get('events/{event}/discipline', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'eventIndex'])
+      ->name('backend.events.disciplinary.index');
+    Route::get('events/{event}/discipline/report', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'create'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.events.disciplinary.create');
+    Route::post('events/{event}/discipline', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'store'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.events.disciplinary.store');
+    Route::get('disciplinary-cases/{case}', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'show'])
+      ->name('backend.disciplinary.cases.show');
+    Route::post('disciplinary-cases/{case}/triage', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'triage'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.cases.triage');
+    Route::post('disciplinary-cases/{case}/panel', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'appointPanel'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.cases.panel');
+    Route::post('disciplinary-cases/{case}/panel/{assignment}/conflict', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'declareConflict'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.cases.panel.conflict');
+    Route::post('disciplinary-cases/{case}/decision', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'decide'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.cases.decision');
+    Route::post('disciplinary-cases/{case}/evidence', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'uploadEvidence'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.cases.evidence.store');
+    Route::get('disciplinary-cases/{case}/evidence/{evidence}', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'downloadEvidence'])
+      ->name('backend.disciplinary.cases.evidence.download');
+    Route::post('disciplinary-appeals/{appeal}/decision', [\App\Http\Controllers\Backend\DisciplinaryCaseController::class, 'decideAppeal'])
+      ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+      ->name('backend.disciplinary.appeals.decision');
+  });
+
+  Route::get('my-disciplinary-cases', [\App\Http\Controllers\Frontend\PlayerDisciplinaryCaseController::class, 'index'])
+    ->name('disciplinary.my-cases');
+  Route::get('my-disciplinary-cases/{case}', [\App\Http\Controllers\Frontend\PlayerDisciplinaryCaseController::class, 'show'])
+    ->name('disciplinary.my-cases.show');
+  Route::post('my-disciplinary-cases/{case}/response', [\App\Http\Controllers\Frontend\PlayerDisciplinaryCaseController::class, 'respond'])
+    ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+    ->name('disciplinary.my-cases.respond');
+  Route::post('my-disciplinary-cases/{case}/appeal', [\App\Http\Controllers\Frontend\PlayerDisciplinaryCaseController::class, 'appeal'])
+    ->middleware(\App\Http\Middleware\EnsureDisciplinarySystemEnabled::class)
+    ->name('disciplinary.my-cases.appeal');
 
   /*
   |--------------------------------------------------------------------------

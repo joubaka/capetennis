@@ -9,6 +9,7 @@ use App\Models\CategoryEventRegistration;
 use App\Models\SiteSetting;
 use App\Models\User;
 use RuntimeException;
+use App\Services\PlayerEligibilityService;
 
 /**
  * Centralized eligibility and validation layer for entry operations.
@@ -18,6 +19,8 @@ use RuntimeException;
  */
 class EntryEligibilityService
 {
+    public function __construct(private PlayerEligibilityService $disciplinaryEligibility) {}
+
     // -----------------------------------------------------------------------
     // ADMIN ADD-PLAYER GUARDS
     // -----------------------------------------------------------------------
@@ -33,6 +36,8 @@ class EntryEligibilityService
      */
     public function assertCanAddAdmin(CategoryEvent $categoryEvent, int $playerId): void
     {
+        $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+
         if ($categoryEvent->isLocked()) {
             throw new RuntimeException('Category is locked — cannot add player.');
         }
@@ -66,6 +71,8 @@ class EntryEligibilityService
      */
     public function assertCanRegister(CategoryEvent $categoryEvent, int $playerId): void
     {
+        $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+
         if (SiteSetting::get('registration_open', '1') !== '1') {
             throw new RuntimeException(
                 'Registrations are currently closed. Please check back later or contact support@capetennis.co.za.'
@@ -159,6 +166,10 @@ class EntryEligibilityService
         User $actingUser,
         bool $adminOverride = false
     ): void {
+        $playerId = $entry->registration?->players()->value('players.id');
+        if ($playerId) {
+            $this->disciplinaryEligibility->assertEligible((int) $playerId, $targetCategory->event_id);
+        }
         if ($entry->status === 'withdrawn') {
             throw new RuntimeException('Cannot move a withdrawn entry.');
         }

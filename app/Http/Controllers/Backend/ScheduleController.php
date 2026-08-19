@@ -19,6 +19,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function schedulePage(Draw $draw)
   {
+    $this->authorize('view', $draw);
     $draw->load(['event', 'venues']);
 
     // Cavaliers Trials (eventType 5)
@@ -44,6 +45,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function scheduleData(Draw $draw)
   {
+    $this->authorize('view', $draw);
     $eventType = $draw->event->eventType;
 
     // ---------------------------------------------------
@@ -142,6 +144,7 @@ class ScheduleController extends Controller
 
   public function autoScheduleTrials(Request $request, Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     $start = $request->input('start');
     $duration = (int) $request->input('duration', 60);
     $gap = (int) $request->input('gap', 0);
@@ -252,6 +255,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function saveFixture(Request $request, Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     $fx = Fixture::where('draw_id', $draw->id)
       ->findOrFail($request->fixture_id);
 
@@ -283,6 +287,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function autoSchedule(Request $request, Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     Log::info("🟦 AutoSchedule invoked", $request->all());
 
     $startTime = $request->input('start');
@@ -324,6 +329,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function clearSchedule(Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     OrderOfPlay::where('draw_id', $draw->id)->delete();
 
     Fixture::where('draw_id', $draw->id)->update([
@@ -335,6 +341,7 @@ class ScheduleController extends Controller
 
   public function resetTrials(Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     $fixtureIds = $draw->drawFixtures()->pluck('id');
 
     OrderOfPlay::whereIn('fixture_id', $fixtureIds)->delete();
@@ -354,6 +361,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function resetSchedule(Request $request, Draw $draw)
   {
+    $this->authorize('modifySchedule', $draw);
     $this->clearSchedule($draw);
     return $this->autoSchedule($request, $draw);
   }
@@ -363,6 +371,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function auditData(Draw $draw)
   {
+    $this->authorize('view', $draw);
     $draw->load(['venues' => fn($q) => $q->withPivot('num_courts')]);
 
     $fixtures = Fixture::with(['registration1.players', 'registration2.players', 'orderOfPlay'])
@@ -545,6 +554,7 @@ class ScheduleController extends Controller
   // ---------------------------------------------------------
   public function showData(Draw $draw)
   {
+    $this->authorize('view', $draw);
     $fixtures = Fixture::with(['registration1.players', 'registration2.players', 'orderOfPlay'])
       ->where('draw_id', $draw->id)
       ->get()

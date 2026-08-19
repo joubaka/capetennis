@@ -29,6 +29,12 @@ class RegistrationPaymentController extends Controller
       return redirect()->back()->withErrors('This order has been cancelled and cannot be paid.');
     }
 
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
+    } catch (\RuntimeException $exception) {
+      return redirect()->back()->withErrors($exception->getMessage());
+    }
+
     $order->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
     abort_if($order->items->isEmpty(), 404);
 
@@ -76,6 +82,12 @@ class RegistrationPaymentController extends Controller
     // Cancelled orders cannot be paid
     if (isset($order->status) && $order->status === 'cancelled') {
       return back()->withErrors('This order has been cancelled and cannot be paid.');
+    }
+
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
+    } catch (\RuntimeException $exception) {
+      return back()->withErrors($exception->getMessage());
     }
 
     // Must have at least one item
@@ -269,6 +281,12 @@ class RegistrationPaymentController extends Controller
         'auth_user_id' => (int) $user->id,
       ]);
       abort(403);
+    }
+
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('events.index')->withErrors($exception->getMessage());
     }
 
     if ($order->wallet_debited) {

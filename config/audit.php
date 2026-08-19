@@ -26,8 +26,10 @@ return [
         App\Models\PlatformAuditLog::class,
         App\Models\DrawAuditLog::class,
         Spatie\Activitylog\Models\Activity::class,
+        Laravel\Sanctum\PersonalAccessToken::class,
     ],
     'excluded_route_prefixes' => [
         '_debugbar', '_ignition', 'livewire/preview-file', 'sanctum/csrf-cookie',
+        'api/v1/integrations/jta',
     ],
 ];

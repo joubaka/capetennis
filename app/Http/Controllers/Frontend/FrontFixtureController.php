@@ -30,10 +30,7 @@ class FrontFixtureController extends Controller
     // Block access to unpublished draws — only admin/super-user/convenor may view
     if (!$draw->published) {
       $user = auth()->user();
-      $isPrivileged = $user && (
-        $user->is_convenor($draw->event_id) ||
-        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-      );
+      $isPrivileged = $user && $user->can('view', $draw);
       if (!$isPrivileged) {
         abort(403, 'This draw has not been published yet.');
       }
@@ -185,10 +182,7 @@ class FrontFixtureController extends Controller
     // Block access to unpublished draws — only admin/super-user/convenor may view
     if (!$draw->published) {
       $user = auth()->user();
-      $isPrivileged = $user && (
-        $user->is_convenor($draw->event_id) ||
-        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-      );
+      $isPrivileged = $user && $user->can('view', $draw);
       if (!$isPrivileged) {
         abort(403, 'This draw has not been published yet.');
       }
@@ -323,10 +317,7 @@ class FrontFixtureController extends Controller
         // Block unpublished draws — only admin/super-user/convenor may view
         if (!$draw->published) {
           $user = auth()->user();
-          $isPrivileged = $user && (
-            $user->is_convenor($draw->event_id) ||
-            (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-          );
+          $isPrivileged = $user && $user->can('view', $draw);
           if (!$isPrivileged) {
             abort(403, 'This draw has not been published yet.');
           }

@@ -11,6 +11,7 @@ use App\Models\SiteSetting;
 use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\TeamPaymentOrder;
+use App\Models\TeamFixturePlayer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +67,7 @@ class TeamPlayerWithdrawController extends Controller
     if ((int) $teamPlayer->pay_status === 1) {
       $teamPlayer->pay_status = 0;
       $teamPlayer->save();
+      $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
 
       $withdrawalOrder = TeamPaymentOrder::where('team_id', $team->id)
         ->where('player_id', $player->id)
@@ -93,10 +95,25 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     // Unpaid: clear the slot to make it available
+    $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
     $teamPlayer->player_id = 0;
     $teamPlayer->save();
 
     return back()->with('success', 'Player withdrawn (no payment). Slot is now available.');
+  }
+
+  /**
+   * Remove a withdrawn player from future rubbers in this event without
+   * rewriting completed fixture history or the opposing side's assignment.
+   */
+  private function removePlayerFromUnplayedFixtures(Player $player, int $eventId): void
+  {
+    $base = TeamFixturePlayer::query()
+      ->whereHas('fixture.draw', fn($query) => $query->where('event_id', $eventId))
+      ->whereDoesntHave('fixture.fixtureResults');
+
+    (clone $base)->where('team1_id', $player->id)->update(['team1_id' => null]);
+    (clone $base)->where('team2_id', $player->id)->update(['team2_id' => null]);
   }
 
   public function chooseRefund(Team $team, Player $player, $eventId)

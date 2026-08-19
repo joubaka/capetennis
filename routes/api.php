@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SubscriberController;
+use App\Http\Controllers\Api\V1\JtaIntegrationController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -19,6 +20,23 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::post('/subscribe', [SubscriberController::class, 'subscribe']);
+
+Route::prefix('v1/integrations/jta')
+    ->middleware(['auth:sanctum', 'jta.integration', 'throttle:jta-results'])
+    ->name('api.v1.integrations.jta.')
+    ->group(function () {
+        Route::get('health', [JtaIntegrationController::class, 'health'])->name('health');
+        Route::post('players/resolve', [JtaIntegrationController::class, 'resolvePlayer'])->name('players.resolve');
+        Route::get('players/{player}/results', [JtaIntegrationController::class, 'playerResults'])
+            ->whereNumber('player')
+            ->name('players.results');
+        Route::get('players/{player}/event-results', [JtaIntegrationController::class, 'playerEventResults'])
+            ->whereNumber('player')
+            ->name('players.event-results');
+        Route::get('players/{player}/series-rankings', [JtaIntegrationController::class, 'playerSeriesRankings'])
+            ->whereNumber('player')
+            ->name('players.series-rankings');
+    });
 
 // ─── Draw canonical API (requires auth) ──────────────────────────────────────
 Route::middleware(['web', 'auth'])->prefix('draws/{draw}')->group(function () {

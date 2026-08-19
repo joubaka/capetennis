@@ -45,10 +45,10 @@
           "slug": "backend.agreements.index"
         },
         {
-          "url": "backend/disciplinary",
-          "name": "Disciplinary",
+          "url": "backend/disciplinary-cases",
+          "name": "Disciplinary Cases",
           "icon": "circle",
-          "slug": "backend.disciplinary.index"
+          "slug": "backend.disciplinary.cases.index"
         },
         {
           "url": "backend/settings",

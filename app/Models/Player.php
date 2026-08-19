@@ -5,10 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class Player extends Model
 {
   use HasFactory;
+
+  protected static ?bool $hasIdentityHashColumns = null;
 
   protected $fillable = [
     'name',
@@ -28,7 +31,33 @@ class Player extends Model
     'profile_complete' => 'boolean',
   ];
 
+  protected $hidden = [
+    'identity_name_hash',
+    'identity_email_dob_hash',
+    'identity_cell_dob_hash',
+  ];
+
   protected $appends = ['full_name'];
+
+  protected static function booted(): void
+  {
+    static::saving(function (Player $player) {
+      self::$hasIdentityHashColumns ??= Schema::hasColumn('players', 'identity_name_hash');
+      if (!self::$hasIdentityHashColumns) {
+        return;
+      }
+
+      $name = mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', (string) $player->name)));
+      $surname = mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', (string) $player->surname)));
+      $dob = substr((string) $player->dateOfBirth, 0, 10);
+      $email = mb_strtolower(trim((string) $player->email));
+      $cell = preg_replace('/[^0-9+]/', '', (string) $player->cellNr) ?? '';
+
+      $player->identity_name_hash = $name !== '' && $surname !== '' ? hash('sha256', $name.'|'.$surname) : null;
+      $player->identity_email_dob_hash = $dob !== '' && $email !== '' ? hash('sha256', $dob.'|'.$email) : null;
+      $player->identity_cell_dob_hash = $dob !== '' && $cell !== '' ? hash('sha256', $dob.'|'.$cell) : null;
+    });
+  }
 
   /**
    * Check if player profile needs updating (hasn't been updated in the last year)

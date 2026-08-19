@@ -41,6 +41,14 @@
           Fixtures HQ
         </a>
 
+        @if(\App\Models\SiteSetting::disciplinarySystemEnabled())
+        <a href="{{ route('backend.events.disciplinary.index', $event) }}"
+           class="btn btn-outline-danger">
+          <i class="ti ti-scale me-1"></i>
+          Discipline & Incidents
+        </a>
+        @endif
+
         {{-- 🔹 SERIES LINK (ONLY IF EVENT BELONGS TO SERIES) --}}
        @if($event->series)
   <a href="{{ route('series.show', $event->series) }}"

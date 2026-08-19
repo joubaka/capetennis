@@ -100,6 +100,10 @@ class TeamDrawPolicy
      */
     public function updateTeamDraw(User $user, Draw $draw): bool
     {
+        if ($draw->locked || $draw->published) {
+            return false;
+        }
+
         $event = $this->resolveEventFromDraw($draw);
 
         if (!$event || !$this->isTeamEvent($event)) {
@@ -114,6 +118,10 @@ class TeamDrawPolicy
      */
     public function generateTies(User $user, Draw $draw): bool
     {
+        if ($draw->locked || $draw->published) {
+            return false;
+        }
+
         $event = $this->resolveEventFromDraw($draw);
 
         if (!$event || !$this->isTeamEvent($event)) {
@@ -128,6 +136,10 @@ class TeamDrawPolicy
      */
     public function generateRubbers(User $user, Draw $draw): bool
     {
+        if ($draw->locked || $draw->published) {
+            return false;
+        }
+
         $event = $this->resolveEventFromDraw($draw);
 
         if (!$event || !$this->isTeamEvent($event)) {
@@ -142,6 +154,10 @@ class TeamDrawPolicy
      */
     public function regenerate(User $user, Draw $draw): bool
     {
+        if ($draw->locked || $draw->published) {
+            return false;
+        }
+
         $event = $this->resolveEventFromDraw($draw);
 
         if (!$event || !$this->isTeamEvent($event)) {
@@ -160,6 +176,11 @@ class TeamDrawPolicy
      */
     public function generateRubbersForTie(User $user, TeamTie $tie): bool
     {
+        $draw = $tie->relationLoaded('draw') ? $tie->draw : $tie->draw()->first();
+        if (!$draw || $draw->locked || $draw->published) {
+            return false;
+        }
+
         $event = $this->resolveEventFromTie($tie);
 
         if (!$event || !$this->isTeamEvent($event)) {

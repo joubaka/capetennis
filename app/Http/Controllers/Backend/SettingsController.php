@@ -60,6 +60,7 @@ class SettingsController extends Controller
         SiteSetting::set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        SiteSetting::set(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED, $request->boolean(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED) ? '1' : '0', SiteSetting::GROUP_GENERAL);
 
         if ($request->filled('code_of_conduct_content')) {
             SiteSetting::set('code_of_conduct_content', $request->input('code_of_conduct_content'), SiteSetting::GROUP_GENERAL);
@@ -126,6 +127,7 @@ class SettingsController extends Controller
             'require_code_of_conduct'      => [SiteSetting::GROUP_GENERAL, 'boolean'],
             'require_terms'                => [SiteSetting::GROUP_GENERAL, 'boolean'],
             'require_profile_update'       => [SiteSetting::GROUP_GENERAL, 'boolean'],
+            SiteSetting::DISCIPLINARY_SYSTEM_ENABLED => [SiteSetting::GROUP_GENERAL, 'boolean'],
         ];
         foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $emailKey) {
             $allowedKeys[$emailKey] = [SiteSetting::GROUP_EMAIL, 'boolean'];

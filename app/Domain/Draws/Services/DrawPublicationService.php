@@ -4,6 +4,7 @@ namespace App\Domain\Draws\Services;
 
 use App\Domain\Draws\Guards\DrawGuard;
 use App\Models\Draw;
+use App\Models\DrawAuditLog;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -28,6 +29,8 @@ final class DrawPublicationService
         $draw->published = true;
         $draw->save();
 
+        DrawAuditLog::record($draw->id, 'published', null, ['published' => true]);
+
         Log::info('[DrawPublication] Draw published', ['draw_id' => $draw->id]);
     }
 
@@ -42,6 +45,8 @@ final class DrawPublicationService
 
         $draw->published = false;
         $draw->save();
+
+        DrawAuditLog::record($draw->id, 'unpublished', null, ['published' => false]);
 
         Log::info('[DrawPublication] Draw unpublished', ['draw_id' => $draw->id]);
     }

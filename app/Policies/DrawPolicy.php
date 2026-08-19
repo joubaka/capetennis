@@ -31,7 +31,7 @@ class DrawPolicy
      */
     public function update(User $user, Draw $draw): bool
     {
-        if ($draw->locked) {
+        if ($draw->locked || $draw->published) {
             return false;
         }
 
@@ -91,7 +91,7 @@ class DrawPolicy
      */
     public function modifyGroups(User $user, Draw $draw): bool
     {
-        if ($draw->locked) {
+        if ($draw->locked || $draw->published) {
             return false;
         }
 
@@ -123,6 +123,18 @@ class DrawPolicy
      */
     public function lockToggle(User $user, Draw $draw): bool
     {
+        return $this->canManage($user, $draw, false);
+    }
+
+    /**
+     * Permanently delete a draft draw and its generated graph.
+     */
+    public function delete(User $user, Draw $draw): bool
+    {
+        if ($draw->locked || $draw->published) {
+            return false;
+        }
+
         return $this->canManage($user, $draw, false);
     }
 

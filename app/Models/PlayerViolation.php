@@ -20,11 +20,16 @@ class PlayerViolation extends Model
         'notes',
         'recorded_by',
         'event_id',
+        'disciplinary_case_id',
+        'voided_at',
+        'voided_by',
+        'void_reason',
     ];
 
     protected $casts = [
         'violation_date' => 'date',
         'points_assigned' => 'integer',
+        'voided_at' => 'datetime',
     ];
 
     public function player()
@@ -53,7 +58,8 @@ class PlayerViolation extends Model
     public function scopeActive(Builder $query): Builder
     {
         $days = DisciplineSetting::expiryDays();
-        return $query->where('violation_date', '>=', Carbon::now()->subDays($days)->toDateString());
+        return $query->whereNull('voided_at')
+            ->where('violation_date', '>=', Carbon::now()->subDays($days)->toDateString());
     }
 
     /**
@@ -62,7 +68,7 @@ class PlayerViolation extends Model
     public function getIsExpiredAttribute(): bool
     {
         $days = DisciplineSetting::expiryDays();
-        return $this->violation_date->lt(Carbon::now()->subDays($days));
+        return $this->voided_at !== null || $this->violation_date->lt(Carbon::now()->subDays($days));
     }
 
     /**
@@ -72,5 +78,10 @@ class PlayerViolation extends Model
     {
         $days = DisciplineSetting::expiryDays();
         return $this->violation_date->copy()->addDays($days);
+    }
+
+    public function disciplinaryCase()
+    {
+        return $this->belongsTo(DisciplinaryCase::class);
     }
 }

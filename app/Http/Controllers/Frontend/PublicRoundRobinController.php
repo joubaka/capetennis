@@ -26,10 +26,7 @@ class PublicRoundRobinController extends Controller
     // Block unpublished draws — only admin, super-user, or convenor for this event may view
     if (!$draw->published) {
       $user = auth()->user();
-      $isPrivileged = $user && (
-        $user->is_convenor($draw->event_id) ||
-        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-      );
+      $isPrivileged = $user && $user->can('view', $draw);
 
       if (!$isPrivileged) {
         abort(403, 'This draw has not been published yet.');
@@ -52,11 +49,11 @@ class PublicRoundRobinController extends Controller
       'drawFixtures.schedule',
     ]);
 
-    // Ensure fixtures exist
+    // Public reads must never create or regenerate tournament state.
     if ($draw->drawFixtures->isEmpty()) {
-      Log::warning("🌍 [PUBLIC RR] Missing fixtures — regenerating");
-      $this->builder->regenerateRoundRobinFixtures($draw);
-      $draw->load('drawFixtures');
+      Log::warning("🌍 [PUBLIC RR] Published draw has no fixtures", [
+        'draw_id' => $draw->id,
+      ]);
     }
 
     // Hub (RR fixtures, OOP, standings)
@@ -102,10 +99,7 @@ class PublicRoundRobinController extends Controller
     // Block unpublished draws — only admin, super-user, or convenor for this event may view
     if (!$draw->published) {
       $user = auth()->user();
-      $isPrivileged = $user && (
-        $user->is_convenor($draw->event_id) ||
-        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-      );
+      $isPrivileged = $user && $user->can('view', $draw);
       if (!$isPrivileged) {
         abort(403, 'This draw has not been published yet.');
       }

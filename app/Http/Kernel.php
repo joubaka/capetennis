@@ -21,6 +21,7 @@ class Kernel extends HttpKernel
     \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
     \App\Http\Middleware\TrimStrings::class,
     \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+    \App\Http\Middleware\AuditJtaIntegrationAccess::class,
   ];
 
   /**
@@ -71,5 +72,6 @@ class Kernel extends HttpKernel
     'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
     'agreement' => \App\Http\Middleware\EnsureAgreementAccepted::class,
     'profile.updated' => \App\Http\Middleware\EnsurePlayerProfileUpdated::class,
+    'jta.integration' => \App\Http\Middleware\EnsureJtaIntegrationAccess::class,
   ];
 }

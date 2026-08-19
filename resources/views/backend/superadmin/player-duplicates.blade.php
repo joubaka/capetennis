@@ -2,12 +2,20 @@
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
     <div>
-      <h4 class="mb-1"><i class="ti ti-user-search me-2 text-primary"></i>Duplicate Player Profiles</h4>
-      <p class="text-muted mb-0">Candidates match on trimmed, case-insensitive first name and surname. A match is not proof that they are the same person.</p>
+      <h4 class="mb-1"><i class="ti ti-user-search me-2 text-primary"></i>Duplicate Player Review</h4>
+      <p class="text-muted mb-0">Each pair is a candidate only. A Super Admin must compare identity and linked history before merging.</p>
     </div>
-    <a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary btn-sm">Back to Super Admin</a>
+    <div class="d-flex gap-2">
+      <button type="button" id="toggle-quick-candidates" class="btn btn-outline-primary btn-sm" aria-pressed="false">
+        <i class="ti ti-bolt me-1"></i>Quick candidates only
+      </button>
+      <a href="{{ route('superadmin.player-duplicates.index', ['include_reviewed' => $includeReviewed ? 0 : 1]) }}" class="btn btn-outline-secondary btn-sm">
+        {{ $includeReviewed ? 'Hide reviewed' : 'Show reviewed' }}
+      </a>
+      <a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary btn-sm">Back to Super Admin</a>
+    </div>
   </div>
 
   @if(session('success'))
@@ -17,86 +25,324 @@
     <div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
   @endif
 
-  <div class="alert alert-warning">
-    <strong>Review before merging.</strong> Compare date of birth, gender, player email and linked account emails. Only a profile with no competition, team, financial, ranking, agreement, or disciplinary usage can be removed here.
+  <div class="alert alert-info d-flex gap-2 align-items-start">
+    <i class="ti ti-shield-check fs-4"></i>
+    <div><strong>Protected bulk merging.</strong> Strong matches where only one profile has linked history can be selected and merged together with one Super Admin confirmation. The system never silently merges profiles; ambiguous matches, conflicting dates of birth, results, rankings or financial collisions stay blocked for review.</div>
   </div>
 
-  @forelse($candidateGroups as $group)
-    <div class="card mb-4 {{ $group->can_merge ? 'border-warning' : 'border-danger' }}">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <strong>{{ $group->name }}</strong>
-        <span class="badge {{ $group->can_merge ? 'bg-label-warning' : 'bg-label-danger' }}">
-          {{ $group->can_merge ? 'Reviewable' : 'Both/all profiles in use' }}
-        </span>
+  <form id="bulk-merge-selection" method="POST" action="{{ route('superadmin.player-duplicates.bulk-review') }}" class="card mb-4">
+    @csrf
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3 py-3">
+      <label class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="select-all-quick" autocomplete="off">
+        <span class="form-check-label"><strong>Select visible quick candidates</strong><span class="d-block small text-muted">Use the all-pages button to include every unreviewed quick match.</span></span>
+      </label>
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" id="review-all-merges" name="selection_scope" value="all" data-selection-scope="all" class="btn btn-primary">
+          <i class="ti ti-stack-2 me-1"></i>Review all quick candidates
+        </button>
+        <button type="submit" id="review-selected-merges" name="selection_scope" value="page" data-selection-scope="page" class="btn btn-danger" disabled>
+          <i class="ti ti-git-merge me-1"></i>Review selected (<span id="selected-merge-count">0</span>)
+        </button>
+      </div>
+      <div id="bulk-review-progress" class="d-none w-100" role="status" aria-live="polite">
+        <div class="d-flex justify-content-between align-items-center small mb-1">
+          <strong id="bulk-review-progress-label">Preparing duplicate safety review…</strong>
+          <span id="bulk-review-progress-percent">0%</span>
+        </div>
+        <div class="progress" style="height: 10px;">
+          <div id="bulk-review-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+        </div>
+        <div id="bulk-review-progress-detail" class="small text-muted mt-1"></div>
+      </div>
+    </div>
+  </form>
+
+  @forelse($candidatePairs as $pair)
+    @php($first = $pair->first)
+    @php($second = $pair->second)
+    <div class="card mb-4 border-{{ $pair->confidence['class'] }} duplicate-candidate-card" data-quick-candidate="{{ $pair->quick_merge ? '1' : '0' }}">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <strong>{{ $first['player']->full_name }}</strong>
+          <span class="text-muted">— profiles #{{ $first['player']->id }} and #{{ $second['player']->id }}</span>
+          <span class="badge bg-label-primary ms-1">Recommended keep #{{ $pair->recommended_keep_id }}</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          @if($pair->quick_merge)
+            <label class="form-check mb-0 me-1">
+              <input class="form-check-input js-bulk-pair" form="bulk-merge-selection" type="checkbox" name="pairs[]" value="{{ $first['player']->id }}:{{ $second['player']->id }}" autocomplete="off" aria-label="Select profiles #{{ $first['player']->id }} and #{{ $second['player']->id }} for bulk merge">
+              <span class="form-check-label small">Select</span>
+            </label>
+            <span class="badge bg-label-primary"><i class="ti ti-bolt me-1"></i>Quick merge eligible</span>
+          @endif
+          @if($pair->decision)
+            <span class="badge bg-label-secondary">{{ str_replace('_', ' ', ucfirst($pair->decision->decision)) }}</span>
+          @endif
+          <span class="badge bg-label-{{ $pair->confidence['class'] }}">{{ $pair->confidence['label'] }}</span>
+        </div>
       </div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>ID</th><th>Identity details</th><th>Linked accounts</th><th>Usage</th><th>Status</th></tr></thead>
+          <thead><tr><th>Profile</th><th>Identity</th><th>Contact and accounts</th><th>Linked history</th></tr></thead>
           <tbody>
-          @foreach($group->players as $item)
+          @foreach([$first, $second] as $item)
             <tr>
-              <td>#{{ $item['player']->id }}</td>
+              <td><strong>#{{ $item['player']->id }}</strong><div class="small text-muted">Created {{ optional($item['player']->created_at)->format('Y-m-d') ?: 'unknown' }}</div></td>
               <td>
-                <div>DOB: {{ $item['player']->dateOfBirth ?: 'Not set' }}</div>
-                <div>Gender: {{ $item['player']->gender ?: 'Not set' }}</div>
-                <div>Player email: {{ $item['player']->email ?: 'Not set' }}</div>
+                <div>{{ $item['player']->full_name }}</div>
+                <div class="small">DOB: {{ $item['player']->dateOfBirth ?: 'Not set' }}</div>
+                <div class="small">Gender: {{ $item['player']->gender ?: 'Not set' }}</div>
               </td>
               <td>
+                <div class="small">{{ $item['player']->email ?: 'No player email' }}</div>
+                <div class="small">{{ $item['player']->cellNr ?: 'No cellphone' }}</div>
                 @forelse($item['owners'] as $owner)
-                  <div>{{ $owner['name'] }} <span class="text-muted">({{ $owner['email'] }}, user #{{ $owner['id'] }})</span></div>
+                  <div class="small text-muted">{{ $owner['name'] }} ({{ $owner['email'] }})</div>
                 @empty
-                  <span class="text-muted">No linked user account</span>
+                  <div class="small text-muted">No linked user</div>
                 @endforelse
               </td>
               <td>
                 @forelse($item['usage'] as $table => $count)
                   <span class="badge bg-label-secondary me-1 mb-1">{{ str_replace('_', ' ', $table) }}: {{ $count }}</span>
                 @empty
-                  <span class="text-muted">No usage found</span>
+                  <span class="badge bg-label-success">No linked history</span>
                 @endforelse
               </td>
-              <td><span class="badge {{ $item['is_empty'] ? 'bg-success' : 'bg-danger' }}">{{ $item['is_empty'] ? 'Empty / removable' : 'In use' }}</span></td>
             </tr>
           @endforeach
           </tbody>
         </table>
       </div>
-
-      @if($group->can_merge && $group->players->count() === 2)
-        @php
-          $recommendedKeep = $group->players->firstWhere('is_empty', false) ?? $group->players->first();
-          $recommendedKeepId = $recommendedKeep['player']->id;
-        @endphp
-        <div class="card-body border-top">
-          <form method="POST" action="{{ route('superadmin.player-duplicates.merge') }}" class="row g-3 align-items-end" onsubmit="return confirm('Merge these profiles? The empty profile will be deleted and its linked users moved to the kept profile.');">
-            @csrf
-            <div class="col-md-4">
-              <label class="form-label">Keep profile</label>
-              <select name="keep_player_id" class="form-select" required>
-                @foreach($group->players as $item)<option value="{{ $item['player']->id }}" @selected($item['player']->id === $recommendedKeepId)>#{{ $item['player']->id }} — {{ $item['emails']->join(', ') ?: 'no email' }} {{ $item['is_empty'] ? '(empty)' : '(in use)' }}</option>@endforeach
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Remove empty profile</label>
-              <select name="remove_player_id" class="form-select" required>
-                @foreach($group->players->where('is_empty', true)->reject(fn ($item) => $item['player']->id === $recommendedKeepId) as $item)<option value="{{ $item['player']->id }}">#{{ $item['player']->id }} — {{ $item['emails']->join(', ') ?: 'no email' }}</option>@endforeach
-              </select>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Type MERGE</label>
-              <input name="confirmation" class="form-control" required autocomplete="off">
-            </div>
-            <div class="col-md-2"><button class="btn btn-warning w-100">Approve merge</button></div>
-          </form>
+      <div class="card-body border-top d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="small text-muted">{{ implode('. ', $pair->confidence['reasons']) }}</span>
+        <div class="d-flex gap-2">
+          @if($pair->quick_merge)
+            <button type="button"
+                    class="btn btn-primary btn-sm js-quick-merge"
+                    data-quick-review-url="{{ route('superadmin.player-duplicates.quick-review', [$first['player'], $second['player']]) }}">
+              <i class="ti ti-bolt me-1"></i>Quick merge into #{{ $pair->quick_merge['keep_id'] }}
+            </button>
+          @endif
+          <a href="{{ route('superadmin.player-duplicates.review', [$first['player'], $second['player']]) }}" class="btn btn-outline-primary btn-sm">
+            Compare and review
+          </a>
         </div>
-      @elseif($group->players->count() > 2)
-        <div class="card-body border-top text-muted">More than two profiles share this name. Review them individually; automatic merge is disabled for this group.</div>
-      @endif
+      </div>
     </div>
   @empty
-    <div class="card"><div class="card-body text-center py-5"><h5>No duplicate name candidates found</h5><p class="text-muted mb-0">The scan found no repeated first-name and surname combinations.</p></div></div>
+    <div class="card"><div class="card-body text-center py-5">
+      <i class="ti ti-circle-check fs-1 text-success"></i>
+      <h5 class="mt-2">No unreviewed duplicate candidates</h5>
+      <p class="text-muted mb-0">Use “Show reviewed” to inspect deferred or rejected pairs.</p>
+    </div></div>
   @endforelse
 
-  {{ $candidateGroups->links('pagination::bootstrap-5') }}
+  <div id="no-quick-candidates" class="card d-none"><div class="card-body text-center py-4 text-muted">
+    No quick-merge candidates are shown on this page. Turn off the filter or continue to the next page.
+  </div></div>
+
+  {{ $candidatePairs->links('pagination::bootstrap-5') }}
+
+  @if($recentMerges->isNotEmpty())
+    <div class="card mt-4">
+      <div class="card-header"><strong>Recent completed merges</strong></div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>When</th><th>Source</th><th>Canonical</th><th>Approved by</th><th>Reason</th></tr></thead>
+          <tbody>
+          @foreach($recentMerges as $merge)
+            <tr>
+              <td>{{ optional($merge->merged_at)->format('Y-m-d H:i') }}</td>
+              <td>#{{ $merge->removed_player_id }}</td>
+              <td>#{{ $merge->kept_player_id }}</td>
+              <td>{{ $merge->approvedBy?->name ?: 'User #'.$merge->approved_by }}</td>
+              <td>{{ $merge->reason }}</td>
+            </tr>
+          @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+  @endif
 </div>
+
+<div class="modal fade" id="quick-merge-modal" tabindex="-1" aria-labelledby="quick-merge-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="quick-merge-modal-title"><i class="ti ti-bolt me-2 text-primary"></i>Quick duplicate merge</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="quick-merge-modal-body">
+        <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">Running the full safety check…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+@endsection
+
+@section('page-script')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modalElement = document.getElementById('quick-merge-modal');
+  var modalBody = document.getElementById('quick-merge-modal-body');
+  var quickModal = new bootstrap.Modal(modalElement);
+  var loading = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">Running the full safety check…</div></div>';
+
+  document.querySelectorAll('.js-quick-merge').forEach(function (button) {
+    button.addEventListener('click', function () {
+      modalBody.innerHTML = loading;
+      quickModal.show();
+      fetch(button.dataset.quickReviewUrl, {
+        headers: { 'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Unable to load the safety review.');
+        return response.text();
+      }).then(function (html) {
+        modalBody.innerHTML = html;
+      }).catch(function () {
+        modalBody.innerHTML = '<div class="alert alert-danger mb-0">The quick safety review could not be loaded. Close this window and use Compare and review.</div>';
+      });
+    });
+  });
+
+  var filterButton = document.getElementById('toggle-quick-candidates');
+  var cards = Array.from(document.querySelectorAll('.duplicate-candidate-card'));
+  var emptyState = document.getElementById('no-quick-candidates');
+  filterButton.addEventListener('click', function () {
+    var active = filterButton.getAttribute('aria-pressed') !== 'true';
+    filterButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+    filterButton.classList.toggle('btn-primary', active);
+    filterButton.classList.toggle('btn-outline-primary', !active);
+    var visible = 0;
+    cards.forEach(function (card) {
+      var show = !active || card.dataset.quickCandidate === '1';
+      card.classList.toggle('d-none', !show);
+      if (show) visible++;
+    });
+    emptyState.classList.toggle('d-none', visible > 0);
+  });
+
+  var pairCheckboxes = Array.from(document.querySelectorAll('.js-bulk-pair'));
+  var bulkForm = document.getElementById('bulk-merge-selection');
+  var selectAll = document.getElementById('select-all-quick');
+  var reviewAllButton = document.getElementById('review-all-merges');
+  var bulkButton = document.getElementById('review-selected-merges');
+  var selectedCount = document.getElementById('selected-merge-count');
+  var progressPanel = document.getElementById('bulk-review-progress');
+  var progressBar = document.getElementById('bulk-review-progress-bar');
+  var progressPercent = document.getElementById('bulk-review-progress-percent');
+  var progressLabel = document.getElementById('bulk-review-progress-label');
+  var progressDetail = document.getElementById('bulk-review-progress-detail');
+  function updateBulkSelection() {
+    var count = pairCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+    selectedCount.textContent = count;
+    bulkButton.disabled = count === 0;
+    selectAll.checked = pairCheckboxes.length > 0 && count === pairCheckboxes.length;
+    selectAll.indeterminate = count > 0 && count < pairCheckboxes.length;
+  }
+  selectAll.addEventListener('change', function () {
+    pairCheckboxes.forEach(function (checkbox) { checkbox.checked = selectAll.checked; });
+    updateBulkSelection();
+  });
+  pairCheckboxes.forEach(function (checkbox) {
+    checkbox.addEventListener('change', updateBulkSelection);
+  });
+  bulkForm.addEventListener('submit', function (event) {
+    var count = pairCheckboxes.filter(function (checkbox) { return checkbox.checked; }).length;
+    var scope = event.submitter && event.submitter.dataset.selectionScope === 'all' ? 'all' : 'page';
+    if ((scope === 'page' && count === 0) || !window.fetch) return;
+    event.preventDefault();
+    var formData = new FormData(bulkForm);
+    formData.set('selection_scope', scope);
+
+    bulkButton.disabled = true;
+    reviewAllButton.disabled = true;
+    selectAll.disabled = true;
+    pairCheckboxes.forEach(function (checkbox) { checkbox.disabled = true; });
+    progressPanel.classList.remove('d-none');
+    progressDetail.textContent = scope === 'all'
+      ? 'Finding every unreviewed quick candidate across all pages, then running identity, history, tournament result, ranking and financial collision checks.'
+      : 'Running identity, history, tournament result, ranking and financial collision checks for ' + count + ' selected candidate' + (count === 1 ? '' : 's') + '.';
+
+    var progress = 2;
+    var startedAt = Date.now();
+    var requestController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var progressUnits = scope === 'all' ? 12 : Math.max(1, count);
+    function renderProgress(value) {
+      progress = Math.max(progress, Math.min(100, value));
+      progressBar.style.width = progress + '%';
+      progressBar.setAttribute('aria-valuenow', String(progress));
+      progressPercent.textContent = progress + '%';
+    }
+    renderProgress(progress);
+    var progressTimer = window.setInterval(function () {
+      var elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      var increment = Math.max(1, Math.round((90 - progress) / Math.max(5, progressUnits)));
+      renderProgress(Math.min(90, progress + increment));
+      progressLabel.textContent = progress >= 90
+        ? 'Finalizing the server safety review…'
+        : 'Checking duplicate candidates…';
+      progressPercent.textContent = progress + '% · ' + elapsedSeconds + 's';
+    }, 450);
+    var requestTimeout = window.setTimeout(function () {
+      if (requestController) requestController.abort();
+    }, 60000);
+
+    fetch(bulkForm.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+      signal: requestController ? requestController.signal : undefined
+    }).then(function (response) {
+      return response.text().then(function (html) {
+        if (!response.ok) {
+          var error = new Error('The server returned HTTP ' + response.status + '. No players were merged.');
+          error.status = response.status;
+          throw error;
+        }
+        return html;
+      });
+    }).then(function (html) {
+      window.clearInterval(progressTimer);
+      window.clearTimeout(requestTimeout);
+      progressLabel.textContent = 'Safety review ready';
+      progressDetail.textContent = 'Opening the ready and skipped candidate summary…';
+      renderProgress(100);
+      window.setTimeout(function () {
+        document.open();
+        document.write(html);
+        document.close();
+      }, 250);
+    }).catch(function (error) {
+      window.clearInterval(progressTimer);
+      window.clearTimeout(requestTimeout);
+      progressBar.classList.remove('progress-bar-animated');
+      progressBar.classList.add('bg-danger');
+      var elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      progressPercent.textContent = 'Failed · ' + elapsedSeconds + 's';
+      if (error && error.name === 'AbortError') {
+        progressLabel.textContent = 'Server review stopped after 60 seconds';
+        progressDetail.textContent = 'No players were merged. Reload the page before retrying; if this repeats, review smaller selections.';
+      } else {
+        progressLabel.textContent = 'Server review failed';
+        progressDetail.textContent = error && error.message
+          ? error.message
+          : 'No players were merged. Reload the page and try again.';
+      }
+      bulkButton.disabled = false;
+      reviewAllButton.disabled = false;
+      selectAll.disabled = false;
+      pairCheckboxes.forEach(function (checkbox) { checkbox.disabled = false; });
+    });
+  });
+  updateBulkSelection();
+  window.addEventListener('pageshow', updateBulkSelection);
+  window.setTimeout(updateBulkSelection, 0);
+});
+</script>
 @endsection

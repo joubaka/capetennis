@@ -37,6 +37,7 @@ class Event extends Model
     'venue_notes',
     'logo',
     'published',
+    'results_published',
     'signUp',
     'series_id',
     'budget_cap',
@@ -52,6 +53,7 @@ class Event extends Model
   */
   protected $casts = [
     'published'           => 'boolean',
+    'results_published'   => 'boolean',
     'signUp'              => 'boolean',
     'start_date'          => 'date',
     'end_date'            => 'date',

@@ -38,7 +38,7 @@ class AgreementController extends Controller
 
         $player = \App\Models\Player::find($request->player_id);
 
-        if (!$player) {
+        if (!$player || ! in_array((int) $player->id, $request->user()->ownedPlayerIds(), true)) {
             return response()->json(['error' => 'Player not found.'], 404);
         }
 
@@ -91,7 +91,7 @@ class AgreementController extends Controller
 
         $player = \App\Models\Player::find($request->player_id);
 
-        if (!$player) {
+        if (!$player || ! in_array((int) $player->id, $request->user()->ownedPlayerIds(), true)) {
             return response()->json(['accepted' => false, 'error' => 'Player not found.']);
         }
 

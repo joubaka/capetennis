@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Player;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
@@ -41,17 +42,28 @@ class PlayerIdentityService
 
     public function find(string $name, string $surname, string $dateOfBirth, ?int $exceptId = null): ?Player
     {
+        return $this->findCandidates($name, $surname, $dateOfBirth, $exceptId)->first();
+    }
+
+    /**
+     * Return every historical row matching the canonical identity rules.
+     *
+     * @return Collection<int, Player>
+     */
+    public function findCandidates(string $name, string $surname, string $dateOfBirth, ?int $exceptId = null): Collection
+    {
         $identityKey = $this->identityKey($name, $surname, $dateOfBirth);
 
         return Player::query()
             ->whereDate('dateOfBirth', $dateOfBirth)
             ->when($exceptId, fn ($query) => $query->whereKeyNot($exceptId))
             ->get()
-            ->first(fn (Player $player) => $this->identityKey(
+            ->filter(fn (Player $player) => $this->identityKey(
                 (string) $player->name,
                 (string) $player->surname,
                 (string) $player->dateOfBirth
-            ) === $identityKey);
+            ) === $identityKey)
+            ->values();
     }
 
     public function ensureAvailable(string $name, string $surname, string $dateOfBirth, ?int $exceptId = null): void

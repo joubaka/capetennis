@@ -16,6 +16,8 @@ class SiteSetting extends Model
     public const GROUP_EMAIL        = 'email';
     public const GROUP_REGISTRATION = 'registration';
 
+    public const DISCIPLINARY_SYSTEM_ENABLED = 'disciplinary_system_enabled';
+
     public const AUTOMATED_EMAIL_TOGGLES = [
         'player_email_on_registration',
         'player_email_on_admin_entry',
@@ -126,6 +128,11 @@ class SiteSetting extends Model
     public static function emailEnabled(string $key): bool
     {
         return static::get($key, '1') === '1';
+    }
+
+    public static function disciplinarySystemEnabled(): bool
+    {
+        return static::get(self::DISCIPLINARY_SYSTEM_ENABLED, '1') === '1';
     }
 
     /**

@@ -14,6 +14,8 @@ use App\Policies\RegistrationPolicy;
 use App\Policies\TeamDrawPolicy;
 use App\Policies\WalletPolicy;
 use App\Policies\SeriesPolicy;
+use App\Models\DisciplinaryCase;
+use App\Policies\DisciplinaryCasePolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -28,6 +30,7 @@ class AuthServiceProvider extends ServiceProvider
         TeamTie::class => TeamDrawPolicy::class,
         Wallet::class => WalletPolicy::class,
         Series::class => SeriesPolicy::class,
+        DisciplinaryCase::class => DisciplinaryCasePolicy::class,
     ];
 
     /**
@@ -81,17 +84,17 @@ class AuthServiceProvider extends ServiceProvider
         // ── Individual-draw abilities ──────────────────────────────────────────
         // Create an individual (non-team) draw for an event.
         Gate::define('individual-draw.create', function ($user, \App\Models\Event $event) {
-            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
         // View / print draw data for any draw belonging to an event.
         Gate::define('event-draw.view', function ($user, \App\Models\Event $event) {
-            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
         // Create a new draw (individual) for an event.
         Gate::define('draw.create', function ($user, \App\Models\Event $event) {
-            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
         // Access draw-management pages that have no specific model context.
@@ -124,9 +127,20 @@ class AuthServiceProvider extends ServiceProvider
             return $subject->draw ?? $subject->draw()->first();
         };
 
-        Gate::define('team-fixture.view', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+        $canAccessTeamDraw = static function ($user, ?\App\Models\Draw $draw): bool {
+            if (!$draw) {
+                return false;
+            }
+
+            $event = $draw->event()->with('eventTypeModel')->first();
+            return $event
+                && (int) $event->eventTypeModel?->type === \App\Models\EventType::TEAM
+                && ($user->is_event_admin($event->id) || $user->is_convenor($event->id));
+        };
+
+        Gate::define('team-fixture.view', function ($user, $subject) use ($resolveTeamFixtureDraw, $canAccessTeamDraw) {
             $draw = $resolveTeamFixtureDraw($subject);
-            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+            return $canAccessTeamDraw($user, $draw);
         });
 
         Gate::define('team-fixture.update', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
@@ -136,10 +150,25 @@ class AuthServiceProvider extends ServiceProvider
 
         Gate::define('team-fixture.saveScore', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
             $draw = $resolveTeamFixtureDraw($subject);
-            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+            if (!$draw || $draw->locked) {
+                return false;
+            }
+
+            $event = $draw->event()->with('eventTypeModel')->first();
+            if (!$event || (int) $event->eventTypeModel?->type !== \App\Models\EventType::TEAM) {
+                return false;
+            }
+
+            if ($subject instanceof \App\Models\TeamFixture
+                && $subject->teamTie
+                && $subject->teamTie->status === \App\Models\TeamTie::STATUS_COMPLETED) {
+                return false;
+            }
+
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
-        Gate::define('team-fixture.schedule', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamFixtureDraw) {
+        Gate::define('team-fixture.schedule', function ($user, $subject) use ($resolveTeamFixtureDraw, $canAccessTeamDraw) {
             $draw = $resolveTeamFixtureDraw($subject);
             if (!$draw) {
                 return false;
@@ -148,7 +177,7 @@ class AuthServiceProvider extends ServiceProvider
             if ($draw->locked) {
                 return false;
             }
-            return $teamDrawPolicy()->updateTeamDraw($user, $draw);
+            return $canAccessTeamDraw($user, $draw);
         });
 
         // ── Team-Schedule abilities (TeamScheduleController) ──────────────────
@@ -162,17 +191,17 @@ class AuthServiceProvider extends ServiceProvider
             return null;
         };
 
-        Gate::define('team-schedule.view', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamScheduleDraw) {
+        Gate::define('team-schedule.view', function ($user, $subject) use ($resolveTeamScheduleDraw, $canAccessTeamDraw) {
             if ($subject instanceof \App\Models\Event) {
-                return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+                return $user->is_event_admin($subject->id) || $user->is_convenor($subject->id);
             }
             $draw = $resolveTeamScheduleDraw($subject);
-            return $draw ? $teamDrawPolicy()->updateTeamDraw($user, $draw) : false;
+            return $canAccessTeamDraw($user, $draw);
         });
 
-        Gate::define('team-schedule.manage', function ($user, $subject) use ($teamDrawPolicy, $resolveTeamScheduleDraw) {
+        Gate::define('team-schedule.manage', function ($user, $subject) use ($resolveTeamScheduleDraw, $canAccessTeamDraw) {
             if ($subject instanceof \App\Models\Event) {
-                return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+                return $user->is_event_admin($subject->id) || $user->is_convenor($subject->id);
             }
             $draw = $resolveTeamScheduleDraw($subject);
             if (!$draw) {
@@ -181,7 +210,7 @@ class AuthServiceProvider extends ServiceProvider
             if ($draw->locked) {
                 return false;
             }
-            return $teamDrawPolicy()->updateTeamDraw($user, $draw);
+            return $canAccessTeamDraw($user, $draw);
         });
 
         // ── Team Management (TeamController) ──────────────────────────────────

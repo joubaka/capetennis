@@ -9,6 +9,7 @@ use App\Models\Draw;
 use App\Models\Player;
 use App\Models\Venue;
 use App\Models\Team;
+use App\Models\TeamFixturePlayer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use App\Models\TeamFixtureResult;
@@ -22,6 +23,7 @@ class TeamFixtureController extends Controller
 {
   public function index(Request $request)
   {
+    $eventIds = $this->managedEventIds($request);
     $query = TeamFixture::query()->with([
       'draw:id,drawName,event_id',
       'draw.event:id,name',
@@ -33,6 +35,10 @@ class TeamFixtureController extends Controller
       'teamTie.homeTeam:id,name',
       'teamTie.awayTeam:id,name',
     ]);
+
+    if ($eventIds !== null) {
+      $query->whereHas('draw', fn($draw) => $draw->whereIn('event_id', $eventIds));
+    }
 
     $dateCol = Schema::hasColumn('team_fixtures', 'scheduled_at')
       ? 'scheduled_at'
@@ -105,10 +111,18 @@ class TeamFixtureController extends Controller
     $event = Draw::find($request->draw_id)?->event;
     $fixtures = $query->get();
 
-    $events = Event::orderBy('start_date', 'desc')->get(['id', 'name', 'start_date']);
-    $draws = Draw::orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
+    $events = Event::when($eventIds !== null, fn($query) => $query->whereIn('id', $eventIds))
+      ->orderBy('start_date', 'desc')->get(['id', 'name', 'start_date']);
+    $draws = Draw::when($eventIds !== null, fn($query) => $query->whereIn('event_id', $eventIds))
+      ->orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
-    $allPlayers = Player::all();
+    $playerIds = TeamFixturePlayer::query()
+      ->when($eventIds !== null, fn($query) => $query->whereHas(
+        'fixture.draw', fn($draw) => $draw->whereIn('event_id', $eventIds)
+      ))
+      ->get(['team1_id', 'team2_id'])->flatMap(fn($row) => [$row->team1_id, $row->team2_id])
+      ->filter()->unique();
+    $allPlayers = Player::whereIn('id', $playerIds)->get();
 
     return view('backend.team-fixtures.index', compact(
       'fixtures',
@@ -151,11 +165,15 @@ class TeamFixtureController extends Controller
   /**
    * Show create form for a fixture (standalone)
    */
-  public function create()
+  public function create(Request $request)
   {
-    $draws = Draw::orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
+    $eventIds = $this->managedEventIds($request);
+    $draws = Draw::when($eventIds !== null, fn($query) => $query->whereIn('event_id', $eventIds))
+      ->orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
-    $teams = Team::orderBy('name')->get(['id', 'name']);
+    $teams = Team::when($eventIds !== null, fn($query) => $query->whereHas(
+      'category', fn($category) => $category->whereIn('event_id', $eventIds)
+    ))->orderBy('name')->get(['id', 'name']);
 
     return view('backend.team-fixtures.create', compact('draws', 'venues', 'teams'));
   }
@@ -183,6 +201,17 @@ class TeamFixtureController extends Controller
     // Authorize against the draw before creating the fixture
     $draw = \App\Models\Draw::findOrFail($validated['draw_id']);
     $this->authorize('team-fixture.update', $draw);
+    $teamEventIds = Team::whereIn('id', [
+      $validated['home_team_id'],
+      $validated['away_team_id'],
+    ])->with('category:id,event_id')->get()
+      ->map(fn(Team $team) => (int) $team->category?->event_id);
+
+    if ($teamEventIds->count() !== 2 || $teamEventIds->contains(fn(int $eventId) => $eventId !== (int) $draw->event_id)) {
+      return back()->withErrors([
+        'home_team_id' => 'Both teams must belong to the draw event.',
+      ])->withInput();
+    }
     // store team ids as expected by model fields (field names may vary per schema)
     $fx->team1_ids = $validated['home_team_id'];
     $fx->team2_ids = $validated['away_team_id'];
@@ -199,6 +228,23 @@ class TeamFixtureController extends Controller
     return redirect()
       ->route('backend.team-fixtures.admin', $fx->draw?->event?->id ?? null)
       ->with('success', 'Fixture created successfully.');
+  }
+
+  /** Null means unrestricted super-user access; an empty collection means no managed events. */
+  private function managedEventIds(Request $request): ?\Illuminate\Support\Collection
+  {
+    $user = $request->user();
+    if ($user?->hasRole('super-user')) {
+      return null;
+    }
+
+    if (! $user) {
+      return collect();
+    }
+
+    return DB::table('event_admins')->where('user_id', $user->id)->pluck('event_id')
+      ->merge(DB::table('event_convenors')->where('user_id', $user->id)->pluck('event_id'))
+      ->map(fn($id) => (int) $id)->unique()->values();
   }
 
   /**

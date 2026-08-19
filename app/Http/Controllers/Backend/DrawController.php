@@ -23,10 +23,15 @@ use App\Models\TeamFixture;
 use App\Services\CtBracket;
 use App\Services\DrawBuilder;
 use App\Domain\Engine\EngineRouter;
+use App\Domain\Draws\Services\DrawLockService;
+use App\Domain\Draws\Services\DrawPublicationService;
+use App\Models\DrawAuditLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class DrawController extends Controller
 {
@@ -199,37 +204,58 @@ class DrawController extends Controller
       return response()->json(['success' => false, 'message' => 'Draw not found.'], 404);
     }
 
-    $this->authorize('update', $draw);
+    $this->authorize('delete', $draw);
 
     try {
-      // Team fixtures
-      if ($draw->drawFixtures()->count() > 0) {
-        TeamFixture::where('draw_id', $id)->delete();
+      $counts = DB::transaction(function () use ($draw) {
+        $individualFixtureIds = Fixture::where('draw_id', $draw->id)->pluck('id');
+        $teamFixtureIds = TeamFixture::where('draw_id', $draw->id)->pluck('id');
+
+        DrawAuditLog::record($draw->id, 'deleted', null, [
+          'individual_fixtures' => $individualFixtureIds->count(),
+          'team_fixtures' => $teamFixtureIds->count(),
+        ]);
+
+        DB::table('order_of_plays')->whereIn('fixture_id', $individualFixtureIds)->delete();
+        DB::table('order_of_plays')->where('draw_id', $draw->id)->delete();
+        DB::table('schedules')->where('draw_id', $draw->id)->delete();
+        DB::table('fixture_results')->whereIn('fixture_id', $individualFixtureIds)->delete();
+        DB::table('team_fixture_results')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
+        DB::table('team_fixture_players')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
+        DB::table('team_order_of_plays')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
+        TeamFixture::whereIn('id', $teamFixtureIds)->delete();
+        Fixture::whereIn('id', $individualFixtureIds)->delete();
+
+        $drawGroupIds = DB::table('draw_groups')->where('draw_id', $draw->id)->pluck('id');
+        DB::table('draw_group_registrations')->whereIn(
+          'draw_group_id',
+          $drawGroupIds
+        )->delete();
+        DB::table('draw_group_rankings')->whereIn('draw_group_id', $drawGroupIds)->delete();
+        DB::table('draw_groups')->where('draw_id', $draw->id)->delete();
+        DB::table('draw_registrations')->where('draw_id', $draw->id)->delete();
+        DB::table('draw_teams')->where('draw_id', $draw->id)->delete();
+        DB::table('draw_venues')->where('draw_id', $draw->id)->delete();
+        DB::table('draw_settings')->where('draw_id', $draw->id)->delete();
+        DB::table('draw_events')->where('draw_id', $draw->id)->delete();
+        if (Schema::hasColumn('rank_venue_mappings', 'draw_id')) {
+          DB::table('rank_venue_mappings')->where('draw_id', $draw->id)->delete();
+        }
+        $subDrawIds = DB::table('sub_draws')->where('draw_id', $draw->id)->pluck('id');
+        DB::table('registration_sub_draws')->whereIn('sub_draw_id', $subDrawIds)->delete();
+        DB::table('sub_draws')->whereIn('id', $subDrawIds)->delete();
+        DB::table('team_ties')->where('draw_id', $draw->id)->delete();
+
         $draw->delete();
 
-        return response()->json([
-          'success' => true,
-          'message' => '✅ Draw and team fixtures deleted.'
-        ]);
-      }
-
-      // Individual fixtures
-      if ($draw->fixtures()->count() > 0) {
-        Fixture::where('draw_id', $id)->delete();
-        $draw->delete();
-
-        return response()->json([
-          'success' => true,
-          'message' => '✅ Draw and fixtures deleted.'
-        ]);
-      }
-
-      // No fixtures
-      $draw->delete();
+        return [$individualFixtureIds->count(), $teamFixtureIds->count()];
+      });
 
       return response()->json([
         'success' => true,
-        'message' => '✅ Draw deleted.'
+        'message' => '✅ Draft draw deleted.',
+        'individual_fixtures_deleted' => $counts[0],
+        'team_fixtures_deleted' => $counts[1],
       ]);
     } catch (\Exception $e) {
       return response()->json([
@@ -242,55 +268,28 @@ class DrawController extends Controller
   public function unlock_draw(Request $request, $draw)
   {
     $draw = Draw::findOrFail($draw);
-    $this->authorize('update', $draw);
-
-    // Update draw lock status
-    $draw->locked = false;
-    $draw->save();
+    $this->authorize('lockToggle', $draw);
+    app(DrawLockService::class)->unlock($draw);
 
     return response()->json([
       'success' => true,
-      'message' => 'Draw has been locked.',
+      'message' => 'Draw has been unlocked.',
     ]);
   }
  public function lock_draw(Request $request, Draw $draw)
 {
-    $this->authorize('update', $draw);
-
-    $draw->locked = $request->boolean('lock');
-    $draw->save();
-
-    if ($draw->locked) {
-        $builder = new DrawBuilder($draw);
-
-        // 🧠 Step 1: Rank players
-        $builder->rankPlayers();
-
-        // 🪪 Step 2: Get ranked player output before continuing
-        $ranked = $builder->getFinalPositionsVerbose(); // custom debug method below
-
-        // 🧩 Step 3: Assign codes
-        $builder->assignSeedingCodes();
-
-        // 🏗️ Step 4: Generate draw tree
-        $fixtureMap = $builder->generatePlayoffFixtures();
-
-        return response()->json([
-            'message' => 'Fixtures created',
-            'fixture_map' => $fixtureMap,
-            'ranked_players' => $ranked,
-            'draw' => $draw,
-        ]);
-    } else {
-        Fixture::where('draw_id', $draw->id)
-            ->where('stage', '!=', 'RR')
-            ->delete();
-
-        return response()->json([
-            'status' => 'ok',
-            'locked' => $draw->locked,
-        ]);
+    $this->authorize('lockToggle', $draw);
+    try {
+      app(DrawLockService::class)->lock($draw);
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
     }
+
+    return response()->json([
+        'status' => 'ok',
+        'locked' => true,
+        'message' => 'Draw has been locked.',
+    ]);
 }
 
 
@@ -308,10 +307,15 @@ class DrawController extends Controller
   {
     $draw = Draw::findOrFail($id);
     $this->authorize('update', $draw);
+    $validated = $request->validate([
+      'players' => ['required', 'array'],
+      'players.*' => ['integer', 'exists:registrations,id'],
+    ]);
 
-    foreach ($request->players as $player) {
-      $draw->registrations()->attach($player);
+    foreach ($validated['players'] as $player) {
+      $this->assertRegistrationBelongsToDraw($draw, (int) $player);
     }
+    $draw->registrations()->syncWithoutDetaching($validated['players']);
 
     return redirect()->back();
   }
@@ -332,12 +336,11 @@ class DrawController extends Controller
   {
     $draw = Draw::findOrFail($id);
     $this->authorize('update', $draw);
-    $eventCategory = CategoryEvent::find($request->category);
-    $draw = Draw::findOrFail($id);
-    $eventCategory = CategoryEvent::find($request->category);
-    foreach ($eventCategory->registrations as $key => $value) {
-      $draw->registrations()->attach($value->id);
-    }
+    $request->validate(['category' => ['required', 'integer', 'exists:category_events,id']]);
+    $eventCategory = CategoryEvent::findOrFail($request->category);
+    $this->assertCategoryBelongsToDraw($draw, $eventCategory);
+    $registrationIds = $eventCategory->activeRegistrations()->pluck('registration_id')->all();
+    $draw->registrations()->syncWithoutDetaching($registrationIds);
 
     return redirect()->back();
   }
@@ -346,28 +349,45 @@ class DrawController extends Controller
   {
     $draw = Draw::findOrFail($id);
     $this->authorize('update', $draw);
+    $validated = $request->validate([
+      'reg' => ['required', 'integer'],
+      'seed' => ['required', 'integer', 'min:1'],
+    ]);
 
-    $drawReg = DrawRegistrations::where('registration_id', $request->reg)
+    $drawReg = DB::table('draw_registrations')->where('registration_id', $validated['reg'])
       ->where('draw_id', $id)
-      ->first();
-    $drawReg->seed = $request->seed;
-    $drawReg->save();
-    return $drawReg;
-    return $request;
+      ->firstOrFail();
+    DB::table('draw_registrations')->where('draw_id', $id)
+      ->where('registration_id', $validated['reg'])
+      ->update(['seed' => $validated['seed']]);
+
+    return response()->json(['draw_id' => $id, 'registration_id' => $drawReg->registration_id, 'seed' => $validated['seed']]);
   }
 
   public function changeAllSeeds(Request $request)
   {
-    $request->validate(['draw_id' => 'required|exists:draws,id']);
+    $request->validate([
+      'draw_id' => 'required|exists:draws,id',
+      'neworder' => ['required', 'array'],
+      'neworder.*' => ['required', 'integer', 'distinct'],
+    ]);
     $drawModel = Draw::findOrFail($request->draw_id);
     $this->authorize('update', $drawModel);
 
     $order = $request->neworder;
-    foreach ($order as $key => $o) {
-      $d = DrawRegistrations::where('registration_id', $o)->first();
-      $d->seed = $key + 1;
-      $d->save();
-    }
+    DB::transaction(function () use ($drawModel, $order) {
+      foreach ($order as $key => $registrationId) {
+        $updated = DB::table('draw_registrations')->where('draw_id', $drawModel->id)
+          ->where('registration_id', $registrationId)
+          ->update(['seed' => $key + 1]);
+
+        if ($updated !== 1) {
+          throw ValidationException::withMessages([
+            'neworder' => "Registration {$registrationId} is not in this draw.",
+          ]);
+        }
+      }
+    });
     return $request;
   }
 
@@ -376,8 +396,13 @@ class DrawController extends Controller
     $draw = Draw::findOrFail($id);
     $this->authorize('publish', $draw);
 
-    $draw->published = !$draw->published;
-    $draw->save();
+    try {
+      $service = app(DrawPublicationService::class);
+      $draw->published ? $service->unpublish($draw) : $service->publish($draw);
+      $draw->refresh();
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+    }
 
     return response()->json([
       'success' => true,
@@ -709,7 +734,10 @@ class DrawController extends Controller
     }
 
     // Load all players in the registrations under this category event
-    $registrations = $categoryEvent->registrations()->with('players')->get();
+    $registrations = $categoryEvent->registrations()->with('players')
+      ->wherePivot('status', '!=', 'withdrawn')
+      ->wherePivotNull('deleted_at')
+      ->get();
 
     foreach ($registrations as $registration) {
       foreach ($registration->players as $player) {
@@ -724,8 +752,10 @@ class DrawController extends Controller
   public function addPlayerDraw(Request $request, Draw $draw)
   {
     $this->authorize('update', $draw);
+    $validated = $request->validate(['player_id' => ['required', 'integer', 'exists:registrations,id']]);
+    $this->assertRegistrationBelongsToDraw($draw, (int) $validated['player_id']);
 
-    $draw->registrations()->syncWithoutDetaching($request->player_id);
+    $draw->registrations()->syncWithoutDetaching($validated['player_id']);
     return response()->noContent();
   }
 
@@ -742,7 +772,15 @@ class DrawController extends Controller
     $draw = Draw::findOrFail($id);
     $this->authorize('update', $draw);
 
-    $playerIds = $request->input('players', []);
+    $validated = $request->validate([
+      'players' => ['array'],
+      'players.*' => ['integer', 'distinct', 'exists:registrations,id'],
+    ]);
+    $playerIds = $validated['players'] ?? [];
+
+    foreach ($playerIds as $registrationId) {
+      $this->assertRegistrationBelongsToDraw($draw, (int) $registrationId);
+    }
 
     $draw->registrations()->sync($playerIds);
 
@@ -755,6 +793,8 @@ class DrawController extends Controller
     $this->authorize('update', $draw);
 
     $registrationId = $request->input('registration_id');
+    $request->validate(['registration_id' => ['required', 'integer', 'exists:registrations,id']]);
+    $this->assertRegistrationBelongsToDraw($draw, (int) $registrationId);
 
     // Fetch registration and validate
     $registration = Registration::with('players')->find($registrationId);
@@ -819,6 +859,7 @@ class DrawController extends Controller
     $this->authorize('update', $draw);
 
     $categoryEvent = CategoryEvent::with('registrations.players')->findOrFail($request->category_id);
+    $this->assertCategoryBelongsToDraw($draw, $categoryEvent);
 
     $existingPlayerIds = $draw->registrations->flatMap(function ($reg) {
       return $reg->players->pluck('id');
@@ -826,7 +867,12 @@ class DrawController extends Controller
 
     $attached = 0;
 
-    foreach ($categoryEvent->registrations as $registration) {
+    $activeRegistrations = $categoryEvent->registrations()
+      ->wherePivot('status', '!=', 'withdrawn')
+      ->wherePivotNull('deleted_at')
+      ->with('players')->get();
+
+    foreach ($activeRegistrations as $registration) {
       foreach ($registration->players as $player) {
         if (!in_array($player->id, $existingPlayerIds)) {
           $draw->registrations()->syncWithoutDetaching($registration->id);
@@ -843,18 +889,20 @@ class DrawController extends Controller
 
   public function addPlayerToDraw(Request $request)
   {
-    $request->validate([
-      'draw_id' => 'required|integer|exists:draws,id',
-      'player_ids' => 'required|array',
-    ]);
-
+    $request->validate(['draw_id' => 'required|integer']);
     $draw = Draw::findOrFail($request->draw_id);
     $this->authorize('update', $draw);
+
+    $request->validate([
+      'player_ids' => 'required|array',
+      'player_ids.*' => ['required', 'integer', 'distinct', 'exists:registrations,id'],
+    ]);
 
     $added = 0;
     $skipped = 0;
 
     foreach ($request->player_ids as $playerId) {
+      $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
 
       $exists = DB::table('draw_registrations')
         ->where('draw_id', $draw->id)
@@ -1363,6 +1411,36 @@ public function json(Draw $draw)
     }
 
     return response()->json(['status' => 'ok']);
+  }
+
+  private function assertCategoryBelongsToDraw(Draw $draw, CategoryEvent $categoryEvent): void
+  {
+    if ((int) $categoryEvent->event_id !== (int) $draw->event_id
+      || ($draw->category_event_id && (int) $categoryEvent->id !== (int) $draw->category_event_id)) {
+      throw ValidationException::withMessages([
+        'category_id' => 'The category does not belong to this draw.',
+      ]);
+    }
+  }
+
+  private function assertRegistrationBelongsToDraw(Draw $draw, int $registrationId): void
+  {
+    $query = DB::table('category_event_registrations as entry')
+      ->join('category_events as category_event', 'category_event.id', '=', 'entry.category_event_id')
+      ->where('entry.registration_id', $registrationId)
+      ->where('category_event.event_id', $draw->event_id)
+      ->where('entry.status', '!=', 'withdrawn')
+      ->whereNull('entry.deleted_at');
+
+    if ($draw->category_event_id) {
+      $query->where('entry.category_event_id', $draw->category_event_id);
+    }
+
+    if (! $query->exists()) {
+      throw ValidationException::withMessages([
+        'player_ids' => "Registration {$registrationId} is not an active entry in this draw's category.",
+      ]);
+    }
   }
 
 

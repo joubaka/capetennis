@@ -1420,9 +1420,24 @@ class RegisterController extends Controller
 
     $duplicateErrors = [];
 
+    $entryEligibility = app(\App\Domain\Entries\Services\EntryEligibilityService::class);
+
     for ($i = 0; $i < count($playerIds); $i++) {
       $playerId       = (int) $playerIds[$i];
       $categoryEventId = (int) $categoryIds[$i];
+
+      $categoryEvent = CategoryEvent::find($categoryEventId);
+      if (! $categoryEvent) {
+        $duplicateErrors[] = "The selected category no longer exists.";
+        continue;
+      }
+
+      try {
+        $entryEligibility->assertCanRegister($categoryEvent, $playerId);
+      } catch (\RuntimeException $exception) {
+        $duplicateErrors[] = $exception->getMessage();
+        continue;
+      }
 
       // Duplicate active registration check:
       // Only block if the player already has a PAID (payment_status_id = 1) and
@@ -1438,7 +1453,6 @@ class RegisterController extends Controller
         ->exists();
 
       if ($duplicate) {
-        $categoryEvent = CategoryEvent::find($categoryEventId);
         $categoryName  = optional($categoryEvent?->category)->name ?? "category ID {$categoryEventId}";
         $duplicateErrors[] = "Player ID {$playerId} is already registered for {$categoryName}.";
       }

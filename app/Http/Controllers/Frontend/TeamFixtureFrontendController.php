@@ -7,6 +7,9 @@ use App\Models\TeamFixture;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use App\Models\Draw;
+use App\Models\Event;
 
 class TeamFixtureFrontendController extends Controller
 {
@@ -17,10 +20,7 @@ class TeamFixtureFrontendController extends Controller
     // Block unpublished draws — only admin/super-user/convenor may view
     if (!$drawModel->published) {
       $user = auth()->user();
-      $isPrivileged = $user && (
-        $user->is_convenor($drawModel->event_id) ||
-        (method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super-user')))
-      );
+      $isPrivileged = $user && $user->can('view', $drawModel);
       if (!$isPrivileged) {
         abort(403, 'This draw has not been published yet.');
       }
@@ -54,7 +54,8 @@ class TeamFixtureFrontendController extends Controller
 
   public function enterScores($draw)
   {
-    $drawModel = \App\Models\Draw::findOrFail($draw);
+    $drawModel = Draw::findOrFail($draw);
+    $this->authorize('team-fixture.saveScore', $drawModel);
 
     // Round-Robin draws use the Fixture model, not TeamFixture
     $rrCount = \App\Models\Fixture::where('draw_id', $draw)->count();
@@ -104,6 +105,7 @@ class TeamFixtureFrontendController extends Controller
       ]);
 
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
+      $this->authorize('team-fixture.saveScore', $fixture);
 
       for ($i = 1; $i <= 3; $i++) {
           if ($request->filled("set{$i}_home") && $request->filled("set{$i}_away")) {
@@ -166,6 +168,7 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
   public function deleteScore($fixtureId)
   {
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
+      $this->authorize('team-fixture.saveScore', $fixture);
       $fixture->fixtureResults()->delete();
 
       // Prepare updated result HTML
@@ -208,7 +211,15 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
   public function venueFixtures($venueId)
   {
       $venue = \App\Models\Venue::findOrFail($venueId);
+      $user = auth()->user();
+      $eventIds = $user->hasRole('super-user')
+          ? Event::query()->pluck('id')
+          : collect(DB::table('event_admins')->where('user_id', $user->id)->pluck('event_id'))
+              ->merge(DB::table('event_convenors')->where('user_id', $user->id)->pluck('event_id'))
+              ->unique();
+
       $fixtures = \App\Models\TeamFixture::where('venue_id', $venueId)
+          ->whereHas('draw', fn ($query) => $query->whereIn('event_id', $eventIds))
           ->with(['fixtureResults', 'homeTeam', 'awayTeam'])
           ->orderBy('scheduled_at')
           ->get();
@@ -222,6 +233,8 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
      */
     public function enterScoresByEventVenue($eventId, $venueId)
     {
+        $event = Event::findOrFail($eventId);
+        $this->authorize('event-draw.view', $event);
         $fixtures = \App\Models\TeamFixture::with(['fixtureResults', 'homeTeam', 'awayTeam', 'draw'])
             ->where('venue_id', $venueId)
             ->whereHas('draw', function($q) use ($eventId) {

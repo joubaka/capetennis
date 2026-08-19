@@ -35,7 +35,9 @@ final class DrawGuard
      */
     public static function requireGenerated(Draw $draw, string $operation = 'perform'): void
     {
-        if (! $draw->drawFixtures()->exists()) {
+        if (! $draw->drawFixtures()->exists()
+            && ! $draw->fixtures()->exists()
+            && ! $draw->teamTies()->exists()) {
             throw DrawMutationException::notGenerated($draw->id, $operation);
         }
     }
