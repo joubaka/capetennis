@@ -100,6 +100,11 @@
             <td>
               <span class="badge bg-label-primary">{{ $registrationHistoryCount }} registration/result references</span>
               <div class="small text-muted mt-1">Registration IDs, tournament results and ranking attribution remain attached to #{{ $analysis['keep']->id }}.</div>
+              @if(count($analysis['impact']['ranking_rebuild_series_ids'] ?? []))
+                <div class="small text-warning mt-1">
+                  <i class="ti ti-refresh me-1"></i>Rebuild calculated ranking for series {{ collect($analysis['impact']['ranking_rebuild_series_ids'])->map(fn($id) => '#'.$id)->implode(', ') }}. Published snapshots remain unchanged.
+                </div>
+              @endif
             </td>
             <td>
               @forelse($recommendedValues as $field => $comparison)

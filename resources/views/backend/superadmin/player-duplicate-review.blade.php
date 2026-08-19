@@ -125,6 +125,12 @@
           Their registration IDs and recorded outcomes will not be changed; ownership of those registrations moves to the canonical player so future ranking calculations retain the same results.
         </div>
       @endif
+      @if(count($analysis['impact']['ranking_rebuild_series_ids'] ?? []))
+        <div class="alert alert-warning mt-3 mb-0">
+          <strong>Calculated ranking collision will be resolved automatically.</strong>
+          Series {{ collect($analysis['impact']['ranking_rebuild_series_ids'])->map(fn($id) => '#'.$id)->implode(', ') }} will be rebuilt from the preserved registrations and tournament results after the profiles are combined. Existing published ranking snapshots are not republished or changed by this merge.
+        </div>
+      @endif
       @if(count($analysis['impact']['owners_to_transfer']))
         <div class="mt-3 small text-muted">Linked user IDs to transfer: {{ implode(', ', $analysis['impact']['owners_to_transfer']) }}</div>
       @endif

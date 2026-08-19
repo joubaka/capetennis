@@ -751,10 +751,21 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             ['series_id' => $seriesId, 'position' => 2, 'score' => 50, 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('series_rankings')->insert([
-            'series_id' => $seriesId, 'ranking_list_id' => $rankingListId, 'category_id' => $categoryId,
-            'player_id' => $remove->id, 'rank_position' => 1, 'total_points' => 100,
-            'status' => 'published', 'created_at' => now(), 'updated_at' => now(),
+            [
+                'series_id' => $seriesId, 'ranking_list_id' => $rankingListId, 'category_id' => $categoryId,
+                'player_id' => $keep->id, 'rank_position' => 2, 'total_points' => 50,
+                'status' => 'calculated', 'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'series_id' => $seriesId, 'ranking_list_id' => $rankingListId, 'category_id' => $categoryId,
+                'player_id' => $remove->id, 'rank_position' => 1, 'total_points' => 100,
+                'status' => 'calculated', 'created_at' => now(), 'updated_at' => now(),
+            ],
         ]);
+
+        $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+        $this->assertTrue($analysis['can_merge']);
+        $this->assertSame([$seriesId], $analysis['impact']['ranking_rebuild_series_ids']);
 
         $this->postApprovedMerge($keep, $remove);
 
@@ -768,14 +779,49 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             'practice_fixture_id' => $practiceFixtureId, 'winner_registration' => $removeRegistration,
         ]);
         $this->assertDatabaseHas('series_rankings', [
-            'series_id' => $seriesId, 'player_id' => $keep->id, 'total_points' => 100, 'status' => 'published',
+            'series_id' => $seriesId, 'ranking_list_id' => $rankingListId,
+            'player_id' => $keep->id, 'total_points' => 150, 'status' => 'calculated',
         ]);
+        $this->assertDatabaseMissing('series_rankings', ['series_id' => $seriesId, 'player_id' => $remove->id]);
+        $this->assertDatabaseHas('ranking_audit_logs', ['series_id' => $seriesId, 'action' => 'rebuild']);
 
         $calculated = app(RankingCalculationService::class)->calculate(RankingList::findOrFail($rankingListId));
         $this->assertCount(1, $calculated->rows);
         $this->assertSame($keep->id, $calculated->rows[0]->playerId);
         $this->assertSame(150, $calculated->rows[0]->totalPoints);
         $this->assertCount(2, $calculated->rows[0]->countingLegs);
+    }
+
+    public function test_published_series_ranking_collision_is_not_auto_resolved(): void
+    {
+        $keep = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01']);
+        $remove = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01']);
+        $seriesId = DB::table('series')->insertGetId([
+            'name' => 'Published Merge Series', 'year' => 2026,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Published Boys Singles', 'Fee' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('series_rankings')->insert([
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $keep->id,
+                'rank_position' => 1, 'total_points' => 100, 'status' => 'published',
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $remove->id,
+                'rank_position' => 2, 'total_points' => 50, 'status' => 'published',
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+        ]);
+
+        $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+
+        $this->assertFalse($analysis['can_merge']);
+        $this->assertSame([], $analysis['impact']['ranking_rebuild_series_ids']);
+        $this->assertContains('series_rankings', collect($analysis['blockers'])->pluck('domain')->all());
     }
 
     public function test_usage_registry_includes_legacy_invitation_and_payfast_player_columns(): void

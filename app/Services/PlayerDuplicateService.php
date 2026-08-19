@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Models\Player;
 use App\Models\PlayerDuplicateDecision;
 use App\Models\PlayerMergeAudit;
+use App\Models\Series;
 use App\Models\User;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -660,6 +662,7 @@ class PlayerDuplicateService
     {
         $this->assertTransactionalStorage([
             'players', 'user_players', 'player_merge_audits', 'player_duplicate_decisions', 'activity_log',
+            'ranking_lists', 'ranking_list_category_events', 'ranking_audit_logs', 'audit_events',
             ...array_keys($this->availableReferences()),
         ]);
 
@@ -848,12 +851,14 @@ class PlayerDuplicateService
 
         $referenceState = $this->referenceState($keep->id, $remove->id);
         $registrationHistory = $this->registrationHistoryState($keep->id, $remove->id);
+        $rankingRebuildSeriesIds = $this->autoResolvableSeriesRankingSeriesIds($keep, $remove);
         $impact = [
             'keep' => $this->describe($keep),
             'remove' => $this->describe($remove),
             'references' => $referenceState['impact'],
             'registration_history' => $registrationHistory['impact'],
             'owners_to_transfer' => $this->sourceUserIds($remove)->diff($this->sourceUserIds($keep))->values()->all(),
+            'ranking_rebuild_series_ids' => $rankingRebuildSeriesIds,
         ];
         $digestPayload = [
             'keep' => $this->stablePlayerSnapshot($keep),
@@ -861,6 +866,7 @@ class PlayerDuplicateService
             'references' => $referenceState['fingerprints'],
             'registration_history' => $registrationHistory['fingerprints'],
             'blockers' => $blockers,
+            'ranking_rebuild_series_ids' => $rankingRebuildSeriesIds,
         ];
 
         return [
@@ -890,6 +896,7 @@ class PlayerDuplicateService
         $this->assertTransactionalStorage([
             'players', 'user_players', 'player_merge_audits',
             'player_duplicate_decisions', 'activity_log',
+            'ranking_lists', 'ranking_list_category_events', 'ranking_audit_logs', 'audit_events',
             ...array_keys($this->availableReferences()),
         ]);
 
@@ -925,6 +932,25 @@ class PlayerDuplicateService
         $removedSnapshot = $this->playerSnapshot($remove);
         $manifest = [];
         $sourceUserIds = $this->sourceUserIds($remove);
+        $rankingRebuildSeriesIds = collect($analysis['impact']['ranking_rebuild_series_ids'] ?? [])
+            ->map(fn ($seriesId) => (int) $seriesId)->filter()->unique()->values();
+
+        if ($rankingRebuildSeriesIds->isNotEmpty()) {
+            $calculatedRankingRows = DB::table('series_rankings')
+                ->whereIn('series_id', $rankingRebuildSeriesIds)
+                ->whereIn('player_id', [$keep->id, $remove->id])
+                ->where('status', 'calculated')
+                ->get();
+
+            DB::table('series_rankings')
+                ->whereIn('id', $calculatedRankingRows->pluck('id'))
+                ->delete();
+
+            $manifest['series_rankings']['auto_resolved_calculated_rows'] = [
+                'series_ids' => $rankingRebuildSeriesIds->all(),
+                'deleted_rows' => $calculatedRankingRows->map(fn ($row) => (array) $row)->all(),
+            ];
+        }
 
         foreach ($sourceUserIds as $userId) {
             if (! DB::table('user_players')->where(['user_id' => $userId, 'player_id' => $keep->id])->exists()) {
@@ -964,6 +990,24 @@ class PlayerDuplicateService
         }
         $keep->profile_complete = $keep->isProfileComplete();
         $keep->save();
+
+        foreach ($rankingRebuildSeriesIds as $seriesId) {
+            $report = app(RankingRebuildService::class)->rebuild(Series::query()->findOrFail($seriesId));
+            if (! ($report['persisted'] ?? false)) {
+                throw ValidationException::withMessages([
+                    'series_rankings' => 'The calculated ranking for series #'.$seriesId.' could not be rebuilt safely. Nothing was merged.',
+                ]);
+            }
+
+            $manifest['series_rankings']['rebuilds'][] = [
+                'series_id' => $seriesId,
+                'run_id' => $report['run_id'],
+                'total_rows' => $report['total_rows'],
+                'warnings' => $report['warnings'],
+                'topology' => $report['topology'],
+                'status' => 'calculated',
+            ];
+        }
 
         $remaining = $this->usage($remove->id);
         if (array_sum($remaining) > 0 || DB::table('user_players')->where('player_id', $remove->id)->exists()) {
@@ -1291,6 +1335,11 @@ class PlayerDuplicateService
     private function collisionBlockers(Player $keep, Player $remove): array
     {
         $blockers = [];
+        $autoResolvableRankingKeys = collect($this->autoResolvableSeriesRankingCollisions($keep, $remove))
+            ->mapWithKeys(fn (array $collision) => [
+                $this->seriesRankingCollisionKey($collision['series_id'], $collision['category_id']) => true,
+            ]);
+
         foreach (self::COLLISION_KEYS as $table => $keyColumns) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'player_id')
                 || collect($keyColumns)->contains(fn ($column) => ! Schema::hasColumn($table, $column))) {
@@ -1303,9 +1352,17 @@ class PlayerDuplicateService
                     $value === null ? $match->whereNull($column) : $match->where($column, $value);
                 }
                 if ($match->exists()) {
+                    if ($table === 'series_rankings' && $autoResolvableRankingKeys->has(
+                        $this->seriesRankingCollisionKey($sourceRow->series_id, $sourceRow->category_id)
+                    )) {
+                        continue;
+                    }
+
                     $blockers[] = [
                         'domain' => $table,
-                        'message' => 'Both profiles already have a '.str_replace('_', ' ', $table).' record for the same logical item. Resolve that collision before merging.',
+                        'message' => $table === 'series_rankings'
+                            ? 'Both profiles already have a series rankings record for the same logical item. Only calculated rows can be rebuilt automatically; reviewed, published or archived ranking collisions require ranking review first.'
+                            : 'Both profiles already have a '.str_replace('_', ' ', $table).' record for the same logical item. Resolve that collision before merging.',
                     ];
                     break;
                 }
@@ -1374,6 +1431,66 @@ class PlayerDuplicateService
         }
 
         return collect($blockers)->unique(fn ($blocker) => $blocker['domain'].'|'.$blocker['message'])->values()->all();
+    }
+
+    /** @return array<int, array{series_id:int, category_id:int|null}> */
+    private function autoResolvableSeriesRankingCollisions(Player $keep, Player $remove): array
+    {
+        $requiredColumns = ['player_id', 'series_id', 'category_id', 'status'];
+        if (! Schema::hasTable('series_rankings')
+            || collect($requiredColumns)->contains(fn (string $column) => ! Schema::hasColumn('series_rankings', $column))) {
+            return [];
+        }
+
+        $rows = DB::table('series_rankings')
+            ->whereIn('player_id', [$keep->id, $remove->id])
+            ->get($requiredColumns);
+
+        $collisions = $rows
+            ->groupBy(fn ($row) => $this->seriesRankingCollisionKey($row->series_id, $row->category_id))
+            ->filter(function (Collection $logicalRows) use ($keep, $remove) {
+                $playerIds = $logicalRows->pluck('player_id')->map(fn ($id) => (int) $id)->unique();
+
+                return $playerIds->contains($keep->id)
+                    && $playerIds->contains($remove->id)
+                    && $logicalRows->every(fn ($row) => $row->status === 'calculated');
+            })
+            ->map(fn (Collection $logicalRows) => [
+                'series_id' => (int) $logicalRows->first()->series_id,
+                'category_id' => $logicalRows->first()->category_id === null
+                    ? null
+                    : (int) $logicalRows->first()->category_id,
+            ])
+            ->values();
+
+        if ($collisions->isEmpty()) {
+            return [];
+        }
+
+        // A rebuild replaces every non-published row in the series. Never let
+        // an automatic player merge reset a reviewed, archived or draft cycle.
+        $unsafeSeriesIds = DB::table('series_rankings')
+            ->whereIn('series_id', $collisions->pluck('series_id')->unique())
+            ->where(function ($query) {
+                $query->whereNull('status')->orWhereNotIn('status', ['calculated', 'published']);
+            })
+            ->pluck('series_id')->map(fn ($id) => (int) $id)->unique();
+
+        return $collisions
+            ->reject(fn (array $collision) => $unsafeSeriesIds->contains($collision['series_id']))
+            ->all();
+    }
+
+    /** @return array<int, int> */
+    private function autoResolvableSeriesRankingSeriesIds(Player $keep, Player $remove): array
+    {
+        return collect($this->autoResolvableSeriesRankingCollisions($keep, $remove))
+            ->pluck('series_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    private function seriesRankingCollisionKey(mixed $seriesId, mixed $categoryId): string
+    {
+        return (int) $seriesId.'|'.($categoryId === null ? 'null' : (int) $categoryId);
     }
 
     private function opposingReferenceContexts(string $table, Collection $rows): array
