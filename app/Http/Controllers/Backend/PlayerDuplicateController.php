@@ -17,9 +17,23 @@ class PlayerDuplicateController extends Controller
 {
     public function index(Request $request, PlayerDuplicateService $duplicates): View
     {
+        $perPageOption = in_array($request->string('per_page')->toString(), ['25', '50', '100', '200', 'all'], true)
+            ? $request->string('per_page')->toString()
+            : '25';
+        $perPage = $perPageOption === 'all' ? 400 : (int) $perPageOption;
+        $mergeFilter = in_array($request->string('merge_filter')->toString(), ['all', 'ranking_auto'], true)
+            ? $request->string('merge_filter')->toString()
+            : 'all';
+
         return view('backend.superadmin.player-duplicates', [
-            'candidatePairs' => $duplicates->candidates(25, $request->boolean('include_reviewed')),
+            'candidatePairs' => $duplicates->candidates(
+                $perPage,
+                $request->boolean('include_reviewed'),
+                $mergeFilter
+            ),
             'includeReviewed' => $request->boolean('include_reviewed'),
+            'perPageOption' => $perPageOption,
+            'mergeFilter' => $mergeFilter,
             'recentMerges' => Schema::hasTable('player_merge_audits')
                 ? PlayerMergeAudit::with('approvedBy:id,name,email')->latest('merged_at')->limit(10)->get()
                 : collect(),

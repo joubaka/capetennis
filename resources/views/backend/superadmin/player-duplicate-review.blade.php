@@ -26,6 +26,19 @@
         <li class="mb-2">
           <strong>{{ str_replace('_', ' ', ucfirst($blocker['domain'])) }}:</strong> {{ $blocker['message'] }}
           @if(!empty($blocker['contexts']))
+            @if(($blocker['contexts'][0]['type'] ?? null) === 'series_ranking')
+              @foreach($blocker['contexts'] as $context)
+                <div class="border rounded bg-white p-2 mt-2 small">
+                  <strong>Series #{{ $context['series_id'] }}, category #{{ $context['category_id'] ?? 'none' }}</strong>
+                  <div class="mt-1">
+                    @foreach($context['rows'] as $row)
+                      <span class="badge bg-label-danger me-1">row #{{ $row['id'] }} · player #{{ $row['player_id'] }} · {{ $row['status'] ?: 'blank status' }}</span>
+                    @endforeach
+                  </div>
+                  <div class="text-muted mt-1">Series lifecycle: {{ collect($context['series_status_counts'])->map(fn($count, $status) => $status.': '.$count)->implode(', ') }}</div>
+                </div>
+              @endforeach
+            @else
             <div class="table-responsive mt-2">
               <table class="table table-sm table-bordered bg-white mb-1">
                 <thead><tr><th>Record</th><th>Fixture / draw</th><th>Event</th><th>Results</th><th>Action</th></tr></thead>
@@ -65,6 +78,7 @@
                 </tbody>
               </table>
             </div>
+            @endif
           @endif
         </li>
       @endforeach

@@ -82,9 +82,42 @@ class PlayerDuplicateService
         'team_fixture_results' => ['match_winner_id', 'match_loser_id'],
     ];
 
-    public function candidates(int $perPage = 25, bool $includeReviewed = false): LengthAwarePaginator
+    public function candidates(
+        int $perPage = 25,
+        bool $includeReviewed = false,
+        string $filter = 'all'
+    ): LengthAwarePaginator
     {
         $query = $this->candidatePairQuery($includeReviewed);
+
+        if ($filter === 'ranking_auto') {
+            $scanLimit = 1000;
+            $rows = $query->orderBy('first_player_id')->orderBy('second_player_id')
+                ->limit($scanLimit + 1)->get();
+            if ($rows->count() > $scanLimit) {
+                throw ValidationException::withMessages([
+                    'filter' => "More than {$scanLimit} duplicate pairs exist. Review or dismiss older candidates before running the ranking auto-resolution filter.",
+                ]);
+            }
+
+            $eligibleKeys = $this->rankingAutoResolvablePairKeys($rows);
+            $rows = $rows->filter(fn ($pair) => $eligibleKeys->has(
+                $this->candidatePairKey($pair->first_player_id, $pair->second_player_id)
+            ))->values();
+            $hydratedRows = $this->hydrateCandidateRows($rows, $eligibleKeys)
+                ->filter(fn ($pair) => $this->recommendedCandidateIsMergeable($pair))
+                ->values();
+            $page = LengthAwarePaginator::resolveCurrentPage();
+            $pageRows = $hydratedRows->slice(($page - 1) * $perPage, $perPage)->values();
+
+            return new LengthAwarePaginator(
+                $pageRows,
+                $hydratedRows->count(),
+                $perPage,
+                $page,
+                ['path' => request()->url(), 'query' => request()->query()]
+            );
+        }
 
         $pairs = $query
             ->orderBy('first_player_id')->orderBy('second_player_id')
@@ -158,7 +191,7 @@ class PlayerDuplicateService
         return $query;
     }
 
-    private function hydrateCandidateRows(Collection $rows): Collection
+    private function hydrateCandidateRows(Collection $rows, ?Collection $rankingAutoKeys = null): Collection
     {
         $playerIds = $rows
             ->flatMap(fn ($pair) => [$pair->first_player_id, $pair->second_player_id])
@@ -166,9 +199,10 @@ class PlayerDuplicateService
         $players = Player::with(['user:id,name,email', 'users:id,name,email'])
             ->whereIn('id', $playerIds)->get()->keyBy('id');
         $usageByPlayer = $this->usageMany($playerIds->all());
+        $rankingAutoKeys ??= $this->rankingAutoResolvablePairKeys($rows);
 
         return $rows->filter(fn ($pair) => $players->has($pair->first_player_id) && $players->has($pair->second_player_id))
-            ->map(function ($pair) use ($players, $usageByPlayer) {
+            ->map(function ($pair) use ($players, $usageByPlayer, $rankingAutoKeys) {
             $first = $players->get($pair->first_player_id);
             $second = $players->get($pair->second_player_id);
 
@@ -183,6 +217,7 @@ class PlayerDuplicateService
                 'confidence' => $confidence,
                 'recommended_keep_id' => $this->recommendedFromDescriptions($firstDescription, $secondDescription),
                 'quick_merge' => $quickMerge,
+                'ranking_auto_merge' => $rankingAutoKeys->has($this->candidatePairKey($first->id, $second->id)),
                 'decision' => Schema::hasTable('player_duplicate_decisions')
                     ? PlayerDuplicateDecision::query()
                         ->where('first_player_id', $first->id)
@@ -190,6 +225,82 @@ class PlayerDuplicateService
                     : null,
             ];
         })->sortByDesc(fn ($pair) => $pair->quick_merge !== null)->values();
+    }
+
+    /** @return Collection<string, bool> */
+    private function rankingAutoResolvablePairKeys(Collection $candidateRows): Collection
+    {
+        if ($candidateRows->isEmpty() || ! Schema::hasTable('series_rankings')) {
+            return collect();
+        }
+
+        $requiredColumns = ['player_id', 'series_id', 'category_id', 'status'];
+        if (collect($requiredColumns)->contains(fn (string $column) => ! Schema::hasColumn('series_rankings', $column))) {
+            return collect();
+        }
+
+        $playerIds = $candidateRows->flatMap(fn ($pair) => [
+            (int) $pair->first_player_id,
+            (int) $pair->second_player_id,
+        ])->unique()->values();
+        $rankingRowsByPlayer = DB::table('series_rankings')
+            ->whereIn('player_id', $playerIds)
+            ->get($requiredColumns)
+            ->groupBy(fn ($row) => (int) $row->player_id);
+
+        $pairCollisions = $candidateRows->mapWithKeys(function ($pair) use ($rankingRowsByPlayer) {
+            $firstId = (int) $pair->first_player_id;
+            $secondId = (int) $pair->second_player_id;
+            $rows = collect($rankingRowsByPlayer->get($firstId, collect()))
+                ->merge($rankingRowsByPlayer->get($secondId, collect()));
+            $collisions = $rows
+                ->groupBy(fn ($row) => $this->seriesRankingCollisionKey($row->series_id, $row->category_id))
+                ->filter(function (Collection $logicalRows) use ($firstId, $secondId) {
+                    $logicalPlayerIds = $logicalRows->pluck('player_id')->map(fn ($id) => (int) $id)->unique();
+
+                    return $logicalPlayerIds->contains($firstId)
+                        && $logicalPlayerIds->contains($secondId)
+                        && $logicalRows->every(fn ($row) => $row->status === 'calculated');
+                });
+
+            return [$this->candidatePairKey($firstId, $secondId) => $collisions->pluck('series_id')
+                ->map(fn ($id) => (int) $id)->unique()->values()];
+        })->filter(fn (Collection $seriesIds) => $seriesIds->isNotEmpty());
+
+        if ($pairCollisions->isEmpty()) {
+            return collect();
+        }
+
+        $reviewedSeriesIds = DB::table('series_rankings')
+            ->whereIn('series_id', $pairCollisions->flatten()->unique())
+            ->where('status', 'reviewed')
+            ->pluck('series_id')->map(fn ($id) => (int) $id)->unique();
+
+        return $pairCollisions
+            ->filter(fn (Collection $seriesIds) => $seriesIds->diff($reviewedSeriesIds)->isNotEmpty())
+            ->map(fn () => true);
+    }
+
+    private function candidatePairKey(mixed $firstId, mixed $secondId): string
+    {
+        return min((int) $firstId, (int) $secondId).':'.max((int) $firstId, (int) $secondId);
+    }
+
+    private function recommendedCandidateIsMergeable(object $pair): bool
+    {
+        /** @var Player $first */
+        $first = $pair->first['player'];
+        /** @var Player $second */
+        $second = $pair->second['player'];
+        $keep = $pair->recommended_keep_id === $first->id ? $first : $second;
+        $remove = $keep->is($first) ? $second : $first;
+
+        if (filled($keep->dateOfBirth) && filled($remove->dateOfBirth)
+            && substr((string) $keep->dateOfBirth, 0, 10) !== substr((string) $remove->dateOfBirth, 0, 10)) {
+            return false;
+        }
+
+        return $this->collisionBlockers($keep, $remove) === [];
     }
 
     private function indexedCandidateQuery(string $hashColumn, bool $includeReviewed)
@@ -992,7 +1103,10 @@ class PlayerDuplicateService
         $keep->save();
 
         foreach ($rankingRebuildSeriesIds as $seriesId) {
-            $report = app(RankingRebuildService::class)->rebuild(Series::query()->findOrFail($seriesId));
+            $report = app(RankingRebuildService::class)->rebuild(
+                Series::query()->findOrFail($seriesId),
+                ['replaceCalculatedOnly' => true]
+            );
             if (! ($report['persisted'] ?? false)) {
                 throw ValidationException::withMessages([
                     'series_rankings' => 'The calculated ranking for series #'.$seriesId.' could not be rebuilt safely. Nothing was merged.',
@@ -1361,8 +1475,11 @@ class PlayerDuplicateService
                     $blockers[] = [
                         'domain' => $table,
                         'message' => $table === 'series_rankings'
-                            ? 'Both profiles already have a series rankings record for the same logical item. Only calculated rows can be rebuilt automatically; reviewed, published or archived ranking collisions require ranking review first.'
+                            ? $this->seriesRankingCollisionMessage($keep, $remove, $sourceRow)
                             : 'Both profiles already have a '.str_replace('_', ' ', $table).' record for the same logical item. Resolve that collision before merging.',
+                        'contexts' => $table === 'series_rankings'
+                            ? [$this->seriesRankingCollisionContext($keep, $remove, $sourceRow)]
+                            : [],
                     ];
                     break;
                 }
@@ -1467,17 +1584,16 @@ class PlayerDuplicateService
             return [];
         }
 
-        // A rebuild replaces every non-published row in the series. Never let
-        // an automatic player merge reset a reviewed, archived or draft cycle.
-        $unsafeSeriesIds = DB::table('series_rankings')
+        // An in-progress reviewed run must be published or deliberately
+        // reopened before a merge creates a replacement calculated snapshot.
+        // Published and archived snapshots are preserved by the merge rebuild.
+        $reviewedSeriesIds = DB::table('series_rankings')
             ->whereIn('series_id', $collisions->pluck('series_id')->unique())
-            ->where(function ($query) {
-                $query->whereNull('status')->orWhereNotIn('status', ['calculated', 'published']);
-            })
+            ->where('status', 'reviewed')
             ->pluck('series_id')->map(fn ($id) => (int) $id)->unique();
 
         return $collisions
-            ->reject(fn (array $collision) => $unsafeSeriesIds->contains($collision['series_id']))
+            ->reject(fn (array $collision) => $reviewedSeriesIds->contains($collision['series_id']))
             ->all();
     }
 
@@ -1491,6 +1607,57 @@ class PlayerDuplicateService
     private function seriesRankingCollisionKey(mixed $seriesId, mixed $categoryId): string
     {
         return (int) $seriesId.'|'.($categoryId === null ? 'null' : (int) $categoryId);
+    }
+
+    private function seriesRankingCollisionMessage(Player $keep, Player $remove, object $sourceRow): string
+    {
+        $context = $this->seriesRankingCollisionContext($keep, $remove, $sourceRow);
+        $statusSummary = collect($context['rows'])
+            ->map(fn (array $row) => '#'.$row['player_id'].' '.($row['status'] ?? 'blank'))
+            ->unique()->implode(', ');
+
+        if (($context['series_status_counts']['reviewed'] ?? 0) > 0
+            && collect($context['rows'])->every(fn (array $row) => $row['status'] === 'calculated')) {
+            return 'Series #'.$context['series_id'].' has an in-progress reviewed ranking run. Complete or reopen that ranking review before merging; the colliding profile rows are '.$statusSummary.'.';
+        }
+
+        return 'Series #'.$context['series_id'].' / category #'.($context['category_id'] ?? 'none')
+            .' has a non-calculated collision ('.$statusSummary.'). Reviewed, published or archived profile collisions require ranking review first.';
+    }
+
+    /** @return array<string, mixed> */
+    private function seriesRankingCollisionContext(Player $keep, Player $remove, object $sourceRow): array
+    {
+        $rows = DB::table('series_rankings')
+            ->where('series_id', $sourceRow->series_id)
+            ->whereIn('player_id', [$keep->id, $remove->id])
+            ->when(
+                $sourceRow->category_id === null,
+                fn ($query) => $query->whereNull('category_id'),
+                fn ($query) => $query->where('category_id', $sourceRow->category_id)
+            )
+            ->get(['id', 'player_id', 'status', 'run_id'])
+            ->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'player_id' => (int) $row->player_id,
+                'status' => $row->status,
+                'run_id' => $row->run_id,
+            ])->all();
+
+        $seriesStatusCounts = DB::table('series_rankings')
+            ->where('series_id', $sourceRow->series_id)
+            ->selectRaw("COALESCE(status, '<blank>') as ranking_status, COUNT(*) as row_count")
+            ->groupBy('status')
+            ->pluck('row_count', 'ranking_status')
+            ->map(fn ($count) => (int) $count)->all();
+
+        return [
+            'type' => 'series_ranking',
+            'series_id' => (int) $sourceRow->series_id,
+            'category_id' => $sourceRow->category_id === null ? null : (int) $sourceRow->category_id,
+            'rows' => $rows,
+            'series_status_counts' => $seriesStatusCounts,
+        ];
     }
 
     private function opposingReferenceContexts(string $table, Collection $rows): array

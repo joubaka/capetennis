@@ -87,11 +87,74 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             'path' => route('superadmin.player-duplicates.index'),
         ]);
         $duplicates = Mockery::mock(PlayerDuplicateService::class);
-        $duplicates->shouldReceive('candidates')->once()->with(25, false)->andReturn($paginator);
+        $duplicates->shouldReceive('candidates')->once()->with(25, false, 'all')->andReturn($paginator);
         $this->app->instance(PlayerDuplicateService::class, $duplicates);
 
         $this->actingAs($this->superUser)->get(route('superadmin.player-duplicates.index'))
             ->assertOk()->assertSee('class="pagination"', false)->assertDontSee('w-5 h-5', false);
+    }
+
+    public function test_duplicate_queue_supports_all_records_and_auto_resolvable_ranking_filter(): void
+    {
+        $paginator = new LengthAwarePaginator([], 0, 400, 1, [
+            'path' => route('superadmin.player-duplicates.index'),
+        ]);
+        $duplicates = Mockery::mock(PlayerDuplicateService::class);
+        $duplicates->shouldReceive('candidates')->once()->with(400, false, 'ranking_auto')->andReturn($paginator);
+        $this->app->instance(PlayerDuplicateService::class, $duplicates);
+
+        $this->actingAs($this->superUser)
+            ->get(route('superadmin.player-duplicates.index', [
+                'per_page' => 'all',
+                'merge_filter' => 'ranking_auto',
+            ]))
+            ->assertOk()
+            ->assertSee('Auto-resolvable rankings')
+            ->assertSee('All matching (max 400)')
+            ->assertSee('value="all" selected', false);
+    }
+
+    public function test_auto_resolvable_ranking_filter_lists_only_mergeable_calculated_collisions(): void
+    {
+        $first = Player::factory()->create([
+            'name' => 'Daniël', 'surname' => 'Raal', 'dateOfBirth' => '2017-04-10',
+        ]);
+        $second = Player::factory()->create([
+            'name' => 'Daniël', 'surname' => 'Raal', 'dateOfBirth' => '2017-04-10',
+        ]);
+        $ordinaryFirst = Player::factory()->create([
+            'name' => 'Ordinary', 'surname' => 'Duplicate', 'dateOfBirth' => '2012-01-01',
+        ]);
+        $ordinarySecond = Player::factory()->create([
+            'name' => 'Ordinary', 'surname' => 'Duplicate', 'dateOfBirth' => '2012-01-01',
+        ]);
+        $seriesId = DB::table('series')->insertGetId([
+            'name' => 'Calculated Collision Series', 'year' => 2026,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Calculated Collision Category', 'Fee' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('series_rankings')->insert([
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $first->id,
+                'rank_position' => 1, 'total_points' => 100, 'status' => 'calculated',
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $second->id,
+                'rank_position' => 2, 'total_points' => 50, 'status' => 'calculated',
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($this->superUser)
+            ->get(route('superadmin.player-duplicates.index', ['merge_filter' => 'ranking_auto']))
+            ->assertOk()
+            ->assertSee("profiles #{$first->id} and #{$second->id}")
+            ->assertSee('Calculated ranking rebuild eligible')
+            ->assertDontSee("profiles #{$ordinaryFirst->id} and #{$ordinarySecond->id}");
     }
 
     public function test_queue_offers_on_demand_quick_merge_when_only_one_strong_match_has_history(): void
@@ -762,6 +825,13 @@ class SuperAdminPlayerDuplicateTest extends TestCase
                 'status' => 'calculated', 'created_at' => now(), 'updated_at' => now(),
             ],
         ]);
+        $archivedPlayer = Player::factory()->create();
+        $archivedRankingId = DB::table('series_rankings')->insertGetId([
+            'series_id' => $seriesId, 'ranking_list_id' => $rankingListId, 'category_id' => $categoryId,
+            'player_id' => $archivedPlayer->id, 'rank_position' => 9, 'total_points' => 10,
+            'status' => 'archived', 'run_id' => 'older-published-run',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
         $this->assertTrue($analysis['can_merge']);
@@ -783,6 +853,10 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             'player_id' => $keep->id, 'total_points' => 150, 'status' => 'calculated',
         ]);
         $this->assertDatabaseMissing('series_rankings', ['series_id' => $seriesId, 'player_id' => $remove->id]);
+        $this->assertDatabaseHas('series_rankings', [
+            'id' => $archivedRankingId, 'player_id' => $archivedPlayer->id,
+            'status' => 'archived', 'run_id' => 'older-published-run',
+        ]);
         $this->assertDatabaseHas('ranking_audit_logs', ['series_id' => $seriesId, 'action' => 'rebuild']);
 
         $calculated = app(RankingCalculationService::class)->calculate(RankingList::findOrFail($rankingListId));
@@ -822,6 +896,51 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $this->assertFalse($analysis['can_merge']);
         $this->assertSame([], $analysis['impact']['ranking_rebuild_series_ids']);
         $this->assertContains('series_rankings', collect($analysis['blockers'])->pluck('domain')->all());
+        $rankingBlocker = collect($analysis['blockers'])->firstWhere('domain', 'series_rankings');
+        $this->assertStringContainsString("Series #{$seriesId} / category #{$categoryId}", $rankingBlocker['message']);
+        $this->assertSame('series_ranking', $rankingBlocker['contexts'][0]['type']);
+        $this->assertSame('published', $rankingBlocker['contexts'][0]['rows'][0]['status']);
+    }
+
+    public function test_in_progress_review_blocks_calculated_collision_without_blocking_archived_history(): void
+    {
+        $keep = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01']);
+        $remove = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01']);
+        $other = Player::factory()->create();
+        $seriesId = DB::table('series')->insertGetId([
+            'name' => 'Review In Progress', 'year' => 2026,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Review Boys Singles', 'Fee' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('series_rankings')->insert([
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $keep->id,
+                'rank_position' => 1, 'total_points' => 100, 'status' => 'calculated',
+                'run_id' => null,
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $remove->id,
+                'rank_position' => 2, 'total_points' => 50, 'status' => 'calculated',
+                'run_id' => null,
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+            [
+                'series_id' => $seriesId, 'category_id' => $categoryId, 'player_id' => $other->id,
+                'rank_position' => 3, 'total_points' => 25, 'status' => 'reviewed',
+                'run_id' => 'review-in-progress', 'created_at' => now(), 'updated_at' => now(),
+            ],
+        ]);
+
+        $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+        $rankingBlocker = collect($analysis['blockers'])->firstWhere('domain', 'series_rankings');
+
+        $this->assertFalse($analysis['can_merge']);
+        $this->assertStringContainsString('in-progress reviewed ranking run', $rankingBlocker['message']);
+        $this->assertSame(1, $rankingBlocker['contexts'][0]['series_status_counts']['reviewed']);
     }
 
     public function test_usage_registry_includes_legacy_invitation_and_payfast_player_columns(): void

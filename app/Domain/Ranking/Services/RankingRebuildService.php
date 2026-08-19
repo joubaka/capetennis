@@ -43,6 +43,7 @@ final class RankingRebuildService
      *   - bestN:              int|null    Override per-list best-N
      *   - excludePlayerIds:   int[]       Player IDs to exclude globally
      *   - walkoversExcluded:  bool        Exclude walkover legs
+     *   - replaceCalculatedOnly: bool     Preserve reviewed/archived/draft rows (default false)
      * @return array{
      *   run_id: string,
      *   series_id: int,
@@ -57,6 +58,7 @@ final class RankingRebuildService
     public function rebuild(Series $series, array $options = []): array
     {
         $dryRun = (bool) ($options['dryRun'] ?? false);
+        $replaceCalculatedOnly = (bool) ($options['replaceCalculatedOnly'] ?? false);
         $runId  = 'rkb-' . $series->id . '-' . now()->format('YmdHis') . '-' . substr(md5((string) microtime(true)), 0, 6);
 
         Log::info('[RankingRebuild] START', [
@@ -74,7 +76,7 @@ final class RankingRebuildService
         ];
         $persisted = false;
 
-        DB::transaction(function () use ($series, $options, $dryRun, $runId, &$listReports, &$globalWarnings, &$totalRows, &$topology, &$persisted) {
+        DB::transaction(function () use ($series, $options, $dryRun, $replaceCalculatedOnly, $runId, &$listReports, &$globalWarnings, &$totalRows, &$topology, &$persisted) {
             DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
 
             $lists = $series->ranking_lists()->with(['category', 'series'])->get();
@@ -166,13 +168,14 @@ final class RankingRebuildService
 
             // All lists passed preflight. Only now may the current calculated
             // snapshot be replaced.
-            SeriesRanking::where('series_id', $series->id)
-                ->whereNull('ranking_list_id')
-                ->where('status', '!=', RankingStatus::Published->value)
-                ->delete();
+            $legacyRows = SeriesRanking::where('series_id', $series->id)
+                ->whereNull('ranking_list_id');
+            $replaceCalculatedOnly
+                ? $legacyRows->where('status', RankingStatus::Calculated->value)->delete()
+                : $legacyRows->where('status', '!=', RankingStatus::Published->value)->delete();
 
             foreach ($lists as $list) {
-                $this->persist($series, $list->id, $calculatedResults[$list->id], $runId);
+                $this->persist($series, $list->id, $calculatedResults[$list->id], $runId, $replaceCalculatedOnly);
             }
 
             $persisted = true;
@@ -309,15 +312,22 @@ final class RankingRebuildService
     // Persistence
     // ------------------------------------------------------------------
 
-    private function persist(Series $series, int $rankingListId, RankingResult $result, string $runId): void
+    private function persist(
+        Series $series,
+        int $rankingListId,
+        RankingResult $result,
+        string $runId,
+        bool $replaceCalculatedOnly = false
+    ): void
     {
         $categoryId = $this->resolveCategoryId($rankingListId);
 
         // Delete previously calculated (non-published) rows for this list
-        SeriesRanking::where('series_id', $series->id)
-            ->where('ranking_list_id', $rankingListId)
-            ->where('status', '!=', RankingStatus::Published->value)
-            ->delete();
+        $replaceableRows = SeriesRanking::where('series_id', $series->id)
+            ->where('ranking_list_id', $rankingListId);
+        $replaceCalculatedOnly
+            ? $replaceableRows->where('status', RankingStatus::Calculated->value)->delete()
+            : $replaceableRows->where('status', '!=', RankingStatus::Published->value)->delete();
 
         $now = now();
 

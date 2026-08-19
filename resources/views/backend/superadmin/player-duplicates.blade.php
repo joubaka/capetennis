@@ -11,7 +11,7 @@
       <button type="button" id="toggle-quick-candidates" class="btn btn-outline-primary btn-sm" aria-pressed="false">
         <i class="ti ti-bolt me-1"></i>Quick candidates only
       </button>
-      <a href="{{ route('superadmin.player-duplicates.index', ['include_reviewed' => $includeReviewed ? 0 : 1]) }}" class="btn btn-outline-secondary btn-sm">
+      <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 0 : 1, 'per_page' => $perPageOption, 'merge_filter' => $mergeFilter !== 'all' ? $mergeFilter : null])) }}" class="btn btn-outline-secondary btn-sm">
         {{ $includeReviewed ? 'Hide reviewed' : 'Show reviewed' }}
       </a>
       <a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary btn-sm">Back to Super Admin</a>
@@ -28,6 +28,38 @@
   <div class="alert alert-info d-flex gap-2 align-items-start">
     <i class="ti ti-shield-check fs-4"></i>
     <div><strong>Protected bulk merging.</strong> Select any candidate to use its recommended keep/remove plan, or review every quick candidate across all pages. Every selected plan is checked for identity, linked history, tournament results, rankings and financial collisions before confirmation.</div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-end gap-3 py-3">
+      <div>
+        <div class="fw-semibold">Candidate list</div>
+        <div class="small text-muted">Showing {{ $candidatePairs->count() }} of {{ $candidatePairs->total() }} matching pairs.</div>
+      </div>
+      <div class="d-flex flex-wrap align-items-end gap-2">
+        <div class="btn-group" role="group" aria-label="Candidate merge filter">
+          <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption])) }}"
+             class="btn btn-sm {{ $mergeFilter === 'all' ? 'btn-primary' : 'btn-outline-primary' }}">All candidates</a>
+          <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption, 'merge_filter' => 'ranking_auto'])) }}"
+             class="btn btn-sm {{ $mergeFilter === 'ranking_auto' ? 'btn-warning' : 'btn-outline-warning' }}">
+            <i class="ti ti-refresh me-1"></i>Auto-resolvable rankings
+          </a>
+        </div>
+        <form method="GET" action="{{ route('superadmin.player-duplicates.index') }}" class="d-flex align-items-end gap-2">
+          @if($includeReviewed)<input type="hidden" name="include_reviewed" value="1">@endif
+          @if($mergeFilter !== 'all')<input type="hidden" name="merge_filter" value="{{ $mergeFilter }}">@endif
+          <div>
+            <label for="duplicate-page-size" class="form-label small mb-1">Records per page</label>
+            <select id="duplicate-page-size" name="per_page" class="form-select form-select-sm" onchange="this.form.submit()">
+              @foreach(['25' => '25', '50' => '50', '100' => '100', '200' => '200', 'all' => 'All matching (max 400)'] as $value => $label)
+                <option value="{{ $value }}" @selected($perPageOption === $value)>{{ $label }}</option>
+              @endforeach
+            </select>
+          </div>
+          <noscript><button class="btn btn-outline-secondary btn-sm" type="submit">Apply</button></noscript>
+        </form>
+      </div>
+    </div>
   </div>
 
   <form id="bulk-merge-selection" method="POST" action="{{ route('superadmin.player-duplicates.bulk-review') }}" class="card mb-4">
@@ -61,7 +93,7 @@
   @forelse($candidatePairs as $pair)
     @php($first = $pair->first)
     @php($second = $pair->second)
-    <div class="card mb-4 border-{{ $pair->confidence['class'] }} duplicate-candidate-card" data-quick-candidate="{{ $pair->quick_merge ? '1' : '0' }}">
+    <div class="card mb-4 border-{{ $pair->confidence['class'] }} duplicate-candidate-card" data-quick-candidate="{{ $pair->quick_merge ? '1' : '0' }}" data-ranking-auto-candidate="{{ $pair->ranking_auto_merge ? '1' : '0' }}">
       <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <strong>{{ $first['player']->full_name }}</strong>
@@ -75,6 +107,9 @@
           </label>
           @if($pair->quick_merge)
             <span class="badge bg-label-primary"><i class="ti ti-bolt me-1"></i>Quick merge eligible</span>
+          @endif
+          @if($pair->ranking_auto_merge)
+            <span class="badge bg-label-warning"><i class="ti ti-refresh me-1"></i>Calculated ranking rebuild eligible</span>
           @endif
           @if($pair->decision)
             <span class="badge bg-label-secondary">{{ str_replace('_', ' ', ucfirst($pair->decision->decision)) }}</span>
@@ -134,8 +169,8 @@
   @empty
     <div class="card"><div class="card-body text-center py-5">
       <i class="ti ti-circle-check fs-1 text-success"></i>
-      <h5 class="mt-2">No unreviewed duplicate candidates</h5>
-      <p class="text-muted mb-0">Use “Show reviewed” to inspect deferred or rejected pairs.</p>
+      <h5 class="mt-2">{{ $mergeFilter === 'ranking_auto' ? 'No auto-resolvable ranking collisions' : 'No unreviewed duplicate candidates' }}</h5>
+      <p class="text-muted mb-0">{{ $mergeFilter === 'ranking_auto' ? 'No candidate currently has a calculated-only ranking collision that can be rebuilt safely.' : 'Use “Show reviewed” to inspect deferred or rejected pairs.' }}</p>
     </div></div>
   @endforelse
 

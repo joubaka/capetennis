@@ -49,13 +49,23 @@
                 <ul class="mb-0 ps-3">@foreach($skipped['reasons'] as $reason)<li>{{ $reason }}</li>@endforeach</ul>
                 @foreach($skipped['contexts'] ?? [] as $context)
                   <div class="border rounded p-2 mt-2 small">
-                    <strong>Fixture #{{ $context['fixture_id'] ?: 'unknown' }}</strong>
-                    @if($context['event_id'])
-                      — Event #{{ $context['event_id'] }} {{ $context['event_name'] ?: 'Unnamed event' }}
+                    @if(($context['type'] ?? null) === 'series_ranking')
+                      <strong>Series #{{ $context['series_id'] }}, category #{{ $context['category_id'] ?? 'none' }}</strong>
+                      <div class="mt-1">
+                        @foreach($context['rows'] as $row)
+                          <span class="badge bg-label-danger me-1">row #{{ $row['id'] }} · player #{{ $row['player_id'] }} · {{ $row['status'] ?: 'blank status' }}</span>
+                        @endforeach
+                      </div>
+                      <div class="text-muted mt-1">Series lifecycle: {{ collect($context['series_status_counts'])->map(fn($count, $status) => $status.': '.$count)->implode(', ') }}</div>
                     @else
-                      — no linked event
+                      <strong>Fixture #{{ $context['fixture_id'] ?: 'unknown' }}</strong>
+                      @if($context['event_id'])
+                        — Event #{{ $context['event_id'] }} {{ $context['event_name'] ?: 'Unnamed event' }}
+                      @else
+                        — no linked event
+                      @endif
+                      <span class="badge bg-label-{{ $context['result_count'] > 0 ? 'danger' : 'secondary' }} ms-1">{{ $context['result_count'] }} result rows</span>
                     @endif
-                    <span class="badge bg-label-{{ $context['result_count'] > 0 ? 'danger' : 'secondary' }} ms-1">{{ $context['result_count'] }} result rows</span>
                   </div>
                 @endforeach
               </td>
