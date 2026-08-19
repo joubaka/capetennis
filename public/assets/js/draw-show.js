@@ -43,7 +43,7 @@ $(function () {
 
       var data = submitResultForm.serialize();
 
-      $.get(APP_URL + '/backend/fixture/insertResult', data)
+      $.post(APP_URL + '/backend/fixture/insertResult', data)
         .done(function (results) {
           clearScores('.score');
           $('#result-modal').modal('toggle');

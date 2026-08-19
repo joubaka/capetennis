@@ -56,7 +56,7 @@ $(function () {
 
             var data = submitResultForm.serialize();
             console.log(data)
-            $.get(APP_URL + '/backend/fixture/insertResult', data, function (results) {
+            $.post(APP_URL + '/backend/fixture/insertResult', data, function (results) {
                 console.log('results', results);
                 clearScores($('.score'));
                 $('#result-modal').modal('toggle');
@@ -100,7 +100,7 @@ $(function () {
 
             var data = $(this).parents('form').serialize();
             console.log('data-to', data);
-            $.get(APP_URL + '/backend/fixture/updateResult', data, function (results) {
+            $.post(APP_URL + '/backend/fixture/updateResult', data, function (results) {
                 console.log('resultsfrom', results);
                 clearScores($('.score'));
                 $('#result-modal').modal('toggle');

@@ -145,6 +145,15 @@
           Series {{ collect($analysis['impact']['ranking_rebuild_series_ids'])->map(fn($id) => '#'.$id)->implode(', ') }} will be rebuilt from the preserved registrations and tournament results after the profiles are combined. Existing published ranking snapshots are not republished or changed by this merge.
         </div>
       @endif
+      @foreach($analysis['impact']['registration_overlap_resolutions'] ?? [] as $resolution)
+        <div class="alert alert-success mt-3 mb-0">
+          <strong>Abandoned registration will be resolved automatically.</strong>
+          {{ $resolution['event_name'] ?? 'Event #'.$resolution['event_id'] }} / {{ $resolution['category_name'] ?? 'category #'.$resolution['category_id'] }}:
+          unpaid registration #{{ $resolution['duplicate_registration_id'] }} (order #{{ $resolution['duplicate_order_id'] }})
+          will be marked withdrawn, while registration #{{ $resolution['canonical_registration_id'] }} is retained using
+          {{ implode(' and ', $resolution['canonical_evidence']) }} evidence. Both orders and all saved results remain in the audit history.
+        </div>
+      @endforeach
       @if(count($analysis['impact']['owners_to_transfer']))
         <div class="mt-3 small text-muted">Linked user IDs to transfer: {{ implode(', ', $analysis['impact']['owners_to_transfer']) }}</div>
       @endif

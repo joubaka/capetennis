@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Domain\Entries\Services\EntryService;
 use App\Domain\Ranking\Services\RankingRebuildService;
+use App\Models\CategoryEventRegistration;
 use App\Models\Player;
 use App\Models\PlayerDuplicateDecision;
 use App\Models\PlayerMergeAudit;
@@ -773,6 +775,7 @@ class PlayerDuplicateService
     {
         $this->assertTransactionalStorage([
             'players', 'user_players', 'player_merge_audits', 'player_duplicate_decisions', 'activity_log',
+            'category_event_registrations',
             'ranking_lists', 'ranking_list_category_events', 'ranking_audit_logs', 'audit_events',
             ...array_keys($this->availableReferences()),
         ]);
@@ -939,7 +942,8 @@ class PlayerDuplicateService
         $keep->loadMissing(['user:id,name,email', 'users:id,name,email']);
         $remove->loadMissing(['user:id,name,email', 'users:id,name,email']);
 
-        $blockers = $this->collisionBlockers($keep, $remove);
+        $registrationOverlapResolutions = $this->autoResolvableRegistrationOverlaps($keep, $remove);
+        $blockers = $this->collisionBlockers($keep, $remove, $registrationOverlapResolutions);
         if (filled($keep->dateOfBirth) && filled($remove->dateOfBirth)
             && substr((string) $keep->dateOfBirth, 0, 10) !== substr((string) $remove->dateOfBirth, 0, 10)) {
             array_unshift($blockers, [
@@ -970,6 +974,7 @@ class PlayerDuplicateService
             'registration_history' => $registrationHistory['impact'],
             'owners_to_transfer' => $this->sourceUserIds($remove)->diff($this->sourceUserIds($keep))->values()->all(),
             'ranking_rebuild_series_ids' => $rankingRebuildSeriesIds,
+            'registration_overlap_resolutions' => $registrationOverlapResolutions,
         ];
         $digestPayload = [
             'keep' => $this->stablePlayerSnapshot($keep),
@@ -978,6 +983,7 @@ class PlayerDuplicateService
             'registration_history' => $registrationHistory['fingerprints'],
             'blockers' => $blockers,
             'ranking_rebuild_series_ids' => $rankingRebuildSeriesIds,
+            'registration_overlap_resolutions' => $registrationOverlapResolutions,
         ];
 
         return [
@@ -1007,6 +1013,7 @@ class PlayerDuplicateService
         $this->assertTransactionalStorage([
             'players', 'user_players', 'player_merge_audits',
             'player_duplicate_decisions', 'activity_log',
+            'category_event_registrations',
             'ranking_lists', 'ranking_list_category_events', 'ranking_audit_logs', 'audit_events',
             ...array_keys($this->availableReferences()),
         ]);
@@ -1045,6 +1052,21 @@ class PlayerDuplicateService
         $sourceUserIds = $this->sourceUserIds($remove);
         $rankingRebuildSeriesIds = collect($analysis['impact']['ranking_rebuild_series_ids'] ?? [])
             ->map(fn ($seriesId) => (int) $seriesId)->filter()->unique()->values();
+
+        foreach ($analysis['impact']['registration_overlap_resolutions'] ?? [] as $resolution) {
+            if (($resolution['action'] ?? null) !== 'withdraw_unpaid_duplicate') {
+                continue;
+            }
+
+            $entry = CategoryEventRegistration::query()->findOrFail($resolution['duplicate_entry_id']);
+            app(EntryService::class)->retireUnpaidDuplicateForPlayerMerge(
+                $entry,
+                $approvedBy,
+                (int) $resolution['canonical_registration_id'],
+                'Unpaid duplicate registration retired during player merge #'.$remove->id.' into #'.$keep->id.'. '.$reason
+            );
+            $manifest['registration_overlap_resolutions'][] = $resolution;
+        }
 
         if ($rankingRebuildSeriesIds->isNotEmpty()) {
             $calculatedRankingRows = DB::table('series_rankings')
@@ -1446,7 +1468,193 @@ class PlayerDuplicateService
         return $this->resolvedReferences = $available;
     }
 
-    private function collisionBlockers(Player $keep, Player $remove): array
+    /**
+     * Resolve the narrow safe case where two profiles entered the same category,
+     * but one entry is an abandoned unpaid order and the other is authoritative.
+     * No financial or result row is deleted; the abandoned entry is only retired.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function autoResolvableRegistrationOverlaps(Player $keep, Player $remove): array
+    {
+        foreach (['player_registrations', 'category_event_registrations', 'registration_order_items', 'registration_orders'] as $table) {
+            if (! Schema::hasTable($table)) {
+                return [];
+            }
+        }
+
+        $rows = DB::table('category_event_registrations as cer')
+            ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+            ->whereIn('pr.player_id', [$keep->id, $remove->id])
+            ->get([
+                'cer.id as entry_id', 'cer.category_event_id', 'cer.registration_id', 'cer.user_id',
+                'cer.status', 'cer.payment_status_id', 'cer.pf_transaction_id',
+                'cer.wallet_transaction_id', 'cer.refund_status', 'cer.refund_gross',
+                'cer.refund_fee', 'cer.refund_net', 'cer.refunded_at', 'pr.player_id',
+            ])
+            ->groupBy('category_event_id')
+            ->filter(fn (Collection $entries) => $entries->pluck('player_id')->map(fn ($id) => (int) $id)->unique()->count() === 2);
+
+        $resolutions = [];
+        foreach ($rows as $categoryEventId => $entries) {
+            if ($entries->count() !== 2
+                || $entries->pluck('user_id')->filter()->unique()->count() !== 1
+                || $entries->contains(fn ($entry) => $entry->user_id === null)) {
+                continue;
+            }
+
+            $evaluated = $entries->map(fn ($entry) => $this->registrationOverlapEvidence($entry));
+            $canonical = $evaluated->first(fn (array $entry) => $entry['authoritative']);
+            $duplicate = $evaluated->first(fn (array $entry) => $entry['safe_unpaid_duplicate']);
+            if (! $canonical || ! $duplicate || $canonical['entry_id'] === $duplicate['entry_id']
+                || $evaluated->where('authoritative', true)->count() !== 1
+                || $evaluated->where('safe_unpaid_duplicate', true)->count() !== 1) {
+                continue;
+            }
+
+            $context = $this->categoryEventContext((int) $categoryEventId);
+            $resolutions[] = [
+                ...$context,
+                'category_event_id' => (int) $categoryEventId,
+                'canonical_entry_id' => $canonical['entry_id'],
+                'canonical_registration_id' => $canonical['registration_id'],
+                'canonical_player_id' => $canonical['player_id'],
+                'canonical_status' => $canonical['status'],
+                'canonical_evidence' => $canonical['evidence'],
+                'duplicate_entry_id' => $duplicate['entry_id'],
+                'duplicate_registration_id' => $duplicate['registration_id'],
+                'duplicate_player_id' => $duplicate['player_id'],
+                'duplicate_status' => $duplicate['status'],
+                'duplicate_order_id' => $duplicate['order_id'],
+                'action' => Str::startsWith((string) $duplicate['status'], 'withdrawn')
+                    ? 'preserve_withdrawn'
+                    : 'withdraw_unpaid_duplicate',
+            ];
+        }
+
+        return $resolutions;
+    }
+
+    /** @return array<string, mixed> */
+    private function registrationOverlapEvidence(object $entry): array
+    {
+        $orderIds = DB::table('registration_order_items')
+            ->where('registration_id', $entry->registration_id)
+            ->pluck('order_id')->filter()->unique();
+        $orders = DB::table('registration_orders')->whereIn('id', $orderIds)->get();
+        $hasPayfastTransaction = Schema::hasTable('transactions_pf')
+            && Schema::hasColumn('transactions_pf', 'custom_int5')
+            && $orderIds->isNotEmpty()
+            && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)->exists();
+        $hasPaidOrder = $orders->contains(fn ($order) => (bool) ($order->pay_status ?? false)
+            || (bool) ($order->payfast_paid ?? false)
+            || (bool) ($order->wallet_debited ?? false)
+            || (float) ($order->wallet_reserved ?? 0) > 0
+            || filled($order->payfast_pf_payment_id ?? null)
+            || filled($order->wallet_transaction_id ?? null));
+        $resultCount = Schema::hasTable('category_results')
+            ? DB::table('category_results')->where('registration_id', $entry->registration_id)->count()
+            : 0;
+        $hasPayment = (int) $entry->payment_status_id === 1
+            || filled($entry->pf_transaction_id)
+            || filled($entry->wallet_transaction_id)
+            || $hasPaidOrder
+            || $hasPayfastTransaction;
+        $hasRefund = ! in_array($entry->refund_status, [null, '', 'not_refunded'], true)
+            || (float) ($entry->refund_gross ?? 0) !== 0.0
+            || (float) ($entry->refund_fee ?? 0) !== 0.0
+            || (float) ($entry->refund_net ?? 0) !== 0.0
+            || filled($entry->refunded_at);
+        $hasCompetitionHistory = $this->registrationHasCompetitionHistory((int) $entry->registration_id);
+        $singleUnpaidOrder = $orders->count() === 1 && ! $hasPaidOrder && ! $hasPayfastTransaction;
+
+        return [
+            'entry_id' => (int) $entry->entry_id,
+            'registration_id' => (int) $entry->registration_id,
+            'player_id' => (int) $entry->player_id,
+            'status' => (string) $entry->status,
+            'order_id' => $orderIds->count() === 1 ? (int) $orderIds->first() : null,
+            'authoritative' => $hasPayment || $resultCount > 0,
+            'safe_unpaid_duplicate' => $singleUnpaidOrder
+                && ! $hasPayment && ! $hasRefund && $resultCount === 0 && ! $hasCompetitionHistory,
+            'evidence' => array_values(array_filter([
+                $hasPayment ? 'verified payment' : null,
+                $resultCount > 0 ? $resultCount.' saved result'.($resultCount === 1 ? '' : 's') : null,
+            ])),
+        ];
+    }
+
+    private function registrationHasCompetitionHistory(int $registrationId): bool
+    {
+        foreach ([
+            'fixtures' => ['registration1_id', 'registration2_id', 'winner_registration'],
+            'fixture_results' => ['winner_registration', 'loser_registration'],
+            'practice_fixtures' => ['registration1_id', 'registration2_id'],
+            'practice_results' => ['winner_registration', 'loser_registration'],
+            'draw_group_registrations' => ['registration_id'],
+        ] as $table => $columns) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            foreach ($columns as $column) {
+                if (Schema::hasColumn($table, $column)
+                    && DB::table($table)->where($column, $registrationId)->exists()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, mixed> */
+    private function categoryEventContext(int $categoryEventId): array
+    {
+        if (! Schema::hasTable('category_events')) {
+            return [];
+        }
+
+        $row = DB::table('category_events as ce')
+            ->leftJoin('events as e', 'e.id', '=', 'ce.event_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'ce.category_id')
+            ->where('ce.id', $categoryEventId)
+            ->first(['ce.event_id', 'ce.category_id', 'e.name as event_name', 'c.name as category_name']);
+
+        return $row ? [
+            'event_id' => $row->event_id === null ? null : (int) $row->event_id,
+            'event_name' => $row->event_name,
+            'category_id' => $row->category_id === null ? null : (int) $row->category_id,
+            'category_name' => $row->category_name,
+        ] : [];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function registrationOverlapContexts(Player $keep, Player $remove, array $categoryEventIds): array
+    {
+        return collect($categoryEventIds)->map(function ($categoryEventId) use ($keep, $remove) {
+            $entries = DB::table('category_event_registrations as cer')
+                ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+                ->where('cer.category_event_id', $categoryEventId)
+                ->whereIn('pr.player_id', [$keep->id, $remove->id])
+                ->get(['cer.id as entry_id', 'cer.registration_id', 'cer.status', 'cer.payment_status_id', 'pr.player_id'])
+                ->map(fn ($entry) => [
+                    'entry_id' => (int) $entry->entry_id,
+                    'registration_id' => (int) $entry->registration_id,
+                    'player_id' => (int) $entry->player_id,
+                    'status' => $entry->status,
+                    'paid' => (int) $entry->payment_status_id === 1,
+                ])->all();
+
+            return [
+                'type' => 'tournament_registration_overlap',
+                'category_event_id' => (int) $categoryEventId,
+                ...$this->categoryEventContext((int) $categoryEventId),
+                'entries' => $entries,
+            ];
+        })->values()->all();
+    }
+
+    private function collisionBlockers(Player $keep, Player $remove, ?array $registrationOverlapResolutions = null): array
     {
         $blockers = [];
         $autoResolvableRankingKeys = collect($this->autoResolvableSeriesRankingCollisions($keep, $remove))
@@ -1508,19 +1716,28 @@ class PlayerDuplicateService
         }
 
         if (Schema::hasTable('player_registrations') && Schema::hasTable('category_event_registrations')) {
+            $registrationOverlapResolutions ??= $this->autoResolvableRegistrationOverlaps($keep, $remove);
+            $resolvedCategoryEventIds = collect($registrationOverlapResolutions)
+                ->pluck('category_event_id')->map(fn ($id) => (int) $id)->unique();
             $keepRegistrationIds = DB::table('player_registrations')->where('player_id', $keep->id)->pluck('registration_id');
             $removeRegistrationIds = DB::table('player_registrations')->where('player_id', $remove->id)->pluck('registration_id');
             if ($keepRegistrationIds->isNotEmpty() && $removeRegistrationIds->isNotEmpty()) {
                 $keepCategoryEvents = DB::table('category_event_registrations')
                     ->whereIn('registration_id', $keepRegistrationIds)->pluck('category_event_id')->unique();
-                $overlap = DB::table('category_event_registrations')
+                $overlapCategoryEventIds = DB::table('category_event_registrations')
                     ->whereIn('registration_id', $removeRegistrationIds)
                     ->whereIn('category_event_id', $keepCategoryEvents)
-                    ->exists();
-                if ($overlap) {
+                    ->pluck('category_event_id')->map(fn ($id) => (int) $id)->unique()
+                    ->diff($resolvedCategoryEventIds)->values();
+                if ($overlapCategoryEventIds->isNotEmpty()) {
                     $blockers[] = [
                         'domain' => 'tournament_registration_overlap',
                         'message' => 'Both profiles have registrations in the same tournament category. Resolve which entry and result are valid before merging so a ranking calculation cannot count the player twice.',
+                        'contexts' => $this->registrationOverlapContexts(
+                            $keep,
+                            $remove,
+                            $overlapCategoryEventIds->all()
+                        ),
                     ];
                 }
             }

@@ -11,8 +11,8 @@ use App\Models\Fixture;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\TeamFixtureResult;
 use App\Services\DrawService;
+use App\Services\TeamFixtureScoreService;
 
 
 class FrontFixtureController extends Controller
@@ -336,43 +336,13 @@ class FrontFixtureController extends Controller
 
     $rules = [];
     for ($i = 1; $i <= 3; $i++) {
-      $rules["set{$i}_home"] = 'nullable|integer|min:0';
-      $rules["set{$i}_away"] = 'nullable|integer|min:0';
+      $rules["set{$i}_home"] = "nullable|required_with:set{$i}_away|integer|min:0";
+      $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
 
     $validated = $request->validate($rules);
 
-    foreach (range(1, 3) as $i) {
-      $home = $validated["set{$i}_home"] ?? null;
-      $away = $validated["set{$i}_away"] ?? null;
-
-      if ($home !== null || $away !== null) {
-        $winnerId = null;
-        $loserId = null;
-
-        if ($home > $away) {
-          $winnerId = 1; // home team
-          $loserId = 2;
-        } elseif ($away > $home) {
-          $winnerId = 2; // away team
-          $loserId = 1;
-        }
-
-        TeamFixtureResult::updateOrCreate(
-          ['team_fixture_id' => $fixture->id, 'set_nr' => $i],
-          [
-            'team1_score' => $home,
-            'team2_score' => $away,
-            'match_winner_id' => $winnerId,
-            'match_loser_id' => $loserId,
-          ]
-        );
-      } else {
-        TeamFixtureResult::where('team_fixture_id', $fixture->id)
-          ->where('set_nr', $i)
-          ->delete();
-      }
-    }
+    app(TeamFixtureScoreService::class)->save($fixture, $validated);
 
     if ($request->ajax()) {
       $fixture->load('fixtureResults');

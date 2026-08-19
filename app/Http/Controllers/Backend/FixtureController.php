@@ -22,6 +22,7 @@ use App\Models\TeamFixtureResult;
 use App\Models\TeamPlayer;
 use App\Models\Venues;
 use App\Services\DrawBuilder;
+use App\Services\TeamFixtureScoreService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Carbon\CarbonInterval;
@@ -29,6 +30,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Writer\Pdf\Dompdf;
 use PhpParser\Builder\Property;
 
@@ -205,58 +207,40 @@ class FixtureController extends Controller
 
   public function insertResult(Request $request)
   {
-    // Authorize based on the draw that owns this fixture
+    $request->validate([
+      'type' => 'required|in:team,individual,individualNew',
+      'fixture_id' => 'required|integer|min:1',
+    ]);
+
     $fixtureForAuth = $request->type === 'team'
-      ? TeamFixture::find($request->fixture_id)
-      : Fixture::find($request->fixture_id);
-    if ($fixtureForAuth) {
-      $drawForAuth = \App\Models\Draw::find($fixtureForAuth->draw_id);
-      if ($drawForAuth) {
-        $this->authorize('fixture.update', $drawForAuth);
-      }
-    }
+      ? TeamFixture::findOrFail($request->integer('fixture_id'))
+      : Fixture::findOrFail($request->integer('fixture_id'));
+    $drawForAuth = Draw::findOrFail($fixtureForAuth->draw_id);
+    $request->type === 'team'
+      ? $this->authorize('team-fixture.saveScore', $fixtureForAuth)
+      : $this->authorize('fixture.update', $drawForAuth);
 
     $responce = null;
 
-    // Lock guard for individual fixture types
-    if (in_array($request->type, ['individual', 'individualNew'])) {
-      $fixture = Fixture::find($request->fixture_id);
-      if ($fixture) {
-        $draw = \App\Models\Draw::find($fixture->draw_id);
-        if ($draw && $draw->locked) {
-          return response()->json(['message' => 'Draw is locked. Score submission is not allowed.'], 403);
-        }
-        if ($draw && $draw->published) {
-          return response()->json(['message' => 'Draw is published. Score submission is not allowed.'], 403);
-        }
-      }
-    }
-
     if ($request->type == 'team') {
-      $fixture = TeamFixture::find($request->fixture_id);
+      $validated = $request->validate([
+        'set_player1' => 'required|array|min:1|max:3',
+        'set_player1.*' => 'nullable|integer|min:0',
+        'set_player2' => 'required|array|min:1|max:3',
+        'set_player2.*' => 'nullable|integer|min:0',
+      ]);
+      $scores = $this->normalizeLegacyScores($validated['set_player1'], $validated['set_player2']);
+      app(TeamFixtureScoreService::class)->save($fixtureForAuth, $scores);
 
-      $count = 0;
-
-      for ($i = 0; $i < count($request->set_player1); $i++) {
-        if (isset($request->set_player1[$i])) {
-          $temp1 = $request->set_player1[$i];
-          $temp2 = $request->set_player2[$i];
-
-          $result = new TeamFixtureResult();
-          $result->team_fixture_id = $fixture->id;
-          $result->team1_score = $temp1;
-          $result->team2_score = $temp2;
-          $result->set_nr = $i + 1;
-
-          $result->save();
-
-          $count++;
-        }
-      }
-      return TeamFixture::find($request->fixture_id)->teamResults;
-      // return   TeamFixtureResult::where('team_fixture_id', $fixture->id)->get();
-      // return $fixture->teamResults;
+      return $fixtureForAuth->fresh()->teamResults;
     } elseif ($request->type == 'individual') {
+
+      $request->validate([
+        'set_player1' => 'required|array|min:1|max:5',
+        'set_player1.*' => 'nullable|integer|min:0',
+        'set_player2' => 'required|array|min:1|max:5',
+        'set_player2.*' => 'nullable|integer|min:0',
+      ]);
 
       FixtureResult::where('fixture_id', $request->fixture_id)->delete();
       $fixture = Fixture::find($request->fixture_id);
@@ -317,6 +301,12 @@ class FixtureController extends Controller
 
       return $responce;
     } elseif ($request->type == 'individualNew') {
+
+      $request->validate([
+        'sets' => 'required|array|min:1|max:5',
+        'sets.*.player1' => 'required|integer|min:0',
+        'sets.*.player2' => 'required|integer|min:0',
+      ]);
 
       FixtureResult::where('fixture_id', $request->fixture_id)->delete();
       $fixture = Fixture::find($request->fixture_id);
@@ -528,71 +518,49 @@ class FixtureController extends Controller
 
   public function updateResult(Request $request)
   {
-    // Authorize based on the draw that owns this fixture
-    $fixtureForAuth = $request->type === 'team'
-      ? TeamFixture::find($request->fixture_id)
-      : Fixture::find($request->fixture_id);
-    if ($fixtureForAuth) {
-      $drawForAuth = \App\Models\Draw::find($fixtureForAuth->draw_id);
-      if ($drawForAuth) {
-        $this->authorize('fixture.update', $drawForAuth);
+    $validated = $request->validate([
+      'type' => 'required|in:team,individual',
+      'fixture_id' => 'required|integer|min:1',
+      'reg1Set' => 'required|array|min:1|max:5',
+      'reg1Set.*' => 'nullable|integer|min:0',
+      'reg2Set' => 'required|array|min:1|max:5',
+      'reg2Set.*' => 'nullable|integer|min:0',
+    ]);
+
+    $this->normalizeLegacyScores($validated['reg1Set'], $validated['reg2Set']);
+
+    $request->merge([
+      'set_player1' => $validated['reg1Set'],
+      'set_player2' => $validated['reg2Set'],
+    ]);
+
+    return $this->insertResult($request);
+  }
+
+  private function normalizeLegacyScores(array $homeSets, array $awaySets): array
+  {
+    if (array_keys($homeSets) !== array_keys($awaySets)) {
+      throw ValidationException::withMessages([
+        'sets' => 'Each submitted set must contain both scores.',
+      ]);
+    }
+
+    $scores = [];
+    foreach (array_values($homeSets) as $index => $home) {
+      $away = array_values($awaySets)[$index] ?? null;
+      if (($home === null) !== ($away === null)) {
+        throw ValidationException::withMessages([
+          'sets' => 'Each submitted set must contain both scores.',
+        ]);
+      }
+
+      if ($index < 3) {
+        $scores['set'.($index + 1).'_home'] = $home;
+        $scores['set'.($index + 1).'_away'] = $away;
       }
     }
 
-    if ($request->type == 'team') {
-      $fixture = TeamFixture::find($request->fixture_id);
-      TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
-
-      $count = 0;
-
-      for ($i = 0; $i < count($request->reg1Set); $i++) {
-        if (isset($request->reg1Set[$i])) {
-          $temp1 = $request->reg1Set[$i];
-          $temp2 = $request->reg2Set[$i];
-
-          $result = new TeamFixtureResult();
-          $result->team_fixture_id = $fixture->id;
-          $result->team1_score = $temp1;
-          $result->team2_score = $temp2;
-          $result->set_nr = $i + 1;
-
-          $result->save();
-
-          $count++;
-        }
-      }
-      return $fixture->teamResults;
-    } else {
-      FixtureResult::where('fixture_id', $request->fixture_id)->delete();
-      $fixture = Fixture::find($request->fixture_id);
-
-      $count = 0;
-
-      for ($i = 0; $i < count($request->reg1Set); $i++) {
-        if (isset($request->reg1Set[$i])) {
-          $temp1 = $request->reg1Set[$i];
-          $temp2 = $request->reg2Set[$i];
-
-          $result = new FixtureResult();
-          $result->fixture_id = $fixture->id;
-          $result->registration1_score = $temp1;
-          $result->registration2_score = $temp2;
-          $result->set_nr = $i + 1;
-          if ($request->reg1Set[$i] > $request->reg2Set[$i]) {
-            $result->winner_registration = $fixture->registration1_id;
-            $result->loser_registration = $fixture->registration2_id;
-          } else {
-            $result->winner_registration = $fixture->registration2_id;
-            $result->loser_registration = $fixture->registration1_id;
-          }
-          $result->save();
-
-          $count++;
-          $fixture->results()->attach($result->id);
-        }
-      }
-      return '$fixture->results';
-    }
+    return $scores;
   }
 
   public function ajax($id)
@@ -736,22 +704,47 @@ class FixtureController extends Controller
 
   public function updatePlayer(Request $request)
   {
-    $fixture = TeamFixture::find($_GET['fixture']);
-    if ($fixture) {
-      $drawForAuth = \App\Models\Draw::find($fixture->draw_id);
-      if ($drawForAuth) {
-        $this->authorize('fixture.update', $drawForAuth);
-      }
+    $validated = $request->validate([
+      'fixture' => ['required', 'integer', 'exists:team_fixtures,id'],
+      'player1' => ['required', 'integer', 'exists:players,id'],
+      'player2' => ['required', 'integer', 'different:player1', 'exists:players,id'],
+    ]);
+
+    $fixture = TeamFixture::with('teamTie')->findOrFail($validated['fixture']);
+    $this->authorize('team-fixture.update', $fixture);
+
+    if (! $fixture->teamTie || ! $fixture->isSingles()) {
+      throw ValidationException::withMessages([
+        'fixture' => 'Use the roster assignment screen for legacy or doubles fixtures.',
+      ]);
     }
 
-    if ($fixture->fixture_type == 1 || $fixture->fixture_type == 4) {
-      $fixture = TeamFixturePlayer::where('team_fixture_id', $fixture->id)->first();
+    $homeIsRostered = DB::table('team_players')
+      ->where('team_id', $fixture->teamTie->home_team_id)
+      ->where('player_id', $validated['player1'])->exists();
+    $awayIsRostered = DB::table('team_players')
+      ->where('team_id', $fixture->teamTie->away_team_id)
+      ->where('player_id', $validated['player2'])->exists();
 
-      $fixture->team1_id = $_GET['player1'];
-      $fixture->team2_id = $_GET['player2'];
-
-      $fixture->save();
+    if (! $homeIsRostered || ! $awayIsRostered) {
+      throw ValidationException::withMessages([
+        'player1' => 'Each selected player must belong to the corresponding team roster.',
+      ]);
     }
+
+    DB::transaction(function () use ($fixture, $validated): void {
+      TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+      $rows = TeamFixturePlayer::where('team_fixture_id', $fixture->id)->orderBy('id')->get();
+      $row = $rows->shift() ?? new TeamFixturePlayer();
+      $row->fill([
+        'team_fixture_id' => $fixture->id,
+        'slot_no' => 1,
+        'team1_id' => $validated['player1'],
+        'team2_id' => $validated['player2'],
+      ])->save();
+      TeamFixturePlayer::whereIn('id', $rows->pluck('id'))->delete();
+    });
+
     return redirect()->back();
   }
 

@@ -115,6 +115,12 @@
                   <i class="ti ti-refresh me-1"></i>Rebuild calculated ranking for series {{ collect($analysis['impact']['ranking_rebuild_series_ids'])->map(fn($id) => '#'.$id)->implode(', ') }}. Published snapshots remain unchanged.
                 </div>
               @endif
+              @foreach($analysis['impact']['registration_overlap_resolutions'] ?? [] as $resolution)
+                <div class="small text-success mt-1">
+                  <i class="ti ti-recycle me-1"></i>{{ $resolution['event_name'] ?? 'Event #'.$resolution['event_id'] }} / {{ $resolution['category_name'] ?? 'category #'.$resolution['category_id'] }}:
+                  withdraw unpaid registration #{{ $resolution['duplicate_registration_id'] }} and retain #{{ $resolution['canonical_registration_id'] }}. Orders/results stay preserved.
+                </div>
+              @endforeach
             </td>
             <td>
               @forelse($recommendedValues as $field => $comparison)

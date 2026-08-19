@@ -399,7 +399,7 @@ $(function () {
 
     $.ajax({
       url: APP_URL + '/backend/fixture/insertResult',
-      method: 'GET',
+      method: 'POST',
       data: formData,
       success: function (response) {
         console.log(APP_URL + '/backend/fixture/insertResult', response);

@@ -282,7 +282,8 @@ use App\Helpers\Fixtures;
                 </button>
             </div>
             <div class="modal-body">
-                <form action="{{route('fixture.update.players')}}">
+                <form action="{{route('fixture.update.players')}}" method="POST">
+                    @csrf
                     <div class="mb-3">
                         <label for="defaultSelect" class="form-label">Player 1</label>
                         <select name="player1" id="player1" class="form-select">

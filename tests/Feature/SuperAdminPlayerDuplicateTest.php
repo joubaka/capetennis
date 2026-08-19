@@ -751,6 +751,101 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $this->assertDatabaseHas('players', ['id' => $remove->id]);
     }
 
+    public function test_paid_registration_is_retained_and_abandoned_unpaid_overlap_is_withdrawn_during_merge(): void
+    {
+        $owner = User::factory()->create();
+        $keep = Player::factory()->create(['name' => 'Mila', 'surname' => 'Reed', 'dateOfBirth' => '2010-01-01']);
+        $remove = Player::factory()->create(['name' => 'Mila', 'surname' => 'Reed', 'dateOfBirth' => '2010-01-01']);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Girls Singles', 'Fee' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $eventId = DB::table('events')->insertGetId([
+            'name' => 'Cape Town Junior Open', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $categoryEventId = DB::table('category_events')->insertGetId([
+            'event_id' => $eventId, 'category_id' => $categoryId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $paidRegistration = DB::table('registrations')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
+        $unpaidRegistration = DB::table('registrations')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
+        DB::table('player_registrations')->insert([
+            ['registration_id' => $paidRegistration, 'player_id' => $keep->id, 'created_at' => now(), 'updated_at' => now()],
+            ['registration_id' => $unpaidRegistration, 'player_id' => $remove->id, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $paidEntryId = DB::table('category_event_registrations')->insertGetId([
+            'category_event_id' => $categoryEventId, 'registration_id' => $paidRegistration,
+            'user_id' => $owner->id, 'payment_status_id' => 1, 'pf_transaction_id' => 'PF-PAID',
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $unpaidEntryId = DB::table('category_event_registrations')->insertGetId([
+            'category_event_id' => $categoryEventId, 'registration_id' => $unpaidRegistration,
+            'user_id' => $owner->id, 'payment_status_id' => null, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $paidOrderId = DB::table('registration_orders')->insertGetId([
+            'user_id' => $owner->id, 'pay_status' => true, 'payfast_paid' => true,
+            'payfast_pf_payment_id' => 'PF-PAID', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $unpaidOrderId = DB::table('registration_orders')->insertGetId([
+            'user_id' => $owner->id, 'pay_status' => false, 'payfast_paid' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('registration_order_items')->insert([
+            ['order_id' => $paidOrderId, 'registration_id' => $paidRegistration, 'player_id' => $keep->id, 'category_event_id' => $categoryEventId, 'item_price' => 285, 'created_at' => now(), 'updated_at' => now()],
+            ['order_id' => $unpaidOrderId, 'registration_id' => $unpaidRegistration, 'player_id' => $remove->id, 'category_event_id' => $categoryEventId, 'item_price' => 285, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $resultId = DB::table('category_results')->insertGetId([
+            'event_id' => $eventId, 'category_id' => $categoryId, 'registration_id' => $paidRegistration,
+            'position' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+
+        $this->assertTrue($analysis['can_merge'], json_encode($analysis['blockers']));
+        $this->assertSame('withdraw_unpaid_duplicate', $analysis['impact']['registration_overlap_resolutions'][0]['action']);
+        $this->assertSame($eventId, $analysis['impact']['registration_overlap_resolutions'][0]['event_id']);
+        $this->assertSame($unpaidOrderId, $analysis['impact']['registration_overlap_resolutions'][0]['duplicate_order_id']);
+
+        $this->actingAs($this->superUser)
+            ->post(route('superadmin.player-duplicates.merge'), $this->mergePayload($keep, $remove, $analysis))
+            ->assertRedirect(route('superadmin.player-duplicates.index'));
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $paidEntryId, 'registration_id' => $paidRegistration, 'status' => 'active', 'payment_status_id' => 1,
+        ]);
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $unpaidEntryId, 'registration_id' => $unpaidRegistration,
+            'status' => 'withdrawn', 'withdrawn_by' => $this->superUser->id,
+        ]);
+        $this->assertDatabaseHas('category_results', ['id' => $resultId, 'registration_id' => $paidRegistration, 'position' => 1]);
+        $this->assertDatabaseHas('registration_orders', ['id' => $paidOrderId, 'pay_status' => true]);
+        $this->assertDatabaseHas('registration_orders', ['id' => $unpaidOrderId, 'pay_status' => false]);
+        $this->assertDatabaseHas('player_registrations', ['registration_id' => $unpaidRegistration, 'player_id' => $keep->id]);
+        $this->assertDatabaseHas('registration_order_items', ['order_id' => $unpaidOrderId, 'player_id' => $keep->id]);
+        $this->assertDatabaseMissing('players', ['id' => $remove->id]);
+    }
+
+    public function test_two_paid_registrations_in_same_category_remain_blocked(): void
+    {
+        $owner = User::factory()->create();
+        $keep = Player::factory()->create(['name' => 'Mila', 'surname' => 'Reed', 'dateOfBirth' => '2010-01-01']);
+        $remove = Player::factory()->create(['name' => 'Mila', 'surname' => 'Reed', 'dateOfBirth' => '2010-01-01']);
+        $registrations = collect([1, 2])->map(fn () => DB::table('registrations')->insertGetId(['created_at' => now(), 'updated_at' => now()]));
+        DB::table('player_registrations')->insert([
+            ['registration_id' => $registrations[0], 'player_id' => $keep->id, 'created_at' => now(), 'updated_at' => now()],
+            ['registration_id' => $registrations[1], 'player_id' => $remove->id, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('category_event_registrations')->insert([
+            ['category_event_id' => 77, 'registration_id' => $registrations[0], 'user_id' => $owner->id, 'payment_status_id' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['category_event_id' => 77, 'registration_id' => $registrations[1], 'user_id' => $owner->id, 'payment_status_id' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+
+        $this->assertFalse($analysis['can_merge']);
+        $this->assertContains('tournament_registration_overlap', collect($analysis['blockers'])->pluck('domain')->all());
+        $this->assertSame([], $analysis['impact']['registration_overlap_resolutions']);
+    }
+
     public function test_merge_preserves_tournament_results_and_future_rankings_combine_under_canonical_player(): void
     {
         $keep = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01']);

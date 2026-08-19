@@ -21,6 +21,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use App\Domain\Draws\Guards\DrawGuard;
+use App\Services\TeamFixtureScoreService;
 
 class TeamFixtureController extends Controller
 {
@@ -300,12 +301,12 @@ class TeamFixtureController extends Controller
   {
     $this->authorize('team-fixture.saveScore', $team_fixture);
     for ($i = 1; $i <= 3; $i++) {
-      $rules["set{$i}_home"] = 'nullable|integer|min:0';
-      $rules["set{$i}_away"] = 'nullable|integer|min:0';
+      $rules["set{$i}_home"] = "nullable|required_with:set{$i}_away|integer|min:0";
+      $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
     $validated = $request->validate($rules);
 
-    $this->persistResults($team_fixture, $validated);
+    app(TeamFixtureScoreService::class)->save($team_fixture, $validated);
 
     if ($request->ajax()) {
       $team_fixture->load('fixtureResults');
@@ -359,8 +360,8 @@ class TeamFixtureController extends Controller
       'duration_min' => ['nullable', 'integer', 'min:10', 'max:480'],
     ];
     for ($i = 1; $i <= 3; $i++) {
-      $rules["set{$i}_home"] = 'nullable|integer|min:0';
-      $rules["set{$i}_away"] = 'nullable|integer|min:0';
+      $rules["set{$i}_home"] = "nullable|required_with:set{$i}_away|integer|min:0";
+      $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
 
     $validated = $request->validate($rules);
@@ -373,7 +374,7 @@ class TeamFixtureController extends Controller
       'scheduled' => empty($validated['scheduled_at']) ? 0 : 1,
     ]);
 
-    $this->persistResults($team_fixture, $validated);
+    app(TeamFixtureScoreService::class)->save($team_fixture, $validated);
 
     if ($request->ajax()) {
       $team_fixture->load('fixtureResults');
@@ -423,7 +424,7 @@ class TeamFixtureController extends Controller
   {
     $this->authorize('team-fixture.saveScore', $team_fixture);
 
-    $team_fixture->fixtureResults()->delete();
+    app(TeamFixtureScoreService::class)->delete($team_fixture);
 
     if (request()->ajax()) {
       return response()->json([
@@ -1227,41 +1228,6 @@ class TeamFixtureController extends Controller
 
     // Non-AJAX: redirect back to caller head office page (preserve UX)
     return redirect()->route('headOffice.show', $data['event_id'])->with('success', $message);
-  }
-
-  private function persistResults(TeamFixture $fixture, array $validated): void
-  {
-    DB::transaction(function () use ($fixture, $validated) {
-      TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
-
-      foreach (range(1, 3) as $setNumber) {
-        $home = $validated["set{$setNumber}_home"] ?? null;
-        $away = $validated["set{$setNumber}_away"] ?? null;
-        $results = TeamFixtureResult::where('team_fixture_id', $fixture->id)
-          ->where('set_nr', $setNumber)->orderBy('id')->get();
-
-        if ($home === null && $away === null) {
-          TeamFixtureResult::whereIn('id', $results->pluck('id'))->delete();
-          continue;
-        }
-
-        $result = $results->shift() ?? new TeamFixtureResult();
-        $result->fill([
-          'team_fixture_id' => $fixture->id,
-          'set_nr' => $setNumber,
-          'team1_score' => $home,
-          'team2_score' => $away,
-          // These legacy columns were historically populated with side numbers 1/2,
-          // even though they are named as entity IDs. Scores are the canonical source.
-          'match_winner_id' => null,
-          'match_loser_id' => null,
-        ])->save();
-
-        if ($results->isNotEmpty()) {
-          TeamFixtureResult::whereIn('id', $results->pluck('id'))->delete();
-        }
-      }
-    });
   }
 
   public function playerFixtures(Request $request): JsonResponse

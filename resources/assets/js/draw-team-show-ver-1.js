@@ -46,7 +46,7 @@ $(function () {
     var formdata = $(this).serialize();
     console.log(formdata);
     $.ajax({
-      type: 'GET',
+      type: 'POST',
       url: APP_URL + '/schedule/update/time', // Update with your route
       data: formdata,
       success: function (response) {
@@ -162,7 +162,7 @@ $(function () {
 
       var data = $(this).parents('form').serialize();
       console.log('data-to', data);
-      $.get(APP_URL + '/backend/fixture/updateResult', data, function (results) {
+      $.post(APP_URL + '/backend/fixture/updateResult', data, function (results) {
         console.log('resultsfrom', results);
         clearScores($('.score'));
         $('#result-modal').modal('toggle');

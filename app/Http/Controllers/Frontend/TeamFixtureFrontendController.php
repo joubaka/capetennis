@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\Draw;
 use App\Models\Event;
+use App\Services\TeamFixtureScoreService;
 
 class TeamFixtureFrontendController extends Controller
 {
@@ -99,25 +100,18 @@ class TeamFixtureFrontendController extends Controller
 
   public function storeScore(Request $request, $fixtureId)
   {
-      $request->validate([
-          'set1_home' => 'required|integer|min:0',
-          'set1_away' => 'required|integer|min:0',
-      ]);
-
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
       $this->authorize('team-fixture.saveScore', $fixture);
 
+      $rules = [];
       for ($i = 1; $i <= 3; $i++) {
-          if ($request->filled("set{$i}_home") && $request->filled("set{$i}_away")) {
-              $fixture->fixtureResults()->updateOrCreate(
-                  ['set_nr' => $i],
-                  [
-                      'team1_score' => $request->input("set{$i}_home"),
-                      'team2_score' => $request->input("set{$i}_away"),
-                  ]
-              );
-          }
+          $required = $i === 1 ? 'required' : 'nullable';
+          $rules["set{$i}_home"] = "{$required}|required_with:set{$i}_away|integer|min:0";
+          $rules["set{$i}_away"] = "{$required}|required_with:set{$i}_home|integer|min:0";
       }
+      $validated = $request->validate($rules);
+
+      app(TeamFixtureScoreService::class)->save($fixture, $validated);
 
       // Prepare updated result HTML
       $resultHtml = view('frontend.fixtures.partials.result', ['fixture' => $fixture])->render();
@@ -169,7 +163,7 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
   {
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
       $this->authorize('team-fixture.saveScore', $fixture);
-      $fixture->fixtureResults()->delete();
+      app(TeamFixtureScoreService::class)->delete($fixture);
 
       // Prepare updated result HTML
       $resultHtml = '<span class="text-muted">No result</span>';

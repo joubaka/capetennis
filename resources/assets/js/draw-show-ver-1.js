@@ -97,7 +97,7 @@ $(function () {
 
             var data = submitResultForm.serialize();
             
-            $.get(APP_URL + '/backend/fixture/insertResult', data, function (results) {
+            $.post(APP_URL + '/backend/fixture/insertResult', data, function (results) {
                 console.log('resultsfromcontoller', results);
                 clearScores($('.score'));
                 $('#result-modal').modal('toggle');

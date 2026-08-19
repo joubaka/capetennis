@@ -224,7 +224,7 @@ $(function () {
     let formData = $(this).serialize();
 
     $.ajax({
-      type: 'GET',
+      type: 'POST',
       url: APP_URL + '/backend/fixture/insertResult',
       data: formData,
       success: function (response) {
@@ -301,7 +301,7 @@ $(function () {
 
       var data = submitResultForm.serialize();
 
-      $.get(APP_URL + '/backend/fixture/insertResult', data, function (results) {
+      $.post(APP_URL + '/backend/fixture/insertResult', data, function (results) {
         clearScores($('.score'));
         $('#result-modal').modal('toggle');
         updateFixtureResult($this, results['results']);

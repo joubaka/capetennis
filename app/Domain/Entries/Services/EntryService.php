@@ -17,6 +17,9 @@ use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Canonical entry service for Cape Tennis.
@@ -367,6 +370,110 @@ class EntryService
 
             DB::afterCommit(fn () => event(new EntryWithdrawn($entry, $actingUser, 'admin')));
         });
+    }
+
+    /**
+     * Retire an abandoned, unpaid duplicate entry while merging player identities.
+     *
+     * This is intentionally narrower than a normal admin withdrawal: the entry
+     * must have no payment, refund, result, draw, fixture or practice evidence.
+     * Financial orders and registration records remain intact for audit.
+     */
+    public function retireUnpaidDuplicateForPlayerMerge(
+        CategoryEventRegistration $entry,
+        User $actingUser,
+        int $canonicalRegistrationId,
+        string $reason
+    ): void {
+        DB::transaction(function () use ($entry, $actingUser, $canonicalRegistrationId, $reason) {
+            $entry = CategoryEventRegistration::query()->lockForUpdate()->findOrFail($entry->id);
+            if ($entry->status === EntryStateMachine::STATE_WITHDRAWN) {
+                return;
+            }
+
+            $orderIds = DB::table('registration_order_items')
+                ->where('registration_id', $entry->registration_id)
+                ->pluck('order_id')->filter()->unique();
+            $orders = DB::table('registration_orders')->whereIn('id', $orderIds)->get();
+            $hasFinancialEvidence = (int) $entry->payment_status_id === 1
+                || filled($entry->pf_transaction_id)
+                || filled($entry->wallet_transaction_id)
+                || $orders->contains(fn ($order) => (bool) $order->pay_status
+                    || (bool) $order->payfast_paid
+                    || (bool) $order->wallet_debited
+                    || (float) $order->wallet_reserved > 0
+                    || filled($order->payfast_pf_payment_id)
+                    || filled($order->wallet_transaction_id))
+                || ($orderIds->isNotEmpty() && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)->exists());
+
+            $hasCompetitionHistory = DB::table('category_results')
+                ->where('registration_id', $entry->registration_id)->exists()
+                || $this->registrationHasCompetitionHistory((int) $entry->registration_id);
+            $hasRefundEvidence = ! in_array($entry->refund_status, [null, '', 'not_refunded'], true)
+                || (float) ($entry->refund_gross ?? 0) !== 0.0
+                || (float) ($entry->refund_fee ?? 0) !== 0.0
+                || (float) ($entry->refund_net ?? 0) !== 0.0
+                || filled($entry->refunded_at);
+
+            if ($orderIds->count() !== 1 || $hasFinancialEvidence || $hasCompetitionHistory || $hasRefundEvidence) {
+                throw ValidationException::withMessages([
+                    'registration_overlap' => 'The duplicate registration gained payment, refund, result or competition history. Nothing was merged.',
+                ]);
+            }
+
+            $entry->update([
+                'status' => EntryStateMachine::STATE_WITHDRAWN,
+                'withdrawn_at' => now(),
+                'withdrawn_by' => $actingUser->id,
+                'withdrawal_reason' => Str::limit($reason, 1000, ''),
+                'refund_status' => 'not_refunded',
+                'refund_method' => null,
+                'refund_gross' => 0,
+                'refund_fee' => 0,
+                'refund_net' => 0,
+                'refunded_at' => null,
+            ]);
+
+            activity('player-profile-merge')
+                ->performedOn($entry)
+                ->causedBy($actingUser)
+                ->withProperties([
+                    'duplicate_registration_id' => (int) $entry->registration_id,
+                    'canonical_registration_id' => $canonicalRegistrationId,
+                    'category_event_id' => (int) $entry->category_event_id,
+                    'reason' => $reason,
+                ])->log('Retired unpaid duplicate registration during player merge');
+
+            Log::info('[EntryService] Unpaid duplicate registration retired for player merge', [
+                'entry_id' => $entry->id,
+                'duplicate_registration_id' => $entry->registration_id,
+                'canonical_registration_id' => $canonicalRegistrationId,
+                'actor' => $actingUser->id,
+            ]);
+        });
+    }
+
+    private function registrationHasCompetitionHistory(int $registrationId): bool
+    {
+        foreach ([
+            'fixtures' => ['registration1_id', 'registration2_id', 'winner_registration'],
+            'fixture_results' => ['winner_registration', 'loser_registration'],
+            'practice_fixtures' => ['registration1_id', 'registration2_id'],
+            'practice_results' => ['winner_registration', 'loser_registration'],
+            'draw_group_registrations' => ['registration_id'],
+        ] as $table => $columns) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            foreach ($columns as $column) {
+                if (Schema::hasColumn($table, $column)
+                    && DB::table($table)->where($column, $registrationId)->exists()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // -----------------------------------------------------------------------

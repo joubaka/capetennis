@@ -101,11 +101,17 @@ class VenueController extends Controller
     }
     public function saveDrawVenues(Request $request)
     {
-       
-       $draw = Draw::find($request->draw);
-       $draw->venues()->sync($request->venues);
-       return redirect()->route('headOffice.show',$draw->events);
-       //dd($draw->venues);
+       $validated = $request->validate([
+           'draw' => ['required', 'integer', 'exists:draws,id'],
+           'venues' => ['nullable', 'array'],
+           'venues.*' => ['integer', 'distinct', 'exists:venues,id'],
+       ]);
+
+       $draw = Draw::findOrFail($validated['draw']);
+       $this->authorize('fixture.update', $draw);
+       $draw->venues()->sync($validated['venues'] ?? []);
+
+       return redirect()->route('headOffice.show', $draw->event_id);
     }
 
 }

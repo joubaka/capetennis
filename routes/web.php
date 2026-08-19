@@ -1149,8 +1149,8 @@ Route::delete(
   //fixtures
   Route::get('fixture/pdf/create', [FixtureController::class, 'fixtures_create_pdf'])->name('fixture.create.pdf');
   Route::get('fixture/pdf/create/venue', [FixtureController::class, 'fixtures_create_pdf_venue'])->name('fixture.create.pdf.venue');
-  Route::get('fixture/insertResult', [FixtureController::class, 'insertResult'])->name('draw.insert.result');
-  Route::get('fixture/updateResult', [FixtureController::class, 'updateResult'])->name('draw.update.result');
+  Route::post('fixture/insertResult', [FixtureController::class, 'insertResult'])->name('draw.insert.result');
+  Route::post('fixture/updateResult', [FixtureController::class, 'updateResult'])->name('draw.update.result');
   Route::post('fixture/deleteResult/{id}', [FixtureController::class, 'deleteResult'])->name('draw.delete.result');
   Route::post('fixture/deleteIndResult/{id}', [FixtureController::class, 'deleteIndResult'])->name('draw.delete.ind.result');
   Route::get('fixture/update/player/names/{id}', [FixtureController::class, 'updatePlayersNames'])->name('update-player-names');
@@ -1158,7 +1158,7 @@ Route::delete(
   Route::get('fixture/ajax/{id}', [FixtureController::class, 'ajax'])->name('fixture.ajax');
   Route::get('fixture/rounds', [FixtureController::class, 'rounds'])->name('fixture.rounds');
   Route::get('fixture/ties', [FixtureController::class, 'ties'])->name('fixture.ties');
-  Route::get('fixture/updatePlayers', [FixtureController::class, 'updatePlayer'])->name('fixture.update.players');
+  Route::post('fixture/updatePlayers', [FixtureController::class, 'updatePlayer'])->name('fixture.update.players');
   Route::post('fixtures/create/auto/{draw_id}', [FixtureController::class, 'autoScheduleFixtures'])->name('fixtures.auto.schedule');
   Route::resource('fixture', FixtureController::class);
   Route::get('/nomination/players/category/{id}', [\App\Http\Controllers\backend\NominateController::class, 'playersForCategory']);
@@ -1192,7 +1192,7 @@ Route::delete(
 
   //venue
   Route::get('venue/list', [VenueController::class, 'venue_list'])->name('venue.list');
-  Route::get('venue/save/draw/venue', [VenueController::class, 'saveDrawVenues'])->name('save.draw.venues');
+  Route::post('venue/save/draw/venue', [VenueController::class, 'saveDrawVenues'])->name('save.draw.venues');
   Route::resource('venue', VenueController::class);
 
   //eventVenue

@@ -70,7 +70,8 @@ $configData = Helper::appClasses();
 
 
                 <div class="col-9 col-md-9">
-                <form id="venueForm" action="{{ route('save.draw.venues') }}" method="GET">
+                <form id="venueForm" action="{{ route('save.draw.venues') }}" method="POST">
+                    @csrf
                     <!-- Multiple Select Dropdown -->
                     <div class="mb-3 m-3">
                         <label for="venues" class="form-label">Select Venues</label>
