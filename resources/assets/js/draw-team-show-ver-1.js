@@ -118,7 +118,7 @@ $(function () {
     let formData = $(this).serialize();
 
     $.ajax({
-      type: 'GET',
+      type: 'POST',
       url: APP_URL + '/backend/fixture/insertResult', // Update with your route
       data: formData,
       success: function (response) {

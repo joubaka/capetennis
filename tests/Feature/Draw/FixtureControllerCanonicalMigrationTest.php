@@ -55,7 +55,7 @@ class FixtureControllerCanonicalMigrationTest extends TestCase
 
     private function insertResult(array $p): \Illuminate\Testing\TestResponse
     {
-        return $this->getJson("/backend/fixture/insertResult?" . http_build_query($p));
+        return $this->postJson('/backend/fixture/insertResult', $p);
     }
 
     private function deleteIndResult(int $id): \Illuminate\Testing\TestResponse
