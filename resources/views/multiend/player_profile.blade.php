@@ -1,9 +1,15 @@
 <div class="col-xl-12">
-    <h6 class="text-muted">Player planning for: {{$player->full_name}}</h6>
-    <div class="nav-align-top mb-4">
-        <ul class="nav nav-pills mb-3" role="tablist">
+    <div class="planning-header mb-3">
+        <span class="badge bg-label-primary mb-2"><i class="ti ti-chart-dots-2 me-1"></i>Player development</span>
+        <h3 class="mb-1">Planning &amp; progress</h3>
+        <p class="text-muted mb-0">Set goals, record training and review {{$player->full_name}}'s progress.</p>
+    </div>
+    <div class="nav-align-top mb-4 player-planning-card card">
+        <div class="card-header pb-0">
+        <div class="planning-tabs-wrap" aria-label="Player planning sections">
+        <ul class="nav nav-pills planning-tabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-home" aria-controls="navs-pills-top-home" aria-selected="true">Add</button>
+                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-home" aria-controls="navs-pills-top-home" aria-selected="true"><i class="ti ti-plus me-1"></i>Quick add</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-profile" aria-controls="navs-pills-top-profile" aria-selected="false" tabindex="-1">Physical Evaluations</button>
@@ -12,7 +18,7 @@
                 <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-training" aria-controls="navs-pills-top-training" aria-selected="false" tabindex="-1">Practice Sessions</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-charts" aria-controls="navs-pills-top-chars" aria-selected="false" tabindex="-1">Player Analisys</button>
+                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-charts" aria-controls="navs-pills-top-charts" aria-selected="false" tabindex="-1">Player Analysis</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-messages" aria-controls="navs-pills-top-messages" aria-selected="false" tabindex="-1">Goal Setting</button>
@@ -32,62 +38,51 @@
                 </button>
             </li>
         </ul>
-        <div class="tab-content">
+        </div>
+        </div>
+        <div class="tab-content shadow-none">
             <div class="tab-pane fade active show" id="navs-pills-top-home" role="tabpanel">
            
                 @if($player->subscriptions->count() > 0 || $u->id == 584)
-                <div class="row">
-                    <div class="col-lg-6 col-sm-12 p-4">
-                        <small class="text-light fw-semibold mb-4">Set my goals</small>
-                        <div class="demo-inline-spacing">
+                <div class="row g-3">
+                    <div class="col-lg-7 col-sm-12">
+                        <section class="quick-action-panel" aria-labelledby="goal-actions-title">
+                            <span class="badge bg-label-primary mb-3">Goals</span>
+                            <h4 id="goal-actions-title" class="mb-1">Set a new goal</h4>
+                            <p class="text-muted mb-4">Choose the area you want the player to focus on next.</p>
+
                             @foreach($goal_themes as $theme)
-                            <h3>{{$theme->theme}} Goals</h3>
-                            <ul class="d-grid gap-2">
-
-                                @foreach($theme->goal_types as $types)
-                                @if($theme->id == 1)
-                                <li class="list-group-item"> <a href="{{route('create.general.goal', ['id' => $player->id, 'type' => $types->id])}}" class="btn bg-label-{{$theme->id == 1 ? 'primary':'warning'}}">{{$types->name}} Goal</a></li>
-                                @elseif($theme->id == 2)
-                                <li class="list-group-item"> <a href="{{route('create.career.goal', ['id' => $player->id, 'type' => $types->id])}}" class="btn bg-label-{{$theme->id == 1 ? 'primary':'warning'}}">{{$types->name}} Goal</a></li>
-                                @endif
-
-                                @endforeach
-
-
-
-                            </ul>
-
-
-
+                                <h6 class="text-uppercase text-muted mt-3 mb-2">{{$theme->theme}} goals</h6>
+                                <div class="goal-action-grid">
+                                    @foreach($theme->goal_types as $types)
+                                        @if($theme->id == 1)
+                                            <a href="{{route('create.general.goal', ['id' => $player->id, 'type' => $types->id])}}" class="btn bg-label-primary"><i class="ti ti-target-arrow me-2"></i>{{$types->name}} goal</a>
+                                        @elseif($theme->id == 2)
+                                            <a href="{{route('create.career.goal', ['id' => $player->id, 'type' => $types->id])}}" class="btn bg-label-warning"><i class="ti ti-trophy me-2"></i>{{$types->name}} goal</a>
+                                        @endif
+                                    @endforeach
+                                </div>
                             @endforeach
-
-
-
-
-
-
-                        </div>
+                        </section>
                     </div>
-                    <div class="col-lg-6 col-sm-12 p-4">
-
-                        <div class="demo-inline-spacing">
-                            <small class="text-light fw-semibold mb-4">Add</small>
-                            <h3>Exersizes</h3>
-
-
-                            <button type="button" class="btn btn-label-linkedin waves-effect" data-bs-target="#addExersize" data-bs-toggle="modal"><i class="ms-1 tf-icons fa-solid fa-star ti-xs me-1"></i> Add Physical Exersize result</button>
-                            <button type="button" class="btn btn-label-github waves-effect" data-bs-target="#addPractice" data-bs-toggle="modal">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="tf-icons ti-xs me-1 icon icon-tabler icon-tabler-ball-tennis" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                                    <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"></path>
-                                    <path d="M6 5.3a9 9 0 0 1 0 13.4"></path>
-                                    <path d="M18 5.3a9 9 0 0 0 0 13.4"></path>
-                                </svg> Add Practice</button>
-                        </div>
-
+                    <div class="col-lg-5 col-sm-12">
+                        <section class="quick-action-panel" aria-labelledby="training-actions-title">
+                            <span class="badge bg-label-info mb-3">Training</span>
+                            <h4 id="training-actions-title" class="mb-1">Record activity</h4>
+                            <p class="text-muted mb-4">Keep the player's development history up to date.</p>
+                            <div class="record-action-list">
+                                <button type="button" class="btn btn-label-info waves-effect" data-bs-target="#addExersize" data-bs-toggle="modal"><i class="ti ti-activity me-2"></i>Add physical evaluation</button>
+                                <button type="button" class="btn btn-label-secondary waves-effect" data-bs-target="#addPractice" data-bs-toggle="modal">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="tf-icons ti-xs me-2 icon icon-tabler icon-tabler-ball-tennis" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                                        <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"></path>
+                                        <path d="M6 5.3a9 9 0 0 1 0 13.4"></path>
+                                        <path d="M18 5.3a9 9 0 0 0 0 13.4"></path>
+                                    </svg>Add practice session
+                                </button>
+                            </div>
+                        </section>
                     </div>
-
-
                 </div>
 
                 @else
@@ -107,7 +102,7 @@
                     <table class="table ">
                         <thead>
                             <th>Date</th>
-                            <th>Exerize</th>
+                            <th>Exercise</th>
                             <th>Score</th>
                             <th>100% score</th>
                             <th>Type</th>
@@ -660,7 +655,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLabel">Add Exersize</h5>
+                <h5 class="modal-title" id="exampleModalLabel">Add physical evaluation</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -669,7 +664,7 @@
                     <div class="mb-3 ">
                         <label for="html5-date-input" class="form-label">Date</label>
 
-                        <input name="date" class="form-control" type="date" value="{{Carbon\Carbon::now()->format('y-m-d')}}" id="html5-date-input">
+                        <input name="date" class="form-control" type="date" value="{{Carbon\Carbon::now()->format('Y-m-d')}}" id="html5-date-input">
 
                     </div>
                 </div>
@@ -679,7 +674,7 @@
                         <div class="addExersizeBody">
                             <div class="row">
                                 <div class="mb-3 col-6">
-                                    <label for="select2Basic" class="form-label ">Please select Exersize Type</label>
+                                    <label for="select2Basic" class="form-label ">Exercise type</label>
 
                                     <select name="exersize[]" class="select2 form-select form-select-lg" data-allow-clear="true">
                                         @foreach($physical_exersizes as $exersize)
@@ -692,7 +687,7 @@
 
                                 <div class="mb-3 col-6">
 
-                                    <label for="html5-number-input" class="form-label">Number of</label>
+                                    <label for="html5-number-input" class="form-label">Score</label>
 
                                     <input name="score[]" class="form-control" type="number" value="18" id="html5-number-input">
 
@@ -708,11 +703,11 @@
 
                 </div>
 
-                <div class="addAnotherExersize btn bg-label-success" id="addAnotherButton">Add Another</div>
+                <div class="addAnotherExersize btn bg-label-success ms-4" id="addAnotherButton">Add another evaluation</div>
                 <div class="modal-footer">
 
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Save changes</button>
+                    <button type="submit" class="btn btn-primary">Save evaluations</button>
                 </div>
             </form>
         </div>
@@ -724,7 +719,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLabel">Add Practice</h5>
+                <h5 class="modal-title" id="exampleModalLabel">Add practice session</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
@@ -734,7 +729,7 @@
                         <div class="mb-3 ">
                             <label for="html5-date-input" class="form-label">Date</label>
 
-                            <input name="date" class="form-control" type="date" value="{{Carbon\Carbon::now()->format('y-m-d')}}" id="html5-date-input">
+                            <input name="date" class="form-control" type="date" value="{{Carbon\Carbon::now()->format('Y-m-d')}}" id="html5-date-input">
 
                         </div>
                     </div>

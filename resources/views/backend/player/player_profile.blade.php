@@ -8,6 +8,10 @@
 
 @endsection
 
+@section('page-style')
+@include('multiend.player_profile_styles')
+@endsection
+
 @section('vendor-script')
 <script src="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.js')}}"></script>
 <script src="{{asset('assets/vendor/libs/select2/select2.js')}}"></script>
@@ -23,95 +27,97 @@
 
 @section('content')
 
-<div class="row">
+<div class="row g-4 player-profile-page">
   <!-- User Sidebar -->
   <div class="col-xl-4 col-lg-5 col-md-5 order-1 order-md-0">
     <!-- User Card -->
-    <div class="card mb-4">
+    <div class="card mb-4 player-summary-card">
       <div class="card-body">
         <div class="user-avatar-section">
           <div class=" d-flex align-items-center flex-column">
+            <div class="player-avatar-placeholder mb-3" aria-hidden="true">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($player->full_name, 0, 1)) }}</div>
             <div class="user-info text-center">
-              <h4 class="mb-2">{{$player->full_name}}</h4>
+              <h4 class="mb-1">{{$player->full_name}}</h4>
+              <span class="text-muted small">Player profile</span>
 
             </div>
           </div>
         </div>
         <div class="d-flex justify-content-around flex-wrap mt-3 pt-3 pb-4 border-bottom">
-          <div class="d-flex align-items-start me-4 mt-3 gap-2">
+          <div class="player-stat d-flex align-items-center me-2 mt-3 gap-2">
             <span class="badge bg-label-primary  rounded"><i class="ti ti-checkbox ti-sm"></i></span>
             <div>
               <p class="mb-0 fw-semibold">{{$player->registrations->count()}}</p>
-              <small>Events Registered</small>
+              <small>Registered events</small>
             </div>
           </div>
-          <div class="d-flex align-items-start mt-3 mb-3 gap-2">
+          <div class="player-stat d-flex align-items-center mt-3 mb-3 gap-2">
             <span class="badge bg-label-primary p-2 rounded"><i class="ti ti-briefcase ti-sm"></i></span>
             <div>
               <p class="mb-0 fw-semibold">{{$player->users()->count()}}</p>
-              <small>User(s) linked to profile</small>
+              <small>Linked users</small>
 
             </div>
 
           </div>
-          <div class="card shadow-none bg-transparent border border-primary">
+          <div class="card shadow-none bg-transparent border w-100 mt-2">
             <div class="card-header">
-              <h6>User(s) linked to profile</h6>
+              <h6 class="mb-0">Linked users</h6>
             </div>
             <div class="card-body">
-              <ul class="list-group-numbered mt-2">
+              <ol class="list-group list-group-numbered linked-user-list mb-0">
                 @foreach($player->users as $user)
-                <li class="list-group-item">{{$user->name}} - {{$user->email}}</li>
+                <li class="list-group-item"><span class="fw-medium">{{$user->name}}</span><br><small class="text-muted">{{$user->email}}</small></li>
                 @endforeach
-              </ul>
+              </ol>
             </div>
           </div>
 
 
         </div>
-        <p class="mt-4 small text-uppercase text-muted">Details</p>
+        <p class="mt-4 mb-2 small text-uppercase text-muted fw-semibold">Player details</p>
         <div class="info-container">
           <ul class="list-unstyled">
-            <li class="mb-2">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Name:</span>
               <span>{{$player->full_name}}</span>
             </li>
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Email:</span>
               <span>{{$player->email}}</span>
             </li>
 
 
 
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Contact:</span>
               <span>{{$player->cellNr}}</span>
             </li>
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Gender:</span>
               <span>{{$player->gender == 1 ? 'Male':'Female'}}</span>
             </li>
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Date of Birth:</span>
               <span>{{$player->dateOfBirth}}</span>
             </li>
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Coach:</span>
               <span>{{$player->coach}}</span>
             </li>
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Memberships:</span>
               <span class="badge bg-label-{{ $player->subscriptions->count() > 0  ? 'success':'info'}}">{{ $player->subscriptions->count() > 0  ? $player->subscriptions[0]->type.' Membership':'Free Membership'}} </span>
             </li>
             @if($player->subscriptions->count() > 0)
-            <li class="mb-2 pt-1">
+            <li class="profile-detail-row">
               <span class="fw-semibold me-1">Expires:</span>
               <span class="badge bg-label-{{ $player->subscriptions->count() > 0  ? 'info':''}}">{{ $player->subscriptions->count() > 0  ? $player->subscriptions[0]->info->finish_date:'Free Membership'}} </span>
             </li>
             @endif
           </ul>
-          <div class="d-flex justify-content-center">
-            <a href="{{route('player.edit',$player->id)}}" class="btn btn-primary me-3 waves-effect waves-light">Edit</a>
+          <div class="d-grid mt-3">
+            <a href="{{route('player.edit',$player->id)}}" class="btn btn-outline-primary waves-effect"><i class="ti ti-pencil me-1"></i>Edit player details</a>
 
           </div>
         </div>
