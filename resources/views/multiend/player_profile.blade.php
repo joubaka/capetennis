@@ -9,13 +9,7 @@
         <div class="planning-tabs-wrap" aria-label="Player planning sections">
         <ul class="nav nav-pills planning-tabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-home" aria-controls="navs-pills-top-home" aria-selected="true"><i class="ti ti-plus me-1"></i>Quick add</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-profile" aria-controls="navs-pills-top-profile" aria-selected="false" tabindex="-1">Physical Evaluations</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="false" tabindex="-1">Registered Events</button>
+                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="true">Registered Events</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-violations" aria-controls="navs-pills-top-violations" aria-selected="false" tabindex="-1">
@@ -29,7 +23,7 @@
         </div>
         </div>
         <div class="tab-content shadow-none">
-            <div class="tab-pane fade active show" id="navs-pills-top-home" role="tabpanel">
+            <div class="tab-pane fade" id="navs-pills-top-home" role="tabpanel">
            
                 @if($player->subscriptions->count() > 0 || $u->id == 584)
                 <div class="row g-3">
@@ -458,7 +452,7 @@
                 @endcan
 
             </div>
-            <div class="tab-pane fade" id="navs-pills-top-events" role="tabpanel">
+            <div class="tab-pane fade active show" id="navs-pills-top-events" role="tabpanel">
                 @if($player->subscriptions->count() > 0 || $u->id == 584)
                 <div class="col-lg-12 mb-4 col-md-12">
                     <div class="card">
