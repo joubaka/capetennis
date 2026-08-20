@@ -160,8 +160,8 @@ final class BracketRenderService
             'away_id'    => $fx->registration2_id,
             'score'      => implode(', ', array_map(fn($s) => "{$s['s1']}-{$s['s2']}", $sets)),
             'winner_id'  => $fx->winner_registration,
-            'time'       => optional($oop)->start_time ?? $fx->start_time ?? '',
-            'court'      => optional(optional($oop)->venue)->name ?? '',
+            'time'       => optional($oop)->time ?? '',
+            'court'      => optional($oop)->court ?? '',
         ];
     }
 

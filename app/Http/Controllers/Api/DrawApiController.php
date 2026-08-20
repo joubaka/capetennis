@@ -11,6 +11,7 @@ use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use App\Models\Fixture;
 use App\Services\DrawService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -260,11 +261,70 @@ class DrawApiController extends Controller
             'items'                => 'required|array',
             'items.*.fixture_id'   => 'required|integer|exists:fixtures,id',
             'items.*.court'        => 'nullable|string|max:50',
+            'items.*.venue_id'     => 'nullable|integer|exists:venues,id',
             'items.*.start_time'   => 'nullable|string|max:50',
+            'items.*.duration_minutes' => 'nullable|integer|min:1|max:300',
             'items.*.round'        => 'nullable|string|max:50',
         ]);
 
         $venueId = $draw->venues->first()->id ?? 1;
+
+        $slots = [];
+        $intervals = [];
+        $fixturesById = $draw->drawFixtures()
+            ->whereIn('id', collect($validated['items'])->pluck('fixture_id'))
+            ->get()
+            ->keyBy('id');
+        foreach ($validated['items'] as $item) {
+            $rawTime = $item['start_time'] ?? null;
+            if (! $rawTime || empty($item['court'])) {
+                continue;
+            }
+
+            $timeValue = (strlen($rawTime) <= 8)
+                ? now()->toDateString() . ' ' . $rawTime
+                : $rawTime;
+            $itemVenueId = $item['venue_id'] ?? $venueId;
+            if ($draw->venues->isNotEmpty() && ! $draw->venues->contains('id', $itemVenueId)) {
+                return response()->json(['success' => false, 'message' => 'The selected venue is not assigned to this draw.'], 422);
+            }
+            $slotKey = $itemVenueId . '|' . $item['court'] . '|' . $timeValue;
+            if (isset($slots[$slotKey])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Schedule conflict: two matches use the same venue, court and start time.',
+                    'conflict' => ['fixture_ids' => [$slots[$slotKey], $item['fixture_id']]],
+                ], 422);
+            }
+            $slots[$slotKey] = $item['fixture_id'];
+
+            $start = Carbon::parse($timeValue);
+            $end = $start->copy()->addMinutes((int) ($item['duration_minutes'] ?? 75));
+            foreach ($intervals as $interval) {
+                if ($interval['venue_id'] === $itemVenueId && $interval['court'] === $item['court']
+                    && $start->lt($interval['end'] ?? $interval['start'])
+                    && $end->gt($interval['start'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Schedule conflict: match times overlap on the same court.',
+                        'conflict' => ['fixture_ids' => [$interval['fixture_id'], $item['fixture_id']]],
+                    ], 422);
+                }
+                $currentFixture = $fixturesById->get($item['fixture_id']);
+                $previousFixture = $fixturesById->get($interval['fixture_id']);
+                $currentPlayers = collect([$currentFixture?->registration1_id, $currentFixture?->registration2_id])->filter();
+                $previousPlayers = collect([$previousFixture?->registration1_id, $previousFixture?->registration2_id])->filter();
+                if ($start->lt($interval['end']) && $end->gt($interval['start'])
+                    && $currentPlayers->intersect($previousPlayers)->isNotEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Schedule conflict: a participant is scheduled in overlapping matches.',
+                        'conflict' => ['fixture_ids' => [$interval['fixture_id'], $item['fixture_id']]],
+                    ], 422);
+                }
+            }
+            $intervals[] = ['fixture_id' => $item['fixture_id'], 'venue_id' => $itemVenueId, 'court' => $item['court'], 'start' => $start, 'end' => $end];
+        }
 
         DB::transaction(function () use ($draw, $validated, $venueId) {
                 foreach ($validated['items'] as $item) {
@@ -286,7 +346,7 @@ class DrawApiController extends Controller
                             'draw_id'  => $draw->id,
                             'court'    => $item['court'] ?? null,
                             'time'     => $timeValue,
-                            'venue_id' => $venueId,
+                            'venue_id' => $item['venue_id'] ?? $venueId,
                         ]
                     );
                 }

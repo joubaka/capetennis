@@ -33,7 +33,9 @@ enum FixtureState: string
      */
     public static function fromFixture(\App\Models\Fixture $fixture): self
     {
-        $scheduled = ! is_null($fixture->start_time ?? null);
+        $scheduled = $fixture->relationLoaded('orderOfPlay')
+            ? ! is_null($fixture->orderOfPlay?->time)
+            : $fixture->orderOfPlay()->whereNotNull('time')->exists();
 
         return match ((int) ($fixture->match_status ?? 0)) {
             self::STATUS_COMPLETED              => self::Completed,

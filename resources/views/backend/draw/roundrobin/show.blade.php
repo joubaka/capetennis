@@ -511,6 +511,40 @@
 </div>
 
 {{-- ============================
+     WORKFLOW STATUS
+   ============================ --}}
+@php
+  $rrFixtureRows = collect($rrFixtures ?? [])->flatten(1);
+  $rrFixtureCount = $rrFixtureRows->count();
+  $rrScoredCount = $rrFixtureRows->filter(fn ($fixture) => !empty($fixture['score'] ?? null))->count();
+  $workflowStatus = $draw->locked && $draw->published ? 'Completed / finalised'
+    : ($draw->published ? 'Published / live scoring' : ($rrFixtureCount ? 'Fixtures generated' : 'Build in progress'));
+@endphp
+<div class="alert alert-light border d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mb-3" role="status">
+  <div>
+    <div class="fw-bold"><i class="ti ti-route me-1 text-primary"></i> Draw workflow: {{ $workflowStatus }}</div>
+    <div class="small text-muted mt-1">Build players and groups, generate fixtures, review, schedule courts, then publish and enter results.</div>
+  </div>
+  <div class="d-flex flex-wrap gap-2 small">
+    <span class="badge bg-label-secondary">{{ $draw->registrations?->count() ?? 0 }} participants</span>
+    <span class="badge bg-label-secondary">{{ $rrFixtureCount }} fixtures</span>
+    <span class="badge bg-label-success">{{ $rrScoredCount }} scored</span>
+    @if($draw->published)
+      <span class="badge bg-label-primary">Public</span>
+    @endif
+    @if($draw->locked)
+      <span class="badge bg-label-danger">Locked</span>
+    @endif
+  </div>
+</div>
+<div class="small text-muted mb-3">
+  <strong>Readiness:</strong>
+  @foreach(($readiness['checks'] ?? []) as $check)
+    <span class="badge {{ $check['ok'] ? 'bg-label-success' : 'bg-label-warning' }} me-1">{{ $check['ok'] ? '✓' : '!' }} {{ $check['label'] }}</span>
+  @endforeach
+</div>
+
+{{-- ============================
      TAB NAVIGATION
    ============================ --}}
  <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
@@ -985,10 +1019,21 @@
     <div class="tab-pane fade" id="oop-pane" role="tabpanel">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0"><i class="ti ti-list-details me-1 text-primary"></i> Order of Play</h5>
-          <button class="btn btn-sm btn-primary" id="rr-save-order-btn">
-            <i class="ti ti-device-floppy me-1"></i> Save Order
-          </button>
+          <div>
+            <h5 class="card-title mb-0"><i class="ti ti-broadcast me-1 text-primary"></i> Live Operations</h5>
+            <small class="text-muted">Find the next match, monitor courts, and enter results quickly.</small>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-primary" id="rr-refresh-ops-btn"><i class="ti ti-refresh me-1"></i>Refresh</button>
+            <button class="btn btn-sm btn-primary" id="rr-save-order-btn"><i class="ti ti-device-floppy me-1"></i>Save Order</button>
+          </div>
+        </div>
+        <div class="card-body border-bottom bg-light py-2">
+          <div class="row g-2">
+            <div class="col-12 col-md-5"><input id="rr-ops-search" class="form-control form-control-sm" placeholder="Search player or match number…"></div>
+            <div class="col-6 col-md-3"><select id="rr-ops-status" class="form-select form-select-sm"><option value="all">All statuses</option><option value="upcoming">Upcoming</option><option value="completed">Completed</option></select></div>
+            <div class="col-6 col-md-3"><select id="rr-ops-court" class="form-select form-select-sm"><option value="all">All courts</option></select></div>
+          </div>
         </div>
         <div class="card-body p-0">
           <div class="table-responsive">

@@ -27,6 +27,11 @@ final class DrawPublicationService
     {
         DrawGuard::requireGenerated($draw, 'publish');
 
+        $readiness = app(DrawReadinessService::class)->for($draw);
+        if (! $readiness['ready_to_publish']) {
+            throw new \RuntimeException('Draw is not ready to publish: assign participants and generate fixtures first.');
+        }
+
         DB::transaction(function () use ($draw) {
             $draw->published = true;
             $draw->save();

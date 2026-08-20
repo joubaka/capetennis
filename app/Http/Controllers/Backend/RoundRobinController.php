@@ -234,6 +234,7 @@ class RoundRobinController extends Controller
         'rrFixtures' => $hub['rrFixtures'],
         'oops' => $hub['oops'],
         'standings' => $hub['standings'],
+        'readiness' => app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw),
         'venues' => Venue::orderBy('name')->get(),
       ]);
 
@@ -294,6 +295,7 @@ class RoundRobinController extends Controller
       'rrFixtures' => $hub['rrFixtures'] ?? [],
       'oops' => $hub['oops'] ?? [],
       'standings' => $hub['standings'] ?? [],
+      'readiness' => app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw),
       'venues' => Venue::orderBy('name')->get(),
     ]);
   }
@@ -334,6 +336,7 @@ class RoundRobinController extends Controller
       'items.*.fixture_id' => 'required|integer',
       'items.*.court' => 'nullable|string|max:50',
       'items.*.start_time' => 'nullable|string|max:50',
+      'items.*.venue_id' => 'nullable|integer|exists:venues,id',
       'items.*.round' => 'nullable|string|max:50',
     ]);
 
@@ -342,10 +345,19 @@ class RoundRobinController extends Controller
       if (!$fixture)
         continue;
 
-      $fixture->court = $item['court'] ?? null;
-      $fixture->start_time = $item['start_time'] ?? null;
       $fixture->round = $item['round'] ?? $fixture->round;
       $fixture->save();
+
+      \App\Models\OrderOfPlay::updateOrCreate(
+        ['fixture_id' => $fixture->id],
+        [
+          'draw_id' => $draw->id,
+          'venue_id' => $item['venue_id'] ?? $fixture->orderOfPlay?->venue_id,
+          'court' => $item['court'] ?? null,
+          'time' => $item['start_time'] ?? null,
+          'round_number' => $fixture->round,
+        ]
+      );
     }
 
     return response()->json([
@@ -383,12 +395,19 @@ class RoundRobinController extends Controller
       // ------------------------
       $sets = $request->input('sets', []);
       $validSets = [];
+      $hadExistingResult = $fixture->fixtureResults()->exists();
+      $previousSets = $fixture->fixtureResults()
+        ->orderBy('set_nr')
+        ->get()
+        ->map(fn ($result) => [$result->registration1_score, $result->registration2_score])
+        ->values()
+        ->all();
 
       foreach ($sets as $set) {
         $set = trim($set);
 
-        if ($set !== '' && str_contains($set, '-')) {
-          [$a, $b] = array_map('intval', explode('-', $set));
+        if ($set !== '' && preg_match('/^\d{1,2}\s*-\s*\d{1,2}$/', $set)) {
+          [$a, $b] = array_map('intval', preg_split('/\s*-\s*/', $set));
           $validSets[] = [$a, $b];
         }
       }
@@ -399,6 +418,12 @@ class RoundRobinController extends Controller
         ], 422);
       }
 
+      $scoreValidation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
+        ->validate($fixture, $validSets);
+      if (! $scoreValidation['valid']) {
+        return response()->json(['success' => false, 'message' => $scoreValidation['message']], 422);
+      }
+
       // ------------------------
       // SELECT MODE (RR / BRACKET)
       // ------------------------
@@ -406,14 +431,15 @@ class RoundRobinController extends Controller
         $response = DB::transaction(function () use ($fixture, $validSets, $draw) {
           $resp = $this->builder->saveScore($fixture, $validSets);
           $hub  = $this->builder->loadRoundRobinHub($draw);
-          $resp['oop']        = $hub['oops'] ?? [];
+            $resp['oop']        = $hub['oops'] ?? [];
           $resp['rrFixtures'] = $hub['rrFixtures'] ?? [];
           $resp['standings']  = $hub['standings'] ?? [];
           return $resp;
         });
 
-        DrawAuditLog::record($draw->id, 'score_saved', $fixture->id, [
+        DrawAuditLog::record($draw->id, $hadExistingResult ? 'score_corrected' : 'score_saved', $fixture->id, [
           'stage' => $fixture->stage,
+          'previous_sets' => $previousSets,
           'sets'  => $validSets,
         ]);
 
@@ -423,8 +449,9 @@ class RoundRobinController extends Controller
       // BRACKET MODE
       $response = DB::transaction(fn () => $this->builder->saveBracketScore($fixture, $validSets));
 
-      DrawAuditLog::record($draw->id, 'bracket_score_saved', $fixture->id, [
+      DrawAuditLog::record($draw->id, $hadExistingResult ? 'bracket_score_corrected' : 'bracket_score_saved', $fixture->id, [
         'stage' => $fixture->stage,
+        'previous_sets' => $previousSets,
         'sets'  => $validSets,
       ]);
 
@@ -1340,6 +1367,18 @@ class RoundRobinController extends Controller
     public function regenerateRR(Request $request, Draw $draw)
     {
       $this->authorize('generateFixtures', $draw);
+
+      $scoredFixtures = $draw->drawFixtures()
+        ->whereHas('fixtureResults')
+        ->count();
+
+      if ($scoredFixtures > 0) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Fixtures with recorded scores cannot be regenerated. Clear or formally roll back the results first.',
+          'scored_fixtures' => $scoredFixtures,
+        ], 422);
+      }
 
       Log::info("🔄 [regenerateRR] Starting fixture regeneration", [
         'draw_id' => $draw->id,

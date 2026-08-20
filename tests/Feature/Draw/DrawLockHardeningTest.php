@@ -6,6 +6,7 @@ use App\Models\Draw;
 use App\Models\DrawGroup;
 use App\Models\Event;
 use App\Models\Fixture;
+use App\Models\FixtureResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,24 @@ class DrawLockHardeningTest extends TestCase
         $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.regenerate-rr', $draw))
             ->assertForbidden();
+    }
+
+    public function test_regenerate_fixtures_refused_when_scores_exist(): void
+    {
+        $draw = $this->unlockedDraw();
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'RR',
+        ]);
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+
+        $this->actingAs($this->admin($draw))
+            ->postJson(route('backend.draw.regenerate-rr', $draw))
+            ->assertStatus(422)
+            ->assertJsonPath('scored_fixtures', 1);
+
+        $this->assertDatabaseHas('fixtures', ['id' => $fixture->id]);
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id]);
     }
 
     // ─── saveScore (RoundRobinController) ────────────────────────────

@@ -385,6 +385,54 @@ class RRHardeningTest extends TestCase
         ]);
     }
 
+    public function test_score_entry_rejects_malformed_set_values(): void
+    {
+        $draw = $this->makeDraw();
+        $fixture = $this->makeRRFixture($draw);
+        $user = $this->adminUser($draw);
+
+        $this->actingAs($user)->postJson(
+            route('backend.roundrobin.score.store', $fixture),
+            ['sets' => ['6-4-1', '-1-4', 'not-a-score']]
+        )->assertStatus(422);
+
+        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
+    }
+
+    public function test_score_entry_rejects_tied_set_or_match(): void
+    {
+        $draw = $this->makeDraw();
+        $fixture = $this->makeRRFixture($draw);
+        $user = $this->adminUser($draw);
+
+        $this->actingAs($user)->postJson(
+            route('backend.roundrobin.score.store', $fixture),
+            ['sets' => ['6-6']]
+        )->assertStatus(422);
+
+        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
+    }
+
+    public function test_api_schedule_save_rejects_duplicate_court_slots(): void
+    {
+        $draw = $this->makeDraw();
+        $first = $this->makeRRFixture($draw);
+        $second = $this->makeRRFixture($draw);
+        $user = $this->adminUser($draw);
+
+        $response = $this->actingAs($user)->postJson(
+            route('api.draws.schedule.save', $draw),
+            ['items' => [
+                ['fixture_id' => $first->id, 'court' => 'Court 1', 'start_time' => '2026-01-15 10:00:00'],
+                ['fixture_id' => $second->id, 'court' => 'Court 1', 'start_time' => '2026-01-15 10:00:00'],
+            ]]
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonPath('conflict.fixture_ids.0', $first->id);
+        $this->assertDatabaseCount('order_of_plays', 0);
+    }
+
     // ─────────────────────────────────────────────
     // 15. API schedule summary returns fixtures
     // ─────────────────────────────────────────────

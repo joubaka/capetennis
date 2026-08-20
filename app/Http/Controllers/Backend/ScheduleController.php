@@ -7,6 +7,7 @@ use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\Draw;
 use App\Services\ScheduleEngine;
+use App\Domain\Draws\Services\ScheduleConflictService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -258,6 +259,21 @@ class ScheduleController extends Controller
     $this->authorize('modifySchedule', $draw);
     $fx = Fixture::where('draw_id', $draw->id)
       ->findOrFail($request->fixture_id);
+
+    if ($request->scheduled_at) {
+      $venueId = (int) $request->venue_id;
+      $conflict = app(ScheduleConflictService::class)->conflict(
+        $draw,
+        $fx,
+        $venueId,
+        (string) $request->court_label,
+        (string) $request->scheduled_at,
+        (int) ($request->duration_minutes ?: 75)
+      );
+      if ($conflict) {
+        return response()->json(['status' => 'error', 'message' => $conflict], 422);
+      }
+    }
 
     // Remove previous
     OrderOfPlay::where('fixture_id', $fx->id)->delete();

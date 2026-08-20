@@ -47,7 +47,7 @@ class ScheduleEngine
           'round_number' => $fx->round,
           'venue_id' => $venueId,
           'court' => $court,
-          'start_time' => $current->copy(),
+          'time' => $current->copy(),
           'duration_minutes' => $duration
         ]
       );
@@ -81,7 +81,7 @@ class ScheduleEngine
           'round_number' => $round,
           'venue_id' => $venueId,
           'court' => $court,
-          'start_time' => $current->copy(),
+          'time' => $current->copy(),
           'duration_minutes' => $duration
         ]
       );
@@ -109,7 +109,7 @@ class ScheduleEngine
         'round_number' => $fx->round,
         'venue_id' => $venueId,
         'court' => $court,
-        'start_time' => Carbon::parse($startTime),
+        'time' => Carbon::parse($startTime),
         'duration_minutes' => $duration
       ]
     );
@@ -208,7 +208,7 @@ class ScheduleEngine
     OrderOfPlay::where('draw_id', $drawId)->update([
       'venue_id' => null,
       'court' => null,
-      'start_time' => null,
+      'time' => null,
       'duration_minutes' => null,
       'round_number' => null,
     ]);

@@ -1547,7 +1547,7 @@ class InterproDrawBuilder
           'r1_id' => $fx->registration1_id,
           'r2_id' => $fx->registration2_id,
 
-          'time' => $fx->start_time ?? '',
+          'time' => optional($fx->orderOfPlay)->time ?? '',
           'score' => $sets,
           'winner' => optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration,
         ];

@@ -15,6 +15,8 @@ class OrderOfPlay extends Model
     'venue_id',
     'court',
     'time',
+    'duration_minutes',
+    'round_number',
   ];
 
   public function venue()
