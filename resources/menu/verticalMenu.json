@@ -17,7 +17,7 @@
     {
       "name": "Super Admin",
       "icon": "menu-icon tf-icons ti ti-shield-check",
-      "slug": "backend.superadmin",
+      "slug": ["backend.superadmin", "superadmin"],
       "menuLevel": "super",
       "submenu": [
         {
@@ -55,6 +55,12 @@
           "name": "Site Settings",
           "icon": "circle",
           "slug": "settings.index"
+        },
+        {
+          "url": "backend/superadmin/api-integrations",
+          "name": "API Connections",
+          "icon": "circle",
+          "slug": "superadmin.api-integrations.index"
         },
         {
           "url": "backend/series",

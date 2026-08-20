@@ -219,6 +219,9 @@
                 <a href="{{ route('platform.health') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-heart-rate-monitor me-1"></i>Platform Health
                 </a>
+                <a href="{{ route('superadmin.api-integrations.index') }}" class="sa-action text-decoration-none">
+                  <i class="ti ti-plug-connected me-1"></i>API Connections
+                </a>
                 <button type="button" class="sa-action"
                         onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
                   <i class="ti ti-gavel me-1"></i>Disciplinary

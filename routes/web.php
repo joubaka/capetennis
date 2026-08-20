@@ -435,6 +435,9 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Super Admin Dashboard
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {
+    Route::get('superadmin/api-integrations', [\App\Http\Controllers\Backend\ApiIntegrationController::class, 'index'])
+      ->name('superadmin.api-integrations.index');
+
     Route::get('superadmin/audit', [\App\Http\Controllers\Backend\AuditEventController::class, 'index'])
       ->name('superadmin.audit.index');
     Route::get('superadmin/audit/export', [\App\Http\Controllers\Backend\AuditEventController::class, 'export'])

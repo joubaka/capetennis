@@ -54,6 +54,12 @@
           "slug": "settings.index"
         },
         {
+          "url": "backend/superadmin/api-integrations",
+          "name": "API Connections",
+          "icon": "circle",
+          "slug": "superadmin.api-integrations.index"
+        },
+        {
           "url": "backend/series",
           "name": "Series",
           "icon": "circle",
