@@ -1,24 +1,37 @@
 <div class="col-xl-12">
+    @php
+        $eventRegistrations = $player->registrations->filter(fn ($registration) => $registration->categoryEvents->isNotEmpty());
+        $activeViolationCount = isset($violations) ? $violations->where('is_expired', false)->count() : 0;
+    @endphp
     <div class="planning-header mb-3">
-        <span class="badge bg-label-primary mb-2"><i class="ti ti-chart-dots-2 me-1"></i>Player development</span>
-        <h3 class="mb-1">Planning &amp; progress</h3>
-        <p class="text-muted mb-0">Set goals, record training and review {{$player->full_name}}'s progress.</p>
+        <span class="badge bg-label-primary mb-2"><i class="ti ti-user-check me-1"></i>Player record</span>
+        <h3 class="mb-1">{{ isset($violations) ? 'Events & discipline' : 'Registered events' }}</h3>
+        <p class="text-muted mb-0">
+            {{ isset($violations)
+                ? "Review event registrations and manage {$player->full_name}'s disciplinary history."
+                : "Review {$player->full_name}'s event registration history." }}
+        </p>
     </div>
     <div class="nav-align-top mb-4 player-planning-card card">
         <div class="card-header pb-0">
         <div class="planning-tabs-wrap" aria-label="Player planning sections">
         <ul class="nav nav-pills planning-tabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="true">Registered Events</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-violations" aria-controls="navs-pills-top-violations" aria-selected="false" tabindex="-1">
-                    Violations
-                    @if(isset($violations) && $violations->where('is_expired', false)->count() > 0)
-                        <span class="badge bg-danger ms-1">{{ $violations->where('is_expired', false)->count() }}</span>
-                    @endif
+                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="true">
+                    <i class="ti ti-calendar-event me-1"></i>Registered events
+                    <span class="badge bg-label-primary ms-1">{{$eventRegistrations->count()}}</span>
                 </button>
             </li>
+            @isset($violations)
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-violations" aria-controls="navs-pills-top-violations" aria-selected="false" tabindex="-1">
+                    <i class="ti ti-gavel me-1"></i>Violations
+                    <span class="badge bg-label-{{ $activeViolationCount > 0 ? 'danger' : 'secondary' }} ms-1">
+                        {{ $activeViolationCount }}
+                    </span>
+                </button>
+            </li>
+            @endisset
         </ul>
         </div>
         </div>
@@ -454,14 +467,18 @@
             </div>
             <div class="tab-pane fade active show" id="navs-pills-top-events" role="tabpanel">
                 @if($player->subscriptions->count() > 0 || $u->id == 584)
-                <div class="col-lg-12 mb-4 col-md-12">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between">
-                            <h5 class="card-title mb-0">Events</h5>
-                            <small class="text-muted"></small>
+                <div class="col-12">
+                    <div class="card shadow-none border-0">
+                        <div class="card-header d-flex justify-content-between align-items-center px-0 pt-0">
+                            <div>
+                                <h5 class="card-title mb-1"><i class="ti ti-calendar-event me-2"></i>Registered events</h5>
+                                <p class="text-muted mb-0 small">Events associated with this player profile.</p>
+                            </div>
+                            <span class="badge bg-label-primary">{{$eventRegistrations->count()}} total</span>
                         </div>
                         <div class="card-body pt-2">
-                            <div class="table-responsive">
+                            @if($eventRegistrations->isNotEmpty())
+                            <div class="table-responsive border rounded">
                                 <table class="table">
                                     <thead>
                                         <tr>
@@ -471,28 +488,24 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @php
-
-                                        $count = 0;
-                                        @endphp
-                                        @foreach($player->registrations as $key => $registration)
-
-                                        @if($registration->categoryEvents->count() > 0)
-                                        @php
-
-                                        $count += 1;
-                                        @endphp
+                                        @foreach($eventRegistrations as $registration)
                                         <tr>
-                                            <td>{{$count}}</td>
-                                            <td>{{$registration->categoryEvents->count() > 0 ? $registration->categoryEvents[0]->event->name:''}}</td>
+                                            <td class="text-muted">{{$loop->iteration}}</td>
+                                            <td class="fw-medium">{{$registration->categoryEvents[0]->event->name}}</td>
                                         </tr>
-                                        @endif
                                         @endforeach
                                     </tbody>
 
                                 </table>
 
                             </div>
+                            @else
+                                <div class="profile-empty-state">
+                                    <span class="profile-empty-icon bg-label-primary"><i class="ti ti-calendar-off"></i></span>
+                                    <h6 class="mb-1">No registered events</h6>
+                                    <p class="text-muted mb-0">Event registrations will appear here when they are added.</p>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -505,10 +518,11 @@
             </div>
 
             {{-- ── Violations Tab Pane ── --}}
+            @isset($violations)
             <div class="tab-pane fade" id="navs-pills-top-violations" role="tabpanel">
-                <div class="col-lg-12 mb-4 col-md-12">
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="col-12">
+                    <div class="card shadow-none border-0">
+                        <div class="card-header d-flex flex-wrap gap-3 justify-content-between align-items-center px-0 pt-0">
                             <h5 class="card-title mb-0"><i class="ti ti-gavel me-2"></i>Disciplinary Violations</h5>
                             <a href="{{ route('backend.disciplinary.create', ['player_id' => $player->id]) }}"
                                class="btn btn-sm btn-primary">
@@ -519,7 +533,7 @@
 
                             @if(isset($disciplinaryStatus))
                                 @php $pts = $disciplinaryStatus['active_points']; $threshold = $disciplinaryStatus['threshold']; @endphp
-                                <div class="d-flex align-items-center gap-3 mb-3">
+                                <div class="discipline-summary d-flex flex-wrap align-items-center gap-3 mb-3">
                                     <div>
                                         <span class="fw-semibold">Active Points:</span>
                                         <span class="badge bg-{{ $pts >= $threshold ? 'danger' : ($pts > 0 ? 'warning' : 'success') }} ms-1">
@@ -587,15 +601,17 @@
                                     </table>
                                 </div>
                             @else
-                                <div class="text-center text-muted py-4">
-                                    <i class="ti ti-circle-check ti-lg d-block mb-2 text-success" style="font-size:2rem;"></i>
-                                    No violations recorded for this player.
+                                <div class="profile-empty-state">
+                                    <span class="profile-empty-icon bg-label-success"><i class="ti ti-circle-check"></i></span>
+                                    <h6 class="mb-1">No violations recorded</h6>
+                                    <p class="text-muted mb-0">This player currently has a clear disciplinary record.</p>
                                 </div>
                             @endif
                         </div>
                     </div>
                 </div>
             </div>
+            @endisset
             {{-- /Violations Tab Pane --}}
 
         </div>

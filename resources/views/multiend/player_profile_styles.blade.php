@@ -50,17 +50,17 @@
   }
 
   .player-profile-page .planning-tabs-wrap {
-    margin-inline: -.25rem;
-    overflow-x: auto;
-    padding: .25rem;
-    scrollbar-width: thin;
+    width: 100%;
   }
 
   .player-profile-page .planning-tabs {
-    display: inline-flex;
-    flex-wrap: nowrap;
-    gap: .35rem;
-    min-width: max-content;
+    background: rgba(75, 70, 92, .04);
+    border-radius: .65rem;
+    display: grid;
+    gap: .4rem;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    padding: .35rem;
+    width: 100%;
   }
 
   .player-profile-page .planning-tabs .nav-link {
@@ -68,14 +68,57 @@
     border-radius: .5rem;
     color: var(--profile-muted);
     font-weight: 500;
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: 3rem;
     padding: .65rem .9rem;
-    white-space: nowrap;
   }
 
   .player-profile-page .planning-tabs .nav-link:not(.active):hover {
     background: rgba(115, 103, 240, .06);
     border-color: rgba(115, 103, 240, .15);
     color: var(--bs-primary);
+  }
+
+  .player-profile-page .player-planning-card > .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--profile-border);
+    padding: 1rem;
+  }
+
+  .player-profile-page .player-planning-card > .tab-content {
+    padding: 1.5rem;
+  }
+
+  .player-profile-page .profile-empty-state {
+    align-items: center;
+    background: rgba(75, 70, 92, .025);
+    border: 1px dashed rgba(75, 70, 92, .18);
+    border-radius: .75rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 13rem;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .player-profile-page .profile-empty-icon {
+    align-items: center;
+    border-radius: 50%;
+    display: inline-flex;
+    font-size: 1.5rem;
+    height: 3.25rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+    width: 3.25rem;
+  }
+
+  .player-profile-page .discipline-summary {
+    background: rgba(75, 70, 92, .035);
+    border-radius: .5rem;
+    padding: .8rem 1rem;
   }
 
   .player-profile-page .quick-action-panel {
@@ -117,6 +160,11 @@
 
     .player-profile-page .player-planning-card .tab-content {
       padding: 1rem;
+    }
+
+    .player-profile-page .planning-tabs .nav-link {
+      font-size: .875rem;
+      padding-inline: .5rem;
     }
   }
 
