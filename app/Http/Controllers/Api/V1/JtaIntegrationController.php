@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\BulkLookupJtaPlayersRequest;
 use App\Http\Requests\Api\V1\JtaPlayerResultsRequest;
+use App\Http\Requests\Api\V1\InspectJtaPlayerRequest;
 use App\Http\Requests\Api\V1\LookupJtaPlayersRequest;
 use App\Http\Requests\Api\V1\ResolveJtaPlayerRequest;
 use App\Http\Resources\Api\V1\JtaPlayerResultResource;
@@ -81,6 +82,28 @@ class JtaIntegrationController extends Controller
         }
 
         return response()->json(['data' => $data]);
+    }
+
+    public function inspectPlayer(InspectJtaPlayerRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $player = Player::find((int) $validated['cape_tennis_player_id']);
+
+        if (! $player) {
+            return response()->json(['message' => 'Cape Tennis player ID was not found.'], 404);
+        }
+
+        $request->attributes->set('jta_linked_player_id', (int) $player->id);
+
+        return response()->json([
+            'data' => [
+                'cape_tennis_player_id' => (int) $player->id,
+                'first_name' => (string) $player->name,
+                'last_name' => (string) $player->surname,
+                'display_name' => trim((string) $player->name.' '.(string) $player->surname),
+                'date_of_birth_status' => $this->dateOfBirthStatus($player, $validated['date_of_birth'] ?? null),
+            ],
+        ]);
     }
 
     public function bulkLookupPlayers(

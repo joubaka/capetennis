@@ -191,6 +191,33 @@ class JtaResultsApiTest extends TestCase
         $this->assertStringNotContainsString('private@example.test', $response->getContent());
     }
 
+    public function test_player_id_inspection_returns_review_evidence_without_private_data(): void
+    {
+        $player = Player::factory()->create([
+            'name' => 'Manual',
+            'surname' => 'Candidate',
+            'dateOfBirth' => '2012-04-15',
+            'email' => 'private@example.test',
+            'cellNr' => '0820000012',
+        ]);
+
+        $response = $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/inspect', [
+            'cape_tennis_player_id' => $player->id,
+            'date_of_birth' => '2012-04-15',
+        ])->assertOk()
+            ->assertJsonPath('data.cape_tennis_player_id', $player->id)
+            ->assertJsonPath('data.display_name', 'Manual Candidate')
+            ->assertJsonPath('data.date_of_birth_status', 'match');
+
+        $this->assertStringNotContainsString('2012-04-15', $response->getContent());
+        $this->assertStringNotContainsString('private@example.test', $response->getContent());
+        $this->assertStringNotContainsString('0820000012', $response->getContent());
+
+        $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/inspect', [
+            'cape_tennis_player_id' => 999999,
+        ])->assertNotFound();
+    }
+
     public function test_bulk_lookup_rejects_oversized_or_duplicate_batches(): void
     {
         $player = ['client_reference' => 1, 'first_name' => 'Test', 'last_name' => 'Player', 'date_of_birth' => null];

@@ -29,6 +29,7 @@ Route::prefix('v1/integrations/jta')
         Route::post('players/lookup', [JtaIntegrationController::class, 'lookupPlayers'])->name('players.lookup');
         Route::post('players/bulk-lookup', [JtaIntegrationController::class, 'bulkLookupPlayers'])->name('players.bulk-lookup');
         Route::post('players/resolve', [JtaIntegrationController::class, 'resolvePlayer'])->name('players.resolve');
+        Route::post('players/inspect', [JtaIntegrationController::class, 'inspectPlayer'])->name('players.inspect');
         Route::get('players/{player}/results', [JtaIntegrationController::class, 'playerResults'])
             ->whereNumber('player')
             ->name('players.results');
