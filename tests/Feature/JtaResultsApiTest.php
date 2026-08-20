@@ -85,7 +85,7 @@ class JtaResultsApiTest extends TestCase
         $this->assertStringNotContainsString('0820000000', $response->getContent());
     }
 
-    public function test_lookup_returns_only_bounded_same_name_candidates_for_birth_date_review(): void
+    public function test_lookup_returns_only_bounded_same_name_evidence_without_birth_dates(): void
     {
         $exact = Player::factory()->create([
             'name' => 'Jovan',
@@ -123,19 +123,20 @@ class JtaResultsApiTest extends TestCase
             ->assertJsonCount(3, 'data.possible_matches')
             ->assertJsonFragment([
                 'cape_tennis_player_id' => $exact->id,
-                'date_of_birth' => '2012-04-15',
+                'date_of_birth_status' => 'match',
                 'match_type' => 'exact',
             ])
             ->assertJsonFragment([
                 'cape_tennis_player_id' => $possible->id,
-                'date_of_birth' => '2013-06-20',
+                'date_of_birth_status' => 'different',
                 'match_type' => 'name_only',
             ])
             ->assertJsonFragment([
                 'cape_tennis_player_id' => $legacy->id,
-                'date_of_birth' => null,
+                'date_of_birth_status' => 'missing',
                 'match_type' => 'name_only',
             ])
+            ->assertJsonMissingPath('data.possible_matches.0.date_of_birth')
             ->assertJsonMissing(['email' => 'exact-private@example.test'])
             ->assertJsonMissing(['cellNr' => '0820000002']);
 
@@ -153,6 +154,56 @@ class JtaResultsApiTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('data.exact_match', null)
             ->assertJsonCount(3, 'data.possible_matches');
+    }
+
+    public function test_bulk_lookup_is_bounded_correlated_and_does_not_disclose_birth_dates(): void
+    {
+        $exact = Player::factory()->create([
+            'name' => 'Jovan',
+            'surname' => 'Joubert',
+            'dateOfBirth' => '2012-04-15',
+            'email' => 'private@example.test',
+        ]);
+        Player::factory()->create([
+            'name' => 'Jovan',
+            'surname' => 'Joubert',
+            'dateOfBirth' => '2013-06-20',
+        ]);
+
+        $response = $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/bulk-lookup', [
+            'request_id' => 'scan-42-batch-1',
+            'players' => [
+                ['client_reference' => 42, 'first_name' => 'Jovan', 'last_name' => 'Joubert', 'date_of_birth' => '2012-04-15'],
+                ['client_reference' => 43, 'first_name' => 'Missing', 'last_name' => 'Player', 'date_of_birth' => null],
+            ],
+        ])->assertOk()
+            ->assertJsonPath('data.request_id', 'scan-42-batch-1')
+            ->assertJsonPath('data.results.0.client_reference', 42)
+            ->assertJsonPath('data.results.0.status', 'exact')
+            ->assertJsonPath('data.results.0.exact_match.cape_tennis_player_id', $exact->id)
+            ->assertJsonPath('data.results.0.possible_matches.1.date_of_birth_status', 'different')
+            ->assertJsonPath('data.results.1.status', 'missing_date_of_birth')
+            ->assertJsonPath('meta.count', 2)
+            ->assertJsonPath('meta.max_batch_size', 50);
+
+        $this->assertStringNotContainsString('2012-04-15', $response->getContent());
+        $this->assertStringNotContainsString('2013-06-20', $response->getContent());
+        $this->assertStringNotContainsString('private@example.test', $response->getContent());
+    }
+
+    public function test_bulk_lookup_rejects_oversized_or_duplicate_batches(): void
+    {
+        $player = ['client_reference' => 1, 'first_name' => 'Test', 'last_name' => 'Player', 'date_of_birth' => null];
+
+        $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/bulk-lookup', [
+            'request_id' => 'too-large',
+            'players' => array_fill(0, 51, $player),
+        ])->assertUnprocessable();
+
+        $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/bulk-lookup', [
+            'request_id' => 'duplicate',
+            'players' => [$player, $player],
+        ])->assertUnprocessable();
     }
 
     public function test_unknown_and_duplicate_identities_return_safe_errors(): void

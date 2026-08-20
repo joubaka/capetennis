@@ -89,6 +89,53 @@ class PlayerIdentityService
             ->values();
     }
 
+    /**
+     * Load same-name candidates for a bounded integration batch in one query.
+     *
+     * @return array<int, Collection<int, Player>>
+     */
+    public function findNameCandidatesFor(array $identities): array
+    {
+        $pairs = collect($identities)->map(function (array $identity): array {
+            $name = $this->normalizeName((string) $identity['first_name']);
+            $surname = $this->normalizeName((string) $identity['last_name']);
+
+            return [
+                'reference' => (int) $identity['client_reference'],
+                'key' => hash('sha256', $name."\0".$surname),
+                'name' => $name,
+                'surname' => $surname,
+            ];
+        });
+        $references = $pairs->pluck('key', 'reference');
+        $uniquePairs = $pairs->unique('key')->values();
+
+        if ($uniquePairs->isEmpty()) {
+            return [];
+        }
+
+        $candidates = Player::query()
+            ->select(['id', 'name', 'surname', 'dateOfBirth'])
+            ->where(function ($query) use ($uniquePairs): void {
+                foreach ($uniquePairs as $pair) {
+                    $query->orWhere(function ($query) use ($pair): void {
+                        $query->whereRaw('LOWER(TRIM(name)) = ?', [$pair['name']])
+                            ->whereRaw('LOWER(TRIM(surname)) = ?', [$pair['surname']]);
+                    });
+                }
+            })
+            ->orderByDesc('profile_updated_at')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(fn (Player $player) => hash('sha256',
+                $this->normalizeName((string) $player->name)."\0".$this->normalizeName((string) $player->surname)
+            ));
+
+        return $references->mapWithKeys(fn (string $key, int $reference): array => [
+            $reference => ($candidates->get($key) ?? collect())->values(),
+        ])->all();
+    }
+
     public function ensureAvailable(string $name, string $surname, string $dateOfBirth, ?int $exceptId = null): void
     {
         $duplicate = $this->find($name, $surname, $dateOfBirth, $exceptId);

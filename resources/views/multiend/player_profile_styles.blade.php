@@ -121,6 +121,18 @@
     padding: .8rem 1rem;
   }
 
+  .player-profile-page .event-record-link {
+    align-items: center;
+    color: var(--bs-primary);
+    display: inline-flex;
+    font-weight: 600;
+    gap: .35rem;
+  }
+
+  .player-profile-page .event-record-link:hover {
+    text-decoration: underline;
+  }
+
   .player-profile-page .quick-action-panel {
     background: rgba(75, 70, 92, .025);
     border: 1px solid var(--profile-border);

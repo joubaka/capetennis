@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\BulkLookupJtaPlayersRequest;
 use App\Http\Requests\Api\V1\JtaPlayerResultsRequest;
 use App\Http\Requests\Api\V1\LookupJtaPlayersRequest;
 use App\Http\Requests\Api\V1\ResolveJtaPlayerRequest;
@@ -16,6 +17,7 @@ use App\Services\Integrations\JtaSeriesRankingExportService;
 use App\Services\PlayerIdentityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 
 class JtaIntegrationController extends Controller
 {
@@ -67,41 +69,108 @@ class JtaIntegrationController extends Controller
         PlayerIdentityService $identityService,
     ): JsonResponse {
         $validated = $request->validated();
-        $exactCandidates = filled($validated['date_of_birth'] ?? null)
-            ? $identityService->findCandidates(
-                $validated['first_name'],
-                $validated['last_name'],
-                $validated['date_of_birth'],
-            )
-            : collect();
-        $exact = $exactCandidates->count() === 1 ? $exactCandidates->first() : null;
-        $possibleMatches = $identityService->findNameCandidates(
+        $data = $this->identityLookup(
             $validated['first_name'],
             $validated['last_name'],
+            $validated['date_of_birth'] ?? null,
+            $identityService,
         );
 
-        if ($exact) {
-            $request->attributes->set('jta_linked_player_id', (int) $exact->id);
+        if ($data['exact_match']) {
+            $request->attributes->set('jta_linked_player_id', (int) $data['exact_match']['cape_tennis_player_id']);
         }
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function bulkLookupPlayers(
+        BulkLookupJtaPlayersRequest $request,
+        PlayerIdentityService $identityService,
+    ): JsonResponse {
+        $validated = $request->validated();
+        $candidates = $identityService->findNameCandidatesFor($validated['players']);
+        $results = collect($validated['players'])->map(function (array $player) use ($identityService, $candidates): array {
+            return ['client_reference' => (int) $player['client_reference']] + $this->identityLookup(
+                $player['first_name'],
+                $player['last_name'],
+                $player['date_of_birth'] ?? null,
+                $identityService,
+                $candidates[(int) $player['client_reference']] ?? collect(),
+            );
+        })->values();
 
         return response()->json([
             'data' => [
-                'exact_match' => $exact ? [
-                    'cape_tennis_player_id' => (int) $exact->id,
-                    'display_name' => trim((string) $exact->name.' '.(string) $exact->surname),
-                    'identity_match' => 'exact',
-                ] : null,
-                'possible_matches' => $possibleMatches->map(fn (Player $player) => [
-                    'cape_tennis_player_id' => (int) $player->id,
-                    'first_name' => (string) $player->name,
-                    'last_name' => (string) $player->surname,
-                    'date_of_birth' => $player->dateOfBirth
-                        ? substr((string) $player->dateOfBirth, 0, 10)
-                        : null,
-                    'match_type' => $exact && (int) $exact->id === (int) $player->id ? 'exact' : 'name_only',
-                ])->values(),
+                'request_id' => $validated['request_id'],
+                'results' => $results,
+            ],
+            'meta' => [
+                'api_version' => 'v1',
+                'count' => $results->count(),
+                'max_batch_size' => 50,
             ],
         ]);
+    }
+
+    private function identityLookup(
+        string $firstName,
+        string $lastName,
+        ?string $dateOfBirth,
+        PlayerIdentityService $identityService,
+        ?Collection $knownCandidates = null,
+    ): array {
+        $allNameCandidates = $knownCandidates ?? $identityService->findNameCandidates(
+            $firstName,
+            $lastName,
+            20,
+        );
+        $exactCandidates = filled($dateOfBirth)
+            ? ($knownCandidates
+                ? $allNameCandidates->filter(fn (Player $player) => substr((string) $player->dateOfBirth, 0, 10) === $dateOfBirth)->values()
+                : $identityService->findCandidates(
+                $firstName,
+                $lastName,
+                $dateOfBirth,
+            ))
+            : collect();
+        $exact = $exactCandidates->count() === 1 ? $exactCandidates->first() : null;
+        $possibleMatches = $allNameCandidates->take(20)->values();
+
+        $status = match (true) {
+            blank($dateOfBirth) => 'missing_date_of_birth',
+            $exactCandidates->count() > 1 => 'ambiguous',
+            (bool) $exact => 'exact',
+            $possibleMatches->isNotEmpty() => 'name_only',
+            default => 'not_found',
+        };
+
+        return [
+            'status' => $status,
+            'exact_match' => $exact ? [
+                'cape_tennis_player_id' => (int) $exact->id,
+                'display_name' => trim((string) $exact->name.' '.(string) $exact->surname),
+                'identity_match' => 'exact',
+            ] : null,
+            'possible_matches' => $possibleMatches->map(fn (Player $player) => [
+                'cape_tennis_player_id' => (int) $player->id,
+                'first_name' => (string) $player->name,
+                'last_name' => (string) $player->surname,
+                'date_of_birth_status' => $this->dateOfBirthStatus($player, $dateOfBirth),
+                'match_type' => $exact && (int) $exact->id === (int) $player->id ? 'exact' : 'name_only',
+            ])->values()->all(),
+        ];
+    }
+
+    private function dateOfBirthStatus(Player $player, ?string $requestedDate): string
+    {
+        $capeTennisDate = $player->dateOfBirth ? substr((string) $player->dateOfBirth, 0, 10) : null;
+
+        return match (true) {
+            blank($capeTennisDate) => 'missing',
+            blank($requestedDate) => 'not_checked',
+            hash_equals($capeTennisDate, $requestedDate) => 'match',
+            default => 'different',
+        };
     }
 
     public function playerResults(

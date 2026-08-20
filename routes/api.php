@@ -27,6 +27,7 @@ Route::prefix('v1/integrations/jta')
     ->group(function () {
         Route::get('health', [JtaIntegrationController::class, 'health'])->name('health');
         Route::post('players/lookup', [JtaIntegrationController::class, 'lookupPlayers'])->name('players.lookup');
+        Route::post('players/bulk-lookup', [JtaIntegrationController::class, 'bulkLookupPlayers'])->name('players.bulk-lookup');
         Route::post('players/resolve', [JtaIntegrationController::class, 'resolvePlayer'])->name('players.resolve');
         Route::get('players/{player}/results', [JtaIntegrationController::class, 'playerResults'])
             ->whereNumber('player')

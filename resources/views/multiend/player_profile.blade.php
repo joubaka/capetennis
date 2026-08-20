@@ -489,9 +489,20 @@
                                     </thead>
                                     <tbody>
                                         @foreach($eventRegistrations as $registration)
+                                        @php $registeredEvent = $registration->categoryEvents->first()?->event; @endphp
                                         <tr>
                                             <td class="text-muted">{{$loop->iteration}}</td>
-                                            <td class="fw-medium">{{$registration->categoryEvents[0]->event->name}}</td>
+                                            <td class="fw-medium">
+                                                @if($registeredEvent)
+                                                    <a href="{{ isset($violations) ? route('event.admin.main', $registeredEvent->id) : route('events.show', $registeredEvent->id) }}"
+                                                       class="event-record-link">
+                                                        <span>{{$registeredEvent->name}}</span>
+                                                        <i class="ti ti-arrow-up-right" aria-hidden="true"></i>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">Event unavailable</span>
+                                                @endif
+                                            </td>
                                         </tr>
                                         @endforeach
                                     </tbody>
