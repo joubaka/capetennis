@@ -15,18 +15,6 @@
                 <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-profile" aria-controls="navs-pills-top-profile" aria-selected="false" tabindex="-1">Physical Evaluations</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-training" aria-controls="navs-pills-top-training" aria-selected="false" tabindex="-1">Practice Sessions</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-charts" aria-controls="navs-pills-top-charts" aria-selected="false" tabindex="-1">Player Analysis</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-messages" aria-controls="navs-pills-top-messages" aria-selected="false" tabindex="-1">Goal Setting</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-practiceMatches" aria-controls="navs-pills-top-practiceMatches" aria-selected="false" tabindex="-1">Practice Matches</button>
-            </li>
-            <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link " role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="false" tabindex="-1">Registered Events</button>
             </li>
             <li class="nav-item" role="presentation">
