@@ -66,6 +66,29 @@ class PlayerIdentityService
             ->values();
     }
 
+    /**
+     * Return a bounded set of profiles whose normalized first name and surname match.
+     *
+     * @return Collection<int, Player>
+     */
+    public function findNameCandidates(string $name, string $surname, int $limit = 10): Collection
+    {
+        $normalizedName = $this->normalizeName($name);
+        $normalizedSurname = $this->normalizeName($surname);
+
+        return Player::query()
+            ->select(['id', 'name', 'surname', 'dateOfBirth'])
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalizedName])
+            ->whereRaw('LOWER(TRIM(surname)) = ?', [$normalizedSurname])
+            ->orderByDesc('profile_updated_at')
+            ->orderBy('id')
+            ->limit(max(1, min(20, $limit)))
+            ->get()
+            ->filter(fn (Player $player) => $this->normalizeName((string) $player->name) === $normalizedName
+                && $this->normalizeName((string) $player->surname) === $normalizedSurname)
+            ->values();
+    }
+
     public function ensureAvailable(string $name, string $surname, string $dateOfBirth, ?int $exceptId = null): void
     {
         $duplicate = $this->find($name, $surname, $dateOfBirth, $exceptId);

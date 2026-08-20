@@ -1,6 +1,6 @@
 # JTA Results API v1
 
-Cape Tennis is the authoritative source for this read-only integration. JTA may resolve an already-known player and poll that player's completed tournament results and official series rankings. The API never creates players and does not expose dates of birth, contact details, guardian details, account data, identity hashes, or ranking workflow audit data.
+Cape Tennis is the authoritative source for this read-only integration. JTA may resolve an already-known player and poll that player's completed tournament results and official series rankings. The API never creates players and does not expose contact details, guardian details, account data, identity hashes, or ranking workflow audit data. Birth dates are returned only by the privileged same-name lookup endpoint, for a bounded set of profiles whose normalized first name and surname both match.
 
 ## Authentication
 
@@ -42,6 +42,29 @@ An exact canonical name/surname/date-of-birth match returns:
 ```
 
 No match returns 404. Multiple historical rows matching the same canonical identity return 409 for manual Cape Tennis review. Resolution never creates or changes a player.
+
+### `POST /api/v1/integrations/jta/players/lookup`
+
+Accepts the same name fields as `players/resolve`, with an optional `date_of_birth`. It returns an `exact_match` only when a date was supplied and one canonical identity exists, plus up to 20 `possible_matches` whose normalized first name and surname both match. Candidate rows contain only Cape Tennis player ID, first name, surname, birth date (or `null` for an incomplete legacy profile), and match type; contact and account data are never returned.
+
+```json
+{
+  "data": {
+    "exact_match": null,
+    "possible_matches": [
+      {
+        "cape_tennis_player_id": 123,
+        "first_name": "John",
+        "last_name": "Smith",
+        "date_of_birth": "2012-04-15",
+        "match_type": "name_only"
+      }
+    ]
+  }
+}
+```
+
+Possible matches are review evidence only. JTA must not link a name-only candidate; the manager corrects the JTA birth date if appropriate and reruns exact resolution.
 
 ### `GET /api/v1/integrations/jta/players/{player}/results`
 

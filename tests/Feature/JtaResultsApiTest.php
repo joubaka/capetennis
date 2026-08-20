@@ -85,6 +85,76 @@ class JtaResultsApiTest extends TestCase
         $this->assertStringNotContainsString('0820000000', $response->getContent());
     }
 
+    public function test_lookup_returns_only_bounded_same_name_candidates_for_birth_date_review(): void
+    {
+        $exact = Player::factory()->create([
+            'name' => 'Jovan',
+            'surname' => 'Joubert',
+            'dateOfBirth' => '2012-04-15',
+            'email' => 'exact-private@example.test',
+            'cellNr' => '0820000001',
+        ]);
+        $possible = Player::factory()->create([
+            'name' => '  JOVAN ',
+            'surname' => 'Joubert',
+            'dateOfBirth' => '2013-06-20',
+            'email' => 'possible-private@example.test',
+            'cellNr' => '0820000002',
+        ]);
+        $legacy = Player::factory()->create([
+            'name' => 'Jovan',
+            'surname' => 'Joubert',
+            'dateOfBirth' => null,
+        ]);
+        Player::factory()->create([
+            'name' => 'Jovan',
+            'surname' => 'Different',
+            'dateOfBirth' => '2012-04-15',
+        ]);
+
+        $response = $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/lookup', [
+            'first_name' => 'jovan',
+            'last_name' => 'joubert',
+            'date_of_birth' => '2012-04-15',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.exact_match.cape_tennis_player_id', $exact->id)
+            ->assertJsonCount(3, 'data.possible_matches')
+            ->assertJsonFragment([
+                'cape_tennis_player_id' => $exact->id,
+                'date_of_birth' => '2012-04-15',
+                'match_type' => 'exact',
+            ])
+            ->assertJsonFragment([
+                'cape_tennis_player_id' => $possible->id,
+                'date_of_birth' => '2013-06-20',
+                'match_type' => 'name_only',
+            ])
+            ->assertJsonFragment([
+                'cape_tennis_player_id' => $legacy->id,
+                'date_of_birth' => null,
+                'match_type' => 'name_only',
+            ])
+            ->assertJsonMissing(['email' => 'exact-private@example.test'])
+            ->assertJsonMissing(['cellNr' => '0820000002']);
+
+        $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/lookup', [
+            'first_name' => 'Jovan',
+            'last_name' => 'Joubert',
+            'date_of_birth' => '2014-01-01',
+        ])->assertOk()
+            ->assertJsonPath('data.exact_match', null)
+            ->assertJsonCount(3, 'data.possible_matches');
+
+        $this->withToken($this->token)->postJson('/api/v1/integrations/jta/players/lookup', [
+            'first_name' => 'Jovan',
+            'last_name' => 'Joubert',
+        ])->assertOk()
+            ->assertJsonPath('data.exact_match', null)
+            ->assertJsonCount(3, 'data.possible_matches');
+    }
+
     public function test_unknown_and_duplicate_identities_return_safe_errors(): void
     {
         $payload = ['first_name' => 'Alex', 'last_name' => 'Duplicate', 'date_of_birth' => '2011-01-02'];

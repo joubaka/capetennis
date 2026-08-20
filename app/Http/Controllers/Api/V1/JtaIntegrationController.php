@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\JtaPlayerResultsRequest;
+use App\Http\Requests\Api\V1\LookupJtaPlayersRequest;
 use App\Http\Requests\Api\V1\ResolveJtaPlayerRequest;
 use App\Http\Resources\Api\V1\JtaPlayerResultResource;
 use App\Http\Resources\Api\V1\JtaPlayerEventResultResource;
@@ -57,6 +58,48 @@ class JtaIntegrationController extends Controller
                 'cape_tennis_player_id' => (int) $player->id,
                 'display_name' => trim((string) $player->name.' '.(string) $player->surname),
                 'identity_match' => 'exact',
+            ],
+        ]);
+    }
+
+    public function lookupPlayers(
+        LookupJtaPlayersRequest $request,
+        PlayerIdentityService $identityService,
+    ): JsonResponse {
+        $validated = $request->validated();
+        $exactCandidates = filled($validated['date_of_birth'] ?? null)
+            ? $identityService->findCandidates(
+                $validated['first_name'],
+                $validated['last_name'],
+                $validated['date_of_birth'],
+            )
+            : collect();
+        $exact = $exactCandidates->count() === 1 ? $exactCandidates->first() : null;
+        $possibleMatches = $identityService->findNameCandidates(
+            $validated['first_name'],
+            $validated['last_name'],
+        );
+
+        if ($exact) {
+            $request->attributes->set('jta_linked_player_id', (int) $exact->id);
+        }
+
+        return response()->json([
+            'data' => [
+                'exact_match' => $exact ? [
+                    'cape_tennis_player_id' => (int) $exact->id,
+                    'display_name' => trim((string) $exact->name.' '.(string) $exact->surname),
+                    'identity_match' => 'exact',
+                ] : null,
+                'possible_matches' => $possibleMatches->map(fn (Player $player) => [
+                    'cape_tennis_player_id' => (int) $player->id,
+                    'first_name' => (string) $player->name,
+                    'last_name' => (string) $player->surname,
+                    'date_of_birth' => $player->dateOfBirth
+                        ? substr((string) $player->dateOfBirth, 0, 10)
+                        : null,
+                    'match_type' => $exact && (int) $exact->id === (int) $player->id ? 'exact' : 'name_only',
+                ])->values(),
             ],
         ]);
     }
