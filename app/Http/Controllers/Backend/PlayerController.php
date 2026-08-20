@@ -39,15 +39,10 @@ class PlayerController extends Controller
      */
     public function index(Request $request)
     {
-        // If AJAX request, return JSON for DataTables
+        // Keep existing AJAX callers working while the management table uses
+        // the dedicated, server-side endpoint below.
         if ($request->ajax() || $request->wantsJson()) {
-            $players = Player::all()->map(function ($player) {
-                $player->profile_status = $player->getProfileStatus();
-                $player->needs_update = $player->needsProfileUpdate();
-                $player->is_complete = $player->isProfileComplete();
-                return $player;
-            });
-            return response()->json(['data' => $players]);
+            return $this->data($request);
         }
 
         // Otherwise return the view
@@ -57,15 +52,73 @@ class PlayerController extends Controller
     /**
      * Get players data for DataTables (AJAX endpoint).
      */
-    public function data()
+    public function data(Request $request)
     {
-        $players = Player::all()->map(function ($player) {
+        $draw = max(0, $request->integer('draw'));
+        $start = max(0, $request->integer('start'));
+        $length = min(100, max(10, $request->integer('length', 25)));
+        $search = trim((string) $request->input('search.value', ''));
+
+        $query = Player::query()->select([
+            'id',
+            'name',
+            'surname',
+            'email',
+            'cellNr',
+            'gender',
+            'dateOfBirth',
+            'profile_updated_at',
+            'profile_complete',
+        ]);
+
+        $recordsTotal = (clone $query)->count();
+
+        if ($search !== '') {
+            $escapedSearch = addcslashes($search, '\\%_');
+            $query->where(function ($builder) use ($escapedSearch): void {
+                $builder
+                    ->where('id', 'like', "%{$escapedSearch}%")
+                    ->orWhere('name', 'like', "%{$escapedSearch}%")
+                    ->orWhere('surname', 'like', "%{$escapedSearch}%")
+                    ->orWhere('email', 'like', "%{$escapedSearch}%")
+                    ->orWhere('cellNr', 'like', "%{$escapedSearch}%")
+                    ->orWhere('gender', 'like', "%{$escapedSearch}%")
+                    ->orWhere('dateOfBirth', 'like', "%{$escapedSearch}%");
+            });
+        }
+
+        $recordsFiltered = (clone $query)->count();
+        $orderableColumns = [
+            0 => 'id',
+            1 => 'name',
+            2 => 'surname',
+            3 => 'email',
+            4 => 'cellNr',
+            5 => 'gender',
+            6 => 'dateOfBirth',
+        ];
+        $orderColumn = $orderableColumns[$request->integer('order.0.column')] ?? 'id';
+        $orderDirection = strtolower((string) $request->input('order.0.dir')) === 'asc' ? 'asc' : 'desc';
+
+        $players = $query
+            ->orderBy($orderColumn, $orderDirection)
+            ->orderBy('id', 'desc')
+            ->offset($start)
+            ->limit($length)
+            ->get()
+            ->map(function (Player $player): Player {
             $player->profile_status = $player->getProfileStatus();
             $player->needs_update = $player->needsProfileUpdate();
             $player->is_complete = $player->isProfileComplete();
             return $player;
         });
-        return response()->json(['data' => $players]);
+
+        return response()->json([
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $players,
+        ]);
     }
 
     /**

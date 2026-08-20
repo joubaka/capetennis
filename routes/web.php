@@ -1572,6 +1572,7 @@ Route::delete(
   Route::get('player/profile/{id}', [PlayerController::class, 'profile'])->name('backend.player.profile');
   Route::get('player/results/{id}', [PlayerController::class, 'results'])->name('player.results');
   Route::get('player/events/results/{id}', [PlayerController::class, 'playerEventResults'])->name('player.events.results');
+  Route::get('player/data', [PlayerController::class, 'data'])->name('player.data');
   Route::resource('player', PlayerController::class);
 
   //Player
@@ -1801,7 +1802,6 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   |--------------------------------------------------------------------------
   */
   Route::get('user/data', [UserController::class, 'data'])->name('user.data');
-  Route::get('player/data', [PlayerController::class, 'data'])->name('player.data');
 
   /*
   |--------------------------------------------------------------------------

@@ -90,8 +90,10 @@ $(function () {
   // Initialize DataTable
   var dtPlayers = $('.datatable-players').DataTable({
     processing: true,
+    serverSide: true,
+    searchDelay: 300,
     ajax: {
-      url: '{{ route("player.index") }}',
+      url: '{{ route("player.data") }}',
       dataSrc: 'data'
     },
     columns: [
@@ -119,9 +121,12 @@ $(function () {
         data: 'gender',
         render: function(data) {
           if (!data) return '-';
-          var badgeClass = data.toLowerCase() === 'male' ? 'bg-label-info' : 'bg-label-pink';
-          if (data.toLowerCase() === 'female') badgeClass = 'bg-label-danger';
-          return '<span class="badge ' + badgeClass + '">' + data + '</span>';
+          var normalized = String(data).toLowerCase();
+          var label = normalized === '1' || normalized === 'male' ? 'Male'
+            : (normalized === '2' || normalized === 'female' ? 'Female' : String(data));
+          var badgeClass = label === 'Male' ? 'bg-label-info'
+            : (label === 'Female' ? 'bg-label-danger' : 'bg-label-secondary');
+          return '<span class="badge ' + badgeClass + '">' + label + '</span>';
         }
       },
       {
@@ -137,6 +142,8 @@ $(function () {
       },
       {
         data: 'profile_status',
+        orderable: false,
+        searchable: false,
         render: function(data, type, row) {
           if (!data) return '-';
           var icon = data.icon || 'ti-help';
@@ -151,6 +158,7 @@ $(function () {
       {
         data: null,
         orderable: false,
+        searchable: false,
         render: function(data) {
           return `
             <div class="d-flex gap-1">
