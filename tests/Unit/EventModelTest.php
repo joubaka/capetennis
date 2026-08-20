@@ -38,6 +38,21 @@ class EventModelTest extends TestCase
         $this->assertTrue($event->registrationClosesAt()->isSameDay($expected));
     }
 
+    public function test_withdrawal_deadline_days_before_start_is_positive(): void
+    {
+        $event = new Event([
+            'start_date' => Carbon::parse('2026-12-04'),
+            'withdrawal_deadline' => Carbon::parse('2026-11-27'),
+        ]);
+
+        $this->assertSame(7, $event->withdrawalDeadlineDaysBeforeStart());
+    }
+
+    public function test_withdrawal_deadline_days_before_start_returns_null_when_dates_are_missing(): void
+    {
+        $this->assertNull((new Event())->withdrawalDeadlineDaysBeforeStart());
+    }
+
     // -----------------------------------------------------------------------
     // withdrawalCloseAt()
     // -----------------------------------------------------------------------

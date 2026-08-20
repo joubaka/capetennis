@@ -96,6 +96,15 @@ class Event extends Model
     return $this->start_date->copy()->subDays((int) $this->deadline);
   }
 
+  public function withdrawalDeadlineDaysBeforeStart(): ?int
+  {
+    if (!$this->start_date || !$this->withdrawal_deadline) {
+      return null;
+    }
+
+    return (int) $this->start_date->diffInDays($this->withdrawal_deadline, true);
+  }
+
   /*
   |--------------------------------------------------------------------------
   | DEADLINE HELPERS

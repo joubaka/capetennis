@@ -207,9 +207,7 @@
       <div class="input-group">
         <input type="number" class="form-control autosave"
                id="withdrawal-deadline" name="withdrawal_days" min="0"
-               value="{{ $event->withdrawal_deadline
-                 ? $event->start_date?->diffInDays($event->withdrawal_deadline)
-                 : '' }}">
+               value="{{ $event->withdrawalDeadlineDaysBeforeStart() }}">
         <span class="input-group-text">days before start</span>
       </div>
       <div class="field-help" id="withdrawal-closure-text"></div>
