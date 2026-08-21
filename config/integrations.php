@@ -6,5 +6,7 @@ return [
         'rate_limit_per_minute' => (int) env('JTA_API_RATE_PER_MINUTE', 60),
         'token_expiration_days' => (int) env('JTA_TOKEN_EXPIRATION_DAYS', 90),
         'require_https' => env('JTA_API_REQUIRE_HTTPS', true),
+        'publication_webhook_url' => env('JTA_PUBLICATION_WEBHOOK_URL'),
+        'publication_webhook_secret' => env('JTA_PUBLICATION_WEBHOOK_SECRET'),
     ],
 ];

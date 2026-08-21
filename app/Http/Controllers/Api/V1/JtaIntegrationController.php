@@ -12,6 +12,7 @@ use App\Http\Resources\Api\V1\JtaPlayerResultResource;
 use App\Http\Resources\Api\V1\JtaPlayerEventResultResource;
 use App\Http\Resources\Api\V1\JtaPlayerSeriesRankingResource;
 use App\Models\Player;
+use App\Models\Event;
 use App\Services\Integrations\JtaEventResultExportService;
 use App\Services\Integrations\JtaResultExportService;
 use App\Services\Integrations\JtaSeriesRankingExportService;
@@ -22,6 +23,24 @@ use Illuminate\Support\Collection;
 
 class JtaIntegrationController extends Controller
 {
+    public function calendar(): JsonResponse
+    {
+        $events = Event::query()->whereIn('published', [1, 'published', true])
+            ->whereDate('end_date', '>=', today())->orderBy('start_date')->get();
+        return response()->json([
+            'data' => $events->map(fn (Event $event) => [
+                'source_id' => 'ct-event-'.$event->id,
+                'source_version' => hash('sha256', $event->updated_at?->toIso8601String().'|'.$event->id),
+                'source_updated_at' => ($event->updated_at ?? now())->toIso8601String(),
+                'name' => $event->name,
+                'start_date' => optional($event->start_date)->toDateString(),
+                'end_date' => optional($event->end_date ?? $event->start_date)->toDateString(),
+                'description' => $event->information,
+            ])->values(),
+            'meta' => ['api_version' => 'v1', 'result_type' => 'calendar', 'generated_at' => now()->toIso8601String()],
+            'links' => ['next' => null],
+        ]);
+    }
     public function health(): JsonResponse
     {
         return response()->json([

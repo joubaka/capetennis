@@ -5,6 +5,7 @@ namespace App\Domain\Ranking\Services;
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Models\Series;
 use App\Models\SeriesRanking;
+use App\Jobs\NotifyJtaRankingPublished;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -146,6 +147,8 @@ final class RankingPublicationService
             $this->auditor->recordStatusChange($series, RankingStatus::Reviewed, RankingStatus::Published, $userId, [
                 'run_id' => $runId,
             ]);
+
+            NotifyJtaRankingPublished::dispatch((int) $series->id, (int) $runId)->afterCommit();
         });
     }
 
