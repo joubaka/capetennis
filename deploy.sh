@@ -15,7 +15,9 @@ fail() { log ERROR "$1" >&2; exit 1; }
 run_php() { php -d display_errors=Off "$@"; }
 usage() { echo 'Usage: deploy main [--skip-migrations] [--skip-deps]'; echo '       ./deploy.sh --install-command'; }
 install_command() {
-    local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}" path="$dir/deploy"; mkdir -p "$dir"
+    local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
+    local path="$dir/deploy"
+    mkdir -p "$dir"
     if [ -e "$path" ] || [ -L "$path" ]; then
         [ -L "$path" ] && [ "$(readlink -f "$path")" = "$APP_PATH/bin/deploy" ] || fail "Refusing to replace existing command: $path"
     else ln -s "$APP_PATH/bin/deploy" "$path"; fi
