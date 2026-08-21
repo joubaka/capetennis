@@ -174,7 +174,7 @@
     <ul class="nav nav-pills flex-column flex-sm-row mb-4 align-items-center">
 
 @if($signUp === 'open' && $event->isIndividual())
-  <a class="btn btn-success btn-sm m-2" href="{{ route('register.register',$event->id) }}">
+  <a class="btn btn-success btn-sm m-2" href="{{ auth()->check() ? route('register.register', $event->id) : route('login', ['redirect' => request()->getRequestUri()]) }}">
     <i class="ti ti-user-check"></i> Sign Up
   </a>
 @endif

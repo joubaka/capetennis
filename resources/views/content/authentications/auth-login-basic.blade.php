@@ -44,8 +44,11 @@ $customizerHidden = 'customizer-hide';
           <h4 class="mb-1 pt-2">Welcome to {{config('variables.templateName')}}! 👋</h4>
     
 
-        <form id="formAuthentication" class="mb-3" action="{{ route('login') }}" method="POST">
+<form id="formAuthentication" class="mb-3" action="{{ route('login') }}" method="POST">
   @csrf
+  @if(request()->filled('redirect'))
+    <input type="hidden" name="redirect" value="{{ request('redirect') }}">
+  @endif
 
   <div class="mb-3">
     <label for="email" class="form-label">Email</label>
