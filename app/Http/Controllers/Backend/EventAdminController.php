@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Models\Registration;
 use App\Models\PlayerRegistration;
 use App\Models\CategoryEventRegistration;
+use App\Services\EventOperationsService;
 
 class EventAdminController extends Controller
 {
@@ -745,6 +746,7 @@ class EventAdminController extends Controller
   public function overview(Event $event)
   {
     $this->authorize('event-draw.view', $event);
+    $operations = app(EventOperationsService::class)->for($event);
 
     // =====================
     // Base relations (always)
@@ -819,17 +821,20 @@ class EventAdminController extends Controller
       );
     }
 
-    $financeData = $event->isTeam() ? $this->buildFinanceData($event) : [];
+    $financeData = $event->isTeam()
+      ? $this->buildFinanceData($event, $operations['financeTotals'])
+      : [];
 
     return view('backend.event.overview', [
       'event' => $event,
       'stats' => $stats,
       'teamData' => $teamData,
       'venues' => \App\Models\Venue::all(), // <-- this line is required!
+      'operations' => $operations,
     ] + $financeData);
   }
 
-  protected function buildFinanceData(Event $event): array
+  protected function buildFinanceData(Event $event, ?array $canonicalTotals = null): array
   {
     $feePerEntry = (float) $event->cape_tennis_fee;
 
@@ -844,10 +849,11 @@ class EventAdminController extends Controller
       ->orderByDesc('created_at')
       ->get();
 
-    $totalGross             = $transactions->sum('amount_gross');
-    $totalPayfastFees       = $transactions->sum('amount_fee');
-    $totalEntries           = $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
-    $totalCapeTennisFees    = $totalEntries * $feePerEntry;
+    $totalGross             = $canonicalTotals['gross_payments'] ?? $transactions->sum('amount_gross');
+    $totalPayfastFees       = $canonicalTotals['pf_fees'] ?? $transactions->sum('amount_fee');
+    $totalEntries           = $canonicalTotals['total_entries']
+      ?? $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
+    $totalCapeTennisFees    = abs($canonicalTotals['cape_fees'] ?? ($totalEntries * $feePerEntry));
     $netRegistrationIncome  = $totalGross - abs($totalPayfastFees) - $totalCapeTennisFees;
 
     $incomeItems      = $event->incomeItems()->get();
@@ -864,34 +870,26 @@ class EventAdminController extends Controller
       ->orderByDesc('created_at')
       ->get();
 
-    // Auto-sync system expense rows from transaction data
-    $hasPayfast = $expenses->whereIn('expense_type', ['payfast'])->count() > 0;
-    $hasCT      = $expenses->whereIn('expense_type', ['cape_tennis_fee'])->count() > 0;
-
-    if (!$hasPayfast && abs($totalPayfastFees) > 0) {
-      EventExpense::create([
-        'event_id'     => $event->id,
+    // Keep derived system fees visible to the existing UI without mutating
+    // expense history during a GET request. The ledger remains authoritative.
+    if (!$expenses->whereIn('expense_type', ['payfast'])->count() && abs($totalPayfastFees) > 0) {
+      $expenses->push(new EventExpense([
+        'event_id' => $event->id,
         'expense_type' => 'payfast',
-        'description'  => 'PayFast fees (auto-synced)',
-        'amount'       => abs($totalPayfastFees),
-        'date'         => now(),
-      ]);
+        'description' => 'PayFast fees (derived from ledger)',
+        'amount' => abs($totalPayfastFees),
+        'date' => now(),
+      ]));
     }
-    if (!$hasCT && $totalCapeTennisFees > 0) {
-      EventExpense::create([
-        'event_id'     => $event->id,
+    if (!$expenses->whereIn('expense_type', ['cape_tennis_fee'])->count() && $totalCapeTennisFees > 0) {
+      $expenses->push(new EventExpense([
+        'event_id' => $event->id,
         'expense_type' => 'cape_tennis_fee',
-        'description'  => 'Cape Tennis fee (auto-synced)',
-        'amount'       => $totalCapeTennisFees,
-        'date'         => now(),
-      ]);
+        'description' => 'Cape Tennis fee (derived from ledger)',
+        'amount' => $totalCapeTennisFees,
+        'date' => now(),
+      ]));
     }
-
-    // Refresh after potential sync
-    $expenses = EventExpense::where('event_id', $event->id)
-      ->with(['paidByConvenor.user', 'approvedByUser', 'reimbursedByUser'])
-      ->orderByDesc('created_at')
-      ->get();
 
     $expenseTypes = ExpenseType::asOptions();
 

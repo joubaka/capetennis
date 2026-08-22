@@ -8,7 +8,12 @@
     <div class="card event-section-card mb-4">
       <div class="card-body event-card-padding p-4 p-xl-5">
         <div class="event-section-heading mb-4">
-          <span class="event-section-icon"><i class="ti ti-info-circle fs-4"></i></span>
+          <span class="event-section-icon" aria-hidden="true">
+            <svg class="event-section-icon-svg" viewBox="0 0 24 24" focusable="false">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 10v6m0-9v.01" />
+            </svg>
+          </span>
           <div>
             <h4 class="mb-1">Event information</h4>
             <p class="text-muted mb-0">Please review these details before entering the tournament.</p>
@@ -32,7 +37,11 @@
       <div class="card event-section-card mb-4">
         <div class="card-body event-card-padding p-4">
           <div class="event-section-heading mb-4">
-            <span class="event-section-icon"><i class="ti ti-speakerphone fs-4"></i></span>
+            <span class="event-section-icon" aria-hidden="true">
+              <svg class="event-section-icon-svg" viewBox="0 0 24 24" focusable="false">
+                <path d="M4 14h3l9 4V6l-9 4H4v4Zm3 0 2 5h3l-2-5m9-5a4 4 0 0 1 0 6" />
+              </svg>
+            </span>
             <div>
               <h5 class="mb-1">Latest announcements</h5>
               <p class="text-muted mb-0">Updates published by the event organiser.</p>

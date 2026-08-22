@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\EventAdmin;
 use App\Models\EventType;
 use App\Models\Player;
 use App\Models\PlayerRegistration;
@@ -279,9 +278,6 @@ class HomeController extends Controller
         'end_date',
         'deadline',
         'logo',
-        'published',
-        'signUp',
-        'status',
       ]);
 
     // 🔍 SEARCH FILTER
@@ -305,27 +301,6 @@ class HomeController extends Controller
     }
 
     $events = $query->paginate(20);
-    $user = $request->user();
-    $isSuperUser = $user?->hasRole('super-user') ?? false;
-    $canViewAllStatuses = $user?->hasAnyRole(['super-user', 'admin']) ?? false;
-    $managedEventIds = $user && !$isSuperUser
-      ? EventAdmin::query()
-        ->where('user_id', $user->id)
-        ->pluck('event_id')
-        ->flip()
-      : collect();
-
-    $events->getCollection()->each(function (Event $event) use ($canViewAllStatuses, $managedEventIds) {
-      if (!$canViewAllStatuses && !$managedEventIds->has($event->id)) {
-        return;
-      }
-
-      $event->setAttribute('admin_status', [
-        'publication' => $event->published ? 'Published' : 'Unpublished',
-        'entries' => $this->entriesAreOpen($event) ? 'Sign-up open' : 'Sign-up closed',
-      ]);
-    });
-
     $data = $events->getCollection()->map(function (Event $event) {
       $payload = [
         'id' => $event->id,
@@ -335,10 +310,6 @@ class HomeController extends Controller
         'deadline' => $event->deadline,
         'logo' => $event->logo,
       ];
-
-      if ($event->getAttribute('admin_status')) {
-        $payload['admin_status'] = $event->getAttribute('admin_status');
-      }
 
       return $payload;
     })->values();
@@ -380,20 +351,5 @@ class HomeController extends Controller
       throw $exception;
     }
   }
-
-  private function entriesAreOpen(Event $event): bool
-  {
-    if (!$event->signUp || in_array($event->status, ['closed', 'draft'], true) || !$event->start_date) {
-      return false;
-    }
-
-    $entryCloseAt = $event->start_date
-      ->copy()
-      ->subDays(is_numeric($event->deadline) ? (int) $event->deadline : 0)
-      ->endOfDay();
-
-    return now()->lte($entryCloseAt);
-  }
-
 
 }

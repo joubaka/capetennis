@@ -115,6 +115,8 @@ class DrawControllerAuthorizationTest extends TestCase
 
     public function test_admin_can_toggle_publish(): void
     {
+        $registration = Registration::factory()->create();
+        $this->draw->registrations()->attach($registration->id);
         Fixture::factory()->create(['draw_id' => $this->draw->id]);
 
         $this->actingAs($this->admin)
@@ -125,6 +127,8 @@ class DrawControllerAuthorizationTest extends TestCase
 
     public function test_super_user_can_toggle_publish(): void
     {
+        $registration = Registration::factory()->create();
+        $this->draw->registrations()->attach($registration->id);
         Fixture::factory()->create(['draw_id' => $this->draw->id]);
 
         $this->actingAs($this->superUser)

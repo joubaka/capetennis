@@ -43,6 +43,16 @@
     color: #28c76f;
   }
 
+  .individual-event-view .event-section-icon-svg {
+    fill: none;
+    height: 1.35rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+    width: 1.35rem;
+  }
+
   .individual-event-view .event-information-content {
     color: #4b465c;
     font-size: .975rem;
@@ -144,18 +154,6 @@
 
             <ul class="list-inline d-flex gap-2 flex-wrap">
               @if($event->isIndividual())
-                <li class="badge {{ $event->published ? 'bg-label-success' : 'bg-label-secondary' }}">
-                  <i class="ti {{ $event->published ? 'ti-world-check' : 'ti-eye-off' }} me-1"></i>
-                  Publication: {{ $event->published ? 'Published' : 'Unpublished' }}
-                </li>
-                <li class="badge {{ $signUp === 'open' ? 'bg-label-success' : 'bg-label-danger' }}">
-                  <i class="ti {{ $signUp === 'open' ? 'ti-user-check' : 'ti-user-x' }} me-1"></i>
-                  Sign-up: {{ $signUp === 'open' ? 'Open' : 'Not open' }}
-                </li>
-                <li class="badge bg-label-success">
-                  <i class="ti ti-users"></i>
-                  Total Entries: {{ $event->registrations->where('status', '!=', 'withdrawn')->where('payment_status_id', 1)->count() }}
-                </li>
               @endif
               <li class="list-inline-item">
                 <i class="ti ti-map-pin"></i> {{ $event->venues }}

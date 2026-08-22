@@ -476,7 +476,7 @@ class PlayerController extends Controller
         }
       })
       ->limit(10)
-      ->get(['id', 'name', 'surname', 'email']);
+      ->get(['id', 'name', 'surname']);
 
     return response()->json($players);
   }

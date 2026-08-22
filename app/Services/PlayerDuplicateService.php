@@ -712,7 +712,7 @@ class PlayerDuplicateService
             return null;
         }
 
-        $ranked = $analyses->map(function (array $analysis) {
+        $ranked = $analyses->values()->map(function (array $analysis, int $position) {
             $keep = $analysis['keep'];
             $remove = $analysis['remove'];
             $sourceFirst = $this->comparableName((string) $remove->name);
@@ -737,10 +737,14 @@ class PlayerDuplicateService
                 'score' => $score,
                 'usage' => (int) ($analysis['impact']['keep']['usage_total'] ?? 0),
                 'identity_key' => $this->identityNameKey($keep),
+                'position' => $position,
             ];
         })->filter()->sort(function (array $left, array $right) {
-            return [$right['score'], $right['usage'], -$right['analysis']['keep']->id]
-                <=> [$left['score'], $left['usage'], -$left['analysis']['keep']->id];
+            // Preserve the submitted pair order when evidence is tied. This
+            // keeps the review result stable and aligned with the admin's
+            // explicit selection instead of making the database ID decisive.
+            return [$right['score'], $right['usage'], -$right['position']]
+                <=> [$left['score'], $left['usage'], -$left['position']];
         })->values();
 
         if ($ranked->isEmpty()) {

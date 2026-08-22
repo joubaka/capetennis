@@ -9,7 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
+use Illuminate\Support\Facades\Log;
 
 class NotifyJtaRankingPublished implements ShouldQueue
 {
@@ -22,7 +22,13 @@ class NotifyJtaRankingPublished implements ShouldQueue
     {
         $url = (string) config('integrations.jta.publication_webhook_url');
         $secret = (string) config('integrations.jta.publication_webhook_secret');
-        if ($url === '' || $secret === '') throw new RuntimeException('JTA publication webhook is not configured.');
+        if ($url === '' || $secret === '') {
+            Log::notice('Skipping JTA ranking publication webhook because it is not configured.', [
+                'series_id' => $this->seriesId,
+                'run_id' => $this->runId,
+            ]);
+            return;
+        }
 
         $rows = SeriesRanking::query()->with(['series', 'category', 'player', 'rankingList'])
             ->where('series_id', $this->seriesId)->where('run_id', $this->runId)->where('status', 'published')->get();

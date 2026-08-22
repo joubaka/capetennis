@@ -84,6 +84,7 @@
   .ranking-link { border: 0; border-top: 1px solid rgba(75,70,92,.12); gap: 1rem; min-height: 5.1rem; }
   .ranking-link:first-child { border-top: 0; }
   .ranking-icon { align-items: center; background: #7367f0; border-radius: .35rem; color: #fff; display: flex; flex: 0 0 3.15rem; height: 3.15rem; justify-content: center; }
+  .ranking-icon-svg { fill: none; height: 1.65rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 1.65rem; }
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
   .ranking-link:hover .ranking-name { color: #7367f0; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
@@ -171,7 +172,11 @@
       <div class="list-group rankings-list">
         @foreach ($series as $value)
           <a href="{{ route('frontend.ranking.show', $value->id) }}" class="ranking-link list-group-item list-group-item-action d-flex align-items-center p-3">
-            <span class="ranking-icon"><i class="ti ti-clipboard-list ti-lg" aria-hidden="true"></i></span>
+            <span class="ranking-icon" aria-hidden="true">
+              <svg class="ranking-icon-svg" viewBox="0 0 24 24" focusable="false">
+                <path d="M9 5h6m-7 4h8m-8 4h5m-5 4h8M9 3h6a2 2 0 0 1 2 2v1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1V5a2 2 0 0 1 2-2Z" />
+              </svg>
+            </span>
             <span class="ranking-name fw-semibold flex-grow-1">{{ $value->name }}</span>
           </a>
         @endforeach

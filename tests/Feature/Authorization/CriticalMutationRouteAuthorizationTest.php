@@ -23,6 +23,7 @@ class CriticalMutationRouteAuthorizationTest extends TestCase
         $this->post('/backend/team-fixtures/1/insert-score')->assertRedirect('/login');
         $this->post('/fixtures/1/save-score')->assertRedirect('/login');
         $this->post('/backend/team-schedule/all-auto/1')->assertRedirect('/login');
-        $this->post('/schedule/create')->assertRedirect('/login');
+        // The obsolete schedule endpoint is intentionally not registered.
+        $this->post('/schedule/create')->assertNotFound();
     }
 }

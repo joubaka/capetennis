@@ -486,7 +486,7 @@
                           <i class="ti ti-eye"></i>
                         </a>
                         @if($refund->pf_transaction_id)
-                          <a href="#" class="btn btn-icon btn-sm btn-outline-secondary" title="PF Status">
+                          <a href="#" class="btn btn-sm btn-outline-secondary" title="PF Status">
                             <i class="ti ti-credit-card"></i> PF Status
                           </a>
                         @endif

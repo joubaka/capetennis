@@ -17,17 +17,17 @@ use App\Services\Integrations\JtaEventResultExportService;
 use App\Services\Integrations\JtaResultExportService;
 use App\Services\Integrations\JtaSeriesRankingExportService;
 use App\Services\PlayerIdentityService;
+use App\Services\PublicEventCalendarService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
 
 class JtaIntegrationController extends Controller
 {
-    public function calendar(): JsonResponse
+    public function calendar(PublicEventCalendarService $calendar): JsonResponse
     {
-        $events = Event::query()->whereIn('published', [1, 'published', true])
-            ->whereDate('end_date', '>=', today())->orderBy('start_date')->get();
-        return response()->json([
+        $events = $calendar->upcoming();
+        $payload = [
             'data' => $events->map(fn (Event $event) => [
                 'source_id' => 'ct-event-'.$event->id,
                 'source_version' => hash('sha256', $event->updated_at?->toIso8601String().'|'.$event->id),
@@ -39,7 +39,13 @@ class JtaIntegrationController extends Controller
             ])->values(),
             'meta' => ['api_version' => 'v1', 'result_type' => 'calendar', 'generated_at' => now()->toIso8601String()],
             'links' => ['next' => null],
-        ]);
+        ];
+
+        $etag = '"'.sha1($payload['data']->toJson()).'"';
+
+        return response()->json($payload)
+            ->setEtag($etag)
+            ->header('Cache-Control', 'private, max-age=60');
     }
     public function health(): JsonResponse
     {

@@ -83,7 +83,7 @@
                     </td>
                     <td>
                       @if($context['event_id'])
-                        <a href="{{ route('admin.events.fixtures', $context['event_id']) }}" class="btn btn-outline-primary btn-sm">Open event fixtures</a>
+                        <a href="{{ route('admin.events.individual.hq', $context['event_id']) }}" class="btn btn-outline-primary btn-sm">Open event fixtures</a>
                       @else
                         <span class="small text-muted">Inspect database record before correction</span>
                       @endif

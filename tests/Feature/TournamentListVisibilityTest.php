@@ -88,10 +88,9 @@ class TournamentListVisibilityTest extends TestCase
         $response->assertOk()
             ->assertJsonFragment(['id' => $assignedDraft->id])
             ->assertJsonMissing(['id' => $otherDraft->id])
-            ->assertJsonFragment([
-                'publication' => 'Unpublished',
-                'entries' => 'Sign-up open',
-            ]);
+            ->assertJsonMissing(['publication' => 'Unpublished'])
+            ->assertJsonMissing(['entries' => 'Sign-up open'])
+            ->assertJsonMissingPath('data.0.admin_status');
     }
 
     public function test_super_user_sees_all_draft_tournaments(): void
@@ -113,10 +112,9 @@ class TournamentListVisibilityTest extends TestCase
         $response->assertOk()
             ->assertJsonFragment(['id' => $firstDraft->id])
             ->assertJsonFragment(['id' => $secondDraft->id])
-            ->assertJsonFragment([
-                'publication' => 'Unpublished',
-                'entries' => 'Sign-up open',
-            ]);
+            ->assertJsonMissing(['publication' => 'Unpublished'])
+            ->assertJsonMissing(['entries' => 'Sign-up open'])
+            ->assertJsonMissingPath('data.0.admin_status');
     }
 
     public function test_admin_sees_publication_status_on_visible_tournaments(): void
@@ -134,10 +132,9 @@ class TournamentListVisibilityTest extends TestCase
 
         $response->assertOk()
             ->assertJsonFragment(['id' => $published->id])
-            ->assertJsonFragment([
-                'publication' => 'Published',
-                'entries' => 'Sign-up open',
-            ]);
+            ->assertJsonMissing(['publication' => 'Published'])
+            ->assertJsonMissing(['entries' => 'Sign-up open'])
+            ->assertJsonMissingPath('data.0.admin_status');
     }
 
     public function test_unassigned_admin_cannot_open_an_unpublished_tournament_directly(): void

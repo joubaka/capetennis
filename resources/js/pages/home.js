@@ -77,23 +77,6 @@ $(function () {
     return `${showEvent}${encodeURIComponent(id)}`;
   }
 
-  function renderAdminStatus($card, status) {
-    if (!status) return;
-
-    const isPublished = status.publication === 'Published';
-    const entriesAreOpen = status.entries === 'Sign-up open';
-    const $status = $card.find('.event-admin-status').removeClass('d-none');
-
-    $('<span>', {
-      class: `badge ${isPublished ? 'bg-label-success' : 'bg-label-warning'}`,
-      text: `Event status: ${status.publication}`
-    }).appendTo($status);
-    $('<span>', {
-      class: `badge ${entriesAreOpen ? 'bg-label-info' : 'bg-label-secondary'}`,
-      text: `Entries: ${status.entries}`
-    }).appendTo($status);
-  }
-
   function renderLogo($card, logo, eventName) {
     if (!logo) return;
 
@@ -148,7 +131,6 @@ $(function () {
     }).append(' ').append($('<i>', { class: 'ti ti-arrow-right', 'aria-hidden': 'true' })));
 
     renderLogo($card, event.logo, event.name);
-    renderAdminStatus($card, event.admin_status);
     $list.append($card);
     return true;
   }

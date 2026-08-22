@@ -588,6 +588,7 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Girls Team Draw']);
         $fixtureId = DB::table('team_fixtures')->insertGetId([
             'draw_id' => $draw->id,
+            'match_nr' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

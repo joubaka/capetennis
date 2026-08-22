@@ -2,7 +2,6 @@
   <article class="card event-card mb-4">
     <header class="event-card-header">
       <h2 class="h4 mb-0"><a class="eventName event-name stretched-link"></a></h2>
-      <div class="event-admin-status d-none d-flex flex-wrap gap-2 mt-2"></div>
     </header>
     <div class="card-body p-3 p-lg-4">
       <div class="event-card-body">

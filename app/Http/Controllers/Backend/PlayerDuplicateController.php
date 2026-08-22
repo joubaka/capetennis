@@ -69,7 +69,8 @@ class PlayerDuplicateController extends Controller
         $scope = $request->validate([
             'selection_scope' => ['nullable', Rule::in(['page', 'all'])],
         ]);
-        if (($scope['selection_scope'] ?? 'page') === 'all') {
+        $selectionScope = $scope['selection_scope'] ?? null;
+        if ($selectionScope === 'all') {
             $pairs = $duplicates->allQuickCandidatePairs();
             if ($pairs === []) {
                 throw ValidationException::withMessages(['pairs' => 'No unreviewed quick-merge candidates were found.']);
@@ -82,9 +83,11 @@ class PlayerDuplicateController extends Controller
             $pairs = $this->parsePairTokens($validated['pairs']);
         }
 
-        $batch = (($scope['selection_scope'] ?? 'page') === 'all')
-            ? $duplicates->quickMergeBatchReview($pairs)
-            : $duplicates->plannedMergeBatchReview($pairs);
+        // The explicit page choice is the history-aware planned flow. A direct
+        // pair submission without a scope is retained for quick-review callers.
+        $batch = $selectionScope === 'page'
+            ? $duplicates->plannedMergeBatchReview($pairs)
+            : $duplicates->quickMergeBatchReview($pairs);
 
         return view('backend.superadmin.player-duplicate-bulk-review', compact('batch'));
     }

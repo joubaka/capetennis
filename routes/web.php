@@ -9,6 +9,7 @@ use App\Http\Controllers\Backend\DashboardController;
 use App\Http\Controllers\Backend\DrawController;
 use App\Http\Controllers\Backend\EmailController;
 use App\Http\Controllers\Backend\UserPlayerController;
+use App\Http\Controllers\Frontend\MyTennisController;
 use App\Http\Controllers\Backend\EventSettingsController;
 use App\Http\Controllers\Backend\EvaluationController;
 use App\Http\Controllers\Backend\EventAdminController;
@@ -1565,6 +1566,10 @@ Route::delete(
     'user/{user}/players/{player}',
     [UserPlayerController::class, 'destroy']
   )->name('backend.user.players.destroy');
+  Route::delete(
+    'user/{user}/players',
+    [UserPlayerController::class, 'bulkDestroy']
+  )->name('backend.user.players.bulk-destroy');
 
   Route::get('player/details/{id}', [PlayerController::class, 'details'])->name('player.details');
   Route::get('player/removeProfileFromUser/{id}', [PlayerController::class, 'removeProfileFromUser'])->name('player.remove.profile');
@@ -1690,6 +1695,7 @@ Route::delete(
 
 // Frontend (auth)
 Route::prefix('frontend')->middleware('auth')->group(function () {
+  Route::get('my-tennis/players', [\App\Http\Controllers\Frontend\MyTennisController::class, 'players'])->name('my.tennis.players');
   Route::get('player/profile/{id}', [FrontendPlayerController::class, 'player_profile'])->name('frontend.player.profile');
   //Photo
   Route::get('frontPhoto/showFolder/{id}', [FrontendPhotoController::class, 'show_folder'])->name('frontend.event.show.folder');
@@ -1727,6 +1733,7 @@ Route::get('/admin/draws/format-options/{id}', function ($id) {
   return response()->json($option);
 });
 Route::middleware('auth')->group(function () {
+  Route::get('/my-tennis', [MyTennisController::class, 'index'])->name('my.tennis');
   Route::get('backend/ranking/{series}', [RankingController::class, 'show'])
     ->name('backend.ranking.show');
   Route::get('backend/ranking/{series}/results', [RankingController::class, 'results'])

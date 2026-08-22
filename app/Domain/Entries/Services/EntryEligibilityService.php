@@ -19,7 +19,14 @@ use App\Services\PlayerEligibilityService;
  */
 class EntryEligibilityService
 {
-    public function __construct(private PlayerEligibilityService $disciplinaryEligibility) {}
+    public function __construct(?PlayerEligibilityService $disciplinaryEligibility = null)
+    {
+        // Keep direct construction compatible with legacy callers and tests while
+        // still using the canonical eligibility service in application flows.
+        $this->disciplinaryEligibility = $disciplinaryEligibility ?? new PlayerEligibilityService();
+    }
+
+    private PlayerEligibilityService $disciplinaryEligibility;
 
     // -----------------------------------------------------------------------
     // ADMIN ADD-PLAYER GUARDS

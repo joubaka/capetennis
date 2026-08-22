@@ -112,13 +112,13 @@
 
             <td class="text-end">
               <a href="{{ route('admin.refunds.bank.show', $reg) }}" class="btn btn-sm btn-outline-primary me-1">
-                👁 View
+                <i class="ti ti-eye me-1" aria-hidden="true"></i>View
               </a>
               @if($reg->pf_transaction_id)
                 <a href="{{ route('admin.refunds.bank.payfast-query', $reg) }}"
                    class="btn btn-sm btn-outline-secondary me-1"
                    title="Query PayFast refund status">
-                  🔍 PF Status
+                  <i class="ti ti-credit-card me-1" aria-hidden="true"></i>PF Status
                 </a>
                 {{-- Request bank details from player --}}
                 <form method="POST"
@@ -127,7 +127,7 @@
                       class="d-inline me-1">
                   @csrf
                   <button class="btn btn-sm btn-outline-info" title="Email player to submit bank details">
-                    ✉ Bank Details
+                    <i class="ti ti-mail me-1" aria-hidden="true"></i>Bank Details
                   </button>
                 </form>
                 <form method="POST"
@@ -264,7 +264,7 @@
                     <a href="{{ route('admin.refunds.bank.payfast-query', $reg) }}"
                        class="btn btn-sm btn-outline-secondary"
                        title="Query PayFast refund status">
-                      🔍 PF Status
+                      <i class="ti ti-credit-card me-1" aria-hidden="true"></i>PF Status
                     </a>
                   @endif
                 </td>
