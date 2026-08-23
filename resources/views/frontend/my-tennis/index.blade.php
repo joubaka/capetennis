@@ -87,9 +87,10 @@
       <div class="col-12">
         <div class="card border-0 shadow-sm"><div class="card-body">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><h5 class="mb-0">Entries</h5><i class="ti ti-clipboard-list text-primary fs-4" aria-hidden="true"></i></div>
+          <p class="text-muted small mb-3">Only paid entries are confirmed and eligible for an event. An unpaid record is not an event entry until payment is completed.</p>
           <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Event</th><th>Category</th><th>Status</th><th>Payment</th></tr></thead><tbody>
           @forelse($entries as $entry)
-            <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Outstanding' }}</td></tr>
+            <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Not paid — entry not confirmed' }}</td></tr>
           @empty
             <tr><td colspan="4" class="text-muted">No entries found for this player.</td></tr>
           @endforelse
