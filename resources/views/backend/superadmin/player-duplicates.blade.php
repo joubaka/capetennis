@@ -163,6 +163,26 @@
                 @empty
                   <span class="badge bg-label-success">No linked history</span>
                 @endforelse
+                @if(!empty($item['events']))
+                  <details class="mt-2 small">
+                    <summary class="text-primary">Events participated in ({{ count($item['events']) }})</summary>
+                    <div class="mt-2">
+                      @foreach($item['events'] as $event)
+                        <div class="border rounded p-2 mb-2">
+                          <strong>{{ $event['event_name'] ?: 'Event #'.$event['event_id'] }}</strong>
+                          <div class="text-muted">{{ $event['start_date'] ?: 'Date unknown' }}{{ $event['end_date'] ? ' to '.$event['end_date'] : '' }} · {{ $event['registrations'] }} registration(s)</div>
+                          @foreach($event['categories'] as $category)
+                            <span class="badge bg-label-{{ $category['withdrawn'] ? 'secondary' : 'success' }} me-1 mt-1">
+                              {{ $category['category_name'] }} · {{ $category['withdrawn'] ? 'withdrawn' : ($category['status'] ?: 'entered') }}
+                            </span>
+                          @endforeach
+                        </div>
+                      @endforeach
+                    </div>
+                  </details>
+                @else
+                  <div class="small text-muted mt-2">No event registrations found</div>
+                @endif
               </td>
             </tr>
           @endforeach

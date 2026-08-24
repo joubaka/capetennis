@@ -552,9 +552,48 @@ class PlayerDuplicateService
             'owners' => $owners,
             'emails' => $owners->pluck('email')->push($player->email)->filter()->unique()->values(),
             'usage' => $usage,
+            'events' => $this->participatedEvents($player->id),
             'usage_total' => array_sum($usage),
             'is_empty' => array_sum($usage) === 0,
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function participatedEvents(int $playerId): array
+    {
+        if (! Schema::hasTable('player_registrations') || ! Schema::hasTable('category_event_registrations')) {
+            return [];
+        }
+
+        return DB::table('player_registrations as pr')
+            ->join('category_event_registrations as cer', 'cer.registration_id', '=', 'pr.registration_id')
+            ->join('category_events as ce', 'ce.id', '=', 'cer.category_event_id')
+            ->join('events as e', 'e.id', '=', 'ce.event_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'ce.category_id')
+            ->where('pr.player_id', $playerId)
+            ->get([
+                'e.id as event_id', 'e.name as event_name', 'e.start_date', 'e.end_date',
+                'ce.id as category_event_id', 'c.name as category_name',
+                'cer.registration_id', 'cer.status', 'cer.withdrawn_at',
+            ])
+            ->groupBy('event_id')
+            ->map(function (Collection $rows): array {
+                $first = $rows->first();
+                return [
+                    'event_id' => (int) $first->event_id,
+                    'event_name' => $first->event_name,
+                    'start_date' => $first->start_date,
+                    'end_date' => $first->end_date,
+                    'registrations' => $rows->pluck('registration_id')->unique()->count(),
+                    'categories' => $rows->map(fn ($row) => [
+                        'category_event_id' => (int) $row->category_event_id,
+                        'category_name' => $row->category_name ?: 'Uncategorised',
+                        'registration_id' => (int) $row->registration_id,
+                        'status' => $row->status,
+                        'withdrawn' => filled($row->withdrawn_at),
+                    ])->unique(fn (array $row) => $row['category_event_id'].':'.$row['registration_id'])->values()->all(),
+                ];
+            })->sortByDesc('start_date')->values()->all();
     }
 
     public function usage(int $playerId): array
