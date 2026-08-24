@@ -1148,7 +1148,7 @@ class PlayerDuplicateService
         }, 3);
     }
 
-    public function analyze(Player $keep, Player $remove, bool $allowPublishedRankingCollisions = false): array
+    public function analyze(Player $keep, Player $remove, bool $allowPublishedRankingCollisions = false, bool $allowIdentityConflict = false): array
     {
         $this->assertCandidatePair($keep, $remove);
         $keep->loadMissing(['user:id,name,email', 'users:id,name,email']);
@@ -1156,7 +1156,7 @@ class PlayerDuplicateService
 
         $registrationOverlapResolutions = $this->autoResolvableRegistrationOverlaps($keep, $remove);
         $blockers = $this->collisionBlockers($keep, $remove, $registrationOverlapResolutions, $allowPublishedRankingCollisions);
-        if (filled($keep->dateOfBirth) && filled($remove->dateOfBirth)
+        if (! $allowIdentityConflict && filled($keep->dateOfBirth) && filled($remove->dateOfBirth)
             && substr((string) $keep->dateOfBirth, 0, 10) !== substr((string) $remove->dateOfBirth, 0, 10)) {
             array_unshift($blockers, [
                 'domain' => 'identity',
@@ -1223,7 +1223,8 @@ class PlayerDuplicateService
         array $fieldSources = [],
         ?string $expectedDigest = null,
         string $reason = 'Approved duplicate player merge',
-        bool $allowPublishedRankingCollisions = false
+        bool $allowPublishedRankingCollisions = false,
+        bool $allowIdentityConflict = false
     ): Player {
         if ($keep->is($remove)) {
             throw ValidationException::withMessages(['remove_player_id' => 'Choose two different profiles.']);
@@ -1239,7 +1240,7 @@ class PlayerDuplicateService
         return DB::transaction(function () use ($keep, $remove, $approvedBy, $fieldSources, $expectedDigest, $reason, $allowPublishedRankingCollisions) {
             $keep = Player::query()->lockForUpdate()->findOrFail($keep->id);
             $remove = Player::query()->lockForUpdate()->findOrFail($remove->id);
-            $analysis = $this->analyze($keep, $remove, $allowPublishedRankingCollisions);
+            $analysis = $this->analyze($keep, $remove, $allowPublishedRankingCollisions, $allowIdentityConflict);
 
             if ($expectedDigest !== null && ! hash_equals($analysis['digest'], $expectedDigest)) {
                 throw ValidationException::withMessages([
@@ -1266,7 +1267,8 @@ class PlayerDuplicateService
         Player $remove,
         User $approvedBy,
         ?string $expectedDigest,
-        string $reason
+        string $reason,
+        bool $allowIdentityConflict = false
     ): Player {
         return $this->merge(
             $keep,
@@ -1275,7 +1277,8 @@ class PlayerDuplicateService
             [],
             $expectedDigest,
             $reason,
-            true
+            true,
+            $allowIdentityConflict
         );
     }
 

@@ -32,6 +32,13 @@
       @foreach($analysis['blockers'] as $blocker)
         <li class="mb-2">
           <strong>{{ str_replace('_', ' ', ucfirst($blocker['domain'])) }}:</strong> {{ $blocker['message'] }}
+          @if($publishedWorkflow && $blocker['domain'] === 'identity' && !$identityOverride)
+            <div class="mt-2">
+              <a class="btn btn-sm btn-outline-danger" href="{{ request()->fullUrlWithQuery(['identity_override' => 1]) }}">
+                Confirm same player and enable identity override
+              </a>
+            </div>
+          @endif
           @if(!empty($blocker['contexts']))
             @if(($blocker['contexts'][0]['type'] ?? null) === 'series_ranking')
               @foreach($blocker['contexts'] as $context)
@@ -192,12 +199,15 @@
             <input type="hidden" name="keep_player_id" value="{{ $analysis['keep']->id }}">
             <input type="hidden" name="remove_player_id" value="{{ $analysis['remove']->id }}">
             <input type="hidden" name="impact_digest" value="{{ $analysis['digest'] }}">
+            @if($identityOverride)
+              <input type="hidden" name="identity_override" value="1">
+            @endif
             <div class="mb-3">
               <label class="form-label">Reason for merging</label>
               <textarea name="reason" class="form-control" rows="3" required minlength="10" maxlength="2000" {{ $analysis['can_merge'] ? '' : 'disabled' }}>{{ old('reason') }}</textarea>
             </div>
             <div class="mb-3">
-              <label class="form-label">Type exactly: <code>{{ $publishedWorkflow ? 'MERGE PUBLISHED' : $analysis['confirmation_phrase'] }}</code></label>
+              <label class="form-label">Type exactly: <code>{{ $identityOverride ? 'MERGE PUBLISHED IDENTITY OVERRIDE' : ($publishedWorkflow ? 'MERGE PUBLISHED' : $analysis['confirmation_phrase']) }}</code></label>
               <input name="confirmation" class="form-control" required autocomplete="off" value="{{ old('confirmation') }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}>
             </div>
             <button class="btn {{ $publishedWorkflow ? 'btn-warning' : 'btn-danger' }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}><i class="ti ti-git-merge me-1"></i>{{ $publishedWorkflow ? 'Archive, merge and rebuild 2026 ranking' : 'Confirm permanent merge' }}</button>

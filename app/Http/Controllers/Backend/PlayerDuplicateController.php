@@ -53,10 +53,11 @@ class PlayerDuplicateController extends Controller
         $publishedWorkflow = $request->boolean('published');
 
         return view('backend.superadmin.player-duplicate-review', [
-            'analysis' => $duplicates->analyze($keep, $remove, $publishedWorkflow),
+            'analysis' => $duplicates->analyze($keep, $remove, $publishedWorkflow, $publishedWorkflow && $request->boolean('identity_override')),
             'first' => $first,
             'second' => $second,
             'publishedWorkflow' => $publishedWorkflow,
+            'identityOverride' => $publishedWorkflow && $request->boolean('identity_override'),
         ]);
     }
 
@@ -188,11 +189,14 @@ class PlayerDuplicateController extends Controller
             'impact_digest' => ['required', 'string', 'size:64'],
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'confirmation' => ['required', 'string', 'max:100'],
+            'identity_override' => ['nullable', 'boolean'],
         ]);
 
-        if (! hash_equals('MERGE PUBLISHED', trim($validated['confirmation']))) {
+        $identityOverride = (bool) ($validated['identity_override'] ?? false);
+        $confirmationPhrase = $identityOverride ? 'MERGE PUBLISHED IDENTITY OVERRIDE' : 'MERGE PUBLISHED';
+        if (! hash_equals($confirmationPhrase, trim($validated['confirmation']))) {
             return back()->withInput()->withErrors([
-                'confirmation' => 'Type exactly: MERGE PUBLISHED',
+                'confirmation' => "Type exactly: {$confirmationPhrase}",
             ]);
         }
 
@@ -202,6 +206,7 @@ class PlayerDuplicateController extends Controller
             $request->user(),
             $validated['impact_digest'],
             $validated['reason'],
+            $identityOverride,
         );
 
         return redirect()->route('superadmin.player-duplicates.index')->with(
