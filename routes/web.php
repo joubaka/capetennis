@@ -488,6 +488,9 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('superadmin/player-duplicates/merge', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'merge'])
       ->name('superadmin.player-duplicates.merge');
 
+    Route::post('superadmin/player-duplicates/merge-published', [\App\Http\Controllers\Backend\PlayerDuplicateController::class, 'mergePublished'])
+      ->name('superadmin.player-duplicates.merge-published');
+
     Route::get('superadmin/finances', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'index'])
       ->name('superadmin.finances');
 

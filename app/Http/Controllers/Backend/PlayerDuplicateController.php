@@ -22,7 +22,7 @@ class PlayerDuplicateController extends Controller
             ? $request->string('per_page')->toString()
             : '25';
         $perPage = $perPageOption === 'all' ? 400 : (int) $perPageOption;
-        $mergeFilter = in_array($request->string('merge_filter')->toString(), ['all', 'auto_resolvable', 'ranking_auto'], true)
+        $mergeFilter = in_array($request->string('merge_filter')->toString(), ['all', 'auto_resolvable', 'ranking_auto', 'ranking_2026'], true)
             ? $request->string('merge_filter')->toString()
             : 'all';
 
@@ -50,10 +50,13 @@ class PlayerDuplicateController extends Controller
         };
         $remove = $keep->is($first) ? $second : $first;
 
+        $publishedWorkflow = $request->boolean('published');
+
         return view('backend.superadmin.player-duplicate-review', [
-            'analysis' => $duplicates->analyze($keep, $remove),
+            'analysis' => $duplicates->analyze($keep, $remove, $publishedWorkflow),
             'first' => $first,
             'second' => $second,
+            'publishedWorkflow' => $publishedWorkflow,
         ]);
     }
 
@@ -175,6 +178,36 @@ class PlayerDuplicateController extends Controller
 
         return redirect()->route('superadmin.player-duplicates.index')
             ->with('success', "Profile #{$remove->id} was merged into profile #{$keep->id}.");
+    }
+
+    public function mergePublished(Request $request, PlayerDuplicateService $duplicates): RedirectResponse
+    {
+        $validated = $request->validate([
+            'keep_player_id' => ['required', 'integer', 'different:remove_player_id', 'exists:players,id'],
+            'remove_player_id' => ['required', 'integer', 'exists:players,id'],
+            'impact_digest' => ['required', 'string', 'size:64'],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'confirmation' => ['required', 'string', 'max:100'],
+        ]);
+
+        if (! hash_equals('MERGE PUBLISHED', trim($validated['confirmation']))) {
+            return back()->withInput()->withErrors([
+                'confirmation' => 'Type exactly: MERGE PUBLISHED',
+            ]);
+        }
+
+        $duplicates->mergePublished(
+            Player::findOrFail($validated['keep_player_id']),
+            Player::findOrFail($validated['remove_player_id']),
+            $request->user(),
+            $validated['impact_digest'],
+            $validated['reason'],
+        );
+
+        return redirect()->route('superadmin.player-duplicates.index')->with(
+            'success',
+            "Profile #{$validated['remove_player_id']} was merged into profile #{$validated['keep_player_id']}. Affected rankings are rebuilt for review and are not yet published."
+        );
     }
 
     public function decision(

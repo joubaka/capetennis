@@ -92,6 +92,32 @@ class PlayerDuplicateService
     {
         $query = $this->candidatePairQuery($includeReviewed);
 
+        if ($filter === 'ranking_2026') {
+            $rows = $query->orderBy('first_player_id')->orderBy('second_player_id')->get();
+            $rankingKeys = $this->rankingDuplicatePairKeys($rows, 2026);
+            $rows = $rows->filter(fn ($pair) => $rankingKeys->has(
+                $this->candidatePairKey($pair->first_player_id, $pair->second_player_id)
+            ))->values();
+            $existingKeys = $rows->mapWithKeys(fn ($pair) => [
+                $this->candidatePairKey($pair->first_player_id, $pair->second_player_id) => true,
+            ]);
+            foreach ($rankingKeys->keys()->diff($existingKeys->keys()) as $key) {
+                [$firstId, $secondId] = array_map('intval', explode(':', $key));
+                $rows->push((object) ['first_player_id' => $firstId, 'second_player_id' => $secondId]);
+            }
+            $hydratedRows = $this->hydrateCandidateRows($rows);
+            $page = LengthAwarePaginator::resolveCurrentPage();
+            $pageRows = $hydratedRows->slice(($page - 1) * $perPage, $perPage)->values();
+
+            return new LengthAwarePaginator(
+                $pageRows,
+                $hydratedRows->count(),
+                $perPage,
+                $page,
+                ['path' => request()->url(), 'query' => request()->query()]
+            );
+        }
+
         if (in_array($filter, ['auto_resolvable', 'ranking_auto'], true)) {
             $scanLimit = 1000;
             $rows = $query->orderBy('first_player_id')->orderBy('second_player_id')
@@ -148,6 +174,56 @@ class PlayerDuplicateService
         $pairs->setCollection($this->hydrateCandidateRows($pairs->getCollection()));
 
         return $pairs;
+    }
+
+    /** @return Collection<string, bool> */
+    private function rankingDuplicatePairKeys(Collection $candidateRows, int $year): Collection
+    {
+        if ($candidateRows->isEmpty() || ! Schema::hasTable('series_rankings')) {
+            return collect();
+        }
+
+        $playerIds = $candidateRows->flatMap(fn ($pair) => [
+            (int) $pair->first_player_id, (int) $pair->second_player_id,
+        ])->unique()->values();
+        $rows = DB::table('series_rankings as sr')
+            ->join('series as s', 's.id', '=', 'sr.series_id')
+            ->where('s.year', $year)
+            ->whereIn('sr.player_id', $playerIds)
+            ->get(['sr.series_id', 'sr.category_id', 'sr.player_id']);
+
+        $profiles = Player::query()->whereIn('id', $rows->pluck('player_id')->unique())
+            ->get(['id', 'name', 'surname'])->keyBy('id');
+        $normalize = fn ($value) => trim((string) preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower(trim((string) $value))) ?? ''));
+        $similarity = function (string $left, string $right): float {
+            if ($left === $right) return 1.0;
+            similar_text($left, $right, $percent);
+            return $percent / 100;
+        };
+        $keys = collect();
+        foreach ($rows->groupBy(fn ($row) => $this->seriesRankingCollisionKey($row->series_id, $row->category_id)) as $group) {
+            $ids = $group->pluck('player_id')->map(fn ($id) => (int) $id)->unique()->values();
+            foreach ($ids as $first) foreach ($ids as $second) {
+                if ($first < $second && $profiles->has($first) && $profiles->has($second)) {
+                    $firstName = $normalize($profiles[$first]->name);
+                    $secondName = $normalize($profiles[$second]->name);
+                    $firstSurname = $normalize($profiles[$first]->surname);
+                    $secondSurname = $normalize($profiles[$second]->surname);
+                    $nameScore = $similarity($firstName, $secondName);
+                    $surnameScore = $similarity($firstSurname, $secondSurname);
+                    $sameName = $firstName !== '' && $firstName === $secondName;
+                    $sameSurname = $firstSurname !== '' && $firstSurname === $secondSurname;
+                    $match = ($firstName !== '' && $firstName === $secondName && $firstSurname !== '' && $firstSurname === $secondSurname)
+                        || ($nameScore >= .82 && $surnameScore >= .82)
+                        || ($sameName && $surnameScore >= .65)
+                        || ($sameSurname && $nameScore >= .65);
+                    if (!$match) continue;
+                    $keys->put($this->candidatePairKey($first, $second), true);
+                }
+            }
+        }
+
+        return $keys;
     }
 
     /**
@@ -327,7 +403,10 @@ class PlayerDuplicateService
         $playerIds = $rows
             ->flatMap(fn ($pair) => [$pair->first_player_id, $pair->second_player_id])
             ->unique()->values();
-        $players = Player::with(['user:id,name,email', 'users:id,name,email'])
+        $players = Player::with([
+            'user:id,name,email,userName,userSurname,cell_nr',
+            'users:id,name,email,userName,userSurname,cell_nr',
+        ])
             ->whereIn('id', $playerIds)->get()->keyBy('id');
         $usageByPlayer = $this->usageMany($playerIds->all());
         $rankingAutoKeys ??= $this->rankingAutoResolvablePairKeys($rows);
@@ -1069,14 +1148,14 @@ class PlayerDuplicateService
         }, 3);
     }
 
-    public function analyze(Player $keep, Player $remove): array
+    public function analyze(Player $keep, Player $remove, bool $allowPublishedRankingCollisions = false): array
     {
         $this->assertCandidatePair($keep, $remove);
         $keep->loadMissing(['user:id,name,email', 'users:id,name,email']);
         $remove->loadMissing(['user:id,name,email', 'users:id,name,email']);
 
         $registrationOverlapResolutions = $this->autoResolvableRegistrationOverlaps($keep, $remove);
-        $blockers = $this->collisionBlockers($keep, $remove, $registrationOverlapResolutions);
+        $blockers = $this->collisionBlockers($keep, $remove, $registrationOverlapResolutions, $allowPublishedRankingCollisions);
         if (filled($keep->dateOfBirth) && filled($remove->dateOfBirth)
             && substr((string) $keep->dateOfBirth, 0, 10) !== substr((string) $remove->dateOfBirth, 0, 10)) {
             array_unshift($blockers, [
@@ -1100,6 +1179,11 @@ class PlayerDuplicateService
         $referenceState = $this->referenceState($keep->id, $remove->id);
         $registrationHistory = $this->registrationHistoryState($keep->id, $remove->id);
         $rankingRebuildSeriesIds = $this->autoResolvableSeriesRankingSeriesIds($keep, $remove);
+        if ($allowPublishedRankingCollisions) {
+            $rankingRebuildSeriesIds = collect($rankingRebuildSeriesIds)
+                ->merge($this->publishedCollisionSeriesIds($keep, $remove))
+                ->unique()->values()->all();
+        }
         $impact = [
             'keep' => $this->describe($keep),
             'remove' => $this->describe($remove),
@@ -1138,7 +1222,8 @@ class PlayerDuplicateService
         User $approvedBy,
         array $fieldSources = [],
         ?string $expectedDigest = null,
-        string $reason = 'Approved duplicate player merge'
+        string $reason = 'Approved duplicate player merge',
+        bool $allowPublishedRankingCollisions = false
     ): Player {
         if ($keep->is($remove)) {
             throw ValidationException::withMessages(['remove_player_id' => 'Choose two different profiles.']);
@@ -1151,10 +1236,10 @@ class PlayerDuplicateService
             ...array_keys($this->availableReferences()),
         ]);
 
-        return DB::transaction(function () use ($keep, $remove, $approvedBy, $fieldSources, $expectedDigest, $reason) {
+        return DB::transaction(function () use ($keep, $remove, $approvedBy, $fieldSources, $expectedDigest, $reason, $allowPublishedRankingCollisions) {
             $keep = Player::query()->lockForUpdate()->findOrFail($keep->id);
             $remove = Player::query()->lockForUpdate()->findOrFail($remove->id);
-            $analysis = $this->analyze($keep, $remove);
+            $analysis = $this->analyze($keep, $remove, $allowPublishedRankingCollisions);
 
             if ($expectedDigest !== null && ! hash_equals($analysis['digest'], $expectedDigest)) {
                 throw ValidationException::withMessages([
@@ -1167,8 +1252,31 @@ class PlayerDuplicateService
                 ]);
             }
 
-            return $this->executeAnalyzedMerge($keep, $remove, $approvedBy, $fieldSources, $analysis, $reason);
+            return $this->executeAnalyzedMerge($keep, $remove, $approvedBy, $fieldSources, $analysis, $reason, $allowPublishedRankingCollisions);
         }, 3);
+    }
+
+    /**
+     * Merge profiles whose only blockers are published/archived ranking
+     * collisions. Published rows are archived and preserved; affected series
+     * are rebuilt as calculated rows for explicit review before publication.
+     */
+    public function mergePublished(
+        Player $keep,
+        Player $remove,
+        User $approvedBy,
+        ?string $expectedDigest,
+        string $reason
+    ): Player {
+        return $this->merge(
+            $keep,
+            $remove,
+            $approvedBy,
+            [],
+            $expectedDigest,
+            $reason,
+            true
+        );
     }
 
     private function executeAnalyzedMerge(
@@ -1177,7 +1285,8 @@ class PlayerDuplicateService
         User $approvedBy,
         array $fieldSources,
         array $analysis,
-        string $reason
+        string $reason,
+        bool $allowPublishedRankingCollisions = false
     ): Player {
         $keptBefore = $this->playerSnapshot($keep);
         $removedSnapshot = $this->playerSnapshot($remove);
@@ -1202,6 +1311,13 @@ class PlayerDuplicateService
         }
 
         if ($rankingRebuildSeriesIds->isNotEmpty()) {
+            if ($allowPublishedRankingCollisions) {
+                $archived = DB::table('series_rankings')
+                    ->whereIn('series_id', $rankingRebuildSeriesIds)
+                    ->where('status', 'published')
+                    ->update(['status' => 'archived']);
+                $manifest['series_rankings']['archived_published_rows'] = $archived;
+            }
             $calculatedRankingRows = DB::table('series_rankings')
                 ->whereIn('series_id', $rankingRebuildSeriesIds)
                 ->whereIn('player_id', [$keep->id, $remove->id])
@@ -1235,6 +1351,11 @@ class PlayerDuplicateService
         foreach ($this->availableReferences() as $table => $columns) {
             foreach ($columns as $column) {
                 $query = DB::table($table)->where($column, $remove->id);
+                if ($allowPublishedRankingCollisions && $table === 'series_rankings') {
+                    $query->where(function ($rankingRows) {
+                        $rankingRows->whereNull('status')->orWhere('status', '!=', 'archived');
+                    });
+                }
                 $rowIds = Schema::hasColumn($table, 'id')
                     ? (clone $query)->pluck('id')->map(fn ($id) => (int) $id)->all()
                     : [];
@@ -1279,6 +1400,13 @@ class PlayerDuplicateService
         }
 
         $remaining = $this->usage($remove->id);
+        if ($allowPublishedRankingCollisions && isset($remaining['series_rankings'])) {
+            $remaining['series_rankings'] = DB::table('series_rankings')
+                ->where('player_id', $remove->id)
+                ->where(function ($rankingRows) {
+                    $rankingRows->whereNull('status')->orWhere('status', '!=', 'archived');
+                })->count();
+        }
         if (array_sum($remaining) > 0 || DB::table('user_players')->where('player_id', $remove->id)->exists()) {
             throw ValidationException::withMessages([
                 'remove_player_id' => 'The source profile still has linked records. Nothing was deleted; the reference registry must be updated before retrying.',
@@ -1787,7 +1915,7 @@ class PlayerDuplicateService
         })->values()->all();
     }
 
-    private function collisionBlockers(Player $keep, Player $remove, ?array $registrationOverlapResolutions = null): array
+    private function collisionBlockers(Player $keep, Player $remove, ?array $registrationOverlapResolutions = null, bool $allowPublishedRankingCollisions = false): array
     {
         $blockers = [];
         $autoResolvableRankingKeys = collect($this->autoResolvableSeriesRankingCollisions($keep, $remove))
@@ -1807,6 +1935,10 @@ class PlayerDuplicateService
                     $value === null ? $match->whereNull($column) : $match->where($column, $value);
                 }
                 if ($match->exists()) {
+                    if ($allowPublishedRankingCollisions && $table === 'series_rankings'
+                        && $this->publishedCollisionSeriesIds($keep, $remove)->contains((int) $sourceRow->series_id)) {
+                        continue;
+                    }
                     if ($table === 'series_rankings' && $autoResolvableRankingKeys->has(
                         $this->seriesRankingCollisionKey($sourceRow->series_id, $sourceRow->category_id)
                     )) {
@@ -1898,6 +2030,30 @@ class PlayerDuplicateService
         }
 
         return collect($blockers)->unique(fn ($blocker) => $blocker['domain'].'|'.$blocker['message'])->values()->all();
+    }
+
+    /** @return Collection<int, int> */
+    private function publishedCollisionSeriesIds(Player $keep, Player $remove): Collection
+    {
+        if (! Schema::hasTable('series_rankings')) {
+            return collect();
+        }
+
+        return DB::table('series_rankings')
+            ->join('series', 'series.id', '=', 'series_rankings.series_id')
+            ->whereIn('player_id', [$keep->id, $remove->id])
+            ->where('series.year', 2026)
+            ->whereIn('status', ['published', 'archived'])
+            ->get(['series_id', 'category_id', 'player_id', 'status'])
+            ->groupBy(fn ($row) => $this->seriesRankingCollisionKey($row->series_id, $row->category_id))
+            ->filter(function (Collection $rows) use ($keep, $remove): bool {
+                $ids = $rows->pluck('player_id')->map(fn ($id) => (int) $id)->unique();
+
+                return $ids->contains($keep->id) && $ids->contains($remove->id)
+                    && $rows->every(fn ($row) => in_array($row->status, ['published', 'archived'], true));
+            })
+            ->map(fn (Collection $rows) => (int) $rows->first()->series_id)
+            ->unique()->values();
     }
 
     /** @return array<int, array{series_id:int, category_id:int|null}> */

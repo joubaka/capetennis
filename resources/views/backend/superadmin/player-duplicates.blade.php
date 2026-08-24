@@ -8,6 +8,9 @@
       <p class="text-muted mb-0">Each pair is a candidate only. A Super Admin must compare identity and linked history before merging.</p>
     </div>
     <div class="d-flex gap-2">
+      <a href="{{ route('superadmin.player-duplicates.index', ['merge_filter' => 'ranking_2026', 'per_page' => 'all']) }}" class="btn btn-warning btn-sm">
+        <i class="ti ti-trophy me-1"></i>Find 2026 ranking duplicates
+      </a>
       <button type="button" id="toggle-quick-candidates" class="btn btn-outline-primary btn-sm" aria-pressed="false">
         <i class="ti ti-bolt me-1"></i>Quick candidates only
       </button>
@@ -44,6 +47,10 @@
              class="btn btn-sm {{ in_array($mergeFilter, ['auto_resolvable', 'ranking_auto'], true) ? 'btn-warning' : 'btn-outline-warning' }}">
             <i class="ti ti-wand me-1"></i>Can resolve automatically
           </a>
+          <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => 'all', 'merge_filter' => 'ranking_2026'])) }}"
+             class="btn btn-sm {{ $mergeFilter === 'ranking_2026' ? 'btn-warning' : 'btn-outline-warning' }}">
+            <i class="ti ti-trophy me-1"></i>2026 ranking duplicates
+          </a>
         </div>
         <form method="GET" action="{{ route('superadmin.player-duplicates.index') }}" class="d-flex align-items-end gap-2">
           @if($includeReviewed)<input type="hidden" name="include_reviewed" value="1">@endif
@@ -76,6 +83,11 @@
         <button type="submit" id="review-selected-merges" name="selection_scope" value="page" data-selection-scope="page" class="btn btn-danger" disabled>
           <i class="ti ti-git-merge me-1"></i>Review selected (<span id="selected-merge-count">0</span>)
         </button>
+        @if($mergeFilter === 'ranking_2026')
+          <button type="submit" id="review-all-2026-ranking-merges" name="selection_scope" value="page" class="btn btn-warning" onclick="document.querySelectorAll('.js-bulk-pair').forEach(function (box) { box.checked = true; });">
+            <i class="ti ti-trophy me-1"></i>Review all 2026 ranking duplicates
+          </button>
+        @endif
       </div>
       <div id="bulk-review-progress" class="d-none w-100" role="status" aria-live="polite">
         <div class="d-flex justify-content-between align-items-center small mb-1">
@@ -132,6 +144,13 @@
               <td>
                 <div class="small">{{ $item['player']->email ?: 'No player email' }}</div>
                 <div class="small">{{ $item['player']->cellNr ?: 'No cellphone' }}</div>
+                @if($item['player']->user)
+                  <div class="small text-primary mt-1"><strong>Created by user #{{ $item['player']->user->id }}</strong></div>
+                  <div class="small text-primary">{{ $item['player']->user->name ?: trim(($item['player']->user->userName ?? '').' '.($item['player']->user->userSurname ?? '')) ?: 'Unnamed user' }}</div>
+                  <div class="small text-primary">{{ $item['player']->user->email ?: 'No user email' }}{{ $item['player']->user->cell_nr ? ' · '.$item['player']->user->cell_nr : '' }}</div>
+                @else
+                  <div class="small text-muted mt-1">Created by: no linked user</div>
+                @endif
                 @forelse($item['owners'] as $owner)
                   <div class="small text-muted">{{ $owner['name'] }} ({{ $owner['email'] }})</div>
                 @empty
@@ -162,6 +181,9 @@
           @endif
           <a href="{{ route('superadmin.player-duplicates.review', [$first['player'], $second['player']]) }}" class="btn btn-outline-primary btn-sm">
             Compare and review
+          </a>
+          <a href="{{ route('superadmin.player-duplicates.review', [$first['player'], $second['player']]) }}?published=1" class="btn btn-outline-warning btn-sm">
+            <i class="ti ti-refresh me-1"></i>2026 published merge
           </a>
         </div>
       </div>

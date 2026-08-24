@@ -18,6 +18,13 @@
     <div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
   @endif
 
+  @if($publishedWorkflow)
+    <div class="alert alert-warning">
+      <strong>2026 published-ranking merge workflow.</strong>
+      This operation is limited to 2026 ranking collisions. The current published snapshot will be archived, all player history will be consolidated, and the corrected ranking will be rebuilt for review. It will not be published automatically.
+    </div>
+  @endif
+
   @if($analysis['blockers'])
     <div class="alert alert-danger">
       <strong>Merge blocked.</strong>
@@ -180,7 +187,7 @@
       <div class="card border-danger">
         <div class="card-header"><strong>Super Admin confirmation</strong></div>
         <div class="card-body">
-          <form id="merge-form" method="POST" action="{{ route('superadmin.player-duplicates.merge') }}">
+          <form id="merge-form" method="POST" action="{{ $publishedWorkflow ? route('superadmin.player-duplicates.merge-published') : route('superadmin.player-duplicates.merge') }}">
             @csrf
             <input type="hidden" name="keep_player_id" value="{{ $analysis['keep']->id }}">
             <input type="hidden" name="remove_player_id" value="{{ $analysis['remove']->id }}">
@@ -190,10 +197,10 @@
               <textarea name="reason" class="form-control" rows="3" required minlength="10" maxlength="2000" {{ $analysis['can_merge'] ? '' : 'disabled' }}>{{ old('reason') }}</textarea>
             </div>
             <div class="mb-3">
-              <label class="form-label">Type exactly: <code>{{ $analysis['confirmation_phrase'] }}</code></label>
+              <label class="form-label">Type exactly: <code>{{ $publishedWorkflow ? 'MERGE PUBLISHED' : $analysis['confirmation_phrase'] }}</code></label>
               <input name="confirmation" class="form-control" required autocomplete="off" value="{{ old('confirmation') }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}>
             </div>
-            <button class="btn btn-danger" {{ $analysis['can_merge'] ? '' : 'disabled' }}><i class="ti ti-git-merge me-1"></i>Confirm permanent merge</button>
+            <button class="btn {{ $publishedWorkflow ? 'btn-warning' : 'btn-danger' }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}><i class="ti ti-git-merge me-1"></i>{{ $publishedWorkflow ? 'Archive, merge and rebuild 2026 ranking' : 'Confirm permanent merge' }}</button>
             <div class="small text-muted mt-2">The merge will be rejected if any linked data changed since this page loaded.</div>
           </form>
         </div>
