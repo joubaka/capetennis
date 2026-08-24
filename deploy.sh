@@ -17,10 +17,19 @@ usage() { echo 'Usage: deploy main [--skip-migrations] [--skip-deps]'; echo '   
 install_command() {
     local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
     local path="$dir/deploy"
+    local profile_path="${DEPLOY_PROFILE_PATH:-$HOME/.bash_profile}"
     mkdir -p "$dir"
-    if [ -e "$path" ] || [ -L "$path" ]; then
-        [ -L "$path" ] && [ "$(readlink -f "$path")" = "$APP_PATH/bin/deploy" ] || fail "Refusing to replace existing command: $path"
-    else ln -s "$APP_PATH/bin/deploy" "$path"; fi
+    ln -sfn "$APP_PATH/bin/deploy" "$path"
+    case ":$PATH:" in
+        *":$dir:"*) ;;
+        *)
+            touch "$profile_path"
+            if ! grep -Fq 'export PATH="$HOME/bin:$PATH"' "$profile_path"; then
+                printf '\nexport PATH="$HOME/bin:$PATH"\n' >> "$profile_path"
+            fi
+            log INFO "Added $dir to PATH; reconnect once before using: deploy main"
+            ;;
+    esac
     log INFO "Deployment shortcut ready: deploy main"
 }
 while [ "$#" -gt 0 ]; do case "$1" in
