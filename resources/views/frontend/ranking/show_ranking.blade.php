@@ -4,10 +4,10 @@
 
 @section('page-style')
 <style>
-  .public-ranking-shell { max-width: 1280px; margin: 0 auto; }
+  .public-ranking-shell { width: 100%; max-width: 1280px; margin: 0 auto; padding-inline: clamp(.75rem, 2vw, 1.5rem); }
   .public-ranking-card { border: 1px solid var(--bs-border-color); border-radius: .75rem; box-shadow: 0 .125rem .75rem rgba(47, 43, 61, .06); overflow: hidden; }
   .public-ranking-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; padding: 1.75rem 1.5rem; color: #fff; background: linear-gradient(135deg, #5548c8 0%, #7367f0 62%, #8f84ff 100%); }
-  .public-ranking-hero h1 { font-size: clamp(1.35rem, 2.2vw, 1.8rem); }
+  .public-ranking-hero h1 { color: #fff !important; font-size: clamp(1.35rem, 2.2vw, 1.8rem); }
   .public-ranking-hero__eyebrow { display: block; margin-bottom: .4rem; color: rgba(255,255,255,.72); font-size: .72rem; font-weight: 700; letter-spacing: .08rem; text-transform: uppercase; }
   .public-ranking-hero__icon { display: grid; width: 4rem; height: 4rem; flex: 0 0 4rem; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.12); font-size: 1.75rem; }
   .public-ranking-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; padding: 1rem 1.35rem; border-bottom: 1px solid var(--bs-border-color); background: rgba(75, 70, 92, .035); }
@@ -16,9 +16,10 @@
   .public-ranking-stat__label { color: var(--bs-secondary-color); font-size: .72rem; }
   .public-ranking-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.35rem 0; }
   .public-ranking-filter { max-width: 20rem; }
-  .public-ranking-tabs { display: flex; flex-wrap: wrap; gap: .45rem; padding: 1rem 1.35rem 0; }
-  .public-ranking-tab { border: 1px solid var(--bs-border-color); border-radius: 2rem; color: var(--bs-secondary-color); font-size: .8rem; font-weight: 600; }
-  .public-ranking-tab.active, .public-ranking-tab:hover { border-color: #7367f0; color: #7367f0; background: rgba(115,103,240,.08); }
+  .public-ranking-tools { align-items: end; }
+  .public-ranking-division-picker { min-width: min(100%, 24rem); }
+  .public-ranking-division-picker label { display: block; margin-bottom: .35rem; color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .04rem; text-transform: uppercase; }
+  .public-ranking-division-picker select { min-height: 2.5rem; border-color: rgba(115,103,240,.45); font-weight: 600; }
   .public-ranking-category + .public-ranking-category { border-top: 1px solid var(--bs-border-color); }
   .public-ranking-category__heading { margin: 0; padding: 1.5rem 1.35rem 1rem; font-size: 1rem; font-weight: 700; }
   .public-ranking-table-wrap { padding: 0 1.35rem 1.5rem; }
@@ -29,6 +30,9 @@
   .public-ranking-table tbody tr:hover { background: rgba(115,103,240,.035); }
   .public-ranking-rank { width: 76px; font-weight: 700; white-space: nowrap; }
   .public-ranking-player { min-width: 230px; font-weight: 500; }
+  .public-ranking-player a { display: inline-flex; align-items: center; gap: .5rem; color: var(--bs-heading-color) !important; font-weight: 600; }
+  .public-ranking-player a:hover { color: #7367f0 !important; }
+  .public-ranking-player__action { display: inline-flex; align-items: center; gap: .2rem; padding: .22rem .45rem; border: 1px solid rgba(115,103,240,.28); border-radius: 999px; color: #7367f0; background: rgba(115,103,240,.08); font-size: .65rem; font-weight: 700; line-height: 1; white-space: nowrap; }
   .public-ranking-total { width: 150px; font-weight: 700; white-space: nowrap; }
   .public-ranking-scores { display: flex; flex-wrap: wrap; gap: .3rem; }
   .public-ranking-score { display: inline-flex; align-items: center; min-height: 1.55rem; padding: .25rem .65rem; border-radius: .25rem; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1; white-space: nowrap; }
@@ -41,6 +45,7 @@
   .legend-dropped::before { background: #ea5455; }
   .legend-synthetic::before { background: #ff9f43; }
   .public-ranking-category.is-hidden, .public-ranking-row.is-hidden { display: none; }
+  .public-ranking-table-wrap { overflow-x: auto; }
 
   @media (max-width: 767.98px) {
     .public-ranking-category__heading { padding: 1.15rem 1rem .75rem; }
@@ -50,7 +55,6 @@
     .public-ranking-stat { padding: .55rem .65rem; }
     .public-ranking-tools { align-items: stretch; flex-direction: column; padding: .85rem 1rem 0; }
     .public-ranking-filter { max-width: none; }
-    .public-ranking-tabs { flex-wrap: nowrap; overflow-x: auto; padding: .85rem 1rem 0; scrollbar-width: thin; }
     .public-ranking-tab { flex: 0 0 auto; }
     .public-ranking-table-wrap { padding: 0 1rem 1rem; }
     .public-ranking-table thead { display: none; }
@@ -63,6 +67,9 @@
     .public-ranking-scores-cell { grid-column: 1 / -1; grid-row: 2; padding-left: 4.2rem !important; }
     .public-ranking-total::before { content: 'Points: '; color: var(--bs-secondary-color); font-size: .7rem; font-weight: 500; }
     .public-ranking-legend { padding: 0 1rem 1rem; }
+    .public-ranking-table { min-width: 0; }
+    .public-ranking-player a { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+    .public-ranking-score { padding-inline: .5rem; font-size: .7rem; }
   }
 </style>
 @endsection
@@ -97,19 +104,22 @@
     </div>
 
     <div class="public-ranking-tools">
-      <div class="small text-muted"><i class="ti ti-info-circle me-1" aria-hidden="true"></i>Select a division, then click a player’s name to review their scores per event.</div>
+      <div class="public-ranking-division-picker">
+        <label for="ranking-division-select">View division</label>
+        <select id="ranking-division-select" class="form-select form-select-sm">
+          <option value="all" selected>All divisions</option>
+          @foreach($categories as $category)
+            <option value="category-{{ $category->id }}">{{ $category->name }}</option>
+          @endforeach
+        </select>
+        <div id="ranking-view-status" class="small text-muted mt-1" aria-live="polite"></div>
+      </div>
+      <div class="small text-muted"><i class="ti ti-info-circle me-1" aria-hidden="true"></i>Click a player’s name to review their scores per event.</div>
       <label class="public-ranking-filter input-group input-group-sm" for="ranking-player-search">
         <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
         <input id="ranking-player-search" class="form-control" type="search" placeholder="Search players" autocomplete="off">
       </label>
     </div>
-    <nav class="public-ranking-tabs" aria-label="Ranking divisions">
-      <button class="btn public-ranking-tab active" type="button" data-ranking-filter="all">All divisions</button>
-      @foreach($categories as $category)
-        <button class="btn public-ranking-tab" type="button" data-ranking-filter="category-{{ $category->id }}">{{ $category->name }}</button>
-      @endforeach
-    </nav>
-
     @forelse($categories as $category)
       @php
         $rows = $rankings->where('category_id', $category->id)->sortBy('rank_position')->values();
@@ -140,6 +150,7 @@
                       @if($row->player)
                         <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
                           {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
+                          <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
                       @else
                         Unknown Player
@@ -156,8 +167,8 @@
                             $points = rtrim(rtrim(number_format((float) ($leg['points'] ?? 0), 2, '.', ''), '0'), '.');
                           @endphp
                           <span class="public-ranking-score {{ $scoreClass }}"
-                                title="{{ ($leg['status'] ?? 'counted') === 'dropped' ? 'Not counted' : (!empty($leg['synthetic']) ? 'Automatic award' : 'Counted') }}">
-                            {{ $points }} (E{{ $leg['event_id'] ?? '?' }})
+                                title="{{ ($leg['status'] ?? 'counted') === 'dropped' ? 'Not counted' : (!empty($leg['synthetic']) ? 'Automatic award' : 'Counted') }}{{ isset($leg['event_id']) ? ' · Event ' . $leg['event_id'] : '' }}">
+                            {{ $points }}
                           </span>
                         @empty
                           <span class="text-muted small">No event scores available</span>
@@ -183,15 +194,17 @@
   </div>
 </div>
 
-@push('page-script')
+@section('page-script')
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     const search = document.getElementById('ranking-player-search');
-    const tabs = document.querySelectorAll('[data-ranking-filter]');
+    const divisionSelect = document.getElementById('ranking-division-select');
+    const viewStatus = document.getElementById('ranking-view-status');
     const categories = document.querySelectorAll('[data-ranking-category]');
     const apply = function () {
       const query = (search?.value || '').trim().toLowerCase();
-      const active = document.querySelector('[data-ranking-filter].active')?.dataset.rankingFilter || 'all';
+      const active = divisionSelect?.value || 'all';
+      const activeLabel = divisionSelect?.options[divisionSelect.selectedIndex]?.text || 'All divisions';
       categories.forEach(function (category) {
         const matchesCategory = active === 'all' || category.dataset.rankingCategory === active;
         let visibleRows = 0;
@@ -202,16 +215,14 @@
         });
         category.classList.toggle('is-hidden', !matchesCategory || visibleRows === 0);
       });
+      if (viewStatus) {
+        viewStatus.textContent = active === 'all' ? 'Showing all published divisions.' : `Showing ${activeLabel}.`;
+      }
     };
-    tabs.forEach(function (tab) {
-      tab.addEventListener('click', function () {
-        tabs.forEach(function (item) { item.classList.remove('active'); });
-        tab.classList.add('active');
-        apply();
-      });
-    });
+    divisionSelect?.addEventListener('change', apply);
     search?.addEventListener('input', apply);
+    apply();
   });
 </script>
-@endpush
+@endsection
 @endsection

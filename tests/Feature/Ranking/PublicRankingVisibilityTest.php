@@ -147,8 +147,10 @@ class PublicRankingVisibilityTest extends TestCase
                 ->assertOk()
                 ->assertSee('Total points')
                 ->assertSee('Scores per event')
-                ->assertSee("100 (E{$countedEvent->id})")
-                ->assertSee("40 (E{$droppedEvent->id})")
+                ->assertSee('100')
+                ->assertSee('40')
+                ->assertDontSee("100 (E{$countedEvent->id})")
+                ->assertDontSee("40 (E{$droppedEvent->id})")
                 ->assertSee('public-ranking-score--counted', false)
                 ->assertSee('public-ranking-score--dropped', false);
         }

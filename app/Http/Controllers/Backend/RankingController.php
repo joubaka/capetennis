@@ -120,7 +120,16 @@ class RankingController extends Controller
       ->orderBy('rank_position')
       ->get();
 
-    $categories = $rankings->pluck('category')->unique('id');
+    $categories = $rankings->pluck('category')->filter()->unique('id')->sortBy(function ($category) {
+      $name = (string) $category->name;
+      preg_match('/u\s*\/\s*(\d+)/i', $name, $ageMatch);
+      $age = (int) ($ageMatch[1] ?? 999);
+      $gender = preg_match('/boys?/i', $name) ? 2 : (preg_match('/girls?/i', $name) ? 1 : 3);
+      preg_match('/\b([AB])\b/i', $name, $divisionMatch);
+      $division = strtoupper($divisionMatch[1] ?? 'Z');
+
+      return sprintf('%d-%03d-%s-%s', $gender, $age, $division, strtolower($name));
+    })->values();
 
     $categoryEventIds = $rankings->flatMap(function ($ranking) {
       $meta = $ranking->meta_json ?? [];
