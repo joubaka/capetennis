@@ -3,7 +3,7 @@
   <div class="nav-align-top mb-4">
 
     {{-- ================= TABS ================= --}}
-    <ul class="nav nav-pills mb-3" role="tablist">
+    <ul class="nav nav-pills dashboard-tabs mb-4" role="tablist">
       <li class="nav-item" role="presentation">
         <button
           class="nav-link active"
@@ -78,9 +78,12 @@
 
       {{-- EVENTS --}}
       <div class="tab-pane fade show active" id="tab-events" role="tabpanel">
-        <div class="mb-4">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Event List</h5>
+        <div class="card dashboard-events-card mb-4">
+          <div class="card-header dashboard-section-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-1">My events</h5>
+              <p class="text-muted small mb-0">Manage registrations, schedules and event settings.</p>
+            </div>
             @can('superUser')
               <button class="btn btn-primary btn-sm"
                       data-bs-toggle="modal"
@@ -90,7 +93,7 @@
             @endcan
           </div>
           <div class="table-responsive">
-            <table class="table datatable-events border-top w-100">
+            <table class="table datatable-events align-middle w-100">
               <thead>
                 <tr>
                   <th>Event</th>

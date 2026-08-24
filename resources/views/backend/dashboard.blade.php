@@ -23,6 +23,24 @@
   .card-header h3 { font-size: 1.25rem; font-weight: 600; }
   .list-unstyled li span.fw-semibold { min-width: 120px; display: inline-block; }
   .addPlayerToProfile { float: right; }
+  .dashboard-tabs { border-bottom: 1px solid #e7e7ef; }
+  .dashboard-tabs .nav-link { border-radius: .6rem .6rem 0 0; padding: .7rem 1rem; font-weight: 600; color: #6f6b7d; }
+  .dashboard-tabs .nav-link.active { color: #7367f0; background: #f4f3ff; }
+  .dashboard-events-card { border: 1px solid #ebeaf0; box-shadow: 0 .25rem 1rem rgba(47, 43, 61, .06); }
+  .dashboard-section-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #ebeaf0; }
+  .dashboard-events-card .datatable-events thead th { background: #f8f8fb; color: #6f6b7d; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+  .dashboard-events-card .datatable-events tbody tr { border-bottom: 1px solid #f0eff3; }
+  .dashboard-events-card .datatable-events tbody td { padding: 1rem .75rem; color: #6f6b7d; }
+  .dashboard-event-name { display: inline-block; max-width: 250px; color: #4b4658; font-weight: 600; line-height: 1.3; }
+  .dashboard-event-date { display: block; color: #4b4658; font-weight: 600; white-space: nowrap; }
+  .dashboard-event-time { display: block; color: #a5a3ae; font-size: .75rem; margin-top: .15rem; }
+  .dashboard-event-actions { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 150px; }
+  .dashboard-event-actions .btn { margin: 0 !important; }
+  @media (max-width: 767.98px) {
+    .dashboard-section-header { align-items: flex-start !important; gap: 1rem; }
+    .dashboard-event-name { max-width: 180px; }
+    .dashboard-events-card .datatable-events tbody td { padding: .8rem .6rem; }
+  }
 </style>
 @endsection
 
@@ -442,16 +460,26 @@ $(function () {
           targets: 0,
           render: function (data, type, full) {
             var link = APP_URL + '/events/' + full.id;
-            var label = '<a href="' + link + '" class="btn btn-warning btn-sm text-white">' + full.name + '</a>';
+            var label = '<a href="' + link + '" class="dashboard-event-name text-decoration-none">' + $('<div>').text(full.name || 'Unnamed event').html() + '</a>';
             var isUpcoming = full.start_date && new Date(full.start_date) > new Date()
-              ? ' <span class="badge rounded-pill bg-label-success ms-1">Upcoming</span>'
+              ? '<span class="badge rounded-pill bg-label-success mt-2">Upcoming</span>'
               : '';
-            return label + isUpcoming;
+            return '<div>' + label + '<div>' + isUpcoming + '</div></div>';
+          }
+        },
+        {
+          targets: 1,
+          render: function (data, type, full) {
+            if (type !== 'display') return data || '';
+            if (!full.start_date) return '<span class="text-muted">Not scheduled</span>';
+            var date = moment(full.start_date);
+            return '<span class="dashboard-event-date">' + date.format('DD MMM YYYY') + '</span>' +
+              '<span class="dashboard-event-time">' + date.format('HH:mm') + '</span>';
           }
         },
         {
           targets: 2,
-          render: function (data, type, full) { return 'R' + (full.entryFee || 0); }
+          render: function (data, type, full) { return '<span class="fw-semibold text-dark">R ' + Number(full.entryFee || 0).toFixed(2) + '</span>'; }
         },
         {
           targets: 3,
@@ -462,7 +490,7 @@ $(function () {
           render: function (data, type, full) {
             var admin = '<a href="' + APP_URL + '/backend/event/' + full.id + '/overview" class="btn btn-sm btn-secondary me-1">Dashboard</a>';
             var copy = '<a href="' + APP_URL + '/backend/event/' + full.id + '/copy" class="btn btn-sm btn-outline-primary"><i class="ti ti-copy me-1"></i>Copy</a>';
-            return admin + copy;
+            return '<div class="dashboard-event-actions">' + admin + copy + '</div>';
           }
         },
       ],
