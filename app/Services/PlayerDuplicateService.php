@@ -1237,7 +1237,7 @@ class PlayerDuplicateService
             ...array_keys($this->availableReferences()),
         ]);
 
-        return DB::transaction(function () use ($keep, $remove, $approvedBy, $fieldSources, $expectedDigest, $reason, $allowPublishedRankingCollisions) {
+        return DB::transaction(function () use ($keep, $remove, $approvedBy, $fieldSources, $expectedDigest, $reason, $allowPublishedRankingCollisions, $allowIdentityConflict) {
             $keep = Player::query()->lockForUpdate()->findOrFail($keep->id);
             $remove = Player::query()->lockForUpdate()->findOrFail($remove->id);
             $analysis = $this->analyze($keep, $remove, $allowPublishedRankingCollisions, $allowIdentityConflict);
