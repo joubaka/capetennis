@@ -5,7 +5,20 @@
 @section('page-style')
 <style>
   .public-ranking-shell { max-width: 1280px; margin: 0 auto; }
-  .public-ranking-card { border: 1px solid var(--bs-border-color); border-radius: .55rem; box-shadow: 0 .125rem .75rem rgba(47, 43, 61, .06); overflow: hidden; }
+  .public-ranking-card { border: 1px solid var(--bs-border-color); border-radius: .75rem; box-shadow: 0 .125rem .75rem rgba(47, 43, 61, .06); overflow: hidden; }
+  .public-ranking-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; padding: 1.75rem 1.5rem; color: #fff; background: linear-gradient(135deg, #5548c8 0%, #7367f0 62%, #8f84ff 100%); }
+  .public-ranking-hero h1 { font-size: clamp(1.35rem, 2.2vw, 1.8rem); }
+  .public-ranking-hero__eyebrow { display: block; margin-bottom: .4rem; color: rgba(255,255,255,.72); font-size: .72rem; font-weight: 700; letter-spacing: .08rem; text-transform: uppercase; }
+  .public-ranking-hero__icon { display: grid; width: 4rem; height: 4rem; flex: 0 0 4rem; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.12); font-size: 1.75rem; }
+  .public-ranking-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; padding: 1rem 1.35rem; border-bottom: 1px solid var(--bs-border-color); background: rgba(75, 70, 92, .035); }
+  .public-ranking-stat { padding: .65rem .85rem; border-radius: .5rem; background: var(--bs-body-bg); }
+  .public-ranking-stat__value { display: block; color: var(--bs-heading-color); font-size: 1.1rem; font-weight: 700; }
+  .public-ranking-stat__label { color: var(--bs-secondary-color); font-size: .72rem; }
+  .public-ranking-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.35rem 0; }
+  .public-ranking-filter { max-width: 20rem; }
+  .public-ranking-tabs { display: flex; flex-wrap: wrap; gap: .45rem; padding: 1rem 1.35rem 0; }
+  .public-ranking-tab { border: 1px solid var(--bs-border-color); border-radius: 2rem; color: var(--bs-secondary-color); font-size: .8rem; font-weight: 600; }
+  .public-ranking-tab.active, .public-ranking-tab:hover { border-color: #7367f0; color: #7367f0; background: rgba(115,103,240,.08); }
   .public-ranking-category + .public-ranking-category { border-top: 1px solid var(--bs-border-color); }
   .public-ranking-category__heading { margin: 0; padding: 1.5rem 1.35rem 1rem; font-size: 1rem; font-weight: 700; }
   .public-ranking-table-wrap { padding: 0 1.35rem 1.5rem; }
@@ -13,6 +26,7 @@
   .public-ranking-table thead th { padding: .85rem 1rem; border-bottom: 0; background: rgba(75, 70, 92, .12); color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .055rem; text-transform: uppercase; white-space: nowrap; }
   .public-ranking-table tbody td { padding: .55rem 1rem; border-color: var(--bs-border-color); vertical-align: middle; }
   .public-ranking-table tbody tr:last-child td { border-bottom: 0; }
+  .public-ranking-table tbody tr:hover { background: rgba(115,103,240,.035); }
   .public-ranking-rank { width: 76px; font-weight: 700; white-space: nowrap; }
   .public-ranking-player { min-width: 230px; font-weight: 500; }
   .public-ranking-total { width: 150px; font-weight: 700; white-space: nowrap; }
@@ -26,9 +40,18 @@
   .legend-counted::before { background: #28c76f; }
   .legend-dropped::before { background: #ea5455; }
   .legend-synthetic::before { background: #ff9f43; }
+  .public-ranking-category.is-hidden, .public-ranking-row.is-hidden { display: none; }
 
   @media (max-width: 767.98px) {
     .public-ranking-category__heading { padding: 1.15rem 1rem .75rem; }
+    .public-ranking-hero { align-items: flex-start; padding: 1.35rem 1rem; }
+    .public-ranking-hero__icon { display: none; }
+    .public-ranking-summary { padding: .75rem 1rem; }
+    .public-ranking-stat { padding: .55rem .65rem; }
+    .public-ranking-tools { align-items: stretch; flex-direction: column; padding: .85rem 1rem 0; }
+    .public-ranking-filter { max-width: none; }
+    .public-ranking-tabs { flex-wrap: nowrap; overflow-x: auto; padding: .85rem 1rem 0; scrollbar-width: thin; }
+    .public-ranking-tab { flex: 0 0 auto; }
     .public-ranking-table-wrap { padding: 0 1rem 1rem; }
     .public-ranking-table thead { display: none; }
     .public-ranking-table, .public-ranking-table tbody, .public-ranking-table tr, .public-ranking-table td { display: block; width: 100%; }
@@ -54,10 +77,38 @@
 @endphp
 <div class="public-ranking-shell">
   <div class="card public-ranking-card mb-4">
-    <div class="card-header pb-2">
-      <h4 class="mb-1">Rankings</h4>
-      <div class="text-muted">{{ $seriesLabel }}</div>
+    <header class="public-ranking-hero">
+      <div>
+        <span class="public-ranking-hero__eyebrow">Cape Tennis leaderboard</span>
+        <h1 class="mb-1">{{ $seriesLabel }}</h1>
+        <p class="mb-0 text-white-50">Official published positions and event scores.</p>
+      </div>
+      <span class="public-ranking-hero__icon" aria-hidden="true"><i class="ti ti-trophy"></i></span>
+    </header>
+
+    @php
+      $totalPlayers = $rankings->pluck('player_id')->filter()->unique()->count();
+      $totalScores = $displayLegsByRanking->flatten(1)->count();
+    @endphp
+    <div class="public-ranking-summary" aria-label="Ranking summary">
+      <div class="public-ranking-stat"><span class="public-ranking-stat__value">{{ $categories->count() }}</span><span class="public-ranking-stat__label">Divisions</span></div>
+      <div class="public-ranking-stat"><span class="public-ranking-stat__value">{{ $totalPlayers }}</span><span class="public-ranking-stat__label">Players ranked</span></div>
+      <div class="public-ranking-stat"><span class="public-ranking-stat__value">{{ $totalScores }}</span><span class="public-ranking-stat__label">Event scores shown</span></div>
     </div>
+
+    <div class="public-ranking-tools">
+      <div class="small text-muted"><i class="ti ti-info-circle me-1" aria-hidden="true"></i>Select a division, then click a player’s name to review their scores per event.</div>
+      <label class="public-ranking-filter input-group input-group-sm" for="ranking-player-search">
+        <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
+        <input id="ranking-player-search" class="form-control" type="search" placeholder="Search players" autocomplete="off">
+      </label>
+    </div>
+    <nav class="public-ranking-tabs" aria-label="Ranking divisions">
+      <button class="btn public-ranking-tab active" type="button" data-ranking-filter="all">All divisions</button>
+      @foreach($categories as $category)
+        <button class="btn public-ranking-tab" type="button" data-ranking-filter="category-{{ $category->id }}">{{ $category->name }}</button>
+      @endforeach
+    </nav>
 
     @forelse($categories as $category)
       @php
@@ -65,7 +116,7 @@
       @endphp
 
       @if($rows->isNotEmpty())
-        <section class="public-ranking-category" aria-labelledby="ranking-category-{{ $category->id }}">
+        <section class="public-ranking-category" data-ranking-category="category-{{ $category->id }}" aria-labelledby="ranking-category-{{ $category->id }}">
           <h5 class="public-ranking-category__heading" id="ranking-category-{{ $category->id }}">{{ $category->name }}</h5>
 
           <div class="public-ranking-table-wrap">
@@ -83,11 +134,11 @@
                   @php
                     $displayLegs = $displayLegsByRanking->get($row->id, collect());
                   @endphp
-                  <tr>
+                  <tr class="public-ranking-row" data-player-name="{{ strtolower($row->player?->full_name ?? $row->player?->name ?? 'Unknown Player') }}">
                     <td class="public-ranking-rank">#{{ $row->rank_position }}</td>
                     <td class="public-ranking-player">
                       @if($row->player)
-                        <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none">
+                        <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
                           {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
                         </a>
                       @else
@@ -131,4 +182,36 @@
     </div>
   </div>
 </div>
+
+@push('page-script')
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const search = document.getElementById('ranking-player-search');
+    const tabs = document.querySelectorAll('[data-ranking-filter]');
+    const categories = document.querySelectorAll('[data-ranking-category]');
+    const apply = function () {
+      const query = (search?.value || '').trim().toLowerCase();
+      const active = document.querySelector('[data-ranking-filter].active')?.dataset.rankingFilter || 'all';
+      categories.forEach(function (category) {
+        const matchesCategory = active === 'all' || category.dataset.rankingCategory === active;
+        let visibleRows = 0;
+        category.querySelectorAll('.public-ranking-row').forEach(function (row) {
+          const visible = matchesCategory && (!query || row.dataset.playerName.includes(query));
+          row.classList.toggle('is-hidden', !visible);
+          if (visible) visibleRows++;
+        });
+        category.classList.toggle('is-hidden', !matchesCategory || visibleRows === 0);
+      });
+    };
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (item) { item.classList.remove('active'); });
+        tab.classList.add('active');
+        apply();
+      });
+    });
+    search?.addEventListener('input', apply);
+  });
+</script>
+@endpush
 @endsection
