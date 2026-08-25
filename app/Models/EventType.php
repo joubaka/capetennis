@@ -11,4 +11,5 @@ class EventType extends Model
   public const CAMP = 3;
   public const INDIVIDUAL = 1;
   public const TEAM = 2;
+  public const MASTERS_CODE = 'masters';
 }

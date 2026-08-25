@@ -25,7 +25,18 @@
 
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl event-edit-page">
+
+  <style>
+    .event-edit-page .card { border: 1px solid #ebeaf0; box-shadow: 0 .25rem 1rem rgba(47,43,61,.05); }
+    .event-edit-page .card-header { background: #fff; border-bottom: 1px solid #ebeaf0; }
+    .event-edit-page .setup-status { display:inline-flex; align-items:center; gap:.35rem; font-size:.75rem; font-weight:600; border-radius:999px; padding:.35rem .65rem; }
+    .event-edit-page .setup-status.ready { background:#e8f8ef; color:#198754; }
+    .event-edit-page .setup-status.warning { background:#fff4dd; color:#9a6700; }
+    .event-edit-page .setup-status.blocked { background:#fde8e7; color:#b42318; }
+    .event-edit-page .mapping-row { border-bottom:1px solid #f0eff3; padding:.65rem 0; }
+    .event-edit-page .mapping-row:last-child { border-bottom:0; }
+  </style>
 
   {{-- HEADER --}}
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -37,6 +48,71 @@
         Back to Series
       </a>
     @endif
+  </div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-xl-8">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="mb-1">Series and category setup</h5>
+            <p class="text-muted small mb-0">Confirm the event is connected to the correct ranking structure.</p>
+          </div>
+          @if($event->series)
+            <span class="setup-status ready"><i class="ti ti-check"></i> Series linked</span>
+          @else
+            <span class="setup-status blocked"><i class="ti ti-alert-circle"></i> No series linked</span>
+          @endif
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-7"><span class="text-muted small d-block">Parent series</span><strong>{{ $event->series?->name ?? 'Not linked' }}</strong></div>
+            <div class="col-md-2"><span class="text-muted small d-block">Series year</span><strong>{{ $event->series?->year ?? '—' }}</strong></div>
+            <div class="col-md-3"><span class="text-muted small d-block">Ranking type</span><strong>{{ $event->series?->rank_type ?? '—' }}</strong></div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Configured categories</h6>
+            <span class="badge bg-label-secondary">{{ $event->categoryEvents->count() }}</span>
+          </div>
+          @forelse($event->categoryEvents as $categoryEvent)
+            <div class="mapping-row d-flex justify-content-between align-items-center">
+              <div><strong>{{ $categoryEvent->category?->name ?? 'Unnamed category' }}</strong><span class="text-muted small ms-2">Category event #{{ $categoryEvent->id }}</span></div>
+              <span class="text-muted">R {{ number_format((float)($categoryEvent->entry_fee ?? $event->entryFee ?? 0), 2) }}</span>
+            </div>
+          @empty
+            <div class="alert alert-danger mb-0">Blocked: no age-group categories are attached to this event.</div>
+          @endforelse
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-4">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div><h5 class="mb-1">Masters readiness</h5><p class="text-muted small mb-0">Invitation and replacement status.</p></div>
+          @if($mastersReadiness)
+            <span class="setup-status {{ $mastersReadiness['status'] }}">{{ ucfirst($mastersReadiness['status']) }}</span>
+          @else
+            <span class="setup-status warning">Not generated</span>
+          @endif
+        </div>
+        <div class="card-body">
+          @if(!$event->series)
+            <p class="text-danger mb-2"><i class="ti ti-alert-circle me-1"></i> Link this event to a series first.</p>
+          @elseif($event->categoryEvents->isEmpty())
+            <p class="text-danger mb-2"><i class="ti ti-alert-circle me-1"></i> Add at least one Masters age group.</p>
+          @elseif(!$mastersBatch)
+            <p class="text-warning mb-3"><i class="ti ti-alert-triangle me-1"></i> Event exists, but no invitation batch has been generated.</p>
+            <a href="{{ route('series.events', $event->series_id) }}" class="btn btn-outline-primary btn-sm">Return to series setup</a>
+          @else
+            <p class="small mb-2">Batch #{{ $mastersBatch->id }} · ranking run <code>{{ $mastersBatch->ranking_run_id }}</code></p>
+            @foreach($mastersReadiness['groups'] as $group)
+              <div class="d-flex justify-content-between border-bottom py-2 small"><span>{{ $group['label'] ?? 'Age group' }}</span><strong class="{{ $group['status'] === 'blocked' ? 'text-danger' : ($group['status'] === 'warning' ? 'text-warning' : 'text-success') }}">{{ ucfirst($group['status']) }}</strong></div>
+            @endforeach
+            <a href="{{ route('backend.masters.show', $mastersBatch) }}" class="btn btn-primary btn-sm mt-3">Open Masters readiness</a>
+          @endif
+        </div>
+      </div>
+    </div>
   </div>
 
   <form id="event-edit-form"

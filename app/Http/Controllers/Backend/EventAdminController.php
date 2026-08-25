@@ -825,6 +825,26 @@ class EventAdminController extends Controller
       ? $this->buildFinanceData($event, $operations['financeTotals'])
       : [];
 
+    if ($event->isMasters()) {
+      $event->load(['series', 'categoryEvents.category']);
+      $rankingCategoryLinks = \App\Models\MastersRankingCategoryLink::with(['rankingList.category', 'categoryEvent.category'])
+        ->where('event_id', $event->id)->get();
+      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('status', '!=', 'restarted')->latest('id')->first();
+      $mastersReadiness = $mastersBatch
+        ? app(\App\Services\Masters\MastersInvitationService::class)->readiness($mastersBatch)
+        : null;
+      $rankingLists = $event->series?->ranking_lists()->with('category')->get() ?? collect();
+      $publishedRuns = $event->series
+        ? \App\Models\SeriesRanking::where('series_id', $event->series_id)
+          ->where('status', 'published')->whereNotNull('run_id')->select('run_id')
+          ->distinct()->orderByDesc('run_id')->pluck('run_id')
+        : collect();
+
+      return view('backend.event.masters.overview', compact(
+        'event', 'stats', 'operations', 'mastersBatch', 'mastersReadiness', 'rankingLists', 'publishedRuns', 'rankingCategoryLinks'
+      ));
+    }
+
     return view('backend.event.overview', [
       'event' => $event,
       'stats' => $stats,

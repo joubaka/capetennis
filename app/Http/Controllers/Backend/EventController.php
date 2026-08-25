@@ -281,11 +281,18 @@ class EventController extends Controller
     $users = User::orderBy('name')->get();
     $adminIds = $event->admins()->pluck('users.id')->toArray();
 
+    $event->load(['series', 'categoryEvents.category']);
+    $mastersBatch = null;
+    $mastersReadiness = null;
+    if (str_contains(strtolower((string) $event->name), 'masters')) {
+      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->latest('id')->first();
+      if ($mastersBatch) {
+        $mastersReadiness = app(\App\Services\Masters\MastersInvitationService::class)->readiness($mastersBatch);
+      }
+    }
+
     return view('backend.event.edit', compact(
-      'event',
-      'eventTypes',
-      'users',
-      'adminIds'
+      'event', 'eventTypes', 'users', 'adminIds', 'mastersBatch', 'mastersReadiness'
     ));
   }
 

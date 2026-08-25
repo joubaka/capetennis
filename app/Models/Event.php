@@ -307,6 +307,11 @@ class Event extends Model
     return (int) $this->eventTypeModel?->type === EventType::INDIVIDUAL;
   }
 
+  public function isMasters(): bool
+  {
+    return (string) ($this->eventTypeModel?->code ?? '') === EventType::MASTERS_CODE;
+  }
+
   public function isTeam(): bool
   {
     return (int) $this->eventTypeModel?->type === EventType::TEAM;

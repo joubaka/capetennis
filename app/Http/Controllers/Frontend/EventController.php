@@ -136,6 +136,14 @@ class EventController extends Controller
       'series',
     ])->findOrFail($id);
 
+    $mastersInvitations = collect();
+    if ($event->isMasters()) {
+      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('status', 'sent')->where('public_list_published', true)->latest('id')->first();
+      $mastersInvitations = $mastersBatch
+        ? $mastersBatch->invitations()->with(['player', 'categoryEvent.category'])->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED])->orderBy('category_event_id')->orderBy('ranking_position')->get()
+        : collect();
+    }
+
     Log::debug('EVENT LOADED', [
       'regions' => $event->regions->count(),
       'categories' => $event->eventCategories->count(),
@@ -427,7 +435,7 @@ return view('frontend.event.show', compact(
       'event',
       'user',
       'signUp',
-      'eventTypes',
+      'eventTypes', 'mastersInvitations',
       'users',
       'eDate',
       'sDate',

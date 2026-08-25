@@ -44,6 +44,7 @@ class RegistrationWithdrawController extends Controller
     // Send notification emails outside the transaction
     // (queued, so a mail failure will not affect withdrawal state)
     $registration->sendWithdrawalEmails('self');
+    app(\App\Services\Masters\MastersInvitationService::class)->handlePaidWithdrawal((int) $registration->id, $user);
 
     // -------------------------
     // REFUND DECISION

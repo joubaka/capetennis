@@ -461,6 +461,7 @@ class RegistrationPaymentController extends Controller
         $payfastData['pf_payment_id'] ?? null,
         $walletTx
       );
+      app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
 
     } catch (\Throwable $e) {
 
@@ -513,6 +514,7 @@ class RegistrationPaymentController extends Controller
     }
 
     app(PaymentOrchestrator::class)->cancelPayment($order);
+    app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($order, auth()->user());
 
     Log::info('HYBRID PAYMENT CANCELLED', [
       'order_id' => $orderId,

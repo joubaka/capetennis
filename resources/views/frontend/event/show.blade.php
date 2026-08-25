@@ -125,7 +125,7 @@
 
 <input type="hidden" id="event_id" value="{{ $event->id }}">
 
-@if(session('success'))
+@if(session('success') && !session('masters_decline_success'))
   <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
     <i class="ti ti-check me-1"></i> {{ session('success') }}
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -175,6 +175,23 @@
   <a class="btn btn-success btn-sm m-2" href="{{ auth()->check() ? route('register.register', $event->id) : route('login', ['redirect' => request()->getRequestUri()]) }}">
     <i class="ti ti-user-check"></i> Sign Up
   </a>
+@endif
+
+@if(session('masters_decline_success'))
+  <div class="modal fade" id="mastersDeclineSuccessModal" tabindex="-1" aria-labelledby="mastersDeclineSuccessModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="mastersDeclineSuccessModalLabel"><i class="ti ti-circle-check text-success me-1"></i> Invitation response recorded</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-0">{{ session('masters_decline_success') }}</div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
 @endif
 
 
@@ -245,6 +262,7 @@
 
 {{-- ================= EVENT CONTENT ================= --}}
 @switch($event->eventType)
+  @case(14) @include('frontend.event.eventTypes.masters', ['invitations' => $mastersInvitations]) @break
   @case(5)  @include('frontend.event.eventTypes.cavaliers_trials') @break
   @case(6)  @include('frontend.event.eventTypes.individual') @break
   @case(9)  @include('frontend.event.eventTypes.parentChildDoubles') @break
@@ -279,6 +297,13 @@ window.EVENT_DATA = {
 };
 
 console.log('[EVENT_DATA]', window.EVENT_DATA);
+
+@if(session('masters_decline_success'))
+document.addEventListener('DOMContentLoaded', function () {
+  const modal = document.getElementById('mastersDeclineSuccessModal');
+  if (modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+});
+@endif
 
 
 </script>

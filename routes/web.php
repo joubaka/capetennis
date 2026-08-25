@@ -126,6 +126,16 @@ Route::post('register/registerAdmin', [RegisterController::class, 'registerPlaye
 Route::post('register/payNowPayfast', [RegisterController::class, 'payNowPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.now.payfast');
 Route::post('register/payNowPayfastOrder', [RegisterController::class, 'payOrderPayfast'])->middleware(['auth', 'agreement', 'profile.updated'])->name('pay.order.payfast');
 
+Route::middleware('auth')->prefix('masters')->name('masters.')->group(function () {
+  Route::get('invitations', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'index'])->name('invitations.index');
+  Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'show'])->name('invitations.show');
+  Route::post('invitations/{invitation}/accept', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'accept'])->name('invitations.accept');
+  Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'decline'])->name('invitations.decline');
+});
+
+Route::get('masters/invitations/{invitation}/confirm-decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'confirmDecline'])
+  ->middleware('signed')->name('masters.invitations.confirm-decline');
+
 // Player Profile Update (frontend)
 Route::middleware('auth')->group(function () {
   Route::get('/player/profiles/pending', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'pending'])->name('player.profiles.pending');
@@ -382,6 +392,25 @@ Route::middleware([
 
 //backend
 Route::prefix('backend')->middleware('auth')->group(function () {
+
+  Route::middleware('role:super-user|admin')->prefix('masters')->name('backend.masters.')->group(function () {
+    Route::get('events/{event}/setup', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'setup'])->name('setup');
+    Route::post('events/{event}/sync-categories', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'syncCategories'])->name('sync-categories');
+    Route::post('events/{event}/categories', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateCategories'])->name('categories.update');
+    Route::patch('events/{event}/categories/{link}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateCategory'])->name('category.update');
+    Route::post('events/{event}/generate', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'generate'])->name('generate');
+    Route::get('batches/{batch}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'show'])->name('show');
+    Route::get('batches/{batch}/review', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'review'])->name('review');
+    Route::delete('batches/{batch}/ranking-lists/{rankingListId}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'removeRankingList'])->name('remove-ranking-list');
+    Route::post('batches/{batch}/restart', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'restart'])->name('restart');
+    Route::get('batches/{batch}/restart', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'restartPage'])->name('restart.page');
+    Route::get('batches/{batch}/readiness', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'readiness'])->name('readiness');
+    Route::patch('batches/{batch}/details', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateDetails'])->name('details.update');
+    Route::post('batches/{batch}/send-invitations', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'sendInvitations'])->name('send-invitations');
+    Route::post('batches/{batch}/public-list', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'togglePublicList'])->name('public-list.toggle');
+    Route::patch('invitations/{invitation}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateInvitation'])->name('invitation.update');
+    Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
+  });
 
   // Add these inside the backend/authenticated group (apply same middleware as other admin routes)
   Route::post('backend/users/{user}/add-role', [\App\Http\Controllers\Backend\UserController::class, 'addRole'])
