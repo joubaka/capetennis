@@ -16,7 +16,7 @@ run_php() { php -d display_errors=Off "$@"; }
 usage() { echo 'Usage: deploy main [--skip-migrations] [--skip-deps]'; echo '       ./deploy.sh --install-command'; }
 install_command() {
     local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
-    local path="$dir/deploy"
+    local path="$dir/deploy-ct"
     local profile_path="${DEPLOY_PROFILE_PATH:-$HOME/.bash_profile}"
     mkdir -p "$dir"
     ln -sfn "$APP_PATH/bin/deploy" "$path"
@@ -27,10 +27,10 @@ install_command() {
             if ! grep -Fq 'export PATH="$HOME/bin:$PATH"' "$profile_path"; then
                 printf '\nexport PATH="$HOME/bin:$PATH"\n' >> "$profile_path"
             fi
-            log INFO "Added $dir to PATH; reconnect once before using: deploy main"
+            log INFO "Added $dir to PATH; reconnect once before using: deploy-ct main"
             ;;
     esac
-    log INFO "Deployment shortcut ready: deploy main"
+    log INFO "Deployment shortcut ready: deploy-ct main"
 }
 while [ "$#" -gt 0 ]; do case "$1" in
     --install-command) INSTALL_COMMAND=true ;; --skip-migrations) SKIP_MIGRATIONS=true ;; --skip-deps) SKIP_DEPS=true ;; -h|--help) SHOW_HELP=true ;;
