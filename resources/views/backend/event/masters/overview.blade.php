@@ -54,7 +54,7 @@
         <button class="btn btn-sm btn-outline-info"><i class="ti ti-world me-1"></i>Publish names only</button>
       </form>
     </div>
-  @elseif($mastersBatch && $mastersBatch->status !== 'sent' && $mastersBatch->public_list_published)
+  @elseif($mastersBatch && $mastersBatch->public_list_published)
     <div class="alert alert-success d-flex justify-content-between align-items-center">
       <span>Player names are currently published publicly. Invitation emails have not been sent.</span>
       <form method="POST" action="{{ route('backend.masters.public-list.toggle', $mastersBatch) }}" onsubmit="return confirm('Unpublish the player names from the public event page?');">
