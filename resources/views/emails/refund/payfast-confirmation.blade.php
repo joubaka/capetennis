@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Refund Processed
 
 @php
@@ -32,5 +33,5 @@ The refund will be returned to your original payment method and may take **3–5
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za) and quote your registration ID: **#{{ $registration->id }}**.
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

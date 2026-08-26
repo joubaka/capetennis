@@ -12,5 +12,5 @@ An administrator has registered you for the following event:
 No payment is required for this administrator-created entry.
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 @endcomponent

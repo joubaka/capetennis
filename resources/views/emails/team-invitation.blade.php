@@ -1,4 +1,5 @@
 @component('mail::message')
+@include('emails._capez-header')
   {{ __('You have been invited to join the :team team!', ['team' => $invitation->team->name]) }}
 
   @if (Laravel\Fortify\Features::enabled(Laravel\Fortify\Features::registration()))

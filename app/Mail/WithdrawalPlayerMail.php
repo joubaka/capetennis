@@ -42,7 +42,7 @@ class WithdrawalPlayerMail extends Mailable implements ShouldQueue
         $categoryName = $this->registration->categoryEvent?->category?->name ?? '';
         $withdrawnAt  = $this->registration->withdrawn_at?->format('d M Y H:i') ?? now()->format('d M Y H:i');
         $initiatedBy  = $this->initiatedBy === 'admin' ? 'Event administrator' : 'You';
-        $appName      = config('app.name');
+        $appName      = 'Cape Tennis';
 
         $placeholders = [
             '{player_name}'   => $playerName,

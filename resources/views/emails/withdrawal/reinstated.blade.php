@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Registration Reinstated
 
 @php
@@ -26,5 +27,5 @@ No refund has been issued. Your original registration remains valid.
 If you did not expect this change or have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

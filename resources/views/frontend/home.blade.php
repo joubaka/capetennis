@@ -19,6 +19,20 @@
     margin-bottom: 1.5rem;
     padding: 1rem;
   }
+  .home-brand {
+    align-items: center;
+    display: flex;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .home-brand-logo {
+    height: 5.5rem;
+    max-width: 13rem;
+    object-fit: contain;
+    width: auto;
+  }
+  .home-brand-copy { min-width: 0; }
+  .home-brand-copy h1 { color: #004177; margin-bottom: .25rem; }
   .home-periods { display: grid; gap: .45rem; grid-template-columns: repeat(3, 1fr); }
   .home-periods .period-option {
     align-items: center;
@@ -97,6 +111,8 @@
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
     .home-controls { min-width: 0; padding: .8rem; }
+    .home-brand { align-items: flex-start; gap: .9rem; }
+    .home-brand-logo { height: 4.5rem; max-width: 8rem; }
     .home-periods .period-option { font-size: .78rem; padding-inline: .25rem; }
     .event-card-header { padding: 1rem; }
     .event-card-header .h4 { font-size: 1.05rem; }
@@ -119,6 +135,15 @@
 @section('content')
 <div class="row g-4 align-items-start">
   <main class="col-xl-8">
+    @php($homeBrandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
+    @php($homeBrandLogoUrl = filter_var($homeBrandLogo, FILTER_VALIDATE_URL) ? $homeBrandLogo : asset(ltrim($homeBrandLogo, '/')))
+    <section class="home-brand" aria-label="Cape Tennis">
+      <img class="home-brand-logo" src="{{ $homeBrandLogoUrl }}" alt="Cape Tennis logo">
+      <div class="home-brand-copy">
+        <h1 class="h3">Cape Tennis</h1>
+        <p class="text-muted mb-0">Find events, follow results and explore the latest series rankings.</p>
+      </div>
+    </section>
     <section class="home-controls" aria-label="Filter events">
       <fieldset class="m-0 time_period">
         <legend class="visually-hidden">Event period</legend>

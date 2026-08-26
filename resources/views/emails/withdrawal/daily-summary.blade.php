@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Withdrawal Summary
 
 There {{ $withdrawals->count() === 1 ? 'was' : 'were' }} **{{ $withdrawals->count() }} {{ Str::plural('withdrawal', $withdrawals->count()) }}** for **{{ $event->name }}** between {{ $periodStart->format('d M Y H:i') }} and {{ $periodEnd->format('d M Y H:i') }}.
@@ -18,5 +19,5 @@ There {{ $withdrawals->count() === 1 ? 'was' : 'were' }} **{{ $withdrawals->coun
 This summary is sent to Cape Tennis super administrators and the administrators assigned to this event.
 
 Regards,  
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

@@ -1,4 +1,5 @@
 @component('mail::message')
+@include('emails._capez-header')
 # {{ match($action) {
     'registration' => 'Team registration confirmed',
     'withdrawal' => 'Team player withdrawn',
@@ -38,5 +39,5 @@ Payment was confirmed and the player is registered for the team event.
 @endif
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 @endcomponent

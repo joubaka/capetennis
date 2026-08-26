@@ -31,9 +31,11 @@
   <link rel="canonical" href="{{ config('variables.productPage') ?? '' }}">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/x-icon" href="{{ asset('assets/img/favicon/favicon.ico') }}" />
+  @php($brandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
+  @php($brandLogoUrl = filter_var($brandLogo, FILTER_VALIDATE_URL) ? $brandLogo : asset(ltrim($brandLogo, '/')))
+  <link rel="icon" href="{{ $brandLogoUrl }}" />
   <link rel="manifest" href="{{ asset('manifest.webmanifest') }}" />
-  <link rel="apple-touch-icon" href="{{ asset('assets/img/pwa/cape-tennis-app-192.png') }}" />
+  <link rel="apple-touch-icon" href="{{ $brandLogoUrl }}" />
   <meta name="theme-color" content="#12358f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />

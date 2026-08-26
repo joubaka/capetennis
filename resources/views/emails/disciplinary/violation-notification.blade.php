@@ -1,4 +1,5 @@
 @component('mail::message')
+@include('emails._capez-header')
 # Disciplinary Violation Recorded
 
 A disciplinary violation has been recorded for **{{ $player->full_name }}**.
@@ -28,5 +29,5 @@ View Player Disciplinary Record
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 @endcomponent

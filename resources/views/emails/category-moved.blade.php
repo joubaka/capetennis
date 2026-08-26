@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Category Changed
 
 Hi {{ $data['player_name'] }},
@@ -13,5 +14,5 @@ This change was made by {{ $data['changed_by'] }}.
 If you did not request this change, please contact support at support@capetennis.co.za.
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Player Withdrawal Notification
 
 @php
@@ -64,5 +65,5 @@ Refund is **pending**.
 You can view this registration in the [admin panel]({{ url('/backend/event/' . ($event?->id ?? '') . '/entries') }}).
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

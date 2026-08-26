@@ -34,7 +34,7 @@ class RegistrationConfirmationMail extends Mailable implements ShouldQueue
         $firstItem  = $this->order->items->first();
         $eventName  = optional($firstItem?->category_event?->event)->name ?? 'Event';
         $userName   = $this->order->user?->name ?? 'Player';
-        $appName    = config('app.name');
+        $appName    = 'Cape Tennis';
 
         $placeholders = [
             '{event_name}' => $eventName,

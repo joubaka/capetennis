@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Registration Confirmed
 
 @php
@@ -39,5 +40,5 @@ Your registration for **{{ $eventName }}** has been confirmed.
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

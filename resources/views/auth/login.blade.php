@@ -18,7 +18,8 @@ $configData = Helper::appClasses();
     <!-- /Left Text -->
     <div class="d-none d-lg-flex col-lg-7 p-0">
       <div class="auth-cover-bg auth-cover-bg-color d-flex justify-content-center align-items-center">
-        <img src="{{ asset('assets/img/logos/cavaliers-logo.png')  }}" alt="auth-login-cover"  class="rounded img-fluid my-5 auth-illustration">
+        @php($capezLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
+        <img src="{{ filter_var($capezLogo, FILTER_VALIDATE_URL) ? $capezLogo : asset(ltrim($capezLogo, '/')) }}" alt="Capez logo" class="rounded img-fluid my-5 auth-illustration">
 
      </div>
     </div>

@@ -36,7 +36,7 @@ class CategoryMovedMail extends Mailable implements ShouldQueue
             '{old_category}' => $this->data['old_category'] ?? '',
             '{new_category}' => $this->data['new_category'] ?? '',
             '{changed_by}'   => $this->data['changed_by']   ?? '',
-            '{app_name}'     => config('app.name'),
+            '{app_name}'     => 'Cape Tennis',
         ];
 
         $storedSubject = SiteSetting::get('player_email_subject_move');

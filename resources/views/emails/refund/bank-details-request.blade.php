@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Bank Details Required for Your Refund{{ $registrations->count() > 1 ? 's' : '' }}
 
 Hi {{ $userName }},
@@ -34,5 +35,5 @@ Once you submit your details, our team will process the refund(s) within 1–3 b
 If you have any questions, contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

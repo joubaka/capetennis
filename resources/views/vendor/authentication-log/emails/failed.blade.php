@@ -1,7 +1,8 @@
 @component('mail::message')
+@include('emails._capez-header')
 # @lang('Hello!')
 
-@lang('There has been a failed login attempt to your :app account.', ['app' => config('app.name')])
+There was a failed login attempt to your Cape Tennis account.
 
 > **@lang('Account:')** {{ $account->email }}<br/>
 > **@lang('Time:')** {{ $time->toCookieString() }}<br/>
@@ -14,5 +15,5 @@
 @lang('If this was you, you can ignore this alert. If you suspect any suspicious activity on your account, please change your password.')
 
 @lang('Regards,')<br/>
-{{ config('app.name') }}
+Cape Tennis
 @endcomponent

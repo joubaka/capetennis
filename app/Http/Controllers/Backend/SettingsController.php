@@ -38,6 +38,7 @@ class SettingsController extends Controller
             'payfast_fee_flat'                 => 'required|numeric|min:0',
             'payfast_vat_rate'                 => 'required|numeric|min:0|max:100',
             'admin_notification_email'         => 'nullable|email|max:255',
+            'brand_logo_url'                   => 'nullable|string|max:2048',
             'withdrawal_deadline_days'         => 'nullable|integer|min:0|max:365',
         ];
 
@@ -61,6 +62,7 @@ class SettingsController extends Controller
         SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED, $request->boolean(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED) ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        SiteSetting::set('brand_logo_url', trim((string) $request->input('brand_logo_url', '')), SiteSetting::GROUP_GENERAL);
 
         if ($request->filled('code_of_conduct_content')) {
             SiteSetting::set('code_of_conduct_content', $request->input('code_of_conduct_content'), SiteSetting::GROUP_GENERAL);

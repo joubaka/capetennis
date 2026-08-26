@@ -994,6 +994,14 @@
                 <div class="row g-3">
 
                   <div class="col-md-12 mb-2">
+                    <label class="form-label" for="sa-brand-logo-url">Capez Logo URL or Public Path</label>
+                    <input type="text" class="form-control" id="sa-brand-logo-url" name="brand_logo_url"
+                           value="{{ old('brand_logo_url', $generalSettings['brand_logo_url'] ?? 'assets/img/logos/cape-tennis-logo-transparent.png') }}"
+                           placeholder="assets/img/logos/cape-tennis-logo-transparent.png">
+                    <small class="text-muted">Used on the dashboard/navigation and email headers. Leave the default path to keep the current Capez logo. A full HTTPS image URL is also supported.</small>
+                  </div>
+
+                  <div class="col-md-12 mb-2">
                     <label class="form-label" for="sa-admin-notification-email">Admin Notification Email</label>
                     <input type="email" class="form-control" id="sa-admin-notification-email"
                            name="admin_notification_email"

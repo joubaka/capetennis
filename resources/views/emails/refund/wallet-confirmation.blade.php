@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Wallet Refund Confirmed
 
 @php
@@ -32,5 +33,5 @@ Your wallet balance has been updated and the funds are available immediately for
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

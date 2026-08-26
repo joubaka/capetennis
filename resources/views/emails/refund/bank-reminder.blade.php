@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Bank Refund Still Pending
 
 @php
@@ -30,5 +31,5 @@ If you have already received this refund or have any questions, please contact u
 [support@capetennis.co.za](mailto:support@capetennis.co.za) and quote your registration ID: **#{{ $registration->id }}**.
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

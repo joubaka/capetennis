@@ -1,4 +1,5 @@
 @component('mail::message')
+@include('emails._capez-header')
 # Suspension Notice — {{ $player->full_name }}
 
 Dear {{ $player->full_name }},
@@ -20,5 +21,5 @@ During this period you are not permitted to participate in sanctioned Cape Tenni
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za).
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 @endcomponent

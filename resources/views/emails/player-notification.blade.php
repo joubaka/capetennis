@@ -1,6 +1,7 @@
 <x-mail::message>
+@include('emails._capez-header')
 {!! $body !!}
 
 Thanks,<br>
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>

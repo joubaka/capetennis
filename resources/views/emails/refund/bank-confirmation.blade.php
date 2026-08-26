@@ -1,4 +1,5 @@
 <x-mail::message>
+@include('emails._capez-header')
 # Bank Refund Processed
 
 @php
@@ -32,5 +33,5 @@ Please allow 1–3 business days for the funds to reflect in your bank account.
 If you have any questions, please contact us at [support@capetennis.co.za](mailto:support@capetennis.co.za) and quote your registration ID: **#{{ $registration->id }}**.
 
 Thanks,
-{{ config('app.name') }}
+Cape Tennis
 </x-mail::message>
