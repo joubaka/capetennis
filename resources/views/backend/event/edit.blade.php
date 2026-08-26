@@ -118,10 +118,17 @@
                     <i class="ti ti-world me-1"></i>{{ $mastersBatch->public_list_published ? 'Unpublish public player list' : 'Publish public player list' }}
                   </button>
                 </form>
+                <form method="POST" action="{{ route('backend.masters.registration.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->registration_open ? 'Close Masters registration now?' : 'Open Masters registration now?' }}');">
+                  @csrf
+                  <input type="hidden" name="open" value="{{ $mastersBatch->registration_open ? 0 : 1 }}">
+                  <button class="btn btn-sm {{ $mastersBatch->registration_open ? 'btn-outline-danger' : 'btn-outline-success' }}" type="submit">
+                    <i class="ti ti-lock{{ $mastersBatch->registration_open ? '-open' : '' }} me-1"></i>{{ $mastersBatch->registration_open ? 'Close registration' : 'Open registration' }}
+                  </button>
+                </form>
               @endif
             </div>
             @if($mastersBatch->status === 'sent')
-              <p class="small text-muted mt-2 mb-0">Public list: <strong>{{ $mastersBatch->public_list_published ? 'Published' : 'Unpublished' }}</strong></p>
+              <p class="small text-muted mt-2 mb-0">Public list: <strong>{{ $mastersBatch->public_list_published ? 'Published' : 'Unpublished' }}</strong> · Registration: <strong>{{ $mastersBatch->registration_open ? 'Open' : 'Closed' }}</strong></p>
             @endif
           @endif
         </div>

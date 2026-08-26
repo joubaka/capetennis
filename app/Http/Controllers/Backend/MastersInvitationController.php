@@ -159,6 +159,17 @@ class MastersInvitationController extends Controller
             : 'Masters player list unpublished from the public event page.');
     }
 
+    public function toggleRegistration(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($batch);
+        $open = $request->boolean('open');
+        $service->setRegistrationOpen($batch, $open, $request->user());
+
+        return back()->with('success', $open
+            ? 'Masters registration is now open.'
+            : 'Masters registration is now closed.');
+    }
+
     public function updateInvitation(Request $request, MastersInvitation $invitation, MastersInvitationService $service)
     {
         $this->authorizeBatch($invitation->batch);

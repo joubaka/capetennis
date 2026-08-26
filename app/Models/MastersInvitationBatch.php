@@ -11,6 +11,7 @@ class MastersInvitationBatch extends Model
     protected $casts = [
         'auto_replacement_enabled' => 'boolean',
         'public_list_published' => 'boolean',
+        'registration_open' => 'boolean',
         'response_deadline' => 'datetime',
         'payment_deadline' => 'datetime',
         'replacement_payment_deadline' => 'datetime',

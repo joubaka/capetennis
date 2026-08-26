@@ -408,6 +408,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::patch('batches/{batch}/details', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateDetails'])->name('details.update');
     Route::post('batches/{batch}/send-invitations', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'sendInvitations'])->name('send-invitations');
     Route::post('batches/{batch}/public-list', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'togglePublicList'])->name('public-list.toggle');
+    Route::post('batches/{batch}/registration', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleRegistration'])->name('registration.toggle');
     Route::patch('invitations/{invitation}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateInvitation'])->name('invitation.update');
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });

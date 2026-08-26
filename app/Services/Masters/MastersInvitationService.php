@@ -299,6 +299,23 @@ final class MastersInvitationService
         return $batch->fresh();
     }
 
+    public function setRegistrationOpen(MastersInvitationBatch $batch, bool $open, User $actor): MastersInvitationBatch
+    {
+        if ($open && $batch->status !== 'sent') {
+            throw ValidationException::withMessages(['batch' => 'Send invitations before opening Masters registration.']);
+        }
+        if ($open && !$batch->public_list_published) {
+            throw ValidationException::withMessages(['batch' => 'Publish the public player list before opening Masters registration.']);
+        }
+
+        $batch->update(['registration_open' => $open]);
+        activity('masters')->performedOn($batch)->causedBy($actor)
+            ->withProperties(['registration_open' => $open])
+            ->log($open ? 'Masters registration opened' : 'Masters registration closed');
+
+        return $batch->fresh();
+    }
+
     public function updateInvitationWave(MastersInvitation $invitation, string $status, User $actor): MastersInvitation
     {
         if (!in_array($status, [MastersInvitation::INVITED, MastersInvitation::RESERVE], true)) {
@@ -398,6 +415,9 @@ final class MastersInvitationService
             $responseDeadline = $locked->promoted_from_id
                 ? $locked->batch->replacement_payment_deadline
                 : $locked->batch->response_deadline;
+            if (!$locked->batch->registration_open) {
+                throw ValidationException::withMessages(['invitation' => 'Masters registration is currently closed.']);
+            }
             if ($locked->status !== MastersInvitation::INVITED
                 || ($responseDeadline && $now->gt($responseDeadline))
                 || ($paymentDeadline && $now->gt($paymentDeadline))) {

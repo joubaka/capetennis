@@ -137,11 +137,13 @@ class EventController extends Controller
     ])->findOrFail($id);
 
     $mastersInvitations = collect();
+    $mastersRegistrationOpen = false;
     if ($event->isMasters()) {
       $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('status', 'sent')->where('public_list_published', true)->latest('id')->first();
       $mastersInvitations = $mastersBatch
         ? $mastersBatch->invitations()->with(['player', 'categoryEvent.category'])->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED])->orderBy('category_event_id')->orderBy('ranking_position')->get()
         : collect();
+      $mastersRegistrationOpen = (bool) $mastersBatch?->registration_open;
     }
 
     Log::debug('EVENT LOADED', [
@@ -435,7 +437,7 @@ return view('frontend.event.show', compact(
       'event',
       'user',
       'signUp',
-      'eventTypes', 'mastersInvitations',
+      'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen',
       'users',
       'eDate',
       'sDate',
