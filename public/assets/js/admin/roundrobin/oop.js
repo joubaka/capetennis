@@ -65,28 +65,8 @@
     var otherFx = oop.filter(function (f) { return f.stage && f.stage !== 'RR'; });
     var sorted  = rrFx.concat(otherFx);
 
-    var search = String($('#rr-ops-search').val() || '').toLowerCase().trim();
-    var status = $('#rr-ops-status').val() || 'all';
-    var court = $('#rr-ops-court').val() || 'all';
-    var courts = {};
-    sorted.forEach(function (fx) { if (fx.court || fx.venue_name) courts[fx.court || 'Unassigned'] = true; });
-    var $court = $('#rr-ops-court');
-    if ($court.length) {
-      var current = $court.val();
-      $court.find('option:not(:first)').remove();
-      Object.keys(courts).sort().forEach(function (value) { $court.append($('<option>', { value: value, text: value })); });
-      $court.val(current && courts[current] ? current : 'all');
-      court = $court.val() || 'all';
-    }
-
     var html = '';
     sorted.forEach(function (fx) {
-      var isCompleted = !!fx.score;
-      var haystack = [fx.id, fx.home, fx.away, fx.group_name, fx.court].join(' ').toLowerCase();
-      if (search && haystack.indexOf(search) === -1) return;
-      if (status === 'completed' && !isCompleted) return;
-      if (status === 'upcoming' && isCompleted) return;
-      if (court !== 'all' && (fx.court || 'Unassigned') !== court) return;
       var p1Cls = '', p2Cls = '';
       if (fx.winner) {
         if (fx.winner == fx.r1_id) { p1Cls = 'bg-success text-white'; p2Cls = 'bg-danger text-white'; }
@@ -101,7 +81,7 @@
         '<td class="text-center">' + (fx.round || '') + '</td>' +
         '<td class="text-center">' + (fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '')) + '</td>' +
         '<td class="text-center d-none d-sm-table-cell">' + (fx.time || '') + '</td>' +
-        '<td class="text-center fw-bold">' + (fx.score || '<span class="badge bg-label-warning">Upcoming</span>') + '</td>' +
+        '<td class="text-center fw-bold">' + (fx.score || '') + '</td>' +
         '<td class="text-center">' +
           '<button class="btn btn-sm btn-primary rr-open-score-modal"' +
           ' data-fixture-id="' + fx.id + '"' +
@@ -134,15 +114,6 @@
   // ─── Bind ─────────────────────────────────────────────────────────
   function bind() {
     $(document).on('click', '#rr-save-order-btn', saveOrder);
-    $(document).on('input change', '#rr-ops-search, #rr-ops-status, #rr-ops-court', render);
-    $(document).on('click', '#rr-refresh-ops-btn', function () {
-      var $btn = $(this);
-      $btn.prop('disabled', true);
-      var request = window.AdminState && AdminState.refresh ? AdminState.refresh() : Promise.reject(new Error('Refresh unavailable.'));
-      request.then(function () { AdminToast.success('Live operations refreshed'); })
-        .catch(function (err) { AdminToast.error(err.message || 'Refresh failed'); })
-        .then(function () { $btn.prop('disabled', false); render(); });
-    });
 
     $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
       if ($(e.target).attr('id') === 'oop-tab') { render(); }

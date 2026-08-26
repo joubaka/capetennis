@@ -61,6 +61,16 @@ if (document.getElementById('layout-menu')) {
     });
   });
 
+  // Close the mobile menu when the user taps outside it.
+  document.querySelectorAll('.layout-overlay').forEach(overlay => {
+    overlay.addEventListener('click', event => {
+      event.preventDefault();
+      if (window.Helpers.isSmallScreen() && !window.Helpers.isCollapsed()) {
+        window.Helpers.setCollapsed(true);
+      }
+    });
+  });
+
   // Menu swipe gesture
 
   // Detect swipe gesture on the target element and call swipe In

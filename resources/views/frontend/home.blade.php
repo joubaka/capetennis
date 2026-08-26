@@ -107,6 +107,11 @@
     .home-controls { grid-template-columns: 1fr; }
     .rankings-title { font-size: 1.45rem; margin-top: .5rem; }
   }
+  @media (min-width: 1200px) {
+    /* The desktop navbar already carries the brand; avoid a duplicate below it. */
+    .home-brand { display: none; }
+    .home-layout { padding-top: 5rem; }
+  }
   @media (max-width: 767.98px) {
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
@@ -133,7 +138,7 @@
 @endsection
 
 @section('content')
-<div class="row g-4 align-items-start">
+<div class="home-layout row g-4 align-items-start">
   <main class="col-xl-8">
     @php($homeBrandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
     @php($homeBrandLogoUrl = filter_var($homeBrandLogo, FILTER_VALIDATE_URL) ? $homeBrandLogo : asset(ltrim($homeBrandLogo, '/')))

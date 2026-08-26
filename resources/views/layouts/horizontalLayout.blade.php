@@ -50,6 +50,46 @@ $containerNav = ($containerNav ?? 'container-xxl');
 
         @if ($isMenu)
         @include('layouts/sections/menu/horizontalMenu')
+        <script>
+          (function () {
+            const toggle = document.querySelector('.mobile-horizontal-menu-toggle');
+            const layout = document.querySelector('.layout-horizontal');
+            const menu = document.getElementById('layout-menu');
+
+            if (!toggle || !layout || !menu || toggle.dataset.menuReady === 'true') return;
+            toggle.dataset.menuReady = 'true';
+
+            const closeMenu = function () {
+              layout.classList.remove('mobile-menu-open');
+              document.documentElement.classList.remove('layout-menu-expanded');
+              toggle.setAttribute('aria-expanded', 'false');
+              toggle.setAttribute('aria-label', 'Open navigation menu');
+            };
+
+            toggle.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              const open = layout.classList.toggle('mobile-menu-open');
+              document.documentElement.classList.toggle('layout-menu-expanded', open);
+              toggle.setAttribute('aria-expanded', String(open));
+              toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+            });
+
+            document.addEventListener('click', function (event) {
+              if (layout.classList.contains('mobile-menu-open') && !menu.contains(event.target) && !toggle.contains(event.target)) {
+                closeMenu();
+              }
+            });
+
+            menu.addEventListener('click', function (event) {
+              if (event.target.closest('a:not(.menu-toggle)')) closeMenu();
+            });
+
+            window.addEventListener('resize', function () {
+              if (window.innerWidth >= 1200) closeMenu();
+            });
+          })();
+        </script>
         @endif
 
         <!-- Content -->

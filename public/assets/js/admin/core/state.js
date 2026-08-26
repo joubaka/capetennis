@@ -160,31 +160,6 @@
 
   function getSchedule() { return _state.schedule; }
 
-  // Fetch authoritative data for tournament-day refreshes.
-  function refresh() {
-    var hubUrl = root.AdminRoutes && AdminRoutes.get('hub');
-    var scheduleUrl = root.AdminRoutes && AdminRoutes.get('scheduleSummary');
-    if (!hubUrl) return Promise.reject(new Error('Draw refresh route is unavailable.'));
-
-    var requests = [fetch(hubUrl, { headers: { 'Accept': 'application/json' } }).then(function (r) {
-      if (!r.ok) throw new Error('Unable to refresh draw data.');
-      return r.json();
-    })];
-    if (scheduleUrl) requests.push(fetch(scheduleUrl, { headers: { 'Accept': 'application/json' } }).then(function (r) {
-      if (!r.ok) throw new Error('Unable to refresh schedule data.');
-      return r.json();
-    }));
-
-    return Promise.all(requests).then(function (responses) {
-      var hub = responses[0] || {};
-      if (hub.rrFixtures !== undefined) setFixtures(hub.rrFixtures);
-      if (hub.oop !== undefined) setOop(hub.oop);
-      if (hub.standings !== undefined) setStandings(hub.standings);
-      if (responses[1] && responses[1].schedule !== undefined) setSchedule(responses[1].schedule);
-      return responses;
-    });
-  }
-
   // ─── Engine mode ──────────────────────────────────────────────────
   function getEngineMode() { return _state.engineMode; }
   function getDrawId()     { return _state.drawId; }
@@ -214,7 +189,6 @@
 
     setSchedule:  setSchedule,
     getSchedule:  getSchedule,
-    refresh:      refresh,
 
     scoreSaved:   scoreSaved,
     scoreDeleted: scoreDeleted,

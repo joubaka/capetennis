@@ -44,6 +44,80 @@
   <!-- Styles -->
   @include('layouts/sections/styles')
 
+  <style>
+    /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
+    .app-brand-logo {
+      align-items: center;
+      display: inline-flex;
+      flex: 0 0 40px;
+      height: 40px;
+      justify-content: center;
+      overflow: visible;
+      width: 40px;
+    }
+    .app-brand-logo img {
+      display: block;
+      height: 40px;
+      max-height: 40px;
+      max-width: 40px;
+      object-fit: contain;
+      width: 40px;
+    }
+
+    /* Vuexy clips the desktop brand to its line-height by default. */
+    @media (min-width: 1200px) {
+      #layout-navbar .navbar-brand.app-brand {
+        align-self: stretch;
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-link {
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        overflow: visible;
+        width: 44px;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo img {
+        height: 44px;
+        max-height: 44px;
+        max-width: 44px;
+        object-fit: contain;
+        width: 44px;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .app-brand-logo {
+        flex-basis: 36px;
+        height: 36px;
+        width: 36px;
+      }
+      .app-brand-logo img {
+        height: 36px;
+        max-height: 36px;
+        max-width: 36px;
+        width: 36px;
+      }
+
+      #layout-menu .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        width: 44px;
+      }
+      #layout-menu .app-brand-logo img {
+        height: 42px;
+        max-height: 42px;
+        max-width: 42px;
+        object-fit: contain;
+        width: 42px;
+      }
+    }
+  </style>
+
   <!-- Vuexy core helpers / config -->
   @include('layouts/sections/scriptsIncludes')
 </head>
