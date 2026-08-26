@@ -327,6 +327,35 @@ class Event extends Model
     return $this->eventTypeModel?->type;
   }
 
+  /**
+   * Resolve the public event body from the event-type record, while retaining
+   * compatibility with the legacy event type ids used by existing events.
+   */
+  public function getFrontendTypeViewAttribute(): string
+  {
+    if ($this->isMasters()) {
+      return 'masters';
+    }
+
+    if ($this->isTeam()) {
+      return 'team';
+    }
+
+    if ($this->isCamp()) {
+      return 'default';
+    }
+
+    return match ((int) $this->eventType) {
+      14 => 'masters',
+      5 => 'cavaliers_trials',
+      9 => 'parentChildDoubles',
+      13 => 'interpro',
+      6, 1 => 'individual',
+      3, 7 => 'team',
+      default => 'default',
+    };
+  }
+
   /*
   |--------------------------------------------------------------------------
   | STATUS LABEL (DYNAMIC)

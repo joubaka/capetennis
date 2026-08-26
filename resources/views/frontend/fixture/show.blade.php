@@ -151,14 +151,7 @@
 </div>
 
 {{-- ================= EVENT CONTENT ================= --}}
-@switch($event->eventType)
-  @case(5)  @include('frontend.event.eventTypes.cavaliers_trials') @break
-  @case(6)  @include('frontend.event.eventTypes.individual') @break
-  @case(9)  @include('frontend.event.eventTypes.parentChildDoubles') @break
-  @case(3)
-  @case(7)  @include('frontend.event.eventTypes.team') @break
-  @case(13) @include('frontend.event.eventTypes.interpro') @break
-@endswitch
+@include('frontend.event.partials._type-content')
 
 @endsection
 
