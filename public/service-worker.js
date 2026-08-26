@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cape-tennis-shell-v1';
+const CACHE_NAME = 'cape-tennis-shell-v2';
 const OFFLINE_URL = '/offline.html';
 const SHELL_FILES = [
   OFFLINE_URL,

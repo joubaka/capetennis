@@ -33,9 +33,9 @@
   <!-- Favicon -->
   @php($brandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
   @php($brandLogoUrl = filter_var($brandLogo, FILTER_VALIDATE_URL) ? $brandLogo : asset(ltrim($brandLogo, '/')))
-  <link rel="icon" href="{{ $brandLogoUrl }}" />
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('assets/img/pwa/cape-tennis-app-192.png') }}" />
   <link rel="manifest" href="{{ asset('manifest.webmanifest') }}" />
-  <link rel="apple-touch-icon" href="{{ $brandLogoUrl }}" />
+  <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('assets/img/pwa/cape-tennis-app-192.png') }}" />
   <meta name="theme-color" content="#12358f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -48,6 +48,7 @@
     /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
     .app-brand-logo {
       align-items: center;
+      background: transparent !important;
       display: inline-flex;
       flex: 0 0 40px;
       height: 40px;
@@ -56,6 +57,7 @@
       width: 40px;
     }
     .app-brand-logo img {
+      background: transparent !important;
       display: block;
       height: 40px;
       max-height: 40px;

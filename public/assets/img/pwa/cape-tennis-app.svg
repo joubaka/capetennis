@@ -1,8 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cape Tennis">
-  <rect width="512" height="512" rx="112" fill="#12358f"/>
-  <circle cx="256" cy="256" r="170" fill="#f9a01b"/>
-  <path d="M139 139c77 33 201 157 234 234M373 139c-33 77-157 201-234 234" fill="none" stroke="#fff" stroke-width="24" stroke-linecap="round"/>
-  <circle cx="256" cy="256" r="170" fill="none" stroke="#fff" stroke-width="18"/>
-  <path d="M151 116h210" stroke="#12358f" stroke-width="26" stroke-linecap="round"/>
-  <text x="256" y="132" text-anchor="middle" font-family="Arial, sans-serif" font-size="72" font-weight="700" fill="#fff">CT</text>
+  <image href="/assets/img/pwa/cape-tennis-app-512.png" width="512" height="512" preserveAspectRatio="xMidYMid slice" />
 </svg>

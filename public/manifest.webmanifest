@@ -27,7 +27,7 @@
       "src": "/assets/img/pwa/cape-tennis-app.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

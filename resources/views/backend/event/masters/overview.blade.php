@@ -36,7 +36,7 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div><h4 class="mb-1">Masters Dashboard</h4><p class="text-muted mb-0">Manage invitations, payments, reserves, replacements and event readiness.</p></div>
-    <div class="d-flex gap-2"><a href="{{ route('backend.events.edit', $event) }}" class="btn btn-outline-secondary">Event settings</a><a href="{{ route('series.events', $event->series_id) }}" class="btn btn-outline-primary">Back to series</a></div>
+    <div class="d-flex gap-2"><a href="{{ route('backend.events.edit', $event) }}" class="btn btn-outline-secondary">Event settings</a>@if($event->series_id)<a href="{{ route('series.events', $event->series_id) }}" class="btn btn-outline-primary">Back to series</a>@endif</div>
   </div>
 
   @php($overall = $mastersReadiness['status'] ?? 'blocked')
