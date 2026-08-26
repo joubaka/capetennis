@@ -2,6 +2,9 @@
 <p>{{ $invitation->batch?->event?->name ?? 'The Cape Tennis Masters event' }} invitation update.</p>
 <p>Age group: {{ $invitation->categoryEvent?->category?->name ?? 'Masters' }}</p>
 <p>Ranking position: {{ $invitation->ranking_position }}</p>
+@if($invitation->batch?->event)
+  <p><a href="{{ route('events.show', $invitation->batch->event) }}">View the event on Cape Tennis</a></p>
+@endif
 @if($kind === 'invitation' || $kind === 'replacement')
   <p>Please log in to Cape Tennis to accept the invitation and complete PayFast payment, or decline if you are unavailable.</p>
 @elseif($kind === 'confirmed')

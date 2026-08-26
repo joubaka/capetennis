@@ -9,6 +9,7 @@ use App\Models\MastersInvitation;
 use App\Services\Masters\MastersInvitationService;
 use Illuminate\Http\Request;
 use App\Models\MastersRankingCategoryLink;
+use Illuminate\Support\Facades\Log;
 
 class MastersInvitationController extends Controller
 {
@@ -35,8 +36,15 @@ class MastersInvitationController extends Controller
     public function syncCategories(Event $event, MastersInvitationService $service)
     {
         $this->authorizeEvent($event);
-        $service->syncRankingCategories($event);
-        return back()->with('success', 'Masters categories synced from the Series ranking lists.');
+        $links = $service->syncRankingCategories($event);
+        Log::info('Masters ranking category sync request finished', [
+            'event_id' => $event->id,
+            'user_id' => auth()->id(),
+            'synced_count' => count($links),
+        ]);
+        return back()->with('success', count($links)
+            ? 'Masters categories synced from the Series ranking lists.'
+            : 'No Masters categories were synced. Check that this event is linked to a series with ranking lists.');
     }
 
     public function updateCategories(Request $request, Event $event, MastersInvitationService $service)

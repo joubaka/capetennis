@@ -20,26 +20,75 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 final class MastersInvitationService
 {
     public function syncRankingCategories(Event $event): array
     {
-        $lists = $event->series?->ranking_lists()->with('category')->get() ?? collect();
-        return DB::transaction(function () use ($event, $lists) {
+        Log::info('Masters ranking category sync started', [
+            'event_id' => $event->id,
+            'event_name' => $event->name,
+            'event_type' => $event->eventType,
+            'series_id' => $event->series_id,
+        ]);
+
+        if (!$event->series_id || !$event->series) {
+            Log::warning('Masters ranking category sync blocked: event has no linked series', [
+                'event_id' => $event->id,
+                'event_name' => $event->name,
+                'series_id' => $event->series_id,
+            ]);
+            return [];
+        }
+
+        $lists = $event->series->ranking_lists()->with('category')->get();
+        Log::info('Masters ranking category sync loaded ranking lists', [
+            'event_id' => $event->id,
+            'series_id' => $event->series_id,
+            'ranking_list_count' => $lists->count(),
+            'ranking_list_ids' => $lists->pluck('id')->values()->all(),
+        ]);
+
+        $synced = DB::transaction(function () use ($event, $lists) {
             return $lists->map(function ($list) use ($event) {
                 $name = trim((string) ($list->category?->name ?? 'Ranking list '.$list->id)).' Masters';
+                Log::info('Masters ranking category sync processing list', [
+                    'event_id' => $event->id,
+                    'series_id' => $event->series_id,
+                    'ranking_list_id' => $list->id,
+                    'ranking_list_name' => $list->name ?? null,
+                    'category_id' => $list->category_id ?? null,
+                    'category_name' => $list->category?->name,
+                    'target_category_name' => $name,
+                ]);
                 $category = Category::firstOrCreate(['name' => $name]);
                 $categoryEvent = CategoryEvent::firstOrCreate(
                     ['event_id' => $event->id, 'category_id' => $category->id],
                     ['entry_fee' => $event->entryFee, 'ordering' => $list->id]
                 );
-                return MastersRankingCategoryLink::updateOrCreate(
+                $link = MastersRankingCategoryLink::updateOrCreate(
                     ['event_id' => $event->id, 'ranking_list_id' => $list->id],
                     ['category_event_id' => $categoryEvent->id, 'category_name' => $name]
                 )->load(['rankingList.category', 'categoryEvent.category']);
+                Log::info('Masters ranking category sync list completed', [
+                    'event_id' => $event->id,
+                    'ranking_list_id' => $list->id,
+                    'category_id' => $category->id,
+                    'category_event_id' => $categoryEvent->id,
+                    'link_id' => $link->id,
+                ]);
+                return $link;
             })->all();
         });
+
+        Log::info('Masters ranking category sync completed', [
+            'event_id' => $event->id,
+            'series_id' => $event->series_id,
+            'synced_count' => count($synced),
+        ]);
+
+        return $synced;
     }
 
     public function updateRankingCategoryLinks(Event $event, array $links): void

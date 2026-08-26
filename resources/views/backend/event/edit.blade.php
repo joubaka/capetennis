@@ -108,7 +108,21 @@
             @foreach($mastersReadiness['groups'] as $group)
               <div class="d-flex justify-content-between border-bottom py-2 small"><span>{{ $group['label'] ?? 'Age group' }}</span><strong class="{{ $group['status'] === 'blocked' ? 'text-danger' : ($group['status'] === 'warning' ? 'text-warning' : 'text-success') }}">{{ ucfirst($group['status']) }}</strong></div>
             @endforeach
-            <a href="{{ route('backend.masters.show', $mastersBatch) }}" class="btn btn-primary btn-sm mt-3">Open Masters readiness</a>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <a href="{{ route('backend.masters.show', $mastersBatch) }}" class="btn btn-primary btn-sm">Open Masters readiness</a>
+              @if($mastersBatch->status === 'sent')
+                <form method="POST" action="{{ route('backend.masters.public-list.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->public_list_published ? 'Hide the Masters player names from the public list?' : 'Publish the Masters player names publicly now?' }}');">
+                  @csrf
+                  <input type="hidden" name="published" value="{{ $mastersBatch->public_list_published ? 0 : 1 }}">
+                  <button class="btn btn-sm {{ $mastersBatch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}" type="submit">
+                    <i class="ti ti-world me-1"></i>{{ $mastersBatch->public_list_published ? 'Unpublish public player list' : 'Publish public player list' }}
+                  </button>
+                </form>
+              @endif
+            </div>
+            @if($mastersBatch->status === 'sent')
+              <p class="small text-muted mt-2 mb-0">Public list: <strong>{{ $mastersBatch->public_list_published ? 'Published' : 'Unpublished' }}</strong></p>
+            @endif
           @endif
         </div>
       </div>
