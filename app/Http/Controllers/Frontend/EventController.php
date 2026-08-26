@@ -138,6 +138,7 @@ class EventController extends Controller
 
     $mastersInvitations = collect();
     $mastersRegistrationOpen = false;
+    $mastersBatch = null;
     if ($event->isMasters()) {
       $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('status', 'sent')->where('public_list_published', true)->latest('id')->first();
       $mastersInvitations = $mastersBatch
@@ -437,7 +438,7 @@ return view('frontend.event.show', compact(
       'event',
       'user',
       'signUp',
-      'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen',
+      'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen', 'mastersBatch',
       'users',
       'eDate',
       'sDate',
