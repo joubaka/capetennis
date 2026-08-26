@@ -149,6 +149,15 @@ class MastersInvitationController extends Controller
             ->with('success', "{$count} invitations have been queued for sending. The Masters event dashboard is now the main operating page.");
     }
 
+    public function publishNamesOnly(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($batch);
+        $service->publishNamesOnly($batch, $request->user());
+
+        return redirect()->route('admin.events.overview', $batch->event_id)
+            ->with('success', 'Player names are now published publicly. No invitation emails were sent.');
+    }
+
     public function togglePublicList(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);

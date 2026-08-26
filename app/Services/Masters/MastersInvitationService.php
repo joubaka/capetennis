@@ -299,6 +299,20 @@ final class MastersInvitationService
         return $batch->fresh();
     }
 
+    public function publishNamesOnly(MastersInvitationBatch $batch, User $actor): MastersInvitationBatch
+    {
+        if ($batch->status === 'sent') {
+            throw ValidationException::withMessages(['batch' => 'Use the existing public player list control for an invitation batch that has already been sent.']);
+        }
+
+        $batch->update(['public_list_published' => true]);
+        activity('masters')->performedOn($batch)->causedBy($actor)
+            ->withProperties(['published' => true, 'emails_sent' => false])
+            ->log('Masters player names published publicly without sending invitations');
+
+        return $batch->fresh();
+    }
+
     public function setRegistrationOpen(MastersInvitationBatch $batch, bool $open, User $actor): MastersInvitationBatch
     {
         if ($open && $batch->status !== 'sent') {

@@ -140,7 +140,7 @@ class EventController extends Controller
     $mastersRegistrationOpen = false;
     $mastersBatch = null;
     if ($event->isMasters()) {
-      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('status', 'sent')->where('public_list_published', true)->latest('id')->first();
+      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->where('public_list_published', true)->latest('id')->first();
       $mastersInvitations = $mastersBatch
         ? $mastersBatch->invitations()->with(['player', 'categoryEvent.category'])->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED])->orderBy('category_event_id')->orderBy('ranking_position')->get()
         : collect();
