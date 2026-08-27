@@ -107,6 +107,18 @@ class MastersInvitationController extends Controller
         return view('backend.masters.review', compact('batch'));
     }
 
+    public function previewInvitation(MastersInvitation $invitation)
+    {
+        $this->authorizeBatch($invitation->batch);
+        $invitation->load(['batch.event', 'categoryEvent.category', 'player']);
+        $mail = new \App\Mail\MastersInvitationMail($invitation);
+
+        return view('backend.masters.invitation-preview', [
+            'subject' => $mail->subject(),
+            'body' => view('emails.masters.invitation', compact('invitation'))->render(),
+        ]);
+    }
+
     public function removeRankingList(Request $request, MastersInvitationBatch $batch, int $rankingListId, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);

@@ -17,13 +17,18 @@ class MastersInvitationMail extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: match ($this->kind) {
+        return new Envelope(subject: $this->subject());
+    }
+
+    public function subject(): string
+    {
+        return match ($this->kind) {
             'replacement' => 'Cape Tennis Masters replacement invitation',
             'confirmed' => 'Cape Tennis Masters payment confirmed',
             'declined' => 'Cape Tennis Masters invitation declined',
             'withdrawn' => 'Cape Tennis Masters withdrawal recorded',
             default => 'Cape Tennis Masters invitation',
-        });
+        };
     }
 
     public function content(): Content

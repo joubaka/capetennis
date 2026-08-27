@@ -1,0 +1,1 @@
+<div class="mb-3"><div class="text-muted small text-uppercase fw-semibold">Subject</div><div class="fw-semibold">{{ $subject }}</div></div><hr><div class="border rounded p-4 bg-white">{!! $body !!}</div>

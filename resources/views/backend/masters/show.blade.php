@@ -17,6 +17,7 @@
   .masters-entry-row .contact-cell small { display:block; color:#8b8794; }
   .masters-entry-row .contact-cell .email-link { display:block; }
   .masters-entry-row .action-cell form { display:inline-block; }
+  .masters-entry-row .action-cell { white-space:nowrap; }
   @media (max-width: 900px) { .masters-entry-head { display:none; } .masters-entry-row { grid-template-columns:2rem minmax(9rem,1fr) minmax(7rem,1fr) auto; } .masters-entry-row .email-cell, .masters-entry-row .cell-cell, .masters-entry-row .payment-cell { grid-column:2 / span 2; } }
   .masters-groups { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
   .masters-groups .card { margin-bottom:0 !important; }
@@ -97,8 +98,24 @@
 @endsection
 
 @section('page-script')
+<div class="modal fade" id="invitationPreviewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Invitation email preview</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" id="invitationPreviewBody"><div class="text-center text-muted py-4">Loading preview…</div></div></div></div></div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const previewModal = document.getElementById('invitationPreviewModal');
+  document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
+    const form = cell.querySelector('.js-invitation-wave-form');
+    if (!form) return;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'btn btn-sm btn-outline-info me-1'; button.textContent = 'Preview';
+    button.addEventListener('click', async function () {
+      const body = document.getElementById('invitationPreviewBody');
+      body.innerHTML = '<div class="text-center text-muted py-4">Loading preview…</div>';
+      bootstrap.Modal.getOrCreateInstance(previewModal).show();
+      try { const response = await fetch(form.action + '/preview', {headers: {'Accept': 'text/html'}}); if (!response.ok) throw new Error('Could not load the preview.'); body.innerHTML = await response.text(); }
+      catch (error) { body.innerHTML = '<div class="alert alert-danger mb-0">' + error.message + '</div>'; }
+    });
+    cell.insertBefore(button, form);
+  });
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   document.querySelectorAll('.js-invitation-wave-form').forEach(function (form) {
     form.addEventListener('submit', async function (event) {
