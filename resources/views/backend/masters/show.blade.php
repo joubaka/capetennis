@@ -35,6 +35,7 @@
     Readiness: {{ ucfirst($readiness['status']) }}
   </div>
   @if($batch->status !== 'sent')
+    <div class="alert alert-light border mb-3"><strong>What to do on this page:</strong> Set the deadlines players will see in their invitation, confirm the selected invitees below, then save these details before sending.</div>
     <div class="card mb-3"><div class="card-header"><h5 class="mb-1">Step 2: review and send invitations</h5><p class="text-muted small mb-0">Review the invitee names below, adjust the invitation wave if needed, then send all selected invitations.</p></div><div class="card-body"><form method="POST" action="{{ route('backend.masters.details.update', $batch) }}">@csrf @method('PATCH')<div class="row g-3"><div class="col-md-4"><label class="form-label">Response deadline</label><input name="response_deadline" type="datetime-local" class="form-control" value="{{ $batch->response_deadline?->format('Y-m-d\\TH:i') }}" required></div><div class="col-md-4"><label class="form-label">Payment deadline</label><input name="payment_deadline" type="datetime-local" class="form-control" value="{{ $batch->payment_deadline?->format('Y-m-d\\TH:i') }}" required></div><div class="col-md-4"><label class="form-label">Replacement payment deadline</label><input name="replacement_payment_deadline" type="datetime-local" class="form-control" value="{{ $batch->replacement_payment_deadline?->format('Y-m-d\\TH:i') }}" required></div></div><button class="btn btn-outline-primary mt-3">Save invitation details</button></form>@if($batch->response_deadline && $batch->payment_deadline && $batch->replacement_payment_deadline)<form method="POST" action="{{ route('backend.masters.send-invitations', $batch) }}" class="mt-3" onsubmit="return confirm('Send invitations to all selected invitees now?');">@csrf<button class="btn btn-primary">Send invitations to all invitees</button></form>@endif</div></div>
   @else
     <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Invitations have been sent. The checked players below are now active invitees in their Masters categories.</span><form method="POST" action="{{ route('backend.masters.public-list.toggle', $batch) }}">@csrf<input type="hidden" name="published" value="{{ $batch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $batch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}">{{ $batch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form></div>
@@ -101,6 +102,20 @@
 <div class="modal fade" id="invitationPreviewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Invitation email preview</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" id="invitationPreviewBody"><div class="text-center text-muted py-4">Loading preview…</div></div></div></div></div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const deadlineHints = {
+    response_deadline: 'The last date and time for the player to accept or decline the invitation.',
+    payment_deadline: 'The last date and time for an accepted player to complete payment and secure their place.',
+    replacement_payment_deadline: 'The last date and time a replacement player may complete payment after being invited.'
+  };
+  Object.entries(deadlineHints).forEach(function ([name, hint]) {
+    const input = document.querySelector('[name="' + name + '"]');
+    if (!input) return;
+    const wrapper = input.closest('.col-md-4');
+    const label = wrapper?.querySelector('label');
+    if (label) { label.setAttribute('title', hint); label.setAttribute('data-bs-toggle', 'tooltip'); label.insertAdjacentHTML('beforeend', ' <span class="text-muted" aria-hidden="true">ⓘ</span>'); }
+    input.insertAdjacentHTML('afterend', '<div class="form-text">' + hint + '</div>');
+  });
+  if (window.bootstrap) document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) { new bootstrap.Tooltip(el); });
   const previewModal = document.getElementById('invitationPreviewModal');
   document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
     const form = cell.querySelector('.js-invitation-wave-form');
