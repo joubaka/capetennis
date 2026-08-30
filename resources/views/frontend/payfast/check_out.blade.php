@@ -7,6 +7,8 @@
 @section('page-style')
 <style>
   .registration-checkout { max-width: 1180px; }
+  /* The horizontal header is fixed, so keep this page content below both navbar rows. */
+  .layout-navbar-fixed.layout-horizontal .registration-checkout { padding-top: 5.5rem !important; }
   .registration-checkout .checkout-intro { max-width: 820px; }
   .registration-checkout .checkout-eyebrow { letter-spacing: .08em; font-size: .72rem; font-weight: 700; text-transform: uppercase; }
   .registration-checkout .checkout-card { height: 100%; border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; overflow: hidden; }
@@ -23,7 +25,7 @@
   .registration-checkout .checkout-step + .checkout-step::before { content: '›'; margin: 0 .25rem; opacity: .55; }
   .registration-checkout .payfast-submit { min-height: 56px; font-size: 1.05rem; font-weight: 700; }
   .registration-checkout .checkout-note { display: flex; gap: .5rem; align-items: flex-start; }
-  .registration-checkout .checkout-summary { border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; background: #fff; box-shadow: 0 .25rem 1rem rgba(67, 89, 113, .08); }
+  .registration-checkout .checkout-summary { border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; background: #fff; box-shadow: 0 .35rem 1.25rem rgba(67, 89, 113, .1); }
   .registration-checkout .checkout-summary .summary-item { padding: 1rem 1.2rem; }
   .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 1px solid rgba(67, 89, 113, .12); }
   .registration-checkout .choice-label { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
@@ -33,6 +35,7 @@
   .registration-checkout .choice-card .card-body { min-height: 250px; }
   .registration-checkout .checkout-actions { margin-top: auto; }
   @media (max-width: 767.98px) {
+    .layout-navbar-fixed.layout-horizontal .registration-checkout { padding-top: 1.5rem !important; }
     .registration-checkout.container-p-y { padding-top: 1.25rem !important; }
     .registration-checkout .checkout-summary .summary-item { padding: .8rem; }
     .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 0; border-top: 1px solid rgba(67, 89, 113, .12); }
@@ -122,15 +125,15 @@
 
   <div class="checkout-summary row g-0 mb-4" aria-label="Payment summary">
     <div class="summary-item col-md-4">
-      <div class="text-muted small">Registration total</div>
+      <div class="text-muted small"><i class="ti ti-receipt me-1"></i>Registration total</div>
       <div class="h5 mb-0 mt-1">R {{ number_format($total, 2) }}</div>
     </div>
     <div class="summary-item col-md-4">
-      <div class="text-muted small">Wallet available</div>
+      <div class="text-muted small"><i class="ti ti-wallet me-1"></i>Wallet available</div>
       <div class="h5 mb-0 mt-1 text-primary">R {{ number_format($walletBalance, 2) }}</div>
     </div>
     <div class="summary-item col-md-4">
-      <div class="text-muted small">PayFast due now</div>
+      <div class="text-muted small"><i class="ti ti-credit-card me-1"></i>PayFast due now</div>
       <div class="h5 mb-0 mt-1 {{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}" id="payfastDueSummary">R {{ number_format($payfastDue, 2) }}</div>
     </div>
   </div>
