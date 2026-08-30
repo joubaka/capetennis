@@ -25,8 +25,15 @@
 
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/wizard-ex-checkout.css') }}?v={{ config('app.asset_version') }}" />
-<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
 <style>
+  #wizard-checkout .playerRow ~ .playerRow .removePlayer {
+    display: inline-flex !important;
+  }
+  #wizard-checkout .playerRow:first-child .removePlayer {
+    display: none !important;
+  }
+
   @media (max-width: 767.98px) {
     body { overflow-x: hidden; }
     .content-wrapper > .container-xxl > h4 {
@@ -126,6 +133,12 @@
       min-width: 0;
       white-space: normal;
       line-height: 1.2;
+    }
+    #wizard-checkout .playerRow ~ .playerRow .removePlayer {
+      display: inline-flex !important;
+    }
+    #wizard-checkout .playerRow:first-child .removePlayer {
+      display: none !important;
     }
     #wizard-checkout .playerRow .card-body,
     #wizard-checkout .border.rounded.p-4 {
