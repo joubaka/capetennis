@@ -461,6 +461,9 @@ $(function () {
 
     const num = $('.playerRow').length + 1;
     $clone.find('.playerNr').text('Player ' + num);
+    if (!$clone.find('.removePlayer').length) {
+      $clone.find('.numPlayers').prepend('<div class="d-flex align-items-center justify-content-between mb-3"><span class="fw-semibold playerNr">Player ' + num + '</span><button type="button" class="btn btn-outline-danger btn-sm removePlayer" aria-label="Remove Player ' + num + '"><i class="ti ti-trash me-1"></i>Remove</button></div>');
+    }
     $clone.find('.removePlayer')
       .removeClass('d-none')
       .css('display', 'inline-flex')
