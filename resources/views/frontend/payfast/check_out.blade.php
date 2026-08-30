@@ -201,7 +201,7 @@
 
           @if($payfastDue > 0)
 
-            <form action="{{ $payfast->url }}" method="post">
+            <form action="{{ $payfast->url }}" method="post" data-audit-order-id="{{ $orderId }}">
 
               <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
               <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
@@ -269,7 +269,7 @@
               @endphp
               <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
 
-              <button class="btn btn-danger btn-lg w-100" onclick="this.disabled=true; this.form.submit();">
+              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100" onclick="this.disabled=true;">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
 

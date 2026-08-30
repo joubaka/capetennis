@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Audit\AuditWriter;
+use App\Models\RegistrationOrder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,11 +20,19 @@ class AuditInteractionController extends Controller
             'client_at' => ['nullable', 'date'],
             'viewport_width' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'viewport_height' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'order_id' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        $subject = null;
+        if (! empty($validated['order_id'])) {
+            $subject = RegistrationOrder::find($validated['order_id']);
+            abort_unless($subject && (int) $subject->user_id === (int) auth()->id(), 403);
+        }
 
         $writer->record([
             'category' => 'interaction',
             'action' => 'ui.'.$validated['action'],
+            'subject' => $subject,
             'metadata' => $validated,
         ]);
 

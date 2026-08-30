@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuditEvent;
 use App\Models\Player;
 use App\Models\User;
+use App\Models\RegistrationOrder;
 use App\Support\Audit\AuditIntegrity;
 use App\Support\Audit\AuditWriter;
 use App\Support\Audit\AuditModelSubscriber;
@@ -150,6 +151,38 @@ class AuditTrailTest extends TestCase
             'category' => 'interaction',
             'action' => 'ui.lesson.mark-attended',
         ]);
+    }
+
+    public function test_payment_interaction_is_linked_to_owned_registration_order(): void
+    {
+        $user = User::factory()->create();
+        $order = RegistrationOrder::create(['user_id' => $user->id]);
+
+        $this->actingAs($user)->postJson(route('audit.interactions.store'), [
+            'action' => 'payment.payfast-submit',
+            'label' => 'Pay with PayFast',
+            'element' => 'form',
+            'page_path' => '/registration/checkout/'.$order->id,
+            'order_id' => $order->id,
+        ])->assertAccepted();
+
+        $event = AuditEvent::where('action', 'ui.payment.payfast-submit')->latest('id')->firstOrFail();
+        $this->assertSame((string) $order->id, $event->subject_id);
+        $this->assertSame($user->id, $event->actor_id);
+        $this->assertSame($order->id, $event->metadata['order_id']);
+    }
+
+    public function test_payment_interaction_cannot_be_attached_to_another_users_order(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $order = RegistrationOrder::create(['user_id' => $owner->id]);
+
+        $this->actingAs($other)->postJson(route('audit.interactions.store'), [
+            'action' => 'payment.payfast-submit',
+            'page_path' => '/registration/checkout/'.$order->id,
+            'order_id' => $order->id,
+        ])->assertForbidden();
     }
 
     public function test_public_button_interaction_is_recorded_without_form_values(): void

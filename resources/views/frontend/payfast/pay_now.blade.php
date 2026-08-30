@@ -21,7 +21,7 @@
     }
 @endphp
 
-<form id="payfastForm" action="{{ $payfast->url }}" method="post">
+<form id="payfastForm" action="{{ $payfast->url }}" method="post" data-audit-order-id="{{ $orderId ?? '' }}">
     <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
     <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
     <input type="hidden" name="return_url" value="{{ $return_url }}">
@@ -111,6 +111,16 @@
         }
 
         console.log('[PayFast] Credentials present — submitting...');
+        if (navigator.sendBeacon && {{ \Illuminate\Support\Facades\Route::has('audit.interactions.store') ? 'true' : 'false' }}) {
+            var auditPayload = new FormData();
+            auditPayload.append('_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
+            auditPayload.append('action', 'payment.payfast-submit');
+            auditPayload.append('label', 'Pay with PayFast');
+            auditPayload.append('element', 'form');
+            auditPayload.append('page_path', window.location.pathname);
+            auditPayload.append('order_id', fields.custom_int5 || '');
+            navigator.sendBeacon(@json(\Illuminate\Support\Facades\Route::has('audit.interactions.store') ? route('audit.interactions.store') : null), auditPayload);
+        }
         form.submit();
     })();
 </script>
