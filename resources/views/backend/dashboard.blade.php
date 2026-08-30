@@ -142,8 +142,9 @@
           <div class="linked-player-row mb-3 pb-3 border-bottom">
             <div class="d-flex justify-content-between align-items-start">
               <div>
-                <a href="{{ route('backend.player.profile', $player->id) }}"
-                   class="btn btn-sm btn-outline-primary fw-semibold">
+                <a href="{{ route('player.profile.edit', $player) }}"
+                   class="btn btn-sm btn-outline-primary fw-semibold"
+                   title="Update player profile">
                   {{ $player->name }} {{ $player->surname }}
                 </a>
                 @if($player->isMinor())

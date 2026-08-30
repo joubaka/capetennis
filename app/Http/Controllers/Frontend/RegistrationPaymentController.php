@@ -11,6 +11,7 @@ use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
 use App\Services\Wallet\WalletService;
+use App\Services\PaymentFailureReporter;
 
 class RegistrationPaymentController extends Controller
 {
@@ -245,6 +246,7 @@ class RegistrationPaymentController extends Controller
         'order_id' => $orderId,
         'error' => $e->getMessage(),
       ]);
+      app(PaymentFailureReporter::class)->report('registration.wallet_apply', ['order_id' => $orderId], $e);
       return response()->json(['error' => 'Failed to apply wallet. Please try again.'], 500);
     }
   }
@@ -393,7 +395,7 @@ class RegistrationPaymentController extends Controller
     $amountGross = (float) ($payfastData['amount_gross'] ?? 0);
 
     if (!$orderId) {
-      Log::error('PAYFAST ERROR: No order ID received');
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'No order ID received', 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
       return;
     }
 
@@ -408,9 +410,7 @@ class RegistrationPaymentController extends Controller
     $order = RegistrationOrder::with('user.wallet', 'items')->find($orderId);
 
     if (!$order) {
-      Log::error('PAYFAST ERROR: Order not found', [
-        'order_id' => $orderId
-      ]);
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Order not found', 'order_id' => $orderId, 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
       return;
     }
 
@@ -430,6 +430,7 @@ class RegistrationPaymentController extends Controller
         'expected' => $expected,
         'received' => $amountGross
       ]);
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Amount mismatch', 'order_id' => $orderId, 'expected_amount' => $expected, 'received_amount' => $amountGross, 'payfast_status' => $paymentStatus]);
       return;
     }
 
@@ -469,6 +470,7 @@ class RegistrationPaymentController extends Controller
         'order_id' => $orderId,
         'message' => $e->getMessage(),
       ]);
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn_finalize', ['order_id' => $orderId, 'payfast_payment_id' => $payfastData['pf_payment_id'] ?? null], $e);
 
       return;
     }

@@ -49,5 +49,9 @@ return [
     'cancel_url'         => env('PAYFAST_CANCEL_URL', '/cancel'),
     'return_url'         => env('PAYFAST_RETURN_URL', '/'),
   ],
+  'payment_failure_alert' => [
+    'enabled' => env('PAYMENT_FAILURE_ALERT_ENABLED', true),
+    'recipient' => env('PAYMENT_FAILURE_ALERT_EMAIL', 'hermanustennisacademy@gmail.com'),
+  ],
 
 ];

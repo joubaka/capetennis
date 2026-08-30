@@ -435,6 +435,14 @@ class Payfast
         ];
       }
 
+      app(PaymentFailureReporter::class)->report('payfast.refund', [
+        'pf_payment_id' => $pf_payment_id,
+        'amount_cents' => $amountCents,
+        'http_status' => $response->status(),
+        'response_body' => \Illuminate\Support\Str::limit($response->body(), 4000, '...'),
+        'reason' => 'PayFast refund API returned a non-success response',
+      ]);
+
       return [
         'success' => false,
         'data'    => $response->json(),
