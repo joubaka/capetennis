@@ -461,7 +461,10 @@ $(function () {
 
     const num = $('.playerRow').length + 1;
     $clone.find('.playerNr').text('Player ' + num);
-    $clone.find('.removePlayer').removeClass('d-none').attr('aria-label', 'Remove Player ' + num);
+    $clone.find('.removePlayer')
+      .removeClass('d-none')
+      .css('display', 'inline-flex')
+      .attr('aria-label', 'Remove Player ' + num);
 
     // Reset cloned selects
     $clone.find('select').val('0');
@@ -498,7 +501,9 @@ $(function () {
 
   function updateRemoveButtons() {
     $('.playerRow').each(function (index) {
-      $(this).find('.removePlayer').toggleClass('d-none', index === 0);
+      $(this).find('.removePlayer')
+        .toggleClass('d-none', index === 0)
+        .css('display', index === 0 ? 'none' : 'inline-flex');
     });
   }
 
