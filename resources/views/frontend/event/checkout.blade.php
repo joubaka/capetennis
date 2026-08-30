@@ -118,6 +118,15 @@
     #wizard-checkout .btn {
       min-height: 48px;
     }
+    #wizard-checkout .checkout-player-actions {
+      align-items: stretch;
+    }
+    #wizard-checkout .checkout-player-actions .btn {
+      flex: 1 1 0;
+      min-width: 0;
+      white-space: normal;
+      line-height: 1.2;
+    }
     #wizard-checkout .playerRow .card-body,
     #wizard-checkout .border.rounded.p-4 {
       padding: 1rem !important;
@@ -288,9 +297,12 @@
 
             <div id="tool-placeholder"></div>
 
-            <div class="mb-4">
-              <button type="button" class="btn btn-primary btn-sm" id="addPlayer">
+            <div class="d-flex flex-wrap gap-2 mb-4 checkout-player-actions">
+              <button type="button" class="btn btn-outline-secondary" id="addPlayer">
                 Register another player into event
+              </button>
+              <button type="button" class="btn btn-primary btn-next">
+                Continue
               </button>
             </div>
 
@@ -310,9 +322,6 @@
               </dl>
             </div>
 
-            <div class="d-grid">
-              <button type="button" class="btn btn-primary btn-next">Continue</button>
-            </div>
           </div>
 
         </div>
