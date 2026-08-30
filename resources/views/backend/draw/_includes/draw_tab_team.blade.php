@@ -51,6 +51,12 @@
             Schedule
           </a>
 
+          <a class="btn btn-sm btn-outline-primary"
+             href="{{ route('draws.manage', $draw->id) }}">
+            <i class="ti ti-edit me-1"></i>
+            Edit draw
+          </a>
+
         {{-- Inline action buttons (Publish/Assign/Recreate/Delete) --}}
         <div class="btn-group btn-group-sm flex-wrap" role="group">
           {{-- Publish / Unpublish --}}

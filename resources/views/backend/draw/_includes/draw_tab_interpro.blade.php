@@ -53,6 +53,11 @@
         <i class="ti ti-calendar-event me-1"></i>Schedule
       </a>
 
+      <a class="btn btn-sm btn-outline-primary"
+         href="{{ route('draws.manage', $draw->id) }}">
+        <i class="ti ti-edit me-1"></i>Edit draw
+      </a>
+
       <button type="button"
               class="btn btn-sm btn-secondary btn-add-venues"
               data-draw-id="{{ $draw->id }}"
