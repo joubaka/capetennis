@@ -12,6 +12,46 @@
 <script>
 $(function () {
   const csrf = $('meta[name="csrf-token"]').attr('content');
+  const drawId = @json($draw->id);
+  const categoryId = @json($draw->category_event_id);
+
+  function request(url, data, method = 'POST') {
+    return $.ajax({ url, method, data: Object.assign({_token: csrf}, data) });
+  }
+
+  function refreshCounts() {
+    $('#eligible-count').text($('#eligible-players .draggable-player:visible').length);
+    $('#assigned-count').text($('#assigned-players .draggable-player').length);
+  }
+
+  $('#player-search').on('input', function () {
+    const query = this.value.toLowerCase();
+    $('#eligible-players .draggable-player').each(function () {
+      $(this).toggle($(this).text().toLowerCase().includes(query));
+    });
+  });
+
+  $('#add-selected-players').on('click', function () {
+    const ids = $('#eligible-players input[name="registration_ids[]"]:checked').map(function () { return this.value; }).get();
+    if (!ids.length) return toastr.warning('Select at least one player.');
+    request("{{ route('admin.draws.addPlayerToDraw') }}", {draw_id: drawId, player_ids: ids})
+      .done(function (res) { toastr.success(res.message); window.location.reload(); })
+      .fail(function (xhr) { toastr.error(xhr.responseJSON?.message || 'Could not add players.'); });
+  });
+
+  $('#add-all-players').on('click', function () {
+    if (!confirm('Add all eligible players from this category to the draw?')) return;
+    request("{{ route('admin.draws.addCategoryPlayers') }}", {draw_id: drawId, category_id: categoryId})
+      .done(function (res) { toastr.success(res.message); window.location.reload(); })
+      .fail(function (xhr) { toastr.error(xhr.responseJSON?.message || 'Could not add category players.'); });
+  });
+
+  $(document).on('click', '.remove-player', function () {
+    const row = $(this).closest('.draggable-player');
+    request("{{ route('admin.draws.removePlayer') }}", {draw_id: drawId, registration_id: row.data('player-id')}, 'DELETE')
+      .done(function (res) { row.remove(); refreshCounts(); toastr.success(res.message); })
+      .fail(function (xhr) { toastr.error(xhr.responseJSON?.message || 'Could not remove player.'); });
+  });
 
   function saveAssigned() {
     const players = [];
@@ -51,7 +91,7 @@ $(function () {
       </h4>
       <small class="text-muted">{{ optional(optional($draw->categoryEvent)->category)->name ?? '' }}</small>
     </div>
-    <a href="{{ url()->previous() }}" class="btn btn-label-secondary">
+    <a href="{{ route('category.manage', $draw->category_event_id) }}" class="btn btn-label-secondary">
       <i class="ti ti-arrow-left me-1"></i> Back
     </a>
   </div>
@@ -84,9 +124,11 @@ $(function () {
             <div class="mb-3">
               <label class="form-label fw-bold">Draw Type</label>
               <select class="form-select" name="draw_type">
-                <option value="1" {{ ($draw->drawType_id ?? '') == 1 ? 'selected' : '' }}>Knockout</option>
-                <option value="2" {{ ($draw->drawType_id ?? '') == 2 ? 'selected' : '' }}>Feed-In</option>
-                <option value="3" {{ ($draw->drawType_id ?? '') == 3 ? 'selected' : '' }}>Round Robin</option>
+                @foreach ($drawTypes as $drawType)
+                  <option value="{{ $drawType->id }}" {{ (string) ($draw->drawType_id ?? '') === (string) $drawType->id ? 'selected' : '' }}>
+                    {{ $drawType->drawTypeName }}
+                  </option>
+                @endforeach
               </select>
             </div>
             <div class="mb-4">
@@ -108,12 +150,16 @@ $(function () {
           <div class="card h-100">
             <div class="card-header d-flex align-items-center gap-2">
               <h6 class="mb-0"><i class="ti ti-list me-1 text-primary"></i> Eligible Players</h6>
-              <span class="badge bg-label-primary">{{ $eligibleRegistrations->count() }}</span>
+              <span id="eligible-count" class="badge bg-label-primary">{{ $eligibleRegistrations->count() }}</span>
+              <input id="player-search" type="search" class="form-control form-control-sm ms-auto" style="max-width: 180px" placeholder="Search players">
+              <button id="add-selected-players" type="button" class="btn btn-sm btn-primary">Add selected</button>
+              <button id="add-all-players" type="button" class="btn btn-sm btn-outline-primary">Add all</button>
             </div>
             <div class="card-body p-2">
               <ul id="eligible-players" style="min-height: 60px; list-style: none; padding: 0; margin: 0;">
                 @forelse ($eligibleRegistrations as $reg)
-                  <li class="list-group-item list-group-item-action draggable-player mb-1 rounded" data-player-id="{{ $reg->id }}" style="cursor: grab;">
+                  <li class="list-group-item list-group-item-action draggable-player mb-1 rounded d-flex align-items-center gap-2" data-player-id="{{ $reg->id }}" style="cursor: grab;">
+                    <input type="checkbox" name="registration_ids[]" value="{{ $reg->id }}" aria-label="Select {{ $reg->players->first()->full_name ?? 'player' }}">
                     <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
                   </li>
                 @empty
@@ -127,13 +173,14 @@ $(function () {
           <div class="card h-100">
             <div class="card-header d-flex align-items-center gap-2">
               <h6 class="mb-0"><i class="ti ti-tournament me-1 text-success"></i> Assigned to Draw</h6>
-              <span class="badge bg-label-success">{{ $draw->registrations->count() }}</span>
+              <span id="assigned-count" class="badge bg-label-success">{{ $draw->registrations->count() }}</span>
             </div>
             <div class="card-body p-2">
               <ul id="assigned-players" style="min-height: 60px; list-style: none; padding: 0; margin: 0;">
                 @forelse ($draw->registrations as $reg)
-                  <li class="list-group-item list-group-item-action draggable-player mb-1 rounded" data-player-id="{{ $reg->id }}" style="cursor: grab;">
+                  <li class="list-group-item list-group-item-action draggable-player mb-1 rounded d-flex align-items-center gap-2" data-player-id="{{ $reg->id }}" style="cursor: grab;">
                     <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-player">Remove</button>
                   </li>
                 @empty
                   <li class="list-group-item text-muted text-center">No players assigned yet</li>

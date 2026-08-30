@@ -1507,7 +1507,6 @@ Route::delete(
   Route::post('/draws/{draw}/add-player', [DrawController::class, 'addPlayerDraw'])->name('draws.add-player');
   Route::get('/admin/draws/{id}/preview', [DrawController::class, 'getDrawPreview']);
 
-  Route::post('/admin/draws/remove-player', [DrawController::class, 'removePlayer'])->name('admin.draws.removePlayer');
   Route::delete('/draws/clear-all-players', [DrawController::class, 'clearPlayers'])->name('draws.clear-players');
   Route::get('/draws/box-matrix/{draw}/{box}', [DrawController::class, 'getBoxMatrix'])->name('draw.box.matrix');
   Route::get('/draws/box-matrix/{draw}', [DrawController::class, 'boxMatrix'])->name('draw.box.matrix.single');
@@ -1532,6 +1531,7 @@ Route::delete(
 
   Route::post('/admin/draws/add-category-players', [DrawController::class, 'addCategoryPlayers'])->name('admin.draws.addCategoryPlayers');
   Route::post('/admin/draws/add-player', [DrawController::class, 'addPlayerToDraw'])->name('admin.draws.addPlayerToDraw');
+  Route::delete('/admin/draws/remove-player', [DrawController::class, 'removePlayer'])->name('admin.draws.removePlayer');
 
   Route::get('/admin/draws/{draw}/players', [DrawController::class, 'getDrawPlayers'])->name('get.draws.players');
   Route::post('/admin/draws/{id}/update-seeds', [DrawController::class, 'updateSeeds']);

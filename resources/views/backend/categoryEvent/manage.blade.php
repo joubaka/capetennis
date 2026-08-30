@@ -148,7 +148,8 @@
 
                 {{-- Left side: Settings form --}}
                 <div class="col-md-6">
-                  <form id="draw-settings-form">
+                  <form id="draw-settings-form" method="POST" action="{{ route('draws.generate', $categoryEvent) }}">
+                    @csrf
                     <div class="mb-3">
                       <label for="drawName" class="form-label">Draw Name</label>
                       <input type="text" class="form-control" id="drawName" name="draw_name">
@@ -156,14 +157,10 @@
                     <div class="mb-3">
                       <label for="drawType" class="form-label">Draw Type</label>
                       <select class="form-select" id="drawType" name="draw_type">
-                        <option value="round_robin">Round Robin</option>
-                        <option value="knockout">Knockout</option>
-                        <option value="feed_in">Feed-In</option>
+                        @foreach ($drawTypes as $drawType)
+                          <option value="{{ $drawType->id }}">{{ $drawType->drawTypeName }}</option>
+                        @endforeach
                       </select>
-                    </div>
-                    <div class="mb-3">
-                      <label for="numRounds" class="form-label">Number of Rounds</label>
-                      <input type="number" class="form-control" id="numRounds" name="num_rounds" min="1" value="1">
                     </div>
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                   </form>

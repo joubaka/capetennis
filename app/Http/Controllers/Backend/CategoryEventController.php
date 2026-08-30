@@ -6,6 +6,7 @@ use App\Domain\Entries\Services\EntryService;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\DrawFormats;
+use App\Models\DrawType;
 use App\Models\CategoryEventRegistration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,12 +32,14 @@ class CategoryEventController extends Controller
       $allRegistrations = $categoryEvent->registrations;
 
       $drawFormats = DrawFormats::all();
+      $drawTypes = DrawType::query()->orderBy('drawTypeName')->get();
 
       return view('backend.categoryEvent.manage', compact(
           'categoryEvent',
           'eligibleRegistrations',
           'allRegistrations',
-          'drawFormats'
+          'drawFormats',
+          'drawTypes'
       ));
   }
   public function withdraw(CategoryEventRegistration $registration)
@@ -65,8 +68,18 @@ class CategoryEventController extends Controller
     if ($registration->is_paid) {
       $event = $registration->categoryEvent->event;
 
-      // Only super-users may choose a refund method; event admins record a no-refund withdrawal.
-      if ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user'))) {
+      // Admins may always remove the entry, but a refund is only available
+      // while the event withdrawal window is open.  The admin service
+      // intentionally bypasses the deadline for the withdrawal itself.
+      $refundAllowed = now()->lte($event->withdrawalCloseAt());
+
+      // Keep the Masters invitation lifecycle in sync for admin withdrawals
+      // as well as player self-withdrawals (including replacement handling).
+      app(\App\Services\Masters\MastersInvitationService::class)
+        ->handlePaidWithdrawal((int) $registration->id, $user);
+
+      // Only super-users may issue refunds, and only before the deadline.
+      if ($refundAllowed && ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
         $refundUrl = route('admin.registration.refund.choose', [$event, $registration]);
         if (request()->ajax() || request()->wantsJson()) {
           return response()->json(['success' => true, 'redirect' => $refundUrl]);
@@ -77,7 +90,9 @@ class CategoryEventController extends Controller
       if (request()->ajax() || request()->wantsJson()) {
         return response()->json(['success' => true]);
       }
-      return back()->with('success', 'Registration withdrawn (no refund issued).');
+      return back()->with('success', $refundAllowed
+        ? 'Registration withdrawn (no refund issued).'
+        : 'Registration withdrawn (no refund — deadline passed).');
     }
 
     if (request()->ajax() || request()->wantsJson()) {

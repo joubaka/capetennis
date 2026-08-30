@@ -9,7 +9,7 @@ class DrawType extends Model
 {
     use HasFactory;
     public function draws(){
-        return $this->belongsTo(Draw::class,'draw_type_id','id');
+        return $this->hasMany(Draw::class, 'drawType_id', 'id');
     }
 
     public function scorings(){
@@ -22,4 +22,3 @@ class DrawType extends Model
   }
 
 }
-

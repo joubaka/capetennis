@@ -300,4 +300,28 @@ class AdminCategoryWithdrawTest extends TestCase
         $location = $response->headers->get('location', '');
         $this->assertStringContainsString('refund', $location);
     }
+
+    public function test_super_user_admin_withdrawal_after_deadline_cannot_open_refund_flow(): void
+    {
+        $superUser = User::factory()->create();
+        $superUser->assignRole('super-user');
+
+        $reg = CategoryEventRegistration::factory()->paid()->create(['status' => 'active']);
+        $reg->categoryEvent->event->update([
+            'withdrawal_deadline' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($superUser);
+
+        $response = $this->post(route('admin.category.registration.withdraw', $reg));
+
+        $response->assertRedirect();
+        $this->assertStringNotContainsString('refund', $response->headers->get('location', ''));
+        $response->assertSessionHas('success', 'Registration withdrawn (no refund — deadline passed).');
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $reg->id,
+            'status' => 'withdrawn',
+            'refund_status' => 'not_refunded',
+        ]);
+    }
 }

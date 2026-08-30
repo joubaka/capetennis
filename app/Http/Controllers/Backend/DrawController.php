@@ -176,18 +176,30 @@ class DrawController extends Controller
     $drawModel = Draw::findOrFail($id);
     $this->authorize('update', $drawModel);
 
-    $draw = DrawSetting::where('draw_id', $id)->first();
-    $draw->draw_type_id = $request->draw_type;
-    $draw->draw_format_id = $request->draw_format;
-    $draw->num_sets = $request->num_sets;
-    $draw->save();
+    $validated = $request->validate([
+      'name' => ['nullable', 'string', 'max:255'],
+      'draw_type' => ['nullable', 'integer', 'exists:draw_types,id'],
+      'draw_format' => ['nullable', 'integer', 'exists:draw_formats,id'],
+      'num_sets' => ['nullable', 'integer', 'min:1', 'max:20'],
+    ]);
 
-    $d = Draw::find($id);
-    $d->drawName = $request->name;
-    $d->save();
+    if (array_key_exists('name', $validated)) {
+      $drawModel->drawName = $validated['name'];
+    }
+    if (array_key_exists('draw_type', $validated)) {
+      $drawModel->drawType_id = $validated['draw_type'];
+    }
+    $drawModel->save();
 
-    $responce = Fixtures::createMonrad32Fixtures($d->id);
-    //  return $responce;
+    DrawSetting::updateOrCreate(
+      ['draw_id' => $drawModel->id],
+      array_filter([
+        'draw_type_id' => $validated['draw_type'] ?? null,
+        'draw_format_id' => $validated['draw_format'] ?? null,
+        'num_sets' => $validated['num_sets'] ?? null,
+      ], fn ($value) => $value !== null)
+    );
+
     return redirect()->back();
   }
 
@@ -507,7 +519,7 @@ class DrawController extends Controller
     $validated = $request->validate([
       'event_id' => 'required|exists:events,id',
       'draw_name' => 'required|string|max:255',
-      'draw_format_id' => 'required|in:1,2,3',
+      'draw_format_id' => 'required|integer|exists:draw_types,id',
     ]);
 
     $event = \App\Models\Event::findOrFail($validated['event_id']);
@@ -530,18 +542,18 @@ class DrawController extends Controller
 
   public function generate(Request $request)
   {
-    $request->validate([
+    $validated = $request->validate([
       'category_event_id' => 'required|exists:category_events,id',
       'draw_name' => 'required|string|max:255',
-      'draw_type' => 'required|string|max:255',
+      'draw_type' => 'required|integer|exists:draw_types,id',
     ]);
 
-    $categoryEvent = \App\Models\CategoryEvent::findOrFail($request->category_event_id);
+    $categoryEvent = \App\Models\CategoryEvent::findOrFail($validated['category_event_id']);
     $this->authorize('draw.create', \App\Models\Event::findOrFail($categoryEvent->event_id));
 
     $draw = Draw::create([
-      'drawName' => $request->draw_name,
-      'drawType_id' => $request->draw_type,
+      'drawName' => $validated['draw_name'],
+      'drawType_id' => $validated['draw_type'],
       'category_event_id' => $categoryEvent->id,
       'event_id' => $categoryEvent->event_id,
       'published' => 0,
@@ -549,16 +561,6 @@ class DrawController extends Controller
       'locked' => 0,
       'oop_created' => 0,
     ]);
-
-    // Optionally call generator based on type
-    switch ($request->draw_type) {
-      case 'round_robin':
-        // $this->generateRoundRobin($draw);
-        break;
-      case 'knockout':
-        // $this->generateKnockout($draw);
-        break;
-    }
 
     return back()->with('success', 'Draw "' . $draw->drawName . '" created successfully!');
   }
@@ -632,7 +634,9 @@ class DrawController extends Controller
       ->whereNotIn('id', $assignedIds)
       ->get();
 
-    return view('backend.draw.manage', compact('draw', 'eligibleRegistrations'));
+    $drawTypes = DrawType::query()->orderBy('drawTypeName')->get();
+
+    return view('backend.draw.manage', compact('draw', 'eligibleRegistrations', 'drawTypes'));
   }
 
   public function players($id)
@@ -765,6 +769,7 @@ class DrawController extends Controller
     $this->authorize('update', $draw);
     $validated = $request->validate(['player_id' => ['required', 'integer', 'exists:registrations,id']]);
     $this->assertRegistrationBelongsToDraw($draw, (int) $validated['player_id']);
+    $this->assertNotAssignedToOtherDraw($draw, (int) $validated['player_id']);
 
     $draw->registrations()->syncWithoutDetaching($validated['player_id']);
     return response()->noContent();
@@ -872,9 +877,7 @@ class DrawController extends Controller
     $categoryEvent = CategoryEvent::with('registrations.players')->findOrFail($request->category_id);
     $this->assertCategoryBelongsToDraw($draw, $categoryEvent);
 
-    $existingPlayerIds = $draw->registrations->flatMap(function ($reg) {
-      return $reg->players->pluck('id');
-    })->unique()->toArray();
+    $existingRegistrationIds = $draw->registrations->pluck('id')->all();
 
     $attached = 0;
 
@@ -883,14 +886,17 @@ class DrawController extends Controller
       ->wherePivotNull('deleted_at')
       ->with('players')->get();
 
-    foreach ($activeRegistrations as $registration) {
-      foreach ($registration->players as $player) {
-        if (!in_array($player->id, $existingPlayerIds)) {
-          $draw->registrations()->syncWithoutDetaching($registration->id);
-          $attached++;
+    DB::transaction(function () use ($activeRegistrations, $draw, $existingRegistrationIds, &$attached) {
+      foreach ($activeRegistrations as $registration) {
+        if (in_array($registration->id, $existingRegistrationIds, true)) {
+          continue;
         }
+
+        $this->assertNotAssignedToOtherDraw($draw, $registration->id);
+        $draw->registrations()->syncWithoutDetaching($registration->id);
+        $attached++;
       }
-    }
+    });
 
     return response()->json(['message' => "$attached players added."]);
   }
@@ -912,27 +918,30 @@ class DrawController extends Controller
     $added = 0;
     $skipped = 0;
 
-    foreach ($request->player_ids as $playerId) {
-      $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
+    DB::transaction(function () use ($request, $draw, &$added, &$skipped) {
+      foreach ($request->player_ids as $playerId) {
+        $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
 
-      $exists = DB::table('draw_registrations')
-        ->where('draw_id', $draw->id)
-        ->where('registration_id', $playerId)
-        ->exists();
+        $exists = DB::table('draw_registrations')
+          ->where('draw_id', $draw->id)
+          ->where('registration_id', $playerId)
+          ->exists();
 
-      if (!$exists) {
+        if (!$exists) {
+          $this->assertNotAssignedToOtherDraw($draw, (int) $playerId);
 
-        DB::table('draw_registrations')->insert([
-          'draw_id' => $draw->id,
-          'registration_id' => $playerId,
-          'created_at' => now(),
-          'updated_at' => now(),
-        ]);
-        $added++;
-      } else {
-        $skipped++;
+          DB::table('draw_registrations')->insert([
+            'draw_id' => $draw->id,
+            'registration_id' => $playerId,
+            'created_at' => now(),
+            'updated_at' => now(),
+          ]);
+          $added++;
+        } else {
+          $skipped++;
+        }
       }
-    }
+    });
 
     return response()->json([
       'message' => "{$added} player(s) added to draw, {$skipped} skipped (already present)."
@@ -1389,10 +1398,15 @@ public function json(Draw $draw)
   {
     $this->authorize('draw.create', $event);
 
+    $validated = $request->validate([
+      'drawName' => ['nullable', 'string', 'max:255'],
+      'draw_type_id' => ['nullable', 'integer', 'exists:draw_types,id'],
+    ]);
+
     $draw = new Draw();
     $draw->event_id = $event->id;
-    $draw->drawName = $request->input('drawName', 'New Draw');
-    $draw->drawType_id = $request->input('draw_type_id'); // optional field
+    $draw->drawName = $validated['drawName'] ?? 'New Draw';
+    $draw->drawType_id = $validated['draw_type_id'] ?? null;
     $draw->save();
 
     return response()->json([
@@ -1445,6 +1459,22 @@ public function json(Draw $draw)
     if (! $query->exists()) {
       throw ValidationException::withMessages([
         'player_ids' => "Registration {$registrationId} is not an active entry in this draw's category.",
+      ]);
+    }
+  }
+
+  private function assertNotAssignedToOtherDraw(Draw $draw, int $registrationId): void
+  {
+    $assignedElsewhere = DB::table('draw_registrations as assigned')
+      ->join('draws as other_draw', 'other_draw.id', '=', 'assigned.draw_id')
+      ->where('assigned.registration_id', $registrationId)
+      ->where('other_draw.category_event_id', $draw->category_event_id)
+      ->where('other_draw.id', '!=', $draw->id)
+      ->exists();
+
+    if ($assignedElsewhere) {
+      throw ValidationException::withMessages([
+        'player_ids' => "Registration {$registrationId} is already assigned to another draw in this category.",
       ]);
     }
   }
