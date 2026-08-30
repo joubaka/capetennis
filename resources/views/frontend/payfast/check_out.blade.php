@@ -6,11 +6,15 @@
 
 @section('page-style')
 <style>
-  .registration-checkout .checkout-intro { max-width: 760px; }
-  .registration-checkout .checkout-card { height: 100%; border: 0; overflow: hidden; }
-  .registration-checkout.container-p-y { padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
-  .registration-checkout .checkout-card .card-header { padding: .8rem 1rem; }
-  .registration-checkout .checkout-card .card-body { padding: .95rem 1rem; }
+  .registration-checkout { max-width: 1180px; }
+  .registration-checkout .checkout-intro { max-width: 820px; }
+  .registration-checkout .checkout-eyebrow { letter-spacing: .08em; font-size: .72rem; font-weight: 700; text-transform: uppercase; }
+  .registration-checkout .checkout-card { height: 100%; border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; overflow: hidden; }
+  .registration-checkout.container-p-y { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+  .registration-checkout .checkout-card .card-header { padding: 1.15rem 1.25rem; border-bottom: 0; }
+  .registration-checkout .checkout-card .card-body { padding: 1.25rem; }
+  .registration-checkout .checkout-card .card-header h5 { font-size: 1.05rem; }
+  .registration-checkout .checkout-card .card-header .small { opacity: .86; }
   .registration-checkout .checkout-card .mb-3 { margin-bottom: .7rem !important; }
   .registration-checkout .checkout-card .mb-4 { margin-bottom: .85rem !important; }
   .registration-checkout .checkout-card hr { margin: .7rem 0; }
@@ -19,7 +23,19 @@
   .registration-checkout .checkout-step + .checkout-step::before { content: '›'; margin: 0 .25rem; opacity: .55; }
   .registration-checkout .payfast-submit { min-height: 56px; font-size: 1.05rem; font-weight: 700; }
   .registration-checkout .checkout-note { display: flex; gap: .5rem; align-items: flex-start; }
+  .registration-checkout .checkout-summary { border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; background: #fff; box-shadow: 0 .25rem 1rem rgba(67, 89, 113, .08); }
+  .registration-checkout .checkout-summary .summary-item { padding: 1rem 1.2rem; }
+  .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 1px solid rgba(67, 89, 113, .12); }
+  .registration-checkout .choice-label { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .registration-checkout .choice-card { position: relative; }
+  .registration-checkout .choice-card.wallet-choice { border-top: 3px solid #7367f0; }
+  .registration-checkout .choice-card.payfast-choice { border-top: 3px solid #ea5455; }
+  .registration-checkout .choice-card .card-body { min-height: 250px; }
+  .registration-checkout .checkout-actions { margin-top: auto; }
   @media (max-width: 767.98px) {
+    .registration-checkout.container-p-y { padding-top: 1.25rem !important; }
+    .registration-checkout .checkout-summary .summary-item { padding: .8rem; }
+    .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 0; border-top: 1px solid rgba(67, 89, 113, .12); }
     .registration-checkout .checkout-card .card-body { padding: .9rem; }
     .registration-checkout .amount { font-size: 1.35rem; }
   }
@@ -58,10 +74,11 @@
   </div>
 
   <div class="checkout-intro mb-4">
+    <div class="checkout-eyebrow text-primary mb-2">Cape Tennis registration</div>
     <div class="checkout-step text-primary"><i class="ti ti-clipboard-check"></i> Registration ready</div>
     <span class="checkout-step text-muted"><i class="ti ti-lock"></i> Secure payment</span>
     <h3 class="mb-1 mt-1">Complete your registration</h3>
-    <p class="text-muted mb-0 small">Review the amounts below. Wallet funds are reserved until payment is completed or cancelled.</p>
+    <p class="text-muted mb-0">Choose how you’d like to pay. You can use your wallet, PayFast, or combine both.</p>
   </div>
 
   @php
@@ -103,20 +120,36 @@
       $player = $firstItem?->player;
   @endphp
 
-  <div class="row">
+  <div class="checkout-summary row g-0 mb-4" aria-label="Payment summary">
+    <div class="summary-item col-md-4">
+      <div class="text-muted small">Registration total</div>
+      <div class="h5 mb-0 mt-1">R {{ number_format($total, 2) }}</div>
+    </div>
+    <div class="summary-item col-md-4">
+      <div class="text-muted small">Wallet available</div>
+      <div class="h5 mb-0 mt-1 text-primary">R {{ number_format($walletBalance, 2) }}</div>
+    </div>
+    <div class="summary-item col-md-4">
+      <div class="text-muted small">PayFast due now</div>
+      <div class="h5 mb-0 mt-1 {{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}" id="payfastDueSummary">R {{ number_format($payfastDue, 2) }}</div>
+    </div>
+  </div>
+
+  <div class="row align-items-stretch">
 
     {{-- ================= WALLET SECTION ================= --}}
     <div class="col-xl-6 mb-4">
 
-      <div class="card checkout-card border-primary shadow-sm">
+      <div class="card checkout-card choice-card wallet-choice shadow-sm">
         <div class="card-header bg-primary text-white">
           <h5 class="mb-0">
             <i class="ti ti-wallet me-1"></i>
-            Cape Tennis Wallet
+            Use your wallet
           </h5>
+          <div class="small mt-1">Apply available funds to reduce what you pay online.</div>
         </div>
 
-        <div class="card-body">
+        <div class="card-body d-flex flex-column">
 
           <div class="mb-3">
             <p class="text-muted mb-1">Registration Total:</p>
@@ -220,15 +253,16 @@
     {{-- ================= PAYFAST SECTION ================= --}}
     <div class="col-xl-6 mb-4">
 
-      <div class="card checkout-card border-danger shadow-sm">
+      <div class="card checkout-card choice-card payfast-choice shadow-sm">
         <div class="card-header bg-danger text-white">
           <h5 class="mb-0">
             <i class="ti ti-credit-card me-1"></i>
-            Pay Online (PayFast)
+            Pay online
           </h5>
+          <div class="small mt-1">Secure checkout powered by PayFast.</div>
         </div>
 
-        <div class="card-body">
+        <div class="card-body d-flex flex-column">
 
           <div class="mb-3">
             <p class="text-muted mb-1">Amount Due via PayFast:</p>
@@ -354,7 +388,8 @@
 
   </div>
 
-  <a href="{{ $cancelUrl }}" class="btn btn-warning mt-2">
+  <a href="{{ $cancelUrl }}" class="btn btn-outline-secondary mt-1">
+    <i class="ti ti-arrow-left me-1"></i>
     Cancel and go back
   </a>
 
