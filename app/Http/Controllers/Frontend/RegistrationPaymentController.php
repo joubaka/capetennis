@@ -161,6 +161,23 @@ class RegistrationPaymentController extends Controller
     ]);
   }
 
+  /** Start a full-value PayFast payment without using wallet funds. */
+  public function payfastOnly(RegistrationOrder $order)
+  {
+    abort_unless((int) $order->user_id === (int) auth()->id(), 403);
+    abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409, 'Order already paid.');
+
+    $total = round((float) $order->items()->sum('item_price'), 2);
+    if ($total <= 0) {
+      return redirect()->route('registration.checkout', $order)->withErrors('This registration does not require payment.');
+    }
+
+    $order = app(PaymentOrchestrator::class)->initiatePayment($order, 0, $total);
+    Log::info('PAYFAST ONLY SELECTED', ['order_id' => $order->id, 'user_id' => auth()->id(), 'amount' => $total]);
+
+    return redirect()->route('registration.checkout', $order);
+  }
+
   /**
    * Apply wallet balance to an order (AJAX from checkout page).
    * 
@@ -220,6 +237,12 @@ class RegistrationPaymentController extends Controller
     $total = (float) $order->items->sum('item_price');
     $walletApplied = min($walletBalance, $total);
     $remaining = round($total - $walletApplied, 2);
+
+    if ($remaining > 0 && $remaining < 20) {
+      return response()->json([
+        'error' => 'The remaining PayFast amount would be below R20. Please choose Pay full amount with PayFast instead.',
+      ], 422);
+    }
 
     try {
       $order = app(PaymentOrchestrator::class)->initiatePayment(

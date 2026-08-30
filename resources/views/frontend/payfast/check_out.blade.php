@@ -4,7 +4,25 @@
 
 @section('content')
 
-<div class="container-xxl flex-grow-1 container-p-y">
+@section('page-style')
+<style>
+  .registration-checkout .checkout-intro { max-width: 760px; }
+  .registration-checkout .checkout-card { height: 100%; border: 0; overflow: hidden; }
+  .registration-checkout .checkout-card .card-header { padding: 1.15rem 1.35rem; }
+  .registration-checkout .checkout-card .card-body { padding: 1.35rem; }
+  .registration-checkout .amount { font-size: 1.8rem; letter-spacing: -.02em; }
+  .registration-checkout .checkout-step { display: inline-flex; align-items: center; gap: .45rem; font-size: .8rem; font-weight: 600; }
+  .registration-checkout .checkout-step + .checkout-step::before { content: '›'; margin: 0 .25rem; opacity: .55; }
+  .registration-checkout .payfast-submit { min-height: 56px; font-size: 1.05rem; font-weight: 700; }
+  .registration-checkout .checkout-note { display: flex; gap: .5rem; align-items: flex-start; }
+  @media (max-width: 767.98px) {
+    .registration-checkout .checkout-card .card-body { padding: 1rem; }
+    .registration-checkout .amount { font-size: 1.55rem; }
+  }
+</style>
+@endsection
+
+<div class="container-xxl flex-grow-1 container-p-y registration-checkout">
 
   {{-- ================= TOASTS ================= --}}
   <div class="toast-container position-fixed bottom-0 end-0 p-3">
@@ -35,7 +53,12 @@
 
   </div>
 
-  <h3 class="mb-4">Checkout</h3>
+  <div class="checkout-intro mb-4">
+    <div class="checkout-step text-primary"><i class="ti ti-clipboard-check"></i> Registration ready</div>
+    <span class="checkout-step text-muted"><i class="ti ti-lock"></i> Secure payment</span>
+    <h3 class="mb-1 mt-2">Complete your registration</h3>
+    <p class="text-muted mb-0">Review the amounts below. Wallet funds are reserved until payment is completed or cancelled.</p>
+  </div>
 
   @php
       use App\Models\RegistrationOrder;
@@ -81,7 +104,7 @@
     {{-- ================= WALLET SECTION ================= --}}
     <div class="col-xl-6 mb-4">
 
-      <div class="card border-primary shadow-sm">
+      <div class="card checkout-card border-primary shadow-sm">
         <div class="card-header bg-primary text-white">
           <h5 class="mb-0">
             <i class="ti ti-wallet me-1"></i>
@@ -93,7 +116,7 @@
 
           <div class="mb-3">
             <p class="text-muted mb-1">Registration Total:</p>
-            <h5 class="text-primary">
+            <h5 class="text-primary amount">
               R {{ number_format($total, 2) }}
             </h5>
           </div>
@@ -102,7 +125,7 @@
 
           <div class="mb-3">
             <p class="text-muted mb-1">Wallet Balance Available:</p>
-            <h5>
+            <h5 class="amount">
               R {{ number_format($walletBalance, 2) }}
             </h5>
           </div>
@@ -119,7 +142,7 @@
 
           <div class="mb-4">
             <p class="text-muted mb-1">PayFast Payment Due:</p>
-            <h4 class="{{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}" id="payfastDueDisplay">
+            <h4 class="amount {{ $payfastDue > 0 ? 'text-danger' : 'text-success' }}" id="payfastDueDisplay" aria-live="polite">
               R {{ number_format($payfastDue, 2) }}
             </h4>
           </div>
@@ -128,6 +151,25 @@
             <button type="button" class="btn btn-primary w-100 mb-3" id="applyWalletBtn">
               <i class="ti ti-wallet me-1"></i> Apply Wallet Balance (R {{ number_format(min($walletBalance, $total), 2) }})
             </button>
+            <form action="{{ route('registration.payfast-only', $orderId) }}" method="POST" class="mb-3" data-audit-order-id="{{ $orderId }}">
+              @csrf
+              <button type="submit" data-audit-action="payment.payfast-only-selected" data-audit-order-id="{{ $orderId }}" class="btn btn-outline-danger w-100">
+                <i class="ti ti-credit-card me-1"></i> Pay full amount with PayFast
+              </button>
+            </form>
+            <small class="text-muted d-block mb-3">Use this if you do not want to use your wallet. PayFast payments below R20 are not supported.</small>
+          @endif
+
+          @if($walletReserved > 0 && $payfastDue > 0 && $payfastDue < 20)
+            <div class="alert alert-warning small" role="alert">
+              PayFast requires at least R20. Your wallet would leave only R{{ number_format($payfastDue, 2) }} to pay, so please pay the full registration amount by PayFast.
+            </div>
+            <form action="{{ route('registration.payfast-only', $orderId) }}" method="POST" class="mb-3" data-audit-order-id="{{ $orderId }}">
+              @csrf
+              <button type="submit" data-audit-action="payment.payfast-only-selected" data-audit-order-id="{{ $orderId }}" class="btn btn-outline-danger w-100">
+                <i class="ti ti-credit-card me-1"></i> Pay full amount with PayFast
+              </button>
+            </form>
           @endif
 
           @if($payfastDue <= 0)
@@ -164,7 +206,7 @@
     {{-- ================= PAYFAST SECTION ================= --}}
     <div class="col-xl-6 mb-4">
 
-      <div class="card border-danger shadow-sm">
+      <div class="card checkout-card border-danger shadow-sm">
         <div class="card-header bg-danger text-white">
           <h5 class="mb-0">
             <i class="ti ti-credit-card me-1"></i>
@@ -176,7 +218,7 @@
 
           <div class="mb-3">
             <p class="text-muted mb-1">Amount Due via PayFast:</p>
-            <h4 class="text-danger">
+            <h4 class="text-danger amount">
               R {{ number_format($payfastDue, 2) }}
             </h4>
           </div>
@@ -199,7 +241,7 @@
             $notifyUrl = route('notify');
           @endphp
 
-          @if($payfastDue > 0)
+          @if($payfastDue > 0 && filled($payfast->id) && filled($payfast->key) && !($walletReserved > 0 && $payfastDue < 20))
 
             <form action="{{ $payfast->url }}" method="post" data-audit-order-id="{{ $orderId }}">
 
@@ -269,11 +311,18 @@
               @endphp
               <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
 
-              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100" onclick="this.disabled=true;">
+              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit" onclick="this.disabled=true; this.setAttribute('aria-busy', 'true');">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
 
             </form>
+
+          @elseif($payfastDue > 0)
+
+            <div class="alert alert-danger mb-0" role="alert">
+              <strong>Online payment is temporarily unavailable.</strong>
+              <div class="small mt-1">Your registration has not been marked as paid. Please contact support before trying again.</div>
+            </div>
 
           @else
 

@@ -163,6 +163,11 @@ Route::post(
 )->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.hybrid.pay');
 
 Route::post(
+  '/registration/payfast-only/{order}',
+  [RegistrationPaymentController::class, 'payfastOnly']
+)->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.payfast-only');
+
+Route::post(
   '/registration/hybrid/apply-wallet',
   [RegistrationPaymentController::class, 'applyWallet']
 )->middleware('auth')->name('registration.hybrid.apply-wallet');
