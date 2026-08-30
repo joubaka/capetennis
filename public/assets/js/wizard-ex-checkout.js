@@ -464,7 +464,7 @@ $(function () {
 
     const num = $('.playerRow').length + 1;
     $clone.find('.playerNr').text('Player ' + num);
-    $clone.find('.removePlayer').prop('disabled', false).attr('aria-label', 'Remove Player ' + num);
+    $clone.find('.removePlayer').removeClass('d-none').attr('aria-label', 'Remove Player ' + num);
 
     // Reset cloned selects – clear options for AJAX player select
     $clone.find('.select2player').html('<option value="0">Please select</option>');
@@ -480,8 +480,15 @@ $(function () {
   // ===============================
   // REMOVE PLAYER ROW
   // ===============================
-  $(document).on('click', '.removePlayer:not(:disabled)', function () {
-    $(this).closest('.playerRow').remove();
+  $(document).on('click', '.removePlayer', function (e) {
+    e.preventDefault();
+
+    const $row = $(this).closest('.playerRow');
+    if (!$row.length || $row[0] === $('.playerRow').first()[0]) {
+      return;
+    }
+
+    $row.remove();
 
     $('.playerRow').each(function (index) {
       const number = index + 1;
@@ -495,7 +502,7 @@ $(function () {
 
   function updateRemoveButtons() {
     $('.playerRow').each(function (index) {
-      $(this).find('.removePlayer').prop('disabled', index === 0);
+      $(this).find('.removePlayer').toggleClass('d-none', index === 0);
     });
   }
 

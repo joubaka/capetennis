@@ -260,7 +260,7 @@
               <div class="card numPlayers p-3">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                   <span class="fw-semibold playerNr">Player 1</span>
-                  <button type="button" class="btn btn-outline-danger btn-sm removePlayer" disabled aria-label="Remove Player 1">
+                  <button type="button" class="btn btn-outline-danger btn-sm removePlayer d-none" aria-label="Remove Player 1">
                     <i class="ti ti-trash me-1"></i>Remove
                   </button>
                 </div>
