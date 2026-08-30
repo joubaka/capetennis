@@ -461,6 +461,7 @@ $(function () {
 
     const num = $('.playerRow').length + 1;
     $clone.find('.playerNr').text('Player ' + num);
+    $clone.find('.removePlayer').prop('disabled', false).attr('aria-label', 'Remove Player ' + num);
 
     // Reset cloned selects
     $clone.find('select').val('0');
@@ -469,7 +470,30 @@ $(function () {
 
     // Init select2 on clone
     initSelect2();
+    updateRemoveButtons();
   });
+
+  // ===============================
+  // REMOVE PLAYER ROW
+  // ===============================
+  $(document).on('click', '.removePlayer:not(:disabled)', function () {
+    $(this).closest('.playerRow').remove();
+
+    $('.playerRow').each(function (index) {
+      const number = index + 1;
+      $(this).find('.playerNr').text('Player ' + number);
+      $(this).find('.removePlayer').attr('aria-label', 'Remove Player ' + number);
+    });
+
+    updateRemoveButtons();
+    appendPlayers($('.playerRow'));
+  });
+
+  function updateRemoveButtons() {
+    $('.playerRow').each(function (index) {
+      $(this).find('.removePlayer').prop('disabled', index === 0);
+    });
+  }
 
   // ===============================
   // UPDATE CART ON CHANGE

@@ -258,11 +258,17 @@
 
             <div class="row mb-3 playerRow">
               <div class="card numPlayers p-3">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                  <span class="fw-semibold playerNr">Player 1</span>
+                  <button type="button" class="btn btn-outline-danger btn-sm removePlayer" disabled aria-label="Remove Player 1">
+                    <i class="ti ti-trash me-1"></i>Remove
+                  </button>
+                </div>
                 <div class="row">
 
                   {{-- PLAYER --}}
                   <div class="col-md-5 mb-4">
-                    <label class="form-label playerNr">Player 1</label>
+                    <label class="form-label">Player</label>
                     <select name="player[]" class="select2player form-select form-select-lg">
                       <option value="0">Please select</option>
                     </select>
