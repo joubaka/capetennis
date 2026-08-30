@@ -28,26 +28,109 @@
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
 <style>
   @media (max-width: 767.98px) {
+    body { overflow-x: hidden; }
+    .content-wrapper > .container-xxl > h4 {
+      font-size: 1.15rem;
+      margin-bottom: .35rem !important;
+      padding-top: .75rem !important;
+    }
+    .content-wrapper > .container-xxl > p {
+      font-size: .85rem;
+      margin-bottom: .85rem;
+    }
+
     #wizard-checkout {
       width: calc(100% + 1.7rem);
       margin-left: -.85rem;
       margin-right: -.85rem;
       overflow: hidden;
+      margin-top: 0 !important;
+      background: #fff;
     }
 
     #wizard-checkout .bs-stepper-header {
       width: 100%;
-      padding: 1rem .75rem !important;
+      min-height: 72px;
+      padding: .7rem .5rem !important;
       overflow-x: auto;
       justify-content: flex-start;
+      flex-direction: row !important;
+      gap: .15rem;
+      scrollbar-width: none;
+      border-bottom: 1px solid rgba(67, 89, 113, .12) !important;
+    }
+    #wizard-checkout .bs-stepper-header::-webkit-scrollbar { display: none; }
+
+    #wizard-checkout .bs-stepper-header .step-trigger {
+      min-width: 84px;
+      padding: .25rem .35rem;
+      flex-direction: column !important;
+      gap: .1rem !important;
+    }
+    #wizard-checkout .bs-stepper-header .bs-stepper-icon {
+      width: 28px;
+      height: 28px;
+      margin-bottom: .15rem;
+    }
+    #wizard-checkout .bs-stepper-header .bs-stepper-icon svg {
+      width: 24px;
+      height: 24px;
+    }
+    #wizard-checkout .bs-stepper-header .bs-stepper-label {
+      max-width: 82px;
+      font-size: .68rem;
+      line-height: 1.15;
+      white-space: normal;
+      text-align: center;
+    }
+
+    #wizard-checkout.wizard-icons .bs-stepper-header .step {
+      padding: 0 !important;
+      text-align: center;
     }
 
     #wizard-checkout .bs-stepper-header .step {
       flex: 0 0 auto;
     }
+    #wizard-checkout .bs-stepper-header .line {
+      flex: 0 0 18px;
+      min-width: 18px;
+    }
+    #wizard-checkout .bs-stepper-header .line i { font-size: .85rem; }
 
     #wizard-checkout .bs-stepper-content {
-      padding: 1rem .85rem !important;
+      padding: 1rem .85rem 1.5rem !important;
+      border-top: 0 !important;
+    }
+    #wizard-checkout .bs-stepper-content > form > .content > .row {
+      --bs-gutter-x: .85rem;
+      --bs-gutter-y: 0;
+    }
+    #wizard-checkout .card,
+    #wizard-checkout .border.rounded {
+      border-radius: .65rem !important;
+    }
+    #wizard-checkout .form-select-lg,
+    #wizard-checkout .form-control {
+      min-height: 48px;
+      font-size: 1rem;
+    }
+    #wizard-checkout .btn {
+      min-height: 48px;
+    }
+    #wizard-checkout .playerRow .card-body,
+    #wizard-checkout .border.rounded.p-4 {
+      padding: 1rem !important;
+    }
+    #wizard-checkout .col-xl-4 {
+      margin-top: .75rem;
+    }
+    #wizard-checkout .col-xl-8 + .col-xl-4 {
+      position: relative;
+    }
+    #wizard-checkout .alert {
+      font-size: .85rem;
+      line-height: 1.4;
     }
   }
 </style>
