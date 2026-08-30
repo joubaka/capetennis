@@ -40,11 +40,24 @@
   .registration-checkout .checkout-actions { margin-top: auto; }
   @media (max-width: 767.98px) {
     .layout-navbar-fixed.layout-horizontal .registration-checkout { margin-top: 0; }
-    .registration-checkout.container-p-y { padding-top: 1.25rem !important; }
-    .registration-checkout .checkout-summary .summary-item { padding: .8rem; }
+    .registration-checkout.container-p-y { padding: 1rem .85rem 1.5rem !important; }
+    .registration-checkout .checkout-intro { margin-bottom: 1.25rem !important; }
+    .registration-checkout .checkout-intro h3 { font-size: 1.4rem; line-height: 1.25; }
+    .registration-checkout .checkout-intro > p { font-size: .85rem; line-height: 1.45; }
+    .registration-checkout .checkout-step { font-size: .72rem; }
+    .registration-checkout .checkout-summary { margin-bottom: 1.25rem !important; }
+    .registration-checkout .checkout-summary .summary-item { padding: .7rem .85rem; }
     .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 0; border-top: 1px solid rgba(67, 89, 113, .12); }
-    .registration-checkout .checkout-card .card-body { padding: .9rem; }
-    .registration-checkout .amount { font-size: 1.35rem; }
+    .registration-checkout .checkout-card .card-header { padding: .9rem 1rem; }
+    .registration-checkout .checkout-card .card-body { padding: 1rem; }
+    .registration-checkout .choice-card .card-body { min-height: 0; }
+    .registration-checkout .amount { font-size: 1.25rem; }
+    .registration-checkout .checkout-card .btn { min-height: 48px; }
+    .registration-checkout .checkout-card .alert { font-size: .82rem; }
+    .registration-checkout .checkout-note { font-size: .8rem; }
+    .registration-checkout > .btn-outline-secondary { width: 100%; min-height: 48px; margin-top: 0 !important; }
+    .registration-checkout .toast-container { left: .75rem; right: .75rem; width: auto; padding: 0 0 1rem !important; }
+    .registration-checkout .toast-container .toast { width: 100%; }
   }
 </style>
 @endsection
