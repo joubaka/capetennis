@@ -56,8 +56,11 @@ $configData = Helper::appClasses();
         </div>
         @endif
 
-        <form id="formAuthentication" class="mb-3" action="{{ route('login') }}" method="POST">
-          @csrf
+    <form id="formAuthentication" class="mb-3" action="{{ route('login') }}" method="POST">
+        @csrf
+        @if(request()->filled('redirect') && str_starts_with(request('redirect'), '/'))
+            <input type="hidden" name="redirect" value="{{ request('redirect') }}">
+        @endif
           <div class="mb-3">
             <label for="login-email" class="form-label">Email</label>
             <input type="text" class="form-control @error('email') is-invalid @enderror" id="login-email" name="email" placeholder="john@example.com" autofocus value="{{ old('email') }}">
