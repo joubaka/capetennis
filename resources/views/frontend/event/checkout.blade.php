@@ -26,6 +26,31 @@
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/wizard-ex-checkout.css') }}?v={{ config('app.asset_version') }}" />
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}" />
+<style>
+  @media (max-width: 767.98px) {
+    #wizard-checkout {
+      width: calc(100% + 1.7rem);
+      margin-left: -.85rem;
+      margin-right: -.85rem;
+      overflow: hidden;
+    }
+
+    #wizard-checkout .bs-stepper-header {
+      width: 100%;
+      padding: 1rem .75rem !important;
+      overflow-x: auto;
+      justify-content: flex-start;
+    }
+
+    #wizard-checkout .bs-stepper-header .step {
+      flex: 0 0 auto;
+    }
+
+    #wizard-checkout .bs-stepper-content {
+      padding: 1rem .85rem !important;
+    }
+  }
+</style>
 @endsection
 
 @section('page-script')
