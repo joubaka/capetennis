@@ -61,6 +61,8 @@ class ManageDrawController extends Controller
   {
     $this->authorize('update', $draw);
     $data = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'draw_type' => 'nullable|integer|exists:draw_types,id',
             'draw_format_id' => 'nullable|exists:draw_formats,id',
             'draw_type_id' => 'nullable|exists:draw_types,id',
             'boxes' => 'nullable|integer|min:1|max:26',
@@ -68,10 +70,26 @@ class ManageDrawController extends Controller
             'num_sets' => 'nullable|integer',
         ]);
 
-        // Require at least one setting to update
-        $updateData = array_filter($data, fn($v) => !is_null($v) && $v !== '');
-        if (empty($updateData)) {
+        // The manage form uses draw-level names, while the engine API uses the
+        // settings column names. Normalize both inputs before persisting.
+        $drawData = array_filter([
+            'drawName' => $data['name'] ?? null,
+            'drawType_id' => $data['draw_type'] ?? null,
+        ], fn($v) => !is_null($v) && $v !== '');
+        $updateData = array_filter([
+            'draw_format_id' => $data['draw_format_id'] ?? null,
+            'draw_type_id' => $data['draw_type_id'] ?? ($data['draw_type'] ?? null),
+            'boxes' => $data['boxes'] ?? null,
+            'playoff_size' => $data['playoff_size'] ?? null,
+            'num_sets' => $data['num_sets'] ?? null,
+        ], fn($v) => !is_null($v) && $v !== '');
+
+        if (empty($drawData) && empty($updateData)) {
             return response()->json([ 'success' => false, 'message' => 'No settings provided' ], 422);
+        }
+
+        if ($drawData) {
+            $draw->update($drawData);
         }
 
         // Get OLD boxes count BEFORE updating

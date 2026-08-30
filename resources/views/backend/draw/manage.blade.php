@@ -91,7 +91,7 @@ $(function () {
             </div>
             <div class="mb-4">
               <label class="form-label fw-bold">Sets</label>
-              <input type="number" name="num_sets" value="{{ $draw->num_sets ?? 3 }}" min="1" max="5" class="form-control">
+              <input type="number" name="num_sets" value="{{ optional($draw->settings)->num_sets ?? 3 }}" min="1" max="5" class="form-control">
             </div>
             <button type="submit" class="btn btn-primary">
               <i class="ti ti-device-floppy me-1"></i> Save Settings
