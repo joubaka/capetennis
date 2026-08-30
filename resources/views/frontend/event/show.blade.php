@@ -108,6 +108,25 @@
       line-height: 1.65;
     }
   }
+
+  @media (max-width: 991.98px) {
+    .user-profile-header .user-profile-img {
+      width: 88px;
+    }
+  }
+
+  .user-profile-header .user-profile-img {
+    height: 120px;
+    max-width: 120px;
+    object-fit: contain;
+  }
+
+  @media (max-width: 991.98px) {
+    .user-profile-header .user-profile-img {
+      height: 88px;
+      max-width: 88px;
+    }
+  }
 </style>
 @endsection
 
