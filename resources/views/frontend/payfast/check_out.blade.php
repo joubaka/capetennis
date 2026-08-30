@@ -8,22 +8,24 @@
 <style>
   .registration-checkout { max-width: 1180px; }
   /* The horizontal header is fixed, so keep this page content below both navbar rows. */
-  .layout-navbar-fixed.layout-horizontal .registration-checkout { padding-top: 5.5rem !important; }
+  .layout-navbar-fixed.layout-horizontal .registration-checkout { margin-top: 4.75rem; }
   .registration-checkout .checkout-intro { max-width: 820px; }
+  .registration-checkout .checkout-intro h3 { font-size: 1.75rem; }
+  .registration-checkout .checkout-intro > p { font-size: .9rem; }
   .registration-checkout .checkout-eyebrow { letter-spacing: .08em; font-size: .72rem; font-weight: 700; text-transform: uppercase; }
   .registration-checkout .checkout-card { height: 100%; border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; overflow: hidden; }
   .registration-checkout.container-p-y { padding-top: 2rem !important; padding-bottom: 2rem !important; }
   .registration-checkout .checkout-card .card-header { padding: 1.15rem 1.25rem; border-bottom: 0; }
-  .registration-checkout .checkout-card .card-body { padding: 1.25rem; }
+  .registration-checkout .checkout-card .card-body { padding: 1rem 1.1rem; font-size: .9rem; }
   .registration-checkout .checkout-card .card-header h5 { font-size: 1.05rem; }
   .registration-checkout .checkout-card .card-header .small { opacity: .86; }
   .registration-checkout .checkout-card .mb-3 { margin-bottom: .7rem !important; }
   .registration-checkout .checkout-card .mb-4 { margin-bottom: .85rem !important; }
   .registration-checkout .checkout-card hr { margin: .7rem 0; }
-  .registration-checkout .amount { font-size: 1.45rem; letter-spacing: -.02em; margin-bottom: 0; }
+  .registration-checkout .amount { font-size: 1.25rem; letter-spacing: -.02em; margin-bottom: 0; }
   .registration-checkout .checkout-step { display: inline-flex; align-items: center; gap: .45rem; font-size: .8rem; font-weight: 600; }
   .registration-checkout .checkout-step + .checkout-step::before { content: '›'; margin: 0 .25rem; opacity: .55; }
-  .registration-checkout .payfast-submit { min-height: 56px; font-size: 1.05rem; font-weight: 700; }
+  .registration-checkout .payfast-submit { min-height: 48px; font-size: .98rem; font-weight: 700; }
   .registration-checkout .checkout-note { display: flex; gap: .5rem; align-items: flex-start; }
   .registration-checkout .checkout-summary { border: 1px solid rgba(67, 89, 113, .12); border-radius: .8rem; background: #fff; box-shadow: 0 .35rem 1.25rem rgba(67, 89, 113, .1); }
   .registration-checkout .checkout-summary .summary-item { padding: 1rem 1.2rem; }
@@ -32,10 +34,12 @@
   .registration-checkout .choice-card { position: relative; }
   .registration-checkout .choice-card.wallet-choice { border-top: 3px solid #7367f0; }
   .registration-checkout .choice-card.payfast-choice { border-top: 3px solid #ea5455; }
-  .registration-checkout .choice-card .card-body { min-height: 250px; }
+  .registration-checkout .choice-card .card-body { min-height: 220px; }
+  .registration-checkout .checkout-card h4 { font-size: 1.25rem; }
+  .registration-checkout .checkout-card .btn { padding-top: .55rem; padding-bottom: .55rem; }
   .registration-checkout .checkout-actions { margin-top: auto; }
   @media (max-width: 767.98px) {
-    .layout-navbar-fixed.layout-horizontal .registration-checkout { padding-top: 1.5rem !important; }
+    .layout-navbar-fixed.layout-horizontal .registration-checkout { margin-top: 0; }
     .registration-checkout.container-p-y { padding-top: 1.25rem !important; }
     .registration-checkout .checkout-summary .summary-item { padding: .8rem; }
     .registration-checkout .checkout-summary .summary-item + .summary-item { border-left: 0; border-top: 1px solid rgba(67, 89, 113, .12); }
