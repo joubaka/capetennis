@@ -8,16 +8,20 @@
 <style>
   .registration-checkout .checkout-intro { max-width: 760px; }
   .registration-checkout .checkout-card { height: 100%; border: 0; overflow: hidden; }
-  .registration-checkout .checkout-card .card-header { padding: 1.15rem 1.35rem; }
-  .registration-checkout .checkout-card .card-body { padding: 1.35rem; }
-  .registration-checkout .amount { font-size: 1.8rem; letter-spacing: -.02em; }
+  .registration-checkout.container-p-y { padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
+  .registration-checkout .checkout-card .card-header { padding: .8rem 1rem; }
+  .registration-checkout .checkout-card .card-body { padding: .95rem 1rem; }
+  .registration-checkout .checkout-card .mb-3 { margin-bottom: .7rem !important; }
+  .registration-checkout .checkout-card .mb-4 { margin-bottom: .85rem !important; }
+  .registration-checkout .checkout-card hr { margin: .7rem 0; }
+  .registration-checkout .amount { font-size: 1.45rem; letter-spacing: -.02em; margin-bottom: 0; }
   .registration-checkout .checkout-step { display: inline-flex; align-items: center; gap: .45rem; font-size: .8rem; font-weight: 600; }
   .registration-checkout .checkout-step + .checkout-step::before { content: '›'; margin: 0 .25rem; opacity: .55; }
   .registration-checkout .payfast-submit { min-height: 56px; font-size: 1.05rem; font-weight: 700; }
   .registration-checkout .checkout-note { display: flex; gap: .5rem; align-items: flex-start; }
   @media (max-width: 767.98px) {
-    .registration-checkout .checkout-card .card-body { padding: 1rem; }
-    .registration-checkout .amount { font-size: 1.55rem; }
+    .registration-checkout .checkout-card .card-body { padding: .9rem; }
+    .registration-checkout .amount { font-size: 1.35rem; }
   }
 </style>
 @endsection
@@ -56,8 +60,8 @@
   <div class="checkout-intro mb-4">
     <div class="checkout-step text-primary"><i class="ti ti-clipboard-check"></i> Registration ready</div>
     <span class="checkout-step text-muted"><i class="ti ti-lock"></i> Secure payment</span>
-    <h3 class="mb-1 mt-2">Complete your registration</h3>
-    <p class="text-muted mb-0">Review the amounts below. Wallet funds are reserved until payment is completed or cancelled.</p>
+    <h3 class="mb-1 mt-1">Complete your registration</h3>
+    <p class="text-muted mb-0 small">Review the amounts below. Wallet funds are reserved until payment is completed or cancelled.</p>
   </div>
 
   @php
@@ -170,6 +174,16 @@
                 <i class="ti ti-credit-card me-1"></i> Pay full amount with PayFast
               </button>
             </form>
+          @endif
+
+          @if($walletReserved > 0 && $payfastDue >= 20)
+            <form action="{{ route('registration.payfast-only', $orderId) }}" method="POST" class="mb-3" data-audit-order-id="{{ $orderId }}">
+              @csrf
+              <button type="submit" data-audit-action="payment.payfast-only-selected" data-audit-order-id="{{ $orderId }}" class="btn btn-outline-danger w-100">
+                <i class="ti ti-credit-card me-1"></i> Pay full amount with PayFast instead
+              </button>
+            </form>
+            <small class="text-muted d-block mb-3">This releases the wallet reservation and restarts payment for the full registration amount.</small>
           @endif
 
           @if($payfastDue <= 0)
@@ -311,7 +325,7 @@
               @endphp
               <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
 
-              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit" onclick="this.disabled=true; this.setAttribute('aria-busy', 'true');">
+              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit" onclick="this.disabled=true; this.setAttribute('aria-busy', 'true'); this.form.submit(); return false;">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
 
@@ -340,7 +354,7 @@
 
   </div>
 
-  <a href="{{ $cancelUrl }}" class="btn btn-warning mt-4">
+  <a href="{{ $cancelUrl }}" class="btn btn-warning mt-2">
     Cancel and go back
   </a>
 
