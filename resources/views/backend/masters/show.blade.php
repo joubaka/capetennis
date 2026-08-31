@@ -28,12 +28,6 @@
   .masters-groups h5 { font-size:1rem; margin-bottom:.35rem; }
   .masters-groups p { margin-bottom:.35rem; font-size:.85rem; }
   @media (max-width: 900px) { .masters-groups { grid-template-columns:1fr; } }
-  .masters-category-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
-  .masters-category-tab { border:1px solid #d9d7e2; background:#fff; border-radius:.45rem; padding:.55rem .75rem; text-align:left; color:#625f6d; }
-  .masters-category-tab:hover, .masters-category-tab.active { border-color:#7651e8; color:#7651e8; background:#f7f4ff; }
-  .masters-category-tab small { display:block; color:#8b8794; }
-  .masters-category-panel { display:none; }
-  .masters-category-panel.is-open { display:block; }
 </style>
 @endsection
 
@@ -49,17 +43,9 @@
   @else
     <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Invitations have been sent. The checked players below are now active invitees in their Masters categories.</span><form method="POST" action="{{ route('backend.masters.public-list.toggle', $batch) }}">@csrf<input type="hidden" name="published" value="{{ $batch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $batch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}">{{ $batch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form></div>
   @endif
-  <div class="masters-category-tabs" role="tablist" aria-label="Masters categories">
-    @foreach($readiness['groups'] as $tabIndex => $tabGroup)
-      <button type="button" class="masters-category-tab" role="tab" aria-selected="false" aria-controls="masters-category-{{ $tabIndex }}" data-category-tab="masters-category-{{ $tabIndex }}">
-        {{ $tabGroup['label'] ?? 'Age group' }}
-        <small>{{ $tabGroup['candidate_count'] }} candidates · {{ $tabGroup['reserve_count'] }} reserves</small>
-      </button>
-    @endforeach
-  </div>
   <div class="masters-groups">
-  @foreach($readiness['groups'] as $groupIndex => $group)
-    <div class="card masters-category-panel" id="masters-category-{{ $groupIndex }}" role="tabpanel">
+  @foreach($readiness['groups'] as $group)
+    <div class="card">
     <div class="card-body">
       <h5>{{ $group['label'] ?? 'Age group' }}</h5>
       <p>{{ $group['candidate_count'] }} candidates · {{ $group['reserve_count'] }} reserves · {{ ucfirst($group['status']) }}</p>
@@ -120,15 +106,6 @@
 <div class="modal fade" id="invitationPreviewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Invitation email preview</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" id="invitationPreviewBody"><div class="text-center text-muted py-4">Loading preview…</div></div></div></div></div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('[data-category-tab]').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      const target = document.getElementById(tab.dataset.categoryTab);
-      const isOpen = target?.classList.contains('is-open');
-      document.querySelectorAll('[data-category-tab]').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-      document.querySelectorAll('.masters-category-panel').forEach(panel => panel.classList.remove('is-open'));
-      if (!isOpen && target) { tab.classList.add('active'); tab.setAttribute('aria-selected', 'true'); target.classList.add('is-open'); }
-    });
-  });
   const deadlineHints = {
     response_deadline: 'The last date and time for the player to accept or decline the invitation.',
     payment_deadline: 'The last date and time for an accepted player to complete payment and secure their place.',

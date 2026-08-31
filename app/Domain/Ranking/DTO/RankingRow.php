@@ -14,6 +14,7 @@ final class RankingRow
      * @param RankingLeg[] $countingLegs     The best-N legs that contributed to totalPoints
      * @param RankingLeg[] $droppedLegs      Legs excluded by the best-N rule
      * @param int          $wins             Number of position-1 results in counting legs
+     * @param int          $eventsPlayed     Number of valid event results before best-N reduction
      * @param int          $bestSingle       Highest single-leg score
      * @param int          $positionsSum     Sum of positions (lower = better, used in tiebreak)
      * @param bool         $autoAward        Whether a synthetic leg was awarded
@@ -26,6 +27,7 @@ final class RankingRow
         public readonly array $countingLegs,
         public readonly array $droppedLegs,
         public readonly int   $wins,
+        public readonly int   $eventsPlayed,
         public readonly int   $bestSingle,
         public readonly int   $positionsSum,
         public readonly bool  $autoAward    = false,

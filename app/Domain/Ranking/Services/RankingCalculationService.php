@@ -372,6 +372,7 @@ final class RankingCalculationService
                 countingLegs:  $counting,
                 droppedLegs:   $dropped,
                 wins:          $wins,
+                eventsPlayed:  count($legs),
                 bestSingle:    $bestSingle,
                 positionsSum:  $posSum,
                 autoAward:     $hasAutoAward,
@@ -387,10 +388,11 @@ final class RankingCalculationService
 
     /**
      * Tiebreak order (when totalPoints are equal):
-     *  1. Most wins (position 1) in counting legs
-     *  2. Highest single-leg score in counting legs
-     *  3. Lowest sum of positions in counting legs
-     *  4. Earliest win date
+     *  1. Most events played
+     *  2. Most wins (position 1) in counting legs
+     *  3. Highest single-leg score in counting legs
+     *  4. Lowest sum of positions in counting legs
+     *  5. Earliest win date
      *
      * @param  Collection<RankingRow>   $rows
      * @param  array<int, RankingLeg[]> $byPlayer
@@ -414,15 +416,19 @@ final class RankingCalculationService
 
                 $arr = $group->values()->all();
                 usort($arr, function (RankingRow $a, RankingRow $b) use ($byPlayer) {
-                    // 1) most wins
+                    // 1) most valid event results, including results dropped by best-N
+                    if ($a->eventsPlayed !== $b->eventsPlayed) {
+                        return $b->eventsPlayed <=> $a->eventsPlayed;
+                    }
+                    // 2) most wins
                     if ($a->wins !== $b->wins) {
                         return $b->wins <=> $a->wins;
                     }
-                    // 2) best single
+                    // 3) best single
                     if ($a->bestSingle !== $b->bestSingle) {
                         return $b->bestSingle <=> $a->bestSingle;
                     }
-                    // 3) lowest positions sum
+                    // 4) lowest positions sum
                     if ($a->positionsSum !== $b->positionsSum) {
                         return $a->positionsSum <=> $b->positionsSum;
                     }
@@ -486,6 +492,7 @@ final class RankingCalculationService
     private function isTrueTie(RankingRow $a, RankingRow $b, array $byPlayer): bool
     {
         if ($a->totalPoints !== $b->totalPoints) return false;
+        if ($a->eventsPlayed !== $b->eventsPlayed) return false;
         if ($a->wins !== $b->wins) return false;
         if ($a->bestSingle !== $b->bestSingle) return false;
         if ($a->positionsSum !== $b->positionsSum) return false;
@@ -498,6 +505,7 @@ final class RankingCalculationService
 
     private function tiebreakCriterion(RankingRow $a, RankingRow $b, array $byPlayer): ?string
     {
+        if ($a->eventsPlayed !== $b->eventsPlayed) return 'most events played';
         if ($a->wins !== $b->wins) return 'most counting-event wins';
         if ($a->bestSingle !== $b->bestSingle) return 'highest single-event score';
         if ($a->positionsSum !== $b->positionsSum) return 'lowest sum of counting positions';
