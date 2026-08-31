@@ -94,7 +94,7 @@ class MastersInvitationController extends Controller
     public function show(MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);
-        $batch->load(['event', 'series', 'invitations.player.user', 'invitations.player.users', 'invitations.categoryEvent.category']);
+        $batch->load(['event', 'series', 'invitations.player.user', 'invitations.player.users', 'invitations.declinedBy', 'invitations.adminRemovedBy', 'invitations.categoryEvent.category']);
         $readiness = $service->readiness($batch);
         return view('backend.masters.show', compact('batch', 'readiness'));
     }

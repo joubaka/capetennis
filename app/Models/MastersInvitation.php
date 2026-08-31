@@ -26,6 +26,7 @@ class MastersInvitation extends Model
         'declined_at' => 'datetime',
         'decline_confirmation_sent_at' => 'datetime',
         'decline_confirmed_at' => 'datetime',
+        'admin_removed_at' => 'datetime',
         'expired_at' => 'datetime',
         'withdrawn_at' => 'datetime',
         'replacement_sent_at' => 'datetime',
@@ -60,5 +61,15 @@ class MastersInvitation extends Model
     public function promotedFrom()
     {
         return $this->belongsTo(self::class, 'promoted_from_id');
+    }
+
+    public function declinedBy()
+    {
+        return $this->belongsTo(User::class, 'declined_by_user_id');
+    }
+
+    public function adminRemovedBy()
+    {
+        return $this->belongsTo(User::class, 'admin_removed_by_user_id');
     }
 }

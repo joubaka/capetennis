@@ -399,7 +399,7 @@ final class MastersInvitationService
             if (!in_array($locked->status, [MastersInvitation::INVITED, MastersInvitation::RESERVE], true)) {
                 throw ValidationException::withMessages(['invitation' => 'This player is no longer available for admin removal.']);
             }
-            $locked->update(['status' => MastersInvitation::ADMIN_REMOVED, 'declined_at' => now(), 'decline_reason' => 'Removed by admin', 'invited_at' => null]);
+            $locked->update(['status' => MastersInvitation::ADMIN_REMOVED, 'declined_at' => now(), 'decline_reason' => 'Removed by admin', 'decline_method' => 'admin_dashboard', 'admin_removed_by_user_id' => $actor->id, 'admin_removed_at' => now(), 'invited_at' => null]);
             activity('masters')->performedOn($locked)->causedBy($actor)
                 ->withProperties(['invitation_id' => $locked->id, 'player_id' => $locked->player_id])
                 ->log('Masters player removed by admin');
@@ -416,7 +416,7 @@ final class MastersInvitationService
             throw ValidationException::withMessages(['invitation' => 'Only declined or admin-removed players can be restored.']);
         }
         $oldStatus = $invitation->status;
-        $invitation->update(['status' => MastersInvitation::RESERVE, 'declined_at' => null, 'decline_reason' => null]);
+        $invitation->update(['status' => MastersInvitation::RESERVE]);
         activity('masters')->performedOn($invitation)->causedBy($actor)
             ->withProperties(['invitation_id' => $invitation->id, 'player_id' => $invitation->player_id, 'from' => $oldStatus, 'to' => MastersInvitation::RESERVE])
             ->log('Masters player restored to reserve by admin');
@@ -542,7 +542,8 @@ final class MastersInvitationService
                 || ($locked->batch->response_deadline && now()->gt($locked->batch->response_deadline))) {
                 throw ValidationException::withMessages(['invitation' => 'This invitation cannot be declined.']);
             }
-            $locked->update(['status' => MastersInvitation::DECLINED, 'declined_at' => now(),
+            $locked->update(['status' => MastersInvitation::DECLINED, 'declined_at' => now(), 'declined_by_user_id' => $user->id,
+                'decline_method' => 'authenticated_invitation', 'admin_removed_by_user_id' => null, 'admin_removed_at' => null,
                 'decline_confirmation_sent_at' => now(), 'decline_confirmed_at' => null,
                 'decline_reason' => Str::limit($reason, 1000)]);
             DB::afterCommit(function () use ($locked) {
