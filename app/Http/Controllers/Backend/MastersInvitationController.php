@@ -230,6 +230,13 @@ class MastersInvitationController extends Controller
         return back()->with('success', 'Player removed by admin and retained in the audit history.');
     }
 
+    public function restoreInvitation(Request $request, MastersInvitation $invitation, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($invitation->batch);
+        $service->restoreToReserve($invitation, $request->user());
+        return back()->with('success', 'Player restored to the reserve list.');
+    }
+
     public function readiness(MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);

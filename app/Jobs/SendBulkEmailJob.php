@@ -178,6 +178,12 @@ class SendBulkEmailJob implements ShouldQueue
                 }
                 return null;
 
+            case 'masters_invitation':
+                $invitation = !empty($payload['invitation_id'])
+                    ? \App\Models\MastersInvitation::with(['batch.event', 'categoryEvent.category', 'player'])->find($payload['invitation_id'])
+                    : null;
+                return $invitation ? new \App\Mail\MastersInvitationMail($invitation, $payload['kind'] ?? 'invitation') : null;
+
             case 'violation_notification':
                 // Load fresh data
                 if (!empty($payload['player_id']) && !empty($payload['violation_id'])) {

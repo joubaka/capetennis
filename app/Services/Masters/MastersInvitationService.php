@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use App\Models\BulkEmailLog;
+use App\Jobs\SendBulkEmailJob;
 
 final class MastersInvitationService
 {
@@ -293,7 +295,8 @@ final class MastersInvitationService
                     continue;
                 }
                 try {
-                    $this->queuePlayerMail($invitation, 'invitation');
+                    $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => 'invitation'], 'queued_at' => now()]);
+                    SendBulkEmailJob::dispatch($log->id);
                     $report['queued']++;
                     $report['details'][] = array_merge($context, ['result' => 'queued']);
                     Log::info('Masters invitation email queued', $report['details'][array_key_last($report['details'])]);
@@ -404,11 +407,30 @@ final class MastersInvitationService
         });
     }
 
+    public function restoreToReserve(MastersInvitation $invitation, User $actor): MastersInvitation
+    {
+        if ($invitation->batch?->status === 'sent') {
+            throw ValidationException::withMessages(['invitation' => 'A sent invitation cannot be restored directly. Use the live replacement workflow.']);
+        }
+        if (!in_array($invitation->status, [MastersInvitation::DECLINED, MastersInvitation::ADMIN_REMOVED], true)) {
+            throw ValidationException::withMessages(['invitation' => 'Only declined or admin-removed players can be restored.']);
+        }
+        $oldStatus = $invitation->status;
+        $invitation->update(['status' => MastersInvitation::RESERVE, 'declined_at' => null, 'decline_reason' => null]);
+        activity('masters')->performedOn($invitation)->causedBy($actor)
+            ->withProperties(['invitation_id' => $invitation->id, 'player_id' => $invitation->player_id, 'from' => $oldStatus, 'to' => MastersInvitation::RESERVE])
+            ->log('Masters player restored to reserve by admin');
+        return $invitation->fresh(['player', 'categoryEvent.category', 'batch.event']);
+    }
+
     public function queuePlayerMail(MastersInvitation $invitation, string $kind = 'invitation'): void
     {
         $invitation->loadMissing(['player.user', 'player.users', 'batch.event', 'categoryEvent.category']);
         $user = $this->playerUser($invitation->player);
-        if ($user?->email) Mail::to($user->email)->queue(new \App\Mail\MastersInvitationMail($invitation, $kind));
+        if ($user?->email) {
+            $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => $kind], 'queued_at' => now()]);
+            SendBulkEmailJob::dispatch($log->id);
+        }
     }
 
     public function queueAdminMail(MastersInvitation $invitation, string $action, ?MastersInvitation $replacement = null): void
