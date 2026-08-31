@@ -11,7 +11,9 @@
   .masters-review .category-card[open] summary::before { content:'−'; }
   .masters-review .category-content { border-top:1px solid #ebeaf0; padding:0 1rem 1rem; }
   .masters-review .category-card h5 { font-size:1rem; }
-  .masters-review .player-row { border-top:1px solid #ebeaf0; padding:.55rem 0; }
+  .masters-review .player-row { border-top:1px solid #ebeaf0; padding:.3rem 0; min-height:2.35rem; font-size:.85rem; }
+  .masters-review .player-row .btn { width:1.9rem; height:1.7rem; padding:.1rem; line-height:1; }
+  .masters-review .player-row .small { font-size:.72rem; }
   .masters-review .player-list { overflow:visible; }
 </style>
 @endsection
@@ -39,6 +41,7 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.masters-review .category-card').forEach(details => { details.open = true; });
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   document.querySelectorAll('.js-invitation-wave-form').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault(); const button = form.querySelector('button'); const target = form.querySelector('[name="status"]').value; button.disabled = true;
