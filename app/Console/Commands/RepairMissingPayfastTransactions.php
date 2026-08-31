@@ -41,6 +41,9 @@ class RepairMissingPayfastTransactions extends Command
             app(PaymentTransactionService::class)->record([
                 'pf_payment_id' => $order->payfast_pf_payment_id,
                 'amount_gross' => $order->payfast_amount_due,
+                'cape_tennis_fee' => $event->cape_tennis_fee !== null
+                    ? round((float) $event->cape_tennis_fee * max(1, $order->items->count()), 2)
+                    : null,
                 'custom_int1' => $item->category_event_id,
                 'custom_int2' => $item->player_id,
                 'custom_int3' => $event->id,

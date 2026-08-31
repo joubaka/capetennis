@@ -24,11 +24,20 @@
   #txTable td.text-end { font-variant-numeric: tabular-nums; }
   #txTable { table-layout: fixed; width: 100%; }
   #txTable th, #txTable td { white-space: nowrap; }
+
+  /* The horizontal Super Admin submenu is positioned over the page. Keep it
+     above the content, but move this page down while it is open so long event
+     names and finance controls are not hidden underneath it. */
+  @media (min-width: 1200px) {
+    body:has(#layout-menu .menu-item.open) .event-finances-page {
+      padding-top: 510px;
+    }
+  }
 </style>
 @endsection
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl event-finances-page">
 
   {{-- HEADER --}}
   <div class="card mb-3">

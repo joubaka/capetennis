@@ -11,6 +11,7 @@ class MastersInvitation extends Model
     public const ACCEPTED_PENDING_PAYMENT = 'accepted_pending_payment';
     public const PAID_CONFIRMED = 'paid_confirmed';
     public const DECLINED = 'declined';
+    public const ADMIN_REMOVED = 'admin_removed';
     public const EXPIRED = 'expired';
     public const WITHDRAWN = 'withdrawn';
     public const SUPERSEDED = 'superseded';

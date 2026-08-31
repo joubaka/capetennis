@@ -144,6 +144,12 @@ class PaymentTransactionService
             $transaction->amount_net = round($gross - $configuredFee, 2);
         }
 
+        // Preserve the event-level Cape Tennis fee on the receipt when the
+        // caller has resolved it. The ledger still derives this for display.
+        if (array_key_exists('cape_tennis_fee', $data)) {
+            $transaction->cape_tennis_fee = $data['cape_tennis_fee'];
+        }
+
         $this->assignIfPresent($transaction, 'event_id', $data, 'custom_int3');
         $this->assignIfPresent($transaction, 'category_event_id', $data, 'custom_int1');
         $this->assignIfPresent($transaction, 'player_id', $data, 'custom_int2');

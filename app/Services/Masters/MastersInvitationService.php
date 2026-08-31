@@ -358,6 +358,27 @@ final class MastersInvitationService
         return $fresh;
     }
 
+    public function removeByAdmin(MastersInvitation $invitation, User $actor): MastersInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor) {
+            $locked = MastersInvitation::query()->lockForUpdate()->with('batch')->findOrFail($invitation->id);
+            if ($locked->batch?->status === 'sent') {
+                throw ValidationException::withMessages(['invitation' => 'Sent invitations cannot be removed. Manage withdrawals and replacements from the live dashboard.']);
+            }
+            if ($locked->order_id || $locked->registration_id || in_array($locked->status, [MastersInvitation::ACCEPTED_PENDING_PAYMENT, MastersInvitation::PAID_CONFIRMED], true)) {
+                throw ValidationException::withMessages(['invitation' => 'A player who has started or completed payment cannot be removed by admin.']);
+            }
+            if (!in_array($locked->status, [MastersInvitation::INVITED, MastersInvitation::RESERVE], true)) {
+                throw ValidationException::withMessages(['invitation' => 'This player is no longer available for admin removal.']);
+            }
+            $locked->update(['status' => MastersInvitation::ADMIN_REMOVED, 'declined_at' => now(), 'decline_reason' => 'Removed by admin', 'invited_at' => null]);
+            activity('masters')->performedOn($locked)->causedBy($actor)
+                ->withProperties(['invitation_id' => $locked->id, 'player_id' => $locked->player_id])
+                ->log('Masters player removed by admin');
+            return $locked->fresh(['player', 'categoryEvent.category', 'batch.event']);
+        });
+    }
+
     public function queuePlayerMail(MastersInvitation $invitation, string $kind = 'invitation'): void
     {
         $invitation->loadMissing(['player.user', 'player.users', 'batch.event', 'categoryEvent.category']);

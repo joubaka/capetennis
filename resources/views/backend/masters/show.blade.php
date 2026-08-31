@@ -50,7 +50,7 @@
       @php($groupPlayers = $batch->invitations->where('category_event_id', $group['category_event_id'])->sortBy('queue_position'))
       @php($invitees = $groupPlayers->filter(fn ($invitation) => in_array($invitation->status, [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED], true)))
       @php($reserves = $groupPlayers->filter(fn ($invitation) => $invitation->status === \App\Models\MastersInvitation::RESERVE))
-      @php($declined = $groupPlayers->filter(fn ($invitation) => in_array($invitation->status, [\App\Models\MastersInvitation::DECLINED, \App\Models\MastersInvitation::WITHDRAWN], true)))
+      @php($declined = $groupPlayers->filter(fn ($invitation) => in_array($invitation->status, [\App\Models\MastersInvitation::DECLINED, \App\Models\MastersInvitation::WITHDRAWN, \App\Models\MastersInvitation::ADMIN_REMOVED], true)))
       <div class="d-flex justify-content-between align-items-center mt-3 mb-1"><div class="small fw-semibold">Invitees — visible to be sent</div><span class="small text-muted">{{ $invitees->count() }} entries</span></div>
       <div class="masters-entry-table">
         <div class="masters-entry-head"><span>#</span><span>Player</span><span>Email</span><span>Cell</span><span>Status / payment</span><span>Action</span></div>
@@ -120,6 +120,18 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
     const form = cell.querySelector('.js-invitation-wave-form');
     if (!form) return;
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'btn btn-sm btn-outline-danger ms-1'; remove.textContent = '×'; remove.title = 'Remove by admin';
+    remove.addEventListener('click', async function () {
+      if (!confirm('Remove this player from the Masters invitation list?')) return;
+      remove.disabled = true;
+      try {
+        const response = await fetch(form.action, {method: 'DELETE', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
+        if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
+        window.location.reload();
+      } catch (error) { alert(error.message); remove.disabled = false; }
+    });
+    cell.appendChild(remove);
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'btn btn-sm btn-outline-info me-1'; button.textContent = 'Preview';
     button.addEventListener('click', async function () {

@@ -202,6 +202,31 @@ class MastersInvitationController extends Controller
         return back()->with('success', $data['status'] === MastersInvitation::INVITED ? 'Player added to the invitation wave.' : 'Player moved to reserve.');
     }
 
+    public function removeInvitation(Request $request, MastersInvitation $invitation, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($invitation->batch);
+
+        if ($invitation->status === MastersInvitation::PAID_CONFIRMED && $invitation->registration_id) {
+            $registration = \App\Models\CategoryEventRegistration::with(['categoryEvent.event', 'players', 'user'])
+                ->findOrFail($invitation->registration_id);
+            $event = $registration->categoryEvent?->event;
+            abort_unless($event && $event->id === $invitation->event_id, 404);
+
+            app(\App\Domain\Entries\Services\EntryService::class)->withdrawEntryAsAdmin($registration, $request->user());
+            $registration->sendWithdrawalEmails('admin');
+            $service->handlePaidWithdrawal((int) $registration->id, $request->user());
+
+            if ($event->canWithdraw()) {
+                return redirect()->route('admin.registration.refund.choose', [$event, $registration])
+                    ->with('success', 'Paid player removed by admin. Choose whether a refund should be issued.');
+            }
+
+            return back()->with('success', 'Paid player removed by admin and deactivated (no refund — withdrawal deadline passed).');
+        }
+        $service->removeByAdmin($invitation, $request->user());
+        return back()->with('success', 'Player removed by admin and retained in the audit history.');
+    }
+
     public function readiness(MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);

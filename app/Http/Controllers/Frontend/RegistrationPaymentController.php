@@ -727,6 +727,9 @@ class RegistrationPaymentController extends Controller
     app(PaymentTransactionService::class)->record(array_merge($payfastData, [
       'pf_payment_id' => $payfastData['pf_payment_id'] ?? $order->payfast_pf_payment_id,
       'amount_gross' => $payfastData['amount_gross'] ?? $order->payfast_amount_due,
+      'cape_tennis_fee' => $categoryEvent
+        ? round((float) $categoryEvent->event->cape_tennis_fee * max(1, $order->items->count()), 2)
+        : null,
       'custom_int1' => $payfastData['custom_int1'] ?? $item?->category_event_id,
       'custom_int2' => $payfastData['custom_int2'] ?? $item?->player_id,
       'custom_int3' => $payfastData['custom_int3'] ?? $categoryEvent?->event_id,
