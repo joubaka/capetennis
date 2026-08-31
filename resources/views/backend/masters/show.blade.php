@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   if (window.bootstrap) document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) { new bootstrap.Tooltip(el); });
   const previewModal = document.getElementById('invitationPreviewModal');
-    document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
+  document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
     const form = cell.querySelector('.js-invitation-wave-form');
     if (!form) return;
     const menuWrap = document.createElement('div'); menuWrap.className = 'dropdown masters-action-menu';
@@ -158,6 +158,20 @@ document.addEventListener('DOMContentLoaded', function () {
     waveButton.className = 'dropdown-item';
     waveButton.textContent = form.dataset.invited === '1' ? 'Move player to reserve' : 'Add player to invitation wave';
     cell.appendChild(menuWrap);
+  });
+  document.querySelectorAll('.masters-player-list .js-invitation-wave-form').forEach(function (form) {
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.className = 'btn btn-sm btn-outline-danger ms-1'; remove.textContent = '×'; remove.title = 'Remove reserve player by admin';
+    remove.addEventListener('click', async function () {
+      if (!confirm('Remove this reserve player from the Masters list?')) return;
+      remove.disabled = true;
+      try {
+        const response = await fetch(form.action, {method: 'DELETE', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
+        if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
+        window.location.reload();
+      } catch (error) { alert(error.message); remove.disabled = false; }
+    });
+    form.parentElement.appendChild(remove);
   });
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   document.querySelectorAll('.js-invitation-wave-form').forEach(function (form) {
