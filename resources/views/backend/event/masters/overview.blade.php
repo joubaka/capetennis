@@ -4,6 +4,7 @@
 
 @section('page-style')
 <style>
+  .masters-page { padding-top: 3.5rem; }
   .masters-page .card { border:1px solid #ebeaf0; border-radius:.45rem; box-shadow:0 .25rem 1rem rgba(47,43,61,.05); }
   .masters-page .card-header { background:#fff; border-bottom:1px solid #ebeaf0; padding:1.1rem 1.2rem; }
   .masters-page .card-header h5 { color:#625f6d; font-size:1rem; font-weight:600; }
