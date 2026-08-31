@@ -7,15 +7,15 @@
   .masters-player-list { overflow:visible; }
   .masters-player-row { border-top:1px solid #ebeaf0; padding:.55rem 0; }
   .masters-player-row .form-check-input { margin-top:.25rem; }
-  .masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow:hidden; }
-  .masters-entry-head, .masters-entry-row { display:grid; grid-template-columns:2rem minmax(9rem,1.4fr) minmax(12rem,2fr) minmax(7rem,1fr) minmax(7rem,1fr) minmax(4rem,.65fr); align-items:center; gap:.65rem; padding:.55rem .65rem; }
+  .masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow-x:auto; overflow-y:hidden; }
+  .masters-entry-head, .masters-entry-row { display:grid; grid-template-columns:1.75rem minmax(7rem,1.15fr) minmax(8rem,1.5fr) minmax(5.8rem,.85fr) minmax(7.2rem,1fr) 4.8rem; align-items:center; gap:.45rem; padding:.55rem .55rem; }
   .masters-entry-head { background:#e4e4e9; color:#625f6d; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
   .masters-entry-row { border-top:1px solid #ebeaf0; font-size:.82rem; }
   .masters-entry-row:first-child { border-top:0; }
   .masters-entry-row a { word-break:break-word; }
   .masters-entry-row .contact-cell { min-width:0; }
   .masters-entry-row .contact-cell small { display:block; color:#8b8794; }
-  .masters-entry-row .contact-cell .email-link { display:block; }
+  .masters-entry-row .contact-cell .email-link { display:block; overflow-wrap:anywhere; }
   .masters-entry-row .action-cell form { display:inline-block; }
   .masters-entry-row .action-cell { white-space:nowrap; }
   @media (max-width: 900px) { .masters-entry-head { display:none; } .masters-entry-row { grid-template-columns:2rem minmax(9rem,1fr) minmax(7rem,1fr) auto; } .masters-entry-row .email-cell, .masters-entry-row .cell-cell, .masters-entry-row .payment-cell { grid-column:2 / span 2; } }
