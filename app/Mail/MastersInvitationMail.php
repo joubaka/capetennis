@@ -17,10 +17,10 @@ class MastersInvitationMail extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: $this->subject());
+        return new Envelope(subject: $this->subjectLine());
     }
 
-    public function subject(): string
+    public function subjectLine(): string
     {
         return match ($this->kind) {
             'replacement' => 'Cape Tennis Masters replacement invitation',

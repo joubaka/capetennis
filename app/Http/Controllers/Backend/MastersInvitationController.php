@@ -114,7 +114,7 @@ class MastersInvitationController extends Controller
         $mail = new \App\Mail\MastersInvitationMail($invitation);
 
         return view('backend.masters.invitation-preview', [
-            'subject' => $mail->subject(),
+            'subject' => $mail->envelope()->subject,
             'body' => view('emails.masters.invitation', [
                 'invitation' => $invitation,
                 'kind' => 'invitation',
