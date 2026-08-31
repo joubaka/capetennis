@@ -497,7 +497,7 @@ final class MastersInvitationService
             $responseDeadline = $locked->promoted_from_id
                 ? $locked->batch->replacement_payment_deadline
                 : $locked->batch->response_deadline;
-            if (!$locked->batch->registration_open) {
+            if (!$locked->batch->registration_open && (int) $locked->batch->event?->signUp !== 1) {
                 throw ValidationException::withMessages(['invitation' => 'Masters registration is currently closed.']);
             }
             if ($locked->status !== MastersInvitation::INVITED

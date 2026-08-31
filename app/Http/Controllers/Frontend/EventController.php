@@ -144,7 +144,10 @@ class EventController extends Controller
       $mastersInvitations = $mastersBatch
         ? $mastersBatch->invitations()->with(['player', 'categoryEvent.category'])->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED])->orderBy('category_event_id')->orderBy('ranking_position')->get()
         : collect();
-      $mastersRegistrationOpen = (bool) $mastersBatch?->registration_open;
+      // The event Signup switch is the primary public gate. Keep the batch
+      // flag supported for Masters-specific control, but do not show a
+      // published Masters list as closed when the event is explicitly open.
+      $mastersRegistrationOpen = (bool) ($mastersBatch?->registration_open || (int) $event->signUp === 1);
     }
 
     Log::debug('EVENT LOADED', [
