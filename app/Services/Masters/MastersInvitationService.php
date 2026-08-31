@@ -260,7 +260,7 @@ final class MastersInvitationService
         });
     }
 
-    public function sendInvitations(MastersInvitationBatch $batch): int
+    public function sendInvitations(MastersInvitationBatch $batch): array
     {
         if (!$batch->response_deadline || !$batch->payment_deadline || !$batch->replacement_payment_deadline) {
             throw ValidationException::withMessages(['batch' => 'Save all invitation deadlines before sending invitations.']);
@@ -279,14 +279,36 @@ final class MastersInvitationService
             if ($invitations->isEmpty()) {
                 throw ValidationException::withMessages(['batch' => 'There are no invitees selected to receive invitations.']);
             }
+            $report = ['queued' => 0, 'skipped' => 0, 'failed' => 0, 'details' => []];
+            Log::info('Masters invitation batch send started', ['batch_id' => $lockedBatch->id, 'event_id' => $lockedBatch->event_id, 'selected_count' => $invitations->count()]);
             foreach ($invitations as $invitation) {
-                $this->queuePlayerMail($invitation, 'invitation');
+                $invitation->loadMissing(['player', 'player.user', 'player.users', 'categoryEvent.category']);
+                $recipient = $this->playerUser($invitation->player);
+                $email = $recipient?->email;
+                $context = ['batch_id' => $lockedBatch->id, 'invitation_id' => $invitation->id, 'player_id' => $invitation->player_id, 'player' => $invitation->player?->full_name, 'category' => $invitation->categoryEvent?->category?->name, 'recipient' => $email];
+                if (!$email) {
+                    $report['skipped']++;
+                    $report['details'][] = array_merge($context, ['result' => 'skipped', 'error' => 'No linked player account email address.']);
+                    Log::warning('Masters invitation email skipped', $report['details'][array_key_last($report['details'])]);
+                    continue;
+                }
+                try {
+                    $this->queuePlayerMail($invitation, 'invitation');
+                    $report['queued']++;
+                    $report['details'][] = array_merge($context, ['result' => 'queued']);
+                    Log::info('Masters invitation email queued', $report['details'][array_key_last($report['details'])]);
+                } catch (\Throwable $e) {
+                    $report['failed']++;
+                    $report['details'][] = array_merge($context, ['result' => 'failed', 'error' => $e->getMessage()]);
+                    Log::error('Masters invitation email queue failed', array_merge($context, ['error' => $e->getMessage()]));
+                }
             }
             $lockedBatch->update(['status' => 'sent', 'public_list_published' => true]);
             activity('masters')->performedOn($lockedBatch)->causedBy(auth()->user())
                 ->withProperties(['published' => true, 'emails_sent' => true, 'invitation_count' => $invitations->count()])
                 ->log('Masters player names published automatically when invitations were sent');
-            return $invitations->count();
+            Log::info('Masters invitation batch send completed', ['batch_id' => $lockedBatch->id, 'event_id' => $lockedBatch->event_id, 'selected' => $invitations->count(), 'queued' => $report['queued'], 'skipped' => $report['skipped'], 'failed' => $report['failed'], 'batch_status' => 'sent', 'public_list_published' => true]);
+            return $report;
         });
     }
 

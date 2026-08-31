@@ -11,10 +11,15 @@
   .masters-review .category-card[open] summary::before { content:'−'; }
   .masters-review .category-content { border-top:1px solid #ebeaf0; padding:0 1rem 1rem; }
   .masters-review .category-card h5 { font-size:1rem; }
-  .masters-review .player-row { border-top:1px solid #ebeaf0; padding:.3rem 0; min-height:2.35rem; font-size:.85rem; }
-  .masters-review .player-row .btn { width:1.9rem; height:1.7rem; padding:.1rem; line-height:1; }
+  .masters-review .category-card h5 { font-size:.88rem; }
+  .masters-review .category-content { padding-left:.65rem; padding-right:.65rem; }
+  .masters-review .player-row { border-top:1px solid #ebeaf0; padding:.2rem 0; min-height:2rem; font-size:.76rem; }
+  .masters-review .player-row strong { font-size:.78rem; font-weight:600; }
+  .masters-review .player-row .btn { width:1.45rem; height:1.35rem; padding:.05rem; line-height:1; font-size:.7rem; }
   .masters-review .player-row .small { font-size:.72rem; }
   .masters-review .player-list { overflow:visible; }
+  .masters-review .category-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
+  @media (max-width: 900px) { .masters-review .category-grid { grid-template-columns:1fr; } }
 </style>
 @endsection
 
@@ -22,8 +27,12 @@
 <div class="container-xxl flex-grow-1 container-p-y masters-review">
   <div class="d-flex justify-content-between align-items-start mb-3"><div><h4 class="mb-1">Final invitation review</h4><p class="text-muted mb-0">{{ $batch->event?->name }} · confirm the checked invitees before sending.</p></div><div class="d-flex gap-2"><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a><a href="{{ route('backend.masters.show', $batch) }}" class="btn btn-outline-secondary">Back to batch details</a></div></div>
   <div class="alert alert-info">{{ $batch->invitations->where('status', 'invited')->count() }} invitations selected · {{ $batch->invitations->where('status', 'reserve')->count() }} reserves. Checked players will receive invitations; reserves will be invited only if needed.</div>
+  @php($adminRemoved = $batch->invitations->where('status', \App\Models\MastersInvitation::ADMIN_REMOVED))
+  @if($adminRemoved->isNotEmpty())
+    <div class="alert alert-danger"><strong>{{ $adminRemoved->count() }} player(s) removed by admin</strong><div class="small mt-1">These players are excluded from invitations and reserves.</div><div class="d-flex flex-wrap gap-2 mt-2">@foreach($adminRemoved as $removed)<span class="badge bg-danger">{{ $removed->player?->full_name ?? ('Player '.$removed->player_id) }}</span>@endforeach</div></div>
+  @endif
   <div class="row">
-    <div class="col-xl-9">
+    <div class="col-12 category-grid">
       @foreach($batch->invitations->groupBy('category_event_id') as $categoryId => $invitations)
         <details class="category-card"><summary><div class="d-flex justify-content-between align-items-center gap-2"><h5 class="mb-0">{{ $invitations->first()->categoryEvent?->category?->name ?? 'Masters category' }}</h5><span class="small text-muted">{{ $invitations->where('status','invited')->count() }} invitees · {{ $invitations->where('status','reserve')->count() }} reserves</span></div></summary><div class="category-content"><div class="player-list">
           @foreach($invitations->sortBy('queue_position') as $invitation)

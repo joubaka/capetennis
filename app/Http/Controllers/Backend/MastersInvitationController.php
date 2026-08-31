@@ -159,9 +159,9 @@ class MastersInvitationController extends Controller
     public function sendInvitations(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);
-        $count = $service->sendInvitations($batch);
+        $report = $service->sendInvitations($batch);
         return redirect()->route('admin.events.overview', $batch->event_id)
-            ->with('success', "{$count} invitations have been queued for sending. The Masters event dashboard is now the main operating page.");
+            ->with('success', "{$report['queued']} invitation emails queued; {$report['skipped']} skipped and {$report['failed']} failed. Detailed results were written to Laravel.log.");
     }
 
     public function publishNamesOnly(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
