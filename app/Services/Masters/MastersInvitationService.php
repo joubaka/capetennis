@@ -409,7 +409,7 @@ final class MastersInvitationService
 
     public function restoreToReserve(MastersInvitation $invitation, User $actor): MastersInvitation
     {
-        if ($invitation->batch?->status === 'sent') {
+        if ($invitation->batch?->status === 'sent' && !in_array($invitation->status, [MastersInvitation::DECLINED, MastersInvitation::ADMIN_REMOVED], true)) {
             throw ValidationException::withMessages(['invitation' => 'A sent invitation cannot be restored directly. Use the live replacement workflow.']);
         }
         if (!in_array($invitation->status, [MastersInvitation::DECLINED, MastersInvitation::ADMIN_REMOVED], true)) {
