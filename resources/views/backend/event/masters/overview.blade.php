@@ -48,10 +48,10 @@
 
   @if($mastersBatch && $mastersBatch->status !== 'sent' && !$mastersBatch->public_list_published)
     <div class="alert alert-info d-flex justify-content-between align-items-center">
-      <span>Want to show the invited player names publicly before sending emails?</span>
+      <span>Publish the invited player names publicly before sending emails?</span>
       <form method="POST" action="{{ route('backend.masters.publish-names', $mastersBatch) }}" onsubmit="return confirm('Publish player names publicly without sending invitation emails?');">
         @csrf
-        <button class="btn btn-sm btn-outline-info"><i class="ti ti-world me-1"></i>Publish names only</button>
+        <button class="btn btn-sm btn-outline-info"><i class="ti ti-world me-1"></i>Publish invitation list</button>
       </form>
     </div>
   @elseif($mastersBatch && $mastersBatch->public_list_published)
@@ -63,6 +63,10 @@
         <button class="btn btn-sm btn-outline-warning"><i class="ti ti-eye-off me-1"></i>Unpublish names</button>
       </form>
     </div>
+  @endif
+
+  @if($mastersBatch)
+    <div class="card mb-3"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h6 class="mb-1">Public invitation list</h6><p class="text-muted mb-0">Show or hide the selected Masters player names on the public event page.</p></div><form method="POST" action="{{ route('backend.masters.public-list.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->public_list_published ? 'Unpublish the Masters player list?' : 'Publish the Masters player list publicly?' }}');">@csrf<input type="hidden" name="published" value="{{ $mastersBatch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $mastersBatch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}"><i class="ti ti-world me-1"></i>{{ $mastersBatch->public_list_published ? 'Unpublish invitation list' : 'Publish invitation list' }}</button></form></div></div>
   @endif
 
   <div class="row g-3 mb-4">

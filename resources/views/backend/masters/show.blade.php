@@ -43,6 +43,9 @@
   @else
     <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Invitations have been sent. The checked players below are now active invitees in their Masters categories.</span><form method="POST" action="{{ route('backend.masters.public-list.toggle', $batch) }}">@csrf<input type="hidden" name="published" value="{{ $batch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $batch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}">{{ $batch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form></div>
   @endif
+  @if($batch->status !== 'sent' && !$batch->public_list_published)
+    <div class="alert alert-info d-flex justify-content-between align-items-center gap-2"><span>Publish the invited player names publicly before sending emails?</span><form method="POST" action="{{ route('backend.masters.publish-names', $batch) }}" onsubmit="return confirm('Publish the invitation list publicly without sending invitation emails?');">@csrf<button class="btn btn-sm btn-outline-info"><i class="ti ti-world me-1"></i>Publish invitation list</button></form></div>
+  @endif
   <div class="masters-groups">
   @foreach($readiness['groups'] as $group)
     <div class="card">

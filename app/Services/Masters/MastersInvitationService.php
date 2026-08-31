@@ -282,7 +282,10 @@ final class MastersInvitationService
             foreach ($invitations as $invitation) {
                 $this->queuePlayerMail($invitation, 'invitation');
             }
-            $lockedBatch->update(['status' => 'sent']);
+            $lockedBatch->update(['status' => 'sent', 'public_list_published' => true]);
+            activity('masters')->performedOn($lockedBatch)->causedBy(auth()->user())
+                ->withProperties(['published' => true, 'emails_sent' => true, 'invitation_count' => $invitations->count()])
+                ->log('Masters player names published automatically when invitations were sent');
             return $invitations->count();
         });
     }
