@@ -5,6 +5,11 @@
 @section('page-style')
 <style>
   .masters-review .category-card { border:1px solid #ebeaf0; border-radius:.6rem; margin-bottom:1rem; }
+  .masters-review .category-card summary { cursor:pointer; list-style:none; padding: .85rem 1rem; }
+  .masters-review .category-card summary::-webkit-details-marker { display:none; }
+  .masters-review .category-card summary::before { content:'+'; display:inline-block; width:1.4rem; color:#7651e8; font-weight:700; }
+  .masters-review .category-card[open] summary::before { content:'−'; }
+  .masters-review .category-content { border-top:1px solid #ebeaf0; padding:0 1rem 1rem; }
   .masters-review .category-card h5 { font-size:1rem; }
   .masters-review .player-row { border-top:1px solid #ebeaf0; padding:.55rem 0; }
   .masters-review .player-list { overflow:visible; }
@@ -18,12 +23,12 @@
   <div class="row">
     <div class="col-xl-9">
       @foreach($batch->invitations->groupBy('category_event_id') as $categoryId => $invitations)
-        <div class="category-card p-3"><div class="d-flex justify-content-between align-items-center mb-2"><h5 class="mb-0">{{ $invitations->first()->categoryEvent?->category?->name ?? 'Masters category' }}</h5><span class="small text-muted">{{ $invitations->where('status','invited')->count() }} invitees · {{ $invitations->where('status','reserve')->count() }} reserves</span></div><div class="player-list">
+        <details class="category-card"><summary><div class="d-flex justify-content-between align-items-center gap-2"><h5 class="mb-0">{{ $invitations->first()->categoryEvent?->category?->name ?? 'Masters category' }}</h5><span class="small text-muted">{{ $invitations->where('status','invited')->count() }} invitees · {{ $invitations->where('status','reserve')->count() }} reserves</span></div></summary><div class="category-content"><div class="player-list">
           @foreach($invitations->sortBy('queue_position') as $invitation)
             @php($invited = $invitation->status === \App\Models\MastersInvitation::INVITED)
             <div class="player-row d-flex align-items-center gap-2"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $invitation) }}" data-invited="{{ $invited ? 1 : 0 }}">@csrf @method('PATCH')<input type="hidden" name="status" value="{{ $invited ? 'reserve' : 'invited' }}"><button class="btn btn-sm {{ $invited ? 'btn-primary' : 'btn-outline-secondary' }}" type="submit">{{ $invited ? '✓' : '○' }}</button></form><div class="flex-grow-1"><strong>{{ $invitation->player?->full_name ?? ('Player '.$invitation->player_id) }}</strong><div class="small text-muted">Rank {{ $invitation->ranking_position }} · <span class="player-status">{{ $invited ? 'Email not yet sent' : 'Reserve — invite if needed' }}</span></div></div><span class="player-badge badge {{ $invited ? 'bg-label-primary' : 'bg-label-secondary' }}">{{ $invited ? 'Invited' : 'Reserve' }}</span></div>
           @endforeach
-        </div></div>
+        </div></div></details>
       @endforeach
     </div>
   </div>
