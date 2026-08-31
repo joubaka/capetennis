@@ -189,6 +189,16 @@ class MastersInvitationController extends Controller
         $open = $request->boolean('open');
         $service->setRegistrationOpen($batch, $open, $request->user());
 
+        // Opening Masters registration must also make the public event
+        // available. Persist both event-level gates so the public event and
+        // the invitation page cannot disagree about whether registration is open.
+        if ($open) {
+            $batch->event()->update([
+                'published' => true,
+                'signUp' => true,
+            ]);
+        }
+
         return back()->with('success', $open
             ? 'Masters registration is now open.'
             : 'Masters registration is now closed.');
