@@ -29,7 +29,10 @@ class RepairMissingPayfastTransactions extends Command
         foreach ($missing as $order) {
             $item = $order->items->first();
             $event = $item?->category_event?->event;
-            $this->line("order={$order->id} pf={$order->payfast_pf_payment_id} event=" . ($event?->id ?? '?') . " amount=" . ($order->payfast_amount_due ?? 0));
+            $eventLabel = $event
+                ? "{$event->id} ({$event->name})"
+                : '?';
+            $this->line("order={$order->id} pf={$order->payfast_pf_payment_id} event={$eventLabel} amount=" . ($order->payfast_amount_due ?? 0));
 
             if (!$this->option('apply') || !$item || !$event) {
                 continue;
