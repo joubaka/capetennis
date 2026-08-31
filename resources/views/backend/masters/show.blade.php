@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   if (window.bootstrap) document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) { new bootstrap.Tooltip(el); });
   const previewModal = document.getElementById('invitationPreviewModal');
-  document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
+    document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
     const form = cell.querySelector('.js-invitation-wave-form');
     if (!form) return;
     const menuWrap = document.createElement('div'); menuWrap.className = 'dropdown masters-action-menu';
