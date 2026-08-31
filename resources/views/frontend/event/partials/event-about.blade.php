@@ -29,6 +29,12 @@
           </li>
         @endif
 
+        <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+          <i class="ti ti-users" aria-hidden="true"></i>
+          <span class="fw-bold">Confirmed entries:</span>
+          <span class="badge bg-label-info">{{ number_format($entryCount) }}</span>
+        </li>
+
         @if($formatEntryLine)
           <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
             <i class="ti ti-check" aria-hidden="true"></i>

@@ -12,6 +12,7 @@ use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
 use App\Services\Wallet\WalletService;
 use App\Services\PaymentFailureReporter;
+use App\Domain\Payments\Services\PaymentTransactionService;
 
 class RegistrationPaymentController extends Controller
 {
@@ -439,6 +440,9 @@ class RegistrationPaymentController extends Controller
 
     // 🔐 Idempotency protection
     if ($order->pay_status == 1) {
+      if (!empty($payfastData['pf_payment_id'])) {
+        $this->recordPayfastTransaction($order, $payfastData);
+      }
       Log::info('PAYFAST SKIPPED: Already fully processed', [
         'order_id' => $orderId
       ]);
@@ -476,6 +480,8 @@ class RegistrationPaymentController extends Controller
         'wallet_meta' => ['order_id' => $order->id],
       ]);
 
+      $this->recordPayfastTransaction($order, $payfastData);
+
       $walletTx = $order->wallet_transaction_id
         ? \App\Models\WalletTransaction::find($order->wallet_transaction_id)
         : null;
@@ -493,6 +499,7 @@ class RegistrationPaymentController extends Controller
         'order_id' => $orderId,
         'message' => $e->getMessage(),
       ]);
+
       app(PaymentFailureReporter::class)->report('registration.payfast_itn_finalize', ['order_id' => $orderId, 'payfast_payment_id' => $payfastData['pf_payment_id'] ?? null], $e);
 
       return;
@@ -706,5 +713,28 @@ class RegistrationPaymentController extends Controller
         ],
       ]);
     }
+  }
+
+  /** Persist the PayFast receipt used by the transaction page and PDF. */
+  private function recordPayfastTransaction(RegistrationOrder $order, array $payfastData): void
+  {
+    $item = $order->items->first();
+    $categoryEvent = $item?->category_event_id
+      ? \App\Models\CategoryEvent::with('event')->find($item->category_event_id)
+      : null;
+    $player = $item?->player_id ? \App\Models\Player::find($item->player_id) : null;
+
+    app(PaymentTransactionService::class)->record(array_merge($payfastData, [
+      'pf_payment_id' => $payfastData['pf_payment_id'] ?? $order->payfast_pf_payment_id,
+      'amount_gross' => $payfastData['amount_gross'] ?? $order->payfast_amount_due,
+      'custom_int1' => $payfastData['custom_int1'] ?? $item?->category_event_id,
+      'custom_int2' => $payfastData['custom_int2'] ?? $item?->player_id,
+      'custom_int3' => $payfastData['custom_int3'] ?? $categoryEvent?->event_id,
+      'custom_int4' => $payfastData['custom_int4'] ?? $order->user_id,
+      'custom_int5' => $payfastData['custom_int5'] ?? $order->id,
+      'item_name' => $payfastData['item_name'] ?? $categoryEvent?->event?->name,
+      'custom_str2' => $payfastData['custom_str2'] ?? ($player ? trim($player->name . ' ' . $player->surname) : null),
+      'custom_str3' => $payfastData['custom_str3'] ?? $categoryEvent?->event?->name,
+    ]), null);
   }
 }

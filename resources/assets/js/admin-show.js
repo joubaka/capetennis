@@ -268,18 +268,23 @@ $(function () {
 
   addRegionToEventButton.on('click', function () {
     var data = $('#regionEventForm').serialize();
-    console.log(data);
+    var button = $(this);
+    button.prop('disabled', true);
     $.post(APP_URL + '/backend/eventRegion', data, function (data) {
       console.log(data);
       $('.noRegions').addClass('d-none');
       $('.regionList').append(
         '<li class="list-group-item d-flex align-items-center">' +
           data.region_name +
-          '  <a class="ms-2 removeRegionEvent" href="javascript:void(0)"  data-id="{{$region->id}}"><i class="ti ti-minus ti-sm me-2 bg-label-danger rounded-pill"></i></a></li>'
+          '  <a class="ms-2 removeRegionEvent" href="javascript:void(0)" data-id="' + data.pivot_id + '"><i class="ti ti-minus ti-sm me-2 bg-label-danger rounded-pill"></i></a></li>'
       );
       location.reload();
     }).fail(function (error) {
-      console.log(error);
+      var message = error.responseJSON?.message || 'The region could not be added.';
+      if (window.toastr) toastr.error(message);
+      else alert(message);
+    }).always(function () {
+      button.prop('disabled', false);
     });
   });
 
@@ -513,19 +518,26 @@ $(function () {
 
   $(document).on('click', '.removeRegionEvent', function () {
     var id = $(this).data('id');
+    var link = $(this);
+    if (!window.confirm('Remove this region from the event?')) return;
     console.log(id);
     var url = APP_URL + '/backend/eventRegion/' + id;
     console.log(url);
-    $(this).closest('li').remove();
     $.ajax({
       url: url,
-      data: id,
       method: 'DELETE',
+      headers: {
+        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+        'Accept': 'application/json'
+      },
       error: function (error) {
-        console.log(error);
+        var message = error.responseJSON?.message || 'The region could not be removed.';
+        if (window.toastr) toastr.error(message);
+        else alert(message);
       },
       success: function (data) {
         console.log(data);
+        link.closest('[data-region-row], li').remove();
         location.reload();
       }
     });

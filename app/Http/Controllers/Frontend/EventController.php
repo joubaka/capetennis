@@ -290,6 +290,15 @@ class EventController extends Controller
       })
       ->get();
 
+    // Keep the public figure aligned with the event admin statistics:
+    // confirmed individual registrations, or teams for team events.
+    $entryCount = $event->isTeam()
+      ? $event->regions()->with('teams')->get()->flatMap(fn ($region) => $region->teams)->count()
+      : $event->registrations()
+        ->where('status', '!=', 'withdrawn')
+        ->where('payment_status_id', 1)
+        ->count();
+
     // ---------------------------------------------------------
     // SORT DRAWS
     // ---------------------------------------------------------
@@ -450,7 +459,8 @@ return view('frontend.event.show', compact(
       'canWithdraw',
       'entryCloseAt',
       'venues',
-      'categoryResults'
+      'categoryResults',
+      'entryCount'
     ));
   }
 

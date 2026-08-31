@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\TeamRegion;
+use App\Models\Team;
 use Illuminate\Http\Request;
 
 class EventRegionController extends Controller
@@ -38,10 +39,15 @@ class EventRegionController extends Controller
      */
   public function store(Request $request)
   {
-   
-    $event = Event::findOrFail($request->event_id);
+    $validated = $request->validate([
+      'event_id' => ['required', 'integer', 'exists:events,id'],
+      'region_id' => ['required'],
+    ]);
 
-    $regionInput = $request->input('region_id');
+    $event = Event::findOrFail($validated['event_id']);
+    $this->authorize('event-draw.view', $event);
+
+    $regionInput = $validated['region_id'];
 
     // If numeric → existing region
     if (is_numeric($regionInput)) {
@@ -49,10 +55,15 @@ class EventRegionController extends Controller
     } else {
       // New region → strip quotes if Select2 tags added them
       $cleanName = trim($regionInput, '"');
-      $region = TeamRegion::create([
-        'region_name' => $cleanName,
-        // fill other defaults if needed...
-      ]);
+      if ($cleanName === '') {
+        return response()->json(['message' => 'A region name is required.'], 422);
+      }
+      $region = TeamRegion::whereRaw('LOWER(region_name) = ?', [mb_strtolower($cleanName)])->first();
+      if (!$region) {
+        $region = TeamRegion::create([
+          'region_name' => $cleanName,
+        ]);
+      }
     }
 
     // Attach to event (ignore if already attached)
@@ -112,10 +123,23 @@ class EventRegionController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
-    {
-       
-        EventRegion::where('id',$id)->delete();
-        return 'deleted';
+  public function destroy($id)
+  {
+    $eventRegion = EventRegion::with('events')->findOrFail($id);
+    $event = $eventRegion->events;
+    $this->authorize('event-draw.view', $event);
+
+    $hasTeams = Team::where('region_id', $eventRegion->region_id)
+      ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
+      ->exists();
+    if ($hasTeams) {
+      return response()->json([
+        'message' => 'This region cannot be removed while it still has teams. Move or delete the teams first.',
+      ], 409);
     }
+
+    $eventRegion->delete();
+
+    return response()->json(['message' => 'Region removed from the event.']);
+  }
 }

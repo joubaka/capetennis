@@ -143,6 +143,9 @@
       return;
     }
 
+    const $button = $(this);
+    $button.prop('disabled', true);
+
     $.post(api.addRegionToEvent, { event_id: eventId, region_id: regionId })
       .done(res => {
         console.log('✅ Region added', res);
@@ -218,7 +221,10 @@
         console.error('JSON:', xhr.responseJSON);
 
         logXhrFail('Add region failed', xhr);
-        toastr.error('Failed to add region');
+        toastr.error(xhr.responseJSON?.message || 'Failed to add region');
+      })
+      .always(() => {
+        $button.prop('disabled', false);
       });
   });
 
@@ -253,7 +259,7 @@
         })
         .fail(xhr => {
           logXhrFail('Remove region failed', xhr);
-          toastr.error('Failed to remove region');
+          toastr.error(xhr.responseJSON?.message || 'Failed to remove region');
         });
     });
   });
