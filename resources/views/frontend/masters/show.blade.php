@@ -7,7 +7,7 @@
 @elseif($invitation->status === \App\Models\MastersInvitation::INVITED)
 <div class="alert alert-info mb-0">The player list is published, but Masters registration is currently closed.</div>
 @elseif($invitation->status === \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT)
-<p>Payment was started but is not confirmed. You can complete it or cancel payment; after cancellation the invitation returns to <strong>Register</strong>.</p><a class="btn btn-warning" href="{{ route('registration.checkout', $invitation->order_id) }}">Complete payment</a>
+<p>This registration was started but not completed. Cancel it to return to the beginning and restart the registration process.</p><a class="btn btn-warning" href="{{ route('registration.hybrid.cancel', ['orderId' => $invitation->order_id]) }}" onclick="return confirm('Cancel this unfinished registration and restart the registration process?');">Restart registration</a>
 @elseif($invitation->status === \App\Models\MastersInvitation::PAID_CONFIRMED)<span class="badge bg-label-success">Payment confirmed — you are entered</span>
 @elseif($invitation->status === \App\Models\MastersInvitation::DECLINED)<div class="alert alert-warning mb-0"><strong>Unavailability recorded.</strong><br>Confirm the cancellation using the link sent to your email. The next player will only be invited after email confirmation.</div>
 @else<span class="badge bg-label-secondary">This invitation is no longer active.</span>@endif
