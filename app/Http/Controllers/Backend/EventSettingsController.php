@@ -137,6 +137,24 @@ class EventSettingsController extends Controller
 
     $event->update($updateData);
 
+    // Masters registration is displayed on the public event page from the
+    // invitation batch, while this settings page controls the event signup
+    // switch. Keep the two gates synchronized so an organiser cannot see
+    // "Signup open" here while Masters registration remains closed publicly.
+    if ($request->has('signUp') && $event->isMasters()) {
+      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)
+        ->latest('id')
+        ->first();
+
+      if ($mastersBatch) {
+        $mastersBatch->update([
+          'registration_open' => $request->boolean('signUp')
+            && $mastersBatch->status === 'sent'
+            && (bool) $mastersBatch->public_list_published,
+        ]);
+      }
+    }
+
     /**
      * ADMINS
      */
