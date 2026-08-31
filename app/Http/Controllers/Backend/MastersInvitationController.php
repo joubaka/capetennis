@@ -115,7 +115,10 @@ class MastersInvitationController extends Controller
 
         return view('backend.masters.invitation-preview', [
             'subject' => $mail->subject(),
-            'body' => view('emails.masters.invitation', compact('invitation'))->render(),
+            'body' => view('emails.masters.invitation', [
+                'invitation' => $invitation,
+                'kind' => 'invitation',
+            ])->render(),
         ]);
     }
 

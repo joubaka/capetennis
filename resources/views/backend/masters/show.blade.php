@@ -8,7 +8,7 @@
   .masters-player-row { border-top:1px solid #ebeaf0; padding:.55rem 0; }
   .masters-player-row .form-check-input { margin-top:.25rem; }
   .masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow-x:auto; overflow-y:hidden; }
-  .masters-entry-head, .masters-entry-row { display:grid; grid-template-columns:1.75rem minmax(7rem,1.15fr) minmax(8rem,1.5fr) minmax(5.8rem,.85fr) minmax(7.2rem,1fr) 4.8rem; align-items:center; gap:.45rem; padding:.55rem .55rem; }
+  .masters-entry-head, .masters-entry-row { display:grid; grid-template-columns:1.5rem minmax(6rem,1.15fr) minmax(7rem,1.35fr) minmax(5rem,.85fr) minmax(6.3rem,1fr) 6rem; align-items:center; gap:.35rem; padding:.5rem .45rem; }
   .masters-entry-head { background:#e4e4e9; color:#625f6d; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
   .masters-entry-row { border-top:1px solid #ebeaf0; font-size:.82rem; }
   .masters-entry-row:first-child { border-top:0; }
@@ -17,7 +17,10 @@
   .masters-entry-row .contact-cell small { display:block; color:#8b8794; }
   .masters-entry-row .contact-cell .email-link { display:block; overflow-wrap:anywhere; }
   .masters-entry-row .action-cell form { display:inline-block; }
-  .masters-entry-row .action-cell { white-space:nowrap; }
+  .masters-entry-row .action-cell { white-space:nowrap; display:flex; align-items:center; gap:.15rem; }
+  .masters-entry-row .action-cell .btn { padding:.25rem .4rem; }
+  .masters-action-menu .dropdown-item { font-size:.82rem; padding:.45rem .75rem; }
+  .masters-action-menu form { display:block !important; margin:0; }
   @media (max-width: 900px) { .masters-entry-head { display:none; } .masters-entry-row { grid-template-columns:2rem minmax(9rem,1fr) minmax(7rem,1fr) auto; } .masters-entry-row .email-cell, .masters-entry-row .cell-cell, .masters-entry-row .payment-cell { grid-column:2 / span 2; } }
   .masters-groups { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
   .masters-groups .card { margin-bottom:0 !important; }
@@ -25,6 +28,12 @@
   .masters-groups h5 { font-size:1rem; margin-bottom:.35rem; }
   .masters-groups p { margin-bottom:.35rem; font-size:.85rem; }
   @media (max-width: 900px) { .masters-groups { grid-template-columns:1fr; } }
+  .masters-category-tabs { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
+  .masters-category-tab { border:1px solid #d9d7e2; background:#fff; border-radius:.45rem; padding:.55rem .75rem; text-align:left; color:#625f6d; }
+  .masters-category-tab:hover, .masters-category-tab.active { border-color:#7651e8; color:#7651e8; background:#f7f4ff; }
+  .masters-category-tab small { display:block; color:#8b8794; }
+  .masters-category-panel { display:none; }
+  .masters-category-panel.is-open { display:block; }
 </style>
 @endsection
 
@@ -40,9 +49,18 @@
   @else
     <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Invitations have been sent. The checked players below are now active invitees in their Masters categories.</span><form method="POST" action="{{ route('backend.masters.public-list.toggle', $batch) }}">@csrf<input type="hidden" name="published" value="{{ $batch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $batch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}">{{ $batch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form></div>
   @endif
+  <div class="masters-category-tabs" role="tablist" aria-label="Masters categories">
+    @foreach($readiness['groups'] as $tabIndex => $tabGroup)
+      <button type="button" class="masters-category-tab" role="tab" aria-selected="false" aria-controls="masters-category-{{ $tabIndex }}" data-category-tab="masters-category-{{ $tabIndex }}">
+        {{ $tabGroup['label'] ?? 'Age group' }}
+        <small>{{ $tabGroup['candidate_count'] }} candidates · {{ $tabGroup['reserve_count'] }} reserves</small>
+      </button>
+    @endforeach
+  </div>
   <div class="masters-groups">
-  @foreach($readiness['groups'] as $group)
-    <div class="card"><div class="card-body">
+  @foreach($readiness['groups'] as $groupIndex => $group)
+    <div class="card masters-category-panel" id="masters-category-{{ $groupIndex }}" role="tabpanel">
+    <div class="card-body">
       <h5>{{ $group['label'] ?? 'Age group' }}</h5>
       <p>{{ $group['candidate_count'] }} candidates · {{ $group['reserve_count'] }} reserves · {{ ucfirst($group['status']) }}</p>
       @foreach($group['blocking'] as $message)<div class="text-danger">{{ $message }}</div>@endforeach
@@ -56,7 +74,7 @@
         <div class="masters-entry-head"><span>#</span><span>Player</span><span>Email</span><span>Cell</span><span>Status / payment</span><span>Action</span></div>
           @forelse($invitees as $playerInvitation)
             @php($willInvite = $playerInvitation->status === \App\Models\MastersInvitation::INVITED)
-            @php($playerStatus = match ($playerInvitation->status) { \App\Models\MastersInvitation::PAID_CONFIRMED => 'Registered', \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT => 'Payment pending', default => $batch->status === 'sent' ? 'Email queued' : 'Email not yet sent' })
+            @php($playerStatus = match ($playerInvitation->status) { \App\Models\MastersInvitation::PAID_CONFIRMED => 'Registered', \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT => 'Payment pending', default => $batch->status === 'sent' ? 'Queued' : 'Not sent' })
             <div class="masters-entry-row masters-player-row">
               <span class="text-muted">{{ $loop->iteration }}</span><div><strong>{{ $playerInvitation->player?->full_name ?? ('Player '.$playerInvitation->player_id) }}</strong><small class="d-block text-muted">Rank {{ $playerInvitation->ranking_position }}</small></div>
               @php($contactEmail = $playerInvitation->player?->email ?: $playerInvitation->player?->user?->email ?: $playerInvitation->player?->users?->first()?->email)
@@ -102,6 +120,15 @@
 <div class="modal fade" id="invitationPreviewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Invitation email preview</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" id="invitationPreviewBody"><div class="text-center text-muted py-4">Loading preview…</div></div></div></div></div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[data-category-tab]').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      const target = document.getElementById(tab.dataset.categoryTab);
+      const isOpen = target?.classList.contains('is-open');
+      document.querySelectorAll('[data-category-tab]').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+      document.querySelectorAll('.masters-category-panel').forEach(panel => panel.classList.remove('is-open'));
+      if (!isOpen && target) { tab.classList.add('active'); tab.setAttribute('aria-selected', 'true'); target.classList.add('is-open'); }
+    });
+  });
   const deadlineHints = {
     response_deadline: 'The last date and time for the player to accept or decline the invitation.',
     payment_deadline: 'The last date and time for an accepted player to complete payment and secure their place.',
@@ -120,8 +147,12 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.masters-entry-row .action-cell').forEach(function (cell) {
     const form = cell.querySelector('.js-invitation-wave-form');
     if (!form) return;
+    const menuWrap = document.createElement('div'); menuWrap.className = 'dropdown masters-action-menu';
+    const menuToggle = document.createElement('button'); menuToggle.type = 'button'; menuToggle.className = 'btn btn-sm btn-outline-secondary dropdown-toggle'; menuToggle.textContent = '☰'; menuToggle.title = 'Player actions'; menuToggle.setAttribute('data-bs-toggle', 'dropdown'); menuToggle.setAttribute('aria-label', 'Player actions');
+    const menu = document.createElement('div'); menu.className = 'dropdown-menu dropdown-menu-end';
+    menuWrap.append(menuToggle, menu);
     const remove = document.createElement('button');
-    remove.type = 'button'; remove.className = 'btn btn-sm btn-outline-danger ms-1'; remove.textContent = '×'; remove.title = 'Remove by admin';
+    remove.type = 'button'; remove.className = 'dropdown-item text-danger'; remove.textContent = 'Remove by admin'; remove.title = 'Remove this player from the Masters list';
     remove.addEventListener('click', async function () {
       if (!confirm('Remove this player from the Masters invitation list?')) return;
       remove.disabled = true;
@@ -131,9 +162,9 @@ document.addEventListener('DOMContentLoaded', function () {
         window.location.reload();
       } catch (error) { alert(error.message); remove.disabled = false; }
     });
-    cell.appendChild(remove);
+    menu.appendChild(remove);
     const button = document.createElement('button');
-    button.type = 'button'; button.className = 'btn btn-sm btn-outline-info me-1'; button.textContent = 'Preview';
+    button.type = 'button'; button.className = 'dropdown-item'; button.textContent = 'Preview invitation email'; button.title = 'Preview invitation email'; button.setAttribute('aria-label', 'Preview invitation email');
     button.addEventListener('click', async function () {
       const body = document.getElementById('invitationPreviewBody');
       body.innerHTML = '<div class="text-center text-muted py-4">Loading preview…</div>';
@@ -141,7 +172,12 @@ document.addEventListener('DOMContentLoaded', function () {
       try { const response = await fetch(form.action + '/preview', {headers: {'Accept': 'text/html'}}); if (!response.ok) throw new Error('Could not load the preview.'); body.innerHTML = await response.text(); }
       catch (error) { body.innerHTML = '<div class="alert alert-danger mb-0">' + error.message + '</div>'; }
     });
-    cell.insertBefore(button, form);
+    menu.appendChild(button);
+    menu.appendChild(form);
+    const waveButton = form.querySelector('button');
+    waveButton.className = 'dropdown-item';
+    waveButton.textContent = form.dataset.invited === '1' ? 'Move player to reserve' : 'Add player to invitation wave';
+    cell.appendChild(menuWrap);
   });
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   document.querySelectorAll('.js-invitation-wave-form').forEach(function (form) {
@@ -159,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const invited = data.status === 'invited';
         form.dataset.invited = invited ? '1' : '0';
         statusInput.value = invited ? 'reserve' : 'invited';
-        button.textContent = invited ? '✓' : '○';
+        button.textContent = invited ? 'Move player to reserve' : 'Add player to invitation wave';
         button.title = invited ? 'Move to reserve' : 'Add to invitation wave';
         button.classList.toggle('btn-primary', invited);
         button.classList.toggle('btn-outline-secondary', !invited);
