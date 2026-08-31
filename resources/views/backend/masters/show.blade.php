@@ -27,6 +27,11 @@
   .masters-groups .card-body { padding:1rem 1.1rem; }
   .masters-groups h5 { font-size:1rem; margin-bottom:.35rem; }
   .masters-groups p { margin-bottom:.35rem; font-size:.85rem; }
+  .masters-declined-summary { cursor:pointer; list-style:none; }
+  .masters-declined-summary::-webkit-details-marker { display:none; }
+  .masters-declined-panel { max-height:19rem; overflow-y:auto; padding-top:.35rem; }
+  .masters-declined-panel .masters-player-row { padding:.45rem .55rem; font-size:.82rem; }
+  .masters-declined-panel .masters-player-row strong { font-size:.84rem; }
   @media (max-width: 900px) { .masters-groups { grid-template-columns:1fr; } }
 </style>
 @endsection
@@ -78,13 +83,13 @@
             <div class="masters-player-row d-flex align-items-start gap-2"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $playerInvitation) }}" data-player-row data-invited="0">@csrf @method('PATCH')<input type="hidden" name="status" value="invited"><button class="btn btn-sm btn-outline-secondary" type="submit" title="Add to invitation wave">○</button></form><div class="flex-grow-1"><strong>{{ $playerInvitation->player?->full_name ?? ('Player '.$playerInvitation->player_id) }}</strong><div class="small text-muted">Rank {{ $playerInvitation->ranking_position }} · Reserve — invite if needed</div><div class="small mt-1 d-flex flex-wrap gap-2"><span class="text-muted">Contact:</span>@if($contactEmail)<a href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<span class="text-muted">No email</span>@endif @if($playerInvitation->player?->cellNr)<a href="tel:{{ $playerInvitation->player->cellNr }}">{{ $playerInvitation->player->cellNr }}</a>@else<span class="text-muted">No telephone</span>@endif</div></div><span class="badge bg-label-secondary">Reserve</span></div>
           @endforeach
       </div></details>@endif
-      @if($declined->isNotEmpty())<div class="mt-3"><div class="small fw-semibold text-danger mb-1">Declined / unavailable</div><div class="small text-muted mb-1">The next reserve can be invited when automatic replacement is enabled.</div><div class="masters-player-list">
+      @if($declined->isNotEmpty())<details class="mt-3 masters-declined"><summary class="masters-declined-summary small fw-semibold text-danger">Declined / unavailable · {{ $declined->count() }} player{{ $declined->count() === 1 ? '' : 's' }}</summary><div class="small text-muted mb-1">The next reserve can be invited when automatic replacement is enabled.</div><div class="masters-player-list masters-declined-panel">
           @foreach($declined as $playerInvitation)
             @php($contactEmail = $playerInvitation->player?->email ?: $playerInvitation->player?->user?->email ?: $playerInvitation->player?->users?->first()?->email)
             <div class="masters-player-row d-flex align-items-start gap-2 bg-light"><div class="flex-grow-1"><strong>{{ $playerInvitation->player?->full_name ?? ('Player '.$playerInvitation->player_id) }}</strong><div class="small text-muted">Rank {{ $playerInvitation->ranking_position }} · {{ $playerInvitation->status === \App\Models\MastersInvitation::WITHDRAWN ? 'Withdrawn after registration' : 'Declined / unavailable' }}</div><div class="small mt-1 d-flex flex-wrap gap-2"><span class="text-muted">Contact:</span>@if($contactEmail)<a href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<span class="text-muted">No email</span>@endif @if($playerInvitation->player?->cellNr)<a href="tel:{{ $playerInvitation->player->cellNr }}">{{ $playerInvitation->player->cellNr }}</a>@else<span class="text-muted">No telephone</span>@endif</div></div><span class="badge bg-label-danger">{{ $playerInvitation->status === \App\Models\MastersInvitation::WITHDRAWN ? 'Withdrawn' : 'Declined' }}</span></div>
           @endforeach
           @if($batch->status !== 'sent' || $declined->isNotEmpty())<div class="mt-2 d-flex flex-wrap gap-2">@foreach($declined as $playerInvitation)@if($batch->status !== 'sent' || in_array($playerInvitation->status, [\App\Models\MastersInvitation::DECLINED, \App\Models\MastersInvitation::ADMIN_REMOVED], true))<form method="POST" action="{{ route('backend.masters.invitation.restore', $playerInvitation) }}" onsubmit="return confirm('Restore this player to the reserve list?');">@csrf<button class="btn btn-sm btn-outline-success" type="submit">Restore {{ $playerInvitation->player?->full_name ?? 'player' }} to reserve</button></form>@endif @endforeach</div>@endif
-        </div></div>@endif
+        </div></details>@endif
     </div></div>
   @endforeach
   </div>
@@ -196,6 +201,10 @@ document.addEventListener('DOMContentLoaded', function () {
         badge.textContent = invited ? 'Invited' : 'Reserve';
         badge.classList.toggle('bg-label-primary', invited);
         badge.classList.toggle('bg-label-secondary', !invited);
+        // The invitee and reserve rows have different markup and containers.
+        // Reload the rendered batch so the player is immediately shown in the
+        // correct stage, with refreshed counts and queue ordering.
+        window.location.reload();
       } catch (error) { alert(error.message); }
       finally { button.disabled = false; }
     });
