@@ -70,6 +70,10 @@
     <div class="card mb-3"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h6 class="mb-1">Public invitation list</h6><p class="text-muted mb-0">Show or hide the selected Masters player names on the public event page.</p></div><form method="POST" action="{{ route('backend.masters.public-list.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->public_list_published ? 'Unpublish the Masters player list?' : 'Publish the Masters player list publicly?' }}');">@csrf<input type="hidden" name="published" value="{{ $mastersBatch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $mastersBatch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}"><i class="ti ti-world me-1"></i>{{ $mastersBatch->public_list_published ? 'Unpublish invitation list' : 'Publish invitation list' }}</button></form></div></div>
   @endif
 
+  @if($mastersBatch && $mastersBatch->status === 'sent')
+    <div class="card mb-3"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3"><div class="flex-grow-1"><h6 class="mb-1">Automatic replacement <span class="text-info" title="When enabled, a confirmed decline or paid withdrawal can automatically invite the next reserve player." data-bs-toggle="tooltip"><i class="ti ti-info-circle"></i></span></h6><p class="text-muted mb-1">When a player declines and confirms their unavailability, or a paid player withdraws, the next reserve is invited automatically.</p><div class="small text-warning"><i class="ti ti-alert-triangle me-1"></i>Only enable this when the ranking order, reserve list, player contact details, deadlines, and payment settings are correct. The system will send the replacement invitation without another approval step.</div></div><form method="POST" action="{{ route('backend.masters.toggle-auto', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->auto_replacement_enabled ? 'Disable automatic replacement?' : 'Enable automatic replacement? This will automatically invite the next reserve player and send the invitation without another approval step.' }}');">@csrf<input type="hidden" name="enabled" value="{{ $mastersBatch->auto_replacement_enabled ? 0 : 1 }}"><button class="btn {{ $mastersBatch->auto_replacement_enabled ? 'btn-outline-danger' : 'btn-success' }}"><i class="ti ti-arrows-shuffle me-1"></i>{{ $mastersBatch->auto_replacement_enabled ? 'Disable automatic replacement' : 'Enable automatic replacement' }}</button></form></div></div>
+  @endif
+
   @php($sendLabel = $canPublishInvitations ? ($mastersBatch->public_list_published ? 'Send Invitations' : 'Send & Publish Invitations') : 'Prepare invitations')
   <div class="row g-3 mb-4">
     <div class="col-xl-4 col-md-6"><div class="card h-100 management-panel"><div class="card-header d-flex align-items-center gap-2"><i class="ti ti-settings ti-md text-primary"></i><h5 class="mb-0">Masters Management</h5></div><div class="card-body d-grid gap-2"><a href="{{ $mastersBatch ? route('backend.masters.show', $mastersBatch) : '#masters-setup' }}" class="btn btn-primary dashboard-action"><i class="ti ti-users me-1"></i>Manage Invitations</a>@if($mastersBatch && $mastersBatch->status !== 'sent')<a href="{{ $canPublishInvitations ? route('backend.masters.review', $mastersBatch) : route('backend.masters.show', $mastersBatch) }}" class="btn btn-outline-success dashboard-action"><i class="ti ti-send me-1"></i>{{ $canPublishInvitations ? 'Publish invitations' : 'Prepare invitations' }}</a>@elseif($mastersBatch && $mastersBatch->status === 'sent')<form method="POST" action="{{ route('backend.masters.public-list.toggle', $mastersBatch) }}">@csrf<input type="hidden" name="published" value="{{ $mastersBatch->public_list_published ? 0 : 1 }}"><button class="btn {{ $mastersBatch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }} w-100 dashboard-action"><i class="ti ti-world me-1"></i>{{ $mastersBatch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form>@endif<a href="{{ route('admin.events.transactions', $event) }}" class="btn btn-outline-secondary dashboard-action"><i class="ti ti-credit-card me-1"></i>Transactions</a><a href="{{ route('headOffice.show', $event) }}" class="btn btn-outline-primary dashboard-action"><i class="ti ti-calendar-meet me-1"></i>Fixtures HQ</a></div></div></div>
@@ -84,6 +88,19 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const autoForms = Array.from(document.querySelectorAll('form[action*="toggle-auto"]'));
+  const management = document.querySelector('.management-panel .card-body');
+  if (management && autoForms.length) {
+    const source = autoForms.find(form => form.closest('.card')) || autoForms[0];
+    autoForms.forEach(form => { if (form !== source) form.style.display = 'none'; });
+    const sourceCard = source.closest('.card');
+    if (sourceCard) sourceCard.style.display = 'none';
+    source.className = 'm-0';
+    source.querySelector('button').className = 'btn ' + ({{ $mastersBatch?->auto_replacement_enabled ? 'true' : 'false' }} ? 'btn-outline-danger' : 'btn-outline-success') + ' dashboard-action';
+    source.querySelector('button').innerHTML = '<i class="ti ti-arrows-shuffle me-1"></i>' + ({{ $mastersBatch?->auto_replacement_enabled ? 'true' : 'false' }} ? 'Disable auto-replacement' : 'Enable auto-replacement') + ' <span class="text-info ms-auto" title="When enabled, a confirmed decline or paid withdrawal automatically invites the next reserve player and sends the replacement invitation." data-bs-toggle="tooltip"><i class="ti ti-info-circle"></i></span>';
+    management.appendChild(source);
+    if (window.bootstrap) document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+  }
   const sendLabel = @json($sendLabel);
   document.querySelectorAll('.management-panel .dashboard-action').forEach(function (button) {
     if (button.textContent.trim() === 'Publish invitations' || button.textContent.trim() === 'Prepare invitations') {

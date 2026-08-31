@@ -96,12 +96,6 @@
     @endforelse
   </div></div>
   <div class="d-flex justify-content-center gap-2 py-3"><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-primary">Back to Masters Dashboard</a>@if($batch->series_id)<a href="{{ route('series.events', $batch->series_id) }}" class="btn btn-outline-secondary">Back to Series</a>@endif</div>
-  <form method="POST" action="{{ route('backend.masters.toggle-auto', $batch) }}">@csrf
-    <input type="hidden" name="enabled" value="{{ $batch->auto_replacement_enabled ? 0 : 1 }}">
-    <button class="btn {{ $batch->auto_replacement_enabled ? 'btn-outline-danger' : 'btn-success' }}">
-      {{ $batch->auto_replacement_enabled ? 'Disable auto-replacement' : 'Enable auto-replacement' }}
-    </button>
-  </form>
 </div>
 @endsection
 
@@ -137,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!confirm('Remove this player from the Masters invitation list?')) return;
       remove.disabled = true;
       try {
-        const response = await fetch(form.action, {method: 'DELETE', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
+        const response = await fetch(form.action + '/remove', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
         if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
         window.location.reload();
       } catch (error) { alert(error.message); remove.disabled = false; }
@@ -166,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!confirm('Remove this reserve player from the Masters list?')) return;
       remove.disabled = true;
       try {
-        const response = await fetch(form.action, {method: 'DELETE', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
+        const response = await fetch(form.action + '/remove', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
         if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
         window.location.reload();
       } catch (error) { alert(error.message); remove.disabled = false; }

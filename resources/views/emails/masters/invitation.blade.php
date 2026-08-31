@@ -1,18 +1,15 @@
-<p>Hello {{ $invitation->player?->full_name ?? 'Player' }},</p>
-<p>{{ $invitation->batch?->event?->name ?? 'The Cape Tennis Masters event' }} invitation update.</p>
-<p>Age group: {{ $invitation->categoryEvent?->category?->name ?? 'Masters' }}</p>
-<p>Ranking position: {{ $invitation->ranking_position }}</p>
-@if($invitation->batch?->event)
-  <p><a href="{{ route('events.show', $invitation->batch->event) }}">View the event on Cape Tennis</a></p>
-@endif
-@if($kind === 'invitation' || $kind === 'replacement')
-  <p>Please log in to Cape Tennis to accept the invitation and complete PayFast payment, or decline if you are unavailable.</p>
-@elseif($kind === 'confirmed')
-  <p>Your PayFast payment has been verified and your place is confirmed.</p>
-@elseif($kind === 'declined')
-  <p>Your unavailability has been recorded, but the next reserve player will only be invited after you confirm the cancellation.</p>
-  <p><a href="{{ URL::temporarySignedRoute('masters.invitations.confirm-decline', now()->addDays(2), ['invitation' => $invitation]) }}">Confirm that you are unavailable</a></p>
-  <p>This confirmation link expires in 48 hours.</p>
-@elseif($kind === 'withdrawn')
-  <p>Your withdrawal has been recorded. If automatic replacement is enabled, the next reserve player will be contacted.</p>
-@endif
+@php
+  $event = $invitation->batch?->event;
+  $logo = $event?->logo ? asset('storage/'.$event->logo) : asset('assets/img/logos/cape-tennis-logo-transparent.png');
+  $eventUrl = $event ? route('events.show', $event) : url('/');
+  $eventDate = $event?->start_date?->format('d M Y');
+@endphp
+<div style="margin:0;background:#f4f3f8;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#4f4b5f;line-height:1.55;">
+  <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e6e3ed;">
+    <div style="background:#7651e8;padding:24px 28px;text-align:center;"><img src="{{ $logo }}" alt="Cape Tennis" width="150" style="display:inline-block;max-width:150px;height:auto;border:0;background:#fff;border-radius:8px;padding:7px;"><div style="color:#fff;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-top:12px;">Masters invitation</div></div>
+    <div style="padding:30px 32px;"><p style="font-size:22px;font-weight:700;margin:0 0 12px;color:#403b52;">Hello {{ $invitation->player?->full_name ?? 'Player' }},</p><p style="font-size:16px;margin:0 0 22px;">You are invited to take part in <strong>{{ $event?->name ?? 'the Cape Tennis Masters event' }}</strong>.</p>
+      <div style="background:#f7f5ff;border-left:4px solid #7651e8;border-radius:6px;padding:16px 18px;margin:0 0 24px;"><div style="font-size:18px;font-weight:700;color:#403b52;">{{ $invitation->categoryEvent?->category?->name ?? 'Masters category' }}</div><div style="font-size:14px;color:#6f6a7c;margin-top:4px;">Ranking position: <strong>{{ $invitation->ranking_position }}</strong></div>@if($eventDate)<div style="font-size:14px;color:#6f6a7c;">Event date: <strong>{{ $eventDate }}</strong></div>@endif @if($event?->venue_name)<div style="font-size:14px;color:#6f6a7c;">Venue: <strong>{{ $event->venue_name }}</strong></div>@endif</div>
+      @if($kind === 'invitation' || $kind === 'replacement')<p style="margin:0 0 22px;">Please use the button below to view the event, accept your invitation and complete PayFast payment. If you are unavailable, you can decline the invitation there.</p><p style="text-align:center;margin:0 0 26px;"><a href="{{ $eventUrl }}" style="display:inline-block;background:#7651e8;color:#fff;text-decoration:none;font-weight:700;border-radius:6px;padding:13px 24px;">View event and respond</a></p>@elseif($kind === 'confirmed')<p style="margin:0;">Your PayFast payment has been verified and your place is confirmed. We look forward to seeing you on court.</p>@elseif($kind === 'declined')<p style="margin:0;">Your unavailability has been recorded. The next reserve player will be contacted after the cancellation is confirmed.</p><p style="text-align:center;margin:24px 0 0;"><a href="{{ URL::temporarySignedRoute('masters.invitations.confirm-decline', now()->addDays(2), ['invitation' => $invitation]) }}" style="display:inline-block;background:#625f6d;color:#fff;text-decoration:none;font-weight:700;border-radius:6px;padding:12px 22px;">Confirm unavailability</a></p>@elseif($kind === 'withdrawn')<p style="margin:0;">Your withdrawal has been recorded. If automatic replacement is enabled, the next reserve player will be contacted.</p>@endif
+    </div><div style="border-top:1px solid #eeeaf4;padding:18px 32px;text-align:center;color:#8b8794;font-size:12px;">Cape Tennis · Masters administration<br><a href="{{ url('/') }}" style="color:#7651e8;text-decoration:none;">capetennis.co.za</a></div>
+  </div>
+</div>

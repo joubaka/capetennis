@@ -417,6 +417,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('batches/{batch}/registration', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleRegistration'])->name('registration.toggle');
     Route::patch('invitations/{invitation}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateInvitation'])->name('invitation.update');
     Route::delete('invitations/{invitation}', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'removeInvitation'])->name('invitation.remove');
+    Route::post('invitations/{invitation}/remove', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'removeInvitation'])->name('invitation.remove.post');
     Route::get('invitations/{invitation}/preview', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'previewInvitation'])->name('invitation.preview');
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });
