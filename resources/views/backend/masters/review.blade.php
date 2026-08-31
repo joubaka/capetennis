@@ -27,18 +27,16 @@
 <div class="container-xxl flex-grow-1 container-p-y masters-review">
   <div class="d-flex justify-content-between align-items-start mb-3"><div><h4 class="mb-1">Final invitation review</h4><p class="text-muted mb-0">{{ $batch->event?->name }} · confirm the checked invitees before sending.</p></div><div class="d-flex gap-2"><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a><a href="{{ route('backend.masters.show', $batch) }}" class="btn btn-outline-secondary">Back to batch details</a></div></div>
   <div class="alert alert-info">{{ $batch->invitations->where('status', 'invited')->count() }} invitations selected · {{ $batch->invitations->where('status', 'reserve')->count() }} reserves. Checked players will receive invitations; reserves will be invited only if needed.</div>
-  @php($adminRemoved = $batch->invitations->where('status', \App\Models\MastersInvitation::ADMIN_REMOVED))
-  @if($adminRemoved->isNotEmpty())
-    <div class="alert alert-danger"><strong>{{ $adminRemoved->count() }} player(s) removed by admin</strong><div class="small mt-1">These players are excluded from invitations and reserves.</div><div class="d-flex flex-wrap gap-2 mt-2">@foreach($adminRemoved as $removed)<span class="badge bg-danger">{{ $removed->player?->full_name ?? ('Player '.$removed->player_id) }}</span>@endforeach</div></div>
-  @endif
   <div class="row">
     <div class="col-12 category-grid">
       @foreach($batch->invitations->groupBy('category_event_id') as $categoryId => $invitations)
+        @php($categoryRemoved = $invitations->where('status', \App\Models\MastersInvitation::ADMIN_REMOVED))
         <details class="category-card"><summary><div class="d-flex justify-content-between align-items-center gap-2"><h5 class="mb-0">{{ $invitations->first()->categoryEvent?->category?->name ?? 'Masters category' }}</h5><span class="small text-muted">{{ $invitations->where('status','invited')->count() }} invitees · {{ $invitations->where('status','reserve')->count() }} reserves</span></div></summary><div class="category-content"><div class="player-list">
-          @foreach($invitations->sortBy('queue_position') as $invitation)
+          @foreach($invitations->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::RESERVE])->sortBy('queue_position') as $invitation)
             @php($invited = $invitation->status === \App\Models\MastersInvitation::INVITED)
             <div class="player-row d-flex align-items-center gap-2"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $invitation) }}" data-invited="{{ $invited ? 1 : 0 }}">@csrf @method('PATCH')<input type="hidden" name="status" value="{{ $invited ? 'reserve' : 'invited' }}"><button class="btn btn-sm {{ $invited ? 'btn-primary' : 'btn-outline-secondary' }}" type="submit">{{ $invited ? '✓' : '○' }}</button></form><div class="flex-grow-1"><strong>{{ $invitation->player?->full_name ?? ('Player '.$invitation->player_id) }}</strong><div class="small text-muted">Rank {{ $invitation->ranking_position }} · <span class="player-status">{{ $invited ? 'Email not yet sent' : 'Reserve — invite if needed' }}</span></div></div><span class="player-badge badge {{ $invited ? 'bg-label-primary' : 'bg-label-secondary' }}">{{ $invited ? 'Invited' : 'Reserve' }}</span></div>
           @endforeach
+          @if($categoryRemoved->isNotEmpty())<div class="admin-removed-list mt-2 pt-2"><div class="small fw-semibold text-danger mb-1">Removed by admin</div>@foreach($categoryRemoved as $removed)<div class="player-row d-flex align-items-center justify-content-between text-danger"><span><strong>{{ $removed->player?->full_name ?? ('Player '.$removed->player_id) }}</strong><span class="small d-block">Rank {{ $removed->ranking_position }} · Excluded from invitations</span></span><span class="badge bg-danger">× Removed by admin</span></div>@endforeach</div>@endif
         </div></div></details>
       @endforeach
     </div>
