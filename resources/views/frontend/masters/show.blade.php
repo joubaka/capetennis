@@ -2,7 +2,7 @@
 @section('title', 'Masters invitation')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y"><a href="{{ url('/events/'.$invitation->batch->event_id) }}" class="btn btn-sm btn-outline-secondary mb-3">Back to event</a><div class="card"><div class="card-body"><h4>{{ $invitation->batch->event->name }}</h4><p class="text-muted">{{ $invitation->categoryEvent->category->name ?? 'Masters category' }} · Ranking position {{ $invitation->ranking_position }}</p>
-@if($invitation->status === \App\Models\MastersInvitation::INVITED && $invitation->batch->registration_open)
+@if($invitation->status === \App\Models\MastersInvitation::INVITED && ($invitation->batch->registration_open || (int) $invitation->batch->event->signUp === 1))
 <p>Welcome, {{ $invitation->player?->full_name }}. Please confirm whether you will participate.</p><form method="POST" action="{{ route('masters.invitations.accept', $invitation) }}" class="d-inline">@csrf<button class="btn btn-primary">Register and pay with PayFast</button></form><form method="POST" action="{{ route('masters.invitations.decline', $invitation) }}" class="d-inline ms-2" onsubmit="return confirm('Confirm that you are unavailable for this event?');">@csrf<button class="btn btn-outline-secondary">I am unavailable</button></form>
 @elseif($invitation->status === \App\Models\MastersInvitation::INVITED)
 <div class="alert alert-info mb-0">The player list is published, but Masters registration is currently closed.</div>
