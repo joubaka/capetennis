@@ -240,7 +240,7 @@ class MastersInvitationController extends Controller
     {
         $this->authorizeBatch($batch);
         $enabled = $request->boolean('enabled');
-        if ($enabled) {
+        if ($enabled && $batch->status === 'sent') {
             $readiness = $service->readiness($batch);
             abort_if($readiness['status'] === 'blocked', 422, 'Masters auto-replacement readiness is blocked.');
         }
