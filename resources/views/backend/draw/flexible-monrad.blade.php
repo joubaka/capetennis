@@ -66,6 +66,7 @@
   <div class="fm-dialog-actions"><button type="button" id="fm-score-save" class="fm-primary">Save result</button><button type="button" id="fm-score-delete">Delete result</button></div>
 </dialog>
 <script id="fm-config" type="application/json">{!! json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
+<script src="{{ asset('js/tennis-bracket-layout.js') }}?v={{ filemtime(public_path('js/tennis-bracket-layout.js')) }}" defer></script>
 <script src="{{ asset('js/flexible-monrad.js') }}?v={{ filemtime(public_path('js/flexible-monrad.js')) }}" defer></script>
 </body>
 </html>

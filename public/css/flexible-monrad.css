@@ -217,14 +217,16 @@ label {
   color: #738579;
 }
 #fm-scroll {
-  overflow: auto;
-  max-height: 76vh;
+  overflow-x: auto;
   padding: 16px;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
 }
 #fm-board {
+  --fm-bracket-line: #111;
   position: relative;
   min-height: 240px;
+  font-family: 'Noto Sans JP', Arial, sans-serif;
+  color: #111;
 }
 .fm-round-title {
   position: absolute;
@@ -237,50 +239,68 @@ label {
 }
 .fm-match {
   position: absolute;
-  width: 212px;
-  background: #fff;
-  border: 1px solid #c3d4c8;
-  border-radius: 9px;
-  box-shadow: 0 2px 5px #183a2010;
-  overflow: hidden;
+  width: 220px;
   z-index: 1;
+  pointer-events: none;
 }
 .fm-match-head {
-  display: flex;
-  justify-content: space-between;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
   font-size: 10px;
-  font-weight: 700;
-  padding: 6px 9px;
-  background: #f0f5f1;
-  color: #567162;
-  min-height: 25px;
+  color: #64748b;
+  background: #fff;
+  padding: 2px 0;
 }
 .fm-slot {
+  position: absolute;
+  left: 0;
   border: 0;
   border-radius: 0;
   width: 100%;
-  padding: 10px 9px;
-  min-height: 40px;
-  font-size: 12px;
+  padding: 5px 6px;
+  height: 32px;
+  min-height: 32px;
+  font-size: 13px;
   text-align: left;
-  font-weight: 500;
+  font-weight: 700;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 5px;
-  border-top: 1px solid #e5ece7;
   background: #fff;
+  pointer-events: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.fm-slot {
+  display: block;
+}
+.fm-slot:disabled {
+  opacity: 1;
+}
+.fm-slot-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fm-slot strong {
+  flex-shrink: 0;
+  color: #176448;
 }
 .fm-slot.empty {
-  color: #799181;
-  border-style: dashed;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 400;
 }
 .fm-slot.direct {
-  background: #eef6ef;
-  font-weight: 650;
+  font-weight: 700;
 }
 .fm-slot.bye {
-  color: #879489;
-  background: #f8faf8;
+  color: #64748b;
+  font-weight: 400;
+  font-style: italic;
 }
 .fm-slot.drop-target {
   background: #d2ebd7;
@@ -290,18 +310,29 @@ label {
 .fm-slot.winner {
   font-weight: 750;
   color: #11663f;
-  background: #e7f4e9;
 }
 .fm-score-button {
-  width: 100%;
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
   border: 0;
-  border-radius: 0;
-  padding: 6px;
+  padding: 4px 6px;
   font-size: 11px;
-  border-top: 1px solid var(--line);
+  color: var(--green);
+  pointer-events: auto;
+}
+.fm-match-note {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 6px;
+  font-size: 10px;
+  color: #64748b;
 }
 .fm-links {
   position: absolute;
+  /* Keep vertical strokes above slot backgrounds, including at fractional zoom. */
+  z-index: 2;
   top: 0;
   left: 0;
   overflow: visible;
@@ -309,8 +340,9 @@ label {
 }
 .fm-links path {
   fill: none;
-  stroke: #afc7b8;
-  stroke-width: 1.5;
+  stroke: var(--fm-bracket-line);
+  stroke-width: var(--fm-bracket-stroke, 1px);
+  shape-rendering: crispEdges;
 }
 #fm-message:not(:empty) {
   padding: 12px 16px;
@@ -460,9 +492,6 @@ dialog p {
   }
   .fm-board-heading span {
     font-size: 10px;
-  }
-  #fm-scroll {
-    max-height: 65vh;
   }
   .fm-spacer {
     display: none;

@@ -4,6 +4,27 @@
   const config = JSON.parse(document.getElementById('fm-config').textContent);
   const $ = id => document.getElementById(id);
   const clone = value => JSON.parse(JSON.stringify(value));
+  const bracketLayout = window.TennisBracketLayout;
+  const bracketDimensions = bracketLayout.dimensions;
+  let bracketDrawing = null, bracketFrame = null;
+  function updateBracketStroke() {
+    if (!bracketDrawing) return;
+    const { svg, path, positions, lines } = bracketDrawing;
+    const bounds = svg.getBoundingClientRect();
+    svg.style.setProperty('--fm-bracket-stroke', bracketLayout.strokeWidth(window.devicePixelRatio) + 'px');
+    path.setAttribute('d', bracketLayout.linePath(positions, lines, {
+      ratio: window.devicePixelRatio, x: bounds.left, y: bounds.top
+    }));
+  }
+  function queueBracketAlignment() {
+    if (bracketFrame !== null) return;
+    bracketFrame = requestAnimationFrame(() => {
+      bracketFrame = null;
+      updateBracketStroke();
+    });
+  }
+  window.addEventListener('resize', queueBracketAlignment);
+  window.addEventListener('scroll', queueBracketAlignment, { capture: true, passive: true });
   let state = config.state,
     draft = clone(state.draft),
     history = [],
@@ -158,40 +179,26 @@
   }
   function draftBoard() {
     const board = $('fm-board'),
-      depth = Math.log2(draft.size),
-      rowHeight = 118,
-      width = depth * 244;
-    // Collapse unused qualifying branches without leaving blank rows above real matches.
-    const rowPositions = new Map();
-    let nextRow = 0;
-    const position = path => {
-      if (suppressed(path)) return null;
-      const children =
-        path.length < depth - 1 ? [position(path + 'a'), position(path + 'b')].filter(y => y !== null) : [];
-      const y = children.length
-        ? children.reduce((sum, value) => sum + value, 0) / children.length
-        : 35 + nextRow++ * rowHeight;
-      rowPositions.set(path, y);
-      return y;
-    };
-    position('');
-    const boardHeight = nextRow * rowHeight + 42;
+      depth = Math.log2(draft.size);
+    const entries = [];
+    for (let level = depth - 1; level >= 0; level--) {
+      for (let i = 0; i < 2 ** level; i++) {
+        const path = level ? i.toString(2).padStart(level, '0').replaceAll('0', 'a').replaceAll('1', 'b') : '';
+        if (!suppressed(path)) entries.push({ key: path, column: depth - 1 - level, sources: ['a', 'b'].map(side => ({ match: path + side })) });
+      }
+    }
+    const { positions: boxes, width, height: boardHeight } = bracketLayout.layout(entries);
     board.style.width = width + 'px';
     board.style.height = boardHeight + 'px';
-    const boxes = new Map();
     for (let level = depth - 1; level >= 0; level--) {
-      const x = (depth - 1 - level) * 244;
+      const x = (depth - 1 - level) * bracketDimensions.column;
       const title = el('div', 'fm-round-title', roundName(level));
       title.style.left = x + 'px';
       board.append(title);
       for (let i = 0; i < 2 ** level; i++) {
         const path = level ? i.toString(2).padStart(level, '0').replaceAll('0', 'a').replaceAll('1', 'b') : '';
         if (suppressed(path)) continue;
-        const y = rowPositions.get(path);
-        const card = el('div', 'fm-match');
-        card.style.left = x + 'px';
-        card.style.top = y + 'px';
-        card.append(el('div', 'fm-match-head', `${roundName(level)} · ${i + 1}`));
+        const card = bracketMatch(boxes.get(path), `${roundName(level)} · ${i + 1}`);
         ['a', 'b'].forEach((side, slot) => {
           const key = path + side,
             source = draft.slots[key];
@@ -209,6 +216,8 @@
             label
           );
           button.type = 'button';
+          button.style.top = (slot ? boxes.get(path).bottom - boxes.get(path).top : 0) + 'px';
+          button.title = label;
           button.dataset.slot = key;
           button.disabled = !editable() || !allowedStart(key);
           button.setAttribute('aria-label', `${roundName(level)} ${i + 1}, ${slot === 0 ? 'top' : 'bottom'}: ${label}`);
@@ -232,7 +241,6 @@
           card.append(button);
         });
         board.append(card);
-        boxes.set(path, { x, y });
       }
     }
     const lines = [];
@@ -240,24 +248,31 @@
       if (!path) return;
       const target = boxes.get(path.slice(0, -1));
       if (!target) return;
-      lines.push([box.x + 212, box.y + 65, target.x, target.y + (path.endsWith('a') ? 45 : 85)]);
+      lines.push([box.x + bracketDimensions.width, box.middle, target.x, path.endsWith('a') ? target.top : target.bottom]);
     });
-    connectors(board, lines, width, boardHeight);
+    connectors(board, boxes.values(), lines, width, boardHeight);
   }
-  function connectors(board, lines, width, height) {
+  function bracketMatch(position, label) {
+    const match = el('div', 'fm-match');
+    match.style.left = position.x + 'px';
+    match.style.top = position.top - bracketDimensions.slotHeight + 'px';
+    match.style.width = bracketDimensions.width + 'px';
+    match.style.height = position.bottom - position.top + bracketDimensions.slotHeight + 'px';
+    match.append(el('div', 'fm-match-head', label));
+    return match;
+  }
+  function connectors(board, positions, lines, width, height) {
     const ns = 'http://www.w3.org/2000/svg',
       svg = document.createElementNS(ns, 'svg');
     svg.classList.add('fm-links');
     svg.setAttribute('width', width);
     svg.setAttribute('height', height);
     svg.setAttribute('aria-hidden', 'true');
-    lines.forEach(([x1, y1, x2, y2]) => {
-      const path = document.createElementNS(ns, 'path');
-      const mid = (x1 + x2) / 2;
-      path.setAttribute('d', `M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`);
-      svg.append(path);
-    });
+    const path = document.createElementNS(ns, 'path');
+    svg.append(path);
     board.prepend(svg);
+    bracketDrawing = { svg, path, positions: [...positions], lines };
+    updateBracketStroke();
   }
   function sourceLabel(source) {
     if (source.type === 'player') return 'Direct entry';
@@ -278,31 +293,28 @@
       title.style.top = yOffset + 'px';
       board.append(title);
       const rounds = [...new Set(entries.map(([, m]) => Number(m.round)))].sort((a, b) => a - b);
-      let sectionHeight = 0;
+      const layout = bracketLayout.layout(entries.map(([key, match]) => ({ key, column: rounds.indexOf(Number(match.round)), sources: match.sources })), yOffset + 96);
+      layout.positions.forEach((position, key) => coords.set(key, { ...position, section }));
       rounds.forEach((round, col) => {
         const group = entries.filter(([, m]) => Number(m.round) === round),
-          x = col * 244;
+          x = col * bracketDimensions.column;
         const heading = el('div', 'fm-round-title', group[0][1].label);
         heading.style.top = yOffset + 32 + 'px';
         heading.style.left = x + 'px';
         board.append(heading);
-        group.forEach(([key, match], row) => {
-          const y = yOffset + 60 + row * 165;
-          coords.set(key, { x, y, section });
-          const card = el('div', 'fm-match');
-          card.style.left = x + 'px';
-          card.style.top = y + 'px';
-          card.append(el('div', 'fm-match-head', `Match ${match.number}`));
+        group.forEach(([key, match]) => {
+          const position = coords.get(key);
+          const card = bracketMatch(position, `Match ${match.number}`);
           match.players.forEach((id, slot) => {
             const line = el('div', `fm-slot${id && Number(id) === Number(match.winner) ? ' winner' : ''}`);
-            const label = el('span', '', id ? name(id) : match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
-            label.append(el('small', '', ''));
+            line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
+            const label = el('span', 'fm-slot-name', id ? name(id) : match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
             line.append(label);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
-            line.title = sourceLabel(match.sources[slot]);
+            line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
             card.append(line);
           });
-          if (match.automatic) card.append(el('div', 'fm-match-head', match.automatic === 'walkover' ? 'Walkover · no score played' : 'Closed · no active players'));
+          if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover' ? 'Walkover · no score played' : 'Closed · no active players'));
           if (config.canScore && !state.locked && !match.automatic && match.players.every(Boolean)) {
             const score = el('button', 'fm-score-button', match.winner ? 'Edit result' : 'Enter result');
             score.type = 'button';
@@ -311,11 +323,10 @@
             card.append(score);
           }
           board.append(card);
-          sectionHeight = Math.max(sectionHeight, 60 + (row + 1) * 165);
         });
-        width = Math.max(width, (col + 1) * 244);
       });
-      yOffset += sectionHeight + 35;
+      width = Math.max(width, layout.width);
+      yOffset = layout.height + 35;
     });
     board.style.width = width + 'px';
     board.style.height = Math.max(yOffset, 250) + 'px';
@@ -325,10 +336,10 @@
       match.sources.forEach((source, slot) => {
         const from = coords.get(source.match);
         if (from && from.section === target.section)
-          lines.push([from.x + 212, from.y + 65, target.x, target.y + (slot ? 85 : 45)]);
+          lines.push([from.x + bracketDimensions.width, from.middle, target.x, slot ? target.bottom : target.top]);
       });
     });
-    connectors(board, lines, width, yOffset);
+    connectors(board, coords.values(), lines, width, yOffset);
     $('fm-positions').replaceChildren();
     state.positions.forEach(p => {
       const chip = el('div', 'fm-position');
