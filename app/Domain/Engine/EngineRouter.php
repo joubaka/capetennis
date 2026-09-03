@@ -331,6 +331,7 @@ final class EngineRouter
      */
     public function advanceFixture(Fixture $fixture, int $winner, int $loser, callable $legacyFn): void
     {
+        abort_if($fixture->stage === 'FM', 409, 'Flexible Monrad uses explicit source progression.');
         if ($this->isLegacy()) {
             PerformanceTracker::track(PerformanceTracker::SCORE_SAVE, $fixture->id, function () use ($fixture, $winner, $loser, $legacyFn) {
                 $legacyFn($fixture, $winner, $loser);
@@ -372,6 +373,7 @@ final class EngineRouter
      */
     public function rollbackFixture(Fixture $fixture, callable $legacyFn): void
     {
+        abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to correct this result.');
         if ($this->isLegacy()) {
             $legacyFn($fixture);
             PlatformAuditLogger::log(PlatformAuditLogger::PROGRESSION_RESET, $fixture,

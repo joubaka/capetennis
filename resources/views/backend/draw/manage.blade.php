@@ -83,6 +83,13 @@ $(function () {
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
+  @if($draw->category_event_id)
+  <div class="alert alert-info d-flex flex-wrap align-items-center gap-2">
+    <span>Flexible Monrad: place players directly into different starting rounds.</span>
+    <a class="btn btn-primary btn-sm" href="{{ route('flexible-monrad.show', $draw) }}">Open Monrad editor</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ route('flexible-monrad.demo') }}">Try the demo</a>
+  </div>
+  @endif
 
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
@@ -121,6 +128,7 @@ $(function () {
               <label class="form-label fw-bold">Draw Name</label>
               <input type="text" class="form-control" name="name" value="{{ $draw->drawName }}" required>
             </div>
+            @if(! $draw->usesFlexibleMonrad())
             <div class="mb-3">
               <label class="form-label fw-bold">Draw Type</label>
               <select class="form-select" name="draw_type">
@@ -135,6 +143,9 @@ $(function () {
               <label class="form-label fw-bold">Sets</label>
               <input type="number" name="num_sets" value="{{ optional($draw->settings)->num_sets ?? 3 }}" min="1" max="5" class="form-control">
             </div>
+            @else
+              <p class="text-muted">Starting positions and results are managed in the Monrad editor.</p>
+            @endif
             <button type="submit" class="btn btn-primary">
               <i class="ti ti-device-floppy me-1"></i> Save Settings
             </button>

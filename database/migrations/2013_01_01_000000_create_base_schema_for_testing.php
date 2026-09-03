@@ -143,6 +143,7 @@ return new class extends Migration
             Schema::create('fixtures', function (Blueprint $table) {
                 $table->bigIncrements('id');
                 $table->unsignedBigInteger('draw_id')->nullable();
+                $table->boolean('scheduled')->default(false);
                 $table->timestamps();
             });
         }

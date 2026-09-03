@@ -16,8 +16,14 @@ class OrderOfPlay extends Model
     'court',
     'time',
     'duration_minutes',
+    'gap_minutes',
     'round_number',
   ];
+
+  public function occupiedMinutes(int $defaultDuration = 75): int
+  {
+    return (int) ($this->duration_minutes ?: $defaultDuration) + (int) ($this->gap_minutes ?? 0);
+  }
 
   public function venue()
   {

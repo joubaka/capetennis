@@ -7,7 +7,6 @@ use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\Draw;
 use App\Services\ScheduleEngine;
-use App\Domain\Draws\Services\ScheduleConflictService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -146,108 +145,26 @@ class ScheduleController extends Controller
   public function autoScheduleTrials(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    $start = $request->input('start');
-    $duration = (int) $request->input('duration', 60);
-    $gap = (int) $request->input('gap', 0);
-
-    if (!$start) {
-      return response()->json(['error' => 'Start time is required'], 422);
+    abort_if($draw->usesFlexibleMonrad(), 409, 'Use the individual draw auto-scheduler for Flexible Monrad.');
+    $data = $request->validate([
+      'start' => 'required|date', 'duration' => 'sometimes|integer|min:1|max:1440',
+      'gap' => 'sometimes|integer|min:0|max:1440', 'brackets' => 'sometimes|array',
+      'brackets.*' => 'integer|min:1', 'rounds' => 'sometimes|array', 'rounds.*' => 'integer|min:1',
+    ]);
+    try {
+      app(ScheduleEngine::class)->scheduleTrials($draw->id, (int) ($data['duration'] ?? 60),
+        (int) ($data['gap'] ?? 0), $data['start'], $data['brackets'] ?? [], $data['rounds'] ?? []);
+    } catch (\RuntimeException|\InvalidArgumentException $e) {
+      return response()->json(['error' => $e->getMessage()], 422);
     }
-
-    $start = Carbon::parse($start);
-
-    // ===============================
-    // GET VENUE + COURT COUNT FROM DRAW
-    // ===============================
     $venue = $draw->venues()->first();
-
-    if (!$venue) {
-      return response()->json([
-        'error' => 'No venue assigned. Add a venue first.'
-      ], 422);
-    }
-
-    $venueId = $venue->id;
-    $totalCourts = (int) ($venue->pivot->num_courts ?? 1);
-
-    if ($totalCourts < 1)
-      $totalCourts = 1;
-
-    // ===============================
-    // BUILD FIXTURE QUERY (optional filters)
-    // ===============================
-    $brackets = $request->input('brackets', []);
-    $rounds = $request->input('rounds', []);
-
-    $query = Fixture::where('draw_id', $draw->id)
-      ->orderBy('bracket_id')
-      ->orderBy('round')
-      ->orderBy('match_nr');
-
-    if (!empty($brackets)) {
-      $query->whereIn('bracket_id', $brackets);
-    }
-
-    if (!empty($rounds)) {
-      $query->whereIn('round', $rounds);
-    }
-
-    $fixtures = $query->get();
-
-    // ===============================
-    // AUTO-SCHEDULE ACROSS COURTS
-    // ===============================
-    $court = 1;
-
-    foreach ($fixtures as $fx) {
-
-      // ==============================================
-      // SKIP BYE MATCHES IN BRACKET 1, ROUND 1
-      // ==============================================
-      if (
-        $fx->bracket_id == 1 &&
-        $fx->round == 1 &&
-        ($fx->registration1_id == 0 || $fx->registration2_id == 0)
-      ) {
-
-        // Mark as unscheduled (just to be safe)
-        $fx->scheduled = 0;
-        $fx->save();
-        continue;
-      }
-
-      // ==============================================
-      // NORMAL SCHEDULING
-      // ==============================================
-      OrderOfPlay::updateOrCreate(
-        ['fixture_id' => $fx->id],
-        [
-          'time' => $start->copy(),
-          'venue_id' => $venueId,
-          'court' => $court,
-        ]
-      );
-
-      $fx->scheduled = 1;
-      $fx->save();
-
-      // Move to next court
-      $court++;
-
-      // Wrap courts
-      if ($court > $totalCourts) {
-        $court = 1;
-        $start->addMinutes($duration + $gap);
-      }
-    }
-
-
+    $scheduled = $draw->drawFixtures()->where('scheduled', 1)
+      ->when(! empty($data['brackets']), fn ($q) => $q->whereIn('bracket_id', $data['brackets']))
+      ->when(! empty($data['rounds']), fn ($q) => $q->whereIn('round', $data['rounds']));
     return response()->json([
-      'success' => true,
-      'count' => $fixtures->count(),
-      'venue_id' => $venueId,
-      'num_courts' => $totalCourts,
-      'message' => 'Scheduled successfully'
+      'success' => true, 'count' => $scheduled->count(),
+      'venue_id' => $venue?->id, 'num_courts' => max(1, (int) $venue?->pivot->num_courts),
+      'message' => 'Scheduled successfully',
     ]);
   }
 
@@ -257,43 +174,26 @@ class ScheduleController extends Controller
   public function saveFixture(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    $fx = Fixture::where('draw_id', $draw->id)
-      ->findOrFail($request->fixture_id);
-
-    if ($request->scheduled_at) {
-      $venueId = (int) $request->venue_id;
-      $conflict = app(ScheduleConflictService::class)->conflict(
-        $draw,
-        $fx,
-        $venueId,
-        (string) $request->court_label,
-        (string) $request->scheduled_at,
-        (int) ($request->duration_minutes ?: 75)
-      );
-      if ($conflict) {
-        return response()->json(['status' => 'error', 'message' => $conflict], 422);
+    $request->validate(['duration_minutes' => 'nullable|integer|min:1|max:1440']);
+    if ($draw->usesFlexibleMonrad()) {
+      $request->validate(['fixture_id' => 'required|integer', 'scheduled_at' => 'nullable|date']);
+      try {
+        app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture($draw, (int) $request->fixture_id,
+          $request->scheduled_at ?: null, (int) $request->venue_id, (string) $request->court_label,
+          $request->filled('duration_minutes') ? (int) $request->duration_minutes : null);
+      } catch (\InvalidArgumentException $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
       }
+      return response()->json(['status' => 'ok']);
     }
-
-    // Remove previous
-    OrderOfPlay::where('fixture_id', $fx->id)->delete();
-
-    if ($request->scheduled_at) {
-      OrderOfPlay::create([
-        'fixture_id' => $fx->id,
-        'draw_id' => $draw->id,
-        'venue_id' => $request->venue_id,
-        'court' => $request->court_label,
-        'time' => $request->scheduled_at,
-      ]);
-
-      $fx->scheduled = 1;
-    } else {
-      $fx->scheduled = 0;
+    $request->validate(['fixture_id' => 'required|integer', 'scheduled_at' => 'nullable|date']);
+    try {
+      app(ScheduleEngine::class)->saveFixture($draw, (int) $request->fixture_id, $request->scheduled_at ?: null,
+        (int) $request->venue_id, (string) $request->court_label,
+        $request->filled('duration_minutes') ? (int) $request->duration_minutes : null, true);
+    } catch (\InvalidArgumentException $e) {
+      return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
     }
-
-    $fx->save();
-
     return response()->json(['status' => 'ok']);
   }
 
@@ -378,7 +278,7 @@ class ScheduleController extends Controller
   public function resetSchedule(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    $this->clearSchedule($draw);
+    // Both schedulers replace their slots transactionally; never clear before validation.
     return $this->autoSchedule($request, $draw);
   }
 

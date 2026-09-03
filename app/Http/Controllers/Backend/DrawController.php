@@ -99,6 +99,9 @@ class DrawController extends Controller
   {
     $showDraw = Draw::findOrFail($id);
     $this->authorize('view', $showDraw);
+    if ($showDraw->usesFlexibleMonrad()) {
+      return redirect()->route('flexible-monrad.show', $showDraw);
+    }
 
     // return $request;
     // 1= ind,2=camp,3=team,4high school,5 cav,6 ind pdf,7 plat,8 plat high,9 parentchind
@@ -250,6 +253,7 @@ class DrawController extends Controller
         DB::table('draw_teams')->where('draw_id', $draw->id)->delete();
         DB::table('draw_venues')->where('draw_id', $draw->id)->delete();
         DB::table('draw_settings')->where('draw_id', $draw->id)->delete();
+        DB::table('flexible_monrad_draws')->where('draw_id', $draw->id)->delete();
         DB::table('draw_events')->where('draw_id', $draw->id)->delete();
         if (Schema::hasColumn('rank_venue_mappings', 'draw_id')) {
           DB::table('rank_venue_mappings')->where('draw_id', $draw->id)->delete();

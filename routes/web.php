@@ -1038,6 +1038,14 @@ Route::delete(
   Route::get('roundrobin/{draw}/admin-scores', [RoundRobinController::class, 'adminScoresPage'])
     ->name('backend.roundrobin.admin.scores');
 
+  Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');
+  Route::put('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'save'])->name('flexible-monrad.save');
+  Route::post('draw/{draw}/flexible-monrad/generate', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'generate'])->name('flexible-monrad.generate');
+  Route::post('draw/{draw}/flexible-monrad/publish', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publish'])->name('flexible-monrad.publish');
+  Route::post('draw/{draw}/flexible-monrad/reopen', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reopen'])->name('flexible-monrad.reopen');
+  Route::post('draw/{draw}/flexible-monrad/withdrawals', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reconcileWithdrawals'])->name('flexible-monrad.withdrawals');
+  Route::put('draw/{draw}/flexible-monrad/score/{fixture}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'score'])->name('flexible-monrad.score');
+
   // Store score for round-robin fixture
   Route::post('roundrobin/score/{fixture}', [RoundRobinController::class, 'saveScore'])
     ->name('backend.roundrobin.score.store');
@@ -1976,6 +1984,9 @@ Route::get('ranking/{series}/player/{player}', [\App\Http\Controllers\Backend\Ra
   ->name('frontend.ranking.player-detail');
 
 // Public round-robin draw view
+Route::get('flexible-monrad/demo', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demo'])->name('flexible-monrad.demo');
+Route::post('flexible-monrad/demo-preview', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demoPreview'])->middleware('throttle:60,1')->name('flexible-monrad.demo-preview');
+Route::get('flexible-monrad/{draw}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publicShow'])->name('public.flexible-monrad.show');
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])
   ->name('public.roundrobin.show');
 

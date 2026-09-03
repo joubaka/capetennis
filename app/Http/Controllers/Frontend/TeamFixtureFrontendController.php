@@ -27,6 +27,10 @@ class TeamFixtureFrontendController extends Controller
       }
     }
 
+    if ($drawModel->usesFlexibleMonrad()) {
+      return redirect()->route($drawModel->published ? 'public.flexible-monrad.show' : 'flexible-monrad.show', $drawModel);
+    }
+
     $fixtures = \App\Models\TeamFixture::with([
             'draw',
             'venue',

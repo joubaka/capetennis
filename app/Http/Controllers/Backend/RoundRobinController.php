@@ -47,6 +47,9 @@ class RoundRobinController extends Controller
   public function show(Draw $draw)
   {
     $this->authorize('view', $draw);
+    if ($draw->usesFlexibleMonrad()) {
+      return redirect()->route('flexible-monrad.show', $draw);
+    }
 
     Log::info("🎾 [RoundRobinController@show] Entering method", [
       'draw_id' => $draw->id,

@@ -52,10 +52,20 @@ class Draw extends Model
     {
         return $this->hasMany(DrawGroup::class, 'draw_id', 'id');
     }
-   public function settings()
+    public function settings()
 {
     return $this->hasOne(DrawSetting::class);
 }
+    public function flexibleMonrad()
+    {
+        return $this->hasOne(FlexibleMonradDraw::class);
+    }
+
+    public function usesFlexibleMonrad(): bool
+    {
+        return $this->flexibleMonrad !== null || ($this->settings?->draw_format_id
+            && DrawFormats::whereKey($this->settings->draw_format_id)->where('name', 'Flexible Monrad')->exists());
+    }
     public function event()
     {
         return $this->belongsTo(Event::class, 'event_id', 'id');

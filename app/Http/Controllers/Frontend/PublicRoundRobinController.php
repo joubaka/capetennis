@@ -23,6 +23,13 @@ class PublicRoundRobinController extends Controller
   // =============================================================
   public function show(Draw $draw)
   {
+    if ($draw->usesFlexibleMonrad()) {
+      if (! $draw->published) {
+        $this->authorize('view', $draw);
+        return redirect()->route('flexible-monrad.show', $draw);
+      }
+      return redirect()->route('public.flexible-monrad.show', $draw);
+    }
     // Block unpublished draws — only admin, super-user, or convenor for this event may view
     if (!$draw->published) {
       $user = auth()->user();

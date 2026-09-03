@@ -116,6 +116,7 @@ return new class extends Migration
                 $table->unsignedBigInteger('loser_parent_fixture_id')->nullable();
                 $table->unsignedBigInteger('draw_group_id')->nullable();
                 $table->integer('position')->nullable();
+                $table->unsignedBigInteger('bracket_id')->nullable();
                 $table->string('playoff_type')->nullable();
                 $table->unsignedBigInteger('loser_feeder_slot')->nullable();
             });
