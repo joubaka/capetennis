@@ -27,6 +27,7 @@
   .save-status { min-width: 118px; }
   .form-label { font-weight: 500; }
   .field-help { margin-top: .35rem; font-size: .8125rem; color: var(--bs-secondary-color); }
+  .select2-admins + .select2-container .select2-selection__choice { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   @media (max-width: 767.98px) {
     .settings-hero .card-body { padding: 1.25rem; }
     .settings-card .card-body { padding: 1.25rem; }
@@ -239,7 +240,7 @@
         @foreach(\App\Models\User::orderBy('name')->get() as $user)
           <option value="{{ $user->id }}"
             @selected($event->admins->contains($user->id))>
-            {{ $user->name }}
+            {{ $user->name }} ({{ $user->email }})
           </option>
         @endforeach
       </select>
