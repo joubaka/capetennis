@@ -152,13 +152,13 @@
     state.players.forEach(player => {
       const path = assignedPath(player.id);
       if (path) assigned++;
-      if (!player.name.toLowerCase().includes(query)) return;
+      if (path || !player.name.toLowerCase().includes(query)) return;
       const button = el(
         'button',
-        `fm-player${path ? ' assigned' : ''}${selectedPlayer === player.id ? ' selected' : ''}`
+        `fm-player${selectedPlayer === player.id ? ' selected' : ''}`
       );
       button.type = 'button';
-      button.append(el('span', '', name(player.id)), el('small', '', path ? roundName(path.length - 1) : 'Unplaced'));
+      button.append(el('span', '', name(player.id)), el('small', '', 'Unplaced'));
       button.draggable = editable() && player.eligible !== false;
       button.disabled = !editable() || player.eligible === false;
       button.addEventListener('dragstart', event => {

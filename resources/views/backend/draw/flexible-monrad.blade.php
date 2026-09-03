@@ -41,7 +41,7 @@
     <button type="button" id="fm-withdrawals" hidden>Apply withdrawals</button>
   </div>
   <div class="fm-workspace">
-    <aside id="fm-sidebar"><h2>Players <span id="fm-count"></span></h2><label for="fm-search">Search players</label><input id="fm-search" type="search" placeholder="Name…"><p class="fm-help">Assigned players can be moved. Click an occupied box to swap or remove.</p><div id="fm-players"></div></aside>
+    <aside id="fm-sidebar"><h2>Available players <span id="fm-count"></span></h2><label for="fm-search">Search players</label><input id="fm-search" type="search" placeholder="Name…"><p class="fm-help">Placed players leave this list. Click an occupied box to move, swap or remove a player. Removed players return here.</p><div id="fm-players"></div></aside>
     <section class="fm-board-wrap" aria-label="Monrad bracket"><div class="fm-board-heading"><h2 id="fm-board-title">Main draw</h2><span>Scroll across to later rounds →</span></div><div id="fm-scroll" tabindex="0" aria-label="Scrollable bracket"><div id="fm-board"></div></div></section>
   </div>
   <section id="fm-print-content" class="fm-print-only" aria-label="Printable draw"></section>
