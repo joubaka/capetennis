@@ -68,6 +68,7 @@ class ManageDrawController extends Controller
             'boxes' => 'nullable|integer|min:1|max:26',
             'playoff_size' => 'nullable|integer',
             'num_sets' => 'nullable|integer',
+            'move_to_group_id' => 'nullable|integer',
         ]);
 
         // The manage form uses draw-level names, while the engine API uses the
@@ -88,32 +89,16 @@ class ManageDrawController extends Controller
             return response()->json([ 'success' => false, 'message' => 'No settings provided' ], 422);
         }
 
-        if ($drawData) {
-            $draw->update($drawData);
-        }
-
-        // Get OLD boxes count BEFORE updating
-        $oldBoxes = (int) optional($draw->settings)->boxes;
-        $newBoxes = isset($updateData['boxes']) ? (int) $updateData['boxes'] : $oldBoxes;
-
-        // Create or update settings
-        if (!$draw->settings) {
-            $createData = array_merge(['draw_id' => $draw->id], $updateData);
-            $draw->settings()->create($createData);
-            // Also recreate groups for new settings
-            $this->recreateGroups($draw, $newBoxes);
-        } else {
-            $draw->settings()->update($updateData);
-
-            // Recreate groups if boxes changed
-            if (isset($updateData['boxes']) && $oldBoxes !== $newBoxes) {
-                $this->recreateGroups($draw, $newBoxes);
-                DrawAuditLog::record($draw->id, 'groups_recreated', null, [
-                    'old_boxes' => $oldBoxes,
-                    'new_boxes' => $newBoxes,
-                ]);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data) {
+            $draw->refresh();
+            $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            abort_if($lockedDraw->locked || $lockedDraw->published, 403);
+            if (isset($updateData['boxes'])) {
+                $this->resizeGroups($draw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
             }
-        }
+            if ($drawData) $draw->update($drawData);
+            $draw->settings()->updateOrCreate(['draw_id' => $draw->id], $updateData);
+        });
 
         // Refresh the draw to get updated settings
         $draw->refresh();
@@ -139,61 +124,41 @@ class ManageDrawController extends Controller
    */
   public function recreateGroups(Draw $draw, int $numGroups)
   {
-    \Log::info("🔄 [recreateGroups] Starting", [
-      'draw_id' => $draw->id,
-      'new_num_groups' => $numGroups,
-    ]);
-
-    // 1. Collect all registration IDs currently in any group
-    $allRegIds = \DB::table('draw_group_registrations')
-      ->whereIn('draw_group_id', $draw->groups()->pluck('id'))
-      ->pluck('registration_id')
-      ->unique()
-      ->values()
-      ->toArray();
-
-    \Log::info("📦 [recreateGroups] Found registrations to preserve", [
-      'count' => count($allRegIds),
-      'reg_ids' => $allRegIds,
-    ]);
-
-    // 2. Delete all existing groups (cascade deletes draw_group_registrations)
-    $draw->groups()->delete();
-
-    // 3. Create new groups A, B, C, ... up to numGroups
-    $names = array_slice(range('A', 'Z'), 0, $numGroups);
-    $firstGroup = null;
-
-    foreach ($names as $name) {
-      $group = $draw->groups()->create(['name' => $name]);
-      if ($firstGroup === null) {
-        $firstGroup = $group;
-      }
-    }
-
-    \Log::info("✅ [recreateGroups] Created new groups", [
-      'groups' => $names,
-    ]);
-
-    // 4. Move all players into Group A (first group)
-    if ($firstGroup && count($allRegIds) > 0) {
-      foreach ($allRegIds as $regId) {
-        \DB::table('draw_group_registrations')->insert([
-          'draw_group_id' => $firstGroup->id,
-          'registration_id' => $regId,
-        ]);
-      }
-
-      \Log::info("👥 [recreateGroups] Moved all players to Group {$firstGroup->name}", [
-        'group_id' => $firstGroup->id,
-        'player_count' => count($allRegIds),
-      ]);
-    }
-
-    return $draw->groups()->get();
+    return $this->resizeGroups($draw, $numGroups);
   }
 
-
+  private function resizeGroups(Draw $draw, int $count, ?int $moveTo = null)
+  {
+    $groups = $draw->groups()->orderBy('name')->get();
+    if ($groups->count() === $count) return $groups;
+    if ($draw->drawFixtures()->whereHas('fixtureResults')->exists()) {
+      throw \Illuminate\Validation\ValidationException::withMessages(['boxes' => 'Groups cannot change after scores have been recorded.']);
+    }
+    $removed = $groups->slice($count);
+    if ($removed->isNotEmpty()) {
+      if ($draw->drawFixtures()->whereIn('draw_group_id', $removed->pluck('id'))->exists()) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['boxes' => 'These groups have fixtures. Keep the groups until the existing draw is formally reset.']);
+      }
+      $players = \App\Models\DrawGroupRegistration::whereIn('draw_group_id', $removed->pluck('id'))->orderBy('seed')->get();
+      $target = $groups->take($count)->firstWhere('id', $moveTo);
+      if ($players->isNotEmpty() && !$target) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['move_to_group_id' => 'Choose a remaining group for players from the removed groups.']);
+      }
+      if ($target) {
+        $seed = (int) $target->groupRegistrations()->max('seed');
+        foreach ($players as $player) {
+          $target->registrations()->syncWithoutDetaching([$player->registration_id => ['seed' => ++$seed]]);
+        }
+      }
+      \App\Models\DrawGroupRegistration::whereIn('draw_group_id', $removed->pluck('id'))->delete();
+      $draw->groups()->whereIn('id', $removed->pluck('id'))->delete();
+    }
+    for ($index = $groups->count(); $index < $count; $index++) {
+      $draw->groups()->firstOrCreate(['name' => chr(65 + $index)]);
+    }
+    DrawAuditLog::record($draw->id, 'groups_resized', null, ['previous_count' => $groups->count(), 'count' => $count]);
+    return $draw->groups()->orderBy('name')->get();
+  }
 
 
   /**

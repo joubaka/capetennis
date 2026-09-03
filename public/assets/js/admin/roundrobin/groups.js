@@ -1,357 +1,513 @@
-/**
- * RR Groups module — group assignment, sortable drag-drop, save/regenerate.
- *
- * Depends on: AdminApi, AdminToast, AdminModal, AdminConfirm, AdminState,
- *             AdminLoading, AdminRoutes, Sortable
- */
-
+/** Draw assignments: one state model and one handler per action. */
 (function ($, root) {
   'use strict';
-
-  var DRAW_ID = null;
-
-  var COLORS = {
-    A: 'bg-primary text-white',
-    B: 'bg-success text-white',
-    C: 'bg-warning text-dark',
-    D: 'bg-danger text-white',
-    E: 'bg-info text-white',
-    F: 'bg-secondary text-white',
-    G: 'bg-dark text-white',
-    H: 'bg-primary text-white'
-  };
-
-  // ─── Sortable instance tracking ──────────────────────────────────
-  var __instances  = [];
-  var __initDone   = false;
-  var __initPending = false;
-
-  // ─── Refresh helpers ─────────────────────────────────────────────
-
-  function refreshGroupsUI() {
-    var url = AdminRoutes.drawUrl(DRAW_ID, '/groups-data');
-    return AdminApi.get(url)
-      .then(function (res) {
-        if (!res.groups) return;
-        var sorted = res.groups.slice().sort(function (a, b) {
-          return (a.name || '').localeCompare(b.name || '');
-        });
-        _renderGroupsRow(sorted);
-      })
-      .catch(function () { AdminToast.warning('Could not refresh groups.'); });
+  let drawId,
+    groups = [],
+    roster = [],
+    baseline = '',
+    revision = '',
+    busy = false,
+    instances = [];
+  const selected = new Set();
+  const esc = value =>
+    $('<div>')
+      .text(value == null ? '' : String(value))
+      .html();
+  const snapshot = () =>
+    JSON.stringify(groups.map(g => ({ group_id: g.id, registration_ids: g.players.map(p => Number(p.id)) })));
+  const dirty = () => snapshot() !== baseline;
+  const editable = () => !!root.RR_CAN_ASSIGN && !root.RR_DRAW_LOCKED && !root.RR_DRAW_PUBLISHED;
+  const normalise = raw =>
+    (raw || []).map(g => ({
+      id: Number(g.id),
+      name: g.name,
+      players: (g.players || g.registrations || []).map(p => ({
+        id: Number(p.id),
+        name: p.name || p.display_name || 'Unknown player'
+      }))
+    }));
+  function status(message, error) {
+    $('#rr-save-status').text(message).toggleClass('text-danger', !!error);
   }
-
-  function refreshAvailablePlayersUI() {
-    var url = AdminRoutes.drawUrl(DRAW_ID, '/available-players');
-    return AdminApi.get(url)
-      .then(function (res) {
-        if (!res.categories) return;
-        var $list = $('#available-players-list');
-        if (!$list.length) return;
-        var html = '';
-        res.categories.forEach(function (cat) {
-          if (!cat.players || !cat.players.length) return;
-          html += '<div class="mb-3">';
-          html += '<div class="fw-bold text-primary small mb-1">';
-          html += '<i class="ti ti-category me-1"></i> ' + $('<div>').text(cat.category).html();
-          html += ' <span class="badge bg-secondary">' + cat.count + '</span></div>';
-          html += '<ul class="list-group list-group-flush rr-sortable" data-type="source">';
-          cat.players.forEach(function (p) {
-            var eName = $('<div>').text(p.name).html();
-            html += '<li class="list-group-item list-group-item-action py-1 px-2"' +
-                    ' data-id="' + p.id + '" data-player-name="' + eName + '">' +
-                    '<small>' + eName + '</small></li>';
-          });
-          html += '</ul></div>';
-        });
-        if (!html) {
-          html = '<div class="text-muted text-center py-4">' +
-                 '<i class="ti ti-info-circle fs-3 d-block mb-2"></i>All players assigned.</div>';
-        }
-        $list.html(html);
-      })
-      .catch(function () { AdminToast.warning('Could not refresh available players.'); });
+  function announce(message) {
+    $('#rr-assignment-message').text(message);
   }
-
-  function refreshGroupsAndPlayers() {
-    return Promise.all([refreshGroupsUI(), refreshAvailablePlayersUI()])
-      .then(function () {
-        setTimeout(function () { initSortable(true); }, 50);
-      });
+  function guard() {
+    if (busy) return false;
+    return !dirty() || root.confirm('You have unsaved assignments. Discard these changes and reload?');
   }
-
-  function _renderGroupsRow(groups) {
-    var $row = $('#rr-groups-row');
-    if (!$row.length) return;
-    var html = '';
-    groups.forEach(function (g) {
-      var colorClass = COLORS[g.name] || 'bg-dark text-white';
-      html += '<div class="col-6 mb-3">' +
-        '<div class="card border h-100">' +
-        '<div class="card-header py-2 ' + colorClass + '">' +
-        '<h6 class="mb-0"><i class="ti ti-users-group me-1"></i> Group ' + g.name +
-        '<span class="badge bg-light text-dark float-end">' + g.players.length + ' players</span></h6></div>' +
-        '<div class="card-body p-2" style="min-height:150px;">' +
-        '<ul class="list-group list-group-flush rr-sortable rr-group"' +
-        ' data-group-id="' + g.id + '" data-type="target">';
-      g.players.forEach(function (p) {
-        var eName = $('<div>').text(p.name).html();
-        html += '<li class="list-group-item list-group-item-action py-1 px-2"' +
-                ' data-id="' + p.id + '" data-player-name="' + eName + '">' +
-                '<small>' + eName + '</small>' +
-                '<button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group"' +
-                ' data-id="' + p.id + '"><i class="ti ti-x"></i></button></li>';
-      });
-      html += '</ul>';
-      if (!g.players.length) {
-        html += '<div class="text-muted text-center py-3 empty-group-placeholder">' +
-                '<small>Drop players here</small></div>';
-      }
-      html += '</div></div></div>';
+  function options(value) {
+    return groups
+      .map(
+        g => '<option value="' + g.id + '"' + (g.id == value ? ' selected' : '') + '>Group ' + esc(g.name) + '</option>'
+      )
+      .join('');
+  }
+  function visiblePlayers() {
+    const assigned = new Set(groups.flatMap(g => g.players.map(p => p.id)));
+    const query = String($('#rr-player-search').val() || '')
+      .toLowerCase()
+      .trim();
+    const category = $('#rr-player-category').val();
+    return roster.filter(
+      p =>
+        !assigned.has(p.id) &&
+        (!category || String(p.category_id) === category) &&
+        (!query || p.name.toLowerCase().includes(query))
+    );
+  }
+  function update() {
+    const count = groups.reduce((total, g) => total + g.players.length, 0);
+    $('#rr-assigned-count').text(count + ' assigned · ' + groups.length + ' groups');
+    const assigned = new Set(groups.flatMap(g => g.players.map(p => p.id)));
+    $('#rr-available-count').text(roster.filter(p => !assigned.has(p.id)).length);
+    if (!busy) status(dirty() ? 'Unsaved changes' : 'Saved');
+    $('#btn-save-groups, #rr-discard-groups').prop('disabled', busy || !editable() || !dirty());
+    $('#btn-regenerate-fixtures').prop(
+      'disabled',
+      busy || !root.RR_CAN_GENERATE || root.RR_DRAW_LOCKED || root.RR_DRAW_PUBLISHED || !groups.length
+    );
+    $('#groups-pane .rr-player-actions button').prop('disabled', busy || !editable());
+    $('#groups-pane .rr-group').each(function () {
+      $(this).children().first().find('.rr-player-up').prop('disabled', true);
+      $(this).children().last().find('.rr-player-down').prop('disabled', true);
     });
-    if (!html) {
-      html = '<div class="col-12"><div class="alert alert-warning">' +
-             '<i class="ti ti-alert-triangle me-1"></i> No groups found.</div></div>';
-    }
-    $row.html(html);
+    $(
+      '#rr-apply-group-count, #groups-tab-boxes, #btn-import-teams, #rr-assign-selected, #rr-select-visible, #rr-assign-target'
+    ).prop('disabled', busy || !editable());
+    $('.rr-locked-overlay').toggleClass('d-none', editable());
   }
-
-  // ─── Sortable ─────────────────────────────────────────────────────
-  function initSortable(forceReinit) {
-    if (__initPending) return;
-    if (!forceReinit && __initDone) return;
-    if (typeof Sortable === 'undefined') return;
-
-    __initPending = true;
-
-    // Destroy existing
-    __instances.forEach(function (s) {
-      try { if (s && s.destroy) s.destroy(); } catch (e) {}
+  function renderAvailable() {
+    const visible = visiblePlayers();
+    let html = '<ul class="rr-sortable" data-type="source">';
+    visible.forEach(p => {
+      html +=
+        '<li class="rr-player-row" data-id="' +
+        p.id +
+        '"><input class="form-check-input rr-player-select" type="checkbox" aria-label="Select ' +
+        esc(p.name) +
+        '"' +
+        (selected.has(p.id) ? ' checked' : '') +
+        (!editable() || busy ? ' disabled' : '') +
+        '><span class="rr-player-name">' +
+        esc(p.name) +
+        '<small>' +
+        esc(p.category || '') +
+        '</small></span><button type="button" class="btn btn-sm btn-outline-primary rr-add-player" aria-label="Add ' +
+        esc(p.name) +
+        ' to selected group"' +
+        (!editable() || busy ? ' disabled' : '') +
+        '>Add</button></li>';
     });
-    __instances = [];
-    __initDone  = false;
-
-    var pane = document.getElementById('groups-pane');
-    if (!pane) { __initPending = false; return; }
-
-    pane.querySelectorAll('.rr-sortable').forEach(function (el) {
-      Array.from(el.children).forEach(function (c) { c.setAttribute('draggable', 'true'); });
-
-      try {
-        var inst = new Sortable(el, {
-          group:           'shared-players',
-          animation:       200,
-          ghostClass:      'sortable-ghost',
-          chosenClass:     'sortable-chosen',
-          dragClass:       'sortable-drag',
-          fallbackOnBody:  true,
-          swapThreshold:   0.3,
-          touchStartThreshold: 5,
-          dragoverBubble:  false,
-          removeCloneOnHide: true,
-          filter:          '.btn-remove-from-group',
-          onStart: function () { $('.rr-sortable').addClass('drop-zone-active'); },
-          onEnd: function (evt) {
-            $('.rr-sortable').removeClass('drop-zone-active');
-            var $item   = $(evt.item);
-            var $target = $(evt.to);
-            if ($target.hasClass('rr-group') && !$item.find('.btn-remove-from-group').length) {
-              $item.append(
-                '<button type="button" class="btn btn-sm btn-link text-danger float-end p-0 btn-remove-from-group"' +
-                ' data-id="' + $item.data('id') + '"><i class="ti ti-x"></i></button>'
+    html += '</ul>';
+    if (!visible.length)
+      html +=
+        '<p class="p-3 text-muted small">' +
+        (roster.length
+          ? 'No available players match this view. Clear the search or remove a player from a group.'
+          : 'No eligible entries yet. Add or complete entries through the event, then refresh players.') +
+        '</p>';
+    $('#available-players-list').html(html);
+    $('#rr-select-visible').prop('checked', visible.length > 0 && visible.every(p => selected.has(p.id)));
+  }
+  function render() {
+    instances.forEach(instance => instance.destroy());
+    instances = [];
+    const target = $('#rr-assign-target').val();
+    $('#rr-assign-target').html(options(target));
+    let html = '';
+    groups.forEach(g => {
+      html +=
+        '<section class="rr-group-card"><header><h6>Group ' +
+        esc(g.name) +
+        '</h6><span class="badge bg-label-primary">' +
+        g.players.length +
+        ' players</span></header><ul class="rr-sortable rr-group" data-group-id="' +
+        g.id +
+        '">';
+      g.players.forEach((p, index) => {
+        html +=
+          '<li class="rr-player-row" data-id="' +
+          p.id +
+          '"><span class="rr-drag-handle" aria-hidden="true">⠿</span><span class="rr-seed">' +
+          (index + 1) +
+          '</span><span class="rr-player-name">' +
+          esc(p.name) +
+          '</span>';
+        if (editable())
+          html +=
+            '<div class="rr-player-actions"><button type="button" class="rr-player-up" aria-label="Move ' +
+            esc(p.name) +
+            ' up"' +
+            (!index ? ' disabled' : '') +
+            '>↑</button><button type="button" class="rr-player-down" aria-label="Move ' +
+            esc(p.name) +
+            ' down"' +
+            (index === g.players.length - 1 ? ' disabled' : '') +
+            '>↓</button><button type="button" class="rr-player-move" aria-label="Move ' +
+            esc(p.name) +
+            ' to another group">⇄</button><button type="button" class="btn-remove-from-group" aria-label="Remove ' +
+            esc(p.name) +
+            ' from group">×</button></div>';
+        html += '</li>';
+      });
+      html +=
+        '</ul>' +
+        (!g.players.length
+          ? '<p class="small text-muted p-3 mb-0">Assign players here or drag them into this group.</p>'
+          : '') +
+        '</section>';
+    });
+    $('#rr-groups-row').html(
+      html || '<div class="alert alert-info">Choose the number of groups above and select Apply to begin.</div>'
+    );
+    renderAvailable();
+    update();
+    initSortable();
+  }
+  function initSortable() {
+    instances.forEach(instance => instance.destroy());
+    instances = [];
+    if (!root.Sortable || !editable() || busy) return;
+    document.querySelectorAll('#groups-pane .rr-sortable').forEach(el => {
+      instances.push(
+        new Sortable(el, {
+          group: 'draw-players',
+          animation: 150,
+          filter: 'input,button',
+          preventOnFilter: false,
+          onEnd: function () {
+            groups.forEach(g => {
+              g.players = Array.from(document.querySelectorAll('.rr-group[data-group-id="' + g.id + '"] > li')).map(
+                li => player(Number(li.dataset.id))
               );
-            }
-            if ($target.data('type') === 'source') {
-              $item.find('.btn-remove-from-group').remove();
-            }
-            _updateEmptyPlaceholders();
+            });
+            selected.clear();
+            render();
           }
-        });
-        __instances.push(inst);
-      } catch (e) {}
-    });
-
-    __initDone    = true;
-    __initPending = false;
-  }
-
-  function _updateEmptyPlaceholders() {
-    $('.rr-group').each(function () {
-      var $g = $(this);
-      var $ph = $g.siblings('.empty-group-placeholder');
-      var has = $g.children('li').length > 0;
-      if (has) {
-        $ph.hide();
-      } else {
-        if (!$ph.length) {
-          $g.after('<div class="text-muted text-center py-3 empty-group-placeholder"><small>Drop players here</small></div>');
-        } else {
-          $ph.show();
-        }
-      }
-    });
-  }
-
-  // ─── Save groups ─────────────────────────────────────────────────
-  function saveGroups() {
-    var payload = [];
-    $('.rr-group').each(function () {
-      payload.push({
-        group_id: $(this).data('group-id'),
-        registration_ids: $(this).find('li').map(function () { return $(this).data('id'); }).get()
-      });
-    });
-
-    var $btn    = $('#btn-save-groups');
-    var restore = AdminLoading.button($btn, 'Saving…');
-
-    AdminApi.post(AdminRoutes.drawUrl(DRAW_ID, '/save-groups'), { groups: payload })
-      .then(function () { AdminToast.success('Groups saved successfully'); })
-      .catch(function () { AdminToast.error('Failed to save groups'); })
-      .then(function () { restore(); });
-  }
-
-  // ─── Regenerate fixtures ──────────────────────────────────────────
-  function regenerateFixtures() {
-    AdminConfirm.destructive(
-      'Regenerate Fixtures?',
-      'This will <strong>delete existing fixtures</strong> and create new round-robin matches based on current group assignments.'
-    ).then(function (ok) {
-      if (!ok) return;
-
-      var loader = AdminModal.loading('Generating…', 'Please wait while fixtures are being created.');
-
-      AdminApi.post(AdminRoutes.drawUrl(DRAW_ID, '/regenerate-rr'))
-        .then(function (res) {
-          loader.close();
-          AdminToast.success(res.message || 'Fixtures regenerated successfully');
-          refreshGroupsAndPlayers();
         })
-        .catch(function (err) {
-          loader.close();
-          AdminToast.error(err.message || 'Failed to regenerate fixtures.');
-        });
+      );
     });
   }
-
-  // ─── Remove player from group ────────────────────────────────────
-  function _removeFromGroup(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    var $item      = $(this).closest('li');
-    var playerName = $item.data('player-name');
-    var $sourceList = $('.rr-sortable[data-type="source"]').first();
-    if ($sourceList.length) {
-      $item.find('.btn-remove-from-group').remove();
-      $sourceList.append($item);
-      AdminToast.info(playerName + ' removed from group');
-      _updateEmptyPlaceholders();
+  function player(id) {
+    return (
+      roster.find(p => p.id === id) ||
+      groups.flatMap(g => g.players).find(p => p.id === id) || { id: id, name: 'Unknown player' }
+    );
+  }
+  function assign(ids, target) {
+    if (!editable() || busy) return;
+    const group = groups.find(g => g.id === Number(target));
+    if (!group) {
+      AdminToast.warning('Create or select a destination group first.');
+      return;
+    }
+    const players = ids.map(player);
+    groups.forEach(g => {
+      g.players = g.players.filter(p => !ids.includes(p.id));
+    });
+    group.players.push(...players);
+    selected.clear();
+    render();
+  }
+  function syncState() {
+    AdminState.setGroups(
+      groups.map(g => ({
+        id: g.id,
+        name: g.name,
+        registrations: g.players.map((p, index) => ({ id: p.id, display_name: p.name, seed: index + 1 }))
+      }))
+    );
+  }
+  async function save() {
+    if (busy || !editable()) return false;
+    if (!dirty()) return true;
+    busy = true;
+    render();
+    status('Saving…');
+    try {
+      const result = await AdminApi.request({
+        url: AdminRoutes.drawUrl(drawId, '/save-groups'),
+        method: 'POST',
+        json: true,
+        retries: 0,
+        data: { groups: JSON.parse(snapshot()), revision: revision }
+      });
+      revision = result.revision;
+      baseline = snapshot();
+      syncState();
+      announce(
+        result.fixtures_need_regeneration
+          ? 'Assignments saved. Preview and regenerate fixtures before using the changed groups.'
+          : 'Assignments saved. Event registrations are unchanged.'
+      );
+      return true;
+    } catch (error) {
+      announce(error.message);
+      return false;
+    } finally {
+      busy = false;
+      render();
     }
   }
-
-  // ─── Import teams ────────────────────────────────────────────────
-  function importTeams() {
-    var eventId = root.EVENT_ID;
-    AdminConfirm.destructive(
-      'Import Teams?',
-      'This will create categories and registrations for all teams.'
-    ).then(function (ok) {
-      if (!ok) return;
-      AdminApi.post(AdminRoutes.appUrl() + '/backend/event/' + eventId + '/import-teams')
-        .then(function (res) {
-          AdminToast.success(res.message);
-          refreshGroupsAndPlayers();
-        })
-        .catch(function () { AdminToast.error('Import failed.'); });
-    });
-  }
-
-  // ─── Change number of groups ─────────────────────────────────────
-  function changeGroups(newBoxes, currentVal, $select) {
-    if (newBoxes === currentVal) return;
-
-    AdminModal.confirm({
-      title:       'Change Number of Groups?',
-      html:        '<p>This will change from <strong>' + currentVal + '</strong> to <strong>' + newBoxes + '</strong> groups.</p>' +
-                   '<p class="text-warning"><i class="ti ti-alert-triangle"></i> All players will be moved to <strong>Group A</strong>.</p>',
-      confirmText: 'Yes, change groups',
-      confirmColor: '#198754'
-    }).then(function (ok) {
-      if (!ok) { $select.val(currentVal); return; }
-
-      $select.prop('disabled', true);
-      var loader = AdminModal.loading('Updating Groups…', 'Please wait while groups are being recreated.');
-
-      AdminApi.post(AdminRoutes.drawUrl(DRAW_ID, '/settings'), {
-        _token: $('meta[name="csrf-token"]').attr('content'),
-        boxes:  newBoxes
-      }).then(function (res) {
-        loader.close();
-        if (!res.success) {
-          AdminToast.error(res.message || 'Failed to update groups.');
-          $select.val(currentVal);
-          return;
-        }
-        AdminToast.success('Groups updated successfully!');
-        refreshGroupsAndPlayers();
-
-        // Sync selectors
-        var cnt = res.groups_count || newBoxes;
-        $('#groups-count-label').text('| ' + cnt + ' Groups');
-        $('#settings-boxes').val(newBoxes);
-
-        // Notify other modules
-        if (typeof root.numGroups !== 'undefined') root.numGroups = newBoxes;
-        if (typeof root.updateFlowPreview === 'function') root.updateFlowPreview();
-
-        // Fire state event for playoff module
-        document.dispatchEvent(new CustomEvent('rr:groups:count:changed', { detail: { count: newBoxes } }));
-      }).catch(function (err) {
-        loader.close();
-        AdminToast.error(err.message || 'Failed to update groups.');
-        $select.val(currentVal);
-      }).then(function () {
-        $select.prop('disabled', false);
-      });
-    });
-  }
-
-  // ─── Bind DOM events ─────────────────────────────────────────────
-  function bind() {
-    $(document).on('click', '.btn-remove-from-group', _removeFromGroup);
-    $(document).on('click', '#btn-save-groups',         saveGroups);
-    $(document).on('click', '#btn-regenerate-fixtures', regenerateFixtures);
-    $(document).on('click', '#btn-import-teams',        importTeams);
-
-    $('#groups-tab-boxes').on('change', function () {
-      var newBoxes    = parseInt($(this).val(), 10);
-      var currentVal  = parseInt($(this).data('current') || $(this).val(), 10);
-      changeGroups(newBoxes, currentVal, $(this));
-    });
-
-    // Tab activation → init sortable
-    $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
-      if ($(e.target).attr('id') === 'groups-tab') {
-        setTimeout(function () { initSortable(true); }, 150);
-      }
-    });
-  }
-
-  // ─── Init ─────────────────────────────────────────────────────────
-  function init(drawId) {
-    DRAW_ID = drawId;
-    bind();
-
-    // Expose for external calls (matrix, settings module)
-    root.refreshGroupsAndPlayers = refreshGroupsAndPlayers;
-    root.initGroupsSortable      = initSortable;
-
-    // If groups tab already active on load
-    if ($('#groups-tab').hasClass('active') || $('#groups-pane').hasClass('show')) {
-      setTimeout(function () { initSortable(true); }, 200);
+  async function refresh(force) {
+    if (!force && !guard()) return;
+    busy = true;
+    update();
+    try {
+      const results = await Promise.all([
+        AdminApi.get(AdminRoutes.drawUrl(drawId, '/groups-data')),
+        AdminApi.get(AdminRoutes.drawUrl(drawId, '/available-players'))
+      ]);
+      const next = normalise(results[0].groups);
+      const nextRoster = results[1].categories.flatMap(c =>
+        c.players.map(p => ({ id: Number(p.id), name: p.name, category_id: c.id, category: c.category }))
+      );
+      // Keep names/category identity for assigned players, including now-ineligible historical entries.
+      next
+        .flatMap(g => g.players)
+        .forEach(p => {
+          if (!nextRoster.some(r => r.id === p.id)) nextRoster.push(roster.find(r => r.id === p.id) || p);
+        });
+      groups = next;
+      roster = nextRoster;
+      revision = results[0].revision;
+      baseline = snapshot();
+      selected.clear();
+      categories();
+      syncState();
+    } catch (error) {
+      AdminToast.error(error.message);
+    } finally {
+      busy = false;
+      render();
     }
   }
-
-  root.RRGroups = { init: init, refresh: refreshGroupsAndPlayers, initSortable: initSortable };
-
-}(jQuery, window));
+  function categories() {
+    const value = $('#rr-player-category').val();
+    const categories = new Map(roster.filter(p => p.category_id).map(p => [String(p.category_id), p.category]));
+    $('#rr-player-category')
+      .html(
+        '<option value="">All categories</option>' +
+          Array.from(categories, ([id, name]) => '<option value="' + id + '">' + esc(name) + '</option>').join('')
+      )
+      .val(value || '');
+    $('#rr-player-category').toggle(categories.size > 1);
+  }
+  function discard() {
+    groups = normalise(
+      JSON.parse(baseline).map(g => ({
+        id: g.group_id,
+        name: groups.find(x => x.id === g.group_id).name,
+        players: g.registration_ids.map(player)
+      }))
+    );
+    selected.clear();
+    render();
+  }
+  async function resize() {
+    if (!editable() || !guard()) return;
+    if (dirty()) discard();
+    const count = Number($('#groups-tab-boxes').val());
+    if (count === groups.length) return;
+    const removed = groups.slice(count),
+      moved = removed.reduce((n, g) => n + g.players.length, 0);
+    const result = await Swal.fire({
+      title: groups.length ? 'Change groups?' : 'Create groups?',
+      html:
+        '<p>Keep the existing players and seed order in the remaining groups.</p>' +
+        (moved
+          ? '<p>' +
+            moved +
+            ' players need a new group. Move them to:</p><select id="rr-resize-target" class="form-select">' +
+            groups
+              .slice(0, count)
+              .map(g => '<option value="' + g.id + '">Group ' + esc(g.name) + '</option>')
+              .join('') +
+            '</select>'
+          : ''),
+      showCancelButton: true,
+      confirmButtonText: 'Apply groups',
+      preConfirm: () => $('#rr-resize-target').val() || null
+    });
+    if (!result.isConfirmed) return;
+    busy = true;
+    update();
+    try {
+      await AdminApi.request({
+        url: AdminRoutes.drawUrl(drawId, '/settings'),
+        method: 'POST',
+        retries: 0,
+        data: { boxes: count, move_to_group_id: result.value }
+      });
+      await refresh(true);
+      document.dispatchEvent(new CustomEvent('rr:groups:count:changed', { detail: { count: count } }));
+      // Preset choices and per-stage notes depend on the number of groups.
+      // Reload the saved workspace so these server-rendered options also agree.
+      if (!dirty()) {
+        busy = false;
+        root.location.reload();
+      }
+    } catch (error) {
+      AdminToast.error(error.message);
+      $('#groups-tab-boxes').val(groups.length || 4);
+    } finally {
+      busy = false;
+      update();
+    }
+  }
+  async function generate() {
+    if (busy || !root.RR_CAN_GENERATE) return;
+    if (!(await save())) return;
+    const matches = groups.reduce((total, g) => total + (g.players.length * (g.players.length - 1)) / 2, 0);
+    if (!matches) {
+      AdminToast.warning('Assign at least two players to a group first.');
+      return;
+    }
+    const existing = AdminState.getOop().length;
+    const result = await Swal.fire({
+      title: 'Preview round-robin fixtures',
+      html:
+        '<p>' +
+        groups.map(g => 'Group ' + esc(g.name) + ': ' + g.players.length + ' players').join('<br>') +
+        '</p><p><strong>' +
+        matches +
+        ' playable matches</strong>, plus any bye slots.</p>' +
+        (existing
+          ? '<p class="text-danger">This replaces ' +
+            existing +
+            ' existing fixtures, including playoff fixtures. Their schedule will need to be reviewed. Scored fixtures cannot be replaced.</p>'
+          : ''),
+      showCancelButton: true,
+      confirmButtonText: existing ? 'Regenerate fixtures' : 'Generate fixtures'
+    });
+    if (!result.isConfirmed) return;
+    busy = true;
+    update();
+    status('Generating fixtures…');
+    try {
+      await AdminApi.request({
+        url: AdminRoutes.drawUrl(drawId, '/regenerate-rr'),
+        method: 'POST',
+        json: true,
+        retries: 0,
+        data: { revision: revision }
+      });
+      await root.RRWorkspace.refreshHub();
+      announce('Fixtures generated. Review the matrix, then schedule your matches.');
+      root.RRWorkspace.open('results');
+    } catch (error) {
+      AdminToast.error(error.message);
+      announce(error.message);
+    } finally {
+      busy = false;
+      update();
+    }
+  }
+  function init(id) {
+    drawId = id;
+    groups = normalise(root.RR_GROUPS);
+    roster = (root.RR_ROSTER || []).map(p => Object.assign({}, p, { id: Number(p.id) }));
+    revision = root.RR_ASSIGNMENT_REVISION;
+    baseline = snapshot();
+    categories();
+    render();
+    $(document).on('input', '#rr-player-search', function () {
+      renderAvailable();
+      initSortable();
+    });
+    $(document).on('change', '#rr-player-category', function () {
+      renderAvailable();
+      initSortable();
+    });
+    $(document).on('change', '.rr-player-select', function () {
+      const id = Number($(this).closest('li').data('id'));
+      this.checked ? selected.add(id) : selected.delete(id);
+    });
+    $('#rr-select-visible').on('change', function () {
+      visiblePlayers().forEach(p => (this.checked ? selected.add(p.id) : selected.delete(p.id)));
+      renderAvailable();
+      initSortable();
+    });
+    $('#rr-assign-selected').on('click', () => assign(Array.from(selected), $('#rr-assign-target').val()));
+    $(document).on('click', '.rr-add-player', function () {
+      assign([Number($(this).closest('li').data('id'))], $('#rr-assign-target').val());
+    });
+    $(document).on('click', '#groups-pane .btn-remove-from-group', function () {
+      if (!editable() || busy) return;
+      const id = Number($(this).closest('li').data('id'));
+      const p = player(id);
+      if (!roster.some(r => r.id === id)) roster.push(p);
+      groups.forEach(g => (g.players = g.players.filter(p => p.id !== id)));
+      render();
+    });
+    $(document).on('click', '.rr-player-up,.rr-player-down', function () {
+      if (!editable() || busy) return;
+      const id = Number($(this).closest('li').data('id'));
+      const g = groups.find(g => g.players.some(p => p.id === id));
+      const index = g.players.findIndex(p => p.id === id),
+        next = index + ($(this).hasClass('rr-player-up') ? -1 : 1);
+      const direction = $(this).hasClass('rr-player-up') ? 'rr-player-up' : 'rr-player-down';
+      if (next >= 0 && next < g.players.length)
+        [g.players[index], g.players[next]] = [g.players[next], g.players[index]];
+      render();
+      const button = document.querySelector('.rr-group li[data-id="' + id + '"] .' + direction);
+      if (button) button.focus();
+    });
+    $(document).on('click', '.rr-player-move', async function () {
+      const id = Number($(this).closest('li').data('id'));
+      const result = await Swal.fire({
+        title: 'Move ' + player(id).name,
+        input: 'select',
+        inputOptions: Object.fromEntries(groups.map(g => [g.id, 'Group ' + g.name])),
+        showCancelButton: true,
+        confirmButtonText: 'Move player'
+      });
+      if (result.isConfirmed) assign([id], result.value);
+    });
+    $('#btn-save-groups').on('click', save);
+    $('#btn-regenerate-fixtures').on('click', generate);
+    $('#rr-apply-group-count').on('click', resize);
+    $('#rr-discard-groups').on('click', function () {
+      if (!guard()) return;
+      discard();
+    });
+    $('#rr-refresh-players').on('click', () => refresh(false));
+    $('#btn-import-teams').on('click', async function () {
+      if (
+        !editable() ||
+        !guard() ||
+        !root.confirm('Import teams for the whole event? This creates categories and registrations.')
+      )
+        return;
+      try {
+        await AdminApi.request({
+          url: AdminRoutes.appUrl() + '/backend/event/' + root.EVENT_ID + '/import-teams',
+          method: 'POST',
+          retries: 0
+        });
+        await refresh(true);
+      } catch (error) {
+        AdminToast.error(error.message);
+      }
+    });
+    root.addEventListener('beforeunload', function (event) {
+      if (dirty() || busy) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    });
+    AdminState.on('rr:draw:locked', render);
+    AdminState.on('rr:draw:published', render);
+  }
+  root.RRGroups = {
+    init: init,
+    refresh: refresh,
+    refreshGroupsAndPlayers: refresh,
+    initSortable: initSortable,
+    applyLockUI: render,
+    isDirty: dirty,
+    isBusy: () => busy,
+    save: save
+  };
+})(jQuery, window);

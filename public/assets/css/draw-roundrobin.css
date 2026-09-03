@@ -1,0 +1,415 @@
+/* ==============================================
+   BASE TABLE STYLE
+   ============================================== */
+  .rr-matrix-table {
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    background: #ffffff !important;
+    /* width is set dynamically by JS per group */
+  }
+
+  /* Matrix must scroll */
+  .rr-matrix-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+    padding-bottom: 5px;
+  }
+
+  /* ----------------------------------------------
+   All cells — uniform sizing via table-layout:fixed
+   ---------------------------------------------- */
+  .rr-matrix-table td.rr-score-cell,
+  .rr-matrix-table td {
+    padding: 4px 6px !important;
+    height: 34px !important;
+    text-align: center;
+    vertical-align: middle;
+    border: 1px solid #dcdcdc !important;
+    font-size: 12px !important;
+    background: #ffffff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* ==============================================
+   DIAGONAL BLACK
+   ============================================== */
+  .rr-matrix-table td.bg-light,
+  .rr-matrix-table td.bg-diagonal {
+    background: #000 !important;
+    border: 1px solid #333 !important;
+  }
+
+  /* ==============================================
+   HEADER — column names (border only, no fill)
+   ============================================== */
+  .rr-matrix-table thead th {
+    padding: 6px 10px !important;
+    background: #fff !important;
+    color: #0a3566 !important;
+    border: 2px solid #0a3566 !important;
+    font-weight: 700;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* ==============================================
+   LEFT NAMES — row headers (border only, no fill)
+   ============================================== */
+  .rr-matrix-table tbody th {
+    background: #fff !important;
+    color: #0b722e !important;
+    border: 2px solid #0b722e !important;
+    font-weight: 700;
+    font-size: 13px !important;
+    padding: 6px 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* ==============================================
+   SCORE COLORS
+   ============================================== */
+  .rr-matrix-table .rr-win {
+    color: #00a859 !important;
+    font-weight: bold;
+  }
+
+  .rr-matrix-table .rr-loss {
+    color: #d32f2f !important;
+    font-weight: bold;
+  }
+
+  /* ==============================================
+   SORTABLE / DRAG-DROP STYLES
+   ============================================== */
+  .rr-sortable {
+    min-height: 50px;
+    border: 2px dashed transparent;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .rr-sortable.drop-zone-active {
+    border-color: #0d6efd;
+    background: rgba(13, 110, 253, 0.05);
+  }
+
+  .rr-sortable.sortable-chosen {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+  }
+
+  .rr-sortable .list-group-item {
+    cursor: grab !important;
+    transition: all 0.2s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    touch-action: none;
+  }
+  
+  .rr-sortable .list-group-item:active {
+    cursor: grabbing !important;
+  }
+
+  .rr-sortable .list-group-item:hover {
+    background: #f8f9fa;
+    transform: translateX(2px);
+  }
+
+  .rr-sortable .list-group-item.sortable-ghost {
+    opacity: 0.3;
+    background: #e3f2fd !important;
+    border: 2px dashed #2196f3 !important;
+  }
+  
+  .rr-sortable .list-group-item.sortable-chosen {
+    background: #e7f1ff !important;
+    border-color: #0d6efd !important;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.3);
+  }
+  
+  .rr-sortable .list-group-item.sortable-drag {
+    background: #fff !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    opacity: 0.9 !important;
+    transform: rotate(2deg);
+  }
+
+  /* ── Locked state ── */
+  .rr-item-locked {
+    cursor: not-allowed !important;
+    user-select: none;
+    -webkit-user-select: none;
+    opacity: 0.75;
+  }
+
+  .rr-item-locked:hover {
+    background: inherit !important;
+    transform: none !important;
+  }
+
+  /* Mute the drag handle area when locked */
+  .rr-sortable.rr-sortable-locked {
+    border-color: transparent !important;
+    background: transparent !important;
+  }
+
+  .rr-sortable.rr-sortable-locked .list-group-item {
+    cursor: not-allowed !important;
+  }
+  
+  /* Ensure fallback clone is visible */
+  .sortable-fallback {
+    opacity: 0.8 !important;
+    background: #fff !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25) !important;
+  }
+
+  .rr-group {
+    border: 2px dashed #dee2e6;
+    transition: all 0.2s ease;
+  }
+
+  .rr-group.drop-zone-active {
+    border-color: #198754;
+    background: rgba(25, 135, 84, 0.05);
+  }
+
+  .rr-group:empty::after {
+    content: 'Drop players here';
+    display: block;
+    text-align: center;
+    color: #adb5bd;
+    padding: 20px;
+    font-size: 12px;
+  }
+
+  /* ==============================================
+   BRACKET ZOOM CONTROLS
+   ============================================== */
+  .bracket-zoom-controls {
+    display: none;
+    gap: 6px;
+    align-items: center;
+  }
+  .bracket-zoom-controls .btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+  }
+  .bracket-zoom-level {
+    font-size: 12px;
+    min-width: 40px;
+    text-align: center;
+    color: #666;
+  }
+  .bracket-zoom-hint {
+    display: none;
+    font-size: 11px;
+    color: #999;
+  }
+  #bracket-zoom-inner {
+    transform-origin: 0 0;
+    transition: transform 0.1s ease;
+  }
+
+  /* ==============================================
+   BRACKET VISUALIZATION STYLES
+   ============================================== */
+  .bracket-container {
+    display: inline-block;
+    padding: 15px;
+    background: #f8f9fa;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    margin: 10px;
+    min-width: 200px;
+  }
+  
+  .bracket-round {
+    display: inline-block;
+    vertical-align: top;
+  }
+  
+  .bracket-matchup {
+    margin: 8px 0;
+    position: relative;
+    background: white;
+    border-radius: 6px;
+    padding: 8px;
+    border: 1px solid #dee2e6;
+  }
+  
+  .bracket-seed {
+    background: white;
+    border: 2px solid #0d6efd;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 1px 0;
+    min-width: 160px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .bracket-seed.winner {
+    background: #d1ecf1;
+    border-color: #0dcaf0;
+  }
+  
+  .bracket-seed-num {
+    font-weight: bold;
+    color: #0d6efd;
+    min-width: 35px;
+    font-size: 13px;
+  }
+  
+  .bracket-seed-source {
+    font-size: 12px;
+    color: #fff;
+    background: #198754;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: bold;
+  }
+  
+  .bracket-connector {
+    position: absolute;
+    right: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 2px;
+    background: #dee2e6;
+  }
+
+  /* ==============================================
+   RESPONSIVE — SMALL DEVICES
+   ============================================== */
+  @media (max-width: 767.98px) {
+    /* Tab navigation: scrollable pills */
+    #rrTabs {
+      flex-wrap: nowrap !important;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      white-space: nowrap;
+      padding-bottom: 2px;
+    }
+    #rrTabs::-webkit-scrollbar { display: none; }
+    #rrTabs .nav-item { flex-shrink: 0; }
+    #rrTabs .nav-link { font-size: 12px; padding: 6px 10px; }
+
+    /* Draw navigator header — stack vertically */
+    .card.border-primary .d-flex.justify-content-between {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 8px;
+    }
+    .card.border-primary .d-flex.justify-content-between > div:last-child {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    /* Settings — overview stats: 2 per row */
+    #settings-pane .row.g-3 > .col-md-3 { flex: 0 0 50%; max-width: 50%; }
+
+    /* Settings — preset selector full width */
+    #settings-pane .col-md-8 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Settings — basic settings cols */
+    #settings-pane .col-md-3 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Playoff config position buttons — smaller */
+    .position-btn { font-size: 10px !important; padding: 2px 5px !important; }
+
+    /* Groups tab — header stack */
+    #groups-pane .alert.d-flex {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 8px;
+    }
+    #groups-pane .alert .d-flex.align-items-center.gap-2 {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    /* Groups — available players + groups: full-width stacked */
+    #groups-pane .col-md-4,
+    #groups-pane .col-md-8 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+    #groups-pane .col-md-8 .col-6 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+    /* Reduce group card height on mobile */
+    #groups-pane .card-body[style*="min-height: 150px"] {
+      min-height: 80px !important;
+    }
+
+    /* OOP table — horizontal scroll */
+    #oop-pane .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    #rr-order-table { min-width: 600px; }
+    #rr-order-table th, #rr-order-table td { font-size: 11px; padding: 4px 6px !important; white-space: nowrap; }
+
+    /* Print tab — 2 per row instead of 4 */
+    #print-pane .col-md-3 { flex: 0 0 50%; max-width: 50%; }
+    #print-pane .card-body.d-flex { padding: 12px 8px !important; }
+    #print-pane .card-body i[style*="font-size: 2.5rem"] { font-size: 1.8rem !important; }
+    #print-pane h6 { font-size: 12px; }
+    #print-pane p.small { font-size: 10px; margin-bottom: 8px !important; }
+
+    /* Bracket SVG wrapper — pinch-to-zoom */
+    #main-bracket-wrapper { overflow: auto; -webkit-overflow-scrolling: touch; }
+    #main-bracket-wrapper svg { min-width: 800px; }
+    .bracket-zoom-controls { display: flex !important; }
+    .bracket-zoom-hint { display: block !important; }
+
+    /* Matrix — already scrollable, ensure touch */
+    .rr-matrix-scroll { -webkit-overflow-scrolling: touch; }
+
+    /* Bracket visualization containers */
+    .bracket-container { min-width: 180px; padding: 10px; margin: 5px; }
+    .bracket-seed { min-width: 120px; padding: 4px 6px; font-size: 11px; }
+    .bracket-matchup { padding: 5px; margin: 5px 0; }
+
+    /* Score modal — full width on mobile */
+    #rrScoreModal .modal-dialog { margin: 8px; max-width: calc(100% - 16px); }
+
+    /* Card header flex items — wrap on small */
+    .card-header.d-flex {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    /* Extra-small: print cards single column */
+    #print-pane .col-md-3 { flex: 0 0 100%; max-width: 100%; }
+
+    /* Groups: reduce source player list height */
+    #groups-pane .card-body[style*="max-height: 500px"] {
+      max-height: 250px !important;
+    }
+
+    /* Standings / matrix heading sizes */
+    h5.card-title, .card-header h5 { font-size: 14px; }
+    h6.fw-bold { font-size: 13px; }
+  }

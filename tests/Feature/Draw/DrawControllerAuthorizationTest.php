@@ -195,7 +195,7 @@ class DrawControllerAuthorizationTest extends TestCase
         return [
             'event_id'       => $this->event->id,
             'draw_name'      => 'Modal Draw',
-            'draw_format_id' => 1,
+            'draw_format_id' => DB::table('draw_types')->insertGetId(['drawTypeName' => 'Regression round robin', 'btn_color' => 'primary']),
         ];
     }
 
@@ -419,7 +419,7 @@ class DrawControllerAuthorizationTest extends TestCase
 
     public function test_guest_cannot_remove_player_from_draw(): void
     {
-        $this->postJson(route('admin.draws.removePlayer'), [
+        $this->deleteJson(route('admin.draws.removePlayer'), [
             'draw_id'         => $this->draw->id,
             'registration_id' => 1,
         ])->assertUnauthorized();
@@ -428,7 +428,7 @@ class DrawControllerAuthorizationTest extends TestCase
     public function test_ordinary_user_cannot_remove_player_from_draw(): void
     {
         $this->actingAs($this->ordinaryUser)
-            ->postJson(route('admin.draws.removePlayer'), [
+            ->deleteJson(route('admin.draws.removePlayer'), [
                 'draw_id'         => $this->draw->id,
                 'registration_id' => 1,
             ])->assertForbidden();

@@ -1055,6 +1055,8 @@ Route::delete(
     ->name('backend.roundrobin.score.delete');
 
   // Show round-robin draw (backend)
+  Route::post('draw/{draw}/save-order', [RoundRobinController::class, 'savePlayOrder'])->name('backend.draw.save-order');
+
   Route::get('draw/roundrobin/{draw}', [RoundRobinController::class, 'show'])
     ->name('backend.draw.roundrobin.show');
 

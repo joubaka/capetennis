@@ -212,42 +212,7 @@ class DrawApiController extends Controller
     {
         $this->authorize('modifyGroups', $draw);
 
-        $request->validate([
-            'groups'                      => 'required|array',
-            'groups.*.group_id'           => 'required|integer',
-            'groups.*.registration_ids'   => 'present|array',
-            'groups.*.registration_ids.*' => 'integer',
-        ]);
-
-        $updated = 0;
-
-        DB::transaction(function () use ($request, $draw, &$updated) {
-            foreach ($request->groups as $groupData) {
-                $groupId         = $groupData['group_id'];
-                $registrationIds = $groupData['registration_ids'] ?? [];
-
-                DB::table('draw_group_registrations')
-                    ->where('draw_group_id', $groupId)
-                    ->delete();
-
-                foreach ($registrationIds as $index => $regId) {
-                    DB::table('draw_group_registrations')->insert([
-                        'draw_group_id'   => $groupId,
-                        'registration_id' => $regId,
-                        'seed'            => $index + 1,
-                    ]);
-                }
-
-                $updated++;
-            }
-        });
-
-        DrawAuditLog::record($draw->id, 'groups_saved', null, ['groups_processed' => $updated]);
-
-        return response()->json([
-            'success'          => true,
-            'groups_processed' => $updated,
-        ]);
+        return response()->json(app(\App\Services\Draw\GroupAssignmentService::class)->save($draw, $request->all()));
     }
 
     // ─────────────────────────────────────────────

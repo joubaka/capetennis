@@ -119,13 +119,7 @@ class RRHardeningTest extends TestCase
         $draw = $this->makeDraw();
         $user = $this->adminUser($draw);
 
-        // Admin must NOT be forbidden (403) or unauthenticated (401)
-        // The page may 500 in test env due to missing event/fixture data,
-        // which is expected — the policy check itself is what we're testing.
-        $response = $this->actingAs($user)->get(route('backend.draw.roundrobin.show', $draw));
-
-        $this->assertNotEquals(403, $response->status(), 'Admin should not be forbidden');
-        $this->assertNotEquals(401, $response->status(), 'Admin should not be unauthenticated');
+        $this->actingAs($user)->get(route('backend.draw.roundrobin.show', $draw))->assertOk();
     }
 
     // ─────────────────────────────────────────────

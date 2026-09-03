@@ -4,12 +4,13 @@ namespace App\Mail;
 
 use App\Models\MastersInvitation;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
-class MastersInvitationMail extends Mailable implements ShouldQueue
+// The Masters sending job owns queueing and rate limiting. This also prevents
+// older SendBulkEmailJob payloads from queueing the mailable a second time.
+class MastersInvitationMail extends Mailable
 {
     use Queueable;
 

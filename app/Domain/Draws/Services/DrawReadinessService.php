@@ -12,7 +12,8 @@ final class DrawReadinessService
         $draw->loadMissing(['drawFixtures', 'registrations', 'venues', 'teams_in_draw', 'event']);
         $fixtures = $draw->drawFixtures;
         $isTeamDraw = (bool) ($draw->event?->isTeam() || $draw->team_event_format_id);
-        $participantCount = $isTeamDraw ? $draw->teams_in_draw->count() : $draw->registrations->count();
+        $groupParticipants = \App\Models\DrawGroupRegistration::whereIn('draw_group_id', $draw->groups()->select('id'))->distinct()->count('registration_id');
+        $participantCount = $groupParticipants ?: ($isTeamDraw ? $draw->teams_in_draw->count() : $draw->registrations->count());
         $scored = $fixtures->filter(fn ($fixture) => $fixture->relationLoaded('fixtureResults')
             ? $fixture->fixtureResults->isNotEmpty()
             : $fixture->fixtureResults()->exists())->count();

@@ -134,7 +134,7 @@ class DrawService
       ->get()
       ->sortBy(function ($fx) {
         $stageOrder = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2];
-        return sprintf('%02d_%02d_%04d', $stageOrder[$fx->stage] ?? 3, $fx->round, $fx->match_nr);
+        return sprintf('%08d_%02d_%02d_%04d', $fx->play_order ?? 99999999, $stageOrder[$fx->stage] ?? 3, $fx->round, $fx->match_nr);
       })
       ->values();
 
@@ -172,6 +172,7 @@ class DrawService
           'stage' => $fx->stage,
           'round' => $fx->round,
           'match_nr' => $fx->match_nr,
+          'play_order' => $fx->play_order,
           'group_id' => $fx->draw_group_id,
           'group_name' => $fx->drawGroup?->name,
           'playoff_type' => $fx->playoff_type,

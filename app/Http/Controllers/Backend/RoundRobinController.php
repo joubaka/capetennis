@@ -62,11 +62,7 @@ class RoundRobinController extends Controller
     // -------------------------------------------------------------
     // AUTOCREATE GROUPS IF MISSING
     // -------------------------------------------------------------
-    if (!$draw->groups()->exists()) {
-      foreach (['A', 'B', 'C', 'D'] as $name) {
-        $draw->groups()->create(['name' => $name]);
-      }
-    }
+
 
     Log::info("📥 Loading base groups + registrations + players");
 
@@ -79,10 +75,7 @@ class RoundRobinController extends Controller
     // -------------------------------------------------------------
     // CREATE RR FIXTURES IF NONE EXIST
     // -------------------------------------------------------------
-    if ($draw->drawFixtures->isEmpty()) {
-      Log::warning("⚠️ No RR fixtures found — generating new fixtures...");
-      $this->builder->regenerateRoundRobinFixtures($draw);
-    }
+
 
     // -------------------------------------------------------------
     // ONLY FOR INTERPRO EVENT TYPE 13
@@ -148,11 +141,7 @@ class RoundRobinController extends Controller
       // -------------------------------------------------------------
       // CHECK FOR FIXTURE REGEN
       // -------------------------------------------------------------
-      if ($draw->drawFixtures->isEmpty()) {
-        Log::warning("⚠️ No drawFixtures found — regenerating RR fixtures");
-        $this->builder->regenerateRoundRobinFixtures($draw);
-        $draw->load('drawFixtures');
-      }
+
 
       // -------------------------------------------------------------
       // BUILD HUB
@@ -330,6 +319,27 @@ class RoundRobinController extends Controller
   // ============================================================
   // SAVE ORDER OF PLAY
   // ============================================================
+  public function savePlayOrder(Request $request, Draw $draw)
+  {
+    $this->authorize('modifySchedule', $draw);
+    $data = $request->validate(['order' => 'required|array|min:1', 'order.*' => 'required|integer|distinct']);
+    DB::transaction(function () use ($draw, $data) {
+      $fresh = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      abort_if($fresh->locked, 403);
+      $ids = $fresh->drawFixtures()->pluck('id');
+      if ($ids->count() !== count($data['order']) || $ids->diff($data['order'])->isNotEmpty()) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['order' => 'Include every fixture in this draw exactly once. Refresh before saving.']);
+      }
+      foreach ($data['order'] as $index => $id) {
+        $fixture = $fresh->drawFixtures()->findOrFail($id);
+        $fixture->play_order = $index + 1;
+        $fixture->save();
+      }
+      DrawAuditLog::record($draw->id, 'play_order_saved', null, ['fixture_count' => count($data['order'])]);
+    });
+    return response()->json(['success' => true]);
+  }
+
   public function storeOrderOfPlay(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
@@ -566,6 +576,9 @@ class RoundRobinController extends Controller
     }
 
     $this->authorize('generateBrackets', $draw);
+    if ($draw->drawFixtures()->where('stage', '!=', 'RR')->whereHas('fixtureResults')->exists()) {
+      return response()->json(['success' => false, 'message' => 'Playoff fixtures with recorded scores cannot be regenerated.'], 422);
+    }
 
     \Log::info("===============================================");
     \Log::info("🎾 [MainBracket] START GENERATION", [
@@ -1389,7 +1402,15 @@ class RoundRobinController extends Controller
       ]);
 
       try {
-        DB::transaction(function () use ($draw) {
+        DB::transaction(function () use ($draw, $request) {
+          $fresh = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+          abort_if($fresh->locked || $fresh->published, 403);
+          if ($request->filled('revision') && !hash_equals(app(\App\Services\Draw\GroupAssignmentService::class)->revision($fresh), $request->string('revision')->toString())) {
+            throw new \RuntimeException('Assignments changed. Reload players before generating fixtures.');
+          }
+          if ($fresh->drawFixtures()->whereHas('fixtureResults')->exists()) {
+            throw new \RuntimeException('Scored fixtures cannot be regenerated.');
+          }
           $deletedRR = $draw->drawFixtures()->where('stage', 'RR')->delete();
           $deletedBracket = $draw->drawFixtures()->where('stage', '!=', 'RR')->delete();
 
@@ -1439,78 +1460,10 @@ class RoundRobinController extends Controller
     }
   
     public function saveGroups(Request $request, Draw $draw)
-  {
-    $this->authorize('modifyGroups', $draw);
-
-    Log::info("🎾 [saveGroups] Start", [
-      'draw_id' => $draw->id,
-      'payload' => $request->all(),
-    ]);
-
-    // Validate structure
-    if (!$request->has('groups') || !is_array($request->groups)) {
-      Log::error("❌ [saveGroups] Invalid payload - 'groups' missing or not array", [
-        'payload' => $request->all()
-      ]);
-
-      return response()->json([
-        'status' => 'error',
-        'message' => 'Invalid groups payload.'
-      ], 422);
+    {
+        $this->authorize('modifyGroups', $draw);
+        return response()->json(app(\App\Services\Draw\GroupAssignmentService::class)->save($draw, $request->all()));
     }
-
-    $updatedGroups = 0;
-
-    DB::transaction(function () use ($request, $draw, &$updatedGroups) {
-      foreach ($request->groups as $groupData) {
-        $groupId = $groupData['group_id'] ?? null;
-        $registrationIds = $groupData['registration_ids'] ?? [];
-
-        Log::info("➡️ [saveGroups] Processing group", [
-          'group_id' => $groupId,
-          'registration_ids' => $registrationIds,
-        ]);
-
-        if (!$groupId) {
-          Log::warning("⚠️ [saveGroups] Skipping group - missing group_id", [
-            'data' => $groupData
-          ]);
-          continue;
-        }
-
-        // Remove existing links
-        DB::table('draw_group_registrations')
-          ->where('draw_group_id', $groupId)
-          ->delete();
-
-        // Deduplicate registration IDs before inserting
-        $uniqueRegIds = array_values(array_unique(array_map('intval', $registrationIds)));
-
-        // Insert new assignments with seed based on array order
-        foreach ($uniqueRegIds as $index => $regId) {
-          DB::table('draw_group_registrations')->insert([
-            'draw_group_id'   => $groupId,
-            'registration_id' => $regId,
-            'seed'            => $index + 1,
-          ]);
-        }
-
-        $updatedGroups++;
-      }
-    });
-
-    DrawAuditLog::record($draw->id, 'groups_saved', null, ['groups_processed' => $updatedGroups]);
-
-    Log::info("✅ [saveGroups] Complete", [
-      'draw_id' => $draw->id,
-      'groups_processed' => $updatedGroups
-    ]);
-
-    return response()->json([
-      'status' => 'ok',
-      'groups_processed' => $updatedGroups,
-    ]);
-  }
 
   /**
    * Return fresh groups + players JSON for AJAX DOM refresh.
@@ -1532,7 +1485,7 @@ class RoundRobinController extends Controller
         ])->values(),
       ]);
 
-    return response()->json(['groups' => $groups]);
+    return response()->json(['groups' => $groups, 'revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw)]);
   }
 
   /**
@@ -1548,39 +1501,17 @@ class RoundRobinController extends Controller
       ->flatMap(fn($g) => $g->registrations->pluck('id'))
       ->unique();
 
-    $categoryEvents = \App\Models\CategoryEvent::where('event_id', $draw->event_id)
-      ->with(['category', 'categoryEventRegistrations.registration.players'])
-      ->get();
-
-    if ($draw->category_event_id) {
-      $categoryEvents = $categoryEvents->where('id', $draw->category_event_id);
-    }
-
-    $result = $categoryEvents->map(function ($ce) use ($assignedRegIds) {
-      $cerMap = $ce->categoryEventRegistrations->keyBy('registration_id');
-
-      $players = $ce->categoryEventRegistrations
-        ->filter(fn($cer) =>
-          $cer->payment_status_id == 1 &&
-          $cer->status !== 'withdrawn' &&
-          !$assignedRegIds->contains($cer->registration_id) &&
-          $cer->registration &&
-          $cer->registration->players->isNotEmpty()
-        )
-        ->map(fn($cer) => [
-          'id'   => $cer->registration_id,
-          'name' => $cer->registration->players->first()->full_name ?? 'Unknown',
-        ])
-        ->values();
-
-      return [
-        'id'           => $ce->id,
-        'category'     => $ce->category->name ?? 'Unknown',
-        'players'      => $players,
-        'count'        => $players->count(),
-      ];
+    $eligible = app(\App\Services\Draw\GroupAssignmentService::class)->eligible($draw)
+      ->with(['categoryEvent.category', 'registration.players'])->get();
+    $result = $eligible->groupBy('category_event_id')->map(function ($rows, $categoryId) use ($assignedRegIds) {
+      $players = $rows->whereNotIn('registration_id', $assignedRegIds)->unique('registration_id')->map(fn ($row) => [
+        'id' => $row->registration_id,
+        'name' => $row->registration->display_name,
+        'category_id' => $categoryId,
+      ])->values();
+      return ['id' => $categoryId, 'category' => $rows->first()->categoryEvent->category?->name ?? 'Players',
+        'players' => $players, 'count' => $players->count()];
     })->values();
-
     return response()->json(['categories' => $result]);
   }
 }

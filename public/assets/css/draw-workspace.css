@@ -1,0 +1,242 @@
+#round-robin-app {
+  --rr-border: #e3e7ee;
+  --rr-ink: #25324b;
+  --rr-muted: #69778c;
+  color: var(--rr-ink);
+}
+#round-robin-app .rr-workspace-nav {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: #eef1f6;
+  border-radius: 12px;
+  margin: 16px 0 10px;
+}
+#round-robin-app .rr-workspace-nav button {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #526078;
+  background: transparent;
+  font-weight: 600;
+  white-space: nowrap;
+}
+#round-robin-app .rr-workspace-nav button.active {
+  background: #fff;
+  color: #5144c7;
+  box-shadow: 0 2px 5px #25324b12;
+}
+#round-robin-app #rrTabs {
+  border: 0;
+  gap: 6px;
+  margin-bottom: 18px;
+  background: transparent;
+}
+#round-robin-app #rrTabs .nav-link {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 7px 14px;
+}
+#round-robin-app #rrTabs .nav-link.active {
+  border-color: #d9d4fc;
+  color: #5144c7;
+  background: #f3f1ff;
+}
+#round-robin-app .rr-readiness {
+  padding: 12px 16px;
+  border: 1px solid var(--rr-border);
+  border-radius: 10px;
+  background: #fff;
+}
+#round-robin-app .rr-readiness summary {
+  cursor: pointer;
+  color: var(--rr-muted);
+  font-size: 13px;
+}
+#round-robin-app .rr-assignment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0;
+}
+#round-robin-app .rr-player-layout {
+  display: grid;
+  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+#round-robin-app .rr-player-picker,
+#round-robin-app .rr-group-card {
+  border: 1px solid var(--rr-border);
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+#round-robin-app .rr-picker-heading,
+#round-robin-app .rr-picker-footer {
+  padding: 16px;
+}
+#round-robin-app .rr-picker-footer {
+  border-top: 1px solid var(--rr-border);
+  background: #fafbfe;
+}
+#round-robin-app #available-players-list {
+  max-height: 440px;
+  overflow-y: auto;
+}
+#round-robin-app .rr-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+#round-robin-app .rr-group-summary {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+#round-robin-app .rr-group-card header {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--rr-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8f9fd;
+}
+#round-robin-app .rr-group-card h6 {
+  margin: 0;
+  font-weight: 650;
+}
+#round-robin-app .rr-player-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border-bottom: 1px solid #edf0f5;
+  background: #fff;
+  min-width: 0;
+}
+#round-robin-app .rr-player-row:last-child {
+  border-bottom: 0;
+}
+#round-robin-app .rr-player-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+#round-robin-app .rr-player-name small {
+  display: block;
+  color: var(--rr-muted);
+  font-size: 11px;
+}
+#round-robin-app .rr-player-row .rr-seed {
+  width: 22px;
+  font-size: 12px;
+  color: var(--rr-muted);
+}
+#round-robin-app .rr-player-actions {
+  display: flex;
+  gap: 2px;
+}
+#round-robin-app .rr-player-actions button {
+  min-width: 30px;
+  min-height: 32px;
+  padding: 3px;
+  border: 1px solid var(--rr-border);
+  border-radius: 5px;
+  background: white;
+  color: #526078;
+}
+#round-robin-app .rr-sortable {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  min-height: 56px;
+}
+#round-robin-app .rr-drag-handle {
+  cursor: grab;
+  color: #8491a5;
+}
+#round-robin-app .rr-assignment-savebar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0 6px;
+  padding: 16px 18px;
+  border: 1px solid #dcd8f5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 24px #25324b13;
+}
+#round-robin-app .rr-advanced {
+  border: 1px solid var(--rr-border);
+  border-radius: 10px;
+  padding: 15px;
+  margin-bottom: 18px;
+}
+#round-robin-app .rr-advanced > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+#round-robin-app .rr-tab-hidden {
+  display: none !important;
+}
+#round-robin-app .rr-draw-header .text-truncate {
+  white-space: normal;
+  overflow: visible;
+}
+@media (max-width: 1100px) {
+  #round-robin-app .rr-group-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 767px) {
+  #round-robin-app .rr-workspace-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  #round-robin-app .rr-workspace-nav button {
+    font-size: 13px;
+    padding: 10px 6px;
+  }
+  #round-robin-app .rr-player-layout {
+    grid-template-columns: 1fr;
+  }
+  #round-robin-app .rr-assignment-heading,
+  #round-robin-app .rr-assignment-savebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  #round-robin-app .rr-assignment-savebar {
+    bottom: 0;
+    padding: 10px;
+    gap: 8px;
+  }
+  #round-robin-app .rr-assignment-savebar .small {
+    display: none;
+  }
+  #round-robin-app .rr-assignment-savebar .btn {
+    flex: 1;
+    white-space: normal;
+  }
+  #round-robin-app #available-players-list {
+    max-height: 280px;
+  }
+  #round-robin-app .rr-player-actions button {
+    min-width: 34px;
+    min-height: 36px;
+  }
+}
+.rr-group-card .rr-group:empty::after {
+  content: none;
+}

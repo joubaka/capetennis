@@ -167,6 +167,7 @@
 function initScheduleModal() {
     'use strict';
 
+    let scheduleBusy = false;
     // ------------------------------------------------------------------
     // CONFIG
     // ------------------------------------------------------------------
@@ -253,6 +254,9 @@ function initScheduleModal() {
     // APPLY SCHEDULE
     // ------------------------------------------------------------------
     $('#saveScheduleBtn').on('click', function () {
+        if (scheduleBusy) return;
+        scheduleBusy = true;
+        $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', true);
 
         let data = {
             mode:       $('input[name=mode]:checked').val(),
@@ -269,6 +273,11 @@ function initScheduleModal() {
             $('#scheduleModal').modal('hide');
             toastr.success("Schedule updated");
             refreshScheduleTable();
+        }).fail(function(xhr) {
+            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+        }).always(function() {
+            scheduleBusy = false;
+            $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);
         });
     });
 
@@ -276,6 +285,9 @@ function initScheduleModal() {
     // AUTO SCHEDULE
     // ------------------------------------------------------------------
     $('#autoScheduleBtn').on('click', function () {
+        if (scheduleBusy) return;
+        scheduleBusy = true;
+        $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', true);
 
         let autoData = {
             start_time: $('#autoStart').val(),
@@ -288,6 +300,11 @@ function initScheduleModal() {
             $('#scheduleModal').modal('hide');
             toastr.success("Auto-schedule complete");
             refreshScheduleTable();
+        }).fail(function(xhr) {
+            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+        }).always(function() {
+            scheduleBusy = false;
+            $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);
         });
     });
 
@@ -295,9 +312,17 @@ function initScheduleModal() {
     // CLEAR
     // ------------------------------------------------------------------
     $('#clearScheduleBtn').on('click', function () {
+        if (scheduleBusy || !window.confirm('Clear the schedule for this draw?')) return;
+        scheduleBusy = true;
+        $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', true);
         $.post(routes.clear, { _token: $('meta[name="csrf-token"]').attr('content') }, function () {
             toastr.info("All schedules cleared");
             refreshScheduleTable();
+        }).fail(function(xhr) {
+            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+        }).always(function() {
+            scheduleBusy = false;
+            $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);
         });
     });
 
@@ -305,6 +330,7 @@ function initScheduleModal() {
     // REFRESH DATATABLE
     // ------------------------------------------------------------------
     function refreshScheduleTable() {
+        if (window.RRWorkspace) RRWorkspace.refreshHub().catch(error => toastr.error(error.message));
         if (window.scheduleTable) {
             window.scheduleTable.ajax.reload(null, false);
         }

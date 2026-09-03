@@ -22,7 +22,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Models\BulkEmailLog;
-use App\Jobs\SendBulkEmailJob;
+use App\Jobs\SendMastersInvitationEmailJob;
 
 final class MastersInvitationService
 {
@@ -296,7 +296,7 @@ final class MastersInvitationService
                 }
                 try {
                     $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => 'invitation'], 'queued_at' => now()]);
-                    SendBulkEmailJob::dispatch($log->id);
+                    SendMastersInvitationEmailJob::dispatch($log->id, $lockedBatch->event_id);
                     $report['queued']++;
                     $report['details'][] = array_merge($context, ['result' => 'queued']);
                     Log::info('Masters invitation email queued', $report['details'][array_key_last($report['details'])]);
@@ -429,7 +429,7 @@ final class MastersInvitationService
         $user = $this->playerUser($invitation->player);
         if ($user?->email) {
             $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => $kind], 'queued_at' => now()]);
-            SendBulkEmailJob::dispatch($log->id);
+            SendMastersInvitationEmailJob::dispatch($log->id, $invitation->batch->event_id);
         }
     }
 
