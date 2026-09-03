@@ -11,6 +11,7 @@ class DrawSetting extends Model
     
     protected $fillable = [
       'draw_id',
+      'workflow',
       'draw_format_id',
       'draw_type_id',
       'boxes',

@@ -83,11 +83,11 @@ $(function () {
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
-  @if($draw->category_event_id)
+  @if(! $draw->team_category_id && ! $draw->event?->isTeam())
   <div class="alert alert-info d-flex flex-wrap align-items-center gap-2">
-    <span>Flexible Monrad: place players directly into different starting rounds.</span>
-    <a class="btn btn-primary btn-sm" href="{{ route('flexible-monrad.show', $draw) }}">Open Monrad editor</a>
-    <a class="btn btn-outline-primary btn-sm" href="{{ route('flexible-monrad.demo') }}">Try the demo</a>
+    <span>Choose how the draw starts, then set up groups or place players directly in a bracket.</span>
+    <a class="btn btn-primary btn-sm" href="{{ route('draw.setup.show', $draw) }}">Choose draw format</a>
+    @if($draw->usesFlexibleMonrad())<a class="btn btn-outline-primary btn-sm" href="{{ route('flexible-monrad.show', $draw) }}">Open draw editor</a>@endif
   </div>
   @endif
 

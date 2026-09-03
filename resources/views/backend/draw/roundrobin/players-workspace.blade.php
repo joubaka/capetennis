@@ -1,4 +1,8 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <span class="small text-muted">Step 2 · Round robin → playoffs</span>
+    <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
+  </div>
   <div class="rr-assignment-heading">
     <div><h5 class="mb-1">Build your groups</h5><p class="text-muted mb-0">Choose players, arrange their seed order, then preview your fixtures.</p></div>
     <div class="d-flex align-items-center gap-2">

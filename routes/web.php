@@ -1038,6 +1038,8 @@ Route::delete(
   Route::get('roundrobin/{draw}/admin-scores', [RoundRobinController::class, 'adminScoresPage'])
     ->name('backend.roundrobin.admin.scores');
 
+  Route::get('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'show'])->name('draw.setup.show');
+  Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
   Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');
   Route::put('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'save'])->name('flexible-monrad.save');
   Route::post('draw/{draw}/flexible-monrad/generate', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'generate'])->name('flexible-monrad.generate');

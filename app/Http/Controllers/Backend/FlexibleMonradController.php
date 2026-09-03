@@ -95,12 +95,16 @@ class FlexibleMonradController extends Controller
     private function page(Draw $draw, bool $public)
     {
         $state = $this->monrad->state($draw);
+        $workflow = $draw->settings?->workflow ?? 'custom_monrad';
+        $label = DrawSetupController::OPTIONS[$workflow][0] ?? 'Custom Monrad';
         if ($public) {
             $ids = $draw->flexibleMonrad->graph['players'];
             $state['players'] = $state['players']->whereIn('id', $ids)->values();
             unset($state['revision']);
         }
-        return view('backend.draw.flexible-monrad', ['title' => $draw->drawName.' — Flexible Monrad', 'config' => [
+        return view('backend.draw.flexible-monrad', ['title' => $draw->drawName.' — '.$label, 'config' => [
+            'workflow' => $workflow,
+            'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),

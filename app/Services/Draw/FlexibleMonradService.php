@@ -202,7 +202,10 @@ final class FlexibleMonradService
             $matches[$key] = $node + $progression['matches'][$key] + ['id' => $fx->id, 'number' => $fx->match_nr,
                 'sets' => $fx->fixtureResults->sortBy('set_nr')->map(fn ($r) => [$r->registration1_score, $r->registration2_score])->values()->all()];
         }
-        return ['revision' => $record?->revision ?? 0, 'draft' => $record?->draft ?? ['size' => 32, 'slots' => (object) []],
+        $draft = $record?->draft ?? ['size' => 32, 'slots' => []];
+        // Slot paths are object keys in the editor, including for an empty saved draft.
+        $draft['slots'] = (object) $draft['slots'];
+        return ['revision' => $record?->revision ?? 0, 'draft' => $draft,
             'best_of' => (int) ($draw->settings?->num_sets ?: 1),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
             'players' => $players, 'matches' => (object) $matches, 'positions' => $progression['positions'],
@@ -311,6 +314,9 @@ final class FlexibleMonradService
         $ids = [];
         foreach ($draft['slots'] as $path => $source) {
             if (! preg_match('/^[ab]{1,6}$/', $path) || strlen($path) > log($draft['size'], 2)) $this->fail('Invalid starting position.');
+            if (in_array($draw->settings?->workflow, ['playoffs', 'monrad'], true) && strlen($path) !== (int) log($draft['size'], 2)) {
+                $this->fail('Place players and byes in the opening round. Choose Custom Monrad for later-round entry.');
+            }
             for ($i = 1; $i < strlen($path); $i++) {
                 if (isset($draft['slots'][substr($path, 0, $i)])) $this->fail('This position conflicts with an earlier qualifying path.');
             }
@@ -325,11 +331,14 @@ final class FlexibleMonradService
         if ($this->eligible($draw)->whereIn('registrations.id', $ids)->count() !== count($ids)) {
             $this->fail('All players must be registered in this draw’s event and category.');
         }
-        return ['size' => (int) $draft['size'], 'slots' => $slots];
+        // The saved workflow, never a submitted mode, controls progression.
+        return ['size' => (int) $draft['size'], 'slots' => $slots]
+            + ($draw->settings?->workflow ? ['mode' => $draw->settings->workflow] : []);
     }
 
     private function editable(Draw $draw): void
     {
+        abort_if($draw->settings?->workflow === 'round_robin_playoffs', 409, 'Use the round robin workspace for this draw.');
         abort_if($draw->locked || $draw->published, 409, 'The draw must be unlocked and unpublished to change its structure.');
         abort_unless($draw->category_event_id, 422, 'Flexible Monrad requires a player category.');
     }

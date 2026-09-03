@@ -47,6 +47,9 @@ class RoundRobinController extends Controller
   public function show(Draw $draw)
   {
     $this->authorize('view', $draw);
+    if ($draw->needsWorkflowChoice()) {
+      return redirect()->route('draw.setup.show', $draw);
+    }
     if ($draw->usesFlexibleMonrad()) {
       return redirect()->route('flexible-monrad.show', $draw);
     }

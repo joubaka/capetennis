@@ -19,10 +19,17 @@ final class FlexibleMonradCompiler
             $this->fail('Choose a bracket size of 4, 8, 16, 32 or 64.');
         }
         $depth = (int) log($size, 2);
+        $mode = $draft['mode'] ?? 'custom_monrad';
+        if (! in_array($mode, ['playoffs', 'monrad', 'custom_monrad'], true)) {
+            $this->fail('Choose a supported draw format.');
+        }
         $slots = $draft['slots'] ?? [];
         $seen = [];
         foreach ($slots as $path => $source) {
             $path = (string) $path;
+            if ($mode !== 'custom_monrad' && strlen($path) !== $depth) {
+                $this->fail('This format requires all starting positions in the opening round.');
+            }
             if (! preg_match('/^[ab]{1,6}$/', $path) || strlen($path) > $depth) {
                 $this->fail('Invalid starting position.');
             }
@@ -47,6 +54,10 @@ final class FlexibleMonradCompiler
         }
         $winner = $this->main('', $depth, $slots);
         $this->positions[1] = $winner;
+        if ($mode === 'playoffs') {
+            $this->positions[2] = ['type' => 'loser', 'match' => $winner['match']];
+            return ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
+        }
         ksort($this->losses);
         $place = 2;
         foreach ($this->losses as $sources) {

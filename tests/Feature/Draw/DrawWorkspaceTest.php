@@ -38,6 +38,9 @@ class DrawWorkspaceTest extends TestCase
     public function test_empty_workspace_renders_all_views_without_creating_groups_or_fixtures(): void
     {
         [$draw] = $this->workspace();
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Players &amp; Groups', false)->assertSee('Draw &amp; Results', false)
             ->assertSee('Setup &amp; Rules', false)->assertSee('Print Draw Pack');

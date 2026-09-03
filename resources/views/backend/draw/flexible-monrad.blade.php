@@ -11,14 +11,21 @@
 <header class="fm-header">
   <div><span class="fm-eyebrow">CAPE TENNIS / DRAW BUILDER</span><h1>{{ $title }}</h1></div>
   <nav aria-label="Draw actions">
+    @if($config['setupUrl'] ?? null)<a href="{{ $config['setupUrl'] }}">Draw format</a>@endif
     @if($config['backUrl'])<a href="{{ $config['backUrl'] }}">Manage draw</a>@endif
     <button id="fm-print" type="button">Print draw</button>
     @if($config['publicUrl'])<a id="fm-public" href="{{ $config['publicUrl'] }}" target="_blank" rel="noopener">Public view</a>@endif
   </nav>
 </header>
 <main id="fm-app">
-  <div class="fm-intro"><div><strong id="fm-phase">Arrange the starting positions</strong><p>Drag a player into a box, or click a box to choose a player. Winners advance; losers continue for finishing positions.</p></div><span id="fm-status" class="fm-badge">Draft</span></div>
-  <p class="fm-rule">Full placement: entering a quarterfinal directly guarantees a top-eight finish. Empty boxes are not byes.</p>
+  <div class="fm-intro"><div><strong id="fm-phase">Step 2 · Bracket size and starting positions</strong><p>Drag a player into a box, or click a box to choose a player.
+    {{ ($config['workflow'] ?? '') === 'playoffs' ? 'Winners advance; losers are eliminated.' : 'Winners advance; losers continue for finishing positions.' }}
+  </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
+  <p class="fm-rule">{{ match ($config['workflow'] ?? 'custom_monrad') {
+    'playoffs' => 'Knockout only: place players in the opening round. No round robin or placement matches.',
+    'monrad' => 'Full placement: place everyone in the opening round. No round robin is needed.',
+    default => 'Full placement: entering a quarterfinal directly guarantees a top-eight finish.',
+  } }} Empty boxes are not byes.</p>
   <div id="fm-message" role="status" aria-live="polite"></div>
   <p id="fm-withdrawn" class="fm-rule" hidden></p>
   <div class="fm-toolbar" id="fm-toolbar">

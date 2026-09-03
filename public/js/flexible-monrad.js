@@ -19,6 +19,8 @@
   };
   const roundName = depth => ['Final', 'Semifinals', 'Quarterfinals'][depth] || `Round of ${2 ** (depth + 1)}`;
   const editable = () => config.canEdit && !state.generated && !state.published && !state.locked && !busy;
+  const customStarts = !['playoffs', 'monrad'].includes(config.workflow);
+  const allowedStart = path => customStarts || path.length === Math.log2(draft.size);
   const message = (text, error = false) => {
     $('fm-message').textContent = text;
     $('fm-message').className = error ? 'error' : '';
@@ -57,6 +59,7 @@
     return true;
   }
   function place(id, path, swap = false) {
+    if (!path || !allowedStart(path)) return;
     if (state.players.find(p => Number(p.id) === Number(id))?.eligible === false) {
       message('This player is no longer eligible. Remove their starting assignment.', true);
       return;
@@ -106,7 +109,7 @@
     if (selectedPlayer) picker.value = selectedPlayer;
   }
   function openSlot(path) {
-    if (!editable()) return;
+    if (!editable() || !allowedStart(path)) return;
     selected = path;
     $('fm-slot-error').textContent = '';
     $('fm-slot-title').textContent = roundName(path.length - 1) + ' starting position';
@@ -199,7 +202,7 @@
               ? 'BYE'
               : level === depth - 1
               ? '+ Place player'
-              : '+ Direct entrant / qualifying path';
+              : customStarts ? '+ Direct entrant / qualifying path' : 'Winner from previous round';
           const button = el(
             'button',
             `fm-slot ${source?.type === 'player' ? 'direct' : source?.type === 'bye' ? 'bye' : 'empty'}`,
@@ -207,14 +210,14 @@
           );
           button.type = 'button';
           button.dataset.slot = key;
-          button.disabled = !editable();
+          button.disabled = !editable() || !allowedStart(key);
           button.setAttribute('aria-label', `${roundName(level)} ${i + 1}, ${slot === 0 ? 'top' : 'bottom'}: ${label}`);
           button.addEventListener('click', () => {
             if (selectedPlayer && source?.type !== 'player') place(selectedPlayer, key);
             else openSlot(key);
           });
           button.addEventListener('dragover', event => {
-            if (editable()) {
+            if (editable() && allowedStart(key)) {
               event.preventDefault();
               button.classList.add('drop-target');
             }
@@ -350,9 +353,9 @@
       ? 'Unsaved draft'
       : 'Draft';
     $('fm-phase').textContent = state.generated
-      ? 'Play the draw and complete every position'
-      : 'Arrange the starting positions';
-    $('fm-board-title').textContent = state.generated ? 'Main draw & placement matches' : 'Starting positions';
+      ? (config.workflow === 'playoffs' ? 'Play the knockout draw' : 'Play the draw and complete every position')
+      : 'Step 2 · Bracket size and starting positions';
+    $('fm-board-title').textContent = state.generated ? (config.workflow === 'playoffs' ? 'Playoff bracket' : 'Main draw & placement matches') : 'Starting positions';
     $('fm-sidebar').hidden = state.generated || config.readOnly;
     $('fm-workspace')?.classList.toggle('generated', state.generated);
     document.querySelector('.fm-workspace').style.gridTemplateColumns =
@@ -637,7 +640,7 @@
       const depth = Math.log2(draft.size);
       const fill = path => {
         if (draft.slots[path]) return;
-        if (!descendants(path).some(p => draft.slots[p].type === 'player')) {
+        if (allowedStart(path) && !descendants(path).some(p => draft.slots[p].type === 'player')) {
           descendants(path).forEach(p => delete draft.slots[p]);
           draft.slots[path] = { type: 'bye' };
           return;

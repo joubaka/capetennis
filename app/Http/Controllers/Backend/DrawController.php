@@ -99,6 +99,9 @@ class DrawController extends Controller
   {
     $showDraw = Draw::findOrFail($id);
     $this->authorize('view', $showDraw);
+    if ($showDraw->needsWorkflowChoice()) {
+      return redirect()->route('draw.setup.show', $showDraw);
+    }
     if ($showDraw->usesFlexibleMonrad()) {
       return redirect()->route('flexible-monrad.show', $showDraw);
     }

@@ -70,6 +70,14 @@ class Draw extends Model
     {
         return $this->belongsTo(Event::class, 'event_id', 'id');
     }
+
+    public function needsWorkflowChoice(): bool
+    {
+        return ! $this->team_category_id && ! $this->event?->isTeam()
+            && ! $this->locked && ! $this->published
+            && ! $this->settings?->workflow && ! $this->usesFlexibleMonrad()
+            && ! $this->groups()->exists() && ! $this->drawFixtures()->exists();
+    }
     public function draw_types()
     {
 
