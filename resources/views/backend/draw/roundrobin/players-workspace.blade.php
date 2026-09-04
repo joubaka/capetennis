@@ -1,6 +1,6 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small text-muted">Step 2 · Round robin → playoffs</span>
+    <span class="small text-muted">Step 2 · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <div class="rr-assignment-heading">

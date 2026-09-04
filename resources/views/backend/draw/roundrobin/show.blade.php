@@ -11,6 +11,7 @@
 
 @php
   $currentBoxes = (int) (optional($draw->settings)->boxes ?: ($groups->count() ?: 4));
+  $roundRobinOnly = $draw->isRoundRobinOnly();
   $assignmentService = app(\App\Services\Draw\GroupAssignmentService::class);
   $eligibleRoster = $assignmentService->eligible($draw)->with(['registration.players', 'categoryEvent.category'])->get()->map(fn ($entry) => [
     'id' => $entry->registration_id, 'name' => $entry->registration->display_name,
@@ -56,11 +57,13 @@
       <i class="ti ti-chart-bar me-1"></i> Standings
     </button>
   </li>
+  @unless($roundRobinOnly)
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="main-bracket-tab" data-bs-toggle="tab" data-bs-target="#main-bracket-pane" type="button" role="tab">
       <i class="ti ti-tournament me-1"></i> Brackets
     </button>
   </li>
+  @endunless
 
   {{-- Admin tabs --}}
   <li class="nav-item" role="presentation">
@@ -220,6 +223,7 @@
         </div>
       </div>
 
+      @unless($roundRobinOnly)
       {{-- PLAYOFF CONFIGURATION --}}
       <div class="card mb-3">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
@@ -466,6 +470,7 @@
       </div>
 
       </details>
+      @endunless
     </div>
 
     {{-- ============================
@@ -474,8 +479,11 @@
     <div class="tab-pane fade show active" id="matrix-pane" role="tabpanel">
       <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0"><i class="ti ti-grid-dots me-1 text-primary"></i> Round Robin Matrix</h5>
-          <small class="text-muted">Who plays who + results</small>
+          <div>
+            <h5 class="card-title mb-1"><i class="ti ti-grid-dots me-1 text-primary"></i> Round Robin Matrix</h5>
+            <small id="rr-matrix-help" class="text-muted">Select a matchup to enter or update its result.</small>
+          </div>
+          <span id="rr-matrix-status" class="small text-muted" role="status" aria-live="polite"></span>
         </div>
         <div class="card-body p-0">
           <div id="rr-matrix-wrapper" class="p-2">
@@ -558,6 +566,7 @@
 
 @include('backend.draw.roundrobin.players-workspace')
 
+@unless($roundRobinOnly)
 <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
         <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Brackets</h5>
@@ -589,6 +598,7 @@
    
 
 </div>
+@endunless
 
 {{-- ============================
      PRINT TAB
@@ -597,7 +607,7 @@
   <div class="card">
     <div class="card-header">
       <h5 class="card-title mb-0"><i class="ti ti-printer me-1"></i> Print Options</h5>
-      <small class="text-muted">Generate print-friendly pages for fixtures, matrix, brackets and blank draws</small>
+      <small class="text-muted">{{ $roundRobinOnly ? 'Generate print-friendly round-robin fixtures, matrices and standings' : 'Generate print-friendly pages for fixtures, matrix, brackets and blank draws' }}</small>
     </div>
     <div class="card-body">
       <div class="row g-4">
@@ -634,6 +644,7 @@
           </div>
         </div>
 
+        @unless($roundRobinOnly)
         {{-- Print Bracket (with names) --}}
         <div class="col-6 col-md-3">
           <div class="card border h-100 text-center">
@@ -661,6 +672,7 @@
             </div>
           </div>
         </div>
+        @endunless
 
         {{-- Print Combined (Matrix + Fixtures on 1 page) --}}
         <div class="col-6 col-md-3">
@@ -695,6 +707,7 @@
                   <input class="form-check-input pack-section" type="checkbox" id="pack-rr-fixtures" checked>
                   <label class="form-check-label" for="pack-rr-fixtures">RR Fixtures</label>
                 </div>
+                @unless($roundRobinOnly)
                 <div class="form-check mb-1">
                   <input class="form-check-input pack-section" type="checkbox" id="pack-playoff-fixtures" checked>
                   <label class="form-check-label" for="pack-playoff-fixtures">Playoff Fixtures</label>
@@ -703,6 +716,7 @@
                   <input class="form-check-input pack-section" type="checkbox" id="pack-brackets" checked>
                   <label class="form-check-label" for="pack-brackets">Blank Brackets</label>
                 </div>
+                @endunless
               </div>
               <button class="btn btn-dark btn-sm" id="btn-print-draw-pack">
                 <i class="ti ti-printer me-1"></i> Print Draw Pack
@@ -845,6 +859,7 @@
           </div>
         </div>
 
+        @unless($roundRobinOnly)
         {{-- Playoff Rules --}}
         <div class="col-md-6">
           <div class="card border h-100">
@@ -883,6 +898,7 @@
             </div>
           </div>
         @endforeach
+        @endunless
 
       </div>
     </div>

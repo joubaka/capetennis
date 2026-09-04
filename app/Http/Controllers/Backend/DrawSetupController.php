@@ -12,6 +12,7 @@ use Illuminate\Validation\Rule;
 class DrawSetupController extends Controller
 {
     public const OPTIONS = [
+        'round_robin' => ['Round robin only', 'Everyone plays within their group. Final standings decide the result; there are no playoffs.'],
         'round_robin_playoffs' => ['Round robin → playoffs', 'Build groups first, then choose how players advance to playoffs.'],
         'playoffs' => ['Playoffs only', 'Start with a knockout bracket. Winners advance; no placement matches.'],
         'monrad' => ['Monrad only', 'Start everyone in the opening round. Winners and losers play for finishing positions.'],
@@ -31,7 +32,7 @@ class DrawSetupController extends Controller
             'workflow' => 'required|in:'.implode(',', array_keys(self::OPTIONS)),
             'category_event_id' => ['nullable', 'integer', Rule::exists('category_events', 'id')->where('event_id', $draw->event_id)],
         ]);
-        if (! $draw->category_event_id && $data['workflow'] !== 'round_robin_playoffs' && empty($data['category_event_id'])) {
+        if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true) && empty($data['category_event_id'])) {
             return view('backend.draw.setup-category', [
                 'draw' => $draw, 'workflow' => $data['workflow'], 'label' => self::OPTIONS[$data['workflow']][0],
                 'categories' => \App\Models\CategoryEvent::where('event_id', $draw->event_id)->with('category')->get(),
@@ -46,12 +47,12 @@ class DrawSetupController extends Controller
             abort_if($draw->drawFixtures()->exists() || $draw->groups()->whereHas('registrations')->exists()
                 || ! empty($draw->flexibleMonrad?->draft['slots']) || $draw->flexibleMonrad?->graph,
                 409, 'This draw already has assignments or fixtures. Use a new empty draw to choose a different format.');
-            if (! $draw->category_event_id && $data['workflow'] !== 'round_robin_playoffs') {
+            if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
                 abort_if($draw->registrations()->reorder()->exists(), 409, 'Choose a new empty draw before changing its player category.');
                 $draw->update(['category_event_id' => $data['category_event_id']]);
             }
             $draw->settings()->updateOrCreate(['draw_id' => $draw->id], ['workflow' => $data['workflow']]);
-            if ($data['workflow'] === 'round_robin_playoffs') {
+            if (in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
                 $draw->flexibleMonrad()->delete(); // Only an empty, ungenerated draft can reach here.
                 $draw->settings()->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id')]);
             } else {

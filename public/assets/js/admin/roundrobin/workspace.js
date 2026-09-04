@@ -5,10 +5,11 @@
   });
   const areas = {
     players: ['groups'],
-    results: ['matrix', 'standings', 'main-bracket'],
+    results: ['matrix', 'standings'],
     schedule: ['oop', 'schedule'],
     setup: ['settings', 'notes']
   };
+  if (document.getElementById('main-bracket-tab')) areas.results.push('main-bracket');
   let active = 'players';
   function open(area, view, replace) {
     if (!areas[area]) return;

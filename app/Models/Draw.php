@@ -66,6 +66,11 @@ class Draw extends Model
         return $this->flexibleMonrad !== null || ($this->settings?->draw_format_id
             && DrawFormats::whereKey($this->settings->draw_format_id)->where('name', 'Flexible Monrad')->exists());
     }
+
+    public function isRoundRobinOnly(): bool
+    {
+        return $this->settings?->workflow === 'round_robin';
+    }
     public function event()
     {
         return $this->belongsTo(Event::class, 'event_id', 'id');

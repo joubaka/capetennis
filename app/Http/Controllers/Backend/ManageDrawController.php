@@ -167,6 +167,7 @@ class ManageDrawController extends Controller
   public function updatePlayoffConfig(Request $request, Draw $draw)
   {
     $this->authorize('update', $draw);
+    abort_if($draw->isRoundRobinOnly(), 422, 'Playoff settings are not available for a round-robin-only draw.');
     $validated = $request->validate([
       'playoff_config' => 'required|array|min:1', // At least one playoff
       'playoff_config.*.name' => 'required|string',

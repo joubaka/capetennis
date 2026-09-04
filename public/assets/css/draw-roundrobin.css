@@ -5,7 +5,9 @@
     border-collapse: collapse !important;
     table-layout: fixed !important;
     background: #ffffff !important;
-    /* width is set dynamically by JS per group */
+    width: max-content !important;
+    min-width: min(100%, 720px);
+    margin-bottom: 0;
   }
 
   /* Matrix must scroll */
@@ -14,15 +16,31 @@
     overflow-y: hidden;
     width: 100%;
     padding-bottom: 5px;
+    scrollbar-gutter: stable;
   }
+
+  .rr-group-section + .rr-group-section {
+    margin-top: 30px;
+  }
+
+  .rr-group-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 0 10px;
+  }
+
+  .rr-group-heading h6 { margin: 0; }
+  .rr-group-meta { color: #69778c; font-size: 12px; }
 
   /* ----------------------------------------------
    All cells — uniform sizing via table-layout:fixed
    ---------------------------------------------- */
-  .rr-matrix-table td.rr-score-cell,
   .rr-matrix-table td {
-    padding: 4px 6px !important;
-    height: 34px !important;
+    padding: 0 !important;
+    height: 46px !important;
+    min-width: 148px;
     text-align: center;
     vertical-align: middle;
     border: 1px solid #dcdcdc !important;
@@ -38,8 +56,9 @@
    ============================================== */
   .rr-matrix-table td.bg-light,
   .rr-matrix-table td.bg-diagonal {
-    background: #000 !important;
-    border: 1px solid #333 !important;
+    background-color: #f3f5f7 !important;
+    background-image: repeating-linear-gradient(135deg, transparent, transparent 6px, #e8ebef 6px, #e8ebef 7px) !important;
+    border: 1px solid #e1e5ea !important;
   }
 
   /* ==============================================
@@ -55,6 +74,16 @@
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    min-width: 148px;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+
+  .rr-matrix-table thead th:first-child {
+    left: 0;
+    min-width: 180px;
+    z-index: 5;
   }
 
   /* ==============================================
@@ -70,7 +99,53 @@
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    min-width: 180px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
   }
+
+  .rr-matrix-table tbody tr:hover > :is(th, td) { background-color: #f7faf9 !important; }
+  .rr-matrix-table tbody tr:hover > td.bg-diagonal { background-color: #eef1f3 !important; }
+
+  .rr-score-action {
+    display: flex;
+    width: 100%;
+    min-height: 45px;
+    padding: 6px 10px;
+    border: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    color: #25324b;
+    background: transparent;
+    font: inherit;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .rr-score-action:hover { background: #eaf4f2; }
+  .rr-score-action:focus-visible { outline: 3px solid #14796e; outline-offset: -3px; }
+  .rr-cell-action { color: #14796e; font-weight: 650; }
+  .rr-cell-time { color: #25324b; font-weight: 600; }
+  .rr-cell-hint { color: #69778c; font-size: 10px; }
+  .rr-mobile-match-list { display: none; }
+
+  .rr-mobile-match {
+    width: 100%;
+    padding: 13px 14px;
+    border: 1px solid #e3e7ee;
+    border-radius: 10px;
+    background: #fff;
+    color: #25324b;
+    text-align: left;
+  }
+
+  .rr-mobile-match + .rr-mobile-match { margin-top: 8px; }
+  .rr-mobile-players { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 650; }
+  .rr-mobile-versus { color: #8491a5; font-size: 11px; font-weight: 500; }
+  .rr-mobile-status { display: block; margin-top: 6px; color: #14796e; font-size: 12px; }
 
   /* ==============================================
    SCORE COLORS
@@ -412,4 +487,13 @@
     /* Standings / matrix heading sizes */
     h5.card-title, .card-header h5 { font-size: 14px; }
     h6.fw-bold { font-size: 13px; }
+  }
+
+  @media (max-width: 767.98px) {
+    #rr-matrix-wrapper { padding: 12px !important; }
+    .rr-matrix-table-shell { display: none; }
+    .rr-mobile-match-list { display: block; }
+    .rr-group-section + .rr-group-section { margin-top: 24px; }
+    .rr-group-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+    .rr-mobile-match:focus-visible { outline: 3px solid #14796e; outline-offset: 2px; }
   }

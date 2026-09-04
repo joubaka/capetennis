@@ -42,6 +42,7 @@ $('#drawSettingsForm').on('submit', function(e) {
 // ============================================================
 // PLAYOFF CONFIGURATION HANDLERS
 // ============================================================
+@unless($roundRobinOnly)
 
 // Store playoff config in memory
 let playoffConfig = @json($playoffConfig ?? []);
@@ -1308,5 +1309,6 @@ document.addEventListener('rr:groups:count:changed', function(e) {
   $('#settings-boxes').val(numGroups);
   updateFlowPreview();
 });
+@endunless
 })(jQuery);
 </script>

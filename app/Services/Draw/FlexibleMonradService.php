@@ -340,7 +340,7 @@ final class FlexibleMonradService
 
     private function editable(Draw $draw): void
     {
-        abort_if($draw->settings?->workflow === 'round_robin_playoffs', 409, 'Use the round robin workspace for this draw.');
+        abort_if(in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true), 409, 'Use the round robin workspace for this draw.');
         abort_if($draw->locked || $draw->published, 409, 'The draw must be unlocked and unpublished to change its structure.');
         abort_unless($draw->category_event_id, 422, 'Flexible Monrad requires a player category.');
     }

@@ -68,6 +68,55 @@
     } catch (e) { return dtString; }
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char];
+    });
+  }
+
+  function findPlayer(players, id, fallback) {
+    return players.find(function (player) { return player.id === parseInt(id || 0, 10); }) || {
+      id: parseInt(id || 0, 10),
+      name: fallback || 'Player'
+    };
+  }
+
+  function scoreButton(fx, rowPlayer, columnPlayer, mobile) {
+    var scoreHtml = formatScoreCell(fx, rowPlayer.id);
+    var resultText = (fx.all_sets || []).join(', ');
+    var content;
+    var actionLabel;
+
+    if (scoreHtml) {
+      content = mobile
+        ? '<span class="rr-mobile-status">Result: ' + scoreHtml + '</span>'
+        : '<span class="rr-cell-score">' + scoreHtml + '</span><span class="rr-cell-hint">Update result</span>';
+      actionLabel = 'Update score for ' + rowPlayer.name + ' versus ' + columnPlayer.name + '. Current result ' + resultText;
+    } else if (fx.time) {
+      var time = escapeHtml(_formatTime(fx.time));
+      content = mobile
+        ? '<span class="rr-mobile-status">Scheduled ' + time + ' · Enter result</span>'
+        : '<span class="rr-cell-time">' + time + '</span><span class="rr-cell-hint">Enter result</span>';
+      actionLabel = 'Enter score for ' + rowPlayer.name + ' versus ' + columnPlayer.name + ', scheduled ' + _formatTime(fx.time);
+    } else {
+      content = mobile
+        ? '<span class="rr-mobile-status">Enter score</span>'
+        : '<span class="rr-cell-action">Enter score</span>';
+      actionLabel = 'Enter score for ' + rowPlayer.name + ' versus ' + columnPlayer.name;
+    }
+
+    var classes = mobile ? 'rr-score-cell rr-mobile-match' : 'rr-score-cell rr-score-action';
+    var players = mobile
+      ? '<span class="rr-mobile-players"><span>' + escapeHtml(rowPlayer.name) + '</span><span class="rr-mobile-versus">vs</span><span>' + escapeHtml(columnPlayer.name) + '</span></span>'
+      : '';
+
+    return '<button type="button" class="' + classes + '"' +
+      ' data-fixture-id="' + fx.id + '"' +
+      ' data-home="' + escapeHtml(rowPlayer.name) + '"' +
+      ' data-away="' + escapeHtml(columnPlayer.name) + '"' +
+      ' aria-label="' + escapeHtml(actionLabel) + '">' + players + content + '</button>';
+  }
+
   // ─── Render full matrix ───────────────────────────────────────────
   function render() {
     var fixtures = AdminState.getFixtures();
@@ -87,6 +136,9 @@
     fixtures = normalizeAll(fixtures);
     AdminState.setFixtures(fixtures);
 
+    var totalFixtures = 0;
+    var completedFixtures = 0;
+
     groups.forEach(function (group) {
       var gid      = group.id;
       var gFix     = (fixtures && fixtures[gid]) ? fixtures[gid] : [];
@@ -95,61 +147,55 @@
         return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 9999) : 9999 };
       }).sort(function (a, b) { return a.seed - b.seed; });
 
-      var html = '<h6 class="fw-bold mt-3 mb-2">Box ' + group.name + '</h6>' +
-        '<div class="rr-matrix-scroll mb-4"><table class="table table-bordered table-sm rr-matrix-table">' +
-        '<thead><tr><th class="bg-light"></th>' +
-        players.map(function (p) { return '<th class="text-center">' + p.name + '</th>'; }).join('') +
+      var completed = gFix.filter(function (fx) { return fx.all_sets && fx.all_sets.length; }).length;
+      totalFixtures += gFix.length;
+      completedFixtures += completed;
+
+      var html = '<section class="rr-group-section" aria-labelledby="rr-group-' + gid + '">' +
+        '<div class="rr-group-heading"><h6 id="rr-group-' + gid + '" class="fw-bold">Box ' + escapeHtml(group.name) + '</h6>' +
+        '<span class="rr-group-meta">' + players.length + ' players · ' + gFix.length + ' matches · ' + completed + ' completed</span></div>' +
+        '<div class="rr-matrix-scroll rr-matrix-table-shell"><table class="table table-bordered table-sm rr-matrix-table" aria-describedby="rr-matrix-help">' +
+        '<caption class="visually-hidden">Round robin results for Box ' + escapeHtml(group.name) + '</caption>' +
+        '<thead><tr><th scope="col" aria-label="Player"></th>' +
+        players.map(function (p) { return '<th scope="col" class="text-center" title="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</th>'; }).join('') +
         '</tr></thead><tbody>';
 
       players.forEach(function (rowP) {
-        html += '<tr><th class="bg-light small">' + rowP.name + '</th>';
+        html += '<tr><th scope="row" class="small" title="' + escapeHtml(rowP.name) + '">' + escapeHtml(rowP.name) + '</th>';
 
         players.forEach(function (colP) {
-          if (rowP.id === colP.id) { html += '<td class="bg-diagonal"></td>'; return; }
+          if (rowP.id === colP.id) { html += '<td class="bg-diagonal" aria-label="Same player; no match"></td>'; return; }
 
           var fx = gFix.find(function (f) {
             return (f.r1_id === rowP.id && f.r2_id === colP.id) ||
                    (f.r1_id === colP.id && f.r2_id === rowP.id);
           });
 
-          if (!fx) { html += '<td class="text-center text-muted">–</td>'; return; }
+          if (!fx) { html += '<td class="text-center text-muted" aria-label="Match not generated">Not generated</td>'; return; }
 
-          var scoreHtml = formatScoreCell(fx, rowP.id);
-          var content   = scoreHtml || (fx.time ? _formatTime(fx.time) : '–');
-
-          html += '<td class="text-center rr-score-cell"' +
-            ' data-fixture-id="' + fx.id + '"' +
-            ' data-home="' + rowP.name + '"' +
-            ' data-away="' + colP.name + '">' +
-            content + '</td>';
+          html += '<td class="rr-match-cell">' + scoreButton(fx, rowP, colP, false) + '</td>';
         });
 
         html += '</tr>';
       });
 
-      html += '</tbody></table></div>';
+      html += '</tbody></table></div><div class="rr-mobile-match-list">';
+      gFix.forEach(function (fx) {
+        var p1 = findPlayer(players, fx.r1_id, fx.name1);
+        var p2 = findPlayer(players, fx.r2_id, fx.name2);
+        html += scoreButton(fx, p1, p2, true);
+      });
+      if (!gFix.length) html += '<p class="text-muted small mb-0">No matches have been generated for this box.</p>';
+      html += '</div></section>';
       $wrapper.append(html);
     });
+
+    $('#rr-matrix-status').text(completedFixtures + ' of ' + totalFixtures + ' matches completed');
   }
 
   // ─── Live cell update (no full re-render) ─────────────────────────
   function updateCell(fx) {
-    var groups = AdminState.getGroups();
-    groups.forEach(function (group) {
-      group.registrations.forEach(function (rowReg) {
-        group.registrations.forEach(function (colReg) {
-          if (rowReg.id === colReg.id) return;
-          if (!((fx.r1_id == rowReg.id && fx.r2_id == colReg.id) ||
-                (fx.r1_id == colReg.id && fx.r2_id == rowReg.id))) return;
-
-          var $cell = $('.rr-score-cell[data-fixture-id="' + fx.id + '"]');
-          if (!$cell.length) return;
-
-          var scoreHtml = formatScoreCell(fx, rowReg.id);
-          $cell.html(scoreHtml || '–');
-        });
-      });
-    });
+    render();
   }
 
   // ─── Bind ─────────────────────────────────────────────────────────
@@ -174,6 +220,7 @@
       if (e.detail && e.detail.mode === 'RR' && e.detail.fixture) {
         // Full re-render is simplest and avoids stale cell state
         render();
+        $('#rr-matrix-status').prepend('Result saved. ');
       }
     });
   }

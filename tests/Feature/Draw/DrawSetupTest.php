@@ -44,7 +44,7 @@ class DrawSetupTest extends TestCase
         $draw = $this->draw();
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
         $response = $this->get(route('draw.setup.show', $draw))->assertOk()
-            ->assertSee('How should this draw start?')->assertSee('Round robin → playoffs')
+            ->assertSee('How should this draw start?')->assertSee('Round robin only')->assertSee('Round robin → playoffs')
             ->assertSee('Playoffs only')->assertSee('Monrad only')->assertSee('Custom Monrad');
         if (getenv('DRAW_SETUP_SNAPSHOT')) {
             \Illuminate\Support\Facades\Storage::disk('local')->put('testing/draw-setup.html', $response->getContent());
@@ -56,6 +56,33 @@ class DrawSetupTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Build your groups');
         $this->assertSame(0, $draw->drawFixtures()->count());
         $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 0, 'draft' => ['size' => 4, 'slots' => []]])->assertConflict();
+    }
+
+    public function test_round_robin_only_uses_group_workspace_without_playoff_controls_or_mutations(): void
+    {
+        $draw = $this->draw();
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+
+        $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+        $this->assertTrue($draw->fresh()->isRoundRobinOnly());
+        $this->assertDatabaseCount('flexible_monrad_draws', 0);
+
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('Step 2 · Round robin only')
+            ->assertDontSee('id="main-bracket-tab"', false)
+            ->assertDontSee('id="btn-add-playoff"', false)
+            ->assertDontSee('id="btn-print-bracket"', false)
+            ->assertDontSee('id="pack-playoff-fixtures"', false);
+
+        $this->postJson(route('backend.draw.generate-main-bracket', $draw))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Playoffs are not available for a round-robin-only draw.');
+        $this->postJson(route('backend.draw.update-playoff-config', $draw), ['playoff_config' => []])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Playoff settings are not available for a round-robin-only draw.');
+        $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
     }
 
     public function test_direct_formats_persist_resume_and_generate_the_correct_matches(): void
@@ -133,7 +160,7 @@ class DrawSetupTest extends TestCase
     public function test_empty_selection_can_change_without_creating_groups_or_fixtures(): void
     {
         $draw = $this->draw();
-        foreach (['monrad', 'playoffs', 'round_robin_playoffs'] as $workflow) {
+        foreach (['monrad', 'playoffs', 'round_robin', 'round_robin_playoffs'] as $workflow) {
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect();
             $this->assertSame($workflow, $draw->fresh()->settings->workflow);
         }
