@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { layout, dimensions, linePath, strokeWidth } = require('../../public/js/tennis-bracket-layout.js');
+const { layout, dimensions, linePath, terminalWinnerKeys, strokeWidth } = require('../../public/js/tennis-bracket-layout.js');
 const direct = () => ({ type: 'player' });
 const feeder = match => ({ type: 'winner', match });
 
@@ -39,6 +39,17 @@ test('bracket edges and connectors share one pixel-aligned stroke at each join',
 
 test('custom-path elbows use the same pixel alignment as bracket edges', () => {
   assert.equal(linePath([], [[220, 96.25, 520, 128.25]]), 'M 220.5 96.5 H 370.5 V 128.5 H 520.5');
+});
+
+test('every winner without a follow-up match is a terminal bracket endpoint', () => {
+  const matches = {
+    main_1: { sources: [direct(), direct()] },
+    main_final: { sources: [feeder('main_1'), direct()] },
+    place_3_4: { sources: [{ type: 'loser', match: 'main_final' }, direct()] },
+    place_7_9_first: { sources: [direct(), direct()] },
+    place_7_9_final: { sources: [feeder('place_7_9_first'), direct()] }
+  };
+  assert.deepEqual(terminalWinnerKeys(matches), ['main_final', 'place_3_4', 'place_7_9_final']);
 });
 
 test('standard bracket centres later rounds on their actual feeders', () => {

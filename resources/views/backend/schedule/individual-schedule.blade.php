@@ -38,6 +38,10 @@
   {{-- Header --}}
   @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'schedule'])
   @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'schedule'])
+  <div class="alert alert-primary d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span><strong>Several draws or venues?</strong> Build one conflict-safe schedule across the whole event.</span>
+    <a class="btn btn-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', $event) }}">Open event venue schedule</a>
+  </div>
 
   {{-- Stats bar --}}
   <div class="row g-3 mb-4" id="stats-bar">

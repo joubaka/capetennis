@@ -328,7 +328,7 @@
   font-weight: 750;
   color: #11663f;
 }
-:where(.fm-surface) .fm-champion {
+:where(.fm-surface) .fm-winner-endpoint {
   position: absolute;
   z-index: 3;
   width: 220px;
@@ -340,7 +340,7 @@
   justify-content: flex-end;
   pointer-events: none;
 }
-:where(.fm-surface) .fm-champion-label {
+:where(.fm-surface) .fm-winner-label {
   color: #607968;
   font-size: 9px;
   font-weight: 750;
@@ -348,7 +348,7 @@
   line-height: 1;
   text-transform: uppercase;
 }
-:where(.fm-surface) .fm-champion-name {
+:where(.fm-surface) .fm-winner-name {
   color: #11663f;
   font-size: 13px;
   line-height: 1.35;

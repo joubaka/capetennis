@@ -40,6 +40,7 @@ use App\Http\Controllers\Backend\RegistrationController;
 use App\Http\Controllers\Backend\ResultController;
 use App\Http\Controllers\Backend\EventAnnouncementController;
 use App\Http\Controllers\Backend\ScheduleController;
+use App\Http\Controllers\Backend\EventVenueScheduleController;
 use App\Http\Controllers\Backend\ScoreboardController;
 use App\Http\Controllers\Backend\SeriesController;
 use App\Http\Controllers\Backend\SettingsController;
@@ -946,6 +947,15 @@ Route::delete(
 
   // Individual schedule
 // Individual schedule
+  Route::get('events/{event}/venue-schedule', [EventVenueScheduleController::class, 'index'])
+    ->name('backend.event-venue-schedule.index');
+  Route::post('events/{event}/venue-schedule/preview', [EventVenueScheduleController::class, 'preview'])
+    ->name('backend.event-venue-schedule.preview');
+  Route::post('events/{event}/venue-schedule/apply', [EventVenueScheduleController::class, 'apply'])
+    ->name('backend.event-venue-schedule.apply');
+  Route::post('events/{event}/venue-schedule/assignments', [EventVenueScheduleController::class, 'updateAssignments'])
+    ->name('backend.event-venue-schedule.assignments');
+
   Route::get('individual-schedule/{draw}', [ScheduleController::class, 'schedulePage'])
     ->name('backend.individual-schedule.page');
 

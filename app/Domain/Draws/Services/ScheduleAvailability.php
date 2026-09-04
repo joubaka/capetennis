@@ -13,7 +13,8 @@ final class ScheduleAvailability
     private array $slots = [];
     private array $related = [];
 
-    public static function load(array $venues, array $registrations, array $excludeFixtures = [], ?Draw $draw = null): self
+    public static function load(array $venues, array $registrations, array $excludeFixtures = [], ?Draw $draw = null,
+        int $participantRest = 0): self
     {
         $calendar = new self();
         $registrations = array_values(array_unique(array_filter($registrations)));
@@ -56,8 +57,10 @@ final class ScheduleAvailability
             // The local dependency checks separate winner and loser paths. Do not reserve
             // both sets of possible players against each other within that same draw.
             $participants = $sameDraw ? ($monrad ? [] : $resolved) : ($possible[$slot->fixture_id] ?? $resolved);
-            $calendar->reserve((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
-                $slot->occupiedMinutes(), $participants);
+            $occupied = $slot->occupiedMinutes();
+            $matchMinutes = (int) ($slot->duration_minutes ?: 75);
+            $calendar->reserveWithRest((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
+                $occupied, $matchMinutes + max(0, $participantRest), $participants);
         }
         return $calendar;
     }
@@ -113,11 +116,24 @@ final class ScheduleAvailability
 
     public function reserve(int $venue, string $court, Carbon $start, int $duration, array $registrations): void
     {
+        $this->reserveWithRest($venue, $court, $start, $duration, $duration, $registrations);
+    }
+
+    public function reserveWithRest(int $venue, string $court, Carbon $start, int $courtMinutes,
+        int $participantMinutes, array $registrations): void
+    {
         $this->slots[] = ['venue' => $venue, 'court' => ctype_digit($court) ? (string) (int) $court : $court,
-            'start' => $start->copy(), 'end' => $start->copy()->addMinutes($duration), 'registrations' => $registrations];
+            'start' => $start->copy(), 'court_end' => $start->copy()->addMinutes($courtMinutes),
+            'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $registrations];
     }
 
     public function nextAvailable(Carbon $start, int $duration, int $venue, string $court, array $registrations): Carbon
+    {
+        return $this->nextAvailableForMatch($start, $duration, $duration, $venue, $court, $registrations);
+    }
+
+    public function nextAvailableForMatch(Carbon $start, int $courtMinutes, int $participantMinutes,
+        int $venue, string $court, array $registrations): Carbon
     {
         $ids = [];
         foreach (array_filter($registrations) as $id) $ids = array_merge($ids, $this->related[$id] ?? [$id]);
@@ -127,7 +143,15 @@ final class ScheduleAvailability
         usort($slots, fn ($a, $b) => $a['start'] <=> $b['start']);
         $at = $start->copy();
         foreach ($slots as $slot) {
-            if ($at->lt($slot['end']) && $at->copy()->addMinutes($duration)->gt($slot['start'])) $at = $slot['end']->copy();
+            $courtConflict = $slot['venue'] === $venue && $slot['court'] === $court
+                && $at->lt($slot['court_end']) && $at->copy()->addMinutes($courtMinutes)->gt($slot['start']);
+            $participantConflict = array_intersect($ids, $slot['registrations'])
+                && $at->lt($slot['participant_end']) && $at->copy()->addMinutes($participantMinutes)->gt($slot['start']);
+            if ($courtConflict || $participantConflict) {
+                $end = $courtConflict ? $slot['court_end']->copy() : $slot['participant_end']->copy();
+                if ($participantConflict) $end = $end->max($slot['participant_end'])->copy();
+                $at = $end;
+            }
         }
         return $at;
     }

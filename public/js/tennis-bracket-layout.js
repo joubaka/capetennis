@@ -67,10 +67,20 @@
     });
     return paths.join(' ');
   }
+  function terminalWinnerKeys(matches) {
+    const entries = Object.entries(matches);
+    const followedWinners = new Set();
+    entries.forEach(([, match]) => {
+      match.sources.forEach(source => {
+        if (source.type === 'winner' && source.match) followedWinners.add(source.match);
+      });
+    });
+    return entries.map(([key]) => key).filter(key => !followedWinners.has(key));
+  }
   // Keep crispEdges at exactly one device pixel, including fractional browser zoom.
   // A 1 CSS-pixel stroke at e.g. 125% can otherwise rasterise into two columns.
   const strokeWidth = ratio => 1 / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
-  const api = { dimensions, layout, linePath, strokeWidth };
+  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TennisBracketLayout = api;
 })(typeof window === 'undefined' ? globalThis : window);

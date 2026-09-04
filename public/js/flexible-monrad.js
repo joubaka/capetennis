@@ -306,6 +306,7 @@
     let yOffset = 0,
       width = 500;
     const winnerLines = [];
+    const terminalWinners = new Set(bracketLayout.terminalWinnerKeys(state.matches));
     Object.entries(state.matches).forEach(([key, match]) => {
       if (!sections.has(match.section)) sections.set(match.section, []);
       sections.get(match.section).push([key, match]);
@@ -347,24 +348,22 @@
           board.append(card);
         });
       });
-      if (section === 'Main draw') {
-        const final = entries.find(([key]) => key === 'main_final');
-        if (final) {
-          const [key, match] = final,
-            position = coords.get(key),
-            lineEnd = position.x + bracketDimensions.width + 120,
-            champion = el('div', 'fm-champion');
-          champion.style.left = lineEnd + 10 + 'px';
-          champion.style.top = position.middle - bracketDimensions.slotHeight + 'px';
-          champion.append(
-            el('span', 'fm-champion-label', 'Champion'),
-            el('strong', 'fm-champion-name', match.winner ? name(match.winner) : 'Awaiting result')
-          );
-          board.append(champion);
-          winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
-          width = Math.max(width, lineEnd + 10 + bracketDimensions.width);
-        }
-      }
+      entries.filter(([key]) => terminalWinners.has(key)).forEach(([key, match]) => {
+        const placement = section.match(/^Positions\s+(\d+)/),
+          position = coords.get(key),
+          lineEnd = position.x + bracketDimensions.width + 120,
+          endpoint = el('div', 'fm-winner-endpoint'),
+          label = section === 'Main draw' ? 'Champion' : placement ? `Position ${placement[1]}` : 'Winner';
+        endpoint.style.left = lineEnd + 10 + 'px';
+        endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
+        endpoint.append(
+          el('span', 'fm-winner-label', label),
+          el('strong', 'fm-winner-name', match.winner ? name(match.winner) : 'Awaiting result')
+        );
+        board.append(endpoint);
+        winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
+        width = Math.max(width, lineEnd + 10 + bracketDimensions.width);
+      });
       width = Math.max(width, layout.width);
       yOffset = layout.height + 35;
     });
