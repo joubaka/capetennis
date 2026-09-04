@@ -44,12 +44,16 @@ final class EventVenueScheduleController extends Controller
                 'label' => (string) $court->label, 'ball_type' => $court->ball_type,
             ])->values();
             if ($courts->isEmpty()) $courts = collect(range(1, $count))->map(fn ($label) => ['label' => (string) $label, 'ball_type' => null]);
+            $ballTypes = $courts->map(fn ($court) => $court['ball_type'] ?: 'standard')->unique()->values();
+            $numberedLabels = array_map('strval', range(1, $courts->count()));
             return [
-            'id' => $venue->id, 'name' => $venue->name,
+                'id' => $venue->id, 'name' => $venue->name,
                 'courts' => $courts->count(), 'court_list' => $courts->all(),
+                'common_ball_type' => $ballTypes->count() === 1 ? $ballTypes->first() : 'mixed',
+                'has_custom_courts' => $courts->pluck('label')->diff($numberedLabels)->isNotEmpty(),
             ];
         });
-        $allVenues = Venue::orderBy('name')->get(['id', 'name']);
+        $allVenues = Venue::whereNotIn('id', $availableVenues->pluck('id'))->orderBy('name')->get(['id', 'name']);
 
         return view('backend.schedule.event-venue-schedule', compact('event', 'draws', 'venues', 'allVenues'));
     }
@@ -59,7 +63,7 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         $data = $request->validate([
             'venue_id' => ['nullable', 'integer', 'exists:venues,id', 'required_without:name'],
-            'name' => ['nullable', 'string', 'max:191', 'required_without:venue_id'],
+            'name' => ['nullable', 'string', 'max:191', 'required_without:venue_id', 'regex:/\S/'],
             'courts' => ['required', 'integer', 'min:1', 'max:100'],
             'ball_type' => ['nullable', 'in:orange,green,yellow,red,standard'],
         ]);
@@ -83,7 +87,8 @@ final class EventVenueScheduleController extends Controller
     {
         $this->authorize('event.manage', $event);
         $data = $request->validate([
-            'venue_id' => ['required', 'integer', 'exists:venues,id'], 'label' => ['required', 'string', 'max:50'],
+            'venue_id' => ['required', 'integer', 'exists:venues,id'],
+            'label' => ['required', 'string', 'max:50', 'regex:/\S/'],
             'ball_type' => ['nullable', 'in:orange,green,yellow,red,standard'],
         ]);
         $allowed = $event->venues()->whereKey($data['venue_id'])->exists()
@@ -95,6 +100,58 @@ final class EventVenueScheduleController extends Controller
         $count = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $data['venue_id'])->where('active', true)->count();
         $event->venues()->syncWithoutDetaching([$data['venue_id'] => ['num_courts' => $count]]);
         return response()->json(['message' => 'Court saved.']);
+    }
+
+    public function configureCourts(Request $request, Event $event, Venue $venue)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'courts' => ['required', 'integer', 'min:1', 'max:100'],
+            'ball_type' => ['required', 'in:orange,green,yellow,red,standard'],
+        ]);
+        $drawIds = $event->draws()->pluck('id');
+        $belongs = $event->venues()->whereKey($venue->id)->exists()
+            || DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->exists();
+        abort_unless($belongs, 404);
+
+        $labels = array_map('strval', range(1, $data['courts']));
+        $existing = DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venue->id)->pluck('label')->map(fn ($label) => (string) $label);
+        $removed = $existing->diff($labels)->values();
+        if ($removed->isNotEmpty()) {
+            $lockedAllocation = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
+                ->where('draws.event_id', $event->id)->where('draw_venue_court_allocations.venue_id', $venue->id)
+                ->whereIn('draw_venue_court_allocations.court_label', $removed)
+                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+            if ($lockedAllocation) return response()->json([
+                'message' => 'A court being removed is allocated to a locked or published draw and cannot be changed.',
+            ], 422);
+            $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
+            $scheduled = OrderOfPlay::where('venue_id', $venue->id)->whereIn('court', $removed)
+                ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))->exists();
+            if ($scheduled) return response()->json([
+                'message' => 'A court being removed already has scheduled matches. Clear those bookings before reducing or replacing the courts.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($event, $venue, $drawIds, $labels, $removed, $data) {
+            if ($removed->isNotEmpty()) {
+                DB::table('draw_venue_court_allocations')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                    ->whereIn('court_label', $removed)->delete();
+                DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)
+                    ->whereIn('label', $removed)->delete();
+            }
+            foreach ($labels as $label) {
+                DB::table('event_venue_courts')->updateOrInsert([
+                    'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => $label,
+                ], ['ball_type' => $data['ball_type'], 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+            }
+            $event->venues()->syncWithoutDetaching([$venue->id => ['num_courts' => $data['courts']]]);
+            DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                ->update(['num_courts' => $data['courts'], 'updated_at' => now()]);
+        });
+
+        return response()->json(['message' => "{$venue->name} now has {$data['courts']} {$data['ball_type']} courts."]);
     }
 
     public function updateAssignments(Request $request, Event $event)

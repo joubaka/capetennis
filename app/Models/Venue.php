@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Venue extends Model
 {
+    public $timestamps = false;
 
 
     public function events()

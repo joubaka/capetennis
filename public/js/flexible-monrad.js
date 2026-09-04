@@ -299,6 +299,17 @@
     if (source.type === 'player') return 'Direct entry';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.match]?.number ?? '?'}`;
   }
+  function scheduleLabel(schedule, includeVenue = false) {
+    if (!schedule?.time) return '';
+    const parsed = new Date(String(schedule.time).replace(' ', 'T'));
+    const time = Number.isNaN(parsed.getTime())
+      ? String(schedule.time)
+      : new Intl.DateTimeFormat('en-ZA', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false
+        }).format(parsed).replace(',', '');
+    return [time, includeVenue ? schedule.venue : null, schedule.court ? `Court ${schedule.court}` : null]
+      .filter(Boolean).join(' · ');
+  }
   function generatedBoard() {
     const board = $('fm-board'),
       sections = new Map(),
@@ -337,6 +348,12 @@
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
             card.append(line);
           });
+          if (match.schedule?.time) {
+            const schedule = el('div', 'fm-match-schedule', scheduleLabel(match.schedule));
+            schedule.title = scheduleLabel(match.schedule, true);
+            schedule.setAttribute('aria-label', `Scheduled ${scheduleLabel(match.schedule, true)}`);
+            card.append(schedule);
+          }
           if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover' ? 'Walkover · no score played' : 'Closed · no active players'));
           if (config.canScore && !state.locked && !match.automatic && match.players.every(Boolean)) {
             const score = el('button', 'fm-score-button', match.winner ? 'Edit result' : 'Enter result');
@@ -499,7 +516,8 @@
             `Match ${match.number}`,
             match.label,
             ...match.players.map((id, i) => (id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i]))),
-            match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', ')
+            match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
+            match.schedule?.time ? scheduleLabel(match.schedule, true) : 'Not scheduled'
           ]);
       });
     else
@@ -524,7 +542,7 @@
       const head = el('thead'),
         tr = el('tr');
       (state.generated
-        ? ['Match', 'Round', 'Player 1 / source', 'Player 2 / source', 'Result']
+        ? ['Match', 'Round', 'Player 1 / source', 'Player 2 / source', 'Result', 'Scheduled']
         : ['Starting round', 'Match', 'Slot', 'Player']
       ).forEach(t => tr.append(el('th', '', t)));
       head.append(tr);

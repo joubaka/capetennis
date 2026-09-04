@@ -270,6 +270,23 @@
   background: #fff;
   padding: 2px 0;
 }
+:where(.fm-surface) .fm-match-schedule {
+  position: absolute;
+  top: calc(50% + 7px);
+  right: 6px;
+  z-index: 3;
+  max-width: calc(100% - 12px);
+  padding-left: 4px;
+  overflow: hidden;
+  color: #176448;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.15;
+  pointer-events: auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 :where(.fm-surface) .fm-slot {
   position: absolute;
   left: 0;

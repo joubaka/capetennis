@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, Player, Registration, User, Venue};
+use App\Models\{Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
@@ -173,6 +173,32 @@ class EventVenueScheduleTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_preview_automatically_uses_only_venues_assigned_to_the_selected_draws(): void
+    {
+        $event = Event::factory()->create();
+        $assignedVenue = $this->venue($event, 'Assigned Venue');
+        $this->venue($event, 'Unrelated Event Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($assignedVenue->id, ['num_courts' => 1]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $response = $this->actingAs($admin)->postJson(
+            route('backend.event-venue-schedule.preview', $event),
+            $this->schedulingOptions() + ['draw_ids' => [$draw->id]],
+        );
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'venues')
+            ->assertJsonPath('venues.0.id', $assignedVenue->id)
+            ->assertJsonCount(1, 'matches');
+    }
+
     public function test_draws_can_be_limited_to_named_ball_type_courts(): void
     {
         $event = Event::factory()->create();
@@ -259,6 +285,93 @@ class EventVenueScheduleTest extends TestCase
         $this->assertDatabaseHas('event_venues', [
             'event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 4,
         ]);
+
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts.configure', [$event, $venue]), [
+            'courts' => 8, 'ball_type' => 'yellow',
+        ])->assertOk();
+        $this->assertSame(8, DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venue->id)->where('active', true)->count());
+        $this->assertSame(8, DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venue->id)->where('ball_type', 'yellow')->count());
+        $this->assertDatabaseMissing('event_venue_courts', [
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => 'Green show court',
+        ]);
+        $this->assertDatabaseHas('event_venues', [
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 8,
+        ]);
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', $event))
+            ->assertOk()
+            ->assertSee('Manage venues and court setup')
+            ->assertSee('value="yellow" selected', false)
+            ->assertSee('value="standard"', false)
+            ->assertDontSee('<option value="'.$venue->id.'">'.$venue->name.'</option>', false);
+    }
+
+    public function test_a_numbered_court_with_a_scheduled_match_cannot_be_removed(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Protected Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 3]);
+        foreach (range(1, 3) as $label) {
+            DB::table('event_venue_courts')->insert([
+                'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => (string) $label,
+                'ball_type' => 'standard', 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+        OrderOfPlay::create([
+            'fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+            'court' => '3', 'time' => '2026-09-10 08:00:00',
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts.configure', [$event, $venue]), [
+            'courts' => 2, 'ball_type' => 'standard',
+        ])->assertUnprocessable()->assertJsonPath('message',
+            'A court being removed already has scheduled matches. Clear those bookings before reducing or replacing the courts.');
+
+        $this->assertDatabaseHas('event_venue_courts', [
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => '3',
+        ]);
+    }
+
+    public function test_venue_court_setup_is_isolated_to_venues_belonging_to_the_event(): void
+    {
+        $event = Event::factory()->create();
+        $otherEvent = Event::factory()->create();
+        $otherVenue = $this->venue($otherEvent, 'Other Event Venue');
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->postJson(
+            route('backend.event-venue-schedule.courts.configure', [$event, $otherVenue]),
+            ['courts' => 8, 'ball_type' => 'standard'],
+        )->assertNotFound();
+
+        $this->assertDatabaseMissing('event_venue_courts', [
+            'event_id' => $event->id, 'venue_id' => $otherVenue->id,
+        ]);
+    }
+
+    public function test_blank_venue_and_court_names_are_rejected(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Valid Venue');
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.venues', $event), [
+            'name' => '   ', 'courts' => 1, 'ball_type' => 'standard',
+        ])->assertUnprocessable()->assertJsonValidationErrors('name');
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts', $event), [
+            'venue_id' => $venue->id, 'label' => '   ', 'ball_type' => 'standard',
+        ])->assertUnprocessable()->assertJsonValidationErrors('label');
     }
 
     private function schedulingOptions(): array

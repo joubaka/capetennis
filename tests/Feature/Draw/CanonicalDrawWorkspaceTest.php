@@ -73,7 +73,8 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $public = route('public.flexible-monrad.show', $draw);
         $this->get($public)->assertOk()->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
         $this->postJson(route('draw.toggle.publish.schedule', $draw))->assertOk();
-        $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court');
+        $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court')
+            ->assertSee('2026-09-20 09:00:00');
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
         $this->assertSame(4, $draw->drawFixtures()->count());
