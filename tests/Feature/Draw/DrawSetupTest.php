@@ -30,7 +30,10 @@ class DrawSetupTest extends TestCase
         $slots = [];
         foreach (['aa', 'ab', 'ba', 'bb'] as $path) {
             $player = Registration::factory()->create();
-            $player->categoryEvents()->attach($draw->category_event_id, ['status' => 'registered']);
+            $player->categoryEvents()->attach($draw->category_event_id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
             $slots[$path] = ['type' => 'player', 'id' => $player->id];
         }
         return $slots;

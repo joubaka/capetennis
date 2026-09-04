@@ -55,6 +55,18 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->assertStringNotContainsString('<a ', $otherHtml);
     }
 
+    public function test_event_overview_renders_the_operational_workspace_hierarchy(): void
+    {
+        [, $event] = $this->eventAdmin();
+
+        $this->get(route('admin.events.overview', $event))
+            ->assertOk()
+            ->assertSee('event-overview-page', false)
+            ->assertSee('event-operations-title', false)
+            ->assertSee('event-kpi-grid', false)
+            ->assertSee('Registration, payment and draw readiness at a glance');
+    }
+
     public function test_legacy_draw_index_redirects_only_for_an_authorized_event(): void
     {
         [, $event] = $this->eventAdmin();

@@ -26,6 +26,7 @@ final class FlexibleMonradService
                 'withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded',
                 'refund_requested', 'refunded', 'cancelled',
             ])
+            ->where('category_event_registrations.payment_status_id', 1)
             ->whereNull('category_event_registrations.withdrawn_at')
             ->whereNull('category_event_registrations.deleted_at'));
     }

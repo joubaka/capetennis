@@ -25,7 +25,10 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $slots = [];
         foreach (['aa', 'ab', 'ba', 'bb'] as $path) {
             $registration = Registration::factory()->create();
-            $registration->categoryEvents()->attach($category->id, ['status' => 'registered']);
+            $registration->categoryEvents()->attach($category->id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
             $slots[$path] = ['type' => 'player', 'id' => $registration->id];
         }
         app(FlexibleMonradService::class)->save($draw, ['size' => 4, 'slots' => $slots], 0);

@@ -22,7 +22,10 @@ class FlexibleMonradTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $players = Registration::factory()->count(4)->create();
-        foreach ($players as $player) $player->categoryEvents()->attach($category->id, ['status' => 'registered']);
+        foreach ($players as $player) $player->categoryEvents()->attach($category->id, [
+            'status' => 'registered',
+            'payment_status_id' => 1,
+        ]);
         $slots = [];
         foreach (['aa', 'ab', 'ba', 'bb'] as $i => $path) $slots[$path] = ['type' => 'player', 'id' => $players[$i]->id];
         $this->actingAs($admin);
@@ -111,6 +114,26 @@ class FlexibleMonradTest extends TestCase
         $this->assertDatabaseCount('flexible_monrad_draws', 0);
     }
 
+    public function test_unpaid_duplicate_registration_for_the_same_player_is_excluded(): void
+    {
+        [$draw, , $players] = $this->setupDraw();
+        $paid = $players->first();
+        $unpaidDuplicate = Registration::factory()->create();
+        $unpaidDuplicate->players()->sync($paid->players()->pluck('players.id'));
+        $unpaidDuplicate->categoryEvents()->attach($draw->category_event_id, [
+            'status' => 'active',
+            'payment_status_id' => 0,
+        ]);
+
+        $state = app(FlexibleMonradService::class)->state($draw);
+
+        $this->assertCount(4, $state['players']);
+        $this->assertTrue($state['players']->contains('id', $paid->id));
+        $this->assertFalse($state['players']->contains('id', $unpaidDuplicate->id));
+        $this->assertFalse(app(FlexibleMonradService::class)->eligible($draw)
+            ->where('registrations.id', $unpaidDuplicate->id)->exists());
+    }
+
     public function test_unassigned_slots_are_not_byes_and_other_event_admin_cannot_edit(): void
     {
         [$draw, $draft] = $this->setupDraw();
@@ -173,7 +196,10 @@ class FlexibleMonradTest extends TestCase
     {
         [$draw, , $players] = $this->setupDraw();
         foreach (Registration::factory()->count(19)->create() as $player) {
-            $player->categoryEvents()->attach($draw->category_event_id, ['status' => 'registered']);
+            $player->categoryEvents()->attach($draw->category_event_id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
             $players->push($player);
         }
         $draft = \Tests\Unit\FlexibleMonradCompilerTest::mixedDraft();
@@ -323,7 +349,10 @@ class FlexibleMonradTest extends TestCase
         $service = app(FlexibleMonradService::class);
         $service->save($draw, $draft, 0); $record = $service->generate($draw, 1);
         $otherCategory = CategoryEvent::factory()->create(['event_id' => $draw->event_id]);
-        $players[0]->categoryEvents()->attach($otherCategory->id, ['status' => 'withdrawn']);
+        $players[0]->categoryEvents()->attach($otherCategory->id, [
+            'status' => 'withdrawn',
+            'payment_status_id' => 1,
+        ]);
         $this->assertSame(2, $service->reconcileWithdrawals($draw, 2)->revision);
         $a = $record->fixture_map['main_a']; $b = $record->fixture_map['main_b'];
         foreach ([$a, $b] as $id) DB::table('schedules')->insert([
@@ -371,7 +400,10 @@ class FlexibleMonradTest extends TestCase
     {
         [$draw, , $players] = $this->setupDraw();
         foreach (Registration::factory()->count(18)->create() as $player) {
-            $player->categoryEvents()->attach($draw->category_event_id, ['status' => 'registered']);
+            $player->categoryEvents()->attach($draw->category_event_id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
             $players->push($player);
         }
         $draft = \Tests\Unit\FlexibleMonradCompilerTest::mixedDraft();
