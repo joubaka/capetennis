@@ -138,7 +138,7 @@ class Event extends Model
       'event_venues',
       'event_id',
       'venue_id'
-    );
+    )->withPivot('num_courts');
   }
 
   public function files()

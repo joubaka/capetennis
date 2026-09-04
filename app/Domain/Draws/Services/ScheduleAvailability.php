@@ -14,7 +14,7 @@ final class ScheduleAvailability
     private array $related = [];
 
     public static function load(array $venues, array $registrations, array $excludeFixtures = [], ?Draw $draw = null,
-        int $participantRest = 0): self
+        ?int $participantRest = null): self
     {
         $calendar = new self();
         $registrations = array_values(array_unique(array_filter($registrations)));
@@ -59,8 +59,11 @@ final class ScheduleAvailability
             $participants = $sameDraw ? ($monrad ? [] : $resolved) : ($possible[$slot->fixture_id] ?? $resolved);
             $occupied = $slot->occupiedMinutes();
             $matchMinutes = (int) ($slot->duration_minutes ?: 75);
+            $participantMinutes = $participantRest === null
+                ? $occupied
+                : $matchMinutes + max(0, $participantRest);
             $calendar->reserveWithRest((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
-                $occupied, $matchMinutes + max(0, $participantRest), $participants);
+                $occupied, $participantMinutes, $participants);
         }
         return $calendar;
     }

@@ -5,7 +5,9 @@ namespace Tests\Feature\Draw;
 use App\Models\{Draw, Event, Fixture, Player, Registration, User, Venue};
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -132,10 +134,19 @@ class EventVenueScheduleTest extends TestCase
         $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        foreach (range(1, 8) as $label) {
+            DB::table('event_venue_courts')->insert([
+                'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => (string) $label,
+                'ball_type' => null, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
 
         $response = $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.assignments', $event), [
             'venues' => [['id' => $venue->id, 'courts' => 8]],
-            'assignments' => $draws->map(fn ($draw) => ['draw_id' => $draw->id, 'venue_ids' => [$venue->id]])->all(),
+            'assignments' => $draws->map(fn ($draw) => [
+                'draw_id' => $draw->id, 'venue_ids' => [$venue->id],
+                'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => array_map('strval', range(1, 8))]],
+            ])->all(),
         ]);
 
         $response->assertOk();
@@ -144,6 +155,8 @@ class EventVenueScheduleTest extends TestCase
                 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 8,
             ]);
         }
+        Schema::table('events', fn (Blueprint $table) => $table->string('venues')->nullable());
+        DB::table('events')->where('id', $event->id)->update(['venues' => 'Legacy venue description']);
         $this->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()->assertSee('Schedule every assigned age group')->assertSee('Shared Venue');
     }
@@ -160,6 +173,94 @@ class EventVenueScheduleTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_draws_can_be_limited_to_named_ball_type_courts(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Ball Court Venue');
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
+        foreach ([['Orange 1', 'orange'], ['Orange 2', 'orange'], ['Green 1', 'green'], ['Yellow 1', 'yellow']] as [$label, $type]) {
+            DB::table('event_venue_courts')->insert([
+                'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => $label,
+                'ball_type' => $type, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        foreach ($draws as $draw) {
+            $draw->venues()->attach($venue->id, ['num_courts' => 4]);
+            Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+        }
+        foreach ([[$draws[0]->id, ['Orange 1', 'Orange 2']], [$draws[1]->id, ['Green 1', 'Yellow 1']]] as [$drawId, $labels]) {
+            foreach ($labels as $label) {
+                DB::table('draw_venue_court_allocations')->insert([
+                    'draw_id' => $drawId, 'venue_id' => $venue->id, 'court_label' => $label,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        }
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions());
+        $courtsByDraw = collect($preview['matches'])->groupBy('draw_id')->map->pluck('court');
+
+        $this->assertContains($courtsByDraw[$draws[0]->id]->first(), ['Orange 1', 'Orange 2']);
+        $this->assertContains($courtsByDraw[$draws[1]->id]->first(), ['Green 1', 'Yellow 1']);
+    }
+
+    public function test_an_age_group_can_start_later_without_delaying_other_draws(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Stacked Venue');
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
+        foreach ($draws as $draw) {
+            $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+            Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+        }
+        $options = $this->schedulingOptions() + [
+            'draw_ids' => $draws->pluck('id')->all(),
+            'draw_starts' => [['draw_id' => $draws[1]->id, 'start' => '2026-09-10 11:00:00']],
+        ];
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $matches = collect($preview['matches'])->keyBy('draw_id');
+
+        $this->assertSame('2026-09-10 08:00:00', $matches[$draws[0]->id]['scheduled_at']);
+        $this->assertSame('2026-09-10 11:00:00', $matches[$draws[1]->id]['scheduled_at']);
+    }
+
+    public function test_event_admin_can_add_a_venue_and_named_ball_type_courts_from_the_schedule_page(): void
+    {
+        $event = Event::factory()->create();
+        $venue = tap(new Venue(), fn (Venue $model) => $model->forceFill(['name' => 'Junior Courts'])->save());
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.venues', $event), [
+            'venue_id' => $venue->id, 'courts' => 3, 'ball_type' => 'orange',
+        ])->assertOk();
+        $this->assertDatabaseHas('event_venues', [
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 3,
+        ]);
+        $this->assertSame(3, DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venue->id)->where('ball_type', 'orange')->count());
+
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts', $event), [
+            'venue_id' => $venue->id, 'label' => 'Green show court', 'ball_type' => 'green',
+        ])->assertOk();
+        $this->assertDatabaseHas('event_venue_courts', [
+            'event_id' => $event->id, 'venue_id' => $venue->id,
+            'label' => 'Green show court', 'ball_type' => 'green', 'active' => 1,
+        ]);
+        $this->assertDatabaseHas('event_venues', [
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 4,
+        ]);
+    }
+
     private function schedulingOptions(): array
     {
         return [
@@ -171,7 +272,8 @@ class EventVenueScheduleTest extends TestCase
     private function venue(Event $event, string $name): Venue
     {
         $venue = new Venue();
-        $venue->forceFill(['name' => $name, 'event_id' => $event->id])->save();
+        $venue->forceFill(['name' => $name])->save();
+        $event->venues()->attach($venue->id, ['num_courts' => 1]);
         return $venue;
     }
 }
