@@ -1,9 +1,9 @@
 @php
   $pageConfigs = ['myLayout' => 'vertical'];
 @endphp
-@extends('layouts/contentNavbarLayout')
+@extends('layouts.backend')
 
-@section('title', 'Round Robin — ' . ($draw->name ?? 'Draw'))
+@section('title', 'Draw workspace — ' . $draw->drawName)
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('assets/css/draw-roundrobin.css') }}?v={{ filemtime(public_path('assets/css/draw-roundrobin.css')) }}">
@@ -22,99 +22,7 @@
 <div id="round-robin-app" 
    data-draw-id="{{ $draw->id }}">
 
-{{-- ============================
-     DRAW NAVIGATOR / SELECTOR
-   ============================ --}}
-<div class="card mb-3 border-primary rr-draw-header">
-<div class="card-body py-2">
-  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
-        
-    {{-- Current Draw Info --}}
-    <div class="text-truncate">
-      <h5 class="mb-0 fs-6 fs-md-5">
-        <i class="ti ti-tournament me-1 text-primary"></i>
-        <strong>{{ $draw->drawName ?? 'Unnamed Draw' }}</strong>
-        {{-- Status badges --}}
-        @if($draw->locked)
-          <span class="badge bg-danger ms-1" id="badge-locked" title="Draw is locked">
-            <i class="ti ti-lock me-1"></i>Locked
-          </span>
-        @else
-          <span class="badge bg-success ms-1 d-none" id="badge-locked"></span>
-        @endif
-        @if($draw->published)
-          <span class="badge bg-primary ms-1" id="badge-published" title="Draw is published">
-            <i class="ti ti-eye me-1"></i>Published
-          </span>
-        @else
-          <span class="badge bg-secondary ms-1 d-none" id="badge-published"></span>
-        @endif
-        @if(!empty($draw->engine_mode) && $draw->engine_mode !== 'legacy')
-        <span class="badge bg-label-secondary ms-1" id="badge-engine" title="Engine mode">
-          {{ strtoupper($draw->engine_mode) }}
-        </span>
-        @endif
-      </h5>
-      <small class="text-muted d-inline-block text-truncate" style="max-width: 100%;">
-        {{ $draw->categoryEvent?->category?->name ?? 'Open categories' }}
-        @ {{ $draw->event->name ?? 'Unknown Event' }}
-        <span class="badge bg-label-info ms-1 d-none d-sm-inline">Draw ID: {{ $draw->id }}</span>
-      </small>
-    </div>
-
-    {{-- Draw Switcher Dropdown --}}
-    <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-wrap">
-      <button type="button" class="btn btn-outline-primary btn-sm" id="rr-open-print"><i class="ti ti-printer me-1"></i>Print</button>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener">Public view</a>
-      @can('publish', $draw)
-      <div class="dropdown"><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Publication</button><div class="dropdown-menu dropdown-menu-end p-2">
-        <button type="button" class="dropdown-item" id="rr-publish-draw" data-url="{{ route('draw.toggle.publish', $draw->id) }}">{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button>
-        <button type="button" class="dropdown-item" id="rr-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw->id) }}">{{ $draw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}</button>
-      </div></div>
-      @endcan
-      @can('lockToggle', $draw)
-      <button type="button" class="btn btn-sm {{ $draw->locked ? 'btn-danger' : 'btn-outline-secondary' }}" id="btn-toggle-lock"><i class="ti ti-lock me-1"></i><span id="lock-label">{{ $draw->locked ? 'Unlock' : 'Lock' }}</span></button>
-      @endcan
-        @php
-          $eventDraws = $draw->event->draws ?? collect();
-        @endphp
-          
-        @if($eventDraws->count() > 1)
-          <div class="dropdown">
-            <button class="btn btn-outline-primary btn-sm dropdown-toggle" 
-                    type="button" 
-                    data-bs-toggle="dropdown">
-              <i class="ti ti-switch-horizontal me-1"></i>
-              <span class="d-none d-sm-inline">Switch Draw ({{ $eventDraws->count() }})</span>
-              <span class="d-sm-none">Switch</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><h6 class="dropdown-header">Event Draws</h6></li>
-              @foreach($eventDraws as $eventDraw)
-                <li>
-                  <a class="dropdown-item {{ $eventDraw->id == $draw->id ? 'active' : '' }}" 
-                     href="{{ route('backend.draw.roundrobin.show', $eventDraw->id) }}">
-                    @if($eventDraw->id == $draw->id)
-                      <i class="ti ti-check me-1"></i>
-                    @endif
-                    {{ $eventDraw->drawName ?? 'Draw #' . $eventDraw->id }}
-                    <small class="text-muted ms-2">({{ $eventDraw->groups->count() ?? 0 }} groups)</small>
-                  </a>
-                </li>
-              @endforeach
-            </ul>
-          </div>
-        @endif
-
-        <a href="{{ route('headOffice.show', $draw->event_id) }}" 
-           class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i><span class="d-none d-sm-inline">Back to Event</span>
-        </a>
-      </div>
-
-    </div>
-  </div>
-</div>
+@include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
 
 <div class="rr-readiness">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><strong id="rr-next-step">{{ $draw->drawFixtures->isEmpty() ? 'Start with your players and groups' : 'Your draw workspace' }}</strong><span class="small text-muted" id="rr-fixture-summary">{{ $draw->drawFixtures->count() }} fixtures · {{ $readiness['scored_count'] ?? 0 }} scored</span></div>
@@ -1209,4 +1117,3 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
 </script>
 
 @endsection
-

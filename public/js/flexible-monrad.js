@@ -6,30 +6,12 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const bracketLayout = window.TennisBracketLayout;
   const bracketDimensions = bracketLayout.dimensions;
-  let bracketDrawing = null, bracketFrame = null;
-  function updateBracketStroke() {
-    if (!bracketDrawing) return;
-    const { svg, path, positions, lines } = bracketDrawing;
-    const bounds = svg.getBoundingClientRect();
-    svg.style.setProperty('--fm-bracket-stroke', bracketLayout.strokeWidth(window.devicePixelRatio) + 'px');
-    path.setAttribute('d', bracketLayout.linePath(positions, lines, {
-      ratio: window.devicePixelRatio, x: bounds.left, y: bounds.top
-    }));
-  }
-  function queueBracketAlignment() {
-    if (bracketFrame !== null) return;
-    bracketFrame = requestAnimationFrame(() => {
-      bracketFrame = null;
-      updateBracketStroke();
-    });
-  }
-  window.addEventListener('resize', queueBracketAlignment);
-  window.addEventListener('scroll', queueBracketAlignment, { capture: true, passive: true });
   let state = config.state,
     draft = clone(state.draft),
     history = [],
     selected = null,
-    selectedPlayer = null;
+    selectedPlayer = null,
+    draggedPlayer = null;
   let dirty = false,
     busy = false,
     scoreKey = null,
@@ -109,11 +91,46 @@
       }
       descendants(path).forEach(p => delete draft.slots[p]);
       draft.slots[path] = { type: 'player', id: Number(id) };
+      selectedPlayer = null;
     });
     if (success) {
       $('fm-slot-dialog').close();
       selectedPlayer = null;
     }
+  }
+  function clearDrag() {
+    draggedPlayer = null;
+    $('fm-sidebar').classList.remove('drop-target');
+    document.querySelectorAll('.fm-slot.drop-target').forEach(slot => slot.classList.remove('drop-target'));
+  }
+  function draggablePlayer(button, id, enabled) {
+    button.draggable = enabled;
+    button.addEventListener('dragstart', event => {
+      if (!editable() || !button.draggable) {
+        event.preventDefault();
+        return;
+      }
+      draggedPlayer = Number(id);
+      event.dataTransfer.setData('text/plain', String(id));
+      event.dataTransfer.effectAllowed = 'move';
+    });
+    button.addEventListener('dragend', clearDrag);
+  }
+  function allowReturnToList(event) {
+    if (!editable() || draggedPlayer === null || !assignedPath(draggedPlayer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    $('fm-sidebar').classList.add('drop-target');
+  }
+  function returnToList(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const path = draggedPlayer === null ? null : assignedPath(draggedPlayer);
+    clearDrag();
+    if (path && mutate(() => {
+      delete draft.slots[path];
+      selectedPlayer = null;
+    })) message('Player returned to unplaced. Save draft to keep this change.');
   }
   function pickerOptions() {
     const query = $('fm-pick-search').value.toLowerCase(),
@@ -152,19 +169,18 @@
     state.players.forEach(player => {
       const path = assignedPath(player.id);
       if (path) assigned++;
-      if (path || !player.name.toLowerCase().includes(query)) return;
+      if (!player.name.toLowerCase().includes(query)) return;
       const button = el(
         'button',
-        `fm-player${selectedPlayer === player.id ? ' selected' : ''}`
+        `fm-player${path ? ' assigned' : ''}${selectedPlayer === player.id ? ' selected' : ''}`
       );
       button.type = 'button';
-      button.append(el('span', '', name(player.id)), el('small', '', 'Unplaced'));
-      button.draggable = editable() && player.eligible !== false;
+      button.append(el('span', '', name(player.id)), el('small', '', path ? 'Placed' : 'Unplaced'));
+      button.title = path ? `${name(player.id)} · Placed in ${roundName(path.length - 1)}` : name(player.id);
+      draggablePlayer(button, player.id, editable() && player.eligible !== false);
+      button.addEventListener('dragover', allowReturnToList);
+      button.addEventListener('drop', returnToList);
       button.disabled = !editable() || player.eligible === false;
-      button.addEventListener('dragstart', event => {
-        event.dataTransfer.setData('text/plain', String(player.id));
-        event.dataTransfer.effectAllowed = 'move';
-      });
       button.addEventListener('click', () => {
         selectedPlayer = player.id;
         message(`${player.name} selected. Click their starting position.`);
@@ -220,14 +236,16 @@
           button.title = label;
           button.dataset.slot = key;
           button.disabled = !editable() || !allowedStart(key);
+          if (source?.type === 'player') draggablePlayer(button, source.id, editable() && allowedStart(key));
           button.setAttribute('aria-label', `${roundName(level)} ${i + 1}, ${slot === 0 ? 'top' : 'bottom'}: ${label}`);
           button.addEventListener('click', () => {
             if (selectedPlayer && source?.type !== 'player') place(selectedPlayer, key);
             else openSlot(key);
           });
           button.addEventListener('dragover', event => {
-            if (editable() && allowedStart(key)) {
+            if (editable() && allowedStart(key) && draggedPlayer !== null) {
               event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
               button.classList.add('drop-target');
             }
           });
@@ -235,8 +253,9 @@
           button.addEventListener('drop', event => {
             event.preventDefault();
             button.classList.remove('drop-target');
-            const id = Number(event.dataTransfer.getData('text/plain'));
-            if (state.players.some(p => p.id === id)) place(id, key);
+            const id = draggedPlayer;
+            clearDrag();
+            if (id !== null && state.players.some(p => Number(p.id) === id)) place(id, key);
           });
           card.append(button);
         });
@@ -264,15 +283,17 @@
   function connectors(board, positions, lines, width, height) {
     const ns = 'http://www.w3.org/2000/svg',
       svg = document.createElementNS(ns, 'svg');
-    svg.classList.add('fm-links');
+    svg.classList.add('fm-links', 'ct-bracket-svg');
     svg.setAttribute('width', width);
     svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(ns, 'path');
+    path.setAttribute('data-ct-edge', '');
+    path.setAttribute('d', bracketLayout.linePath(positions, lines, { raw: true }));
     svg.append(path);
     board.prepend(svg);
-    bracketDrawing = { svg, path, positions: [...positions], lines };
-    updateBracketStroke();
+    window.TennisBracket.refresh();
   }
   function sourceLabel(source) {
     if (source.type === 'player') return 'Direct entry';
@@ -348,6 +369,7 @@
     });
   }
   function render() {
+    $('fm-app').dataset.dirty = String(dirty || busy);
     // PHP encodes an empty associative array as []; always edit a keyed object.
     draft.slots = Object.assign({}, draft.slots);
     $('fm-board').replaceChildren();
@@ -401,6 +423,49 @@
       draftBoard();
     }
     renderPrint();
+    renderTimetable();
+    renderRoster();
+    document.querySelectorAll('[data-share-draw]').forEach(button => {
+      button.disabled = !state.published;
+      button.title = state.published ? 'Share public draw link' : 'Publish the draw before sharing';
+    });
+    document.querySelectorAll('[data-workspace-public]').forEach(link => { link.hidden = !state.published; });
+    document.querySelectorAll('[data-workspace-status]').forEach(label => { label.textContent = state.locked ? 'Locked' : state.published ? 'Published' : dirty ? 'Unsaved draft' : 'Draft'; });
+    // Fit the complete diagram to landscape paper; vertical pagination stays native.
+    $('fm-board').style.setProperty('--ct-print-scale', Math.min(1, 980 / (parseFloat($('fm-board').style.width) || $('fm-board').offsetWidth || 980)));
+  }
+  function renderTimetable() {
+    const root = $('fm-timetable');
+    if (!root) return;
+    root.replaceChildren();
+    const matches = Object.values(state.matches || {});
+    if (!matches.length) { root.append(el('p', '', 'Generate fixtures before scheduling matches.')); return; }
+    const table = el('table');
+    const head = el('thead');
+    const titles = el('tr');
+    ['Match', 'Players / feeder paths', 'Time', 'Venue', 'Court'].forEach(title => titles.append(el('th', '', title)));
+    head.append(titles); table.append(head);
+    const body = el('tbody');
+    matches.sort((a, b) => String(a.schedule?.time || '9999').localeCompare(String(b.schedule?.time || '9999')) || a.number - b.number).forEach(match => {
+      const row = el('tr');
+      const players = match.players.map((id, i) => id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i])).join(' vs ');
+      [String(match.number), players, match.schedule?.time || 'Not scheduled', match.schedule?.venue || '—', match.schedule?.court || '—'].forEach(value => row.append(el('td', '', String(value))));
+      body.append(row);
+    });
+    table.append(body); root.append(table);
+  }
+  function renderRoster() {
+    const roster = $('fm-generated-roster');
+    if (!roster) return;
+    roster.hidden = !state.generated || location.hash !== '#groups';
+    roster.replaceChildren();
+    if (!state.generated) return;
+    roster.append(el('h2', '', 'Generated draw roster'));
+    roster.append(el('p', '', 'Starting positions are read-only after generation. Use Edit starting positions below when the draw is unpublished and unlocked.'));
+    const ids = new Set(Object.values(draft.slots).filter(slot => slot.type === 'player').map(slot => Number(slot.id)));
+    const list = el('ul');
+    state.players.filter(player => ids.has(Number(player.id))).forEach(player => list.append(el('li', '', player.name + (player.withdrawn ? ' (withdrawn)' : ''))));
+    roster.append(list);
   }
   function renderPrint() {
     const root = $('fm-print-content');
@@ -454,6 +519,14 @@
       table.append(body);
       section.append(table);
       root.append(section);
+    });
+    Object.entries(config.notes || {}).forEach(([title, note]) => {
+      if (!note) return;
+      const section = el('section', 'fm-print-section');
+      section.append(el('h2', '', title.replace(/_/g, ' ') + ' rules & notes'));
+      const text = el('p', '', note);
+      text.style.whiteSpace = 'pre-wrap';
+      section.append(text); root.append(section);
     });
   }
   async function request(url, body, method = 'POST') {
@@ -606,6 +679,11 @@
       render();
     }
   }
+  $('fm-sidebar').addEventListener('dragover', allowReturnToList);
+  $('fm-sidebar').addEventListener('dragleave', event => {
+    if (!$('fm-sidebar').contains(event.relatedTarget)) $('fm-sidebar').classList.remove('drop-target');
+  });
+  $('fm-sidebar').addEventListener('drop', returnToList);
   $('fm-search').addEventListener('input', renderPlayers);
   $('fm-pick-search').addEventListener('input', pickerOptions);
   $('fm-place').addEventListener('click', () => place(Number($('fm-pick').value), selected));
@@ -732,7 +810,9 @@
   );
   $('fm-score-save').addEventListener('click', () => submitScore(false));
   $('fm-score-delete').addEventListener('click', () => submitScore(true));
-  $('fm-print').addEventListener('click', () => window.print());
+  $('fm-print')?.addEventListener('click', () => window.print());
+  window.addEventListener('hashchange', renderRoster);
+  window.addEventListener('draw-workspace-notes-saved', event => { config.notes = event.detail; renderPrint(); });
   window.addEventListener('beforeunload', event => {
     if (dirty && !config.demo) {
       event.preventDefault();

@@ -51,7 +51,7 @@ class RoundRobinController extends Controller
       return redirect()->route('draw.setup.show', $draw);
     }
     if ($draw->usesFlexibleMonrad()) {
-      return redirect()->route('flexible-monrad.show', $draw);
+      return app(FlexibleMonradController::class)->workspace($draw);
     }
 
     Log::info("🎾 [RoundRobinController@show] Entering method", [

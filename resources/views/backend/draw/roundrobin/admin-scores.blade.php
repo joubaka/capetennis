@@ -1,4 +1,4 @@
-@extends('layouts/contentNavbarLayout')
+@extends('layouts.backend')
 
 @section('title', 'RR Score Entry — ' . ($draw->name ?? 'Draw'))
 

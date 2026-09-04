@@ -186,11 +186,13 @@ $navbarDetached = ($navbarDetached ?? '');
   <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
 
     <!-- Style Switcher -->
+    @unless($backendWorkspace ?? false)
     <div class="navbar-nav align-items-center">
       <a class="nav-link style-switcher-toggle hide-arrow" href="javascript:void(0);">
         <i class="ti ti-sm"></i>
       </a>
     </div>
+    @endunless
 
     <ul class="navbar-nav flex-row align-items-center ms-auto">
 

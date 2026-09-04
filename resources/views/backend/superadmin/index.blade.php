@@ -2,7 +2,7 @@
   $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Super Admin Dashboard')
 
@@ -56,16 +56,8 @@
 {{-- ═══════════════ PAGE HEADER ═══════════════ --}}
 @php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
 <div class="sa-shell">
-<div class="card sa-hero mb-3">
-  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
-    <div class="d-flex align-items-center gap-3">
-      <span class="avatar avatar-md bg-primary rounded"><i class="ti ti-shield-chevron fs-3 text-white"></i></span>
-      <div>
-        <h4 class="sa-title mb-1">Super Admin Control Centre</h4>
-        <div class="text-muted">Operations, finance, access and platform health in one place</div>
-      </div>
-    </div>
-    <div class="d-flex align-items-center gap-2">
+<x-backend.page-header title="Super Admin Control Centre" eyebrow="Administration" subtitle="Operations, finance, access and platform health." icon="ti-shield-check">
+  <x-slot:actions>
       @if($totalPending > 0)
         <button class="btn btn-danger btn-sm" type="button" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
           <i class="ti ti-alert-circle me-1"></i>{{ $totalPending }} refund{{ $totalPending === 1 ? '' : 's' }} need attention
@@ -74,9 +66,8 @@
         <span class="badge bg-label-success px-3 py-2"><i class="ti ti-circle-check me-1"></i>No urgent refunds</span>
       @endif
       <span class="badge bg-label-primary px-3 py-2"><i class="ti ti-user me-1"></i>{{ auth()->user()->name }}</span>
-    </div>
-  </div>
-</div>
+  </x-slot:actions>
+</x-backend.page-header>
 
 {{-- ═══════════════ STAT STRIP ═══════════════ --}}
 <div class="sa-kpi-grid mb-3">

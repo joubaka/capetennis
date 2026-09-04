@@ -1,4 +1,5 @@
-@extends('layouts/layoutMaster')
+@php($pageConfigs = ['myLayout' => 'vertical'])
+@extends('layouts.backend')
 
 @section('title', 'Individual Schedule – ' . $draw->drawName)
 
@@ -35,15 +36,8 @@
 <div class="container-xxl flex-grow-1 container-p-y">
 
   {{-- Header --}}
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <h4 class="mb-0"><i class="ti ti-calendar-event me-2 text-primary"></i>Individual Schedule — {{ $draw->drawName }}</h4>
-      <small class="text-muted">{{ optional(optional($draw)->event)->name }}</small>
-    </div>
-    <a href="{{ route('event.tab.draws', $event->id) }}" class="btn btn-label-secondary btn-sm">
-      <i class="ti ti-arrow-left me-1"></i> Back
-    </a>
-  </div>
+  @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'schedule'])
+  @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'schedule'])
 
   {{-- Stats bar --}}
   <div class="row g-3 mb-4" id="stats-bar">
@@ -146,7 +140,7 @@
             <div class="col-md-3">
               <label class="form-label fw-semibold">Schedule Mode</label>
               <select id="schedule_mode" class="form-select">
-                <option value="stage_only">Stage Only (RR → MAIN → PLATE → CONS)</option>
+                <option value="stage_only">{{ $draw->usesFlexibleMonrad() ? 'Draw dependency order' : 'Stage Only (RR → MAIN → PLATE → CONS)' }}</option>
                 <option value="round_only">Round Only (R1 → R2 → R3)</option>
                 <option value="stage_round">Stage + Round Filters</option>
               </select>
@@ -155,10 +149,14 @@
             <div class="col-md-3">
               <label class="form-label fw-semibold">Filter by Stage <small class="text-muted">(optional)</small></label>
               <select id="filter_stage" class="form-select" multiple>
+                @if($draw->usesFlexibleMonrad())
+                  <option value="FM">Monrad / knockout</option>
+                @else
                 <option value="RR">RR</option>
                 <option value="MAIN">MAIN</option>
                 <option value="PLATE">PLATE</option>
                 <option value="CONS">CONS</option>
+                @endif
               </select>
             </div>
 

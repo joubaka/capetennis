@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Dashboard')
 
@@ -58,6 +58,7 @@
 @endsection
 
 @section('content')
+<x-backend.page-header title="My dashboard" eyebrow="Cape Tennis" subtitle="Your profile, players and events." icon="ti-layout-dashboard" />
 
 <input type="hidden" value="{{ $user->id }}" id="user">
 

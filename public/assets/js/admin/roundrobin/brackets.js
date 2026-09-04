@@ -26,7 +26,7 @@
 
   // ─── Load bracket via jQuery .load() ─────────────────────────────
   function loadMainBracket(force) {
-    $('#main-bracket-wrapper')
+    $('#bracket-zoom-inner')
       .html(SPINNER_SMALL)
       .load(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/main-bracket?force=' + (force ? 1 : 0));
   }
@@ -50,7 +50,7 @@
     if (!confirmation.isConfirmed) return;
     var $btn    = $('#btn-generate-main-bracket');
     var restore = AdminLoading.button($btn, 'Generating…');
-    $('#main-bracket-wrapper').html(SPINNER_LARGE);
+    $('#bracket-zoom-inner').html(SPINNER_LARGE);
 
     AdminApi.post(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/generate-main-bracket')
       .then(function (res) {
@@ -60,12 +60,12 @@
           if (root.RRWorkspace) RRWorkspace.refreshHub().catch(error => AdminToast.error(error.message));
         } else {
           AdminToast.error(res.message || 'Generation failed');
-          $('#main-bracket-wrapper').html('<div class="alert alert-danger">Generation failed.</div>');
+          $('#bracket-zoom-inner').html('<div class="alert alert-danger">Generation failed.</div>');
         }
       })
       .catch(function () {
         AdminToast.error('Error generating bracket');
-        $('#main-bracket-wrapper').html('<div class="alert alert-danger">Error generating bracket.</div>');
+        $('#bracket-zoom-inner').html('<div class="alert alert-danger">Error generating bracket.</div>');
       })
       .then(function () { restore(); });
   }
@@ -77,7 +77,8 @@
   function _applyZoom() {
     var $inner = $('#bracket-zoom-inner');
     if (!$inner.length) return;
-    $inner.css({ transform: 'scale(' + _zoom + ')', 'transform-origin': '0 0' });
+    // CSS zoom participates in layout, avoiding a second vertical scrollbar.
+    $inner.css({ zoom: _zoom, transform: 'none' });
     $('#bracket-zoom-label').text(Math.round(_zoom * 100) + '%');
   }
 

@@ -56,6 +56,26 @@ class HeadOfficeController extends Controller
   {
     $event = Event::findOrFail($id);
 
+    // The individual draw overview needs neither team fixtures nor team formats.
+    if ((int) $event->eventType === 6) {
+      $event->load(['draws' => fn ($query) => $query
+        ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id'])
+        ->withCount('drawFixtures')
+        ->orderBy('drawName')]);
+
+      $flexibleFormatIds = \App\Models\DrawFormats::where('name', 'Flexible Monrad')->pluck('id');
+      foreach ($event->draws as $draw) {
+        $draw->setRelation('event', $event);
+        $draw->setAttribute('is_flexible', $draw->flexibleMonrad !== null
+          || $flexibleFormatIds->contains($draw->settings?->draw_format_id));
+      }
+
+      return view('backend.headOffice.individual-event-show', [
+        'event' => $event,
+        'venues' => Venue::select('id', 'name')->orderBy('name')->get(),
+      ]);
+    }
+
     \Log::debug('[EVENT SHOW] Start', [
       'event_id' => $event->id,
       'event_name' => $event->name,
@@ -180,10 +200,7 @@ class HeadOfficeController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    if ($event->eventType == 6) {
-      return view('backend.headOffice.individual-event-show', $data);
-
-    } elseif ($event->eventType == 5) {
+    if ($event->eventType == 5) {
 
       $data['playingDays'] = $this->getDatesBetween(
         $event->start_date,

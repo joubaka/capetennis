@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
@@ -45,19 +45,13 @@
 @csrf
 @method('PATCH')
 
-<div class="card settings-hero mb-4">
-  <div class="card-body d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
-    <div>
-      <div class="text-primary fw-semibold small text-uppercase mb-1">Event management</div>
-      <h3 class="mb-1">Event settings</h3>
-      <p class="text-muted mb-0">Manage {{ $event->name }} from one place.</p>
-    </div>
-    <div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
+<x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Event settings" icon="ti-settings" class="no-print">
+  <x-slot:actions><div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
       <i class="ti ti-circle-check"></i>
       <span>All changes saved</span>
-    </div>
-  </div>
-</div>
+    </div></x-slot:actions>
+</x-backend.page-header>
+<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'settings'])</div>
 
 <div class="row g-4">
 

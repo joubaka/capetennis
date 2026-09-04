@@ -2,7 +2,7 @@
 $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 
@@ -53,6 +53,9 @@ $configData = Helper::appClasses();
 
 
 @section('content')
+@isset($event)
+  @include('backend.event.partials.header', ['eventWorkspaceActive' => 'directors'])
+@endisset
 <div class="row">
 
     <div class="col-12 col-sm-3 col-md-3">
@@ -60,15 +63,13 @@ $configData = Helper::appClasses();
     </div>
 
     <div class="col-12 col-sm-9 col-md-9">
-        <div class="card">
-            <div class="card-header"><h3>Convenors</h3></div>
-            <div class="card-body">
-                @foreach($convenors as $convenor)
-                <p>{{$convenor->user->name}}</p>
-
-                @endforeach
-            </div>
-        </div>
+        <x-backend.panel title="Event directors">
+            @forelse($convenors as $convenor)
+                <p>{{ $convenor->user?->name ?? 'User unavailable' }}</p>
+            @empty
+                <x-backend.empty-state title="No event directors assigned" description="Assigned directors will appear here." icon="ti-users" />
+            @endforelse
+        </x-backend.panel>
 
     </div>
 </div>

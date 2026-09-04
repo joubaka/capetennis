@@ -1,5 +1,6 @@
 <div class="svgdrawdiv svgdraw0">
-<svg width="694" height="250" viewBox="0 0 694 250" preserveAspectRatio="xMinYMin slice" class="svgdraw" xmlns="http://www.w3.org/2000/svg">
+<svg width="694" height="250" viewBox="0 0 694 250" preserveAspectRatio="xMinYMin slice" class="ct-bracket-svg svgdraw" xmlns="http://www.w3.org/2000/svg">
+    @include('draw.partials.bracket-svg-style')
 
 <style>
     .svg_name { font-family: Helvetica; font-weight: bold; font-size: 14px; }

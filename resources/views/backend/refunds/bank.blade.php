@@ -1,21 +1,17 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Bank Refunds')
 
 @section('content')
 <div class="container-xl">
 
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-    <div>
-      <h4 class="mb-1">Refund Operations</h4>
-      <p class="text-muted mb-0">Process pending refunds and keep a clear audit trail. “Processed” records an action in Cape Tennis; use PayFast Status to verify provider settlement.</p>
-    </div>
-    <div class="d-flex gap-2">
+  <x-backend.page-header title="Refund operations" eyebrow="Administration" subtitle="Process pending refunds and keep a clear audit trail. Processed records an action in Cape Tennis; use PayFast Status to verify provider settlement." icon="ti-receipt-refund">
+  <x-slot:meta><div class="d-flex gap-2">
       <span class="badge bg-label-warning">{{ $refunds->total() + $pendingTeamRefunds->count() }} pending</span>
       <span class="badge bg-label-success">{{ $completedRefunds->total() + $completedTeamRefunds->count() }} processed</span>
       <span class="badge bg-label-secondary">{{ $waivedRefunds->total() + $waivedTeamRefunds->count() }} waived</span>
-    </div>
-  </div>
+    </div></x-slot:meta>
+</x-backend.page-header>
 
   @if(session('pf_query_result'))
     <div class="alert alert-info alert-dismissible fade show" role="alert">

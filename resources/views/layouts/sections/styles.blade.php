@@ -6,9 +6,9 @@
 
 {{-- Keep font stylesheets same-origin so font files are not blocked when the
      application is reached through either the www or non-www hostname. --}}
-<link rel="stylesheet" href="{{ mix('assets/vendor/fonts/fontawesome.css') }}" />
-<link rel="stylesheet" href="{{ mix('assets/vendor/fonts/tabler-icons.css') }}" />
-<link rel="stylesheet" href="{{ mix('assets/vendor/fonts/flag-icons.css') }}" />
+<link rel="stylesheet" href="{{ asset(mix('assets/vendor/fonts/fontawesome.css')) }}" />
+<link rel="stylesheet" href="{{ asset(mix('assets/vendor/fonts/tabler-icons.css')) }}" />
+<link rel="stylesheet" href="{{ asset(mix('assets/vendor/fonts/flag-icons.css')) }}" />
 
 {{-- The bundled Vuexy Tabler font predates a number of icon names used by
      newer screens. Keep those names working through stable local aliases. --}}

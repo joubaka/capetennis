@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', $event->name . ' – Finances')
 
@@ -57,13 +57,8 @@
   </div>
 
   {{-- ── PAGE HEADER ──────────────────────────────────────────────────── --}}
-  <div class="card mb-3 no-print">
-    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <h4 class="mb-0">
-        <i class="ti ti-report-money me-2 text-warning"></i>
-        Finances — {{ $event->name }}
-      </h4>
-      <div class="d-flex gap-2 flex-wrap">
+  <x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Event finances" icon="ti-report-money" class="no-print">
+  <x-slot:actions><div class="d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
           <i class="ti ti-users me-1"></i>Event Directors
         </button>
@@ -82,9 +77,9 @@
         <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-arrow-left me-1"></i>Back
         </a>
-      </div>
-    </div>
-  </div>
+      </div></x-slot:actions>
+</x-backend.page-header>
+<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'finances'])</div>
 
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))

@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 @section('title', 'Clothing — ' . $region->name)
 
 @section('vendor-style')

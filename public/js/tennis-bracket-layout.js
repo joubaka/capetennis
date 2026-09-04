@@ -53,8 +53,8 @@
     // Snap in screen coordinates, not CSS coordinates. At fractional zoom the
     // SVG's origin and round spacing can otherwise split a vertical across pixels.
     const scale = 1 / strokeWidth(viewport.ratio);
-    const pixelX = value => (Math.round((value + (viewport.x || 0)) * scale) + 0.5) / scale - (viewport.x || 0);
-    const pixelY = value => (Math.round((value + (viewport.y || 0)) * scale) + 0.5) / scale - (viewport.y || 0);
+    const pixelX = value => viewport.raw ? value : (Math.round((value + (viewport.x || 0)) * scale) + 0.5) / scale - (viewport.x || 0);
+    const pixelY = value => viewport.raw ? value : (Math.round((value + (viewport.y || 0)) * scale) + 0.5) / scale - (viewport.y || 0);
     const paths = [...positions].map(position => {
       const x = pixelX(position.x), right = pixelX(position.x + dimensions.width);
       return `M ${x} ${pixelY(position.top)} H ${right} V ${pixelY(position.bottom)} H ${x}`;

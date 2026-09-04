@@ -57,7 +57,7 @@
 </style>
 
 <div class="col-xl-12">
-  <h3 class="mb-3">Team Event: {{ $event->name }}</h3>
+
 
   <div class="col-xl-12">
     <div class="nav-tabs-shadow mb-4">

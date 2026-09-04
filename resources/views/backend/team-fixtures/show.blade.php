@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('content')
 <div class="container-xxl">

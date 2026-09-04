@@ -4,9 +4,7 @@
     }
 </style>
 <div class="card ">
-    <div class="card-header event-header">
-        <h3 class="text-center"> {{$event->name}} </h3>
-    </div>
+
 
 
     <div class="row mt-4">
@@ -87,10 +85,10 @@
                                 <div class="nav-align-top">
                                     <ul class="nav nav-tabs nav-fill" role="tablist">
                                         <li class="nav-item" role="presentation">
-                                            <button type="button" class="nav-link active btn btn-success text-black" role="tab" data-bs-toggle="tab" data-bs-target="#navs-justified-new" aria-controls="navs-justified-new" aria-selected="true">Confirmed</button>
+                                            <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-justified-new" aria-controls="navs-justified-new" aria-selected="true">Confirmed</button>
                                         </li>
                                         <li class=" nav-item" role="presentation">
-                                            <button type="button" class="nav-link btn btn-danger text-black" role="tab" data-bs-toggle="tab" data-bs-target="#navs-justified-link-preparing" aria-controls="navs-justified-link-preparing" aria-selected="false" tabindex="-1">Withdrawals</button>
+                                            <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#navs-justified-link-preparing" aria-controls="navs-justified-link-preparing" aria-selected="false" tabindex="-1">Withdrawals</button>
                                         </li>
 
                                     </ul>
@@ -337,5 +335,5 @@
 
 
 </div>
-@include('backend.adminPage.admin_show.modals.nominationModal')
+@include('backend.adminPage.admin_show.tabs.modals.nominationModal')
 

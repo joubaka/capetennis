@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{CategoryEvent, Draw, Event, Fixture, FlexibleMonradDraw, Registration, User};
+use App\Models\{Category, CategoryEvent, Draw, Event, Fixture, FlexibleMonradDraw, Player, RankingList, Registration, Series, SeriesRanking, User};
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +32,7 @@ class FlexibleMonradTest extends TestCase
     public function test_draft_revision_isolation_generation_and_publication(): void
     {
         [$draw, $draft] = $this->setupDraw();
-        $this->get(route('flexible-monrad.show', $draw))->assertOk()->assertSee('Full placement');
+        $this->get(route('flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 0])->assertOk()->assertJsonPath('revision', 1);
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 0])->assertConflict();
         $this->get(route('public.flexible-monrad.show', $draw))->assertNotFound();
@@ -43,6 +43,57 @@ class FlexibleMonradTest extends TestCase
         $this->postJson(route('flexible-monrad.publish', $draw), ['revision' => 2, 'published' => true])->assertOk();
         $this->get(route('public.flexible-monrad.show', $draw))->assertOk();
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 3])->assertForbidden();
+    }
+
+    public function test_workspace_shows_the_active_series_ranking_for_the_draw_category(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        app(FlexibleMonradService::class)->save($draw, $draft, 0);
+        $series = Series::factory()->create(['name' => 'CAT Tennis Series', 'year' => 2026]);
+        $category = Category::factory()->create(['name' => 'Boys U14']);
+        $draw->event->update(['series_id' => $series->id]);
+        $draw->categoryEvent->update(['category_id' => $category->id]);
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $first = Player::factory()->create(['name' => 'Alex', 'surname' => 'Topseed']);
+        $second = Player::factory()->create(['name' => 'Blake', 'surname' => 'Second']);
+        $otherCategory = Category::factory()->create(['name' => 'Girls U14']);
+
+        foreach ([
+            [$first, 1, 320, $category->id, $list->id],
+            [$second, 2, 275, $category->id, $list->id],
+            [Player::factory()->create(['name' => 'Other', 'surname' => 'Category']), 1, 500, $otherCategory->id, null],
+        ] as [$player, $position, $points, $categoryId, $rankingListId]) {
+            SeriesRanking::create([
+                'series_id' => $series->id,
+                'ranking_list_id' => $rankingListId,
+                'category_id' => $categoryId,
+                'player_id' => $player->id,
+                'rank_position' => $position,
+                'total_points' => $points,
+                'status' => 'reviewed',
+                'run_id' => 'current-run',
+            ]);
+        }
+
+        SeriesRanking::create([
+            'series_id' => $series->id,
+            'ranking_list_id' => $list->id,
+            'category_id' => $category->id,
+            'player_id' => Player::factory()->create(['name' => 'Old', 'surname' => 'Snapshot'])->id,
+            'rank_position' => 1,
+            'total_points' => 999,
+            'status' => 'archived',
+            'run_id' => 'old-run',
+        ]);
+
+        $this->get(route('backend.draw.roundrobin.show', $draw))
+            ->assertOk()
+            ->assertSee('Boys U14 rankings')
+            ->assertSee('CAT Tennis Series')
+            ->assertSee('Reviewed')
+            ->assertSeeInOrder(['Alex Topseed', 'Blake Second'])
+            ->assertDontSee('Other Category')
+            ->assertDontSee('Old Snapshot');
     }
 
     public function test_foreign_withdrawn_duplicate_and_overlapping_assignments_are_rejected(): void
@@ -363,7 +414,8 @@ class FlexibleMonradTest extends TestCase
         unset($actualSettings['updated_at']);
         $this->assertEquals($settings, $actualSettings);
         $this->assertEquals($graph, $record->fresh()->graph);
-        $this->get(route('draws.manage', $draw))->assertOk()
+        $this->get(route('draws.manage', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('name="name"', false)->assertDontSee('name="draw_type"', false)->assertDontSee('name="num_sets"', false);
         $this->postJson(route('backend.draw.update-settings', $draw), ['name' => 'Bad edit', 'boxes' => 2])->assertConflict();
         $this->postJson(route('draws.update', $draw), ['name' => 'Bad edit', 'draw_type' => 1])->assertConflict();

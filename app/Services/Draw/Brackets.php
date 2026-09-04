@@ -203,7 +203,7 @@ class Brackets
 
   public static function get_bracket_plat($draw)
   {
-    echo '<svg width="1200" height="1900" >
+    echo '<svg class="ct-bracket-svg" width="1200" height="1900" viewBox="0 0 1200 1900" xmlns="http://www.w3.org/2000/svg" >
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -248,7 +248,7 @@ class Brackets
   public static function get_bracket_3_4($draw)
   {
     echo '<div class="mb-3"><h3>Draw - Position 3-4</h3></div>';
-    echo '<svg width="1600" height="100" >
+    echo '<svg class="ct-bracket-svg" width="1600" height="100" viewBox="0 0 1600 100" xmlns="http://www.w3.org/2000/svg" >
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -267,7 +267,7 @@ class Brackets
   public static function get_bracket_gold($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Gold Draw - Position 5-6</h3></div>';
-    echo '<svg width="1600" height="1000">
+    echo '<svg class="ct-bracket-svg" width="1600" height="1000" viewBox="0 0 1600 1000" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -316,7 +316,7 @@ class Brackets
   public static function get_bracket_7_8($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 7-8</h3></div>';
-    echo '<svg width="1600" height="150">
+    echo '<svg class="ct-bracket-svg" width="1600" height="150" viewBox="0 0 1600 150" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -336,7 +336,7 @@ class Brackets
   public static function get_bracket_9_12($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 9-12</h3></div>';
-    echo '<svg width="1600" height="400">
+    echo '<svg class="ct-bracket-svg" width="1600" height="400" viewBox="0 0 1600 400" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -369,7 +369,7 @@ class Brackets
   public static function get_bracket_13_16($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 13-16</h3></div>';
-    echo '<svg width="1600" height="400">
+    echo '<svg class="ct-bracket-svg" width="1600" height="400" viewBox="0 0 1600 400" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -402,7 +402,7 @@ class Brackets
   public static function get_bracket_17_24($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 17-24</h3></div>';
-    echo '<svg width="1600" height="1050">
+    echo '<svg class="ct-bracket-svg" width="1600" height="1050" viewBox="0 0 1600 1050" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -465,7 +465,7 @@ class Brackets
   public static function get_bracket_25_32($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 25-32</h3></div>';
-    echo '<svg width="1600" height="1050">
+    echo '<svg class="ct-bracket-svg" width="1600" height="1050" viewBox="0 0 1600 1050" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -528,7 +528,7 @@ class Brackets
   public static function get_bracket_8_playoff($draw, $bracket)
   {
     echo '<div class="mb-3"><h3>Draw - Position 25-32</h3></div>';
-    echo '<svg width="1600" height="1050">
+    echo '<svg class="ct-bracket-svg" width="1600" height="1050" viewBox="0 0 1600 1050" xmlns="http://www.w3.org/2000/svg">
         <g xmlns="http://www.w3.org/2000/svg">';
 
     $start = 20;
@@ -1857,7 +1857,7 @@ class Brackets
 
   public static function buildBracket(int $playerCount = 32, array $matches = []): string
    {
-      $svg = "<svg width='2400' height='3500'><g xmlns='http://www.w3.org/2000/svg'>";
+      $svg = "<svg class='ct-bracket-svg' width='2400' height='3500' viewBox='0 0 2400 3500' xmlns='http://www.w3.org/2000/svg'><g xmlns='http://www.w3.org/2000/svg'>";
 
       $boxWidth = 200;
       $baseHeight = 40;
@@ -1887,7 +1887,7 @@ class Brackets
               $x1 = $x + 1;
               $x2 = $x + $boxWidth;
 
-              $svg .= "<path d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
+              $svg .= "<path data-ct-edge d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
 
               $label1 = $label2 = '';
               if (isset($matches[$matchNumber - 1])) {
@@ -1942,7 +1942,7 @@ class Brackets
               $x1 = $x + 1;
               $x2 = $x + $boxWidth;
 
-              $svg .= "<path d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
+              $svg .= "<path data-ct-edge d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
               $svg .= "<text x='" . ($x1 + $boxWidth / 2 - 30) . "' y='" . ($y + $boxHeight / 2 + 5) . "' font-family='Arial' font-size='12' fill='gray'>Match #G$goldMatchNumber</text>";
 
               $goldMatchNumber++;
@@ -1987,7 +1987,7 @@ class Brackets
               $x1 = $x + 1;
               $x2 = $x + $boxWidth;
 
-              $svg .= "<path d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
+              $svg .= "<path data-ct-edge d='M$x1 $y H$x2 V" . ($y + $boxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
               $svg .= "<text x='" . ($x1 + $boxWidth / 2 - 30) . "' y='" . ($y + $boxHeight / 2 + 5) . "' font-family='Arial' font-size='12' fill='gray'>Match #S$silverMatchNumber</text>";
 
               $silverMatchNumber++;
@@ -2010,7 +2010,7 @@ class Brackets
           $y = max($silverPositions[$silverRounds]) + $silverBoxHeights[$silverRounds] + ($i * 60);
           $x1 = $finalSilverRoundX + 1;
           $x2 = $x1 + $boxWidth;
-          $svg .= "<path d='M$x1 $y H$x2 V" . ($y + $silverBoxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
+          $svg .= "<path data-ct-edge d='M$x1 $y H$x2 V" . ($y + $silverBoxHeight) . " H$x1' fill='white' stroke='black' stroke-width='1' />";
           $svg .= "<text x='" . ($x1 + $boxWidth / 2 - 30) . "' y='" . ($y + $silverBoxHeight / 2 + 5) . "' font-family='Arial' font-size='12' fill='gray'>Match #S$silverMatchNumber</text>";
 
           $lineStart = $x2;

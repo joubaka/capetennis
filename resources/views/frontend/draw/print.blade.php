@@ -10,6 +10,8 @@ $bracketIdsWithFixtures = $draw->drawFixtures()
 $hasBracket = fn (int $bracketId) => in_array($bracketId, $bracketIdsWithFixtures, true);
 $hasAnyFixtures = !empty($bracketIdsWithFixtures);
 @endphp
+@include('draw.partials.bracket-assets')
+@include('draw.partials.bracket-svg-style')
 
 <style>
   .draw-print-root { padding: 1rem; background: #fff; color: #111; }

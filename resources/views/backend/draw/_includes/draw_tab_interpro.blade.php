@@ -49,7 +49,7 @@
       </a>
 
       <a class="btn btn-sm btn-info"
-         href="{{ route('backend.individual-schedule.page', $draw->id) }}">
+         href="{{ $isTeamEvent ? route('backend.team-schedule.page', $draw->id) : route('backend.draw.roundrobin.show', $draw->id).'#schedule' }}">
         <i class="ti ti-calendar-event me-1"></i>Schedule
       </a>
 
@@ -66,12 +66,16 @@
         <i class="ti ti-map-pin me-1"></i>Venues
       </button>
 
+      @if($draw->usesFlexibleMonrad())
+        <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.draw.roundrobin.show', $draw) }}#matrix">Draw publication</a>
+      @else
       <button type="button"
               class="btn btn-sm toggle-publish {{ $draw->published ? 'btn-success' : 'btn-danger' }}"
               data-url="{{ route('draw.toggle.publish', $draw->id) }}"
               data-status="{{ $draw->published ? 1 : 0 }}">
         <i class="ti ti-{{ $draw->published ? 'eye-off' : 'eye' }} me-1"></i>{{ $draw->published ? 'Unpublish' : 'Publish' }}
       </button>
+      @endif
 
       <button type="button"
               class="btn btn-sm btn-outline-danger btn-delete-draw ms-auto"

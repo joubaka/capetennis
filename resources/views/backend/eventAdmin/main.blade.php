@@ -2,7 +2,7 @@
   $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Main Page')
 
@@ -42,7 +42,7 @@
         <a class="nav-link active ajax-tab" data-url="{{ route('event.tab.draws', $event->id) }}" href="#drawsTab" data-bs-toggle="tab" role="tab">Draws</a>
       </li>
       {{-- <li class="nav-item">
-        <a class="nav-link  ajax-tab" data-url="{{ route('event.tab.entries', $event->id) }}" href="#entriesTab" data-bs-toggle="tab" role="tab">Entries</a>
+        <a class="nav-link ajax-tab" data-url="{{ route('event.tab.entries', $event->id) }}" href="#entriesTab" data-bs-toggle="tab" role="tab">Entries</a>
       </li>
 
       <li class="nav-item">

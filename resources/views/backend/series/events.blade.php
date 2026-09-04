@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Series – Manage Events')
 

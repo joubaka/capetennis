@@ -27,7 +27,7 @@ class OrderOfPlay extends Model
 
   public function venue()
   {
-    return $this->belongsTo(Venues::class);
+    return $this->belongsTo(Venue::class);
   }
 
   public function fixture()

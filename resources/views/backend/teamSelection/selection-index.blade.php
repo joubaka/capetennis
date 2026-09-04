@@ -7,7 +7,7 @@ use App\Helpers\Fixtures;
 
 
 ?>
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 

@@ -3,7 +3,7 @@
 $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Manage Players')
 

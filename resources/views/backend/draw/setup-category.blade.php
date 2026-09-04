@@ -1,4 +1,4 @@
-@extends('layouts/contentNavbarLayout')
+@extends('layouts.backend')
 @section('title', 'Choose players category — '.$draw->drawName)
 @section('content')
 <div class="mx-auto" style="max-width:650px">

@@ -13,7 +13,7 @@
 
   <meta charset="utf-8" />
   <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+        content="width=device-width, initial-scale=1.0" />
 
   <title>
     @yield('title') |
@@ -43,6 +43,10 @@
 
   <!-- Styles -->
   @include('layouts/sections/styles')
+  @include('draw.partials.bracket-assets')
+  @if($backendWorkspace ?? false)
+    <link rel="stylesheet" href="{{ asset('css/backend-workspace.css') }}?v={{ filemtime(public_path('css/backend-workspace.css')) }}">
+  @endif
 
   <style>
     /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
@@ -124,7 +128,7 @@
   @include('layouts/sections/scriptsIncludes')
 </head>
 
-<body>
+<body @class(['ct-backend' => $backendWorkspace ?? false])>
 
   <!-- Layout Content -->
   @yield('layoutContent')

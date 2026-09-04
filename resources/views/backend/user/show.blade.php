@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', ($user->userName ?? $user->name) . ' – Profile')
 

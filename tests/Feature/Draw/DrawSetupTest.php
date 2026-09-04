@@ -59,9 +59,9 @@ class DrawSetupTest extends TestCase
     {
         foreach (['playoffs' => 3, 'monrad' => 4, 'custom_monrad' => 4] as $workflow => $count) {
             $draw = $this->draw();
-            $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect(route('flexible-monrad.show', $draw));
-            $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('flexible-monrad.show', $draw));
-            $this->get(route('flexible-monrad.show', $draw))->assertOk()->assertSee('Step 2');
+            $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Step 2')->assertSee('Setup &amp; Rules', false);
+            $this->get(route('flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
             $this->assertSame($workflow, $draw->fresh()->settings->workflow);
             $this->assertIsObject(app(FlexibleMonradService::class)->state($draw->fresh())['draft']['slots']);
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect();
@@ -149,7 +149,7 @@ class DrawSetupTest extends TestCase
         $this->assertNull($draw->fresh()->settings?->workflow);
         $foreign = CategoryEvent::factory()->create();
         $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'playoffs', 'category_event_id' => $foreign->id])->assertUnprocessable();
-        $this->post(route('draw.setup.store', $draw), ['workflow' => 'playoffs', 'category_event_id' => $categoryId])->assertRedirect(route('flexible-monrad.show', $draw));
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'playoffs', 'category_event_id' => $categoryId])->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->assertEquals($categoryId, $draw->fresh()->category_event_id);
     }
 

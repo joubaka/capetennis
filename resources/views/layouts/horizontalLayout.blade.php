@@ -50,6 +50,31 @@ $containerNav = ($containerNav ?? 'container-xxl');
 
         @if ($isMenu)
         @include('layouts/sections/menu/horizontalMenu')
+
+        @endif
+
+        <!-- Content -->
+        @if ($isFlex)
+        <div class="{{$container}} d-flex align-items-stretch flex-grow-1 p-0">
+
+        @else
+
+          <div class="{{$container}} flex-grow-1 container-p-y">
+            @endif
+
+            @yield('content')
+
+            <!-- pricingModal -->
+            @if ($pricingModal)
+            @include('_partials/_modals/modal-pricing')
+            @endif
+            <!--/ pricingModal -->
+
+          </div>
+          <!-- / Content -->
+
+          {{-- Keep the menu adjacent to content: the theme uses an adjacent-sibling spacing rule. --}}
+          @if ($isMenu)
         <script>
           (function () {
             const toggle = document.querySelector('.mobile-horizontal-menu-toggle');
@@ -85,32 +110,19 @@ $containerNav = ($containerNav ?? 'container-xxl');
               if (event.target.closest('a:not(.menu-toggle)')) closeMenu();
             });
 
+            document.addEventListener('keydown', function (event) {
+              if (event.key === 'Escape' && layout.classList.contains('mobile-menu-open')) {
+                closeMenu();
+                toggle.focus();
+              }
+            });
+
             window.addEventListener('resize', function () {
               if (window.innerWidth >= 1200) closeMenu();
             });
           })();
         </script>
-        @endif
-
-        <!-- Content -->
-        @if ($isFlex)
-        <div class="{{$container}} d-flex align-items-stretch flex-grow-1 p-0">
-         
-        @else
-       
-          <div class="{{$container}} flex-grow-1 container-p-y">
-            @endif
-
-            @yield('content')
-
-            <!-- pricingModal -->
-            @if ($pricingModal)
-            @include('_partials/_modals/modal-pricing')
-            @endif
-            <!--/ pricingModal -->
-            
-          </div>
-          <!-- / Content -->
+          @endif
 
           <!-- Footer -->
           @if ($isFooter)

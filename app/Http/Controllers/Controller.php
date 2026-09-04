@@ -22,7 +22,8 @@ class Controller extends BaseController
         // Only these controllers accept a name-only payload; structural fields stay guarded.
         $nameUpdate = $ability === 'update' && request()->routeIs('backend.draw.update-settings', 'draws.update')
             && array_keys(request()->except(['_token', '_method'])) === ['name'];
-        if (! $venueUpdate && ! $nameUpdate && ! request()->routeIs('flexible-monrad.*', 'draw.setup.store') && in_array($ability, [
+        $schedulePublication = $ability === 'publish' && request()->routeIs('draw.toggle.publish.schedule');
+        if (! $venueUpdate && ! $nameUpdate && ! $schedulePublication && ! request()->routeIs('flexible-monrad.*', 'draw.setup.store') && in_array($ability, [
             'update', 'fixture.update', 'modifyGroups', 'generateFixtures', 'generateBrackets', 'saveScore', 'deleteScore', 'publish',
         ], true)) {
             foreach (is_array($arguments) ? $arguments : [$arguments] as $argument) {

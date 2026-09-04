@@ -4,9 +4,10 @@
     height="1400"
     viewBox="0 0 1140 1400"
     preserveAspectRatio="xMinYMin slice"
-    class="svgdraw"
+    class="ct-bracket-svg svgdraw"
     xmlns="http://www.w3.org/2000/svg"
 >
+    @include('draw.partials.bracket-svg-style')
 
     <style>
         .svg_name { font-family: Helvetica; font-weight: bold; font-size: 14px; }
@@ -270,8 +271,8 @@
         <line x1="458" y1="528" x2="558" y2="528" stroke="black"/>
 
         <!-- Static connectors -->
-        <path fill="none" stroke="#000" d="m657.99998,412l198,0"/>
-        <path fill="none" stroke="#000" d="m657.99998,164.99094l198,0"/>
+        <path data-ct-edge fill="none" stroke="#000" d="m657.99998,412l198,0"/>
+        <path data-ct-edge fill="none" stroke="#000" d="m657.99998,164.99094l198,0"/>
         <line y2="411.99999" x2="855.99998" y1="165.09741" x1="855.99998" stroke="#000" fill="none"/>
         <line y2="289.32719" x2="1059.203" y1="287.55728" x1="856.54819" stroke="#000" fill="none"/>
 
@@ -345,5 +346,4 @@
 
       </g>
     </g>
-
 

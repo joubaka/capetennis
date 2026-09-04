@@ -5,7 +5,7 @@
 $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 

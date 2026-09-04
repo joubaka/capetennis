@@ -193,13 +193,14 @@ final class FlexibleMonradService
             ->map(fn ($r) => ['id' => $r->id, 'name' => $r->displayName(),
                 'eligible' => $eligible->contains('id', $r->id) && ! in_array($r->id, $withdrawn, true),
                 'withdrawn' => in_array($r->id, $withdrawn, true)])->values();
-        $fixtures = $draw->drawFixtures()->where('stage', 'FM')->with('fixtureResults')->get()->keyBy('id');
+        $fixtures = $draw->drawFixtures()->where('stage', 'FM')->with(['fixtureResults', 'oop.venue'])->get()->keyBy('id');
         $progression = $record?->graph ? $this->progression($record, $fixtures, $withdrawn) : ['matches' => [], 'positions' => []];
         $matches = [];
         foreach ($record?->graph['nodes'] ?? [] as $key => $node) {
             $fx = $fixtures->get($record->fixture_map[$key]);
             if (! $fx) continue;
             $matches[$key] = $node + $progression['matches'][$key] + ['id' => $fx->id, 'number' => $fx->match_nr,
+                'schedule' => $fx->oop ? ['time' => $fx->oop->time, 'court' => $fx->oop->court, 'venue' => $fx->oop->venue?->name] : null,
                 'sets' => $fx->fixtureResults->sortBy('set_nr')->map(fn ($r) => [$r->registration1_score, $r->registration2_score])->values()->all()];
         }
         $draft = $record?->draft ?? ['size' => 32, 'slots' => []];

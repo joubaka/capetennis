@@ -1,6 +1,6 @@
 <?php
 
-use App\Classes\Brackets;
+use App\Services\Draw\Brackets;
 use App\Classes\MonradFeedin;
 
 

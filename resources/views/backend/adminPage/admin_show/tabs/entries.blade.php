@@ -28,11 +28,11 @@
     <div class="nav-align-top">
       <ul class="nav nav-tabs nav-fill" role="tablist">
         <li class="nav-item">
-          <button type="button" class="nav-link active btn btn-success text-black"
+          <button type="button" class="nav-link active"
                   data-bs-toggle="tab" data-bs-target="#navs-justified-new">Confirmed</button>
         </li>
         <li class="nav-item">
-          <button type="button" class="nav-link btn btn-danger text-black"
+          <button type="button" class="nav-link"
                   data-bs-toggle="tab" data-bs-target="#navs-justified-link-preparing">Withdrawals</button>
         </li>
       </ul>

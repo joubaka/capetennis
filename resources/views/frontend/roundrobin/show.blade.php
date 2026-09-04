@@ -168,15 +168,13 @@
     position: relative;
   }
   .bracket-zoom-scroll {
-    overflow: auto;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y pinch-zoom;
-    max-height: 75vh;
     padding: 8px;
   }
   .bracket-zoom-inner {
     transform-origin: top left;
-    transition: transform 0.15s ease;
     display: inline-block;
     min-width: 100%;
   }
@@ -559,7 +557,7 @@ $(document).on('click', '#btn-import-teams', function () {
   function applyZoom(outer) {
     var inner = outer.querySelector('.bracket-zoom-inner');
     var label = outer.querySelector('.bracket-zoom-label');
-    if (inner) inner.style.transform = 'scale(' + zoom + ')';
+    if (inner) inner.style.zoom = zoom;
     if (label) label.textContent = Math.round(zoom * 100) + '%';
   }
 

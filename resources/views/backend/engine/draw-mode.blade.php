@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Draw Engine Mode — Draw #' . $draw->id)
 

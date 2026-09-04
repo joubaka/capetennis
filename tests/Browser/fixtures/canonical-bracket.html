@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Canonical bracket presentation fixture</title>
+<link rel="stylesheet" href="../../../public/css/tennis-bracket.css">
+<script defer src="../../../public/js/tennis-bracket.js"></script>
+<style>
+  body { font: 14px Arial; margin: 25px; }
+  .scroll { overflow-x: auto; }
+  svg { display: block; }
+  button, select { margin: 8px; padding: 8px; }
+  @media print { nav { display: none; } #zoom { zoom: 1 !important; } }
+</style>
+<h1>Shared bracket verification</h1>
+<nav>
+  <label>Zoom <select id="scale"><option>1</option><option>0.65</option><option>1.25</option><option>2</option></select></label>
+  <button id="replace">Replace diagrams (AJAX simulation)</button>
+  <button onclick="window.print()">Print preview</button>
+  <output id="hit">Score target not clicked</output>
+</nav>
+<div class="scroll"><div id="zoom"><div id="diagrams"></div></div></div>
+<template id="fixture">
+  <svg class="ct-bracket-svg" width="700" height="330" viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg">
+    <text x="0" y="18">Nested groups and duplicated source edges</text>
+    <g transform="translate(10.4 30.2)">
+      <text x="0" y="30">Player One</text><text x="0" y="90">Player Two</text>
+      <line x1="0" y1="40" x2="200" y2="40" stroke="red" stroke-width="2"/>
+      <line x1="0" y1="100" x2="200" y2="100" stroke="gray"/>
+      <line x1="200" y1="40" x2="200" y2="100" stroke="blue"/>
+      <line x1="200" y1="40" x2="200" y2="100" stroke="black"/>
+      <!-- Deliberately covers the bottom half of the original vertical edge. -->
+      <rect x="0" y="80" width="202" height="18" fill="white"/>
+      <text x="0" y="93">Player Two</text>
+      <line x1="200" y1="70" x2="240" y2="70"/>
+      <path data-ct-edge d="M240 70 H440 V190 H240"/>
+      <text x="245" y="60">Winner 1</text><text x="245" y="180">Winner 2</text>
+      <path data-ct-edge d="M0 160 H200 V220 H0 M200 190 H240"/>
+      <text x="0" y="150">Player Three</text><text x="0" y="210">Player Four</text>
+      <rect role="button" aria-label="Enter score" tabindex="0" x="0" y="40" width="200" height="40" fill="transparent" onclick="document.getElementById('hit').textContent='Score target clicked'"/>
+    </g>
+  </svg>
+</template>
+<script>
+  function render() {
+    const diagrams = document.getElementById('diagrams');
+    diagrams.replaceChildren();
+    for (let i = 0; i < 2; i++) diagrams.append(document.getElementById('fixture').content.cloneNode(true));
+  }
+  document.getElementById('replace').onclick = render;
+  document.getElementById('scale').onchange = event => document.getElementById('zoom').style.zoom = event.target.value;
+  render();
+</script>
+</html>

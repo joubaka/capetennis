@@ -1,4 +1,5 @@
-@extends('layouts/layoutMaster')
+@php($pageConfigs = ['myLayout' => 'vertical'])
+@extends('layouts.backend')
 
 @section('title', 'Cavaliers Trials Schedule – ' . $draw->drawName)
 
@@ -20,10 +21,8 @@
 @section('content')
 <div class="container-xxl">
 
-  <div class="d-flex justify-content-between mb-3">
-    <h4>Cavaliers Trials Schedule — {{ $draw->drawName }}</h4>
-    <a href="{{ route('event.tab.draws', $event->id) }}" class="btn btn-secondary btn-sm">Back</a>
-  </div>
+  @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'schedule'])
+  @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'schedule'])
 
   {{-- ==========================
        AUTO-SCHEDULE PANEL

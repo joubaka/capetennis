@@ -1,5 +1,5 @@
 {{-- resources/views/backend/series/rankings/results.blade.php --}}
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Series Results: ' . $series->name)
 

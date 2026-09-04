@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', $event->name . ' – Entries')
 
@@ -207,14 +207,8 @@
 <div class="container-xl">
 
   {{-- HEADER --}}
-  <div class="card mb-3 event-header-card">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div>
-        <h4 class="mb-0">{{ $event->name }}</h4>
-        <small class="text-muted">Category Entries</small>
-      </div>
-
-      <div class="d-flex gap-2 flex-wrap">
+  <x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Entries by category" icon="ti-users" class="no-print">
+  <x-slot:actions><div class="d-flex gap-2 flex-wrap">
        <button type="button"
         class="btn btn-outline-primary btn-sm email-btn"
         data-scope="event">
@@ -229,9 +223,9 @@
         <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-arrow-left me-1"></i>Back
         </a>
-      </div>
-    </div>
-  </div>
+      </div></x-slot:actions>
+</x-backend.page-header>
+<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'entries'])</div>
 
   {{-- CATEGORY LIST --}}
   @foreach($categoryEvents as $categoryEvent)

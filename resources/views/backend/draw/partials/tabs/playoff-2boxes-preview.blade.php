@@ -201,7 +201,7 @@
         }
 
         function buildAllDraws(drawSets, showNames = false) {
-            let svg = `<svg width="1800" height="${drawSets.length * 900}" xmlns="http://www.w3.org/2000/svg">`;
+            let svg = `<svg class="ct-bracket-svg" viewBox="0 0 1800 ${drawSets.length * 900}" width="1800" height="${drawSets.length * 900}" xmlns="http://www.w3.org/2000/svg">`;
 
             for (let i = 0; i < drawSets.length; i++) {
                 const yOffset = i * 900;

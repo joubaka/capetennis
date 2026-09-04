@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Series Rankings — Best ' . $topN . ' Scores Per Category')
 

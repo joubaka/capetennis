@@ -70,10 +70,13 @@
     </style>`;
 
   function openPrintWindow(title, bodyHtml, landscape) {
-    var styles = printStyles + (landscape ? landscapeStyles : '');
+    var styles = printStyles + (landscape ? landscapeStyles : '') + '<style>' + @json(file_get_contents(public_path('css/tennis-bracket.css'))) + '</style>';
     const w = window.open('', '_blank');
     w.document.write('<!DOCTYPE html><html><head><title>' + title + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
     w.document.close();
+    // Screen overlays are aligned to the source window. Export the original vectors.
+    w.document.querySelectorAll('.ct-bracket-edges').forEach(function(layer) { layer.remove(); });
+    w.document.querySelectorAll('.ct-bracket-print-edges').forEach(function(layer) { layer.style.display = 'block'; });
     // Remove fixed width/height from SVGs so viewBox controls full-page scaling
     if (landscape) {
       var svgs = w.document.querySelectorAll('.bracket-print-wrap svg');

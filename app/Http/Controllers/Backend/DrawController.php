@@ -20,7 +20,6 @@ use App\Models\Player;
 use App\Models\Registration;
 use App\Models\TeamFixture;
 
-use App\Services\CtBracket;
 use App\Services\DrawBuilder;
 use App\Domain\Engine\EngineRouter;
 use App\Domain\Draws\Services\DrawLockService;
@@ -41,18 +40,12 @@ class DrawController extends Controller
    *
    * @return \Illuminate\Http\Response
    */
-  public function index()
+  public function index(Request $request)
   {
-    $data['event'] = Event::findOrFail($_GET['id']);
+    $data['event'] = Event::findOrFail($request->query('id'));
     $this->authorize('event-draw.view', $data['event']);
 
-    return view('backend.draw.draw-index', $data);
-
-    if ($data['event']->eventType == 3) {
-      return view('backend.draw.team.draw-index-team', $data);
-    } else {
-      return view('backend.draw.individual.draw-index-individual', $data);
-    }
+    return redirect()->route('headOffice.show', $data['event']->id);
   }
 
   /**
@@ -102,8 +95,8 @@ class DrawController extends Controller
     if ($showDraw->needsWorkflowChoice()) {
       return redirect()->route('draw.setup.show', $showDraw);
     }
-    if ($showDraw->usesFlexibleMonrad()) {
-      return redirect()->route('flexible-monrad.show', $showDraw);
+    if (! $showDraw->event->isTeam() && ! $showDraw->team_category_id) {
+      return redirect()->route('backend.draw.roundrobin.show', $showDraw);
     }
 
     // return $request;
@@ -455,6 +448,9 @@ class DrawController extends Controller
   {
     $data['draw'] = Draw::findOrFail($id);
     $this->authorize('view', $data['draw']);
+    if ($data['draw']->usesFlexibleMonrad()) {
+      return redirect(route('backend.draw.roundrobin.show', $data['draw']).'#print');
+    }
     //$data = ['title' => 'Printable View', 'content' => 'This is the content to print.'];
     //dd($data);
     // Generate PDF from Blade view
@@ -633,6 +629,10 @@ class DrawController extends Controller
     ])->findOrFail($id);
     $this->authorize('view', $draw);
 
+    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+      return redirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+    }
+
     $assignedIds = $draw->registrations->pluck('id');
 
     // Eligible = registrations entered in the same category event, not yet assigned to this draw
@@ -650,6 +650,10 @@ class DrawController extends Controller
   {
     $draw = Draw::with(['categoryEvent.category', 'registrations.players'])->findOrFail($id);
     $this->authorize('view', $draw);
+
+    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+      return redirect(route('backend.draw.roundrobin.show', $draw).'#groups');
+    }
 
     return view('backend.draw.manage-players', compact('draw'));
   }
@@ -669,6 +673,10 @@ class DrawController extends Controller
       'drawFixtures.registration2.players'
     ])->findOrFail($id);
     $this->authorize('view', $draw);
+
+    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+      return redirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+    }
 
     $drawTypes    = DrawType::all();
     $drawFormats  = DrawFormats::all();
@@ -856,19 +864,9 @@ class DrawController extends Controller
 
 
 
-  public function showBracket()
+  public function showBracket($id)
   {
-    $this->authorize('draw.admin');
-
-    $matches = [
-      ['player1' => 'Alice', 'player2' => 'Bob'],
-      ['player1' => 'Charlie', 'player2' => 'David'],
-      // ...
-    ];
-
-    $bracket = app(CtBracket::class)->build(32, $matches);
-
-    return view('backend.draw.formats.monrad', compact('bracket'));
+    return $this->show($id, request());
   }
 
   public function addCategoryPlayers(Request $request)

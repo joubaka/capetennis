@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 @section('title', 'Report Disciplinary Incident')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">

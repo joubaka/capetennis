@@ -1,0 +1,48 @@
+/* Canonical bracket presentation. Only explicitly opted-in diagrams are affected. */
+.ct-bracket, .ct-bracket-svg {
+  --ct-bracket-line: #111;
+  --ct-bracket-ink: #111;
+  --ct-bracket-muted: #64748b;
+  --ct-bracket-score: #176448;
+  font-family: 'Noto Sans JP', Arial, sans-serif;
+  color: var(--ct-bracket-ink);
+}
+.ct-bracket-svg { background: #fff !important; }
+.fm-links.ct-bracket-svg { background: transparent !important; }
+.ct-bracket-svg text { font-family: 'Noto Sans JP', Arial, sans-serif !important; }
+.ct-bracket-svg line,
+.ct-bracket-svg path[data-ct-edge],
+.ct-bracket-svg .ct-bracket-edges,
+.ct-bracket-svg .ct-bracket-print-edges {
+  fill: none !important;
+  stroke: var(--ct-bracket-line) !important;
+  stroke-width: 1px !important;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: crispEdges;
+  pointer-events: none;
+}
+.ct-bracket-svg .ct-bracket-edges {
+  stroke-width: var(--ct-bracket-device-stroke, 1px) !important;
+}
+.ct-bracket-svg .ct-bracket-print-edges { display: none; }
+.ct-bracket-svg [data-ct-source] { visibility: hidden !important; }
+.ct-bracket-svg .match-row-bg { fill: #fff; stroke: none; }
+.ct-bracket-svg .player-name { fill: var(--ct-bracket-ink); }
+.ct-bracket-svg .score-green,
+.ct-bracket-svg .match-score,
+.ct-bracket-svg .score-svg { fill: var(--ct-bracket-score); }
+.ct-bracket-svg .id-red { fill: var(--ct-bracket-muted); }
+@media print {
+  .ct-bracket-svg { max-width: 100%; height: auto; overflow: visible; }
+  /* Print/export uses original vector coordinates, never screen-pixel snapping. */
+  .ct-bracket-svg .ct-bracket-edges { display: none !important; }
+  .ct-bracket-svg .ct-bracket-print-edges { display: block; }
+  .ct-bracket-svg line, .ct-bracket-svg path[data-ct-edge],
+  .ct-bracket-svg .ct-bracket-print-edges {
+    stroke: var(--ct-bracket-line) !important;
+    stroke-width: 0.75pt !important;
+    shape-rendering: geometricPrecision;
+  }
+}

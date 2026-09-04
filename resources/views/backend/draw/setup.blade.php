@@ -1,8 +1,9 @@
-@extends('layouts/contentNavbarLayout')
+@extends('layouts.backend')
 @section('title', 'Choose draw format — '.$draw->drawName)
 @section('content')
+@include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings'])
+@include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
-  <a href="{{ route('headOffice.show', $draw->event_id) }}" class="btn btn-sm btn-outline-secondary mb-4">Back to event</a>
   <p class="text-primary mb-1">Step 1 · Draw format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>

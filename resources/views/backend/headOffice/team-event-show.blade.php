@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 
@@ -65,24 +65,12 @@
 
 @section('content')
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
-  <div class="d-flex flex-column justify-content-center">
-    <h4 class="mb-1 mt-3">Fixtures HQ</h4>
-    <nav aria-label="breadcrumb">
-      <ol class="breadcrumb breadcrumb-style1 mb-0">
-        <li class="breadcrumb-item">
-          <a href="{{ route('admin.events.overview', $event) }}">Event Dashboard</a>
-        </li>
-        <li class="breadcrumb-item active">Fixtures HQ</li>
-      </ol>
-    </nav>
-  </div>
-  <div class="d-flex align-content-center flex-wrap gap-3 mt-3 mt-md-0">
-    <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
+<x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Team draws, fixtures and venues." icon="ti-tournament">
+  <x-slot:actions><button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
-    </button>
-  </div>
-</div>
+    </button></x-slot:actions>
+</x-backend.page-header>
+@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'draws'])
 
 <div class="row mb-4">
   <div class="col-sm-6 col-lg-3">

@@ -16,9 +16,7 @@
 </style>
 
 <div class="card">
-  <div class="card-header event-header">
-    <h3 class="text-center">{{ $event->name }}</h3>
-  </div>
+
 
   <div class="row mt-4">
     <div class="card-body m-4">
@@ -101,7 +99,7 @@
   </div>
 </div>
 
-@include('backend.adminPage.admin_show.modals.generateDrawOptionsModal')
+@include('backend.adminPage.admin_show.tabs.modals.generateDrawOptionsModal')
 
 {{-- ===================================================== --}}
 {{-- 🧠 SCRIPT SECTION --}}

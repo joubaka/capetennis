@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Backend;
 
+use App\Domain\Ranking\Enums\RankingStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
+use App\Models\RankingList;
+use App\Models\SeriesRanking;
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Http\Request;
 
@@ -12,6 +15,12 @@ class FlexibleMonradController extends Controller
     public function __construct(private readonly FlexibleMonradService $monrad) {}
 
     public function show(Draw $draw)
+    {
+        $this->authorize('view', $draw);
+        return redirect()->route('backend.draw.roundrobin.show', $draw);
+    }
+
+    public function workspace(Draw $draw)
     {
         $this->authorize('view', $draw);
         return $this->page($draw, false);
@@ -101,15 +110,25 @@ class FlexibleMonradController extends Controller
             $ids = $draw->flexibleMonrad->graph['players'];
             $state['players'] = $state['players']->whereIn('id', $ids)->values();
             unset($state['revision']);
+            if (! $draw->oop_published) {
+                foreach ($state['matches'] as &$match) unset($match['schedule']);
+                unset($match);
+            }
         }
-        return view('backend.draw.flexible-monrad', ['title' => $draw->drawName.' — '.$label, 'config' => [
+        if (! $public) $draw->loadMissing('event.draws', 'event.series', 'categoryEvent.category');
+        return view($public ? 'backend.draw.flexible-monrad' : 'backend.draw.flexible-workspace', [
+            'draw' => $draw,
+            'title' => $draw->drawName.' — '.$label,
+            'rankingReference' => $public ? null : $this->rankingReference($draw),
+            'config' => [
             'workflow' => $workflow,
+            'notes' => $draw->settings?->notes ?? [],
             'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),
             'canPublish' => ! $public && auth()->user()->can('publish', $draw),
-            'backUrl' => $public ? null : route('draws.manage', $draw),
+            'backUrl' => $public ? null : route('backend.draw.roundrobin.show', $draw),
             'publicUrl' => route('public.flexible-monrad.show', $draw),
             'urls' => $public ? [] : [
                 'save' => route('flexible-monrad.save', $draw), 'generate' => route('flexible-monrad.generate', $draw),
@@ -119,5 +138,60 @@ class FlexibleMonradController extends Controller
                 'score' => route('flexible-monrad.score', [$draw, '__FIXTURE__']),
             ], 'state' => $state,
         ]]);
+    }
+
+    private function rankingReference(Draw $draw): ?array
+    {
+        $series = $draw->event?->series;
+        $category = $draw->categoryEvent?->category;
+
+        if (! $series || ! $category) {
+            return null;
+        }
+
+        $activeRun = SeriesRanking::query()
+            ->where('series_id', $series->id)
+            ->whereIn('status', [
+                RankingStatus::Calculated->value,
+                RankingStatus::Reviewed->value,
+                RankingStatus::Published->value,
+            ])
+            ->whereNotNull('run_id')
+            ->latest('updated_at')
+            ->first(['run_id', 'status']);
+
+        $rankingList = RankingList::query()
+            ->where('series_id', $series->id)
+            ->where(function ($query) use ($draw, $category) {
+                $query->where('category_id', $category->id)
+                    ->orWhereHas('rank_cats', fn ($rankCategories) => $rankCategories
+                        ->where('category_event_id', $draw->category_event_id));
+            })
+            ->first();
+
+        $rows = collect();
+        if ($activeRun) {
+            $rows = SeriesRanking::query()
+                ->with('player:id,name,surname')
+                ->where('series_id', $series->id)
+                ->where('run_id', $activeRun->run_id)
+                ->where(function ($query) use ($rankingList, $category) {
+                    $query->where('category_id', $category->id);
+                    if ($rankingList) {
+                        $query->orWhere('ranking_list_id', $rankingList->id);
+                    }
+                })
+                ->orderBy('rank_position')
+                ->orderByDesc('total_points')
+                ->get();
+        }
+
+        return [
+            'series' => $series,
+            'category' => $category,
+            'status' => $activeRun?->status,
+            'rows' => $rows,
+            'url' => route('ranking.series.list', $series),
+        ];
     }
 }

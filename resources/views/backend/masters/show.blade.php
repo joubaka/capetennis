@@ -1,4 +1,4 @@
-@extends('layouts/contentNavbarLayout')
+@extends('layouts.backend')
 
 @section('title', 'Masters invitations')
 

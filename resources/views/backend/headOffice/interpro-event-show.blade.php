@@ -1,5 +1,5 @@
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 
@@ -51,12 +51,7 @@
 
 @section('content')
 
-<!-- Event Header -->
-<div class="card mb-4">
-  <div class="card-header text-center">
-    <h3 class="mb-0">InterPro Trials Event: <span class="text-primary">{{$event->name}}</span></h3>
-  </div>
-</div>
+@include('backend.event.partials.header', ['eventWorkspaceActive' => 'draws'])
 
 <div class="row g-3">
   <!-- Sidebar -->

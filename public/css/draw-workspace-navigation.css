@@ -1,0 +1,30 @@
+.rr-workspace-nav {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: #eef1f6;
+  border-radius: 12px;
+  margin: 16px 0 10px;
+}
+.rr-workspace-nav > button, .rr-workspace-nav > a {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #526078;
+  background: transparent;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+.rr-workspace-nav > .active, .rr-workspace-nav > .btn-primary {
+  background: #fff;
+  color: #5144c7;
+  box-shadow: 0 2px 5px #25324b12;
+}
+.rr-workspace-nav > :focus-visible { outline: 2px solid #5144c7; outline-offset: 2px; }
+.draw-workspace-header [hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .rr-workspace-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rr-workspace-nav > button, .rr-workspace-nav > a { padding: 12px 8px; font-size: 13px; }
+}

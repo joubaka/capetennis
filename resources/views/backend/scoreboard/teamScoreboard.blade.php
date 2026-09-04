@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 @section('title', 'Event Scoreboard')
 
 @section('content')

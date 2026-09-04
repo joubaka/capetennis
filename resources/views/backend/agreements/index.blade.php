@@ -1,18 +1,15 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Agreements - Code of Conduct')
 
 @section('content')
 <div class="container-xl">
 
-  <div class="card mb-4">
-    <div class="card-body d-flex justify-content-between align-items-center">
-      <h4 class="mb-0">Code of Conduct Agreements</h4>
-      <a href="{{ route('backend.agreements.create') }}" class="btn btn-primary">
+  <x-backend.page-header title="Code of Conduct agreements" eyebrow="Administration" subtitle="Manage agreement versions and player acceptance." icon="ti-file-text">
+  <x-slot:actions><a href="{{ route('backend.agreements.create') }}" class="btn btn-primary">
         <i class="ti ti-plus"></i> New Agreement
-      </a>
-    </div>
-  </div>
+      </a></x-slot:actions>
+</x-backend.page-header>
 
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">

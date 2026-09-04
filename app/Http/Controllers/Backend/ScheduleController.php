@@ -23,7 +23,7 @@ class ScheduleController extends Controller
     $draw->load(['event', 'venues']);
 
     // Cavaliers Trials (eventType 5)
-    if ($draw->event->eventType == 5) {
+    if ($draw->event->eventType == 5 && ! $draw->usesFlexibleMonrad()) {
     
       return view('backend.schedule.cavaliers-trials-schedule', [
         'draw' => $draw,
@@ -51,7 +51,7 @@ class ScheduleController extends Controller
     // ---------------------------------------------------
     // CAVALIERS TRIALS (eventType = 5)
     // ---------------------------------------------------
-    if ($eventType == 5) {
+    if ($eventType == 5 && ! $draw->usesFlexibleMonrad()) {
 
       $fixtures = Fixture::where('draw_id', $draw->id)
         ->with(['registration1.players', 'registration2.players', 'oop'])

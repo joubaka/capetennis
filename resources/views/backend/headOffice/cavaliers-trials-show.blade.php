@@ -2,7 +2,7 @@
   $configData = Helper::appClasses();
 @endphp
 
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Admin - Event Page')
 
@@ -68,9 +68,7 @@
 @section('content')
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
-<div class="card-header event-header">
-  <h3 class="text-center">Event: {{$event->name}}</h3>
-</div>
+@include('backend.event.partials.header', ['eventWorkspaceActive' => 'draws'])
 
 <div class="row">
 

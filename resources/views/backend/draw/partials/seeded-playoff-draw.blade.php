@@ -105,7 +105,7 @@ window.isDrawLocked = @json($isDrawLocked);
             return;
         }
 
-        let svg = `<svg width="1800" height="${bracketIds.length * 1000}" xmlns="http://www.w3.org/2000/svg">`;
+        let svg = `<svg class="ct-bracket-svg" viewBox="0 0 1800 ${bracketIds.length * 1000}" width="1800" height="${bracketIds.length * 1000}" xmlns="http://www.w3.org/2000/svg">`;
 
         bracketIds.forEach((bracketId, index) => {
             const yOffset = index * 1000;

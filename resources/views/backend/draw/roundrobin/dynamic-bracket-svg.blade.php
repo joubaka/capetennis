@@ -1,21 +1,20 @@
-<svg width="{{ $svgData['totalWidth'] }}" height="{{ $svgData['totalHeight'] }}" viewBox="0 0 {{ $svgData['totalWidth'] }} {{ $svgData['totalHeight'] }}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet" style="background:#f8fafc;">
+<svg class="ct-bracket-svg" width="{{ $svgData['totalWidth'] }}" height="{{ $svgData['totalHeight'] }}" viewBox="0 0 {{ $svgData['totalWidth'] }} {{ $svgData['totalHeight'] }}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet" >
+    @include('draw.partials.bracket-svg-style')
     <style>
         .player-name { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; fill: #1e293b; font-weight: 600; }
         .score-green { font-family: monospace; font-size: 10px; fill: #059669; font-weight: 700; }
         .id-red { font-family: sans-serif; font-size: 9px; fill: #94a3b8; font-weight: 500; }
-        .bracket-line { stroke: #64748b; stroke-width: 1.5; fill: none; }
         .seed-origin { font-family: sans-serif; font-size: 8px; fill: #fff; font-weight: 700; }
         .seed-origin-bg { rx: 3; ry: 3; }
         .seed-origin-inline { font-family: sans-serif; font-size: 11px; fill: #6366f1; font-weight: 700; }
         .match-hit { fill: transparent; cursor: pointer; }
         .match-hit:hover { fill: rgba(99,102,241,0.07); }
         .match-score { font-family: monospace; font-size: 10px; fill: #059669; font-weight: 700; }
-        .match-row-bg { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1; rx: 4; ry: 4; }
+        .match-row-bg { fill: #ffffff; stroke: none; }
         @media print {
           .player-name { font-size: 15px !important; fill: #000 !important; font-weight: 700 !important; }
           .score-green { font-size: 13px !important; fill: #000 !important; }
           .id-red { display: none; }
-          .bracket-line { stroke: #000 !important; stroke-width: 2px !important; }
           .seed-origin { font-size: 10px !important; fill: #000 !important; }
           .match-score { font-size: 12px !important; fill: #000 !important; }
           svg { background: #fff !important; }
@@ -175,7 +174,7 @@
 
                 <g>
                     {{-- Match box background --}}
-                    <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" rx="3" />
+                    <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" class="match-row-bg" fill="#ffffff" />
 
                     {{-- Top Player --}}
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
@@ -194,8 +193,6 @@
 
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
-                    {{-- Divider --}}
-                    <line x1="{{ $x }}" y1="{{ $midY }}" x2="{{ $rightX }}" y2="{{ $midY }}" stroke="#e2e8f0" stroke-width="0.8" />
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p2, 22) }}</text>
@@ -351,7 +348,7 @@
 
                 <g>
                     {{-- Match box background --}}
-                    <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" rx="3" />
+                    <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" class="match-row-bg" fill="#ffffff" />
 
                     {{-- Playoff Label --}}
                     <text x="{{ $x + ($w / 2) }}" y="{{ $y - 14 }}" text-anchor="middle" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; letter-spacing: 0.5px;">

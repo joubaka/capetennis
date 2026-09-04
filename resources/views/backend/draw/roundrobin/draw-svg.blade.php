@@ -53,7 +53,8 @@ function winnerName($fx) {
 @endphp
 
 
-<svg width="1600" height="1600">
+<svg class="ct-bracket-svg" width="1600" height="1600" viewBox="0 0 1600 1600">
+    @include('draw.partials.bracket-svg-style')
 
     {{-- ======================================================
          MAIN DRAW

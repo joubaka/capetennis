@@ -45,13 +45,13 @@
   <a href="{{ route('engine.draw.show', $draw->id) }}" class="btn btn-sm btn-danger">
     <i class="fas fa-cogs"></i> Engine
   </a>
-  <a href="{{ route('draws.settings', $draw->id) }}" class="btn btn-sm btn-warning">
+  <a href="{{ route('backend.draw.roundrobin.show', $draw->id) }}#settings" class="btn btn-sm btn-warning">
     <i class="fas fa-cog"></i> Settings
   </a>
-  <a href="{{ route('draws.players', $draw->id) }}" class="btn btn-sm btn-primary">
+  <a href="{{ route('backend.draw.roundrobin.show', $draw->id) }}#groups" class="btn btn-sm btn-primary">
     <i class="fas fa-users"></i> Players
   </a>
-  <a href="{{ route('draws.show', $draw->id) }}" target="_blank" class="btn btn-sm btn-success">
+  <a href="{{ route('backend.draw.roundrobin.show', $draw->id) }}#matrix" class="btn btn-sm btn-success">
     <i class="fas fa-eye"></i> View Draw
   </a>
 </div>

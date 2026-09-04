@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 @section('title', 'Super Admin – Financial Dashboard')
 
@@ -15,17 +15,11 @@
 <div class="container-xl">
 
   {{-- HEADER --}}
-  <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <h4 class="mb-0">
-        <i class="ti ti-report-money me-2 text-warning"></i>
-        Financial Dashboard
-      </h4>
-      <a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary btn-sm">
+  <x-backend.page-header title="Financial dashboard" eyebrow="Administration" subtitle="Financial years, balances and event statements." icon="ti-report-money">
+  <x-slot:actions><a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary btn-sm">
         <i class="ti ti-arrow-left me-1"></i>Back to Dashboard
-      </a>
-    </div>
-  </div>
+      </a></x-slot:actions>
+</x-backend.page-header>
 
   {{-- FINANCIAL YEAR FILTER --}}
   <div class="card mb-3">

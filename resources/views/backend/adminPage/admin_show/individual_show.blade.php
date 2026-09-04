@@ -4,9 +4,7 @@
     }
 </style>
 <div class="card ">
-    <div class="card-header event-header">
-        <h3 class="text-center"> {{ $event->name }}  </h3>
-    </div>
+
 
 
    <div class="row mt-4">
@@ -102,13 +100,13 @@
                                 <div class="nav-align-top">
                                     <ul class="nav nav-tabs nav-fill" role="tablist">
                                         <li class="nav-item" role="presentation">
-                                            <button type="button" class="nav-link active btn btn-success text-black"
+                                            <button type="button" class="nav-link active"
                                                 role="tab" data-bs-toggle="tab" data-bs-target="#navs-justified-new"
                                                 aria-controls="navs-justified-new"
                                                 aria-selected="true">Confirmed</button>
                                         </li>
                                         <li class=" nav-item" role="presentation">
-                                            <button type="button" class="nav-link btn btn-danger text-black"
+                                            <button type="button" class="nav-link"
                                                 role="tab" data-bs-toggle="tab"
                                                 data-bs-target="#navs-justified-link-preparing"
                                                 aria-controls="navs-justified-link-preparing" aria-selected="false"
@@ -475,4 +473,4 @@
 
 
 </div>
-@include('backend.adminPage.admin_show.modals.generateDrawOptionsModal')
+@include('backend.adminPage.admin_show.tabs.modals.generateDrawOptionsModal')

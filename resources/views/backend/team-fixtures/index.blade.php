@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends('layouts.backend')
 
 {{-- Vendor CSS --}}
 @section('vendor-style')

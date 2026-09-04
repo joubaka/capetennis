@@ -59,7 +59,6 @@ class DrawSetupController extends Controller
             }
             DrawAuditLog::record($draw->id, 'workflow_selected', null, $data);
         });
-        return redirect()->route($data['workflow'] === 'round_robin_playoffs'
-            ? 'backend.draw.roundrobin.show' : 'flexible-monrad.show', $draw);
+        return redirect()->route('backend.draw.roundrobin.show', $draw);
     }
 }
