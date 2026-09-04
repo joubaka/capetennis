@@ -93,7 +93,7 @@
   const previewUrl = @json(route('backend.event-venue-schedule.preview', $event));
   const applyUrl = @json(route('backend.event-venue-schedule.apply', $event));
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
-  const drawIds = @json($draws->pluck('id')->values());
+  const drawIds = @json($draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->pluck('id')->values());
   let payload = null;
   let revision = null;
 
