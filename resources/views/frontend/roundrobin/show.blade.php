@@ -231,6 +231,7 @@
       Standings
     </button>
   </li>
+  @unless($draw->isRoundRobinOnly())
    <li class="nav-item" role="presentation">
     <button class="nav-link"
             id="main-bracket-tab"
@@ -241,6 +242,7 @@
       Main Bracket
     </button>
 </li>
+  @endunless
 
 
 </ul>
@@ -392,6 +394,7 @@
 
 
 
+  @unless($draw->isRoundRobinOnly())
    <!-- =========================================
      Brackets
 ========================================= -->
@@ -421,6 +424,7 @@
       </div>
     </div>
   </div>
+  @endunless
 
   </div> {{-- END TABS --}}
 </div> {{-- END APP --}}

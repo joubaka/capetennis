@@ -66,9 +66,12 @@ class PublicRoundRobinController extends Controller
     // Hub (RR fixtures, OOP, standings)
     $hub = $this->builder->loadRoundRobinHub($draw);
 
-    // Bracket Engine (Main + Plate + Consolation)
-    $engine = new \App\Services\BracketEngine($draw);
-    $svgData = $engine->build();
+    // Round-robin-only draws do not have a playoff bracket.
+    $svgData = null;
+    if (! $draw->isRoundRobinOnly()) {
+      $engine = new \App\Services\BracketEngine($draw);
+      $svgData = $engine->build();
+    }
 
     // Prepare JSON data for JS
     $groupsJson = $draw->groups->map(function ($g) {
@@ -103,6 +106,8 @@ class PublicRoundRobinController extends Controller
   // =============================================================
   public function mainBracket(Draw $draw)
   {
+    abort_if($draw->isRoundRobinOnly(), 404);
+
     // Block unpublished draws — only admin, super-user, or convenor for this event may view
     if (!$draw->published) {
       $user = auth()->user();

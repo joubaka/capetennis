@@ -75,6 +75,9 @@ class DrawSetupTest extends TestCase
             ->assertDontSee('id="btn-add-playoff"', false)
             ->assertDontSee('id="btn-print-bracket"', false)
             ->assertDontSee('id="pack-playoff-fixtures"', false);
+        $this->get(route('public.roundrobin.show', $draw))->assertOk()
+            ->assertDontSee('id="main-bracket-tab"', false);
+        $this->get(route('public.roundrobin.main-bracket', $draw))->assertNotFound();
 
         $this->postJson(route('backend.draw.generate-main-bracket', $draw))
             ->assertUnprocessable()
