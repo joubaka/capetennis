@@ -68,7 +68,8 @@ final class EventVenueScheduleController extends Controller
                     }
                     $before = $draw->venues()->pluck('venues.id')->map(fn ($id) => (int) $id)->all();
                     $removed = array_diff($before, $venueIds);
-                    $affected = OrderOfPlay::where('draw_id', $draw->id)->whereIn('venue_id', $removed);
+                    $affected = OrderOfPlay::whereHas('fixture', fn ($query) => $query->where('draw_id', $draw->id))
+                        ->whereIn('venue_id', $removed);
                     if ((clone $affected)->whereHas('fixture.fixtureResults')->exists()) {
                         throw new \InvalidArgumentException("{$draw->drawName} has played matches at a venue being removed.");
                     }

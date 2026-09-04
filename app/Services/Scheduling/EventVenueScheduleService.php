@@ -156,6 +156,9 @@ final class EventVenueScheduleService
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $drawIds = $event->draws()->orderBy('id')->pluck('id');
             DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')->lockForUpdate()->get();
+            $fixtureIds = DB::table('fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')->lockForUpdate()->pluck('id');
+            DB::table('order_of_plays')->whereIn('fixture_id', $fixtureIds)->orderBy('fixture_id')->lockForUpdate()->get();
+            DB::table('fixture_results')->whereIn('fixture_id', $fixtureIds)->orderBy('fixture_id')->orderBy('id')->lockForUpdate()->get();
             $venueIds = DB::table('draw_venues')->whereIn('draw_id', $drawIds)->pluck('venue_id')->unique()->sort()->values();
             DB::table('venues')->whereIn('id', $venueIds)->orderBy('id')->lockForUpdate()->get();
 
@@ -167,7 +170,7 @@ final class EventVenueScheduleService
                 throw new \InvalidArgumentException('The preview contains unscheduled matches. Resolve them before applying.');
             }
 
-            $fixtureIds = collect($preview['matches'])->pluck('fixture_id')->all();
+            $scheduledFixtureIds = collect($preview['matches'])->pluck('fixture_id')->all();
             if ($preview['automatic_fixture_ids']) {
                 OrderOfPlay::whereIn('fixture_id', $preview['automatic_fixture_ids'])->delete();
                 Fixture::whereIn('id', $preview['automatic_fixture_ids'])->update(['scheduled' => 0]);
@@ -186,7 +189,7 @@ final class EventVenueScheduleService
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
                 ]);
             }
-            return ['count' => count($fixtureIds), 'revision' => $expectedRevision];
+            return ['count' => count($scheduledFixtureIds), 'revision' => $expectedRevision];
         });
     }
 
@@ -273,15 +276,21 @@ final class EventVenueScheduleService
     private function revision(Event $event, array $input): string
     {
         $drawIds = $event->draws()->pluck('id');
+        $fixtures = DB::table('fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')
+            ->get(['id', 'draw_id', 'registration1_id', 'registration2_id', 'winner_registration',
+                'parent_fixture_id', 'loser_parent_fixture_id', 'round', 'stage', 'play_order', 'updated_at']);
         $state = [
             'input' => $input,
             'draws' => DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')
                 ->get(['id', 'locked', 'published', 'updated_at'])->all(),
             'venues' => DB::table('draw_venues')->whereIn('draw_id', $drawIds)->orderBy('draw_id')->orderBy('venue_id')->get()->all(),
-            'fixtures' => DB::table('fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')
-                ->get(['id', 'draw_id', 'registration1_id', 'registration2_id', 'winner_registration',
-                    'parent_fixture_id', 'loser_parent_fixture_id', 'round', 'stage', 'play_order', 'updated_at'])->all(),
-            'bookings' => DB::table('order_of_plays')->whereIn('draw_id', $drawIds)->orderBy('fixture_id')->get()->all(),
+            'fixtures' => $fixtures->all(),
+            'results' => DB::table('fixture_results')->whereIn('fixture_id', $fixtures->pluck('id'))
+                ->orderBy('fixture_id')->orderBy('id')->get()->all(),
+            'flexible' => DB::table('flexible_monrad_draws')->whereIn('draw_id', $drawIds)
+                ->orderBy('draw_id')->get()->all(),
+            'bookings' => DB::table('order_of_plays')->whereIn('fixture_id', $fixtures->pluck('id'))
+                ->orderBy('fixture_id')->get()->all(),
         ];
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
     }
