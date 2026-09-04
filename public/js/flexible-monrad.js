@@ -305,6 +305,7 @@
       coords = new Map();
     let yOffset = 0,
       width = 500;
+    const winnerLines = [];
     Object.entries(state.matches).forEach(([key, match]) => {
       if (!sections.has(match.section)) sections.set(match.section, []);
       sections.get(match.section).push([key, match]);
@@ -346,6 +347,24 @@
           board.append(card);
         });
       });
+      if (section === 'Main draw') {
+        const final = entries.find(([key]) => key === 'main_final');
+        if (final) {
+          const [key, match] = final,
+            position = coords.get(key),
+            lineEnd = position.x + bracketDimensions.width + 120,
+            champion = el('div', 'fm-champion');
+          champion.style.left = lineEnd + 10 + 'px';
+          champion.style.top = position.middle - bracketDimensions.slotHeight + 'px';
+          champion.append(
+            el('span', 'fm-champion-label', 'Champion'),
+            el('strong', 'fm-champion-name', match.winner ? name(match.winner) : 'Awaiting result')
+          );
+          board.append(champion);
+          winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
+          width = Math.max(width, lineEnd + 10 + bracketDimensions.width);
+        }
+      }
       width = Math.max(width, layout.width);
       yOffset = layout.height + 35;
     });
@@ -360,6 +379,7 @@
           lines.push([from.x + bracketDimensions.width, from.middle, target.x, slot ? target.bottom : target.top]);
       });
     });
+    lines.push(...winnerLines);
     connectors(board, coords.values(), lines, width, yOffset);
     $('fm-positions').replaceChildren();
     state.positions.forEach(p => {

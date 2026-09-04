@@ -328,6 +328,34 @@
   font-weight: 750;
   color: #11663f;
 }
+:where(.fm-surface) .fm-champion {
+  position: absolute;
+  z-index: 3;
+  width: 220px;
+  height: 32px;
+  padding: 3px 6px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+:where(.fm-surface) .fm-champion-label {
+  color: #607968;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.7px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+:where(.fm-surface) .fm-champion-name {
+  color: #11663f;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 :where(.fm-surface) .fm-score-button {
   position: absolute;
   top: 50%;
