@@ -68,16 +68,30 @@
   /* ===============================
    * FORMAT TIME
    * =============================== */
-  function formatDayTimeVenue(fx) {
-    if (!fx.time) return '';
+  function formatScheduleParts(fx) {
+    if (!fx.time) return { date: '', time: '' };
 
     const dt = new Date(fx.time.replace(' ', 'T'));
 
-    const day = dt.toLocaleDateString('en-GB', { weekday: 'short' });
+    if (Number.isNaN(dt.getTime())) return { date: '', time: '' };
+
+    const date = dt.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
     const time = dt.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     });
+
+    return { date, time };
+  }
+
+  function formatDayTimeVenue(fx, includeCourt = false) {
+    const schedule = formatScheduleParts(fx);
+    if (!schedule.time) return '';
 
     const venue =
       fx.venue_name ||
@@ -85,7 +99,10 @@
       fx.venue ||
       '';
 
-    return venue ? `${day} ${time} (${venue})` : `${day} ${time}`;
+    const parts = [`${schedule.date} ${schedule.time}`];
+    if (venue) parts.push(venue);
+    if (includeCourt && fx.court) parts.push(/^court\b/i.test(String(fx.court)) ? String(fx.court) : `Court ${fx.court}`);
+    return parts.join(' · ');
   }
 
   /* ===============================
@@ -158,7 +175,7 @@
           }
 
           const score = formatScoreCell(fx, rowP.id);
-          const time = fx.time ? formatDayTimeVenue(fx) : '';
+          const time = fx.time ? formatDayTimeVenue(fx, true) : '';
 
           html += `<td class="text-center">${score || time || '–'}</td>`;
         });
@@ -178,33 +195,35 @@
     const tbody = $('#rr-order-table tbody');
 
     if (!RR_OOP.length) {
-      tbody.html(`<tr><td colspan="7" class="text-muted text-center">No matches have been scheduled.</td></tr>`);
+      tbody.html(`<tr><td colspan="10" class="text-muted text-center py-4">No matches are available for this draw.</td></tr>`);
       return;
     }
 
-    // Sort RR fixtures: round → group → match_nr; non-RR after
-    const rrFx = RR_OOP.filter(f => f.stage === 'RR' || !f.stage)
-      .slice()
-      .sort((a, b) => {
-        if (a.round !== b.round) return (a.round || 0) - (b.round || 0);
-        if (a.group_id !== b.group_id) return (a.group_id || 0) - (b.group_id || 0);
-        return (a.match_nr || 0) - (b.match_nr || 0);
-      });
-    const otherFx = RR_OOP.filter(f => f.stage && f.stage !== 'RR');
-    const sorted = [...rrFx, ...otherFx];
+    // The backend already returns the organiser's canonical play_order.
+    // Keep that sequence instead of regrouping matches in the browser.
+    const sorted = RR_OOP.slice();
 
     let html = '';
 
     sorted.forEach(fx => {
+      const schedule = formatScheduleParts(fx);
+      const stage = fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '');
+      const court = fx.court
+        ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court)
+        : '';
+
       html += `
         <tr>
-          <td>${escapeHtml(fx.home)}</td>
-          <td class="text-center">vs</td>
-          <td>${escapeHtml(fx.away)}</td>
-          <td class="text-center">${escapeHtml(fx.round)}</td>
-          <td class="text-center">${escapeHtml(fx.group_name ? 'Box ' + fx.group_name : (fx.stage || ''))}</td>
-          <td class="text-center">${escapeHtml(formatDayTimeVenue(fx))}</td>
-          <td class="text-center fw-bold">${escapeHtml(fx.score || '')}</td>
+          <td data-label="Match" class="text-center fw-semibold">${escapeHtml(fx.match_nr || '')}</td>
+          <td data-label="Player 1">${escapeHtml(fx.home)}</td>
+          <td data-label="Player 2">${escapeHtml(fx.away)}</td>
+          <td data-label="Round" class="text-center">${escapeHtml(fx.round)}</td>
+          <td data-label="Stage" class="text-center">${escapeHtml(stage)}</td>
+          <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
+          <td data-label="Time" class="text-center">${escapeHtml(schedule.time || '—')}</td>
+          <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
+          <td data-label="Court" class="text-center">${escapeHtml(court || '—')}</td>
+          <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });
 
@@ -366,5 +385,11 @@
    * STARTUP
    * =============================== */
   $(document).ready(init);
+
+  $(document).ready(function () {
+    if (['#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
+      document.getElementById('oop-tab')?.click();
+    }
+  });
 
 })(jQuery, window, document);

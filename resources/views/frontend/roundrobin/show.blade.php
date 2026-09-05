@@ -97,6 +97,21 @@
     font-weight: bold;
   }
 
+  /* Keep the player-facing schedule readable and make start times easy to scan. */
+  #oop-pane .card-body { overflow-x: auto; }
+  #rr-order-table { min-width: 1050px; }
+  #rr-order-table th,
+  #rr-order-table td { vertical-align: middle; }
+  #rr-order-table td[data-label="Player 1"],
+  #rr-order-table td[data-label="Player 2"] { font-weight: 650; }
+  #rr-order-table td[data-label="Date"],
+  #rr-order-table td[data-label="Time"] { white-space: nowrap; }
+  #rr-order-table td[data-label="Time"] {
+    color: #0d675e;
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
   /* ==============================================
      MOBILE IMPROVEMENTS
      ============================================== */
@@ -131,9 +146,7 @@
     }
 
     /* OOP table mobile */
-    #rr-order-table {
-      font-size: 12px;
-    }
+    #rr-order-table { font-size: 12px; }
     #rr-order-table thead th {
       font-size: 11px;
       white-space: nowrap;
@@ -142,10 +155,7 @@
       white-space: nowrap;
     }
 
-    #oop-pane .card-body {
-      overflow-x: auto;
-    }
-
+    #rr-order-table td[data-label="Date"],
     #rr-order-table td[data-label="Time"],
     #rr-order-table td[data-label="Court"] {
       color: #176448;
@@ -156,6 +166,7 @@
     #rr-order-table tbody,
     #rr-order-table tr,
     #rr-order-table td { display: block; width: 100%; }
+    #rr-order-table { min-width: 0; }
     #rr-order-table thead { display: none; }
     #rr-order-table tbody { padding: .75rem; }
     #rr-order-table tr {
@@ -230,21 +241,21 @@
 
   <li class="nav-item" role="presentation">
     <button class="nav-link active"
-            id="matrix-tab"
+            id="oop-tab"
             data-bs-toggle="tab"
-            data-bs-target="#matrix-pane"
-            type="button" role="tab" aria-controls="matrix-pane" aria-selected="true">
-      Draw
+            data-bs-target="#oop-pane"
+            type="button" role="tab" aria-controls="oop-pane" aria-selected="true">
+      Match times
     </button>
   </li>
 
   <li class="nav-item" role="presentation">
     <button class="nav-link"
-            id="oop-tab"
+            id="matrix-tab"
             data-bs-toggle="tab"
-            data-bs-target="#oop-pane"
-            type="button" role="tab" aria-controls="oop-pane" aria-selected="false">
-      Match times
+            data-bs-target="#matrix-pane"
+            type="button" role="tab" aria-controls="matrix-pane" aria-selected="false">
+      Draw
     </button>
   </li>
 
@@ -281,7 +292,7 @@
     {{-- ============================
          TAB 1 — MATRIX + STANDINGS
        ============================ --}}
-    <div class="tab-pane fade show active" 
+    <div class="tab-pane fade"
          id="matrix-pane" 
          role="tabpanel" aria-labelledby="matrix-tab">
       <div class="row"> 
@@ -312,26 +323,32 @@
     {{-- ============================
          TAB 2 — ORDER OF PLAY
        ============================ --}}
-    <div class="tab-pane fade" 
+    <div class="tab-pane fade show active"
          id="oop-pane" 
          role="tabpanel" aria-labelledby="oop-tab">
        <div class="col-12">
             <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0">Order of Play</h5>
+          <div>
+            <h5 class="card-title mb-1">Match times &amp; courts</h5>
+            <div class="small text-muted">Find your name, then confirm the date, time, venue and court.</div>
+          </div>
        
         </div>
         <div class="card-body p-0">
         @if($draw->oop_published)
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
+    <caption class="visually-hidden">Player match dates, start times, venues, courts and scores</caption>
     <thead class="table-light">
         <tr>
+            <th class="text-center">Match</th>
             <th>Player 1</th>
-            <th class="text-center">VS</th>
             <th>Player 2</th>
             <th class="text-center">Round</th>
-            <th class="text-center">Group</th>
+            <th class="text-center">Stage</th>
+            <th class="text-center">Date</th>
             <th class="text-center">Time</th>
+            <th>Venue</th>
             <th class="text-center">Court</th>
             <th class="text-center">Score</th>
            
@@ -425,7 +442,7 @@
 
     window.RR_MAIN_BRACKET_URL = "{{ route('public.roundrobin.main-bracket', $draw) }}";
 </script>
-<script src="{{ asset('assets/js/roundrobin-public.js') }}"></script>
+<script src="{{ asset('assets/js/roundrobin-public.js') }}?v={{ filemtime(public_path('assets/js/roundrobin-public.js')) }}"></script>
 
 <script>
 (function(){

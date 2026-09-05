@@ -43,7 +43,14 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('Draw not published', $html);
         $this->assertStringContainsString('Manage this draw', $html);
         $this->assertStringContainsString('Match times', $html);
+        $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="true"/', $html);
+        $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="oop-pane"/', $html);
+        $this->assertStringContainsString('Find your name, then confirm the date, time, venue and court.', $html);
+        $this->assertStringContainsString('<th class="text-center">Match</th>', $html);
+        $this->assertStringContainsString('<th class="text-center">Date</th>', $html);
+        $this->assertStringContainsString('<th>Venue</th>', $html);
         $this->assertStringContainsString('<th class="text-center">Court</th>', $html);
+        $this->assertStringContainsString('roundrobin-public.js?v=', $html);
         $this->assertStringNotContainsString('<span class="badge bg-label-success">Draw published</span>', $html);
     }
 
@@ -52,6 +59,10 @@ class PublicDrawPresentationTest extends TestCase
         $script = file_get_contents(public_path('assets/js/roundrobin-public.js'));
 
         $this->assertStringContainsString('const sorted = RR_OOP.slice();', $script);
+        $this->assertStringContainsString('data-label="Match"', $script);
+        $this->assertStringContainsString('data-label="Date"', $script);
+        $this->assertStringContainsString('data-label="Time"', $script);
+        $this->assertStringContainsString('data-label="Venue"', $script);
         $this->assertStringContainsString('data-label="Court"', $script);
         $this->assertStringContainsString("'Court ' + fx.court", $script);
         $this->assertStringNotContainsString('if (a.round !== b.round)', $script);

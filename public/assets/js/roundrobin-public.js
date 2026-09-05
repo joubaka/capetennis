@@ -68,16 +68,30 @@
   /* ===============================
    * FORMAT TIME
    * =============================== */
-  function formatDayTimeVenue(fx, includeCourt = false) {
-    if (!fx.time) return '';
+  function formatScheduleParts(fx) {
+    if (!fx.time) return { date: '', time: '' };
 
     const dt = new Date(fx.time.replace(' ', 'T'));
 
-    const day = dt.toLocaleDateString('en-GB', { weekday: 'short' });
+    if (Number.isNaN(dt.getTime())) return { date: '', time: '' };
+
+    const date = dt.toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
     const time = dt.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     });
+
+    return { date, time };
+  }
+
+  function formatDayTimeVenue(fx, includeCourt = false) {
+    const schedule = formatScheduleParts(fx);
+    if (!schedule.time) return '';
 
     const venue =
       fx.venue_name ||
@@ -85,7 +99,7 @@
       fx.venue ||
       '';
 
-    const parts = [`${day} ${time}`];
+    const parts = [`${schedule.date} ${schedule.time}`];
     if (venue) parts.push(venue);
     if (includeCourt && fx.court) parts.push(/^court\b/i.test(String(fx.court)) ? String(fx.court) : `Court ${fx.court}`);
     return parts.join(' · ');
@@ -181,7 +195,7 @@
     const tbody = $('#rr-order-table tbody');
 
     if (!RR_OOP.length) {
-      tbody.html(`<tr><td colspan="8" class="text-muted text-center">No matches have been scheduled.</td></tr>`);
+      tbody.html(`<tr><td colspan="10" class="text-muted text-center py-4">No matches are available for this draw.</td></tr>`);
       return;
     }
 
@@ -192,16 +206,24 @@
     let html = '';
 
     sorted.forEach(fx => {
+      const schedule = formatScheduleParts(fx);
+      const stage = fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '');
+      const court = fx.court
+        ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court)
+        : '';
+
       html += `
         <tr>
+          <td data-label="Match" class="text-center fw-semibold">${escapeHtml(fx.match_nr || '')}</td>
           <td data-label="Player 1">${escapeHtml(fx.home)}</td>
-          <td data-label="Versus" class="text-center">vs</td>
           <td data-label="Player 2">${escapeHtml(fx.away)}</td>
           <td data-label="Round" class="text-center">${escapeHtml(fx.round)}</td>
-          <td data-label="Stage" class="text-center">${escapeHtml(fx.group_name ? 'Box ' + fx.group_name : (fx.stage || ''))}</td>
-          <td data-label="Time" class="text-center">${escapeHtml(formatDayTimeVenue(fx))}</td>
-          <td data-label="Court" class="text-center">${escapeHtml(fx.court ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court) : '')}</td>
-          <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '')}</td>
+          <td data-label="Stage" class="text-center">${escapeHtml(stage)}</td>
+          <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
+          <td data-label="Time" class="text-center">${escapeHtml(schedule.time || '—')}</td>
+          <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
+          <td data-label="Court" class="text-center">${escapeHtml(court || '—')}</td>
+          <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });
 
