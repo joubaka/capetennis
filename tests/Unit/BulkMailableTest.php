@@ -74,11 +74,12 @@ class BulkMailableTest extends TestCase
     {
         $mailable = new AnnouncementMail([
             'event' => 'Summer Championship 2024',
+            'title' => 'Court venues assigned',
             'announcement' => 'Registration is now open',
         ]);
 
         $envelope = $mailable->envelope();
 
-        $this->assertEquals('Announcement – Summer Championship 2024', $envelope->subject);
+        $this->assertEquals('Court venues assigned – Summer Championship 2024', $envelope->subject);
     }
 }

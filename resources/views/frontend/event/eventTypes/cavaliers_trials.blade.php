@@ -20,7 +20,9 @@ $nominations = EventNomination::all();
                     @foreach($event->announcements as $a)
                     <div class="card shadow-none bg-transparent border border-primary m-4">
                         <div class="card-body">
-                            <h5 class="card-title"></h5>
+                            @if(filled($a->title))
+                            <h5 class="card-title">{{ $a->title }}</h5>
+                            @endif
                             <p class="card-text">
                                 {!!$a->message!!}
                             </p>

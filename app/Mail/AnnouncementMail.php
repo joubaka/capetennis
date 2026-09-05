@@ -34,8 +34,10 @@ class AnnouncementMail extends Mailable
    */
   public function envelope(): Envelope
   {
+    $title = trim((string) ($this->data['title'] ?? '')) ?: 'Announcement';
+
     return new Envelope(
-      subject: 'Announcement – ' . ($this->data['event'] ?? '')
+      subject: $title . ' – ' . ($this->data['event'] ?? '')
     );
   }
 

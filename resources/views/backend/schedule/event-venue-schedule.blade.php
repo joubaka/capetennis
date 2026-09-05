@@ -10,7 +10,14 @@
       <h3 class="mb-1">{{ $event->name }}</h3>
       <p class="text-muted mb-0">Schedule every assigned age group across the event's shared physical courts.</p>
     </div>
-    <a class="btn btn-outline-secondary" href="{{ url()->previous() }}"><i class="ti ti-arrow-left me-1"></i>Back</a>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-primary" id="open-venue-announcement"
+        data-bs-toggle="modal" data-bs-target="#venueAnnouncementModal"
+        {{ $announcementDraft['assignments']->isEmpty() ? 'disabled' : '' }}>
+        <i class="ti ti-megaphone me-1"></i>Announce assigned courts
+      </button>
+      <a class="btn btn-outline-secondary" href="{{ url()->previous() }}"><i class="ti ti-arrow-left me-1"></i>Back</a>
+    </div>
   </div>
 
   <div class="alert alert-info d-flex gap-2 align-items-start" role="note">
@@ -128,12 +135,77 @@
         <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
         <span id="schedule-status" class="align-self-center text-muted small" role="status" aria-live="polite">Preview the full event before applying.</span>
       </div>
+      <div id="preview-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <strong id="preview-activity-label" role="status" aria-live="polite">Preparing the combined preview…</strong>
+          </div>
+          <span id="preview-activity-meta" class="small text-muted">About 5% · 0s elapsed</span>
+        </div>
+        <div class="progress" style="height: 8px;" aria-label="Estimated preview progress">
+          <div id="preview-activity-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 5%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="5"></div>
+        </div>
+        <small class="text-muted d-block mt-2">Progress is estimated while the server builds and validates the complete schedule.</small>
+      </div>
     </div>
   </div>
 
   <div id="preview-summary" class="row g-3 mb-3 d-none"></div>
   <div id="preview-warnings"></div>
+  <div id="preview-view-controls" class="d-none flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <strong>Fixtures per venue</strong>
+      <div class="small text-muted">Switch to the court grid to spot unused capacity between matches.</div>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Venue schedule view">
+      <button type="button" class="btn btn-primary active" data-preview-view="timeline" aria-pressed="true"><i class="ti ti-list me-1" aria-hidden="true"></i>Fixture list</button>
+      <button type="button" class="btn btn-outline-primary" data-preview-view="grid" aria-pressed="false"><i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Court slot grid</button>
+    </div>
+  </div>
   <div id="venue-timelines"></div>
+  <div id="venue-slot-grids" class="d-none"></div>
+</div>
+
+<div class="modal fade" id="venueAnnouncementModal" tabindex="-1" aria-labelledby="venueAnnouncementLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="venueAnnouncementLabel">Review venue announcement and email</h5>
+          <div class="small text-muted mt-1">Edit the draft below before publishing it on the event page and emailing players.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2" role="note">
+          This will publish one announcement and queue email to
+          <strong>{{ $announcementDraft['recipient_count'] }}</strong>
+          unique active, paid player {{ Str::plural('email address', $announcementDraft['recipient_count']) }}.
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="venue-announcement-title">Announcement title / email subject</label>
+          <input type="text" id="venue-announcement-title" class="form-control" maxlength="255" value="{{ $announcementDraft['title'] }}" required>
+          <div class="form-text">Email subject: <span id="venue-email-subject"></span></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="venue-announcement-message">Email and announcement draft</label>
+          <div id="venue-announcement-message" class="form-control overflow-auto" contenteditable="true"
+            role="textbox" aria-multiline="true" style="min-height: 22rem; max-height: 55vh;">{!! $announcementDraft['message'] !!}</div>
+          <div class="form-text">The same edited wording will appear in Announcements on the public event page and in the email.</div>
+        </div>
+        <div id="venue-announcement-status" class="small" role="status" aria-live="polite"></div>
+      </div>
+      <div class="modal-footer">
+        <a href="{{ route('admin.events.announcements', $event) }}" class="btn btn-outline-secondary">View announcements</a>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="publish-venue-announcement"
+          {{ $announcementDraft['assignments']->isEmpty() || $announcementDraft['recipient_count'] === 0 ? 'disabled' : '' }}>
+          <i class="ti ti-send me-1"></i>Publish and queue email
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 @endsection
 
@@ -146,10 +218,23 @@
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
+  const announcementUrl = @json(route('admin.events.announcements.store', $event));
+  const eventName = @json($event->name);
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->pluck('id')->values());
   let payload = null;
   let revision = null;
   let allocationsDirty = false;
+  let previewActivityTimer = null;
+
+  const previewActivityStages = [
+    {after: 0, percent: 5, label: 'Sending the scheduling rules…'},
+    {after: 700, percent: 18, label: 'Loading selected draws, venues, and courts…'},
+    {after: 2200, percent: 36, label: 'Checking match order, byes, and player rest…'},
+    {after: 5000, percent: 58, label: 'Finding available court times across venues…'},
+    {after: 9000, percent: 74, label: 'Resolving court and player conflicts…'},
+    {after: 15000, percent: 86, label: 'Balancing age groups across the timetable…'},
+    {after: 25000, percent: 94, label: 'Finalising and validating the preview…'},
+  ];
 
   const values = selector => [...document.querySelectorAll(selector + ':checked')].map(el => Number(el.value));
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
@@ -157,6 +242,30 @@
     element.textContent = message;
     element.classList.remove('text-muted', 'text-danger', 'text-success', 'text-warning');
     element.classList.add(`text-${tone}`);
+  };
+  const updatePreviewActivity = startedAt => {
+    const elapsed = Math.max(0, performance.now() - startedAt);
+    const stage = [...previewActivityStages].reverse().find(item => elapsed >= item.after) || previewActivityStages[0];
+    const elapsedSeconds = Math.floor(elapsed / 1000);
+    document.getElementById('preview-activity-label').textContent = stage.label;
+    document.getElementById('preview-activity-meta').textContent = `About ${stage.percent}% · ${elapsedSeconds}s elapsed`;
+    const bar = document.getElementById('preview-activity-bar');
+    bar.style.width = `${stage.percent}%`;
+    bar.setAttribute('aria-valuenow', String(stage.percent));
+  };
+  const startPreviewActivity = () => {
+    if (previewActivityTimer) window.clearInterval(previewActivityTimer);
+    const startedAt = performance.now();
+    document.getElementById('preview-activity').classList.remove('d-none');
+    document.getElementById('preview-activity').setAttribute('aria-busy', 'true');
+    updatePreviewActivity(startedAt);
+    previewActivityTimer = window.setInterval(() => updatePreviewActivity(startedAt), 250);
+  };
+  const stopPreviewActivity = () => {
+    if (previewActivityTimer) window.clearInterval(previewActivityTimer);
+    previewActivityTimer = null;
+    document.getElementById('preview-activity').setAttribute('aria-busy', 'false');
+    document.getElementById('preview-activity').classList.add('d-none');
   };
   const invalidatePreview = (message = 'Settings changed. Generate a new preview before applying.') => {
     payload = null;
@@ -185,6 +294,45 @@
     if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Request failed.');
     return data;
   };
+  const announcementTitle = document.getElementById('venue-announcement-title');
+  const announcementMessage = document.getElementById('venue-announcement-message');
+  const announcementStatus = document.getElementById('venue-announcement-status');
+  const publishAnnouncement = document.getElementById('publish-venue-announcement');
+  const updateEmailSubject = () => {
+    document.getElementById('venue-email-subject').textContent = `${announcementTitle.value.trim() || 'Announcement'} – ${eventName}`;
+  };
+  announcementTitle?.addEventListener('input', updateEmailSubject);
+  updateEmailSubject();
+  document.getElementById('open-venue-announcement')?.addEventListener('click', event => {
+    if (!allocationsDirty) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setStatus(document.getElementById('allocation-status'), 'Save the court allocations before reviewing the announcement draft.', 'danger');
+    document.getElementById('save-allocations')?.focus();
+  });
+  publishAnnouncement?.addEventListener('click', async () => {
+    const title = announcementTitle.value.trim();
+    const message = announcementMessage.innerHTML.trim();
+    const plainMessage = announcementMessage.textContent.trim();
+    if (!title || !plainMessage) {
+      setStatus(announcementStatus, 'Enter a title and message before publishing.', 'danger');
+      (!title ? announcementTitle : announcementMessage).focus();
+      return;
+    }
+
+    publishAnnouncement.disabled = true;
+    setStatus(announcementStatus, 'Publishing the announcement and queueing player email…');
+    try {
+      const result = await post(announcementUrl, {title, message, sendMail:true});
+      const queued = Number(result.mail?.queued || 0);
+      setStatus(announcementStatus, `Announcement published. ${queued} player ${queued === 1 ? 'email is' : 'emails are'} queued for delivery.`, 'success');
+      publishAnnouncement.innerHTML = '<i class="ti ti-check me-1"></i>Published';
+      document.getElementById('open-venue-announcement').disabled = true;
+    } catch (error) {
+      setStatus(announcementStatus, error.message, 'danger');
+      publishAnnouncement.disabled = false;
+    }
+  });
   document.querySelectorAll('.assignment-choice').forEach(input => input.addEventListener('change', () => {
     document.querySelectorAll(`.court-allocation[data-draw="${input.dataset.draw}"][data-venue="${input.value}"]`)
       .forEach(court => { court.checked = input.checked; });
@@ -210,6 +358,46 @@
     newVenueName.placeholder = existingVenue.value ? 'Using the selected venue' : 'Enter a venue name';
   });
   const card = (value, label, tone='primary') => `<div class="col-6 col-md-3"><div class="card"><div class="card-body py-3"><div class="fs-4 fw-bold text-${tone}">${value}</div><small class="text-muted">${label}</small></div></div></div>`;
+  const asDate = value => new Date(String(value).replace(' ', 'T'));
+  const dateKey = value => asDate(value).getTime();
+  const formatSlotTime = date => date.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+  const matchEnd = (match, result) => match.ends_at
+    ? asDate(match.ends_at)
+    : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
+  const venueRows = (result, venueId) => [...result.matches.map(match => ({...match, fixed:false})),
+    ...(result.existing_matches || []).map(match => ({...match, fixed:true}))]
+    .filter(match => Number(match.venue_id) === Number(venueId))
+    .sort((a, b) => dateKey(a.scheduled_at) - dateKey(b.scheduled_at) || String(a.court).localeCompare(String(b.court), undefined, {numeric:true}));
+
+  function slotGrid(result, venue) {
+    const rows = venueRows(result, venue.id);
+    const start = asDate(result.input.start);
+    const end = result.input.end ? asDate(result.input.end) : new Date(Math.max(start.getTime(), ...rows.map(row => matchEnd(row, result).getTime())));
+    const step = Math.max(15, Number(result.input.duration) + Number(result.input.courtGap || 0));
+    const times = new Map(rows.map(row => [dateKey(row.scheduled_at), asDate(row.scheduled_at)]));
+    let cursor = new Date(start);
+    while (cursor < end && times.size < 200) {
+      times.set(cursor.getTime(), new Date(cursor));
+      cursor = new Date(cursor.getTime() + step * 60000);
+    }
+    const slots = [...times.values()].filter(time => time >= start && time < end).sort((a, b) => a - b).slice(0, 200);
+    const courtHeaders = venue.court_labels.map(court => `<th class="text-nowrap">Court ${escapeHtml(court)}</th>`).join('');
+    const body = slots.map(time => {
+      const cells = venue.court_labels.map(court => {
+        const starts = rows.find(row => String(row.court) === String(court) && dateKey(row.scheduled_at) === time.getTime());
+        if (starts) {
+          return `<td class="bg-label-primary"><div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · M${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Existing' : ''}</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Players TBD')}</div></td>`;
+        }
+        const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
+        if (occupied) return `<td class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
+        return '<td class="text-success"><span class="fw-semibold">Available</span><div class="small text-muted">No fixture in this slot</div></td>';
+      }).join('');
+      return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
+    }).join('');
+    const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
+
+    return `<div class="card mb-4"><div class="card-header d-flex flex-wrap justify-content-between gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span>${venue.courts} courts · ${rows.length} fixtures</span></div><div class="table-responsive"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</div>`;
+  }
 
   function render(result) {
     revision = result.revision;
@@ -218,15 +406,31 @@
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
     if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying:</strong><ul class="mb-0 mt-2">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} R${row.round} M${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
+    document.getElementById('preview-view-controls').classList.remove('d-none');
+    document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
-      const rows = result.matches.filter(match => match.venue_id === venue.id);
-      return `<div class="card mb-4"><div class="card-header d-flex justify-content-between"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span>${venue.courts} courts · ${rows.length} matches</span></div><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>Wave ${row.wave} · R${row.round}</td><td>${escapeHtml(row.match)}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'TBD')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No matches allocated.</td></tr>'}</tbody></table></div></div>`;
+      const rows = venueRows(result, venue.id);
+      return `<div class="card mb-4"><div class="card-header d-flex justify-content-between"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span>${venue.courts} courts · ${rows.length} fixtures</span></div><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-secondary ms-2">Existing</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? '' : `Wave ${row.wave} · `}R${row.round}</td><td>${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'TBD')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></div>`;
     }).join('');
+    document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
     setStatus(document.getElementById('schedule-status'), result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
       : 'Preview ready. Review every venue before applying.', result.unscheduled.length ? 'danger' : 'success');
   }
+
+  document.querySelectorAll('[data-preview-view]').forEach(button => button.addEventListener('click', () => {
+    const grid = button.dataset.previewView === 'grid';
+    document.getElementById('venue-timelines').classList.toggle('d-none', grid);
+    document.getElementById('venue-slot-grids').classList.toggle('d-none', !grid);
+    document.querySelectorAll('[data-preview-view]').forEach(option => {
+      const selected = option === button;
+      option.classList.toggle('btn-primary', selected);
+      option.classList.toggle('active', selected);
+      option.classList.toggle('btn-outline-primary', !selected);
+      option.setAttribute('aria-pressed', String(selected));
+    });
+  }));
 
   document.getElementById('generate-preview').addEventListener('click', async event => {
     if (allocationsDirty) {
@@ -235,10 +439,14 @@
       return;
     }
     const button = event.currentTarget; payload = buildPayload(); revision = null; button.disabled = true;
-    document.getElementById('apply-preview').disabled = true; setStatus(document.getElementById('schedule-status'), 'Building preview…');
+    const originalButtonHtml = button.innerHTML;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
+    document.getElementById('apply-preview').disabled = true;
+    setStatus(document.getElementById('schedule-status'), 'Building the combined preview…');
+    startPreviewActivity();
     try { render(await post(previewUrl, payload)); }
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); }
-    finally { button.disabled = false; }
+    finally { stopPreviewActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
   });
   document.getElementById('save-allocations')?.addEventListener('click', async event => {
     const button = event.currentTarget;

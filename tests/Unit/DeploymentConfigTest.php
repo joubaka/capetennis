@@ -16,8 +16,18 @@ class DeploymentConfigTest extends TestCase
             '2026_08_12_000002_add_sort_order_to_ranking_list_category_events.php',
             '2026_08_18_120000_create_audit_events_table.php',
             '2026_08_18_120100_create_audit_daily_seals_table.php',
+            '2026_09_04_213500_create_event_venue_court_allocations.php',
+            '2026_09_05_000001_add_schedule_visibility_to_draw_settings.php',
         ] as $migration) {
             $this->assertStringContainsString($migration, $config);
         }
+    }
+
+    public function test_deploy_fails_if_unapproved_migrations_remain_pending(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+
+        $this->assertStringContainsString('migrate:status --pending --no-interaction --no-ansi', $script);
+        $this->assertStringContainsString('Pending migrations remain after the approved migration list ran', $script);
     }
 }

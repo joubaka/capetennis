@@ -115,7 +115,8 @@ final class EventVenueScheduleService
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     foreach ($courts as $court) {
                         $at = $calendar->nextAvailableForMatch($release, $duration + $courtGap,
-                            $duration + $playerRest, $venueId, (string) $court, $node['participants']);
+                            $duration + $playerRest, $venueId, (string) $court, $node['participants'],
+                            $node['participant_group']);
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
                         $choice = ['id' => $id, 'time' => $at, 'venue_id' => $venueId, 'court' => (string) $court,
                             'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0];
@@ -127,7 +128,7 @@ final class EventVenueScheduleService
             $id = $best['id'];
             $node = $nodes[$id];
             $calendar->reserveWithRest($best['venue_id'], $best['court'], $best['time'], $duration + $courtGap,
-                $duration + $playerRest, $node['participants']);
+                $duration + $playerRest, $node['participants'], $node['participant_group']);
             $finished[$id] = $best['time']->copy()->addMinutes($duration + $playerRest);
             $scheduledPerDraw[$node['draw_id']] = ($scheduledPerDraw[$node['draw_id']] ?? 0) + 1;
             $plan[] = [
@@ -153,6 +154,27 @@ final class EventVenueScheduleService
             $order = [$a['scheduled_at'], $a['venue_id']] <=> [$b['scheduled_at'], $b['venue_id']];
             return $order ?: strnatcasecmp((string) $a['court'], (string) $b['court']);
         });
+        $displayEnd = $end?->copy() ?? collect($plan)->map(fn ($row) => Carbon::parse($row['scheduled_at'])
+            ->addMinutes((int) $row['duration']))->max();
+        $existingMatches = $displayEnd ? OrderOfPlay::with('fixture.draw')
+            ->whereIn('venue_id', $venueIds)->whereNotNull('time')
+            ->when($excluded, fn ($query) => $query->whereNotIn('fixture_id', $excluded))
+            ->where('time', '>=', $start->copy()->subMinutes(600))->where('time', '<', $displayEnd)
+            ->orderBy('time')->orderBy('venue_id')->orderBy('court')->limit(2000)->get()
+            ->filter(fn (OrderOfPlay $slot) => Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration))->gt($start))
+            ->map(function (OrderOfPlay $slot) use ($duration) {
+                $startsAt = Carbon::parse($slot->time);
+                $fixture = $slot->fixture;
+                return [
+                    'fixture_id' => $slot->fixture_id, 'draw_id' => $fixture?->draw_id ?? $slot->draw_id,
+                    'draw_name' => $fixture?->draw?->drawName ?? $slot->draw?->drawName ?? 'Existing booking',
+                    'round' => max(1, (int) ($fixture?->round ?? $slot->round_number)),
+                    'match' => $fixture?->match_nr, 'scheduled_at' => $startsAt->format('Y-m-d H:i:s'),
+                    'ends_at' => $startsAt->copy()->addMinutes($slot->occupiedMinutes($duration))->format('Y-m-d H:i:s'),
+                    'venue_id' => (int) $slot->venue_id, 'court' => (string) $slot->court,
+                    'duration' => (int) ($slot->duration_minutes ?: $duration), 'participants' => [],
+                ];
+            })->values()->all() : [];
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
             'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'),
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
@@ -164,7 +186,8 @@ final class EventVenueScheduleService
             'event' => ['id' => $event->id, 'name' => $event->name],
             'venues' => $venues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name,
                 'courts' => count($courtLabels[$venue->id]), 'court_labels' => $courtLabels[$venue->id]])->values()->all(),
-            'matches' => $plan, 'unscheduled' => $unscheduled, 'warnings' => $warnings,
+            'matches' => $plan, 'existing_matches' => $existingMatches,
+            'unscheduled' => $unscheduled, 'warnings' => $warnings,
             'automatic_byes' => collect($nodes)->where('automatic', true)->count(),
             'automatic_fixture_ids' => collect($nodes)->where('automatic', true)->keys()->values()->all(),
             'revision' => $this->revision($event, $input), 'input' => $input,
@@ -259,6 +282,9 @@ final class EventVenueScheduleService
             'stage' => $fixture->stage, 'round' => max(1, (int) $fixture->round), 'match' => $fixture->match_nr,
             'play_order' => (int) ($fixture->play_order ?: $fixture->match_nr), 'dependencies' => $dependencies,
             'participants' => array_values(array_unique(array_filter($participants))), 'participant_names' => $names,
+            // A Flexible Monrad graph already models the winner and loser paths within one draw. Its sibling
+            // classification matches can therefore share a time even while their exact players are unresolved.
+            'participant_group' => $draw->usesFlexibleMonrad() ? 'flexible-draw-'.$draw->id : null,
             'automatic' => $automatic, 'played' => $played,
         ];
     }

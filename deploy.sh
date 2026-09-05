@@ -63,6 +63,11 @@ run_php "$APP_PATH/artisan" optimize:clear
 if [ "$SKIP_MIGRATIONS" = false ] && [ "$RUN_MIGRATIONS" = true ]; then
     [ -n "${MIGRATION_PATHS:-}" ] || fail 'RUN_MIGRATIONS=true requires MIGRATION_PATHS'
     for migration in $MIGRATION_PATHS; do case "$migration" in database/migrations/*.php) ;; *) fail "Invalid migration path: $migration" ;; esac; [ -f "$APP_PATH/$migration" ] || fail "Migration not found: $migration"; run_php "$APP_PATH/artisan" migrate --force --no-interaction --path="$migration"; done
+    PENDING_MIGRATIONS="$(run_php "$APP_PATH/artisan" migrate:status --pending --no-interaction --no-ansi)"
+    if ! printf '%s\n' "$PENDING_MIGRATIONS" | grep -Fq 'No pending migrations.'; then
+        printf '%s\n' "$PENDING_MIGRATIONS"
+        fail 'Pending migrations remain after the approved migration list ran; add each reviewed path to MIGRATION_PATHS'
+    fi
 fi
 run_php "$APP_PATH/artisan" storage:link 2>&1 | grep -v 'already exists' || true
 run_php "$APP_PATH/artisan" config:cache; run_php "$APP_PATH/artisan" route:cache; run_php "$APP_PATH/artisan" view:cache

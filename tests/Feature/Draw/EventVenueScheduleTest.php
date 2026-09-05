@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
+use App\Jobs\SendBulkEmailJob;
+use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -372,6 +374,111 @@ class EventVenueScheduleTest extends TestCase
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts', $event), [
             'venue_id' => $venue->id, 'label' => '   ', 'ball_type' => 'standard',
         ])->assertUnprocessable()->assertJsonValidationErrors('label');
+    }
+
+    public function test_event_admin_can_review_edit_and_publish_the_saved_venue_announcement(): void
+    {
+        Queue::fake();
+        $event = Event::factory()->create(['name' => 'Overberg Tennis Trials']);
+        $venue = $this->venue($event, 'Hermanus High School');
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/12 Girls']);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        foreach (['1', '2'] as $label) {
+            DB::table('event_venue_courts')->insert([
+                'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => $label,
+                'ball_type' => 'standard', 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('draw_venue_court_allocations')->insert([
+                'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => $label,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $player = Player::factory()->create(['email' => 'Player@Example.com']);
+        $activeRegistration = Registration::factory()->create();
+        $activeRegistration->players()->attach($player);
+        $categoryEvent = CategoryEvent::factory()->for($event)->create();
+        CategoryEventRegistration::factory()->paid()->create([
+            'category_event_id' => $categoryEvent->id,
+            'registration_id' => $activeRegistration->id,
+            'status' => 'active',
+        ]);
+
+        // Duplicate, withdrawn, and unpaid entries must not expand the delivery list.
+        $duplicateRegistration = Registration::factory()->create();
+        $duplicateRegistration->players()->attach($player);
+        CategoryEventRegistration::factory()->paid()->create([
+            'category_event_id' => $categoryEvent->id,
+            'registration_id' => $duplicateRegistration->id,
+            'status' => 'active',
+        ]);
+        foreach ([['withdrawn', 1], ['active', null]] as [$status, $paymentStatus]) {
+            $registration = Registration::factory()->create();
+            $registration->players()->attach(Player::factory()->create());
+            CategoryEventRegistration::factory()->create([
+                'category_event_id' => $categoryEvent->id,
+                'registration_id' => $registration->id,
+                'status' => $status,
+                'payment_status_id' => $paymentStatus,
+                'withdrawn_at' => $status === 'withdrawn' ? now() : null,
+            ]);
+        }
+
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', $event))
+            ->assertOk()
+            ->assertSee('Announce assigned courts')
+            ->assertSee('Review venue announcement and email')
+            ->assertSee('u/12 Girls')
+            ->assertSee('Hermanus High School')
+            ->assertSee('Court 1')
+            ->assertSee('Court 2')
+            ->assertSee('unique active, paid player');
+
+        $response = $this->actingAs($admin)->postJson(route('admin.events.announcements.store', $event), [
+            'title' => 'Final court allocation',
+            'message' => '<p>Courts are ready. Please review your age group.</p>',
+            'sendMail' => true,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('mail.total', 1)
+            ->assertJsonPath('mail.queued', 1);
+        $announcement = Announcement::where('event_id', $event->id)->sole();
+        $this->assertSame('Final court allocation', $announcement->title);
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'related_id' => $announcement->id,
+            'mail_type' => 'event_announcement',
+            'recipient_email' => 'player@example.com',
+            'status' => 'queued',
+        ]);
+        $this->assertSame(1, BulkEmailLog::where('related_id', $announcement->id)->count());
+        Queue::assertPushed(SendBulkEmailJob::class, 1);
+    }
+
+    public function test_an_admin_of_another_event_cannot_publish_or_edit_event_announcements(): void
+    {
+        $event = Event::factory()->create();
+        $otherEvent = Event::factory()->create();
+        $announcement = Announcement::create([
+            'event_id' => $event->id,
+            'title' => 'Protected',
+            'message' => '<p>Protected announcement</p>',
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $otherEvent->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->postJson(route('admin.events.announcements.store', $event), [
+            'title' => 'Cross-event', 'message' => '<p>Should not save</p>', 'sendMail' => false,
+        ])->assertForbidden();
+        $this->actingAs($admin)->patchJson(route('admin.announcements.update', $announcement), [
+            'title' => 'Changed', 'message' => '<p>Changed</p>',
+        ])->assertForbidden();
+
+        $this->assertSame('Protected', $announcement->fresh()->title);
+        $this->assertDatabaseMissing('announcements', ['event_id' => $event->id, 'title' => 'Cross-event']);
     }
 
     private function schedulingOptions(): array

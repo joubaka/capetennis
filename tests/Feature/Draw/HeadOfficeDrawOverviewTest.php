@@ -40,6 +40,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#print', $html);
         $this->assertStringContainsString(route('flexible-monrad.publish', 42), $html);
         $this->assertStringContainsString('data-revision="7"', $html);
+        $this->assertStringContainsString('draw-publish-button draws-button-primary', $html);
         $this->assertStringContainsString('>Publish</span>', $html);
         $this->assertStringNotContainsString(route('draw.toggle.publish', 42), $html);
         $this->assertStringNotContainsString('Publication in draw editor', $html);
@@ -68,6 +69,19 @@ class HeadOfficeDrawOverviewTest extends TestCase
             $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
             $this->assertStringNotContainsString('btn-delete-draw', $html);
         }
+    }
+
+    public function test_published_draw_uses_secondary_unpublish_action(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $draw = $this->draw();
+        $draw->published = true;
+
+        $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+
+        $this->assertStringContainsString('draw-publish-button draws-button-secondary', $html);
+        $this->assertStringContainsString('aria-label="Unpublish U/10 Boys"', $html);
+        $this->assertStringContainsString('>Unpublish</span>', $html);
     }
 
     public function test_unauthorized_view_does_not_offer_mutations_or_diagnostics(): void

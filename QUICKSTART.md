@@ -57,7 +57,7 @@ deploy main --skip-migrations --skip-deps
 3. If prompted, add `$HOME/.local/bin` to your shell `PATH` and sign in again.
 4. Run `deploy main`.
 
-`deploy main` checks that the production worktree is clean, fetches and fast-forwards `origin/main`, installs locked Composer dependencies, clears caches, runs only the approved migration files, publishes and syncs public assets, rebuilds caches, and signals queue workers to restart. It deliberately does not run every pending migration.
+`deploy main` checks that the production worktree is clean, fetches and fast-forwards `origin/main`, installs locked Composer dependencies, clears caches, runs only the approved migration files, publishes and syncs public assets, rebuilds caches, and signals queue workers to restart. It deliberately does not run every pending migration. If an unapproved migration remains pending, deployment now stops before publishing caches or bringing the application back online and identifies the missing release approval.
 
 ## What Happens During Deploy
 

@@ -123,11 +123,12 @@ final class ScheduleAvailability
     }
 
     public function reserveWithRest(int $venue, string $court, Carbon $start, int $courtMinutes,
-        int $participantMinutes, array $registrations): void
+        int $participantMinutes, array $registrations, ?string $participantGroup = null): void
     {
         $this->slots[] = ['venue' => $venue, 'court' => ctype_digit($court) ? (string) (int) $court : $court,
             'start' => $start->copy(), 'court_end' => $start->copy()->addMinutes($courtMinutes),
-            'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $registrations];
+            'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $registrations,
+            'participant_group' => $participantGroup];
     }
 
     public function nextAvailable(Carbon $start, int $duration, int $venue, string $court, array $registrations): Carbon
@@ -136,19 +137,21 @@ final class ScheduleAvailability
     }
 
     public function nextAvailableForMatch(Carbon $start, int $courtMinutes, int $participantMinutes,
-        int $venue, string $court, array $registrations): Carbon
+        int $venue, string $court, array $registrations, ?string $participantGroup = null): Carbon
     {
         $ids = [];
         foreach (array_filter($registrations) as $id) $ids = array_merge($ids, $this->related[$id] ?? [$id]);
         $court = ctype_digit($court) ? (string) (int) $court : $court;
         $slots = array_filter($this->slots, fn ($s) => ($s['venue'] === $venue && $s['court'] === $court)
-            || array_intersect($ids, $s['registrations']));
+            || (! $participantGroup || $s['participant_group'] !== $participantGroup)
+                && array_intersect($ids, $s['registrations']));
         usort($slots, fn ($a, $b) => $a['start'] <=> $b['start']);
         $at = $start->copy();
         foreach ($slots as $slot) {
             $courtConflict = $slot['venue'] === $venue && $slot['court'] === $court
                 && $at->lt($slot['court_end']) && $at->copy()->addMinutes($courtMinutes)->gt($slot['start']);
-            $participantConflict = array_intersect($ids, $slot['registrations'])
+            $participantConflict = (! $participantGroup || $slot['participant_group'] !== $participantGroup)
+                && array_intersect($ids, $slot['registrations'])
                 && $at->lt($slot['participant_end']) && $at->copy()->addMinutes($participantMinutes)->gt($slot['start']);
             if ($courtConflict || $participantConflict) {
                 $end = $courtConflict ? $slot['court_end']->copy() : $slot['participant_end']->copy();

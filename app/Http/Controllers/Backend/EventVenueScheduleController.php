@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\{Event, Fixture, OrderOfPlay, Venue};
+use App\Services\EventAnnouncementService;
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 final class EventVenueScheduleController extends Controller
 {
-    public function index(Event $event)
+    public function index(Event $event, EventAnnouncementService $announcements)
     {
         $this->authorize('event.manage', $event);
         $event->load('draws.venues');
@@ -55,7 +56,11 @@ final class EventVenueScheduleController extends Controller
         });
         $allVenues = Venue::whereNotIn('id', $availableVenues->pluck('id'))->orderBy('name')->get(['id', 'name']);
 
-        return view('backend.schedule.event-venue-schedule', compact('event', 'draws', 'venues', 'allVenues'));
+        $announcementDraft = $announcements->venueAssignmentDraft($event);
+
+        return view('backend.schedule.event-venue-schedule', compact(
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft'
+        ));
     }
 
     public function addVenue(Request $request, Event $event)

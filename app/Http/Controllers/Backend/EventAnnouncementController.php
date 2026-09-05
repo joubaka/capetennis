@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Announcement;
-use App\Mail\AnnouncementMail;
-use App\Services\BulkMailDispatcher;
+use App\Services\EventAnnouncementService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 
 class EventAnnouncementController extends Controller
@@ -20,6 +18,8 @@ class EventAnnouncementController extends Controller
 
   public function index(Event $event)
   {
+    $this->authorize('event.manage', $event);
+
     $event->load([
       'announcements' => function ($q) {
         $q->withTrashed()
@@ -34,8 +34,10 @@ class EventAnnouncementController extends Controller
   /* =========================
      STORE
   ========================= */
-  public function store(Request $request, Event $event)
+  public function store(Request $request, Event $event, EventAnnouncementService $announcements)
   {
+    $this->authorize('event.manage', $event);
+
     Log::debug('[EventAnnouncement] 🚀 store() called', [
       'event_id' => $event->id,
       'sendMail' => $request->sendMail,
@@ -56,9 +58,10 @@ class EventAnnouncementController extends Controller
       'id' => $announcement->id,
     ]);
 
+    $mailStats = null;
     if (!empty($data['sendMail'])) {
       Log::info('[EventAnnouncement] 📧 Sending emails...');
-      $this->emailAnnouncement($announcement);
+      $mailStats = $announcements->dispatch($announcement);
     } else {
       Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }
@@ -66,6 +69,7 @@ class EventAnnouncementController extends Controller
     return response()->json([
       'success' => true,
       'id' => $announcement->id,
+      'mail' => $mailStats,
     ]);
   }
 
@@ -74,6 +78,8 @@ class EventAnnouncementController extends Controller
   ========================= */
   public function show(Announcement $announcement)
   {
+    $this->authorize('event.manage', $announcement->event);
+
     return response()->json([
       'id' => $announcement->id,
       'title' => $announcement->title,
@@ -86,6 +92,8 @@ class EventAnnouncementController extends Controller
   ========================= */
   public function update(Request $request, Announcement $announcement)
   {
+    $this->authorize('event.manage', $announcement->event);
+
     $data = $request->validate([
       'title' => 'required|string|max:255',
       'message' => 'required|string',
@@ -99,104 +107,9 @@ class EventAnnouncementController extends Controller
     return response()->json(['success' => true]);
   }
 
-  /* =========================
-     EMAIL
-  ========================= */
-  protected function emailAnnouncement(Announcement $announcement)
-  {
-    Log::debug('[EventAnnouncement] 📬 emailAnnouncement() called', [
-      'announcement_id' => $announcement->id,
-    ]);
-
-    if (!$announcement->event) {
-      Log::warning('[EventAnnouncement] ❌ No event attached to announcement');
-      return;
-    }
-
-    // Load required relationships
-    $event = $announcement->event->load([
-      'eventTypeModel',
-      'regions.teams.players',
-      'registrations.players',
-    ]);
-
-    $emails = collect();
-
-    Log::debug('[EventAnnouncement] 📋 Event type', [
-      'event_type' => $event->eventTypeModel?->type ?? 'null',
-    ]);
-
-    /*
-    |--------------------------------------------------------------------------
-    | TEAM EVENTS (type 3)
-    |--------------------------------------------------------------------------
-    */
-    if ($event->isTeam()) {
-
-      foreach ($event->regions as $region) {
-        foreach ($region->teams as $team) {
-          foreach ($team->players as $player) {
-            if (!empty($player->email)) {
-              $emails->push(strtolower(trim($player->email)));
-            }
-          }
-        }
-      }
-
-    }
-    /*
-    |--------------------------------------------------------------------------
-    | INDIVIDUAL EVENTS
-    |--------------------------------------------------------------------------
-    */ else {
-
-      foreach ($event->registrations as $registration) {
-        foreach ($registration->players as $player) {
-          if (!empty($player->email)) {
-            $emails->push(strtolower(trim($player->email)));
-          }
-        }
-      }
-
-    }
-
-    // Remove duplicates + empty
-    $emails = $emails->filter()->unique()->values();
-
-    Log::info('[EventAnnouncement] 📋 Emails collected', [
-      'count' => $emails->count(),
-      'sample' => $emails->take(5)->toArray(),
-    ]);
-
-    if ($emails->isEmpty()) {
-      Log::warning('[EventAnnouncement] ⚠️ No emails found for this event');
-      return;
-    }
-
-    // Use BulkMailDispatcher for throttled sending
-    $dispatcher = app(BulkMailDispatcher::class);
-
-    $stats = $dispatcher->dispatch(
-      mailType: 'event_announcement',
-      related: $announcement,
-      recipients: $emails,
-      payload: [
-        'event_name' => $event->name,
-        'title' => $announcement->title,
-        'message' => $announcement->message,
-      ],
-      allowDuplicates: false
-    );
-
-    Log::info('[EventAnnouncement] ✅ Bulk email dispatch completed', [
-      'stats' => $stats,
-    ]);
-  }
-
-
-
   public function destroy(Announcement $announcement)
   {
+    $this->authorize('event.manage', $announcement->event);
     $announcement->delete(); // ✅ SOFT DELETE
 
     return response()->json([
@@ -208,6 +121,7 @@ class EventAnnouncementController extends Controller
   public function toggle(Request $request, $announcement)
   {
     $announcement = Announcement::withTrashed()->findOrFail($announcement);
+    $this->authorize('event.manage', $announcement->event);
 
     if ($announcement->trashed()) {
       $announcement->restore();

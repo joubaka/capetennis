@@ -50,6 +50,9 @@
 
           @foreach($event->announcements as $a)
             <div class="alert alert-primary mb-3">
+              @if(filled($a->title))
+                <h6 class="alert-heading">{{ $a->title }}</h6>
+              @endif
               <div class="event-information-content">{!! $a->message !!}</div>
               <div class="small text-muted mt-2">
                 <i class="ti ti-clock me-1"></i>{{ $a->created_at->format('d M Y, H:i') }}

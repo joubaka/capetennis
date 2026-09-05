@@ -34,7 +34,7 @@
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ $drawUrl }}#schedule">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
     @can('publish', $draw)
-      <button type="button" class="btn draws-button draw-publish-button toggle-publish"
+      <button type="button" class="btn draws-button draw-publish-button {{ $draw->published ? 'draws-button-secondary' : 'draws-button-primary' }} toggle-publish"
               data-url="{{ $publishUrl }}" data-draw-name="{{ $draw->drawName }}"
               data-published="{{ $draw->published ? '1' : '0' }}"
               @if($isFlexible) data-revision="{{ $publishRevision }}" @endif
