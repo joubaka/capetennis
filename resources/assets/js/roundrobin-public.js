@@ -175,7 +175,9 @@
           }
 
           const score = formatScoreCell(fx, rowP.id);
-          const time = fx.time ? formatDayTimeVenue(fx, true) : '';
+          const time = fx.schedule_hidden === true
+            ? 'Followed by'
+            : (fx.time ? formatDayTimeVenue(fx, true) : '');
 
           html += `<td class="text-center">${score || time || '–'}</td>`;
         });
