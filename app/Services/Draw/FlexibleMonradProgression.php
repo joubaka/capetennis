@@ -22,7 +22,7 @@ final class FlexibleMonradProgression
             // Completed games are historical facts, even if a player later withdraws.
             if ($fixture['played']) {
                 $matches[$key] = $fixture + ['resolved' => true, 'automatic' => null,
-                    'vacant' => [false, false], 'withdrawn_players' => [null, null]];
+                    'vacant' => [false, false], 'withdrawn_players' => [null, null], 'byes' => [false, false]];
                 unset($visiting[$key]);
                 return;
             }
@@ -37,6 +37,7 @@ final class FlexibleMonradProgression
                 'automatic' => $automatic ? (array_filter($players) ? 'walkover' : 'void') : null,
                 'vacant' => array_map(fn ($s) => $s['resolved'] && $s['player'] === null, $sources),
                 'withdrawn_players' => array_column($sources, 'withdrawn_player'),
+                'byes' => array_column($sources, 'bye'),
             ];
             unset($visiting[$key]);
         };
@@ -45,7 +46,8 @@ final class FlexibleMonradProgression
         foreach ($graph['positions'] as $position => $source) {
             $value = $this->source($source, $matches, $withdrawn);
             $positions[] = ['position' => $position, 'player' => $value['player'],
-                'vacant' => $value['resolved'] && $value['player'] === null];
+                'vacant' => $value['resolved'] && $value['player'] === null,
+                'bye' => $value['bye']];
         }
         return ['matches' => $matches, 'positions' => $positions];
     }
@@ -55,23 +57,29 @@ final class FlexibleMonradProgression
         if ($source['type'] === 'player') {
             $player = (int) $source['id'];
             $withdrawnPlayer = in_array($player, $withdrawn, true) ? $player : null;
+            $bye = false;
         } else {
             $match = $matches[$source['match']];
-            if (! $match['resolved']) return ['resolved' => false, 'player' => null, 'withdrawn_player' => null];
+            if (! $match['resolved']) return ['resolved' => false, 'player' => null, 'withdrawn_player' => null, 'bye' => false];
             if ($source['type'] === 'winner') {
                 $player = $match['winner'];
                 $winnerSlot = $player === null ? false : array_search($player, $match['players'], true);
                 $withdrawnPlayer = $winnerSlot === false ? null : ($match['withdrawn_players'][$winnerSlot] ?? null);
+                $bye = $player === null;
             } else {
                 $loserSlot = $match['winner'] === null ? null : ($match['winner'] === $match['players'][0] ? 1 : 0);
                 $player = $loserSlot === null ? null : $match['players'][$loserSlot];
-                $withdrawnPlayer = $loserSlot === null ? null : ($match['withdrawn_players'][$loserSlot] ?? null);
+                // A withdrawal is recorded against the original match only.
+                // Its loser path becomes a bye so the withdrawn player never
+                // reappears in a back-draw or placement match.
+                $withdrawnPlayer = null;
+                $bye = $loserSlot === null || $player === null;
             }
         }
         if ($player !== null && in_array($player, $withdrawn, true)) {
             $withdrawnPlayer = $player;
             $player = null;
         }
-        return ['resolved' => true, 'player' => $player, 'withdrawn_player' => $withdrawnPlayer];
+        return ['resolved' => true, 'player' => $player, 'withdrawn_player' => $withdrawnPlayer, 'bye' => $bye];
     }
 }

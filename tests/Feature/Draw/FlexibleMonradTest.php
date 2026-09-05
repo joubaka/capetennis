@@ -398,6 +398,8 @@ class FlexibleMonradTest extends TestCase
         $resolvedMatches = (array) $service->state($draw->fresh())['matches'];
         $this->assertSame($players[0]->id, $resolvedMatches['main_a']['withdrawn_players'][0]);
         $this->assertSame($players[1]->id, $resolvedMatches['main_a']['winner']);
+        $this->assertNull($resolvedMatches['place_3']['withdrawn_players'][0]);
+        $this->assertTrue($resolvedMatches['place_3']['byes'][0]);
         $this->assertSame($players[1]->id, Fixture::findOrFail($record->fixture_map['main_a'])->winner_registration);
 
         $script = file_get_contents(public_path('js/flexible-monrad.js'));

@@ -344,6 +344,12 @@
     return [parts.time ? `${parts.date} ${parts.time}` : parts.date, includeVenue ? schedule.venue : null, schedule.court ? `Court ${schedule.court}` : null]
       .filter(Boolean).join(' · ');
   }
+  function matchParticipantLabel(match, slot) {
+    if (match.players?.[slot]) return name(match.players[slot]);
+    if (match.withdrawn_players?.[slot]) return name(match.withdrawn_players[slot]);
+    if (match.byes?.[slot]) return 'Bye';
+    return match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]);
+  }
   function generatedBoard() {
     const board = $('fm-board'),
       sections = new Map(),
@@ -384,7 +390,7 @@
               ? playerNameNode(id, 'fm-slot-name')
               : withdrawnId
               ? playerNameNode(withdrawnId, 'fm-slot-name fm-player-identity-withdrawal')
-              : el('span', 'fm-slot-name fm-source-name', match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
+              : el('span', 'fm-slot-name fm-source-name', match.byes?.[slot] ? 'Bye' : (match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot])));
             line.append(label);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
@@ -399,7 +405,7 @@
           if (match.pending_withdrawal_players?.some(Boolean)) {
             card.append(el('div', 'fm-match-note fm-match-note-alert', 'Late withdrawal · admin decision required'));
           } else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
-            ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : 'Walkover · no score played')
+            ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
           if (config.canScore && !state.locked && !match.automatic && !match.pending_withdrawal_players?.some(Boolean) && match.players.every(Boolean)) {
             const score = el('button', 'fm-score-button', match.winner ? 'Edit result' : 'Enter result');
@@ -447,7 +453,7 @@
     state.positions.forEach(p => {
       const chip = el('div', 'fm-position');
       chip.append(el('strong', '', p.position));
-      chip.append(p.player ? playerNameNode(p.player) : el('span', 'fm-source-name', p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
+      chip.append(p.player ? playerNameNode(p.player) : el('span', 'fm-source-name', p.bye ? 'Bye · no position awarded' : p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
       $('fm-positions').append(chip);
     });
   }
@@ -536,7 +542,7 @@
     const body = el('tbody');
     matches.sort((a, b) => String(a.schedule?.time || '9999').localeCompare(String(b.schedule?.time || '9999')) || a.number - b.number).forEach(match => {
       const row = el('tr');
-      const players = match.players.map((id, i) => id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i])).join(' vs ');
+      const players = match.players.map((id, i) => matchParticipantLabel(match, i)).join(' vs ');
       const schedule = scheduleParts(match.schedule);
       const scheduleHidden = match.schedule_hidden === true;
       const followedBy = 'Followed by';
@@ -586,7 +592,7 @@
           .push([
             `Match ${match.number}`,
             match.label,
-            ...match.players.map((id, i) => (id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i]))),
+            ...match.players.map((id, i) => matchParticipantLabel(match, i)),
             match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
             match.schedule_hidden === true ? 'Followed by' : match.schedule?.time ? scheduleLabel(match.schedule, true) : 'Not scheduled'
           ]);
