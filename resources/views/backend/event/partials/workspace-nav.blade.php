@@ -1,16 +1,18 @@
-@php($eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
-  request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
-  request()->routeIs('convenor.*') => 'directors',
-  request()->routeIs('admin.events.finances*') => 'finances',
-  request()->routeIs('admin.events.settings*') => 'settings',
-  request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
-  request()->routeIs(
-    'admin.events.results.*', 'backend.scoreboard.team.show',
-    'admin.events.categories', 'admin.events.announcements*',
-    'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf'
-  ) => 'more',
-  default => 'overview',
-})
+@php
+  $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
+    request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
+    request()->routeIs('convenor.*') => 'directors',
+    request()->routeIs('admin.events.finances*') => 'finances',
+    request()->routeIs('admin.events.settings*') => 'settings',
+    request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
+    request()->routeIs(
+      'admin.events.results.*', 'backend.scoreboard.team.show',
+      'admin.events.categories', 'admin.events.announcements*',
+      'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf'
+    ) => 'more',
+    default => 'overview',
+  };
+@endphp
 <x-backend.context-nav label="Event navigation">
   @can('event-draw.view', $event)
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>

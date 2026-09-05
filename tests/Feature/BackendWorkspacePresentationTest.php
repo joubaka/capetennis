@@ -31,6 +31,9 @@ class BackendWorkspacePresentationTest extends TestCase
             ->assertSee('class="ct-backend"', false)
             ->assertSee('css/backend-workspace.css', false)
             ->assertSee('layout-horizontal', false)
+            ->assertSee('event-workspace-chrome', false)
+            ->assertDontSee('draws-event-header', false)
+            ->assertDontSee('id="menu-1"', false)
             ->assertSee('Workspace &lt;event&gt;', false)
             ->assertDontSee('user-scalable=no', false);
 
@@ -47,9 +50,17 @@ class BackendWorkspacePresentationTest extends TestCase
         $html = view('backend.event.partials.workspace-nav', [
             'event' => $event, 'eventWorkspaceActive' => 'draws',
         ])->render();
-        foreach (['admin.events.overview', 'headOffice.show', 'admin.events.entries.new', 'admin.events.settings'] as $route) {
-            $this->assertStringContainsString(route($route, $event), $html);
+        foreach ([
+            'admin.events.overview', 'headOffice.show', 'admin.events.entries.new',
+            'admin.events.settings', 'admin.events.transactions',
+            'admin.events.results.individual', 'admin.events.categories',
+            'admin.events.announcements',
+        ] as $route) {
+            $url = route($route, $event);
+            $this->assertStringContainsString($url, $html);
+            $this->assertSame(1, substr_count($html, 'href="'.$url.'"'), $route.' should have one canonical navigation link.');
         }
+        $this->assertStringNotContainsString(route('admin.events.draws', $event), $html);
         $this->assertSame(1, substr_count($html, 'aria-current="page"'));
 
         $otherEvent = Event::factory()->create(['eventType' => 6]);
@@ -64,8 +75,12 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->get(route('admin.events.overview', $event))
             ->assertOk()
             ->assertSee('event-overview-page', false)
+            ->assertSee('event-workspace-chrome', false)
             ->assertSee('event-operations-title', false)
             ->assertSee('event-kpi-grid', false)
+            ->assertDontSee('Manage Categories &amp; Entries', false)
+            ->assertDontSee('Fixtures HQ')
+            ->assertDontSee('Event Settings')
             ->assertSee('Registration, payment and draw readiness at a glance');
     }
 
