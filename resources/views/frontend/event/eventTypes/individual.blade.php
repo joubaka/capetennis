@@ -162,7 +162,7 @@
         <a href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw->id]) }}"
            class="btn btn-sm btn-light border"
            title="Insert Score">
-          <i class="bi bi-clipboard-data"></i>
+          <i class="ti ti-clipboard-data" aria-hidden="true"></i>
         </a>
       @endif
 
@@ -206,7 +206,7 @@
               ->where('payment_status_id', 1)
               ->filter(fn($r) => !str_contains(strtolower($r->status ?? ''), 'withdrawn'));
           @endphp
-          <div class="border rounded p-2 mb-3">
+          <div class="event-category border rounded p-2 mb-3">
             <span class="badge bg-label-primary mb-2">
               {{ $eventCategory->category->name }}
               ({{ $activeRegistrations->count() }})
@@ -279,7 +279,6 @@
     </div>
   </div>
 </div>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 <div class="modal fade" id="addFileModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">

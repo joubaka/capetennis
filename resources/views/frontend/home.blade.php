@@ -47,8 +47,8 @@
     padding: .5rem .65rem;
   }
   .home-periods .btn-check:checked + .period-option {
-    background: #7367f0 !important;
-    box-shadow: 0 .2rem .55rem rgba(115,103,240,.25);
+    background: #172e45 !important;
+    box-shadow: 0 .2rem .55rem rgba(23,46,69,.18);
     color: #fff !important;
   }
   .event-search-wrap { position: relative; }
@@ -78,7 +78,7 @@
   .event-card-body { align-items: center; display: grid; gap: 1.5rem; grid-template-columns: 9rem minmax(0, 1fr); }
   .event-logo-wrap { align-items: center; display: flex; justify-content: center; min-height: 8rem; }
   .event-logo { height: 8rem; max-width: 9rem; object-fit: contain; width: 100%; }
-  .event-logo-placeholder { color: #7367f0; font-size: 3rem; }
+  .event-logo-placeholder { color: #14796e; font-size: 3rem; }
   .event-details { min-width: 0; }
   .event-dates { display: grid; gap: .7rem; grid-template-columns: 1fr 1fr; margin: 0; }
   .event-date { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; margin: 0; min-width: 0; }
@@ -97,10 +97,10 @@
   .rankings-list { border: 1px solid rgba(75,70,92,.14); border-radius: .45rem; overflow: hidden; }
   .ranking-link { border: 0; border-top: 1px solid rgba(75,70,92,.12); gap: 1rem; min-height: 5.1rem; }
   .ranking-link:first-child { border-top: 0; }
-  .ranking-icon { align-items: center; background: #7367f0; border-radius: .35rem; color: #fff; display: flex; flex: 0 0 3.15rem; height: 3.15rem; justify-content: center; }
+  .ranking-icon { align-items: center; background: #172e45; border-radius: .6rem; color: #fff; display: flex; flex: 0 0 3.15rem; height: 3.15rem; justify-content: center; }
   .ranking-icon-svg { fill: none; height: 1.65rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 1.65rem; }
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
-  .ranking-link:hover .ranking-name { color: #7367f0; }
+  .ranking-link:hover .ranking-name { color: #14796e; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
 
   @media (max-width: 991.98px) {

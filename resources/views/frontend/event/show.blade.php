@@ -21,8 +21,21 @@
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-profile.css') }}">
 <style>
   .individual-event-view .event-section-card {
-    border: 0;
-    box-shadow: 0 .125rem .5rem rgba(47, 43, 61, .08);
+    border: 1px solid #e1e8ee;
+    box-shadow: 0 .25rem 1rem rgba(23, 46, 69, .06);
+  }
+
+  .user-profile-header-banner img {
+    height: 132px;
+    object-position: center 44%;
+  }
+
+  .user-profile-header { margin-top: -2.5rem; }
+
+  .user-profile-header h4 {
+    color: #172e45;
+    font-size: clamp(1.25rem, 2.2vw, 1.65rem);
+    font-weight: 650;
   }
 
   .individual-event-view .event-section-heading {
@@ -39,8 +52,8 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: .65rem;
-    background: rgba(40, 199, 111, .12);
-    color: #28c76f;
+    background: rgba(20, 121, 110, .12);
+    color: #14796e;
   }
 
   .individual-event-view .event-section-icon-svg {
@@ -97,6 +110,16 @@
     border-radius: .5rem;
   }
 
+  .individual-event-view .event-category {
+    border-color: #e1e8ee !important;
+    overflow: hidden;
+  }
+
+  .individual-event-view .event-category .list-group-item {
+    gap: .75rem;
+    padding-inline: .75rem;
+  }
+
   @media (max-width: 767.98px) {
     .individual-event-view .card-body,
     .individual-event-view .event-card-padding {
@@ -107,6 +130,13 @@
       font-size: .925rem;
       line-height: 1.65;
     }
+
+    .user-profile-header-banner img { height: 88px; }
+    .user-profile-header { margin-top: -2.25rem; }
+    .user-profile-header .user-profile-img { height: 76px; max-width: 76px; width: 76px; }
+    .user-profile-header .flex-grow-1 { margin-top: .75rem !important; }
+    .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
+    .individual-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
   }
 
   @media (max-width: 991.98px) {
@@ -152,11 +182,11 @@
 @endif
 
 {{-- ================= HEADER ================= --}}
-<div class="row">
+<div class="row event-hero">
   <div class="col-12">
     <div class="card mb-4">
       <div class="user-profile-header-banner">
-        <img src="{{ asset('assets/img/pages/profile-banner.png') }}" class="rounded-top">
+        <img src="{{ asset('assets/img/pages/profile-banner.png') }}" class="rounded-top" alt="">
       </div>
 
       <div class="user-profile-header d-flex flex-column flex-sm-row mb-4">

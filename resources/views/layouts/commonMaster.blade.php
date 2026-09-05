@@ -46,6 +46,8 @@
   @include('draw.partials.bracket-assets')
   @if($backendWorkspace ?? false)
     <link rel="stylesheet" href="{{ asset('css/backend-workspace.css') }}?v={{ filemtime(public_path('css/backend-workspace.css')) }}">
+  @else
+    <link rel="stylesheet" href="{{ asset('css/frontend-workspace.css') }}?v={{ filemtime(public_path('css/frontend-workspace.css')) }}">
   @endif
 
   <style>
@@ -128,7 +130,10 @@
   @include('layouts/sections/scriptsIncludes')
 </head>
 
-<body @class(['ct-backend' => $backendWorkspace ?? false])>
+<body @class([
+  'ct-backend' => $backendWorkspace ?? false,
+  'ct-frontend' => !($backendWorkspace ?? false),
+])>
 
   <!-- Layout Content -->
   @yield('layoutContent')

@@ -1,0 +1,90 @@
+/* Cape Tennis public and member workspace. This complements the backend shell
+   while preserving specialist draw, scoring and print geometry. */
+@media screen {
+  body.ct-frontend {
+    --ct-ink: #172e45;
+    --ct-muted: #66788a;
+    --ct-accent: #14796e;
+    --ct-border: #e1e8ee;
+    --ct-canvas: #f6f8fa;
+    --ct-surface: #fff;
+    --ct-soft: #eef3f6;
+    --ct-selected: #e7edf3;
+    --bs-primary: #172e45;
+    --bs-primary-rgb: 23, 46, 69;
+    --bs-link-color: #14796e;
+    --bs-link-hover-color: #105f57;
+    --bs-heading-color: #172e45;
+    --bs-body-color: #31475c;
+    --bs-secondary-color: #66788a;
+    --bs-body-bg: #f6f8fa;
+    color-scheme: light;
+    color: #31475c;
+    background: var(--ct-canvas);
+    overflow-x: clip;
+  }
+
+  .ct-frontend .content-wrapper { background: var(--ct-canvas); }
+  .ct-frontend .container-xxl { min-width: 0; }
+  .ct-frontend :is(.row, [class*="col-"], .card, .card-body, .tab-content, .tab-pane) { min-width: 0; }
+  .ct-frontend :is(h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6) { color: var(--ct-ink); }
+  .ct-frontend :is(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--ct-accent); outline-offset: 3px; }
+  .ct-frontend .text-primary { color: var(--ct-accent) !important; }
+  .ct-frontend .text-muted { color: var(--ct-muted) !important; }
+  .ct-frontend .bg-label-primary { color: var(--ct-accent) !important; background: #e7f3f1 !important; }
+  .ct-frontend .bg-primary { background-color: var(--ct-ink) !important; }
+
+  .ct-frontend #layout-navbar { border-bottom: 1px solid var(--ct-border); box-shadow: none; }
+  .ct-frontend #layout-navbar .app-brand-text { color: var(--ct-ink); }
+  .ct-frontend .menu-horizontal { border-bottom: 1px solid var(--ct-border); box-shadow: 0 2px 5px #172e4506; }
+  .ct-frontend .menu-inner > .menu-item.active > .menu-link { color: var(--ct-ink) !important; background: var(--ct-selected) !important; box-shadow: none !important; }
+  .ct-frontend .menu-sub > .menu-item.active > .menu-link { color: var(--ct-accent) !important; background: #e7f3f1 !important; }
+
+  .ct-frontend .card { border: 1px solid var(--ct-border); border-radius: 14px; box-shadow: 0 5px 22px #23394b08; }
+  .ct-frontend .card-header { border-bottom-color: var(--ct-border); }
+  .ct-frontend .card-header :is(h2, h3, h4, h5, h6) { font-weight: 650; }
+  .ct-frontend .list-group-item { border-color: var(--ct-border); }
+  .ct-frontend .table { --bs-table-border-color: var(--ct-border); --bs-table-hover-bg: #f4f7f9; }
+  .ct-frontend .table > thead:not(.table-dark) > tr > th { color: #61758b; background: #f7f9fb; font-size: 11px; font-weight: 700; letter-spacing: .65px; text-transform: uppercase; }
+  .ct-frontend .table-responsive { max-width: 100%; scrollbar-width: thin; }
+
+  .ct-frontend :is(.form-control, .form-select, .input-group-text) { border-color: #d3dde6; border-radius: 8px; }
+  .ct-frontend :is(.form-control, .form-select):focus { border-color: var(--ct-accent); box-shadow: 0 0 0 3px #14796e18; }
+  .ct-frontend .form-label { color: #40556b; font-weight: 600; }
+  .ct-frontend .form-check-input:checked { background-color: var(--ct-accent); border-color: var(--ct-accent); }
+
+  .ct-frontend .btn { border-radius: 8px; box-shadow: none !important; font-weight: 600; }
+  .ct-frontend .btn-primary { color: #fff; background: var(--ct-ink); border-color: var(--ct-ink); }
+  .ct-frontend .btn-primary:is(:hover, :focus, :active) { color: #fff !important; background: #23465f !important; border-color: #23465f !important; }
+  .ct-frontend .btn-success { color: #fff; background: var(--ct-accent); border-color: var(--ct-accent); }
+  .ct-frontend .btn-success:is(:hover, :focus, :active) { color: #fff !important; background: #105f57 !important; border-color: #105f57 !important; }
+  .ct-frontend .btn-outline-primary { color: var(--ct-ink); background: #fff; border-color: #b9c9d7; }
+  .ct-frontend .btn-outline-primary:is(:hover, :focus, :active) { color: var(--ct-ink) !important; background: var(--ct-selected) !important; border-color: #9fb3c3 !important; }
+  .ct-frontend .btn-outline-success { color: var(--ct-accent); border-color: #acd0ca; }
+  .ct-frontend .btn-label-primary { color: var(--ct-ink); background: var(--ct-selected); }
+  .ct-frontend .nav-pills .nav-link { color: var(--ct-muted); border-radius: 8px; font-weight: 600; }
+  .ct-frontend .nav-pills .nav-link.active { color: var(--ct-ink); background: var(--ct-selected); box-shadow: none; }
+  .ct-frontend .dropdown-menu { border: 1px solid var(--ct-border); border-radius: 10px; box-shadow: 0 8px 28px #172e4514; }
+  .ct-frontend .dropdown-item:not(.text-danger):is(:hover, :focus, .active) { color: var(--ct-ink); background: var(--ct-soft); }
+  .ct-frontend .modal-content { border: 1px solid var(--ct-border); border-radius: 16px; box-shadow: 0 18px 60px #172e4526; }
+
+  .ct-frontend .content-backdrop { max-width: 100%; }
+  .ct-frontend #layout-navbar .dropdown-user { max-width: 4rem; }
+  .ct-frontend #layout-navbar .dropdown-user > .nav-link { max-width: 100%; padding-inline: .35rem; }
+
+  @media (max-width: 767.98px) {
+    .ct-frontend .container-xxl { padding-inline: 16px; }
+    .ct-frontend .card-header { padding: 18px; }
+    .ct-frontend .card-body { padding: 18px; }
+    .ct-frontend .btn:not(.btn-sm):not(.btn-xs):not(.btn-icon):not(.p-0) { min-height: 42px; }
+    .ct-frontend .modal-dialog { margin: 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ct-frontend :is(.btn, .nav-link, .card) { transition: none; }
+  }
+}
+
+@media print {
+  .ct-frontend :is(#layout-navbar, #layout-menu, footer) { display: none !important; }
+}

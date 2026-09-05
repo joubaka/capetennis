@@ -6,7 +6,7 @@
 <style>
   .public-ranking-shell { width: 100%; max-width: 1280px; margin: 0 auto; padding-inline: clamp(.75rem, 2vw, 1.5rem); }
   .public-ranking-card { border: 1px solid var(--bs-border-color); border-radius: .75rem; box-shadow: 0 .125rem .75rem rgba(47, 43, 61, .06); overflow: hidden; }
-  .public-ranking-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; padding: 1.75rem 1.5rem; color: #fff; background: linear-gradient(135deg, #5548c8 0%, #7367f0 62%, #8f84ff 100%); }
+  .public-ranking-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; padding: 1.75rem 1.5rem; color: #fff; background: linear-gradient(135deg, #172e45 0%, #0e5360 68%, #14796e 130%); }
   .public-ranking-hero h1 { color: #fff !important; font-size: clamp(1.35rem, 2.2vw, 1.8rem); }
   .public-ranking-hero__eyebrow { display: block; margin-bottom: .4rem; color: rgba(255,255,255,.72); font-size: .72rem; font-weight: 700; letter-spacing: .08rem; text-transform: uppercase; }
   .public-ranking-hero__icon { display: grid; width: 4rem; height: 4rem; flex: 0 0 4rem; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.12); font-size: 1.75rem; }
@@ -19,7 +19,7 @@
   .public-ranking-tools { align-items: end; }
   .public-ranking-division-picker { min-width: min(100%, 24rem); }
   .public-ranking-division-picker label { display: block; margin-bottom: .35rem; color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .04rem; text-transform: uppercase; }
-  .public-ranking-division-picker select { min-height: 2.5rem; border-color: rgba(115,103,240,.45); font-weight: 600; }
+  .public-ranking-division-picker select { min-height: 2.5rem; border-color: rgba(20,121,110,.45); font-weight: 600; }
   .public-ranking-category + .public-ranking-category { border-top: 1px solid var(--bs-border-color); }
   .public-ranking-category__heading { margin: 0; padding: 1.5rem 1.35rem 1rem; font-size: 1rem; font-weight: 700; }
   .public-ranking-table-wrap { padding: 0 1.35rem 1.5rem; }
@@ -27,12 +27,12 @@
   .public-ranking-table thead th { padding: .85rem 1rem; border-bottom: 0; background: rgba(75, 70, 92, .12); color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .055rem; text-transform: uppercase; white-space: nowrap; }
   .public-ranking-table tbody td { padding: .55rem 1rem; border-color: var(--bs-border-color); vertical-align: middle; }
   .public-ranking-table tbody tr:last-child td { border-bottom: 0; }
-  .public-ranking-table tbody tr:hover { background: rgba(115,103,240,.035); }
+  .public-ranking-table tbody tr:hover { background: rgba(20,121,110,.04); }
   .public-ranking-rank { width: 76px; font-weight: 700; white-space: nowrap; }
   .public-ranking-player { min-width: 230px; font-weight: 500; }
   .public-ranking-player a { display: inline-flex; align-items: center; gap: .5rem; color: var(--bs-heading-color) !important; font-weight: 600; }
-  .public-ranking-player a:hover { color: #7367f0 !important; }
-  .public-ranking-player__action { display: inline-flex; align-items: center; gap: .2rem; padding: .22rem .45rem; border: 1px solid rgba(115,103,240,.28); border-radius: 999px; color: #7367f0; background: rgba(115,103,240,.08); font-size: .65rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .public-ranking-player a:hover { color: #14796e !important; }
+  .public-ranking-player__action { display: inline-flex; align-items: center; gap: .2rem; padding: .22rem .45rem; border: 1px solid rgba(20,121,110,.28); border-radius: 999px; color: #14796e; background: rgba(20,121,110,.08); font-size: .65rem; font-weight: 700; line-height: 1; white-space: nowrap; }
   .public-ranking-total { width: 150px; font-weight: 700; white-space: nowrap; }
   .public-ranking-scores { display: flex; flex-wrap: wrap; gap: .3rem; }
   .public-ranking-score { display: inline-flex; align-items: center; min-height: 1.55rem; padding: .25rem .65rem; border-radius: .25rem; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1; white-space: nowrap; }

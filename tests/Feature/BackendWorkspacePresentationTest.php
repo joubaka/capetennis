@@ -36,7 +36,9 @@ class BackendWorkspacePresentationTest extends TestCase
 
         $this->get('/')->assertOk()
             ->assertDontSee('class="ct-backend"', false)
-            ->assertDontSee('css/backend-workspace.css', false);
+            ->assertDontSee('css/backend-workspace.css', false)
+            ->assertSee('class="ct-frontend"', false)
+            ->assertSee('css/frontend-workspace.css', false);
     }
 
     public function test_event_navigation_preserves_context_and_hides_other_event_actions(): void

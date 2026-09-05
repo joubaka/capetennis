@@ -7,7 +7,7 @@
   .rankings-shell { max-width: 1280px; margin: 0 auto; }
   .rankings-hero {
     align-items: center;
-    background: linear-gradient(135deg, #004177 0%, #07568f 68%, #7565ef 145%);
+    background: linear-gradient(135deg, #172e45 0%, #0e5360 72%, #14796e 145%);
     border-radius: 1rem;
     color: #fff;
     display: grid;
@@ -54,9 +54,9 @@
   }
   .rankings-section-heading { gap: 1rem; }
   .rankings-count {
-    background: rgba(115, 103, 240, .12);
+    background: rgba(20, 121, 110, .12);
     border-radius: 999px;
-    color: #6658dd;
+    color: #14796e;
     font-size: .75rem;
     font-weight: 700;
     padding: .35rem .65rem;
@@ -77,7 +77,7 @@
     transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
   }
   .ranking-card::before {
-    background: linear-gradient(90deg, #004177, #7367f0);
+    background: linear-gradient(90deg, #172e45, #14796e);
     content: '';
     height: .28rem;
     left: 0;
@@ -86,18 +86,18 @@
     top: 0;
   }
   .ranking-card:hover {
-    border-color: rgba(115, 103, 240, .42);
+    border-color: rgba(20, 121, 110, .42);
     box-shadow: 0 .65rem 1.65rem rgba(47, 43, 61, .12);
     color: inherit;
     transform: translateY(-3px);
   }
-  .ranking-card:focus-visible { outline: 3px solid rgba(115, 103, 240, .35); outline-offset: 3px; }
+  .ranking-card:focus-visible { outline: 3px solid rgba(20, 121, 110, .35); outline-offset: 3px; }
   .ranking-card__top { align-items: center; display: flex; justify-content: space-between; margin-bottom: 1.35rem; }
   .ranking-card__icon {
     align-items: center;
-    background: rgba(115, 103, 240, .12);
+    background: rgba(20, 121, 110, .12);
     border-radius: .7rem;
-    color: #7367f0;
+    color: #14796e;
     display: flex;
     flex: 0 0 2.75rem;
     font-size: 1.2rem;
@@ -113,7 +113,7 @@
     padding: .3rem .6rem;
   }
   .ranking-card__name { color: var(--bs-heading-color); font-size: 1rem; line-height: 1.45; overflow-wrap: anywhere; }
-  .ranking-card__action { align-items: center; color: #6658dd; display: flex; font-size: .82rem; font-weight: 700; gap: .35rem; margin-top: auto; padding-top: 1.25rem; }
+  .ranking-card__action { align-items: center; color: #14796e; display: flex; font-size: .82rem; font-weight: 700; gap: .35rem; margin-top: auto; padding-top: 1.25rem; }
   .ranking-card__action .ti { transition: transform .2s ease; }
   .ranking-card:hover .ranking-card__action .ti { transform: translateX(3px); }
   .rankings-empty {
@@ -125,9 +125,9 @@
   }
   .rankings-empty__icon {
     align-items: center;
-    background: rgba(115, 103, 240, .1);
+    background: rgba(20, 121, 110, .1);
     border-radius: 50%;
-    color: #7367f0;
+    color: #14796e;
     display: inline-flex;
     font-size: 1.6rem;
     height: 3.75rem;
