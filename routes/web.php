@@ -953,6 +953,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.preview');
   Route::post('events/{event}/venue-schedule/apply', [EventVenueScheduleController::class, 'apply'])
     ->name('backend.event-venue-schedule.apply');
+  Route::post('events/{event}/venue-schedule/unapply', [EventVenueScheduleController::class, 'unapply'])
+    ->name('backend.event-venue-schedule.unapply');
   Route::post('events/{event}/venue-schedule/assignments', [EventVenueScheduleController::class, 'updateAssignments'])
     ->name('backend.event-venue-schedule.assignments');
   Route::post('events/{event}/venue-schedule/venues', [EventVenueScheduleController::class, 'addVenue'])

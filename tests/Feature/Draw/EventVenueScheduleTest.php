@@ -3,7 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Jobs\SendBulkEmailJob;
-use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
+use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, FixtureResult, OrderOfPlay, Player, Registration, User, Venue};
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -268,6 +268,82 @@ class EventVenueScheduleTest extends TestCase
             ->firstWhere('fixture_id', $fixture->id)['scheduled_at']);
     }
 
+    public function test_applied_matches_can_be_returned_to_planning_by_venue_or_draw(): void
+    {
+        $event = Event::factory()->create();
+        $venues = collect([$this->venue($event, 'North Venue'), $this->venue($event, 'South Venue')]);
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
+        $fixtures = collect();
+        foreach ($draws as $index => $draw) {
+            $draw->venues()->attach($venues[$index]->id, ['num_courts' => 1]);
+            $fixtures->push(Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]));
+        }
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions();
+        $preview = $service->preview($event, $options);
+        $service->apply($event, $options, $preview['revision']);
+
+        $venueResult = $service->unapply($event->fresh(), null, $venues[0]->id);
+
+        $this->assertSame(1, $venueResult['count']);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[0]->id]);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
+        $this->assertFalse((bool) $fixtures[0]->fresh()->scheduled);
+        $this->assertTrue((bool) $fixtures[1]->fresh()->scheduled);
+
+        $drawResult = $service->unapply($event->fresh(), $draws[1]->id, null);
+
+        $this->assertSame(1, $drawResult['count']);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
+        $this->assertFalse((bool) $fixtures[1]->fresh()->scheduled);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draws[0]->id, 'action' => 'event_venue_schedule_unapplied',
+        ]);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draws[1]->id, 'action' => 'event_venue_schedule_unapplied',
+        ]);
+    }
+
+    public function test_played_locked_or_published_matches_cannot_be_returned_to_planning(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Protected Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions();
+        $preview = $service->preview($event, $options);
+        $service->apply($event, $options, $preview['revision']);
+
+        $draw->update(['locked' => true]);
+        try {
+            $service->unapply($event->fresh(), $draw->id, null);
+            $this->fail('A locked draw schedule was unapplied.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('locked or published', $exception->getMessage());
+        }
+
+        $draw->update(['locked' => false]);
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+        try {
+            $service->unapply($event->fresh(), $draw->id, null);
+            $this->fail('A played match schedule was unapplied.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame('Played matches cannot be returned to planning.', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixture->id]);
+        $this->assertTrue((bool) $fixture->fresh()->scheduled);
+    }
+
     public function test_event_admin_can_assign_several_draws_to_the_same_shared_venue(): void
     {
         $event = Event::factory()->create();
@@ -318,6 +394,9 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('100% · Complete')
             ->assertSee('window.location.assign(drawsUrl)', false)
             ->assertSee('schedule=applied')
+            ->assertSee('Replan all applied venues')
+            ->assertSee('Unapply venue times')
+            ->assertSee('venue-schedule\/unapply', false)
             ->assertSee('Next: timing rules');
     }
 
@@ -330,6 +409,8 @@ class EventVenueScheduleTest extends TestCase
 
         $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', $event))->assertForbidden();
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.preview', $event), $this->schedulingOptions())
+            ->assertForbidden();
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.unapply', $event), ['draw_id' => 1])
             ->assertForbidden();
     }
 

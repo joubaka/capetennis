@@ -25,8 +25,12 @@ final class EventVenueScheduleController extends Controller
             ->whereIn('venue_id', $availableVenues->pluck('id'))->where('active', true)->orderBy('id')->get()->groupBy('venue_id');
         $courtAllocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $eventDraws->pluck('id'))
             ->get()->groupBy(fn ($row) => $row->draw_id.'|'.$row->venue_id);
+        $scheduledCounts = DB::table('order_of_plays')->join('fixtures', 'fixtures.id', '=', 'order_of_plays.fixture_id')
+            ->whereIn('fixtures.draw_id', $eventDraws->pluck('id'))->whereNotNull('order_of_plays.time')
+            ->groupBy('fixtures.draw_id')->selectRaw('fixtures.draw_id, COUNT(*) as aggregate')
+            ->pluck('aggregate', 'fixtures.draw_id');
 
-        $draws = $eventDraws->map(function ($draw) use ($courtAllocations) {
+        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts) {
             $allocations = [];
             foreach ($draw->venues as $venue) {
                 $allocations[$venue->id] = ($courtAllocations[$draw->id.'|'.$venue->id] ?? collect())
@@ -35,6 +39,7 @@ final class EventVenueScheduleController extends Controller
             return ['id' => $draw->id, 'name' => $draw->drawName,
                 'venues' => $draw->venues->pluck('id')->map(fn ($id) => (int) $id)->all(),
                 'court_allocations' => $allocations,
+                'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
                 'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -261,6 +266,25 @@ final class EventVenueScheduleController extends Controller
         $request->validate(['revision' => ['required', 'string', 'size:64']]);
         try {
             return response()->json($scheduler->apply($event, $this->validatedOptions($request), (string) $request->string('revision')));
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function unapply(Request $request, Event $event, EventVenueScheduleService $scheduler)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'draw_id' => ['nullable', 'integer'],
+            'venue_id' => ['nullable', 'integer'],
+        ]);
+        $drawId = isset($data['draw_id']) ? (int) $data['draw_id'] : null;
+        $venueId = isset($data['venue_id']) ? (int) $data['venue_id'] : null;
+        if (($drawId === null) === ($venueId === null)) {
+            return response()->json(['message' => 'Choose either one draw or one venue to return to planning.'], 422);
+        }
+        try {
+            return response()->json($scheduler->unapply($event, $drawId, $venueId));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }

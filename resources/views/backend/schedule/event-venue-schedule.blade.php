@@ -130,7 +130,14 @@
                     <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : 'checked' }}>
                     <span class="fw-semibold">Include in this schedule</span>
                   </label>
-                  <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
+                  <div class="d-flex flex-wrap align-items-end gap-2">
+                    @if($draw['applied_match_count'] > 0 && ! $draw['locked'] && ! $draw['published'])
+                      <button type="button" class="btn btn-sm btn-outline-danger" data-unapply-draw="{{ $draw['id'] }}" data-draw-name="{{ $draw['name'] }}">
+                        <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}
+                      </button>
+                    @endif
+                    <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
+                  </div>
                 </div>
                 <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
                 @php
@@ -272,9 +279,13 @@
       <strong>Fixtures per venue</strong>
       <div class="small text-muted">Switch to the court grid to spot unused capacity between matches.</div>
     </div>
-    <div class="btn-group btn-group-sm" role="group" aria-label="Venue schedule view">
-      <button type="button" class="btn btn-primary active" data-preview-view="timeline" aria-pressed="true"><i class="ti ti-list me-1" aria-hidden="true"></i>Fixture list</button>
-      <button type="button" class="btn btn-outline-primary" data-preview-view="grid" aria-pressed="false"><i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Court slot grid</button>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" id="keep-all-applied" class="btn btn-sm btn-outline-secondary d-none"><i class="ti ti-arrow-back-up me-1" aria-hidden="true"></i>Keep all current venue times</button>
+      <button type="button" id="replan-all-applied" class="btn btn-sm btn-outline-primary d-none"><i class="ti ti-refresh me-1" aria-hidden="true"></i>Replan all applied venues</button>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Venue schedule view">
+        <button type="button" class="btn btn-primary active" data-preview-view="timeline" aria-pressed="true"><i class="ti ti-list me-1" aria-hidden="true"></i>Fixture list</button>
+        <button type="button" class="btn btn-outline-primary" data-preview-view="grid" aria-pressed="false"><i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Court slot grid</button>
+      </div>
     </div>
   </div>
   <div id="venue-timelines"></div>
@@ -329,6 +340,7 @@
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const previewUrl = @json(route('backend.event-venue-schedule.preview', $event));
   const applyUrl = @json(route('backend.event-venue-schedule.apply', $event));
+  const unapplyUrl = @json(route('backend.event-venue-schedule.unapply', $event));
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
@@ -608,8 +620,9 @@
     if (replanning) state = '<span class="badge bg-label-warning">Replanning this venue</span>';
     const apply = planned ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Good to go — apply this venue</button>` : '';
     const change = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-primary" data-replan-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}">Change this venue</button>` : '';
+    const unapply = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
     const keep = replanning ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-keep-venue="${venue.id}">Keep current applied schedule</button>` : '';
-    return `<div class="preview-venue-actions"><div>${state}<span class="small text-muted ms-2">Applied fixtures stay unchanged in future previews.</span></div><div class="d-flex flex-wrap gap-2">${keep}${change}${apply}</div></div>`;
+    return `<div class="preview-venue-actions"><div>${state}<span class="small text-muted ms-2">Change previews new times; unapply removes saved times and returns matches to planning.</span></div><div class="d-flex flex-wrap gap-2">${keep}${change}${unapply}${apply}</div></div>`;
   };
 
   function slotGrid(result, venue) {
@@ -658,6 +671,15 @@
       return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Unassigned draw position')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
+    const appliedVenueIds = [...new Set([
+      ...(result.existing_matches || []).map(match => Number(match.venue_id)),
+      ...(result.input.replan_venue_ids || []).map(Number),
+    ])];
+    const replanAll = document.getElementById('replan-all-applied');
+    const keepAll = document.getElementById('keep-all-applied');
+    replanAll.dataset.venueIds = JSON.stringify(appliedVenueIds);
+    replanAll.classList.toggle('d-none', !appliedVenueIds.length || appliedVenueIds.every(id => replanVenueIds.includes(id)));
+    keepAll.classList.toggle('d-none', replanVenueIds.length === 0);
     document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
     setStatus(document.getElementById('schedule-status'), result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
@@ -680,11 +702,31 @@
     const applyButton = event.target.closest('[data-apply-venue]');
     const replanButton = event.target.closest('[data-replan-venue]');
     const keepButton = event.target.closest('[data-keep-venue]');
-    if (!applyButton && !replanButton && !keepButton) return;
-    const button = applyButton || replanButton || keepButton;
-    const venueId = Number(button.dataset.applyVenue || button.dataset.replanVenue || button.dataset.keepVenue);
-    const matching = document.querySelectorAll(`[data-apply-venue="${venueId}"], [data-replan-venue="${venueId}"], [data-keep-venue="${venueId}"]`);
+    const unapplyButton = event.target.closest('[data-unapply-venue]');
+    if (!applyButton && !replanButton && !keepButton && !unapplyButton) return;
+    const button = applyButton || replanButton || keepButton || unapplyButton;
+    const venueId = Number(button.dataset.applyVenue || button.dataset.replanVenue || button.dataset.keepVenue || button.dataset.unapplyVenue);
+    const matching = document.querySelectorAll(`[data-apply-venue="${venueId}"], [data-replan-venue="${venueId}"], [data-keep-venue="${venueId}"], [data-unapply-venue="${venueId}"]`);
     matching.forEach(control => { control.disabled = true; });
+    if (unapplyButton) {
+      if (!confirm(`Unapply every unplayed scheduled match at ${unapplyButton.dataset.venueName} for this event? Saved times and courts will be removed, but fixtures and draw structure will remain.`)) {
+        matching.forEach(control => { control.disabled = false; });
+        return;
+      }
+      const originalButtonHtml = unapplyButton.innerHTML;
+      unapplyButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Unapplying…';
+      try {
+        const result = await post(unapplyUrl, {venue_id:venueId});
+        window.AppFeedback?.afterReload(result.message, 'success');
+        setStatus(document.getElementById('schedule-status'), result.message + ' Refreshing…', 'success');
+        window.location.reload();
+      } catch (error) {
+        setStatus(document.getElementById('schedule-status'), error.message, 'danger');
+        unapplyButton.innerHTML = originalButtonHtml;
+        matching.forEach(control => { control.disabled = false; });
+      }
+      return;
+    }
     if (applyButton) {
       if (!payload || !revision || !confirm(`Apply only ${applyButton.dataset.venueName}? Its fixtures will stay fixed in future planning previews until you explicitly change this venue.`)) {
         matching.forEach(control => { control.disabled = false; });
@@ -711,6 +753,53 @@
   };
   document.getElementById('venue-timelines').addEventListener('click', handleVenueAction);
   document.getElementById('venue-slot-grids').addEventListener('click', handleVenueAction);
+  const refreshAllAppliedVenues = async replanning => {
+    const button = document.getElementById(replanning ? 'replan-all-applied' : 'keep-all-applied');
+    if (replanning && !confirm('Build replacement times for every applied venue? The saved schedule stays unchanged until you review and apply the new preview.')) return;
+    const originalButtonHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
+    if (replanning) {
+      replanVenueIds = JSON.parse(document.getElementById('replan-all-applied').dataset.venueIds || '[]').map(Number);
+    } else {
+      replanVenueIds = [];
+    }
+    payload = {...buildPayload(), replan_venue_ids:replanVenueIds};
+    revision = null;
+    setStatus(document.getElementById('schedule-status'), replanning ? 'Replanning every applied venue…' : 'Restoring every current applied venue schedule…');
+    startScheduleActivity(previewActivityStages, 'The saved schedule remains in place until you explicitly apply this replacement preview.');
+    let completed = false;
+    try {
+      render(await post(previewUrl, payload));
+      completed = true;
+      finishScheduleActivity(replanning ? 'Replacement preview ready.' : 'Current applied schedules restored.');
+    } catch (error) {
+      setStatus(document.getElementById('schedule-status'), error.message, 'danger');
+    } finally {
+      if (!completed) stopScheduleActivity();
+      button.innerHTML = originalButtonHtml;
+      button.disabled = false;
+    }
+  };
+  document.getElementById('replan-all-applied').addEventListener('click', () => refreshAllAppliedVenues(true));
+  document.getElementById('keep-all-applied').addEventListener('click', () => refreshAllAppliedVenues(false));
+  document.querySelectorAll('[data-unapply-draw]').forEach(button => button.addEventListener('click', async event => {
+    const control = event.currentTarget;
+    if (!confirm(`Unapply every unplayed scheduled match in ${control.dataset.drawName}? Saved times and courts will be removed, but fixtures and draw structure will remain.`)) return;
+    const originalButtonHtml = control.innerHTML;
+    control.disabled = true;
+    control.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Unapplying…';
+    try {
+      const result = await post(unapplyUrl, {draw_id:Number(control.dataset.unapplyDraw)});
+      window.AppFeedback?.afterReload(result.message, 'success');
+      setStatus(document.getElementById('schedule-status'), result.message + ' Refreshing…', 'success');
+      window.location.reload();
+    } catch (error) {
+      setStatus(document.getElementById('schedule-status'), error.message, 'danger');
+      control.innerHTML = originalButtonHtml;
+      control.disabled = false;
+    }
+  }));
 
   document.querySelectorAll('[data-preview-view]').forEach(button => button.addEventListener('click', () => {
     const grid = button.dataset.previewView === 'grid';

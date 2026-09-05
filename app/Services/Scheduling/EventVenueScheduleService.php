@@ -275,6 +275,68 @@ final class EventVenueScheduleService
         });
     }
 
+    public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null): array
+    {
+        if (($drawId === null) === ($venueId === null)) {
+            throw new \InvalidArgumentException('Choose either one draw or one venue to return to planning.');
+        }
+
+        return DB::transaction(function () use ($event, $drawId, $venueId) {
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $eventDrawIds = $event->draws()->orderBy('id')->pluck('id');
+            if ($drawId !== null && ! $eventDrawIds->contains($drawId)) {
+                throw new \InvalidArgumentException('This draw does not belong to the event.');
+            }
+
+            $fixtures = Fixture::with(['draw', 'fixtureResults'])
+                ->whereIn('draw_id', $eventDrawIds)
+                ->when($drawId !== null, fn ($query) => $query->where('draw_id', $drawId))
+                ->when($venueId !== null, fn ($query) => $query->whereHas('orderOfPlay',
+                    fn ($slots) => $slots->where('venue_id', $venueId)->whereNotNull('time')))
+                ->whereHas('orderOfPlay', fn ($slots) => $slots->whereNotNull('time'))
+                ->orderBy('id')->lockForUpdate()->get();
+
+            if ($fixtures->isEmpty()) {
+                throw new \InvalidArgumentException($drawId !== null
+                    ? 'This draw has no applied matches to return to planning.'
+                    : 'This venue has no applied matches for this event.');
+            }
+            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->draw?->locked || $fixture->draw?->published)) {
+                throw new \InvalidArgumentException('A locked or published draw is included. Unlock or unpublish it before removing scheduled times.');
+            }
+            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->fixtureResults->isNotEmpty())) {
+                throw new \InvalidArgumentException('Played matches cannot be returned to planning.');
+            }
+
+            $fixtureIds = $fixtures->pluck('id');
+            $bookings = OrderOfPlay::whereIn('fixture_id', $fixtureIds)
+                ->whereNotNull('time')->when($venueId !== null, fn ($query) => $query->where('venue_id', $venueId))
+                ->orderBy('fixture_id')->lockForUpdate()->get();
+            if ($bookings->isEmpty()) {
+                throw new \InvalidArgumentException('No applied matches matched this selection.');
+            }
+
+            $bookingFixtureIds = $bookings->pluck('fixture_id')->unique()->values();
+            OrderOfPlay::whereIn('id', $bookings->pluck('id'))->delete();
+            Fixture::whereIn('id', $bookingFixtureIds)->update(['scheduled' => 0]);
+
+            $fixtures->whereIn('id', $bookingFixtureIds)->groupBy('draw_id')->each(function ($drawFixtures, $affectedDrawId) use ($event, $drawId, $venueId) {
+                DrawAuditLog::record((int) $affectedDrawId, 'event_venue_schedule_unapplied', null, [
+                    'event_id' => $event->id,
+                    'matches' => $drawFixtures->count(),
+                    'scope' => $drawId !== null ? 'draw' : 'venue',
+                    'venue_id' => $venueId,
+                ]);
+            });
+
+            $count = $bookingFixtureIds->count();
+            return [
+                'count' => $count,
+                'message' => $count.' '.($count === 1 ? 'match was' : 'matches were').' returned to planning. Fixtures and draw structure were preserved.',
+            ];
+        });
+    }
+
     private function nodesForDraw(Draw $draw, Carbon $start, int $waveMinutes): array
     {
         if ($draw->usesFlexibleMonrad()) {
