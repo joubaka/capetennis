@@ -69,11 +69,15 @@
       </div>
       <div class="col-12 col-lg-8">
         <div class="card h-100 border-0 shadow-sm"><div class="card-body">
-          <div class="d-flex justify-content-between align-items-center gap-2 mb-2"><h5 class="mb-0">Upcoming matches</h5><i class="ti ti-calendar-event text-primary fs-4" aria-hidden="true"></i></div>
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2"><h5 class="mb-0">Next match</h5><i class="ti ti-calendar-event text-primary fs-4" aria-hidden="true"></i></div>
           @forelse($upcomingMatches as $match)
-            <div class="border-bottom py-2"><div class="fw-semibold">{{ $match->draw?->event?->name ?? 'Published draw' }}</div><div class="small text-muted">{{ $match->scheduled ?: 'Time to be confirmed' }} · {{ $match->venue?->name ?? 'Court to be confirmed' }}</div></div>
+            <div class="border-bottom py-2">
+              <div class="fw-semibold">{{ $match->draw?->event?->name ?? 'Published draw' }}</div>
+              <div class="small">{{ $match->registration1?->display_name ?? 'TBD' }} vs {{ $match->registration2?->display_name ?? 'TBD' }}</div>
+              <div class="small text-muted">{{ $match->orderOfPlay?->time ? \Carbon\Carbon::parse($match->orderOfPlay->time)->format('D, d M Y H:i') : 'Time to be confirmed' }} · {{ $match->orderOfPlay?->venue?->name ?? 'Court to be confirmed' }}@if($match->orderOfPlay?->court) · Court {{ $match->orderOfPlay->court }}@endif</div>
+            </div>
           @empty
-            <p class="text-muted mb-0">No published upcoming matches found.</p>
+            <p class="text-muted mb-0">No published next match time found.</p>
           @endforelse
         </div></div>
       </div>

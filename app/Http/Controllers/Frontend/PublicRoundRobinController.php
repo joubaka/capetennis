@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\DrawService;
 use App\Models\CategoryEvent;
 use App\Http\Controllers\Controller;
+use App\Services\PublicDrawScheduleVisibility;
 
 class PublicRoundRobinController extends Controller
 {
@@ -65,6 +66,7 @@ class PublicRoundRobinController extends Controller
 
     // Hub (RR fixtures, OOP, standings)
     $hub = $this->builder->loadRoundRobinHub($draw);
+    $hub = app(PublicDrawScheduleVisibility::class)->restrictRoundRobinHub($draw, $hub);
 
     // Round-robin-only draws do not have a playoff bracket.
     $svgData = null;

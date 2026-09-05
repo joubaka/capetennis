@@ -6,6 +6,7 @@ use App\Models\CategoryEventRegistration;
 use App\Models\Fixture;
 use App\Models\Player;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -68,26 +69,7 @@ class MyTennisService
             ->limit(100)
             ->get();
 
-        $registrationIds = $entries->pluck('registration_id')->filter()->unique();
-        $upcomingMatches = Fixture::query()
-            ->with(['draw.event', 'schedule', 'venue', 'registration1.players', 'registration2.players'])
-            ->where(function ($query) use ($registrationIds): void {
-                $query->whereIn('registration1_id', $registrationIds)
-                    ->orWhereIn('registration2_id', $registrationIds);
-            })
-            ->whereHas('draw', fn ($query) => $query->where('published', true))
-            // An unplayed fixture without a scheduled time is not an
-            // upcoming match. It is a stale/open draw item and should not be
-            // presented as an appointment to families.
-            ->whereNotNull('scheduled')
-            ->where('scheduled', '>=', now())
-            ->whereHas('draw.event', fn ($query) => $query
-                ->whereNull('end_date')
-                ->orWhereDate('end_date', '>=', today()))
-            ->whereDoesntHave('fixtureResults')
-            ->orderBy('scheduled')
-            ->limit(20)
-            ->get();
+        $upcomingMatches = $this->nextScheduledMatchFor($player);
 
         return [
             'players' => $players,
@@ -100,6 +82,42 @@ class MyTennisService
             'upcomingMatches' => $upcomingMatches,
             'history' => $this->timeline->for($player, 20),
         ];
+    }
+
+    public function nextScheduledMatchFor(Player $player): Collection
+    {
+        $registrationIds = $player->registrations()->pluck('registrations.id');
+        if ($registrationIds->isEmpty()) {
+            return collect();
+        }
+
+        $matches = Fixture::query()
+            ->with(['draw.event', 'orderOfPlay.venue', 'fixtureResults', 'registration1.players', 'registration2.players'])
+            ->where(function ($query) use ($registrationIds): void {
+                $query->whereIn('registration1_id', $registrationIds)
+                    ->orWhereIn('registration2_id', $registrationIds);
+            })
+            ->whereHas('draw', fn ($query) => $query
+                ->where('published', true)
+                ->where('oop_published', true))
+            ->whereHas('orderOfPlay', fn ($query) => $query->whereNotNull('time'))
+            ->whereHas('draw.event', fn ($query) => $query
+                ->whereNull('end_date')
+                ->orWhereDate('end_date', '>=', today()))
+            ->limit(500)
+            ->get();
+
+        $matches = $matches->sortBy(fn (Fixture $fixture) => sprintf(
+            '%s_%010d',
+            $fixture->orderOfPlay?->time ?? '9999-12-31 23:59:59',
+            $fixture->id
+        ))->values();
+
+        return $matches
+            ->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isEmpty()
+                && Carbon::parse($fixture->orderOfPlay->time)->greaterThanOrEqualTo(now()))
+            ->take(1)
+            ->values();
     }
 
     public function playerPage(User $user, int $page = 1, int $perPage = 25): LengthAwarePaginator

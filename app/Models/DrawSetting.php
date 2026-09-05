@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 class DrawSetting extends Model
 {
     use HasFactory;
+
+    public const SCHEDULE_VISIBILITY_CURRENT_ROUND = 'current_round';
+    public const SCHEDULE_VISIBILITY_FULL = 'full_schedule';
     
     protected $fillable = [
       'draw_id',
@@ -20,6 +23,7 @@ class DrawSetting extends Model
       'playoff_config',  // JSON: playoff brackets configuration
       'preset_key',      // Store which preset template was used
       'notes',           // JSON: editable rules/notes per section
+      'schedule_visibility',
     ];
 
     protected $casts = [
@@ -287,5 +291,10 @@ class DrawSetting extends Model
     public function draw()
     {
         return $this->belongsTo(\App\Models\Draw::class);
+    }
+
+    public function showsCurrentRoundOnly(): bool
+    {
+        return $this->schedule_visibility === self::SCHEDULE_VISIBILITY_CURRENT_ROUND;
     }
 }

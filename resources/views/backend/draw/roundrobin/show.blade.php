@@ -827,6 +827,41 @@
     <div class="card-body">
       <div class="row g-4">
 
+        <div class="col-12">
+          <fieldset class="card border mb-0">
+            <div class="card-header py-2 bg-light">
+              <legend class="h6 mb-0"><i class="ti ti-clock me-1 text-primary"></i> Player Schedule Visibility</legend>
+            </div>
+            <div class="card-body">
+              @php
+                $scheduleVisibility = optional($draw->settings)->schedule_visibility
+                  ?? \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL;
+              @endphp
+              <p class="text-muted small">Choose how scheduled times appear on this draw's public page. The complete schedule remains available to administrators.</p>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="form-check border rounded p-3 ps-5 h-100">
+                    <input class="form-check-input schedule-visibility" type="radio" name="schedule_visibility"
+                      id="schedule-visibility-current-round" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND }}"
+                      @checked($scheduleVisibility === \App\Models\DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND)>
+                    <label class="form-check-label fw-semibold" for="schedule-visibility-current-round">Show Current Round Only</label>
+                    <div class="form-text">Show times for the earliest uncompleted scheduled round. As that round is completed, the next round's times become visible.</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="form-check border rounded p-3 ps-5 h-100">
+                    <input class="form-check-input schedule-visibility" type="radio" name="schedule_visibility"
+                      id="schedule-visibility-full" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL }}"
+                      @checked($scheduleVisibility === \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL)>
+                    <label class="form-check-label fw-semibold" for="schedule-visibility-full">Show Full Schedule</label>
+                    <div class="form-text">Show every published upcoming match time for the player in this draw.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+
         {{-- General Rules --}}
         <div class="col-md-6">
           <div class="card border h-100">
@@ -1117,7 +1152,10 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
       $('.notes-field').each(function() {
         notes[$(this).data('key')] = $(this).val();
       });
-      $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', { notes: notes })
+      $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', {
+        notes: notes,
+        schedule_visibility: $('.schedule-visibility:checked').val()
+      })
         .done(function(res) {
           toastr.success(res.message || 'Notes saved');
         })

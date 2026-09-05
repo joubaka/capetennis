@@ -4,6 +4,7 @@ namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
 use App\Models\DrawGroup;
+use App\Models\DrawSetting;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
@@ -196,6 +197,23 @@ class DrawLockHardeningTest extends TestCase
                 'notes' => ['general' => 'Test note'],
             ])
             ->assertOk();
+    }
+
+    public function test_schedule_visibility_can_be_changed_with_rules_when_locked(): void
+    {
+        $draw = $this->lockedDraw();
+
+        $this->actingAs($this->admin($draw))
+            ->postJson(route('backend.draw.update-notes', $draw), [
+                'notes' => ['general' => 'Test note'],
+                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND,
+            ])
+            ->assertOk();
+
+        $this->assertSame(
+            DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND,
+            $draw->fresh()->settings->schedule_visibility
+        );
     }
 
     // ─── toggleLock ──────────────────────────────────────────────────

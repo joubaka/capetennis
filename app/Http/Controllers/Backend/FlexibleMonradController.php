@@ -8,6 +8,7 @@ use App\Models\Draw;
 use App\Models\RankingList;
 use App\Models\SeriesRanking;
 use App\Services\Draw\FlexibleMonradService;
+use App\Services\PublicDrawScheduleVisibility;
 use Illuminate\Http\Request;
 
 class FlexibleMonradController extends Controller
@@ -113,6 +114,16 @@ class FlexibleMonradController extends Controller
             if (! $draw->oop_published) {
                 foreach ($state['matches'] as &$match) unset($match['schedule']);
                 unset($match);
+            } else {
+                $visibleFixtureIds = app(PublicDrawScheduleVisibility::class)->visibleFixtureIds($draw);
+                if ($visibleFixtureIds !== null) {
+                    foreach ($state['matches'] as &$match) {
+                        if (! $visibleFixtureIds->contains((int) $match['id'])) {
+                            unset($match['schedule']);
+                        }
+                    }
+                    unset($match);
+                }
             }
         }
         if (! $public) $draw->loadMissing('event.draws', 'event.series', 'categoryEvent.category');

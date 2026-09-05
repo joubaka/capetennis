@@ -217,18 +217,18 @@ class ManageDrawController extends Controller
     $validated = $request->validate([
       'notes' => 'required|array',
       'notes.*' => 'nullable|string|max:5000',
+      'schedule_visibility' => 'sometimes|required|in:' . DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND . ',' . DrawSetting::SCHEDULE_VISIBILITY_FULL,
     ]);
 
-    if (!$draw->settings) {
-      $draw->settings()->create([
-        'draw_id' => $draw->id,
+    $draw->settings()->updateOrCreate(
+      ['draw_id' => $draw->id],
+      [
         'notes' => $validated['notes'],
-      ]);
-    } else {
-      $draw->settings()->update([
-        'notes' => $validated['notes'],
-      ]);
-    }
+        'schedule_visibility' => $validated['schedule_visibility']
+          ?? $draw->settings?->schedule_visibility
+          ?? DrawSetting::SCHEDULE_VISIBILITY_FULL,
+      ]
+    );
 
     return response()->json([
       'success' => true,
