@@ -299,21 +299,21 @@
  <ul class="nav nav-tabs ct-public-draw-nav" id="rrTabs" role="tablist">
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link active"
+    <button class="nav-link"
             id="oop-tab"
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
-            type="button" role="tab" aria-controls="oop-pane" aria-selected="true">
-      Match times
+            type="button" role="tab" aria-controls="oop-pane" aria-selected="false">
+      Schedule
     </button>
   </li>
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link"
+    <button class="nav-link active"
             id="matrix-tab"
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
-            type="button" role="tab" aria-controls="matrix-pane" aria-selected="false">
+            type="button" role="tab" aria-controls="matrix-pane" aria-selected="true">
       Draw
     </button>
   </li>
@@ -351,7 +351,7 @@
     {{-- ============================
          TAB 1 — MATRIX + STANDINGS
        ============================ --}}
-    <div class="tab-pane fade"
+    <div class="tab-pane fade show active"
          id="matrix-pane" 
          role="tabpanel" aria-labelledby="matrix-tab">
       <div class="row"> 
@@ -382,7 +382,7 @@
     {{-- ============================
          TAB 2 — ORDER OF PLAY
        ============================ --}}
-    <div class="tab-pane fade show active"
+    <div class="tab-pane fade"
          id="oop-pane" 
          role="tabpanel" aria-labelledby="oop-tab">
        <div class="col-12">
@@ -390,7 +390,10 @@
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
             <h5 class="card-title mb-1">Match times &amp; courts</h5>
-            <div class="small text-muted">Find your name, then confirm the date, time, venue and court.</div>
+            <div class="small text-muted">
+              Find your name, then confirm the date, time, venue and court.
+              @if($draw->settings?->showsFirstMatchOnly()) Later matches are marked <strong>Followed by</strong> until their times are released. @endif
+            </div>
           </div>
        
         </div>

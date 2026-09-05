@@ -75,7 +75,8 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertSee('data-fm-public-tab="schedule"', false)
             ->assertSee('data-fm-public-tab="draw"', false)
             ->assertSee('id="fm-schedule-panel"', false)
-            ->assertSee('id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab" hidden', false)
+            ->assertSee('id="fm-schedule-panel" class="fm-public-panel fm-public-timetable" role="tabpanel" aria-labelledby="fm-schedule-tab" hidden', false)
+            ->assertSee('id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab"', false)
             ->assertSee('Match times have not been published yet.')
             ->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
         $this->postJson(route('draw.toggle.publish.schedule', $draw))->assertOk();
@@ -83,6 +84,7 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertSee('Find your name, then confirm the date, time, venue and court.')
             ->assertSee('2026-09-20 09:00:00');
         $this->assertStringContainsString('td[data-label="Time"]', file_get_contents(public_path('css/flexible-monrad.css')));
+        $this->assertStringContainsString("scheduleHidden ? 'Followed by'", file_get_contents(public_path('js/flexible-monrad.js')));
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
         $this->assertSame(4, $draw->drawFixtures()->count());

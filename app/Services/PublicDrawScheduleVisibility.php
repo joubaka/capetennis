@@ -74,6 +74,7 @@ class PublicDrawScheduleVisibility
         foreach ($hub['rrFixtures'] as &$groupFixtures) {
             foreach ($groupFixtures as &$fixture) {
                 if (! $isVisible($fixture['id'] ?? null)) {
+                    $fixture['schedule_hidden'] = true;
                     $fixture['time'] = null;
                     $fixture['venue_name'] = null;
                 }
@@ -84,6 +85,7 @@ class PublicDrawScheduleVisibility
 
         $hub['oops'] = collect($hub['oops'])->map(function (array $fixture) use ($isVisible): array {
             if (! $isVisible($fixture['id'] ?? null)) {
+                $fixture['schedule_hidden'] = true;
                 $fixture['time'] = null;
                 $fixture['venue_name'] = null;
                 $fixture['court'] = null;

@@ -121,6 +121,7 @@ class FlexibleMonradController extends Controller
                 if ($visibleFixtureIds !== null) {
                     foreach ($state['matches'] as &$match) {
                         if (! $visibleFixtureIds->contains((int) $match['id'])) {
+                            $match['schedule_hidden'] = true;
                             unset($match['schedule']);
                         }
                     }

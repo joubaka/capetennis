@@ -171,6 +171,9 @@
   @php
     $firstSchedule = $draw->order_of_play->whereNotNull('time')->sortBy('time')->first();
     $drawVenueNames = $draw->venues->pluck('name')->filter()->unique()->values();
+    $publicDrawUrl = $draw->usesFlexibleMonrad()
+      ? route('public.flexible-monrad.show', $draw)
+      : route('public.roundrobin.show', $draw);
   @endphp
   <article class="event-draw-card">
     <div>
@@ -186,14 +189,14 @@
 
     {{-- PUBLISHED --}}
     @if($draw->published)
-      <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+      <a href="{{ $publicDrawUrl }}#draw"
          class="btn btn-sm btn-outline-primary">
         <i class="ti ti-tournament me-1"></i>
         View draw
       </a>
       @if($draw->oop_published)
-        <a href="{{ route('public.roundrobin.show', $draw->id) }}#schedule" class="btn btn-sm btn-success">
-          <i class="ti ti-clock me-1" aria-hidden="true"></i> Match times
+        <a href="{{ $publicDrawUrl }}#schedule" class="btn btn-sm btn-success">
+          <i class="ti ti-clock me-1" aria-hidden="true"></i> View schedule
         </a>
       @else
         <span class="badge bg-label-secondary">Times to follow</span>
@@ -212,7 +215,7 @@
 
       @if($isConvenorOrSuper)
         {{-- Convenor/Admin/Super can open --}}
-        <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+        <a href="{{ $publicDrawUrl }}#draw"
            class="btn btn-sm btn-outline-secondary">
           <i class="ti ti-tournament me-1"></i>
           Preview draw

@@ -42,9 +42,11 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('Draft preview', $html);
         $this->assertStringContainsString('Draw not published', $html);
         $this->assertStringContainsString('Manage this draw', $html);
-        $this->assertStringContainsString('Match times', $html);
-        $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="true"/', $html);
-        $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="oop-pane"/', $html);
+        $this->assertStringContainsString('Schedule', $html);
+        $this->assertMatchesRegularExpression('/id="matrix-tab"[\s\S]*?aria-selected="true"/', $html);
+        $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="matrix-pane"/', $html);
+        $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="false"/', $html);
+        $this->assertMatchesRegularExpression('/class="tab-pane fade"\s+id="oop-pane"/', $html);
         $this->assertStringContainsString('Find your name, then confirm the date, time, venue and court.', $html);
         $this->assertStringContainsString('<th class="text-center">Match</th>', $html);
         $this->assertStringContainsString('<th class="text-center">Date</th>', $html);
@@ -67,6 +69,7 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('data-label="Venue"', $script);
         $this->assertStringContainsString('data-label="Court"', $script);
         $this->assertStringContainsString("'Court ' + fx.court", $script);
+        $this->assertStringContainsString("scheduleHidden ? 'Followed by'", $script);
         $this->assertStringNotContainsString('if (a.round !== b.round)', $script);
     }
 }

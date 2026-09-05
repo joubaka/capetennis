@@ -14,15 +14,18 @@
   <div class="fm-public-shell">
     @include('frontend.draw.partials.public-header', ['publicDrawPrintButtonId' => 'fm-print'])
     <nav class="ct-public-draw-nav" role="tablist" aria-label="Draw sections">
-      <button id="fm-schedule-tab" type="button" class="nav-link active" role="tab" aria-selected="true"
-              aria-controls="fm-schedule-panel" data-fm-public-tab="schedule">Match times</button>
-      <button id="fm-draw-tab" type="button" class="nav-link" role="tab" aria-selected="false"
+      <button id="fm-schedule-tab" type="button" class="nav-link" role="tab" aria-selected="false"
+              aria-controls="fm-schedule-panel" data-fm-public-tab="schedule">Schedule</button>
+      <button id="fm-draw-tab" type="button" class="nav-link active" role="tab" aria-selected="true"
               aria-controls="fm-draw-panel" data-fm-public-tab="draw">Draw</button>
     </nav>
   </div>
-  <section id="fm-schedule-panel" class="fm-public-panel fm-public-timetable" role="tabpanel" aria-labelledby="fm-schedule-tab">
+  <section id="fm-schedule-panel" class="fm-public-panel fm-public-timetable" role="tabpanel" aria-labelledby="fm-schedule-tab" hidden>
     <h2>Match times &amp; courts</h2>
-    <p class="fm-public-timetable-help">Find your name, then confirm the date, time, venue and court.</p>
+    <p class="fm-public-timetable-help">
+      Find your name, then confirm the date, time, venue and court.
+      @if($draw->settings?->showsFirstMatchOnly()) Later matches are marked <strong>Followed by</strong> until their times are released. @endif
+    </p>
     @if($draw->oop_published)
       <div id="fm-timetable"></div>
     @else
@@ -32,7 +35,7 @@
       </div>
     @endif
   </section>
-  <div id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab" hidden>
+  <div id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab">
     @include('backend.draw.partials.flexible-monrad-editor')
   </div>
 @else
@@ -63,7 +66,7 @@
     }
 
     buttons.forEach(button => button.addEventListener('click', () => selectTab(button.dataset.fmPublicTab, true)));
-    selectTab(['#draw', '#fm-board-title', '#fm-results', '#groups'].includes(location.hash) ? 'draw' : 'schedule');
+    selectTab(['#schedule', '#oop', '#match-times'].includes(location.hash) ? 'schedule' : 'draw');
   })();
 </script>
 @endif

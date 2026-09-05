@@ -516,13 +516,14 @@
       const row = el('tr');
       const players = match.players.map((id, i) => id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i])).join(' vs ');
       const schedule = scheduleParts(match.schedule);
+      const scheduleHidden = match.schedule_hidden === true;
       const cells = [
         ['Match', String(match.number)],
         ['Players', players],
-        ['Date', schedule.date || 'Not scheduled'],
-        ['Time', schedule.time || '—'],
-        ['Venue', match.schedule?.venue || '—'],
-        ['Court', match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
+        ['Date', scheduleHidden ? '—' : schedule.date || 'Not scheduled'],
+        ['Time', scheduleHidden ? 'Followed by' : schedule.time || '—'],
+        ['Venue', scheduleHidden ? '—' : match.schedule?.venue || '—'],
+        ['Court', scheduleHidden ? '—' : match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
       ];
       cells.forEach(([label, value]) => {
         const cell = el('td', '', String(value));
@@ -564,7 +565,7 @@
             match.label,
             ...match.players.map((id, i) => (id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i]))),
             match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
-            match.schedule?.time ? scheduleLabel(match.schedule, true) : 'Not scheduled'
+            match.schedule_hidden === true ? 'Followed by' : match.schedule?.time ? scheduleLabel(match.schedule, true) : 'Not scheduled'
           ]);
       });
     else

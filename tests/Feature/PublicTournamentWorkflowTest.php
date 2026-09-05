@@ -57,6 +57,25 @@ class PublicTournamentWorkflowTest extends TestCase
             ->assertDontSee('Secret draft division');
     }
 
+    public function test_parent_event_page_opens_draw_and_schedule_as_separate_tabs(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        $draw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'drawName' => 'Under 14 Girls',
+            'published' => true,
+            'oop_published' => true,
+        ]);
+        $draw->settings()->create(['workflow' => 'round_robin']);
+
+        $this->get(route('events.show', $event))
+            ->assertOk()
+            ->assertSee('href="'.route('public.roundrobin.show', $draw).'#draw"', false)
+            ->assertSee('href="'.route('public.roundrobin.show', $draw).'#schedule"', false)
+            ->assertSee('View draw')
+            ->assertSee('View schedule');
+    }
+
     public function test_public_document_route_enforces_event_publication_and_ownership(): void
     {
         $event = Event::factory()->create();

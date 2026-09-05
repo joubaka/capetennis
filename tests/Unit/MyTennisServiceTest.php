@@ -122,7 +122,9 @@ class MyTennisServiceTest extends TestCase
         $this->assertSame('first', $restrictedHub['oops'][0]['time']);
         $this->assertSame('same round', $restrictedHub['oops'][1]['time']);
         $this->assertNull($restrictedHub['oops'][2]['time']);
+        $this->assertTrue($restrictedHub['oops'][2]['schedule_hidden']);
         $this->assertNull($restrictedHub['rrFixtures'][0][2]['time']);
+        $this->assertTrue($restrictedHub['rrFixtures'][0][2]['schedule_hidden']);
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL]);
         $this->assertSame([$first->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());

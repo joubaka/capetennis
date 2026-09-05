@@ -207,6 +207,7 @@
 
     sorted.forEach(fx => {
       const schedule = formatScheduleParts(fx);
+      const scheduleHidden = fx.schedule_hidden === true;
       const stage = fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '');
       const court = fx.court
         ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court)
@@ -219,10 +220,10 @@
           <td data-label="Player 2">${escapeHtml(fx.away)}</td>
           <td data-label="Round" class="text-center">${escapeHtml(fx.round)}</td>
           <td data-label="Stage" class="text-center">${escapeHtml(stage)}</td>
-          <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
-          <td data-label="Time" class="text-center">${escapeHtml(schedule.time || '—')}</td>
-          <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
-          <td data-label="Court" class="text-center">${escapeHtml(court || '—')}</td>
+          <td data-label="Date" class="text-center">${escapeHtml(scheduleHidden ? '—' : schedule.date || '—')}</td>
+          <td data-label="Time" class="text-center">${escapeHtml(scheduleHidden ? 'Followed by' : schedule.time || '—')}</td>
+          <td data-label="Venue">${escapeHtml(scheduleHidden ? '—' : fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
+          <td data-label="Court" class="text-center">${escapeHtml(scheduleHidden ? '—' : court || '—')}</td>
           <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });
@@ -389,6 +390,8 @@
   $(document).ready(function () {
     if (['#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
       document.getElementById('oop-tab')?.click();
+    } else if (['', '#draw', '#matrix'].includes(window.location.hash)) {
+      document.getElementById('matrix-tab')?.click();
     }
   });
 
