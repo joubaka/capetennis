@@ -38,6 +38,10 @@ class DrawAuditLog extends Model
             $payload['operator'] ??= session('venue_scoring.operator');
         }
 
+        if ($fixtureId && ! array_key_exists('venue_id', $payload)) {
+            $payload['venue_id'] = OrderOfPlay::where('fixture_id', $fixtureId)->value('venue_id');
+        }
+
         $legacy = static::create([
             'draw_id'    => $drawId,
             'user_id'    => auth()->id(),

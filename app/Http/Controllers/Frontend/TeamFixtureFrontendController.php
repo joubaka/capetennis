@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\Draw;
 use App\Models\Event;
+use App\Models\DrawAuditLog;
 use App\Services\TeamFixtureScoreService;
 
 class TeamFixtureFrontendController extends Controller
@@ -106,6 +107,8 @@ class TeamFixtureFrontendController extends Controller
   {
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
       $this->authorize('team-fixture.saveScore', $fixture);
+      $previousSets = $fixture->fixtureResults()->orderBy('set_nr')->get()
+          ->map(fn ($result) => [(int) $result->team1_score, (int) $result->team2_score])->values()->all();
 
       $rules = [];
       for ($i = 1; $i <= 3; $i++) {
@@ -116,6 +119,15 @@ class TeamFixtureFrontendController extends Controller
       $validated = $request->validate($rules);
 
       app(TeamFixtureScoreService::class)->save($fixture, $validated);
+      DrawAuditLog::record($fixture->draw_id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [
+          'fixture_type' => 'team',
+          'previous_sets' => $previousSets,
+          'sets' => collect(range(1, 3))->map(fn ($set) => [
+              $validated["set{$set}_home"] ?? null,
+              $validated["set{$set}_away"] ?? null,
+          ])->filter(fn ($set) => $set[0] !== null && $set[1] !== null)->values()->all(),
+          'venue_id' => $fixture->venue_id,
+      ]);
 
       // Prepare updated result HTML
       $resultHtml = view('frontend.fixtures.partials.result', ['fixture' => $fixture])->render();
@@ -167,7 +179,14 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
   {
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
       $this->authorize('team-fixture.saveScore', $fixture);
+      $previousSets = $fixture->fixtureResults()->orderBy('set_nr')->get()
+          ->map(fn ($result) => [(int) $result->team1_score, (int) $result->team2_score])->values()->all();
       app(TeamFixtureScoreService::class)->delete($fixture);
+      DrawAuditLog::record($fixture->draw_id, 'score_deleted', $fixture->id, [
+          'fixture_type' => 'team',
+          'previous_sets' => $previousSets,
+          'venue_id' => $fixture->venue_id,
+      ]);
 
       // Prepare updated result HTML
       $resultHtml = '<span class="text-muted">No result</span>';

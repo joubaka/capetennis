@@ -8,6 +8,7 @@ use App\Models\DrawAuditLog;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
+use App\Models\TeamFixture;
 use App\Models\Venue;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -69,8 +70,39 @@ class VenueScoringController extends Controller
             ->limit(500)
             ->get();
 
-        $completed = $fixtures->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isNotEmpty())->count();
-        $ready = $fixtures->filter(fn (Fixture $fixture) => $fixture->registration1_id && $fixture->registration2_id)->count();
+        $teamFixtures = TeamFixture::query()
+            ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+            ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
+            ->when($selectedVenue, fn ($query) => $query->where('venue_id', $selectedVenue->id))
+            ->when(! $selectedDraw && ! $selectedVenue, fn ($query) => $query->whereNotNull('venue_id'))
+            ->with([
+                'draw.settings',
+                'draw.flexibleMonrad',
+                'fixturePlayers.player1',
+                'fixturePlayers.player2',
+                'fixtureResults',
+                'venue',
+                'homeTeam',
+                'awayTeam',
+                'region1Name',
+                'region2Name',
+            ])
+            ->orderBy('scheduled_at')
+            ->orderBy('round_nr')
+            ->orderBy('home_rank_nr')
+            ->limit(500)
+            ->get();
+
+        $matches = $fixtures->concat($teamFixtures)->sortBy(function ($match) {
+            return $match instanceof Fixture
+                ? ($match->orderOfPlay?->time ?? '9999-12-31 23:59:59')
+                : ($match->scheduled_at ?? '9999-12-31 23:59:59');
+        })->values();
+
+        $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty())->count();
+        $ready = $matches->filter(fn ($match) => $match instanceof Fixture
+            ? ($match->registration1_id && $match->registration2_id)
+            : ($match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam)))->count();
 
         $recentActivity = DrawAuditLog::query()
             ->whereIn('draw_id', $drawIds)
@@ -87,7 +119,7 @@ class VenueScoringController extends Controller
             'event' => $event,
             'draws' => $draws,
             'venues' => $venues,
-            'fixtures' => $fixtures,
+            'matches' => $matches,
             'selectedVenue' => $selectedVenue,
             'selectedDraw' => $selectedDraw,
             'completed' => $completed,

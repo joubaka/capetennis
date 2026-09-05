@@ -46,10 +46,10 @@
         </div>
 
         @php
-          $progress = $fixtures->count() ? (int) round(($completed / $fixtures->count()) * 100) : 0;
+          $progress = $matches->count() ? (int) round(($completed / $matches->count()) * 100) : 0;
         @endphp
         <div class="d-flex justify-content-between mt-3 mb-1 small">
-          <span><strong>{{ $completed }}</strong> of {{ $fixtures->count() }} entered</span>
+          <span><strong>{{ $completed }}</strong> of {{ $matches->count() }} entered</span>
           <span>{{ $progress }}%</span>
         </div>
         <div class="progress scoring-progress" role="progressbar" aria-label="Scoring progress" aria-valuenow="{{ $progress }}" aria-valuemin="0" aria-valuemax="100">
@@ -84,7 +84,7 @@
         <div class="fw-semibold mb-2">Choose venue</div>
         <div class="d-flex flex-wrap gap-2">
           <a class="btn btn-sm venue-pill {{ !$selectedVenue ? 'btn-primary' : 'btn-outline-primary' }}"
-             href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id]) }}">All venues</a>
+             href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}">All venues</a>
           @foreach($venues as $venue)
             <a class="btn btn-sm venue-pill {{ $selectedVenue?->id === $venue->id ? 'btn-primary' : 'btn-outline-primary' }}"
                href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}">
@@ -115,36 +115,63 @@
     </div>
 
     <div id="score-match-list" class="d-grid gap-3">
-      @forelse($fixtures as $fixture)
+      @forelse($matches as $match)
         @php
-          $schedule = $fixture->orderOfPlay;
-          $hasScore = $fixture->fixtureResults->isNotEmpty();
-          $hasPlayers = $fixture->registration1_id && $fixture->registration2_id;
-          $home = $fixture->registration1?->players?->first()?->full_name ?? 'To be decided';
-          $away = $fixture->registration2?->players?->first()?->full_name ?? 'To be decided';
-          $sets = $fixture->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values();
-          $isFlexible = $fixture->draw->usesFlexibleMonrad();
-          $canWrite = auth()->user()->can('saveScore', $fixture->draw)
-            && !$fixture->draw->locked
-            && ($isFlexible || !$fixture->draw->published || $fixture->stage === 'RR');
-          $normalStore = route('api.draws.fixtures.score.store', ['draw' => $fixture->draw_id, 'fixture' => $fixture->id]);
-          $normalDelete = route('api.draws.fixtures.score.delete', ['draw' => $fixture->draw_id, 'fixture' => $fixture->id]);
-          $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $fixture->draw_id, 'fixture' => $fixture->id]) : null;
+          $isTeamFixture = $match instanceof \App\Models\TeamFixture;
+          $draw = $match->draw;
+          $hasScore = $match->fixtureResults->isNotEmpty();
+          $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
+
+          if ($isTeamFixture) {
+            $homePlayers = $match->fixturePlayers->pluck('player1')->filter()->pluck('full_name')->filter();
+            $awayPlayers = $match->fixturePlayers->pluck('player2')->filter()->pluck('full_name')->filter();
+            $home = $homePlayers->isNotEmpty() ? $homePlayers->implode(' + ') : ($match->homeTeam?->name ?? $match->region1Name?->name ?? 'To be decided');
+            $away = $awayPlayers->isNotEmpty() ? $awayPlayers->implode(' + ') : ($match->awayTeam?->name ?? $match->region2Name?->name ?? 'To be decided');
+            $hasPlayers = $match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam);
+            $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->team1_score, (int) $set->team2_score])->values();
+            $scheduleTime = $match->scheduled_at;
+            $venueName = $match->venue?->name;
+            $court = $match->court ?? null;
+            $stageLabel = 'Team fixture';
+            $matchNumber = $match->home_rank_nr ?: $match->id;
+            $canWrite = auth()->user()->can('team-fixture.saveScore', $match) && !$draw->locked;
+            $normalStore = route('frontend.fixtures.score.store', $match->id);
+            $normalDelete = route('frontend.fixtures.score.delete', $match->id);
+            $engine = 'team';
+          } else {
+            $schedule = $match->orderOfPlay;
+            $home = $match->registration1?->players?->first()?->full_name ?? 'To be decided';
+            $away = $match->registration2?->players?->first()?->full_name ?? 'To be decided';
+            $hasPlayers = $match->registration1_id && $match->registration2_id;
+            $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values();
+            $scheduleTime = $schedule?->time;
+            $venueName = $schedule?->venue?->name;
+            $court = $schedule?->court;
+            $stageLabel = $match->stage ?: 'Draw';
+            $matchNumber = $match->match_nr ?: $match->id;
+            $canWrite = auth()->user()->can('saveScore', $draw)
+              && !$draw->locked
+              && ($isFlexible || !$draw->published || $match->stage === 'RR');
+            $normalStore = route('api.draws.fixtures.score.store', ['draw' => $match->draw_id, 'fixture' => $match->id]);
+            $normalDelete = route('api.draws.fixtures.score.delete', ['draw' => $match->draw_id, 'fixture' => $match->id]);
+            $engine = $isFlexible ? 'flexible' : 'standard';
+          }
+          $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $match->draw_id, 'fixture' => $match->id]) : null;
         @endphp
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($hasPlayers ? '' : 'is-waiting') }}"
                  data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}">
           <div class="card-body">
             <div class="d-flex justify-content-between gap-2 align-items-start mb-2">
               <div class="match-meta">
-                @if($schedule?->time)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($schedule->time)->format('D H:i') }}</span>@endif
-                @if($schedule?->venue)<span><i class="ti ti-map-pin"></i> {{ $schedule->venue->name }}</span>@endif
-                @if($schedule?->court)<span>Court {{ $schedule->court }}</span>@endif
+                @if($scheduleTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($scheduleTime)->format('D H:i') }}</span>@endif
+                @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
+                @if($court)<span>Court {{ $court }}</span>@endif
               </div>
               <span class="badge {{ $hasScore ? 'bg-label-success' : ($hasPlayers ? 'bg-label-warning' : 'bg-label-secondary') }}">
                 {{ $hasScore ? 'Completed' : ($hasPlayers ? 'Awaiting score' : 'Waiting for players') }}
               </span>
             </div>
-            <div class="small text-muted mb-2">{{ $fixture->draw->drawName }} · {{ $fixture->stage ?: 'Draw' }} · Match {{ $fixture->match_nr ?: $fixture->id }}</div>
+            <div class="small text-muted mb-2">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
             <div class="row g-2 align-items-center">
               <div class="col match-player">{{ $home }}</div>
               <div class="col-auto text-muted">vs</div>
@@ -155,17 +182,17 @@
             </div>
             @if($canWrite && $hasPlayers)
               <button type="button" class="btn btn-primary score-action w-100 mt-3 js-open-score"
-                      data-fixture="{{ $fixture->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
-                      data-engine="{{ $isFlexible ? 'flexible' : 'standard' }}"
+                      data-fixture="{{ $match->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
+                      data-engine="{{ $engine }}"
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
-                      data-revision="{{ $fixture->draw->flexibleMonrad?->revision ?? 0 }}"
+                      data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
                       data-scores='@json($sets)'>
                 {{ $hasScore ? 'Correct score' : 'Enter score' }}
               </button>
-            @elseif($fixture->draw->locked)
+            @elseif($draw->locked)
               <div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">This draw is locked.</div>
-            @elseif($fixture->draw->published && !$isFlexible && $fixture->stage !== 'RR')
+            @elseif(!$isTeamFixture && $draw->published && !$isFlexible && $match->stage !== 'RR')
               <div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">Published bracket scores must be managed from the draw workspace.</div>
             @endif
           </div>
@@ -229,6 +256,24 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const venueStorageKey = 'cape-tennis.scoring.venue.{{ $event->id }}';
+  const selectedVenue = @json($selectedVenue?->id);
+  const availableVenues = @json($venues->pluck('id')->map(fn($id) => (int) $id)->values());
+  const forceAllVenues = @json(request()->boolean('all_venues'));
+  if (forceAllVenues) {
+    localStorage.removeItem(venueStorageKey);
+  } else if (selectedVenue) {
+    localStorage.setItem(venueStorageKey, String(selectedVenue));
+  } else {
+    const rememberedVenue = Number(localStorage.getItem(venueStorageKey));
+    if (rememberedVenue && availableVenues.includes(rememberedVenue)) {
+      const target = new URL(window.location.href);
+      target.searchParams.set('venue', rememberedVenue);
+      window.location.replace(target.toString());
+      return;
+    }
+  }
+
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const modalElement = document.getElementById('score-entry-modal');
   const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
@@ -312,6 +357,13 @@ document.addEventListener('DOMContentLoaded', function () {
           if (failure.status !== 409 || !failure.message.includes('later scored matches') || !confirm(failure.message + '\n\nReset those later results and continue?')) throw failure;
           await request(active.store, 'PUT', {sets: sets, revision: Number(active.revision), reset_dependents: true});
         }
+      } else if (active.engine === 'team') {
+        const teamPayload = {};
+        sets.forEach(function (set, index) {
+          teamPayload['set' + (index + 1) + '_home'] = set[0];
+          teamPayload['set' + (index + 1) + '_away'] = set[1];
+        });
+        await request(active.store, 'POST', teamPayload);
       } else {
         await request(active.store, 'POST', {sets: sets.map(set => set[0] + '-' + set[1])});
       }

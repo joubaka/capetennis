@@ -2024,7 +2024,7 @@ Route::get('roundrobin/{draw}/main-bracket', [PublicRoundRobinController::class,
   ->name('public.roundrobin.main-bracket');
 
 // Allow convenor, superadmin, and superuser roles to access score entry and management
-Route::middleware(['auth', 'role:convenor|admin|super-user'])->group(function () {
+Route::middleware(['auth', 'role:convenor|admin|super-user|score-keeper'])->group(function () {
   // Enter scores for a specific draw
   Route::get('/convenor/fixtures/enter-scores/{draw}', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'enterScores'])
     ->name('frontend.fixtures.enter-scores');

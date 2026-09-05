@@ -6,13 +6,16 @@ use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use App\Models\Event;
 use App\Models\EventConvenor;
+use App\Models\EventType;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\Registration;
+use App\Models\TeamFixture;
 use App\Models\User;
 use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -83,6 +86,47 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->assertTrue(Gate::forUser($assigned)->allows('event.score', $event));
         $this->assertFalse(Gate::forUser($unassigned)->allows('event.score', $event));
+    }
+
+    public function test_team_fixture_queue_and_score_writes_use_the_same_workspace_audit(): void
+    {
+        DB::table('eventtypes')->updateOrInsert(
+            ['id' => 990],
+            ['name' => 'Venue scoring team event', 'type' => EventType::TEAM]
+        );
+        $event = Event::factory()->create(['eventType' => 990]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Team Cup', 'published' => false, 'locked' => false]);
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Team Venue'])->save();
+        $event->venues()->attach($venue->id, ['num_courts' => 2]);
+        $fixture = TeamFixture::create([
+            'draw_id' => $draw->id,
+            'match_nr' => 7,
+            'round_nr' => 1,
+            'venue_id' => $venue->id,
+            'scheduled_at' => '2026-09-10 09:00:00',
+            'fixture_type' => 1,
+        ]);
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]))
+            ->assertOk()
+            ->assertSee('Team Cup')
+            ->assertSee('Match 7');
+
+        $this->actingAs($user)
+            ->withSession(['venue_scoring.operator' => 'Team phone'])
+            ->postJson(route('frontend.fixtures.score.store', $fixture), [
+                'set1_home' => 6,
+                'set1_away' => 3,
+                'set2_home' => 6,
+                'set2_away' => 4,
+            ])->assertOk();
+
+        $audit = DrawAuditLog::where('draw_id', $draw->id)->where('fixture_id', $fixture->id)->latest()->firstOrFail();
+        $this->assertSame('team', $audit->payload['fixture_type']);
+        $this->assertSame('Team phone', $audit->payload['operator']);
+        $this->assertSame($venue->id, $audit->payload['venue_id']);
     }
 
     private function scorerFor(Event $event): User
