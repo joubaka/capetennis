@@ -53,6 +53,12 @@
           <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules prepared</small><strong>{{ $scheduledCount }}/{{ $drawCount }}</strong></div></div>
           <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules published</small><strong>{{ $schedulePublishedCount }}/{{ $drawCount }}</strong></div></div>
         </div>
+        @if($scheduledCount > $schedulePublishedCount)
+          <div class="alert alert-warning mt-3 mb-0" role="status">
+            <strong>{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public.</strong>
+            Publish each draw first, then use <em>Publish times</em> to release its time, venue and court details.
+          </div>
+        @endif
       </div>
     </section>
   @endif

@@ -31,7 +31,7 @@ class FlexibleMonradController extends Controller
     public function publicShow(Draw $draw)
     {
         app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
-        abort_unless($draw->published && $draw->flexibleMonrad?->graph, 404);
+        abort_unless($draw->flexibleMonrad?->graph, 404);
         return $this->page($draw, true);
     }
 

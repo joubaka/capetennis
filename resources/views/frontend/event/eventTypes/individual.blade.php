@@ -143,7 +143,7 @@
     <div class="small">They will appear here as soon as the organiser publishes them. Match times and venues may follow later.</div>
   </div>
 @else
-<div class="d-flex flex-wrap gap-2">
+<div class="event-draw-grid">
 @php
   $sortedDraws = $eventDraws->sortBy([
     ['published', 'desc'],
@@ -158,18 +158,40 @@
 @endphp
 
 @foreach($sortedDraws as $draw)
-  <div class="d-flex align-items-center gap-1">
+  @php
+    $drawWorkflow = $draw->settings?->workflow;
+    $drawFormat = \App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$drawWorkflow][0]
+      ?? ($draw->usesFlexibleMonrad() ? 'Custom Monrad' : 'Format not specified');
+    $firstSchedule = $draw->order_of_play->whereNotNull('time')->sortBy('time')->first();
+    $drawVenueNames = $draw->venues->pluck('name')->filter()->unique()->values();
+  @endphp
+  <article class="event-draw-card">
+    <div>
+      <div class="event-draw-name">{{ $draw->drawName ?? 'Draw #'.$draw->id }}</div>
+      <div class="event-draw-meta">
+        <span>{{ $drawFormat }}</span>
+        @if($drawVenueNames->isNotEmpty())<span><i class="ti ti-map-pin" aria-hidden="true"></i> {{ $drawVenueNames->join(', ') }}</span>@endif
+        @if($draw->oop_published && $firstSchedule?->time)
+          <span><i class="ti ti-clock" aria-hidden="true"></i> First match {{ \Carbon\Carbon::parse($firstSchedule->time)->format('H:i') }}</span>
+        @endif
+      </div>
+    </div>
+    <div class="event-draw-actions">
 
     {{-- PUBLISHED --}}
     @if($draw->published)
       <a href="{{ route('public.roundrobin.show', $draw->id) }}"
-         class="btn btn-sm {{ $draw->oop_published ? 'btn-success' : 'btn-outline-success' }}">
+         class="btn btn-sm btn-outline-primary">
         <i class="ti ti-tournament me-1"></i>
-        {{ $draw->drawName ?? 'Draw #'.$draw->id }}
-        <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-          {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
-        </span>
+        View draw
       </a>
+      @if($draw->oop_published)
+        <a href="{{ route('public.roundrobin.show', $draw->id) }}#schedule" class="btn btn-sm btn-success">
+          <i class="ti ti-clock me-1" aria-hidden="true"></i> Match times
+        </a>
+      @else
+        <span class="badge bg-label-secondary">Times to follow</span>
+      @endif
 
       @if($isConvenorOrSuper)
         <a href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw->id]) }}"
@@ -187,14 +209,15 @@
         <a href="{{ route('public.roundrobin.show', $draw->id) }}"
            class="btn btn-sm btn-outline-secondary">
           <i class="ti ti-tournament me-1"></i>
-          {{ $draw->drawName ?? 'Draw #'.$draw->id }}
-          <span class="badge bg-danger ms-1">Unpublished</span>
+          Preview draw
         </a>
+        <span class="badge bg-label-warning">Draft</span>
       @endif
 
     @endif
 
-  </div>
+    </div>
+  </article>
 @endforeach
 </div>
 @endif

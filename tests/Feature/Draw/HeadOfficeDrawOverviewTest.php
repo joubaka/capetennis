@@ -60,6 +60,20 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('aria-label="Publish U/10 Boys"', $html);
     }
 
+    public function test_prepared_schedule_has_an_explicit_publication_action(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $draw = $this->draw();
+        $draw->published = true;
+        $draw->order_of_play_count = 3;
+
+        $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+
+        $this->assertStringContainsString('toggle-schedule-publication', $html);
+        $this->assertStringContainsString(route('draw.toggle.publish.schedule', 42), $html);
+        $this->assertStringContainsString('Publish times', $html);
+    }
+
     public function test_published_or_locked_draw_never_offers_delete_even_with_super_user_gate(): void
     {
         Gate::before(fn (?User $user) => true);
@@ -115,6 +129,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
 
     public function test_unknown_format_is_explicit_without_guessing_a_workflow(): void
     {
+        Gate::before(fn (?User $user) => true);
         $draw = $this->draw();
         $draw->setRelation('settings', null);
         $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
@@ -122,6 +137,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('Not specified', $html);
         $this->assertStringNotContainsString('Custom Monrad', $html);
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#schedule', $html);
+        $this->assertStringContainsString('Select a draw format before publishing', $html);
     }
 
     public function test_empty_event_has_creation_guidance_without_unusable_filters(): void

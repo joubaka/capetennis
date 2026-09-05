@@ -82,6 +82,21 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $this->get($public)->assertOk()->assertDontSee('Private timetable venue');
     }
 
+    public function test_authorised_flexible_draft_opens_an_honest_public_preview(): void
+    {
+        $draw = $this->draw();
+
+        $this->get(route('public.roundrobin.show', $draw))
+            ->assertRedirect(route('public.flexible-monrad.show', $draw));
+        $this->get(route('public.flexible-monrad.show', $draw))
+            ->assertOk()
+            ->assertSee('Draft preview')
+            ->assertSee('Draw not published')
+            ->assertSee('Manage this draw')
+            ->assertSee('Back to tournament')
+            ->assertDontSee('CAPE TENNIS / DRAW BUILDER');
+    }
+
     public function test_other_event_admin_cannot_open_workspace_scheduler_or_publish_schedule(): void
     {
         $draw = $this->draw();

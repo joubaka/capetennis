@@ -44,10 +44,24 @@
               data-published="{{ $draw->published ? '1' : '0' }}"
               @if($isFlexible) data-revision="{{ $publishRevision }}" @endif
               @if($draw->published && $draw->locked) disabled title="Unlock this draw before unpublishing it" @endif
+              @if(!$draw->published && !$format) disabled title="Select a draw format before publishing" @endif
               aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}">
         <i class="ti ti-{{ $draw->published ? 'eye-off' : 'eye' }}" aria-hidden="true"></i>
         <span>{{ $draw->published ? 'Unpublish' : 'Publish' }}</span>
       </button>
+    @endcan
+    @can('publish', $draw)
+      @if($draw->order_of_play_count > 0)
+        <button type="button"
+                class="btn draws-button {{ $draw->oop_published ? 'draws-button-secondary' : 'draw-schedule-button' }} toggle-schedule-publication"
+                data-url="{{ route('draw.toggle.publish.schedule', $draw) }}"
+                data-draw-name="{{ $draw->drawName }}"
+                data-published="{{ $draw->oop_published ? '1' : '0' }}"
+                @if(!$draw->oop_published && !$draw->published) disabled title="Publish the draw first" @endif>
+          <i class="ti ti-clock" aria-hidden="true"></i>
+          <span>{{ $draw->oop_published ? 'Unpublish times' : 'Publish times' }}</span>
+        </button>
+      @endif
     @endcan
     <div class="dropdown">
       <button type="button" class="btn draws-button draw-more-button" data-bs-toggle="dropdown"

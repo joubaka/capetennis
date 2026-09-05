@@ -134,6 +134,8 @@ class EventController extends Controller
       'eventCategories.categoryEventRegistrations.registration.players',
       'draws.draw_types',
       'draws.venues',
+      'draws.settings',
+      'draws.order_of_play.venue',
       'series',
     ])->findOrFail($id);
 

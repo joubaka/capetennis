@@ -1,8 +1,9 @@
 @extends('layouts/contentNavbarLayout')
 
-@section('title', 'Round Robin — ' . ($draw->drawName ?? 'Draw'))
+@section('title', ($draw->isRoundRobinOnly() ? 'Round Robin' : 'Round Robin & Playoffs') . ' — ' . ($draw->drawName ?? 'Draw'))
 
 @section('content')
+<link rel="stylesheet" href="{{ asset('css/public-draw.css') }}?v={{ filemtime(public_path('css/public-draw.css')) }}">
 <style>
   /* ==============================================
      BASE TABLE STYLE
@@ -129,11 +130,6 @@
       font-size: 10px !important;
     }
 
-    /* auto-scale table for better fit */
-    .rr-matrix-scroll {
-      zoom: 0.85;
-    }
-
     /* OOP table mobile */
     #rr-order-table {
       font-size: 12px;
@@ -148,6 +144,43 @@
 
     #oop-pane .card-body {
       overflow-x: auto;
+    }
+
+    #rr-order-table td[data-label="Time"],
+    #rr-order-table td[data-label="Court"] {
+      color: #176448;
+      font-weight: 700;
+    }
+
+    #rr-order-table,
+    #rr-order-table tbody,
+    #rr-order-table tr,
+    #rr-order-table td { display: block; width: 100%; }
+    #rr-order-table thead { display: none; }
+    #rr-order-table tbody { padding: .75rem; }
+    #rr-order-table tr {
+      margin-bottom: .75rem;
+      padding: .75rem;
+      border: 1px solid #dbe5ec;
+      border-radius: .65rem;
+      background: #fff;
+      box-shadow: 0 .2rem .75rem rgba(23,46,69,.06);
+    }
+    #rr-order-table td {
+      display: grid;
+      grid-template-columns: 5.5rem minmax(0,1fr);
+      gap: .5rem;
+      padding: .25rem 0 !important;
+      border: 0;
+      text-align: left !important;
+      white-space: normal;
+    }
+    #rr-order-table td::before {
+      content: attr(data-label);
+      color: #6b7d8f;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
     }
 
     /* Standings mobile */
@@ -188,26 +221,12 @@
 <div id="round-robin-app" 
      data-draw-id="{{ $draw->id }}">
 
-  <div class="col-12 mb-4">
-    <a href="{{ route('events.show', $draw->event_id) }}" class="btn btn-sm btn-outline-secondary mb-3">
-      <i class="ti ti-arrow-left me-1"></i>Back to tournament
-    </a>
-    <h4 class="mb-0">Round Robin — {{ $draw->drawName }}</h4>
-    <small class="text-muted">
-      {{ $draw->categoryEvent?->category?->name ?? '' }} @ {{ $draw->event->name ?? '' }}
-    </small>
-    <div class="mt-2">
-      <span class="badge bg-label-success">Draw published</span>
-      <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
-        {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
-      </span>
-    </div>
-  </div>
+  @include('frontend.draw.partials.public-header')
 
   {{-- ============================
        TAB NAVIGATION
      ============================ --}}
- <ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
+ <ul class="nav nav-tabs ct-public-draw-nav" id="rrTabs" role="tablist">
 
   <li class="nav-item" role="presentation">
     <button class="nav-link active"
@@ -215,7 +234,7 @@
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
             type="button" role="tab" aria-controls="matrix-pane" aria-selected="true">
-      Boxes
+      Draw
     </button>
   </li>
 
@@ -225,7 +244,7 @@
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
             type="button" role="tab" aria-controls="oop-pane" aria-selected="false">
-      Order of Play
+      Match times
     </button>
   </li>
 
@@ -246,7 +265,7 @@
             data-bs-target="#main-bracket-pane"
             type="button"
             role="tab" aria-controls="main-bracket-pane" aria-selected="false">
-      Main Bracket
+      Playoffs
     </button>
 </li>
   @endunless
@@ -313,6 +332,7 @@
             <th class="text-center">Round</th>
             <th class="text-center">Group</th>
             <th class="text-center">Time</th>
+            <th class="text-center">Court</th>
             <th class="text-center">Score</th>
            
         </tr>

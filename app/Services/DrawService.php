@@ -121,6 +121,7 @@ class DrawService
         // FIX: include time + venue
         'time' => optional($fx->orderOfPlay)->time,
         'venue_name' => optional(optional($fx->orderOfPlay)->venue)->name,
+        'court' => optional($fx->orderOfPlay)->court,
       ];
     }
 

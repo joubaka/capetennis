@@ -490,6 +490,10 @@
     });
     table.append(body); root.append(table);
   }
+
+  if (window.location.hash === '#schedule') {
+    window.addEventListener('load', () => document.getElementById('fm-timetable')?.scrollIntoView({ block: 'start' }));
+  }
   function renderRoster() {
     const roster = $('fm-generated-roster');
     if (!roster) return;

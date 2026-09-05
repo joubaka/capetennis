@@ -18,7 +18,12 @@ final class DrawReadinessService
             ? $fixture->fixtureResults->isNotEmpty()
             : $fixture->fixtureResults()->exists())->count();
 
+        $formatConfigured = $isTeamDraw || in_array($draw->settings?->workflow, [
+            'round_robin', 'round_robin_playoffs', 'playoffs', 'monrad', 'custom_monrad',
+        ], true);
+
         $checks = [
+            'format' => ['ok' => $formatConfigured, 'label' => $formatConfigured ? 'Draw format selected' : 'Select a draw format before publishing'],
             'fixtures' => ['ok' => $fixtures->isNotEmpty(), 'label' => $fixtures->isNotEmpty() ? 'Fixtures generated' : 'Fixtures still need to be generated'],
             'participants' => ['ok' => $participantCount > 0, 'label' => $participantCount > 0 ? $participantCount . ' participants assigned' : 'No participants assigned'],
             'venues' => ['ok' => $draw->venues->isNotEmpty(), 'label' => $draw->venues->isNotEmpty() ? 'Venues available' : 'Assign at least one venue before scheduling'],
@@ -26,7 +31,7 @@ final class DrawReadinessService
         ];
 
         return [
-            'ready_to_publish' => $checks['fixtures']['ok'] && $checks['participants']['ok'],
+            'ready_to_publish' => $checks['format']['ok'] && $checks['fixtures']['ok'] && $checks['participants']['ok'],
             'checks' => $checks,
             'fixture_count' => $fixtures->count(),
             'scored_count' => $scored,

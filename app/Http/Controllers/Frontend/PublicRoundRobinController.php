@@ -27,10 +27,6 @@ class PublicRoundRobinController extends Controller
   {
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
     if ($draw->usesFlexibleMonrad()) {
-      if (! $draw->published) {
-        $this->authorize('view', $draw);
-        return redirect()->route('flexible-monrad.show', $draw);
-      }
       return redirect()->route('public.flexible-monrad.show', $draw);
     }
     Log::info("🌍 [PUBLIC RR] Loading draw {$draw->id}", [

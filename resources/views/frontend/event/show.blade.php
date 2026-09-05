@@ -120,6 +120,20 @@
     padding-inline: .75rem;
   }
 
+  .individual-event-view .event-draw-grid { display: grid; gap: .7rem; }
+  .individual-event-view .event-draw-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .75rem;
+    padding: .85rem;
+    border: 1px solid #dbe5ec;
+    border-radius: .7rem;
+    background: #fff;
+  }
+  .individual-event-view .event-draw-name { color: #172e45; font-weight: 750; }
+  .individual-event-view .event-draw-meta { display: flex; flex-wrap: wrap; gap: .35rem .7rem; margin-top: .25rem; color: #65788b; font-size: .78rem; }
+  .individual-event-view .event-draw-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+
   @media (max-width: 767.98px) {
     .individual-event-view .card-body,
     .individual-event-view .event-card-padding {
@@ -137,6 +151,8 @@
     .user-profile-header .flex-grow-1 { margin-top: .75rem !important; }
     .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
     .individual-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
+    .individual-event-view .event-draw-card { grid-template-columns: 1fr; }
+    .individual-event-view .event-draw-actions { justify-content: flex-start; }
   }
 
   @media (max-width: 991.98px) {

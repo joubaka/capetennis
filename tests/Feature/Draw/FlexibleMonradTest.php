@@ -18,6 +18,7 @@ class FlexibleMonradTest extends TestCase
         $event = Event::factory()->create();
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id]);
+        $draw->settings()->create(['workflow' => 'custom_monrad']);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);

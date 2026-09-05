@@ -68,7 +68,7 @@
   /* ===============================
    * FORMAT TIME
    * =============================== */
-  function formatDayTimeVenue(fx) {
+  function formatDayTimeVenue(fx, includeCourt = false) {
     if (!fx.time) return '';
 
     const dt = new Date(fx.time.replace(' ', 'T'));
@@ -85,7 +85,10 @@
       fx.venue ||
       '';
 
-    return venue ? `${day} ${time} (${venue})` : `${day} ${time}`;
+    const parts = [`${day} ${time}`];
+    if (venue) parts.push(venue);
+    if (includeCourt && fx.court) parts.push(/^court\b/i.test(String(fx.court)) ? String(fx.court) : `Court ${fx.court}`);
+    return parts.join(' · ');
   }
 
   /* ===============================
@@ -158,7 +161,7 @@
           }
 
           const score = formatScoreCell(fx, rowP.id);
-          const time = fx.time ? formatDayTimeVenue(fx) : '';
+          const time = fx.time ? formatDayTimeVenue(fx, true) : '';
 
           html += `<td class="text-center">${score || time || '–'}</td>`;
         });
@@ -178,33 +181,27 @@
     const tbody = $('#rr-order-table tbody');
 
     if (!RR_OOP.length) {
-      tbody.html(`<tr><td colspan="7" class="text-muted text-center">No matches have been scheduled.</td></tr>`);
+      tbody.html(`<tr><td colspan="8" class="text-muted text-center">No matches have been scheduled.</td></tr>`);
       return;
     }
 
-    // Sort RR fixtures: round → group → match_nr; non-RR after
-    const rrFx = RR_OOP.filter(f => f.stage === 'RR' || !f.stage)
-      .slice()
-      .sort((a, b) => {
-        if (a.round !== b.round) return (a.round || 0) - (b.round || 0);
-        if (a.group_id !== b.group_id) return (a.group_id || 0) - (b.group_id || 0);
-        return (a.match_nr || 0) - (b.match_nr || 0);
-      });
-    const otherFx = RR_OOP.filter(f => f.stage && f.stage !== 'RR');
-    const sorted = [...rrFx, ...otherFx];
+    // The backend already returns the organiser's canonical play_order.
+    // Keep that sequence instead of regrouping matches in the browser.
+    const sorted = RR_OOP.slice();
 
     let html = '';
 
     sorted.forEach(fx => {
       html += `
         <tr>
-          <td>${escapeHtml(fx.home)}</td>
-          <td class="text-center">vs</td>
-          <td>${escapeHtml(fx.away)}</td>
-          <td class="text-center">${escapeHtml(fx.round)}</td>
-          <td class="text-center">${escapeHtml(fx.group_name ? 'Box ' + fx.group_name : (fx.stage || ''))}</td>
-          <td class="text-center">${escapeHtml(formatDayTimeVenue(fx))}</td>
-          <td class="text-center fw-bold">${escapeHtml(fx.score || '')}</td>
+          <td data-label="Player 1">${escapeHtml(fx.home)}</td>
+          <td data-label="Versus" class="text-center">vs</td>
+          <td data-label="Player 2">${escapeHtml(fx.away)}</td>
+          <td data-label="Round" class="text-center">${escapeHtml(fx.round)}</td>
+          <td data-label="Stage" class="text-center">${escapeHtml(fx.group_name ? 'Box ' + fx.group_name : (fx.stage || ''))}</td>
+          <td data-label="Time" class="text-center">${escapeHtml(formatDayTimeVenue(fx))}</td>
+          <td data-label="Court" class="text-center">${escapeHtml(fx.court ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court) : '')}</td>
+          <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '')}</td>
         </tr>`;
     });
 
@@ -366,5 +363,11 @@
    * STARTUP
    * =============================== */
   $(document).ready(init);
+
+  $(document).ready(function () {
+    if (['#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
+      document.getElementById('oop-tab')?.click();
+    }
+  });
 
 })(jQuery, window, document);

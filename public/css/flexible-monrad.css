@@ -69,6 +69,9 @@
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
+.fm-public-shell { padding: 20px 24px 0; }
+.fm-public-shell .ct-public-draw-header { margin-bottom: 12px; }
+.fm-public-shell .ct-public-draw-nav { margin-bottom: 0; }
 :where(.fm-surface) .fm-eyebrow {
   font-size: 11px;
   font-weight: 750;
@@ -494,6 +497,7 @@
   gap: 8px;
 }
 @media (max-width: 760px) {
+.fm-public-shell { padding: 12px 12px 0; }
 :where(.fm-surface) .fm-header {
     padding: 18px 16px;
     align-items: flex-start;

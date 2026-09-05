@@ -118,6 +118,28 @@ $(function () {
         .always(() => $button.prop('disabled', false).removeAttr('aria-busy'));
     });
   });
+  $(document).on('click', '.toggle-schedule-publication', function () {
+    const $button = $(this);
+    const published = String($button.data('published')) === '1';
+    const verb = published ? 'Unpublish' : 'Publish';
+    Swal.fire({
+      title: verb + ' match times?',
+      text: published
+        ? $button.data('draw-name') + ' times, venues and courts will be hidden from the public.'
+        : $button.data('draw-name') + ' times, venues and courts will become public.',
+      icon: 'question', showCancelButton: true, confirmButtonText: verb + ' times',
+    }).then(result => {
+      if (!result.isConfirmed) return;
+      $button.prop('disabled', true).attr('aria-busy', 'true');
+      $.post($button.data('url'), {_token: csrf})
+        .done(function (response) {
+          if (response.success === false) { toastr.error(response.message || 'Could not update match times.'); return; }
+          location.reload();
+        })
+        .fail(xhr => error(xhr, 'Could not update match times.'))
+        .always(() => $button.prop('disabled', false).removeAttr('aria-busy'));
+    });
+  });
   $(document).on('click', '.btn-delete-draw', function () {
     const $button = $(this);
     Swal.fire({

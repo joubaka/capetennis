@@ -58,6 +58,7 @@ class DrawControllerAuthorizationTest extends TestCase
             'published' => false,
             'locked'    => false,
         ]);
+        $this->draw->settings()->create(['workflow' => 'round_robin']);
 
         $this->lockedDraw = Draw::factory()->create([
             'event_id'  => $this->event->id,
@@ -144,6 +145,25 @@ class DrawControllerAuthorizationTest extends TestCase
             ->assertJsonPath('success', false);
 
         $this->assertEquals(0, $this->draw->fresh()->published);
+    }
+
+    public function test_unconfigured_individual_draw_cannot_be_published(): void
+    {
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'published' => false,
+            'locked' => false,
+        ]);
+        $registration = Registration::factory()->create();
+        $draw->registrations()->attach($registration->id);
+        Fixture::factory()->create(['draw_id' => $draw->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('draw.toggle.publish', $draw))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Draw is not ready to publish: select a draw format before publishing.');
+
+        $this->assertFalse((bool) $draw->fresh()->published);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

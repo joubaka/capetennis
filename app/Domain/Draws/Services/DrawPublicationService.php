@@ -29,7 +29,8 @@ final class DrawPublicationService
 
         $readiness = app(DrawReadinessService::class)->for($draw);
         if (! $readiness['ready_to_publish']) {
-            throw new \RuntimeException('Draw is not ready to publish: assign participants and generate fixtures first.');
+            $reason = collect($readiness['checks'])->firstWhere('ok', false)['label'] ?? 'complete the readiness checks';
+            throw new \RuntimeException('Draw is not ready to publish: '.lcfirst($reason).'.');
         }
 
         DB::transaction(function () use ($draw) {

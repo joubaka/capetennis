@@ -91,6 +91,8 @@ final class FlexibleMonradService
             abort_if($draw->locked, 409, 'The draw is locked.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
             $this->revision($record, $revision);
+            abort_if($published && ! in_array($draw->settings?->workflow, ['playoffs', 'monrad', 'custom_monrad'], true),
+                422, 'Select a draw format before publishing.');
             abort_unless($record->graph, 422, 'Generate and review the fixtures first.');
             $this->resolve($record);
             $draw->update([
