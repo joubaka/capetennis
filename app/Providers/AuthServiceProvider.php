@@ -183,6 +183,11 @@ class AuthServiceProvider extends ServiceProvider
                 return false;
             }
 
+            if ($user->is_event_score_keeper($event->id)) {
+                return $subject instanceof \App\Models\TeamFixture
+                    && $user->canScoreVenue($event->id, $subject->venue_id === null ? null : (int) $subject->venue_id);
+            }
+
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 

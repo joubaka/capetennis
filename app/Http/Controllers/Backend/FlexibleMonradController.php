@@ -101,8 +101,13 @@ class FlexibleMonradController extends Controller
 
     public function score(Request $request, Draw $draw, int $fixture)
     {
-        $this->authorize($request->input('sets') === null ? 'deleteScore' : 'saveScore', $draw);
-        $data = $request->validate(['revision' => 'required|integer|min:0', 'sets' => 'present|nullable|array|min:1|max:5',
+      $this->authorize($request->input('sets') === null ? 'deleteScore' : 'saveScore', $draw);
+      if ($request->user()->is_event_score_keeper($draw->event_id)) {
+        $scheduledFixture = $draw->drawFixtures()->with('orderOfPlay')->findOrFail($fixture);
+        $venueId = $scheduledFixture->orderOfPlay?->venue_id;
+        abort_unless($request->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
+      }
+      $data = $request->validate(['revision' => 'required|integer|min:0', 'sets' => 'present|nullable|array|min:1|max:5',
             'sets.*' => 'array|size:2', 'sets.*.*' => 'required|integer|min:0|max:20', 'reset_dependents' => 'sometimes|boolean']);
         $this->monrad->score($draw, $fixture, $data['sets'], $data['revision'], $data['reset_dependents'] ?? false);
         return response()->json($this->monrad->state($draw->fresh()));

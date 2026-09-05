@@ -112,6 +112,38 @@ class DrawPackTest extends TestCase
             ->assertDontSee('Private foreign draw');
     }
 
+    public function test_unfiltered_pack_includes_every_match_from_every_event_draw(): void
+    {
+        $firstDraw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'drawName' => 'Boys U16',
+        ]);
+        $secondDraw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'drawName' => 'Girls U16',
+        ]);
+
+        Fixture::factory()->create([
+            'draw_id' => $firstDraw->id,
+            'stage' => 'MAIN',
+            'match_nr' => 101,
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $secondDraw->id,
+            'stage' => 'MAIN',
+            'match_nr' => 202,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', $this->event))
+            ->assertOk()
+            ->assertSee('2</strong><span>Total matches', false)
+            ->assertSee('Boys U16')
+            ->assertSee('Girls U16')
+            ->assertSee('M101')
+            ->assertSee('M202');
+    }
+
     public function test_round_robin_matrix_orients_scores_and_prints_canonical_win_totals(): void
     {
         $draw = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Boys U12']);

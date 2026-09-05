@@ -111,6 +111,33 @@ class User extends Authenticatable
       ->active()
       ->exists();
   }
+
+  public function scoringVenueIdForEvent(int $eventId): ?int
+  {
+    $venueId = \App\Models\EventConvenor::where('user_id', $this->id)
+      ->where('event_id', $eventId)
+      ->where('role', 'score-keeper')
+      ->active()
+      ->value('venue_id');
+
+    return $venueId === null ? null : (int) $venueId;
+  }
+
+  public function canScoreVenue(int $eventId, ?int $venueId): bool
+  {
+    $assignment = \App\Models\EventConvenor::where('user_id', $this->id)
+      ->where('event_id', $eventId)
+      ->where('role', 'score-keeper')
+      ->active()
+      ->first(['venue_id']);
+
+    if (! $assignment) {
+      return false;
+    }
+
+    return $assignment->venue_id === null
+      || ($venueId !== null && (int) $assignment->venue_id === $venueId);
+  }
   public function players()
   {
     return $this->belongsToMany(Player::class, 'user_players')

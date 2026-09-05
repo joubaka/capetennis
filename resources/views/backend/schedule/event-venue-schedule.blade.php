@@ -115,6 +115,11 @@
       <p class="text-muted mb-0">Schedule every assigned age group in three clear steps: assign courts, set the timing, then review.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
+      @if($draws->isNotEmpty())
+        <a class="btn btn-outline-secondary" href="{{ route('headoffice.drawPack', $event) }}" target="_blank" rel="noopener">
+          <i class="ti ti-printer me-1" aria-hidden="true"></i>Print all-match pack
+        </a>
+      @endif
       <button type="button" class="btn btn-outline-primary" id="open-venue-announcement"
         data-bs-toggle="modal" data-bs-target="#venueAnnouncementModal"
         {{ $announcementDraft['assignments']->isEmpty() ? 'disabled' : '' }}>

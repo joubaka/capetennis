@@ -333,9 +333,8 @@ $(document).ready(function () {
     ->unique();
   $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
   $supportedEventSetFormats = [1, 2, 3, 5];
-  $eventScoringSettingsLocked = $event->draws->contains(
-    fn ($draw) => (bool) $draw->locked || (bool) $draw->published
-  );
+  $eventScoringSettingsLocked = $event->draws->contains(fn ($draw) => (bool) $draw->locked)
+    || $event->hasRecordedResults();
 @endphp
 <div class="modal fade" id="drawSettingsModal" tabindex="-1" aria-labelledby="drawSettingsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -355,7 +354,9 @@ $(document).ready(function () {
             <legend class="h6 mb-1">Match scoring</legend>
             <p class="text-muted small">Apply the existing Sets per Match setting to every draw. Individual draw pages use this same setting.</p>
             @if($eventScoringSettingsLocked)
-              <div class="alert alert-warning py-2 small" role="status">Scoring cannot be changed globally while any draw is published or locked. Unpublish and unlock those draws first.</div>
+              <div class="alert alert-warning py-2 small" role="status">Match format is locked because a draw is locked or the tournament already has a recorded result.</div>
+            @elseif($event->draws->contains(fn ($draw) => (bool) $draw->published))
+              <div class="alert alert-info py-2 small" role="status">This tournament is published, but match format can still be changed until the first result is recorded.</div>
             @endif
             <label class="form-label fw-semibold" for="event-num-sets">Sets per match</label>
             <select class="form-select" id="event-num-sets" name="num_sets" @disabled($eventScoringSettingsLocked)>

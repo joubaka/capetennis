@@ -59,7 +59,9 @@ class ManageDrawController extends Controller
 
   public function updateSettings(Request $request, Draw $draw)
   {
-    $this->authorize('update', $draw);
+    $structuralFields = ['name', 'draw_type', 'draw_format_id', 'draw_type_id', 'boxes', 'playoff_size', 'move_to_group_id'];
+    $competitionRulesOnly = ! $request->hasAny($structuralFields);
+    $this->authorize($competitionRulesOnly ? 'editCompetitionRules' : 'update', $draw);
     $data = $request->validate([
             'name' => 'nullable|string|max:255',
             'draw_type' => 'nullable|integer|exists:draw_types,id',
@@ -89,10 +91,20 @@ class ManageDrawController extends Controller
             return response()->json([ 'success' => false, 'message' => 'No settings provided' ], 422);
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data, $competitionRulesOnly) {
             $draw->refresh();
             $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
-            abort_if($lockedDraw->locked || $lockedDraw->published, 403);
+            abort_if($lockedDraw->locked, 403, 'Unlock the draw before changing its settings.');
+            abort_if(
+                $lockedDraw->event?->hasRecordedResults(),
+                403,
+                'Match format and rules cannot be changed after the first tournament result has been recorded.'
+            );
+            abort_if(
+                ! $competitionRulesOnly && $lockedDraw->published,
+                403,
+                'Structural draw settings cannot be changed while the draw is published.'
+            );
             if (isset($updateData['boxes'])) {
                 $this->resizeGroups($draw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
             }
@@ -166,7 +178,7 @@ class ManageDrawController extends Controller
    */
   public function updatePlayoffConfig(Request $request, Draw $draw)
   {
-    $this->authorize('update', $draw);
+    $this->authorize('editCompetitionRules', $draw);
     abort_if($draw->isRoundRobinOnly(), 422, 'Playoff settings are not available for a round-robin-only draw.');
     $validated = $request->validate([
       'playoff_config' => 'required|array|min:1', // At least one playoff
@@ -184,19 +196,22 @@ class ManageDrawController extends Controller
       'preset_key' => $validated['preset_key'] ?? null,
     ]);
 
-    // Get or create settings
-    $updateData = [
-      'playoff_config' => $validated['playoff_config'],
-      'preset_key' => $validated['preset_key'] ?? null, // Store preset key
-    ];
-    
-    if (!$draw->settings) {
-      $draw->settings()->create(array_merge([
-        'draw_id' => $draw->id,
-      ], $updateData));
-    } else {
-      $draw->settings()->update($updateData);
-    }
+    \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $validated): void {
+      $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      abort_if(
+        $lockedDraw->locked || $lockedDraw->event?->hasRecordedResults(),
+        403,
+        'Playoff rules cannot be changed after the first result has been recorded.'
+      );
+
+      $lockedDraw->settings()->updateOrCreate(
+        ['draw_id' => $lockedDraw->id],
+        [
+          'playoff_config' => $validated['playoff_config'],
+          'preset_key' => $validated['preset_key'] ?? null,
+        ]
+      );
+    });
 
     \Log::info("✅ [updatePlayoffConfig] Playoff config saved successfully");
 
@@ -213,22 +228,31 @@ class ManageDrawController extends Controller
    */
   public function updateNotes(Request $request, Draw $draw)
   {
-    $this->authorize('editNotes', $draw);
+    $this->authorize('editCompetitionRules', $draw);
     $validated = $request->validate([
       'notes' => 'required|array',
       'notes.*' => 'nullable|string|max:5000',
       'schedule_visibility' => 'sometimes|required|in:' . DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH . ',' . DrawSetting::SCHEDULE_VISIBILITY_FULL,
     ]);
 
-    $draw->settings()->updateOrCreate(
-      ['draw_id' => $draw->id],
-      [
-        'notes' => $validated['notes'],
-        'schedule_visibility' => $validated['schedule_visibility']
-          ?? $draw->settings?->schedule_visibility
-          ?? DrawSetting::SCHEDULE_VISIBILITY_FULL,
-      ]
-    );
+    \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $validated): void {
+      $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      abort_if(
+        $lockedDraw->locked || $lockedDraw->event?->hasRecordedResults(),
+        403,
+        'Rules cannot be changed after the first result has been recorded.'
+      );
+
+      $lockedDraw->settings()->updateOrCreate(
+        ['draw_id' => $lockedDraw->id],
+        [
+          'notes' => $validated['notes'],
+          'schedule_visibility' => $validated['schedule_visibility']
+            ?? $lockedDraw->settings?->schedule_visibility
+            ?? DrawSetting::SCHEDULE_VISIBILITY_FULL,
+        ]
+      );
+    });
 
     return response()->json([
       'success' => true,

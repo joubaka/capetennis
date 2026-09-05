@@ -255,7 +255,7 @@ class DrawLockHardeningTest extends TestCase
         $this->assertFalse($policy->canEditScores());
         $this->assertFalse($policy->canDeleteScores());
         $this->assertFalse($policy->canEditSettings());
-        $this->assertTrue($policy->canEditNotes());
+        $this->assertFalse($policy->canEditNotes());
         $this->assertTrue($policy->canToggleLock());
     }
 
@@ -280,6 +280,7 @@ class DrawLockHardeningTest extends TestCase
         $this->assertFalse($policy->canGenerateFixtures());
         $this->assertFalse($policy->canEditScores());
         $this->assertFalse($policy->canDeleteScores());
+        $this->assertTrue($policy->canEditSettings());
         $this->assertTrue($policy->canEditNotes());
     }
 }

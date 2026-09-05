@@ -115,6 +115,18 @@ public function getAllPlayersAttribute()
     {
         return $this->hasMany(TeamFixture::class)->orderBy('id');
     }
+
+    /**
+     * Whether play has started far enough that match rules must be immutable.
+     *
+     * Individual draws store set results against fixtures, while team draws
+     * use team fixtures. Both are authoritative result records for this gate.
+     */
+    public function hasRecordedResults(): bool
+    {
+        return $this->drawFixtures()->whereHas('fixtureResults')->exists()
+            || $this->fixtures()->whereHas('fixtureResults')->exists();
+    }
     public function fixtures_per_venue()
     {
         return $this->hasMany(TeamFixture::class)->orderBy('venue_id');

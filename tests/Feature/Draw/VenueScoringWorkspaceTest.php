@@ -47,12 +47,47 @@ class VenueScoringWorkspaceTest extends TestCase
         $response->assertOk()
             ->assertSee('Venue scoring')
             ->assertSee('Main Venue')
+            ->assertSee('id="venue-filter"', false)
+            ->assertSee('id="draw-filter"', false)
+            ->assertSee('class="match-card-main"', false)
             ->assertSee('aria-label="Filter match queue"', false)
             ->assertSee('aria-pressed="true"', false)
             ->assertSee('score-filter-empty', false)
             ->assertSee('Match '.$fixture->match_nr)
             ->assertDontSee('Match '.$otherFixture->match_nr);
         $this->assertNotSame($venue->id, $otherVenue->id);
+    }
+
+    public function test_venue_limited_score_keeper_cannot_view_or_score_another_venue(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Assigned Venue');
+        [, , $otherVenue, $otherFixture] = $this->scheduledFixture('Blocked Venue', $event, $draw);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)
+            ->where('user_id', $user->id)
+            ->update(['venue_id' => $venue->id]);
+
+        $response = $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event,
+            'all_venues' => 1,
+        ]));
+
+        $response->assertOk()
+            ->assertSee('Assigned Venue')
+            ->assertSee('Match '.$fixture->match_nr)
+            ->assertDontSee('Blocked Venue')
+            ->assertDontSee('Match '.$otherFixture->match_nr);
+        $this->assertTrue($response->viewData('venueRestricted'));
+        $this->assertSame($venue->id, $response->viewData('selectedVenue')->id);
+
+        $this->actingAs($user)
+            ->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $otherVenue->id]))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->postJson(route('backend.roundrobin.score.store', $otherFixture), ['sets' => ['6-2', '6-3']])
+            ->assertForbidden();
+        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $otherFixture->id]);
     }
 
     public function test_queue_defaults_to_time_then_age_group_then_natural_court_number_and_scores_do_not_change_that_order(): void

@@ -404,6 +404,10 @@ class RoundRobinController extends Controller
       }
 
       $this->authorize('saveScore', $draw);
+      if (auth()->user()->is_event_score_keeper($draw->event_id)) {
+        $venueId = $fixture->orderOfPlay?->venue_id;
+        abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
+      }
 
       // Guard: fixture belongs to this draw
       if ((int) $fixture->draw_id !== (int) $draw->id) {
@@ -501,6 +505,10 @@ class RoundRobinController extends Controller
     }
 
     $this->authorize('deleteScore', $draw);
+    if (auth()->user()->is_event_score_keeper($draw->event_id)) {
+      $venueId = $fixture->orderOfPlay?->venue_id;
+      abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
+    }
 
     // Route rollback through EngineRouter wrapped in a transaction
     DB::transaction(function () use ($draw, $fixture) {

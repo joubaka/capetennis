@@ -49,6 +49,10 @@ class DrawApiController extends Controller
     public function storeScore(Request $request, Draw $draw, Fixture $fixture)
     {
         $this->authorize('saveScore', $draw);
+        if ($request->user()->is_event_score_keeper($draw->event_id)) {
+            $venueId = $fixture->orderOfPlay?->venue_id;
+            abort_unless($request->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
+        }
 
         // Published draws remain scoreable; locking is the operational stop.
         if ($draw->locked) {
@@ -110,6 +114,10 @@ class DrawApiController extends Controller
         }
 
         $this->authorize('deleteScore', $draw);
+        if (auth()->user()->is_event_score_keeper($draw->event_id)) {
+            $venueId = $fixture->orderOfPlay?->venue_id;
+            abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
+        }
 
         // Guard: fixture must belong to this draw
         if ((int) $fixture->draw_id !== (int) $draw->id) {

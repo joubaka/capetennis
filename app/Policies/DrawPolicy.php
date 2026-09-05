@@ -98,6 +98,19 @@ class DrawPolicy
     }
 
     /**
+     * Edit match format and tournament rules until the first result exists.
+     * Publication is a visibility boundary, not the start-of-play boundary.
+     */
+    public function editCompetitionRules(User $user, Draw $draw): bool
+    {
+        if ($draw->locked || $draw->event?->hasRecordedResults()) {
+            return false;
+        }
+
+        return $this->canManage($user, $draw);
+    }
+
+    /**
      * Prepare a published or unpublished result-free draw for regeneration
      * after a withdrawal. This destructive action remains admin-only.
      */

@@ -20,6 +20,10 @@ class VenueScoringController extends Controller
     public function index(Request $request, Event $event): View
     {
         $this->authorize('event.score', $event);
+        $user = $request->user();
+        $restrictedVenueId = $user->is_event_score_keeper($event->id)
+            ? $user->scoringVenueIdForEvent($event->id)
+            : null;
 
         $draws = $event->draws()
             ->with(['settings', 'flexibleMonrad', 'draw_types', 'categoryEvent.category'])
@@ -34,12 +38,19 @@ class VenueScoringController extends Controller
             ->merge($event->venues()->pluck('venues.id'))
             ->unique()
             ->values();
-        $venues = Venue::query()->whereIn('id', $venueIds)->orderBy('name')->get();
+        $venues = Venue::query()
+            ->whereIn('id', $venueIds)
+            ->when($restrictedVenueId !== null, fn ($query) => $query->whereKey($restrictedVenueId))
+            ->orderBy('name')
+            ->get();
 
         $selectedVenue = null;
         if ($request->filled('venue')) {
+            abort_if($restrictedVenueId !== null && $request->integer('venue') !== $restrictedVenueId, 403);
             $selectedVenue = $venues->firstWhere('id', (int) $request->integer('venue'));
             abort_unless($selectedVenue, 404, 'This venue does not belong to the selected tournament.');
+        } elseif ($restrictedVenueId !== null) {
+            $selectedVenue = $venues->firstWhere('id', $restrictedVenueId);
         }
 
         $selectedDraw = null;
@@ -148,6 +159,7 @@ class VenueScoringController extends Controller
             'ready' => $ready,
             'recentActivity' => $recentActivity,
             'operatorName' => (string) $request->session()->get('venue_scoring.operator', ''),
+            'venueRestricted' => $restrictedVenueId !== null,
         ]);
     }
 

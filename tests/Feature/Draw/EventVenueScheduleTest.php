@@ -560,6 +560,8 @@ class EventVenueScheduleTest extends TestCase
         $this->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()
             ->assertSee('Schedule every assigned age group')
+            ->assertSee('Print all-match pack')
+            ->assertSee(route('headoffice.drawPack', $event), false)
             ->assertSeeInOrder(['Shared Venue', $availableVenue->name])
             ->assertSeeInOrder(['Court 2', 'Court 8', 'Court 1'])
             ->assertSee('data-draw-summary="'.$draws->first()->id.'"', false)

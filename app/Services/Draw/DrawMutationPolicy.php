@@ -29,13 +29,13 @@ use App\Models\Draw;
  *     - Lock toggle ALLOWED (for admins).
  *     - Publication ALLOWED.
  *
- *   PUBLISHED (locked=0|1, published=1)
+ *   PUBLISHED, BEFORE FIRST RESULT (locked=0, published=1)
  *     - Score save BLOCKED (public-facing draw must not silently change).
  *     - Score delete BLOCKED.
  *     - Fixture regeneration BLOCKED.
  *     - Group assignments BLOCKED.
- *     - Structural settings BLOCKED.
- *     - Notes editing ALLOWED.
+ *     - Match format and rules ALLOWED until the first result is recorded.
+ *     - Other structural settings BLOCKED.
  *     - Unpublish ALLOWED (for admins).
  *
  *   COMPLETED (locked=1, published=1) — both flags set
@@ -81,16 +81,16 @@ class DrawMutationPolicy
         return ! $this->draw->locked;
     }
 
-    /** Can structural draw settings (boxes, format, playoff) be changed? */
+    /** Can match format and competition-rule settings be changed? */
     public function canEditSettings(): bool
     {
-        return ! $this->draw->locked;
+        return ! $this->draw->locked && ! $this->draw->event?->hasRecordedResults();
     }
 
-    /** Can notes/rules be edited? Non-destructive — allowed on locked draws. */
+    /** Can notes/rules be edited? Frozen once play has produced a result. */
     public function canEditNotes(): bool
     {
-        return true;
+        return ! $this->draw->locked && ! $this->draw->event?->hasRecordedResults();
     }
 
     /** Can the draw be published or unpublished? */

@@ -6,45 +6,54 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 <style>
-  .scoring-shell { max-width: 1100px; margin-inline: auto; }
+  .scoring-shell { max-width: 1180px; margin-inline: auto; }
   .scoring-hero { background: linear-gradient(135deg, #004177, #087ea4); color: #fff; border: 0; }
-  .scoring-progress { height: .65rem; background: rgba(255,255,255,.25); }
+  .scoring-hero-main { display: flex; align-items: center; gap: 1rem; }
+  .scoring-hero-copy { min-width: 0; }
+  .scoring-hero-progress { width: 210px; margin-left: auto; }
+  .scoring-progress { height: .45rem; background: rgba(255,255,255,.25); }
   .scoring-progress .progress-bar { background: #7ee2a8; }
-  .scoring-filter { min-height: 44px; flex: 0 0 auto; white-space: nowrap; }
-  .scoring-filter-card .card-body { display: grid; gap: 1rem; min-width: 0; }
-  .scoring-filter-card .card-body > div { min-width: 0; }
+  .scoring-filter { min-height: 38px; flex: 0 0 auto; white-space: nowrap; padding-block: .45rem; }
+  .scoring-select-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  .scoring-select-grid > div { min-width: 0; }
   .scoring-filter-label { color: #53657a; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .scoring-option-strip, .scoring-status-strip { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; }
-  .scoring-option-strip > * { flex: 0 0 auto; white-space: nowrap; }
+  .scoring-select { min-height: 40px; font-weight: 600; color: #243b53; }
+  .scoring-status-strip { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0; }
+  .scoring-operator { border-top: 1px solid #e6ebf0; }
+  .scoring-operator .operator-summary { padding: .65rem 1rem; }
+  .operator-change { margin-left: auto; color: var(--bs-primary); font-size: .82rem; font-weight: 700; }
   .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; }
   .scoring-queue-summary { margin-left: auto; color: #6c7a8c; font-size: .875rem; white-space: nowrap; }
   .match-card { border-left: 5px solid #f0ad4e; }
   .match-card.is-completed { border-left-color: #28a745; }
   .match-card.is-waiting { border-left-color: #adb5bd; }
-  .match-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+  .match-card .card-body { padding: .85rem 1rem; }
+  .match-card-header { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-bottom: .4rem; }
   .match-meta { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: #6c757d; font-size: .86rem; }
   .match-status { flex: 0 0 auto; }
-  .match-players { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .75rem; }
-  .match-player { font-size: 1rem; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
-  .match-player:last-child { text-align: right; }
+  .match-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; }
+  .match-identity { min-width: 0; }
+  .match-players { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }
+  .match-player { font-size: .96rem; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
   .match-versus { color: #7c8998; font-size: .8rem; font-weight: 700; text-transform: uppercase; }
-  .match-score { font-size: 1.08rem; font-weight: 750; color: #004177; }
-  .score-action { min-height: 46px; }
+  .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: #004177; text-align: right; }
+  .match-score.is-empty { color: #7c8998; font-size: .82rem; font-weight: 600; }
+  .score-action { min-height: 38px; white-space: nowrap; }
   .score-input { min-height: 48px; font-size: 1.05rem; text-align: center; }
-  .venue-pill, .draw-pill { min-height: 44px; display: inline-flex; align-items: center; }
   .operator-summary { cursor: pointer; list-style: none; }
   .operator-summary::-webkit-details-marker { display: none; }
-  .operator-summary::after { content: 'Change'; margin-left: auto; color: var(--bs-primary); font-size: .82rem; font-weight: 700; }
   #score-filter-empty { border: 1px dashed #c9d4df; background: #fff; }
   @media (max-width: 575.98px) {
     .container-xxl { padding-inline: .75rem; }
     .scoring-shell { margin-inline: 0; }
     .scoring-title { font-size: 1.3rem; }
     .scoring-hero .card-body { padding: 1rem !important; }
-    .scoring-hero .btn { min-height: 40px; }
+    .scoring-hero-main { align-items: flex-start; flex-wrap: wrap; }
+    .scoring-hero-progress { order: 3; width: 100%; }
     .scoring-filter-card { margin-inline: -.75rem; border-radius: 0; border-inline: 0; }
     .scoring-filter-card .card-body { padding-inline: .75rem !important; }
-    .scoring-option-strip, .scoring-status-strip {
+    .scoring-select-grid { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
+    .scoring-status-strip {
       flex-wrap: nowrap;
       overflow-x: auto;
       max-width: calc(100% + 1.5rem);
@@ -56,14 +65,11 @@
     }
     .scoring-queue-toolbar { display: block; margin-inline: -.75rem; }
     .scoring-queue-summary { display: block; margin: .25rem .75rem 0; white-space: normal; }
-    .match-card .card-body { padding: .9rem; }
-    .match-card-header { display: block; }
-    .match-status { display: inline-flex; margin-top: .65rem; }
-    .match-players { grid-template-columns: minmax(0, 1fr); gap: .45rem; text-align: left; }
-    .match-player:last-child { text-align: left; }
-    .match-versus { display: flex; align-items: center; gap: .5rem; }
-    .match-versus::before, .match-versus::after { content: ''; height: 1px; background: #dde3ea; flex: 1; }
-    .match-score { text-align: left !important; }
+    .match-card-main { grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; }
+    .match-identity { grid-column: 1 / -1; }
+    .match-players { align-items: center; }
+    .match-score { min-width: 0; text-align: left; }
+    .score-action { justify-self: end; }
     #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; min-height: 100%; }
     #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
     #score-entry-modal .modal-body { overflow-y: auto; }
@@ -74,28 +80,29 @@
 <div class="container-xxl py-3 py-md-4">
   <div class="scoring-shell">
     <div class="card scoring-hero shadow-sm mb-3">
-      <div class="card-body p-3 p-md-4">
-        <div class="d-flex justify-content-between align-items-start gap-3">
-          <div>
+      <div class="card-body p-3">
+        @php
+          $progress = $matches->count() ? (int) round(($completed / $matches->count()) * 100) : 0;
+        @endphp
+        <div class="scoring-hero-main">
+          <div class="scoring-hero-copy">
             <div class="small text-white-50 text-uppercase fw-semibold">Venue scoring</div>
-            <h1 class="scoring-title h3 mb-1">{{ $event->name }}</h1>
-            <div class="small text-white-50">
+            <h1 class="scoring-title h4 mb-1 text-truncate">{{ $event->name }}</h1>
+            <div class="small text-white-50 text-truncate">
               {{ $selectedVenue?->name ?? 'All scheduled venues' }}
               @if($selectedDraw) · {{ $selectedDraw->drawName }} @endif
             </div>
           </div>
+          <div class="scoring-hero-progress">
+            <div class="d-flex justify-content-between mb-1 small">
+              <span><strong>{{ $completed }}</strong> of {{ $matches->count() }} scored</span>
+              <span>{{ $progress }}%</span>
+            </div>
+            <div class="progress scoring-progress" role="progressbar" aria-label="Scoring progress" aria-valuenow="{{ $progress }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar" style="width: {{ $progress }}%"></div>
+            </div>
+          </div>
           <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-light">Tournament</a>
-        </div>
-
-        @php
-          $progress = $matches->count() ? (int) round(($completed / $matches->count()) * 100) : 0;
-        @endphp
-        <div class="d-flex justify-content-between mt-3 mb-1 small">
-          <span><strong>{{ $completed }}</strong> of {{ $matches->count() }} entered</span>
-          <span>{{ $progress }}%</span>
-        </div>
-        <div class="progress scoring-progress" role="progressbar" aria-label="Scoring progress" aria-valuenow="{{ $progress }}" aria-valuemin="0" aria-valuemax="100">
-          <div class="progress-bar" style="width: {{ $progress }}%"></div>
         </div>
       </div>
     </div>
@@ -104,71 +111,53 @@
       <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
-    <div class="card mb-3">
-      @if($operatorName)
-        <details>
-          <summary class="operator-summary card-body p-3 d-flex align-items-center gap-2">
-            <i class="ti ti-device-mobile text-primary" aria-hidden="true"></i>
-            <span><span class="text-muted">Scoring as</span> <strong>{{ $operatorName }}</strong></span>
-          </summary>
-          <div class="card-body border-top p-3">
-      @else
-          <div class="card-body p-3">
-      @endif
-        <form method="POST" action="{{ route('frontend.scoring.operator', $event) }}" class="row g-2 align-items-end">
-          @csrf
-          <div class="col-12 col-sm">
-            <label for="scoring-operator" class="form-label fw-semibold mb-1">Who is using this device?</label>
-            <input id="scoring-operator" name="operator" class="form-control" maxlength="80" required
-                   value="{{ old('operator', $operatorName) }}" placeholder="Name or initials">
-            @error('operator')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
-          </div>
-          <div class="col-12 col-sm-auto">
-            <button class="btn btn-outline-primary w-100" type="submit">Remember on this device</button>
-          </div>
-        </form>
-      @if($operatorName)
-          </div>
-        </details>
-      @else
-        </div>
-      @endif
-    </div>
-
     <div class="card scoring-filter-card mb-3">
       <div class="card-body p-3">
+        <div class="scoring-select-grid">
         <div>
-          <div class="scoring-filter-label mb-2" id="venue-filter-label">Venue</div>
-          <nav class="scoring-option-strip" aria-labelledby="venue-filter-label">
-            <a class="btn btn-sm venue-pill {{ !$selectedVenue ? 'btn-primary' : 'btn-outline-primary' }}"
-               @if(!$selectedVenue) aria-current="true" @endif
-               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}">All venues</a>
+          <label class="scoring-filter-label mb-1" for="venue-filter">Venue</label>
+          <select class="form-select scoring-select" id="venue-filter" data-nav-select>
+            @unless($venueRestricted ?? false)
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}" @selected(!$selectedVenue)>All venues</option>
+            @endunless
             @foreach($venues as $venue)
-              <a class="btn btn-sm venue-pill {{ $selectedVenue?->id === $venue->id ? 'btn-primary' : 'btn-outline-primary' }}"
-                 @if($selectedVenue?->id === $venue->id) aria-current="true" @endif
-                 href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}">
-                {{ $venue->name }}
-              </a>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}" @selected($selectedVenue?->id === $venue->id)>{{ $venue->name }}</option>
             @endforeach
-          </nav>
+          </select>
         </div>
 
         <div>
-          <div class="scoring-filter-label mb-2" id="draw-filter-label">Draw</div>
-          <nav class="scoring-option-strip" aria-labelledby="draw-filter-label">
-            <a class="btn btn-sm draw-pill {{ !$selectedDraw ? 'btn-dark' : 'btn-outline-dark' }}"
-               @if(!$selectedDraw) aria-current="true" @endif
-               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id]) }}">All draws</a>
+          <label class="scoring-filter-label mb-1" for="draw-filter">Draw</label>
+          <select class="form-select scoring-select" id="draw-filter" data-nav-select>
+            <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id]) }}" @selected(!$selectedDraw)>All draws</option>
             @foreach($draws as $draw)
-              <a class="btn btn-sm draw-pill {{ $selectedDraw?->id === $draw->id ? 'btn-dark' : 'btn-outline-dark' }}"
-                 @if($selectedDraw?->id === $draw->id) aria-current="true" @endif
-                 href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}">
-                {{ $draw->drawName }}
-              </a>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}" @selected($selectedDraw?->id === $draw->id)>{{ $draw->drawName }}</option>
             @endforeach
-          </nav>
+          </select>
+        </div>
         </div>
       </div>
+      <details class="scoring-operator" @if(!$operatorName) open @endif>
+        <summary class="operator-summary d-flex align-items-center gap-2">
+          <i class="ti ti-device-mobile text-primary" aria-hidden="true"></i>
+          <span><span class="text-muted">Scoring as</span> <strong>{{ $operatorName ?: 'Add operator name' }}</strong></span>
+          <span class="operator-change">{{ $operatorName ? 'Change' : 'Add' }}</span>
+        </summary>
+        <div class="card-body border-top p-3">
+          <form method="POST" action="{{ route('frontend.scoring.operator', $event) }}" class="row g-2 align-items-end">
+            @csrf
+            <div class="col-12 col-sm">
+              <label for="scoring-operator" class="form-label fw-semibold mb-1">Who is using this device?</label>
+              <input id="scoring-operator" name="operator" class="form-control" maxlength="80" required
+                     value="{{ old('operator', $operatorName) }}" placeholder="Name or initials">
+              @error('operator')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+            </div>
+            <div class="col-12 col-sm-auto">
+              <button class="btn btn-outline-primary w-100" type="submit">Remember on this device</button>
+            </div>
+          </form>
+        </div>
+      </details>
     </div>
 
     <div class="scoring-queue-toolbar mb-3">
@@ -186,7 +175,7 @@
       </div>
     </div>
 
-    <div id="score-match-list" class="d-grid gap-3">
+    <div id="score-match-list" class="d-grid gap-2">
       @forelse($matches as $match)
         @php
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
@@ -236,7 +225,7 @@
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($hasPlayers ? '' : 'is-waiting') }}"
                  data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}" data-score-timing="{{ $timing }}">
           <div class="card-body">
-            <div class="match-card-header mb-2">
+            <div class="match-card-header">
               <div class="match-meta">
                 @if($scheduleTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($scheduleTime)->format('D H:i') }}</span>@endif
                 @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
@@ -246,17 +235,20 @@
                 {{ $hasScore ? 'Completed' : ($hasPlayers ? 'Awaiting score' : 'Waiting for players') }}
               </span>
             </div>
-            <div class="small text-muted mb-2">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
-            <div class="match-players">
-              <div class="match-player">{{ $home }}</div>
-              <div class="match-versus">vs</div>
-              <div class="match-player">{{ $away }}</div>
-            </div>
-            <div class="match-score text-center mt-2">
-              {{ $hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'No score entered' }}
-            </div>
-            @if($canWrite && $hasPlayers)
-              <button type="button" class="btn btn-primary score-action w-100 mt-3 js-open-score"
+            <div class="match-card-main">
+              <div class="match-identity">
+                <div class="small text-muted mb-1">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
+                <div class="match-players">
+                  <div class="match-player">{{ $home }}</div>
+                  <div class="match-versus">vs</div>
+                  <div class="match-player">{{ $away }}</div>
+                </div>
+              </div>
+              <div class="match-score {{ $hasScore ? '' : 'is-empty' }}">
+                {{ $hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'Not scored' }}
+              </div>
+              @if($canWrite && $hasPlayers)
+              <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
                       data-fixture="{{ $match->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
                       data-engine="{{ $engine }}"
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
@@ -265,9 +257,10 @@
                       data-scores='@json($sets)'>
                 {{ $hasScore ? 'Correct score' : 'Enter score' }}
               </button>
-            @elseif($draw->locked)
-              <div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">This draw is locked.</div>
-            @endif
+              @elseif($draw->locked)
+                <span class="badge bg-label-secondary">Draw locked</span>
+              @endif
+            </div>
           </div>
         </article>
       @empty
@@ -334,6 +327,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[data-nav-select]').forEach(function (select) {
+    select.addEventListener('change', function () {
+      if (select.value) window.location.assign(select.value);
+    });
+  });
+
   const venueStorageKey = 'cape-tennis.scoring.venue.{{ $event->id }}';
   const selectedVenue = @json($selectedVenue?->id);
   const availableVenues = @json($venues->pluck('id')->map(fn($id) => (int) $id)->values());

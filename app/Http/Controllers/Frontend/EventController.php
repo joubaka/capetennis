@@ -343,6 +343,9 @@ class EventController extends Controller
     // not load every fixture merely to build the venue shortcuts.
     $scoringVenues = collect();
     if ($user?->can('event.score', $event)) {
+      $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
+        ? $user->scoringVenueIdForEvent($event->id)
+        : null;
       $scoringDrawIds = $allEventDraws->pluck('id');
       $individualVenueCounts = OrderOfPlay::query()
         ->whereIn('draw_id', $scoringDrawIds)
@@ -364,6 +367,7 @@ class EventController extends Controller
 
       $scoringVenues = \App\Models\Venue::query()
         ->whereIn('id', $venueCounts->keys())
+        ->when($restrictedScoringVenueId !== null, fn ($query) => $query->whereKey($restrictedScoringVenueId))
         ->orderBy('name')
         ->get()
         ->map(function ($venue) use ($venueCounts) {

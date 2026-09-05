@@ -32,11 +32,24 @@ final class EventScheduleVisibilityController extends Controller
             Gate::authorize('editNotes', $draw);
 
             if ($applyNumSets) {
-                Gate::authorize('update', $draw);
+                Gate::authorize('editCompetitionRules', $draw);
             }
         }
 
-        DB::transaction(function () use ($draws, $data, $applyNumSets): void {
+        DB::transaction(function () use ($event, $draws, $data, $applyNumSets): void {
+            if ($applyNumSets) {
+                $lockedDraws = \App\Models\Draw::query()
+                    ->whereIn('id', $draws->pluck('id'))
+                    ->lockForUpdate()
+                    ->get();
+
+                abort_if(
+                    $lockedDraws->contains(fn ($draw) => $draw->locked) || $event->hasRecordedResults(),
+                    403,
+                    'Match format cannot be changed after the first tournament result has been recorded.'
+                );
+            }
+
             foreach ($draws as $draw) {
                 $settings = [
                     'schedule_visibility' => $data['schedule_visibility'],

@@ -6,6 +6,7 @@ use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -134,6 +135,51 @@ class EventScoringAccountSettingsTest extends TestCase
         ]);
         $this->assertFalse($scorer->fresh()->hasRole('score-keeper'));
         $this->assertFalse(Gate::forUser($scorer->fresh())->allows('event.score', $event));
+    }
+
+    public function test_settings_can_limit_a_scoring_account_to_one_event_venue(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $scorer = User::factory()->create();
+        $event = Event::factory()->create();
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Court Centre'])->save();
+        $otherVenue = new Venue();
+        $otherVenue->forceFill(['name' => 'Other Event Venue'])->save();
+        $event->venues()->attach($venue->id, ['num_courts' => 3]);
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'scoring_accounts' => [$scorer->id],
+                'scoring_venues' => [$scorer->id => $venue->id],
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('event_convenors', [
+            'event_id' => $event->id,
+            'user_id' => $scorer->id,
+            'role' => 'score-keeper',
+            'venue_id' => $venue->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.events.settings', $event))
+            ->assertOk()
+            ->assertSee('Venue responsibility')
+            ->assertSee('Court Centre');
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'scoring_accounts' => [$scorer->id],
+                'scoring_venues' => [$scorer->id => $otherVenue->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('scoring_venues');
+
+        $this->assertSame($venue->id, (int) DB::table('event_convenors')
+            ->where('event_id', $event->id)
+            ->where('user_id', $scorer->id)
+            ->value('venue_id'));
     }
 
     public function test_access_windows_require_a_real_positive_duration(): void

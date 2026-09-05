@@ -5,6 +5,8 @@ namespace Tests\Feature\Draw;
 use App\Models\Draw;
 use App\Models\DrawSetting;
 use App\Models\Event;
+use App\Models\Fixture;
+use App\Models\FixtureResult;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -86,6 +88,49 @@ class EventScheduleVisibilityTest extends TestCase
         $this->assertSame(1, $foreign->fresh()->settings->num_sets);
         $this->assertSame(1, $existing->settings()->count());
         $this->assertSame(1, $withoutSettings->settings()->count());
+    }
+
+    public function test_published_tournament_format_remains_editable_until_the_first_result(): void
+    {
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'published' => true,
+            'locked' => false,
+        ]);
+        $draw->settings()->create(['num_sets' => 1]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.events.schedule-visibility', $this->event), [
+                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL,
+                'num_sets' => 3,
+            ])
+            ->assertOk();
+
+        $this->assertSame(3, $draw->fresh()->settings->num_sets);
+    }
+
+    public function test_first_result_locks_event_wide_format_update_atomically(): void
+    {
+        $editable = Draw::factory()->create(['event_id' => $this->event->id]);
+        $editable->settings()->create(['num_sets' => 1]);
+        $played = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'published' => true,
+            'locked' => false,
+        ]);
+        $played->settings()->create(['num_sets' => 1]);
+        $fixture = Fixture::factory()->create(['draw_id' => $played->id]);
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.events.schedule-visibility', $this->event), [
+                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL,
+                'num_sets' => 3,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(1, $editable->fresh()->settings->num_sets);
+        $this->assertSame(1, $played->fresh()->settings->num_sets);
     }
 
     public function test_event_scoring_format_update_is_atomic_when_a_draw_is_locked(): void

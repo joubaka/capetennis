@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\EventConvenor;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -25,7 +26,7 @@ class EventSettingsController extends Controller
     Gate::authorize('event.settings.manage', $event);
 
     $assignments = EventConvenor::where('event_id', $event->id)
-      ->with('user.roles')
+      ->with(['user.roles', 'venue'])
       ->get();
     $scoringAccounts = $assignments->filter(
       fn (EventConvenor $assignment) => $assignment->role === 'score-keeper'
@@ -42,6 +43,10 @@ class EventSettingsController extends Controller
       ->get();
     $scoringAccountIds = $scoringAccounts->pluck('user_id');
     $scoringUsers = $users->whereIn('id', $scoringAccountIds);
+    $scoringVenues = Venue::query()
+      ->whereIn('id', $this->scoringVenueIds($event))
+      ->orderBy('name')
+      ->get(['id', 'name']);
 
     return view('backend.event.settings', [
       'event' => $event,
@@ -49,6 +54,7 @@ class EventSettingsController extends Controller
       'convenors' => $convenors,
       'scoringAccounts' => $scoringAccounts,
       'scoringUsers' => $scoringUsers,
+      'scoringVenues' => $scoringVenues,
     ]);
   }
 
@@ -113,11 +119,26 @@ class EventSettingsController extends Controller
           }
         },
       ],
+      'scoring_venues' => 'sometimes|array',
+      'scoring_venues.*' => 'nullable|integer|exists:venues,id',
       'scoring_starts_at' => 'sometimes|nullable|date',
       'scoring_expires_at' => 'sometimes|nullable|date|after:scoring_starts_at',
     ]);
 
     $scoringIds = collect($data['scoring_accounts'] ?? [])->map(fn ($id) => (int) $id);
+    $scoringVenueAssignments = collect($data['scoring_venues'] ?? [])
+      ->mapWithKeys(fn ($venueId, $userId) => [(int) $userId => $venueId === null ? null : (int) $venueId]);
+    if ($scoringVenueAssignments->keys()->diff($scoringIds)->isNotEmpty()) {
+      throw ValidationException::withMessages([
+        'scoring_venues' => 'A venue can only be assigned to a selected scoring account.',
+      ]);
+    }
+    $allowedVenueIds = $this->scoringVenueIds($event);
+    if ($scoringVenueAssignments->filter()->diff($allowedVenueIds)->isNotEmpty()) {
+      throw ValidationException::withMessages([
+        'scoring_venues' => 'The selected venue does not belong to this event.',
+      ]);
+    }
     $managementIds = collect($data['admins'] ?? [])
       ->merge($data['convenors'] ?? [])
       ->map(fn ($id) => (int) $id);
@@ -168,7 +189,7 @@ class EventSettingsController extends Controller
 
       DB::transaction(function () use (
         $request, $event, $directorStartsAt, $directorExpiresAt,
-        $scoringStartsAt, $scoringExpiresAt
+        $scoringStartsAt, $scoringExpiresAt, $scoringVenueAssignments
       ): void {
         $removedScoringIds = collect();
 
@@ -216,7 +237,12 @@ class EventSettingsController extends Controller
             $account->assignRole('score-keeper');
             EventConvenor::updateOrCreate(
               ['event_id' => $event->id, 'user_id' => $account->id],
-              ['role' => 'score-keeper', 'starts_at' => $scoringStartsAt, 'expires_at' => $scoringExpiresAt]
+              [
+                'role' => 'score-keeper',
+                'venue_id' => $scoringVenueAssignments->get($account->id),
+                'starts_at' => $scoringStartsAt,
+                'expires_at' => $scoringExpiresAt,
+              ]
             );
           }
 
@@ -239,7 +265,7 @@ class EventSettingsController extends Controller
     $updateData = collect($data)
       ->except([
         'admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at',
-        'scoring_accounts', 'scoring_starts_at', 'scoring_expires_at',
+        'scoring_accounts', 'scoring_venues', 'scoring_starts_at', 'scoring_expires_at',
         'logo_upload', 'logo_existing',
       ])
       ->toArray();
@@ -352,5 +378,18 @@ class EventSettingsController extends Controller
     $categoryEvent->update($data);
 
     return response()->json(['success' => true]);
+  }
+
+  private function scoringVenueIds(Event $event)
+  {
+    $drawIds = $event->draws()->pluck('id');
+
+    return $event->venues()->pluck('venues.id')
+      ->merge(DB::table('draw_venues')->whereIn('draw_id', $drawIds)->pluck('venue_id'))
+      ->merge(DB::table('order_of_plays')->whereIn('draw_id', $drawIds)->whereNotNull('venue_id')->pluck('venue_id'))
+      ->merge(DB::table('team_fixtures')->whereIn('draw_id', $drawIds)->whereNotNull('venue_id')->pluck('venue_id'))
+      ->map(fn ($id) => (int) $id)
+      ->unique()
+      ->values();
   }
 }

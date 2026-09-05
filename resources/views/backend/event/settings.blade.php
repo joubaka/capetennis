@@ -368,6 +368,34 @@
       </select>
       <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Existing convenor accounts can be used here, provided they are not also an Event director for this event.</div>
 
+      <div class="access-window mt-3" aria-labelledby="scoring-venue-heading">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="ti ti-map-pin text-primary" aria-hidden="true"></i>
+          <span class="fw-semibold" id="scoring-venue-heading">Venue responsibility</span>
+        </div>
+        <div id="scoring-venue-assignments" class="d-grid gap-3">
+          @forelse($scoringAccounts as $account)
+            <div class="scoring-venue-row" data-user-id="{{ $account->user_id }}">
+              <label class="form-label mb-1" for="scoring-venue-{{ $account->user_id }}">
+                {{ $account->user->name ?? 'Unknown' }} <span class="text-muted fw-normal">{{ $account->user->email ?? '' }}</span>
+              </label>
+              <select id="scoring-venue-{{ $account->user_id }}"
+                      class="form-select scoring-venue-select"
+                      name="scoring_venues[{{ $account->user_id }}]"
+                      data-user-id="{{ $account->user_id }}">
+                <option value="">All event venues</option>
+                @foreach($scoringVenues as $venue)
+                  <option value="{{ $venue->id }}" @selected((int) $account->venue_id === (int) $venue->id)>{{ $venue->name }}</option>
+                @endforeach
+              </select>
+            </div>
+          @empty
+            <p class="text-muted small mb-0 scoring-venue-empty">Select a scoring account to assign its venue.</p>
+          @endforelse
+        </div>
+        <div class="field-help">Choose one venue to limit that account to its match queue. Leave “All event venues” selected for unrestricted event scoring.</div>
+      </div>
+
       <div class="access-window mt-3">
       <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Scoring access window</span></div>
       <div class="row g-3">
@@ -394,8 +422,11 @@
             @foreach($scoringAccounts as $account)
               <li class="d-flex flex-column flex-sm-row justify-content-between gap-1 py-2 border-bottom">
                 <span>{{ $account->user->name ?? 'Unknown' }} <span class="text-muted">{{ $account->user->email ?? '' }}</span></span>
-                <span class="badge {{ $account->isActive() ? 'bg-success' : 'bg-secondary' }} align-self-start">
-                  {{ $account->isActive() ? 'Scoring access active' : 'Outside access window' }}
+                <span class="d-flex flex-wrap gap-1 justify-content-sm-end">
+                  <span class="badge bg-label-primary">{{ $account->venue?->name ?? 'All venues' }}</span>
+                  <span class="badge {{ $account->isActive() ? 'bg-success' : 'bg-secondary' }}">
+                    {{ $account->isActive() ? 'Scoring access active' : 'Outside access window' }}
+                  </span>
                 </span>
               </li>
             @endforeach
@@ -419,6 +450,8 @@ $(function () {
   const csrf = $('meta[name="csrf-token"]').attr('content');
   const updateUrl = @json(route('admin.events.settings.update', $event));
   const userSearchUrl = @json(route('admin.events.settings.users', $event));
+  const scoringVenues = @json($scoringVenues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values());
+  const initialScoringVenueAssignments = @json($scoringAccounts->mapWithKeys(fn ($account) => [(string) $account->user_id => $account->venue_id]));
   const feedback = window.AppFeedback;
 
   if (window.toastr) {
@@ -496,6 +529,41 @@ $(function () {
     return true;
   }
 
+  function renderScoringVenueAssignments() {
+    const selectedIds = $('.select2-scoring-accounts').val() || [];
+    const assignments = { ...initialScoringVenueAssignments };
+
+    $('.scoring-venue-select').each(function () {
+      assignments[String($(this).data('user-id'))] = $(this).val() || null;
+    });
+
+    const container = $('#scoring-venue-assignments').empty();
+    if (!selectedIds.length) {
+      $('<p class="text-muted small mb-0 scoring-venue-empty"></p>')
+        .text('Select a scoring account to assign its venue.')
+        .appendTo(container);
+      return;
+    }
+
+    selectedIds.forEach(function (userId) {
+      const option = $('.select2-scoring-accounts option[value="' + userId + '"]');
+      const row = $('<div class="scoring-venue-row"></div>').attr('data-user-id', userId);
+      $('<label class="form-label mb-1"></label>')
+        .attr('for', 'scoring-venue-' + userId)
+        .text(option.text().trim())
+        .appendTo(row);
+      const select = $('<select class="form-select scoring-venue-select"></select>')
+        .attr({ id: 'scoring-venue-' + userId, name: 'scoring_venues[' + userId + ']' })
+        .data('user-id', userId)
+        .append($('<option></option>').val('').text('All event venues'));
+      scoringVenues.forEach(function (venue) {
+        select.append($('<option></option>').val(venue.id).text(venue.name));
+      });
+      select.val(assignments[String(userId)] || '').on('change', autosave).appendTo(row);
+      row.appendTo(container);
+    });
+  }
+
   /* =========================
      AUTOSAVE
   ========================= */
@@ -529,6 +597,10 @@ $(function () {
       payload.admins = $('.select2-admins').val() || [];
       payload.convenors = $('.select2-convenors').val() || [];
       payload.scoring_accounts = $('.select2-scoring-accounts').val() || [];
+      payload.scoring_venues = {};
+      $('.scoring-venue-select').each(function () {
+        payload.scoring_venues[String($(this).data('user-id'))] = $(this).val() || null;
+      });
 
       // 🔹 Withdrawal logic
       if (payload.withdrawal_days !== undefined && payload.start_date) {
@@ -639,6 +711,7 @@ $(function () {
     }
   }).on('change', function () {
     console.log('🎾 Scoring accounts changed:', $(this).val());
+    renderScoringVenueAssignments();
     autosave();
   });
 

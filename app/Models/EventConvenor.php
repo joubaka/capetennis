@@ -13,6 +13,7 @@ class EventConvenor extends Model
     protected $fillable = [
         'event_id',
         'user_id',
+        'venue_id',
         'role',
         'profit_share_pct',
         'starts_at',
@@ -37,6 +38,11 @@ class EventConvenor extends Model
     public function event()
     {
         return $this->belongsTo(Event::class, 'event_id', 'id');
+    }
+
+    public function venue()
+    {
+        return $this->belongsTo(Venue::class);
     }
 
     // Legacy alias

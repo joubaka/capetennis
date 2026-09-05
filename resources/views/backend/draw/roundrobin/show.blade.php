@@ -12,6 +12,7 @@
 @php
   $currentBoxes = (int) (optional($draw->settings)->boxes ?: ($groups->count() ?: 4));
   $roundRobinOnly = $draw->isRoundRobinOnly();
+  $competitionRulesEditable = auth()->user()->can('editCompetitionRules', $draw);
   $assignmentService = app(\App\Services\Draw\GroupAssignmentService::class);
   $eligibleRoster = $assignmentService->eligible($draw)->with(['registration.players', 'categoryEvent.category'])->get()->map(fn ($entry) => [
     'id' => $entry->registration_id, 'name' => $entry->registration->display_name,
@@ -106,6 +107,11 @@
 
     {{-- SETTINGS TAB --}}
     <div class="tab-pane fade" id="settings-pane" role="tabpanel">
+      @if(!$competitionRulesEditable)
+        <div class="alert alert-warning" role="status">Match format and playoff rules are locked because this draw is locked or its first result has been recorded.</div>
+      @elseif($draw->published)
+        <div class="alert alert-info" role="status">This draw is published. Match format and playoff rules remain editable until the first result is recorded.</div>
+      @endif
       
       {{-- DRAW OVERVIEW --}}
       <div class="card mb-3 border-info">
@@ -822,6 +828,11 @@
     $defaultPlayoffNotes = "Top Bracket Match Format\n\nMatches are played as Best of 3 sets.\nEach set starts at 2–2.\nAdvantage scoring applies in all games.\nIf a third set is required, it is played as a 10-point match tiebreak.";
     $defaultBracketNotes = "Other Brackets Match Format\n\nMatches consist of 1 full set starting from 0–0.\nThe first player/team to 6 games wins the set.\nAt 6–6, a tiebreaker is played.\nAdvantage scoring applies in all games.";
   @endphp
+  @if(!$competitionRulesEditable)
+    <div class="alert alert-warning" role="status">Tournament rules are locked because this draw is locked or its first result has been recorded.</div>
+  @elseif($draw->published)
+    <div class="alert alert-info" role="status">This draw is published. Rules remain editable until the first result is recorded.</div>
+  @endif
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
       <div>
@@ -1046,6 +1057,7 @@
     window.RR_CAN_GENERATE = @json(auth()->user()->can('generateFixtures', $draw));
     window.RR_CAN_SCORE = @json(auth()->user()->can('saveScore', $draw));
     window.RR_CAN_SCHEDULE = @json(auth()->user()->can('modifySchedule', $draw));
+    window.RR_CAN_EDIT_COMPETITION_RULES = @json($competitionRulesEditable);
     window.RR_FIXTURES  = @json($rrFixtures);
     window.RR_GROUPS    = @json($groupsjson);   // THE ONLY CORRECT ONE
     window.RR_OOP       = @json($oops);
@@ -1087,6 +1099,13 @@
 
     window.EVENT_ID = {{ $draw->event_id }};
     const DRAW_ID   = {{ $draw->id }};
+
+    if (!window.RR_CAN_EDIT_COMPETITION_RULES) {
+      $(function () {
+        $('#drawSettingsForm :input, #btn-add-playoff, #btn-load-preset, #btn-save-playoff-config, #playoff-config-table :input, #btn-save-notes, .notes-field')
+          .prop('disabled', true);
+      });
+    }
 </script>
 
 <script>

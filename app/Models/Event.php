@@ -238,6 +238,17 @@ class Event extends Model
       ->orderBy('drawName');
   }
 
+  /** Match-format and rule changes stop at the tournament's first result. */
+  public function hasRecordedResults(): bool
+  {
+    return $this->draws()
+      ->where(function ($query) {
+        $query->whereHas('drawFixtures.fixtureResults')
+          ->orWhereHas('fixtures.fixtureResults');
+      })
+      ->exists();
+  }
+
   public function transactions()
   {
     return $this->hasMany(Transaction::class, 'event_id', 'id')
