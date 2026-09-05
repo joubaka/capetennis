@@ -73,6 +73,9 @@
   .schedule-workspace .court-grid-scroll::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:999px; background:rgba(var(--bs-secondary-rgb), .45); background-clip:padding-box; }
   .schedule-workspace .court-grid-scroll { scrollbar-color:rgba(var(--bs-secondary-rgb), .55) transparent; scrollbar-width:auto; }
   body.schedule-full-page-active { overflow:hidden; }
+  body.schedule-full-page-active #layout-navbar,
+  body.schedule-full-page-active #layout-menu,
+  body.schedule-full-page-active .content-footer { display:none !important; }
   .schedule-workspace .schedule-display.is-full-page { position:fixed; inset:0; z-index:1035; overflow:auto; padding:1rem; background:var(--bs-body-bg); }
   .schedule-workspace .schedule-display.is-full-page #preview-view-controls { position:sticky; top:-1rem; z-index:6; margin-inline:-1rem; padding:1rem; border-bottom:1px solid var(--schedule-border); background:rgba(var(--bs-body-bg-rgb), .97); box-shadow:0 .35rem 1rem rgba(31,42,68,.08); backdrop-filter:blur(8px); }
   .schedule-workspace .schedule-display.is-full-page .court-grid-scroll { max-height:calc(100vh - 15rem); }

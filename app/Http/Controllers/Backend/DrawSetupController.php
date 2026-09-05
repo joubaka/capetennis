@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\{Draw, DrawAuditLog};
-use App\Services\Draw\FlexibleMonradService;
+use App\Services\Draw\{DrawFormatResetService, FlexibleMonradService};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -22,15 +22,29 @@ class DrawSetupController extends Controller
     public function show(Draw $draw)
     {
         $this->authorize('view', $draw);
-        return view('backend.draw.setup', ['draw' => $draw, 'options' => self::OPTIONS]);
+        $fixtureIds = $draw->drawFixtures()->pluck('id');
+        return view('backend.draw.setup', [
+            'draw' => $draw,
+            'options' => self::OPTIONS,
+            'resetSummary' => [
+                'fixtures' => $fixtureIds->count(),
+                'scheduled_times' => DB::table('order_of_plays')->where('draw_id', $draw->id)
+                    ->orWhereIn('fixture_id', $fixtureIds)->count(),
+                'groups' => $draw->groups()->count(),
+                'results' => DB::table('fixture_results')->whereIn('fixture_id', $fixtureIds)->count(),
+                'roster_entries' => $draw->registrations()->reorder()->count(),
+                'has_format_state' => $fixtureIds->isNotEmpty() || $draw->groups()->exists() || $draw->flexibleMonrad()->exists(),
+            ],
+        ]);
     }
 
-    public function store(Request $request, Draw $draw)
+    public function store(Request $request, Draw $draw, DrawFormatResetService $resetter)
     {
         $this->authorize('update', $draw);
         $data = $request->validate([
             'workflow' => 'required|in:'.implode(',', array_keys(self::OPTIONS)),
             'category_event_id' => ['nullable', 'integer', Rule::exists('category_events', 'id')->where('event_id', $draw->event_id)],
+            'reset_existing' => ['nullable', 'boolean'],
         ]);
         if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true) && empty($data['category_event_id'])) {
             return view('backend.draw.setup-category', [
@@ -38,9 +52,10 @@ class DrawSetupController extends Controller
                 'categories' => \App\Models\CategoryEvent::where('event_id', $draw->event_id)->with('category')->get(),
             ]);
         }
-        DB::transaction(function () use ($draw, $data) {
+        DB::transaction(function () use ($draw, $data, $resetter) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
-            abort_if($draw->locked || $draw->published, 409, 'Unlock and unpublish the draw before choosing a format.');
+            abort_if($draw->locked || $draw->published || $draw->oop_published, 409,
+                'Unlock and unpublish the draw and its schedule before choosing a format.');
             abort_if($draw->team_category_id || $draw->event?->isTeam(), 422, 'Use the team draw setup for team fixtures.');
             if ($draw->settings?->workflow === $data['workflow']) return;
             $isRoundRobinPlayoffUpgrade = in_array($draw->settings?->workflow, [null, 'round_robin'], true)
@@ -48,23 +63,31 @@ class DrawSetupController extends Controller
                 && ! $draw->drawFixtures()->where('stage', '!=', 'RR')->exists()
                 && empty($draw->flexibleMonrad?->draft['slots'])
                 && ! $draw->flexibleMonrad?->graph;
-            // Never discard existing assignments, fixtures, or custom starting paths.
-            abort_if(! $isRoundRobinPlayoffUpgrade && ($draw->drawFixtures()->exists()
-                || $draw->groups()->whereHas('registrations')->exists()
-                || ! empty($draw->flexibleMonrad?->draft['slots']) || $draw->flexibleMonrad?->graph),
-                409, 'This draw already has assignments or fixtures. Use a new empty draw to choose a different format.');
+            $hasExistingFormatState = $draw->drawFixtures()->exists() || $draw->groups()->exists()
+                || $draw->flexibleMonrad()->exists();
+            $resetCounts = null;
+            if (! $isRoundRobinPlayoffUpgrade && $hasExistingFormatState) {
+                abort_unless((bool) ($data['reset_existing'] ?? false), 409,
+                    'Confirm that changing format will remove this draw’s fixtures, scheduled times and group placements.');
+                $resetCounts = $resetter->reset($draw);
+                $draw->unsetRelation('flexibleMonrad');
+            }
             if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
                 abort_if($draw->registrations()->reorder()->exists(), 409, 'Choose a new empty draw before changing its player category.');
                 $draw->update(['category_event_id' => $data['category_event_id']]);
             }
-            $draw->settings()->updateOrCreate(['draw_id' => $draw->id], ['workflow' => $data['workflow']]);
+            $settings = ['workflow' => $data['workflow']];
+            if ($resetCounts) {
+                $settings += ['boxes' => null, 'playoff_size' => null, 'playoff_config' => null, 'preset_key' => null];
+            }
+            $draw->settings()->updateOrCreate(['draw_id' => $draw->id], $settings);
             if (in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
                 $draw->flexibleMonrad()->delete(); // Only an empty, ungenerated draft can reach here.
                 $draw->settings()->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id')]);
             } else {
                 app(FlexibleMonradService::class)->save($draw->fresh(), ['size' => 32, 'slots' => []], $draw->flexibleMonrad?->revision ?? 0);
             }
-            DrawAuditLog::record($draw->id, 'workflow_selected', null, $data);
+            DrawAuditLog::record($draw->id, 'workflow_selected', null, $data + ['reset_counts' => $resetCounts]);
         });
         return redirect()->route('backend.draw.roundrobin.show', $draw);
     }

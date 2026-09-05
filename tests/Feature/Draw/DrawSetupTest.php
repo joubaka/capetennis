@@ -166,6 +166,51 @@ class DrawSetupTest extends TestCase
         $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
     }
 
+    public function test_confirmed_format_reset_removes_unplayed_structure_but_preserves_the_roster(): void
+    {
+        $draw = $this->draw();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'custom_monrad'])->assertRedirect();
+        $slots = $this->slots($draw);
+        app(FlexibleMonradService::class)->save($draw, ['size' => 4, 'slots' => $slots], 1);
+        app(FlexibleMonradService::class)->generate($draw, 2);
+        $fixture = $draw->drawFixtures()->first();
+        DB::table('order_of_plays')->insert([
+            'draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => DB::table('venues')->insertGetId(['name' => 'Reset venue']),
+            'court' => '1', 'time' => '2026-09-06 08:00:00', 'duration_minutes' => 45,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->get(route('draw.setup.show', $draw))->assertOk()
+            ->assertSee('Changing format resets this draw.')
+            ->assertSee('Change format and reset draw')
+            ->assertSee('I understand this removes the current fixtures and scheduled times.');
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])->assertConflict();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin', 'reset_existing' => 1])->assertRedirect();
+
+        $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+        $this->assertSame(4, $draw->registrations()->count());
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame(0, DB::table('order_of_plays')->where('draw_id', $draw->id)->count());
+        $this->assertNull($draw->fresh()->flexibleMonrad);
+        $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'format_reset']);
+    }
+
+    public function test_format_reset_refuses_to_delete_recorded_results(): void
+    {
+        $draw = $this->draw();
+        Fixture::factory()->create(['draw_id' => $draw->id]);
+        $fixture = $draw->drawFixtures()->first();
+        DB::table('fixture_results')->insert([
+            'fixture_id' => $fixture->id, 'set_nr' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->postJson(route('draw.setup.store', $draw), [
+            'workflow' => 'round_robin', 'reset_existing' => 1,
+        ])->assertConflict();
+        $this->assertDatabaseHas('fixtures', ['id' => $fixture->id]);
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id]);
+    }
+
     public function test_round_robin_with_existing_groups_and_fixtures_can_add_playoffs_without_replacing_them(): void
     {
         $draw = $this->draw();
