@@ -382,6 +382,7 @@
   const applyUrl = @json(route('backend.event-venue-schedule.apply', $event));
   const unapplyUrl = @json($unapplyRouteAvailable ? route('backend.event-venue-schedule.unapply', $event) : null);
   const manualAssignmentUrl = @json(route('backend.event-venue-schedule.manual-assignment', $event));
+  const manualOptionsUrl = @json(route('backend.event-venue-schedule.manual-options', $event));
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
@@ -659,15 +660,21 @@
     ...(result.existing_matches || []).map(match => ({...match, fixed:true}))]
     .filter(match => Number(match.venue_id) === Number(venueId))
     .sort((a, b) => dateKey(a.scheduled_at) - dateKey(b.scheduled_at) || String(a.court).localeCompare(String(b.court), undefined, {numeric:true}));
+  const permittedCourts = (match, venueId) => match?.venue_courts?.[String(venueId)] || [];
+  const canUseCourt = (match, venueId, court) => permittedCourts(match, venueId).map(String).includes(String(court));
+  const unresolvedAtVenue = (result, venueId) => (result.unscheduled || [])
+    .filter(match => permittedCourts(match, venueId).length > 0).length;
   const venueActions = (result, venue) => {
     const planned = result.matches.filter(match => Number(match.venue_id) === Number(venue.id)).length;
     const fixed = (result.existing_matches || []).filter(match => Number(match.venue_id) === Number(venue.id)).length;
+    const unresolved = unresolvedAtVenue(result, venue.id);
     const replanning = (result.input.replan_venue_ids || []).map(Number).includes(Number(venue.id));
     let state = '<span class="badge bg-label-secondary">Not applied yet</span>';
     if (fixed && planned) state = `<span class="badge bg-label-success">${fixed} applied · ${planned} new</span>`;
     else if (fixed) state = '<span class="badge bg-label-success">Applied · fixed in planning</span>';
     if (replanning) state = '<span class="badge bg-label-warning">Replanning this venue</span>';
-    const apply = planned ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Good to go — apply this venue</button>` : '';
+    if (unresolved) state += `<span class="badge bg-label-danger ms-2">${unresolved} unresolved</span>`;
+    const apply = planned && !unresolved ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Apply this venue</button>` : '';
     const change = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-primary" data-replan-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}">Change this venue</button>` : '';
     const unapply = unapplyUrl && fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
     const keep = replanning ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-keep-venue="${venue.id}">Keep current applied schedule</button>` : '';
@@ -676,6 +683,7 @@
 
   function slotGrid(result, venue) {
     const rows = venueRows(result, venue.id);
+    const selectableMatches = pickerCandidates(result);
     const start = asDate(result.input.start);
     const end = result.input.end ? asDate(result.input.end) : new Date(Math.max(start.getTime(), ...rows.map(row => matchEnd(row, result).getTime())));
     const step = Math.max(15, Number(result.input.duration) + Number(result.input.courtGap || 0));
@@ -692,11 +700,22 @@
         const starts = rows.find(row => String(row.court) === String(court) && dateKey(row.scheduled_at) === time.getTime());
         if (starts) {
           const movable = !starts.fixed || starts.editable;
-          return `<td>${movable ? `<button type="button" class="manual-match-card" draggable="true" data-manual-fixture="${starts.fixture_id}" aria-pressed="false" title="Drag this match to an available slot"><span class="fw-semibold">${escapeHtml(starts.draw_name)}</span><span class="small d-block">R${starts.round} · Match ${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Saved' : ''}</span><span class="small text-muted d-block">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</span></button>` : `<div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · Match ${escapeHtml(starts.match || '—')} · Fixed</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</div>`}</td>`;
+          const path = (starts.participants || []).join(' / ') || 'Participants determined by draw';
+          const round = starts.wave ? `Wave ${starts.wave} · R${starts.round}` : `R${starts.round}`;
+          return `<td>${movable ? `<button type="button" class="manual-match-card" draggable="true" data-manual-fixture="${starts.fixture_id}" aria-pressed="false" title="Drag this match to a court-idle slot"><span class="fw-semibold">${escapeHtml(starts.draw_name)}</span><span class="small d-block">${round} · Match ${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Saved' : ''}</span><span class="small text-muted d-block">${escapeHtml(path)}</span></button>` : `<div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">${round} · Match ${escapeHtml(starts.match || '—')} · Fixed</div><div class="small text-muted">${escapeHtml(path)}</div>`}</td>`;
         }
         const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
         if (occupied) return `<td class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
-        return `<td class="manual-drop-slot" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Available</span><span class="small text-muted d-block">Drop or place selected match</span></button></td>`;
+        if (!selectableMatches.some(match => canUseCourt(match, venue.id, court))) {
+          return '<td class="bg-label-secondary text-muted"><span class="fw-semibold">Not allocated</span><div class="small">No selected draw can use this court</div></td>';
+        }
+        const matchFinish = new Date(time.getTime() + Number(result.input.duration) * 60000);
+        const courtReady = new Date(time.getTime() + step * 60000);
+        const next = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) > time);
+        if (matchFinish > end || (next && courtReady > asDate(next.scheduled_at))) {
+          return '<td class="bg-label-secondary text-muted"><span class="fw-semibold">Gap too short</span><div class="small">A full match will not fit</div></td>';
+        }
+        return `<td class="manual-drop-slot" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Court idle</span><span class="small text-muted d-block">Select a valid match</span></button></td>`;
       }).join('');
       return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
     }).join('');
@@ -713,13 +732,13 @@
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length + (result.existing_matches || []).length, 'Court bookings', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
-    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue with planned fixtures can still be approved and applied on its own.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} R${row.round} Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
+    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue can only be applied when none of its selected matches remain unresolved.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Unassigned draw position')}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -771,10 +790,11 @@
   const matchPickerList = document.getElementById('manual-match-picker-list');
   const matchPickerSearch = document.getElementById('manual-match-picker-search');
   const matchPickerEmpty = document.getElementById('manual-match-picker-empty');
-  const pickerCandidates = () => {
+  const pickerCandidates = (result = lastScheduleResult) => {
     const rows = [
-      ...(lastScheduleResult?.matches || []),
-      ...(lastScheduleResult?.existing_matches || []).filter(match => match.editable),
+      ...(result?.matches || []),
+      ...(result?.unscheduled || []),
+      ...(result?.existing_matches || []).filter(match => match.editable),
     ];
     return [...new Map(rows.map(match => [Number(match.fixture_id), match])).values()]
       .sort((left, right) => String(left.draw_name).localeCompare(String(right.draw_name), undefined, {numeric:true})
@@ -791,20 +811,42 @@
     });
     matchPickerEmpty.classList.toggle('d-none', visible > 0);
   };
-  const openMatchPicker = slot => {
+  const renderPickerCandidates = matches => {
+    matchPickerList.innerHTML = matches.map(match => {
+      const players = (match.participants || []).join(' / ') || 'Participants determined by feeder path';
+      const current = match.scheduled_at ? `${match.fixed ? 'Saved' : 'Preview'}: ${match.scheduled_at.slice(0, 16)} · Court ${match.court}` : 'Not currently placed';
+      const searchable = `${match.draw_name} match ${match.match || ''} ${players}`.toLowerCase();
+      const sequence = match.wave ? `Wave ${match.wave} · Round ${match.round}` : `Round ${match.round}`;
+      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${match.fixture_id}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · Match ${escapeHtml(match.match || '—')}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">${sequence} · ${escapeHtml(current)}</span></button>`;
+    }).join('');
+  };
+  const openMatchPicker = async slot => {
     pendingManualSlot = slot;
     const venue = lastScheduleResult?.venues?.find(item => Number(item.id) === Number(slot.dataset.venue));
     document.getElementById('manual-match-picker-slot').textContent = `${venue?.name || 'Venue'} · Court ${slot.dataset.court} · ${formatSlotTime(asDate(slot.dataset.time))}`;
     matchPickerSearch.value = '';
-    matchPickerList.innerHTML = pickerCandidates().map(match => {
-      const players = (match.participants || []).join(' / ') || 'Unassigned draw position';
-      const current = match.scheduled_at ? `${match.fixed ? 'Saved' : 'Preview'}: ${match.scheduled_at.slice(0, 16)} · Court ${match.court}` : 'Not currently placed';
-      const searchable = `${match.draw_name} match ${match.match || ''} ${players}`.toLowerCase();
-      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${match.fixture_id}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · Match ${escapeHtml(match.match || '—')}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">Round ${match.round}${match.wave ? ` · Wave ${match.wave}` : ''} · ${escapeHtml(current)}</span></button>`;
-    }).join('');
-    filterMatchPicker();
+    matchPickerList.innerHTML = '<div class="list-group-item text-muted">Checking match order, court allocation and player rest…</div>';
+    matchPickerEmpty.textContent = 'No match can use this slot after checking match order, court allocation and player rest.';
+    matchPickerEmpty.classList.add('d-none');
     bootstrap.Modal.getOrCreateInstance(matchPickerModal).show();
     matchPickerModal.addEventListener('shown.bs.modal', () => matchPickerSearch.focus(), {once:true});
+    const candidates = pickerCandidates().filter(match => canUseCourt(match, slot.dataset.venue, slot.dataset.court));
+    try {
+      const options = await post(manualOptionsUrl, {
+        fixture_ids:candidates.map(match => Number(match.fixture_id)), scheduled_at:slot.dataset.time,
+        venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
+        duration:Number(document.getElementById('schedule-duration').value),
+        court_gap:Number(document.getElementById('schedule-gap').value),
+        player_rest:Number(document.getElementById('schedule-rest').value),
+      });
+      const eligible = new Set((options.eligible_fixture_ids || []).map(Number));
+      renderPickerCandidates(candidates.filter(match => eligible.has(Number(match.fixture_id))));
+      filterMatchPicker();
+    } catch (error) {
+      matchPickerList.innerHTML = '';
+      matchPickerEmpty.textContent = error.message;
+      matchPickerEmpty.classList.remove('d-none');
+    }
   };
   matchPickerSearch.addEventListener('input', filterMatchPicker);
   matchPickerList.addEventListener('click', event => {
@@ -849,7 +891,7 @@
         option.classList.toggle('is-selected', selected);
         option.setAttribute('aria-pressed', String(selected));
       });
-      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose an Available slot.', 'success');
+      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose a Court idle slot.', 'success');
       return;
     }
     const slot = event.target.closest('[data-manual-slot]');

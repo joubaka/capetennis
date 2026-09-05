@@ -457,6 +457,21 @@ class EventVenueScheduleTest extends TestCase
             'court_gap' => 5, 'player_rest' => 60,
         ];
 
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.manual-options', $event), [
+            'fixture_ids' => $fixtures->pluck('id')->all(),
+            'scheduled_at' => $assignment['scheduled_at'], 'venue_id' => $venue->id, 'court' => '2',
+            'duration' => 75, 'court_gap' => 5, 'player_rest' => 60,
+        ])->assertOk()
+            ->assertJsonPath('eligible_fixture_ids', $fixtures->pluck('id')->all())
+            ->assertJsonPath('blocked', []);
+        $this->postJson(route('backend.event-venue-schedule.manual-options', $event), [
+            'fixture_ids' => [$fixtures[0]->id],
+            'scheduled_at' => $assignment['scheduled_at'], 'venue_id' => $venue->id, 'court' => '1',
+            'duration' => 75, 'court_gap' => 5, 'player_rest' => 60,
+        ])->assertOk()
+            ->assertJsonPath('eligible_fixture_ids', [])
+            ->assertJsonPath('blocked.'.$fixtures[0]->id, 'Choose an active court allocated to this draw.');
+
         $this->actingAs($admin)->postJson($url, array_replace($assignment, ['court' => '1']))
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Choose an active court allocated to this draw.');
@@ -545,11 +560,16 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Replan all applied venues')
             ->assertSee('Unapply venue times')
             ->assertSee('manual-assignment')
+            ->assertSee('manual-options')
             ->assertSee('draggable="true"', false)
-            ->assertSee('Drop or place selected match')
-            ->assertSee('Match selected. Choose an Available slot.')
+            ->assertSee('Court idle')
+            ->assertSee('Gap too short')
+            ->assertSee('Not allocated')
+            ->assertSee('Match selected. Choose a Court idle slot.')
             ->assertSee('Choose a match for this slot')
             ->assertSee('Search by age group, match or player')
+            ->assertSee('result?.unscheduled')
+            ->assertSee('Participants determined by feeder path')
             ->assertSee('openMatchPicker(slot)', false)
             ->assertSee("document.getElementById('generate-preview').click()", false)
             ->assertSee('venue-schedule\/unapply', false)
@@ -572,6 +592,83 @@ class EventVenueScheduleTest extends TestCase
             'fixture_id' => 1, 'scheduled_at' => '2026-09-10 09:00:00', 'venue_id' => 1,
             'court' => '1', 'duration' => 75, 'court_gap' => 5, 'player_rest' => 60,
         ])->assertForbidden();
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.manual-options', $event), [
+            'fixture_ids' => [1], 'scheduled_at' => '2026-09-10 09:00:00', 'venue_id' => 1,
+            'court' => '1', 'duration' => 75, 'court_gap' => 5, 'player_rest' => 60,
+        ])->assertForbidden();
+    }
+
+    public function test_unscheduled_matches_remain_available_to_the_manual_grid_with_full_context(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Tight Window Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/13 Girls']);
+        $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+        DB::table('draw_venue_court_allocations')->insert([
+            'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '1',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        Fixture::factory()->count(2)->create([
+            'draw_id' => $draw->id, 'round' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory(), 'registration2_id' => Registration::factory(),
+        ]);
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, array_replace(
+            $this->schedulingOptions(), ['end' => '2026-09-10 09:15:00', 'draw_ids' => [$draw->id]],
+        ));
+
+        $this->assertCount(1, $preview['matches']);
+        $this->assertCount(1, $preview['unscheduled']);
+        $unscheduled = $preview['unscheduled'][0];
+        $this->assertSame(1, $unscheduled['wave']);
+        $this->assertSame(['1'], $unscheduled['venue_courts'][$venue->id]);
+        $this->assertArrayHasKey('participants', $unscheduled);
+        $this->assertArrayHasKey('participant_ids', $unscheduled);
+        $this->assertNull($unscheduled['scheduled_at']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('This venue still has unresolved matches. Schedule them before applying the venue.');
+        app(EventVenueScheduleService::class)->apply($event, array_replace(
+            $this->schedulingOptions(), [
+                'end' => '2026-09-10 09:15:00', 'draw_ids' => [$draw->id],
+                'apply_venue_ids' => [$venue->id],
+            ],
+        ), $preview['revision']);
+    }
+
+    public function test_existing_booking_from_another_draw_keeps_its_player_names(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Shared Context Venue');
+        $selectedDraw = Draw::factory()->create(['event_id' => $event->id]);
+        $selectedDraw->venues()->attach($venue->id, ['num_courts' => 1]);
+        Fixture::factory()->create([
+            'draw_id' => $selectedDraw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory(), 'registration2_id' => Registration::factory(),
+        ]);
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id]);
+        $otherDraw->venues()->attach($venue->id, ['num_courts' => 1]);
+        $registrations = Registration::factory()->count(2)->create();
+        $registrations[0]->players()->attach(Player::factory()->create(['name' => 'Lize', 'surname' => 'Beyers']));
+        $registrations[1]->players()->attach(Player::factory()->create(['name' => 'Leah', 'surname' => 'Mbhokota']));
+        $otherFixture = Fixture::factory()->create([
+            'draw_id' => $otherDraw->id, 'round' => 1, 'match_nr' => 2, 'bracket_id' => 1,
+            'registration1_id' => $registrations[0]->id, 'registration2_id' => $registrations[1]->id,
+            'scheduled' => true,
+        ]);
+        OrderOfPlay::create([
+            'draw_id' => $otherDraw->id, 'fixture_id' => $otherFixture->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-09-10 12:00:00', 'duration_minutes' => 75,
+        ]);
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + [
+            'draw_ids' => [$selectedDraw->id],
+        ]);
+        $existing = collect($preview['existing_matches'])->firstWhere('fixture_id', $otherFixture->id);
+
+        $this->assertNotNull($existing);
+        $this->assertSame(['Lize Beyers', 'Leah Mbhokota'], $existing['participants']);
+        $this->assertFalse($existing['editable']);
     }
 
     public function test_preview_automatically_uses_only_venues_assigned_to_the_selected_draws(): void

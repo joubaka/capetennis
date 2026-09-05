@@ -333,34 +333,11 @@ final class EventVenueScheduleController extends Controller
                     ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
                     ->lockForUpdate()->find($data['fixture_id']);
                 if (! $fixture) throw new \InvalidArgumentException('This match does not belong to the event.');
-                if ($fixture->draw->locked || $fixture->draw->published) {
-                    throw new \InvalidArgumentException('Unpublish and unlock the draw before manually scheduling this match.');
-                }
-                if ($fixture->fixtureResults->isNotEmpty()) {
-                    throw new \InvalidArgumentException('A played match cannot be moved to another slot.');
-                }
-
                 $venueId = (int) $data['venue_id'];
                 $court = trim((string) $data['court']);
-                $assignedVenue = $fixture->draw->venues->firstWhere('id', $venueId);
-                if (! $assignedVenue) throw new \InvalidArgumentException('The selected venue is not assigned to this draw.');
-
-                $activeCourts = DB::table('event_venue_courts')->where('event_id', $event->id)
-                    ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
-                if ($activeCourts->isEmpty()) {
-                    $activeCourts = collect(range(1, max(1, (int) $assignedVenue->pivot->num_courts)))->map(fn ($label) => (string) $label);
-                }
-                $allocatedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
-                    ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
-                $permittedCourts = $allocatedCourts->isNotEmpty() ? $allocatedCourts->intersect($activeCourts) : $activeCourts;
-                if (! $permittedCourts->contains($court)) {
-                    throw new \InvalidArgumentException('Choose an active court allocated to this draw.');
-                }
-
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
-                $conflict = $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
-                    $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'], (int) $data['court_gap']);
-                if ($conflict) throw new \InvalidArgumentException($conflict);
+                $error = $this->manualAssignmentError($event, $fixture, $venueId, $court, $data, $conflicts);
+                if ($error) throw new \InvalidArgumentException($error);
 
                 $slot = $scheduleEngine->saveFixture($fixture->draw, $fixture->id, $data['scheduled_at'],
                     $venueId, $court, (int) $data['duration']);
@@ -382,6 +359,64 @@ final class EventVenueScheduleController extends Controller
             'assignment' => ['fixture_id' => (int) $slot->fixture_id, 'venue_id' => (int) $slot->venue_id,
                 'court' => (string) $slot->court, 'scheduled_at' => \Carbon\Carbon::parse($slot->time)->format('Y-m-d H:i:s')],
         ]);
+    }
+
+    public function manualOptions(Request $request, Event $event, ScheduleConflictService $conflicts)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'fixture_ids' => ['required', 'array', 'max:200'],
+            'fixture_ids.*' => ['required', 'integer', 'distinct'],
+            'scheduled_at' => ['required', 'date'],
+            'venue_id' => ['required', 'integer'],
+            'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
+            'duration' => ['required', 'integer', 'min:15', 'max:480'],
+            'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
+            'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+        ]);
+
+        $fixtures = Fixture::with(['draw.venues', 'draw.flexibleMonrad', 'draw.settings', 'fixtureResults', 'orderOfPlay'])
+            ->whereIn('id', $data['fixture_ids'])
+            ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
+            ->get()->keyBy('id');
+        $eligible = [];
+        $blocked = [];
+        foreach ($data['fixture_ids'] as $fixtureId) {
+            $fixture = $fixtures->get((int) $fixtureId);
+            $error = $fixture
+                ? $this->manualAssignmentError($event, $fixture, (int) $data['venue_id'], trim((string) $data['court']), $data, $conflicts)
+                : 'This match is not available in the selected event.';
+            if ($error) $blocked[(string) $fixtureId] = $error;
+            else $eligible[] = (int) $fixtureId;
+        }
+
+        return response()->json(['eligible_fixture_ids' => $eligible, 'blocked' => $blocked]);
+    }
+
+    private function manualAssignmentError(Event $event, Fixture $fixture, int $venueId, string $court,
+        array $data, ScheduleConflictService $conflicts): ?string
+    {
+        if ($fixture->draw->locked || $fixture->draw->published) {
+            return 'Unpublish and unlock the draw before manually scheduling this match.';
+        }
+        if ($fixture->fixtureResults->isNotEmpty()) return 'A played match cannot be moved to another slot.';
+
+        $assignedVenue = $fixture->draw->venues->firstWhere('id', $venueId);
+        if (! $assignedVenue) return 'The selected venue is not assigned to this draw.';
+
+        $activeCourts = DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
+        if ($activeCourts->isEmpty()) {
+            $activeCourts = collect(range(1, max(1, (int) $assignedVenue->pivot->num_courts)))
+                ->map(fn ($label) => (string) $label);
+        }
+        $allocatedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
+            ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
+        $permittedCourts = $allocatedCourts->isNotEmpty() ? $allocatedCourts->intersect($activeCourts) : $activeCourts;
+        if (! $permittedCourts->contains($court)) return 'Choose an active court allocated to this draw.';
+
+        return $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
+            $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'], (int) $data['court_gap']);
     }
 
     private function validatedOptions(Request $request): array

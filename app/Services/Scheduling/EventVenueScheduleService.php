@@ -148,9 +148,11 @@ final class EventVenueScheduleService
                 'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
                 'dependencies' => $node['dependencies'],
+                'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
                 'scheduled_at' => $best['time']->format('Y-m-d H:i:s'), 'venue_id' => $best['venue_id'],
                 'venue_name' => $venues[$best['venue_id']]->name, 'court' => $best['court'],
                 'duration' => $duration, 'participants' => $node['participant_names'],
+                'participant_ids' => $node['participants'], 'venue_courts' => $node['venue_courts'],
             ];
             unset($pending[$id], $blocked[$id]);
         }
@@ -159,8 +161,17 @@ final class EventVenueScheduleService
         foreach ($pending as $id => $node) {
             $reason = $blocked[$id] ?? ($end ? 'No valid court time remains before the scheduling window ends.'
                 : 'A qualifying match is not schedulable in this plan.');
-            $unscheduled[] = ['fixture_id' => $id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
-                'round' => $node['round'], 'match' => $node['match'], 'reason' => $reason];
+            $unscheduled[] = [
+                'fixture_id' => $id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
+                'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
+                'play_order' => $node['play_order'], 'wave' => $node['wave'],
+                'dependencies' => $node['dependencies'],
+                'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
+                'scheduled_at' => null, 'venue_id' => null, 'venue_name' => null, 'court' => null,
+                'duration' => $duration, 'participants' => $node['participant_names'],
+                'participant_ids' => $node['participants'], 'venue_courts' => $node['venue_courts'],
+                'reason' => $reason,
+            ];
         }
 
         usort($plan, function ($a, $b) {
@@ -169,7 +180,9 @@ final class EventVenueScheduleService
         });
         $displayEnd = $end?->copy() ?? collect($plan)->map(fn ($row) => Carbon::parse($row['scheduled_at'])
             ->addMinutes((int) $row['duration']))->max();
-        $existingMatches = $displayEnd ? OrderOfPlay::with('fixture.draw')
+        $existingMatches = $displayEnd ? OrderOfPlay::with([
+            'fixture.draw', 'fixture.registration1.players', 'fixture.registration2.players',
+        ])
             ->whereIn('venue_id', $venueIds)->whereNotNull('time')
             ->when($excluded, fn ($query) => $query->whereNotIn('fixture_id', $excluded))
             ->where('time', '>=', $start->copy()->subMinutes(600))->where('time', '<', $displayEnd)
@@ -178,6 +191,11 @@ final class EventVenueScheduleService
             ->map(function (OrderOfPlay $slot) use ($duration, $nodes) {
                 $startsAt = Carbon::parse($slot->time);
                 $fixture = $slot->fixture;
+                $node = $nodes[$slot->fixture_id] ?? null;
+                $participants = $node['participant_names'] ?? collect([
+                    $fixture?->registration1, $fixture?->registration2,
+                ])->filter()->map(fn ($registration) => $registration->displayName())
+                    ->filter(fn ($name) => $name && $name !== 'Unassigned')->values()->all();
                 return [
                     'fixture_id' => $slot->fixture_id, 'draw_id' => $fixture?->draw_id ?? $slot->draw_id,
                     'draw_name' => $fixture?->draw?->drawName ?? $slot->draw?->drawName ?? 'Existing booking',
@@ -186,8 +204,11 @@ final class EventVenueScheduleService
                     'ends_at' => $startsAt->copy()->addMinutes($slot->occupiedMinutes($duration))->format('Y-m-d H:i:s'),
                     'venue_id' => (int) $slot->venue_id, 'court' => (string) $slot->court,
                     'duration' => (int) ($slot->duration_minutes ?: $duration),
-                    'participants' => $nodes[$slot->fixture_id]['participant_names'] ?? [],
-                    'editable' => isset($nodes[$slot->fixture_id]) && ! $nodes[$slot->fixture_id]['played'],
+                    'participants' => $participants,
+                    'wave' => $node['wave'] ?? null, 'dependencies' => $node['dependencies'] ?? [],
+                    'not_before' => isset($node['not_before']) ? $node['not_before']->format('Y-m-d H:i:s') : null,
+                    'participant_ids' => $node['participants'] ?? [], 'venue_courts' => $node['venue_courts'] ?? [],
+                    'editable' => isset($node) && ! $node['played'],
                 ];
             })->values()->all() : [];
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
@@ -234,6 +255,12 @@ final class EventVenueScheduleService
             }
             if (! $applyVenueIds && $preview['unscheduled']) {
                 throw new \InvalidArgumentException('The preview contains unscheduled matches. Resolve them before applying.');
+            }
+            if ($applyVenueIds && collect($preview['unscheduled'])->contains(function ($row) use ($applyVenueIds) {
+                $permittedVenueIds = array_map('intval', array_keys($row['venue_courts'] ?? []));
+                return (bool) array_intersect($applyVenueIds, $permittedVenueIds);
+            })) {
+                throw new \InvalidArgumentException('This venue still has unresolved matches. Schedule them before applying the venue.');
             }
 
             $matches = collect($preview['matches'])
