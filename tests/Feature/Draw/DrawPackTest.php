@@ -381,7 +381,7 @@ class DrawPackTest extends TestCase
             ->assertJsonValidationErrors('print_type');
     }
 
-    public function test_flexible_monrad_bracket_can_be_printed_without_other_pack_sections(): void
+    public function test_flexible_monrad_bracket_print_redirects_to_the_canonical_graphical_workspace(): void
     {
         $draw = Draw::factory()->create([
             'event_id' => $this->event->id,
@@ -418,21 +418,37 @@ class DrawPackTest extends TestCase
             'feeder_slot' => 2,
         ]);
 
+        $workspaceUrl = route('backend.draw.roundrobin.show', $draw).'?print=draw#matrix';
+
         $this->actingAs($this->admin)
             ->get(route('headoffice.drawPack', [
                 'event' => $this->event,
                 'draw_ids' => [$draw->id],
                 'print_type' => 'bracket',
             ]))
-            ->assertOk()
-            ->assertSee('Bracket only')
-            ->assertSee('Boys U15 Monrad')
-            ->assertSee('Flexible Monrad')
-            ->assertSee('Bracket and placement pathways')
-            ->assertSee('Winner to M3')
-            ->assertDontSee('Complete Draw Pack')
-            ->assertDontSee('Master order of play')
-            ->assertDontSee('Fixtures in scheduled order');
+            ->assertRedirect($workspaceUrl);
+
+        $eventPage = $this->get(route('headOffice.show', $this->event));
+        $eventPage->assertOk()
+            ->assertSee('Flexible Monrad Bracket Only')
+            ->assertSee('Print the graphical bracket exactly as shown in the Monrad workspace')
+            ->assertSee('data-monrad-print-url="'.route('backend.draw.roundrobin.show', $draw).'"', false);
+
+        $navigation = file_get_contents(public_path('js/draw-workspace-navigation.js'));
+        $this->assertStringContainsString("get('print') === 'draw'", $navigation);
+        $this->assertStringContainsString("workspace.classList.add('print-draw-only')", $navigation);
+
+        $standardDraw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'drawName' => 'Standard Knockout',
+        ]);
+        $this->getJson(route('headoffice.drawPack', [
+            'event' => $this->event,
+            'draw_ids' => [$standardDraw->id],
+            'print_type' => 'bracket',
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('draw_ids');
     }
 
     public function test_browser_print_builders_escape_untrusted_draw_content(): void

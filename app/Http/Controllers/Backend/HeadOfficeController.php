@@ -1251,6 +1251,16 @@ class HeadOfficeController extends Controller
       ]);
     }
 
+    if (($validated['print_type'] ?? 'pack') === 'bracket') {
+      if ($draws->count() !== 1 || ! $draws->first()->usesFlexibleMonrad()) {
+        throw ValidationException::withMessages([
+          'draw_ids' => 'Select exactly one Flexible Monrad draw for graphical bracket printing.',
+        ]);
+      }
+
+      return redirect(route('backend.draw.roundrobin.show', $draws->first()).'?print=draw#matrix');
+    }
+
     $drawsData = $draws->map(fn (Draw $draw) => $this->buildDrawPrintData($draw))->values();
     $schedule = $drawsData->flatMap(fn (array $draw) => collect($draw['oops'])
       ->whereNotNull('scheduled_at')
@@ -1283,11 +1293,9 @@ class HeadOfficeController extends Controller
     $pdf = Pdf::loadView('backend.draw.pdf.draw-pack', $data + ['autoPrint' => false]);
     $pdf->setPaper('A4', 'landscape');
 
-    $suffix = match ($validated['print_type'] ?? 'pack') {
-      'venue' => '_venue_order_of_play.pdf',
-      'bracket' => '_brackets.pdf',
-      default => '_draw_pack.pdf',
-    };
+    $suffix = ($validated['print_type'] ?? 'pack') === 'venue'
+      ? '_venue_order_of_play.pdf'
+      : '_draw_pack.pdf';
     $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name) . $suffix;
 
     return $pdf->download($filename);

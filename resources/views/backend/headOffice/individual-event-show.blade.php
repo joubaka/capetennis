@@ -31,15 +31,37 @@ $(document).ready(function () {
         $('.print-draw-chk:not(:disabled)').prop('checked', $(this).is(':checked'));
     });
     $(document).on('change', '.print-draw-chk', function () {
+        if ($('input[name="print_type"]:checked').val() === 'bracket' && $(this).is(':checked')) {
+            $('.print-draw-chk').not(this).prop('checked', false);
+        }
         var total = $('.print-draw-chk:not(:disabled)').length;
         var checked = $('.print-draw-chk:checked').length;
         $('#chk-select-all-draws').prop('checked', total === checked);
     });
 
-    // Show/hide standings option
+    var defaultAccessibilityNote = $('#draw-pack-accessibility-note').text().trim();
+
+    // Show/hide options that apply to the selected print type.
     $('input[name="print_type"]').on('change', function () {
         var val = $(this).val();
         $('#standings-option').toggle(val === 'pack' || val === 'matrix' || val === 'combined');
+        var bracketOnly = val === 'bracket';
+        if (bracketOnly) {
+            $('.print-draw-chk').prop('checked', false).each(function () {
+                $(this).prop('disabled', $(this).data('flexible-monrad') !== 1);
+            });
+        } else {
+            $('.print-draw-chk').prop('disabled', false);
+        }
+        $('#chk-select-all-draws').prop({ checked: false, disabled: bracketOnly });
+        $('#monrad-bracket-help').toggleClass('d-none', !bracketOnly);
+        $('#btn-download-pdf').toggleClass('d-none', bracketOnly);
+        $('#draw-pack-accessibility-note').text(bracketOnly
+            ? 'The graphical Monrad board opens in a new tab and starts the print dialog. Choose Save as PDF there if you need a file.'
+            : defaultAccessibilityNote);
+        $('#btn-print-all-draws').html(bracketOnly
+            ? '<i class="ti ti-printer me-1"></i> Print Monrad bracket'
+            : '<i class="ti ti-printer me-1"></i> Print pack');
     });
 
     function escapePrintHtml(value) {
@@ -200,6 +222,27 @@ $(document).ready(function () {
         return ids;
     }
 
+    function openSelectedMonradBracket() {
+        var selected = $('.print-draw-chk:checked');
+        if (selected.length !== 1) {
+            toastr.warning('Select one Flexible Monrad draw to print its graphical bracket.');
+            return false;
+        }
+        var url = selected.first().data('monrad-print-url');
+        if (!url) {
+            toastr.warning('The selected draw is not a Flexible Monrad draw.');
+            return false;
+        }
+        var printWindow = window.open(url + (url.includes('?') ? '&' : '?') + 'print=draw#matrix', '_blank');
+        if (!printWindow) {
+            toastr.error('Popup blocked - please allow popups for this site.');
+            return false;
+        }
+        printWindow.opener = null;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('printAllDrawsModal')).hide();
+        return true;
+    }
+
     // ---- Sequential per-draw loader (browser print) ----
     $('#btn-print-all-draws').on('click', function () {
         var drawIds = getSelectedDrawIds();
@@ -207,7 +250,11 @@ $(document).ready(function () {
 
         var printType = $('input[name="print_type"]:checked').val();
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
-        if (printType === 'pack' || printType === 'venue' || printType === 'bracket') {
+        if (printType === 'bracket') {
+            openSelectedMonradBracket();
+            return;
+        }
+        if (printType === 'pack' || printType === 'venue') {
             var packParams = new URLSearchParams();
             drawIds.forEach(function (id) { packParams.append('draw_ids[]', id); });
             packParams.append('include_standings', includeStandings);
@@ -296,12 +343,17 @@ $(document).ready(function () {
         var printType = $('input[name="print_type"]:checked').val();
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
 
+        if (printType === 'bracket') {
+            openSelectedMonradBracket();
+            return;
+        }
+
         var params = new URLSearchParams();
         drawIds.forEach(function (id) { params.append('draw_ids[]', id); });
         params.append('print_type', printType);
         params.append('include_standings', includeStandings);
 
-        if (printType === 'pack' || printType === 'venue' || printType === 'bracket') {
+        if (printType === 'pack' || printType === 'venue') {
             params.append('download', 1);
             window.location.href = @json(route('headoffice.drawPack', $event)) + '?' + params.toString();
             return;
@@ -462,7 +514,9 @@ $(document).ready(function () {
             @foreach($event->draws as $draw)
               <div class="form-check">
                 <input class="form-check-input print-draw-chk" type="checkbox"
-                       value="{{ $draw->id }}" id="chk-draw-{{ $draw->id }}" checked>
+                       value="{{ $draw->id }}" id="chk-draw-{{ $draw->id }}" checked
+                       data-flexible-monrad="{{ $draw->is_flexible ? 1 : 0 }}"
+                       data-monrad-print-url="{{ $draw->is_flexible ? route('backend.draw.roundrobin.show', $draw) : '' }}">
                 <label class="form-check-label" for="chk-draw-{{ $draw->id }}">
                   {{ $draw->drawName ?? 'Draw #' . $draw->id }}
                 </label>
@@ -500,8 +554,8 @@ $(document).ready(function () {
             <div class="form-check">
               <input class="form-check-input" type="radio" name="print_type" value="bracket" id="pt-bracket">
               <label class="form-check-label" for="pt-bracket">
-                <i class="ti ti-tournament me-1 text-primary"></i> <strong>Bracket / Monrad Draw Only</strong>
-                <span class="d-block small text-muted">Only the bracket and placement pathways for the selected draws</span>
+                <i class="ti ti-tournament me-1 text-primary"></i> <strong>Flexible Monrad Bracket Only</strong>
+                <span class="d-block small text-muted">Print the graphical bracket exactly as shown in the Monrad workspace</span>
               </label>
             </div>
             <div class="form-check">
@@ -518,6 +572,8 @@ $(document).ready(function () {
             </div>
           </div>
         </fieldset>
+
+        <p class="small text-muted d-none" id="monrad-bracket-help">Select one Flexible Monrad draw above. Non-Monrad draws are disabled for this print type.</p>
 
         {{-- Include standings option (shown when matrix or combined selected) --}}
         <div class="form-check mb-3" id="standings-option">

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ $event->name }} - {{ match ($printType ?? 'pack') { 'venue' => 'Per-Venue Order of Play', 'bracket' => 'Brackets', default => 'Draw Pack' } }}</title>
+  <title>{{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }}</title>
   <style>
     @page { size: A4 landscape; margin: 11mm 10mm 13mm; }
     * { box-sizing: border-box; }
@@ -60,9 +60,6 @@
     .match-card .advance { margin-top: 1.5mm; padding-top: 1mm; border-top: .5pt solid #d8dee7; color: #657184; font-size: 6.5pt; }
     .matrix-ledger { page-break-inside: auto; }
     .fixture-list { page-break-before: always; }
-    .bracket-only h3 { margin-top: 2mm; }
-    .bracket-only h4 { margin-top: 2mm; }
-    .bracket-only .match-card { min-height: 15mm; margin-bottom: 1mm; padding: 1.5mm; }
     caption { height: 0; overflow: hidden; color: transparent; font-size: 0; }
     .footer { position: fixed; left: 0; right: 0; bottom: -8mm; color: #7b8593; font-size: 7pt; border-top: .5pt solid #ccd3dc; padding-top: 1.5mm; }
     .footer .page-number { float: right; }
@@ -78,7 +75,7 @@
 @endif
 
 <div class="footer">
-  {{ $event->name }} - {{ match ($printType ?? 'pack') { 'venue' => 'Per-Venue Order of Play', 'bracket' => 'Brackets', default => 'Draw Pack' } }} - Generated {{ now()->format('d M Y H:i') }}
+  {{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }} - Generated {{ now()->format('d M Y H:i') }}
   <span class="page-number">Page </span>
 </div>
 
@@ -103,7 +100,6 @@
     'SHIELD' => 'Shield', 'SPOON' => 'Spoon',
   ];
   $venueOnly = ($printType ?? 'pack') === 'venue';
-  $bracketOnly = ($printType ?? 'pack') === 'bracket';
   $venueSchedules = $schedule
     ->filter(fn ($fixture) => filled($fixture['venue']))
     ->groupBy('venue')
@@ -185,16 +181,6 @@
       </table>
     </section>
   @endforeach
-@endforeach
-@elseif($bracketOnly)
-@foreach($draws as $draw)
-  <section @class(['bracket-only', 'page' => !$loop->first])>
-    <header class="section-head">
-      <div><p class="cover-kicker">Bracket only</p><h2>{{ $draw['name'] }}</h2></div>
-      <div class="section-meta"><strong>{{ $draw['format'] }}</strong><br>{{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }}</div>
-    </header>
-    @include('backend.draw.pdf.partials.pathway-board', ['showEmptyPathway' => true])
-  </section>
 @endforeach
 @else
 <section class="cover">

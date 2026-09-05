@@ -99,4 +99,9 @@
   });
   window.addEventListener('afterprint', () => workspace.classList.remove('print-draw-only', 'print-timetable'));
   open();
+  if (new URLSearchParams(window.location.search).get('print') === 'draw') {
+    workspace.classList.remove('print-timetable');
+    workspace.classList.add('print-draw-only');
+    window.addEventListener('load', () => window.setTimeout(() => window.print(), 300), { once: true });
+  }
 })();
