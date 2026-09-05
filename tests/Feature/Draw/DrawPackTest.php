@@ -342,6 +342,11 @@ class DrawPackTest extends TestCase
             ]);
         }
 
+        Fixture::factory()->create([
+            'draw_id' => $firstDraw->id,
+            'match_nr' => 99,
+        ]);
+
         $response = $this->actingAs($this->admin)->get(route('headoffice.drawPack', [
             'event' => $this->event,
             'draw_ids' => [$firstDraw->id, $secondDraw->id],
@@ -358,6 +363,8 @@ class DrawPackTest extends TestCase
             ->assertSee('Court 1')
             ->assertSee('Court 2')
             ->assertSee('Court 3')
+            ->assertSee('Not on venue list: Boys U14 - M99')
+            ->assertSee('Missing time and venue')
             ->assertDontSee('Complete Draw Pack');
 
         $this->assertSame(2, substr_count($response->getContent(), 'Venue order of play'));

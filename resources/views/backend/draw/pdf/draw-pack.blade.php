@@ -104,7 +104,11 @@
     ->groupBy('venue')
     ->sortKeys();
   $venueScheduleMatches = $venueSchedules->flatten(1);
-  $notInVenueCopies = $totalMatches - $venueScheduleMatches->count();
+  $excludedVenueMatches = $draws->flatMap(fn ($draw) => collect($draw['oops'])
+    ->filter(fn ($fixture) => !filled($fixture['scheduled_at']) || !filled($fixture['venue']))
+    ->map(fn ($fixture) => $fixture + ['draw_name' => $draw['name']]))
+    ->values();
+  $notInVenueCopies = $excludedVenueMatches->count();
   $incompleteVenueCopies = $venueScheduleMatches->filter(fn ($fixture) => !filled($fixture['court']))->count();
 @endphp
 
@@ -135,6 +139,18 @@
     @empty
       <div class="empty-note">No selected matches have an applied venue and time yet.</div>
     @endforelse
+    @foreach($excludedVenueMatches as $fixture)
+      @php
+        $missingAssignments = collect([
+          !filled($fixture['scheduled_at']) ? 'time' : null,
+          !filled($fixture['venue']) ? 'venue' : null,
+        ])->filter()->implode(' and ');
+      @endphp
+      <div class="contents-row">
+        <strong>Not on venue list: {{ $fixture['draw_name'] }} - M{{ $fixture['match_nr'] ?? $fixture['id'] }}</strong><br>
+        <small>{{ $fixture['home'] }} vs {{ $fixture['away'] }} - Missing {{ $missingAssignments }}</small>
+      </div>
+    @endforeach
   </div>
 </section>
 
