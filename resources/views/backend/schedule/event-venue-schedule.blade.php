@@ -28,6 +28,10 @@
   .schedule-workspace .draw-panel + .draw-panel { border-top:1px solid var(--schedule-border); }
   .schedule-workspace .draw-panel > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; cursor:pointer; background:#fff; }
   .schedule-workspace .draw-panel[open] > summary { background:var(--schedule-soft); }
+  .schedule-workspace .draw-heading { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex:1; min-width:0; }
+  .schedule-workspace .draw-name { min-width:0; }
+  .schedule-workspace .draw-preview { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.35rem; }
+  .schedule-workspace .draw-preview .badge { max-width:20rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
   .schedule-workspace .draw-panel-body { padding:1rem; border-top:1px solid var(--schedule-border); }
   .schedule-workspace .venue-assignment { border-top:1px solid var(--schedule-border); padding:.8rem 0; }
   .schedule-workspace .venue-assignment:first-child { border-top:0; }
@@ -54,6 +58,9 @@
     .schedule-workspace .workspace-footer { position:static; align-items:stretch; flex-direction:column; }
     .schedule-workspace .workspace-footer .btn { width:100%; }
     .schedule-workspace .court-choices { padding-left:0; }
+    .schedule-workspace .draw-heading { align-items:flex-start; flex-direction:column; gap:.35rem; }
+    .schedule-workspace .draw-preview { justify-content:flex-start; }
+    .schedule-workspace .draw-preview .badge { max-width:15rem; }
   }
 </style>
 @endsection
@@ -93,11 +100,22 @@
           @forelse($draws as $draw)
             <details class="draw-panel {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $loop->first ? 'open' : '' }}>
               <summary>
-                <span class="flex-grow-1 fw-semibold">{{ $draw['name'] }}</span>
+                <span class="draw-heading">
+                  <span class="draw-name fw-semibold">{{ $draw['name'] }}</span>
+                  <span class="draw-preview" data-draw-summary="{{ $draw['id'] }}" aria-label="Assigned venues and courts">
+                    @forelse($venues->whereIn('id', $draw['venues']) as $assignedVenue)
+                      @php
+                        $previewLabels = $draw['court_allocations'][$assignedVenue['id']] ?? [];
+                        $previewCourtCount = empty($previewLabels) ? $assignedVenue['courts'] : count($previewLabels);
+                      @endphp
+                      <span class="badge bg-label-primary">{{ $assignedVenue['name'] }} · {{ $previewCourtCount }} {{ Str::plural('court', $previewCourtCount) }}</span>
+                    @empty
+                      <span class="badge bg-label-secondary">No venue assigned</span>
+                    @endforelse
+                  </span>
+                </span>
                 @if($draw['locked'] || $draw['published'])
                   <span class="badge bg-label-secondary">{{ $draw['published'] ? 'Published' : 'Locked' }}</span>
-                @else
-                  <span class="small text-muted" data-draw-summary="{{ $draw['id'] }}">{{ count($draw['venues']) }} {{ Str::plural('venue', count($draw['venues'])) }}</span>
                 @endif
                 <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
               </summary>
@@ -126,7 +144,7 @@
                     @endphp
                     <div class="venue-assignment">
                       <div class="d-flex align-items-center gap-2">
-                        <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
+                        <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" data-venue-name="{{ $venue['name'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
                         <span class="small text-muted" data-court-summary="{{ $draw['id'] }}-{{ $venue['id'] }}">{{ $venueAssigned ? (empty($allocatedLabels) ? 'All '.$venue['courts'] : count($allocatedLabels).' of '.$venue['courts']) : 'Not used' }}</span>
                         <button class="btn btn-sm btn-text-secondary court-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courts-{{ $draw['id'] }}-{{ $venue['id'] }}" aria-expanded="false" aria-controls="courts-{{ $draw['id'] }}-{{ $venue['id'] }}">Choose courts</button>
                       </div>
@@ -380,9 +398,24 @@
     if (summary) summary.textContent = !venue?.checked ? 'Not used' : selected === courts.length ? `All ${courts.length}` : `${selected} of ${courts.length}`;
   };
   const updateDrawSummary = drawId => {
-    const assigned = document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`).length;
     const summary = document.querySelector(`[data-draw-summary="${drawId}"]`);
-    if (summary) summary.textContent = `${assigned} ${assigned === 1 ? 'venue' : 'venues'}`;
+    const assigned = [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)];
+    if (summary) {
+      const badges = assigned.map(venue => {
+        const selectedCourts = document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venue.value}"]:checked`).length;
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-label-primary';
+        badge.textContent = `${venue.dataset.venueName} · ${selectedCourts} ${selectedCourts === 1 ? 'court' : 'courts'}`;
+        return badge;
+      });
+      if (!badges.length) {
+        const emptyBadge = document.createElement('span');
+        emptyBadge.className = 'badge bg-label-secondary';
+        emptyBadge.textContent = 'No venue assigned';
+        badges.push(emptyBadge);
+      }
+      summary.replaceChildren(...badges);
+    }
     const count = document.getElementById('selected-draw-count');
     if (count) count.textContent = document.querySelectorAll('.draw-choice:checked').length;
   };

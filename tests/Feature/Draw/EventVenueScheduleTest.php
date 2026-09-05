@@ -165,6 +165,8 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Schedule every assigned age group')
             ->assertSeeInOrder(['Shared Venue', $availableVenue->name])
             ->assertSeeInOrder(['Court 2', 'Court 8', 'Court 1'])
+            ->assertSee('data-draw-summary="'.$draws->first()->id.'"', false)
+            ->assertSee('Shared Venue · 2 courts')
             ->assertSee('open only the one you are editing')
             ->assertSee('id="court-allocation-step"', false)
             ->assertSee('id="schedule-rules-step"', false)
