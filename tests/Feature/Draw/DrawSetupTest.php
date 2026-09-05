@@ -192,6 +192,25 @@ class DrawSetupTest extends TestCase
             ->assertSee('id="btn-add-playoff"', false);
     }
 
+    public function test_legacy_round_robin_without_a_workflow_marker_can_add_playoffs(): void
+    {
+        $draw = $this->draw();
+        $group = $draw->groups()->create(['name' => 'A']);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $group->id,
+            'stage' => 'RR',
+        ]);
+
+        $this->assertNull($draw->settings?->workflow);
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+
+        $draw->refresh();
+        $this->assertSame('round_robin_playoffs', $draw->settings->workflow);
+        $this->assertSame([$fixture->id], $draw->drawFixtures()->pluck('id')->all());
+    }
+
     public function test_empty_selection_can_change_without_creating_groups_or_fixtures(): void
     {
         $draw = $this->draw();

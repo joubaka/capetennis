@@ -43,7 +43,7 @@ class DrawSetupController extends Controller
             abort_if($draw->locked || $draw->published, 409, 'Unlock and unpublish the draw before choosing a format.');
             abort_if($draw->team_category_id || $draw->event?->isTeam(), 422, 'Use the team draw setup for team fixtures.');
             if ($draw->settings?->workflow === $data['workflow']) return;
-            $isRoundRobinPlayoffUpgrade = $draw->settings?->workflow === 'round_robin'
+            $isRoundRobinPlayoffUpgrade = in_array($draw->settings?->workflow, [null, 'round_robin'], true)
                 && $data['workflow'] === 'round_robin_playoffs'
                 && ! $draw->drawFixtures()->where('stage', '!=', 'RR')->exists()
                 && empty($draw->flexibleMonrad?->draft['slots'])
