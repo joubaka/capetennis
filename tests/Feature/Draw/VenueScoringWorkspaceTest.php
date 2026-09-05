@@ -54,6 +54,32 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertNotSame($venue->id, $otherVenue->id);
     }
 
+    public function test_event_page_offers_assigned_convenor_a_scoring_link_for_each_scheduled_venue(): void
+    {
+        [$event, $draw, $venue] = $this->scheduledFixture('Main Venue');
+        $this->scheduledFixture('Main Venue', $event, $draw);
+        [, , $otherVenue] = $this->scheduledFixture('Other Venue', $event, $draw);
+        $user = $this->scorerFor($event);
+
+        $response = $this->actingAs($user)->get(route('events.show', $event));
+
+        $response->assertOk()
+            ->assertSee('Score fixtures by venue')
+            ->assertSee(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]), false)
+            ->assertSee(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $otherVenue->id]), false)
+            ->assertSee('>2</span>', false);
+    }
+
+    public function test_event_page_does_not_expose_venue_scoring_to_an_unassigned_user(): void
+    {
+        [$event] = $this->scheduledFixture('Main Venue');
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('events.show', $event))
+            ->assertOk()
+            ->assertDontSee('Score fixtures by venue');
+    }
+
     public function test_unassigned_score_keeper_cannot_open_another_events_workspace(): void
     {
         [$event] = $this->scheduledFixture('Main Venue');

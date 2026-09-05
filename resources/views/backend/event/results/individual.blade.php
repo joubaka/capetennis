@@ -56,7 +56,7 @@
 @section('content')
 <div class="container-xl">
   @include('backend.event.partials.header', [
-    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceActive' => 'results',
     'eventWorkspaceIcon' => 'ti-trophy',
     'eventWorkspaceSubtitle' => 'Final positions',
   ])
@@ -69,6 +69,16 @@
           <i class="ti ti-device-floppy me-1"></i>
           Save All
         </button>
+
+        <form id="results-publication-form" method="POST" action="{{ route('result.publish', $event->id) }}" class="d-inline"
+              @if($event->results_published) onsubmit="return confirm('Are you sure you want to unpublish the results?')" @endif>
+          @csrf
+          <button id="publish-results" type="submit"
+                  class="btn btn-sm btn-{{ $event->results_published ? 'outline-danger' : 'primary' }}">
+            <i class="ti ti-{{ $event->results_published ? 'eye-off' : 'world-upload' }} me-1"></i>
+            {{ $event->results_published ? 'Unpublish Results' : 'Save & Publish Results' }}
+          </button>
+        </form>
       </div>
   </div>
 
@@ -361,7 +371,7 @@ document.querySelectorAll('.save-positions').forEach(btn => {
 // ------------------------------
 // Save ALL (SEQUENTIAL)
 // ------------------------------
-document.getElementById('save-all').addEventListener('click', async () => {
+async function saveAllCategories() {
   console.log('[save-all] Save All button clicked');
 
   const saveAllBtn = document.getElementById('save-all');
@@ -372,7 +382,7 @@ document.getElementById('save-all').addEventListener('click', async () => {
   if (!buttons.length) {
     console.warn('[save-all] No categories found');
     notifyError('No categories to save');
-    return;
+    return false;
   }
 
   saveAllBtn.disabled = true;
@@ -401,9 +411,36 @@ document.getElementById('save-all').addEventListener('click', async () => {
 
   if (failed === 0) {
     notifySuccess(`All ${success} categories saved`);
+    return true;
   } else {
     notifyError(`Saved ${success}, failed ${failed}`);
+    return false;
   }
+}
+
+document.getElementById('save-all').addEventListener('click', saveAllCategories);
+
+@if(!$event->results_published)
+document.getElementById('results-publication-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const publicationForm = event.currentTarget;
+
+  if (!confirm('Save the current positions and publish the results?')) {
+    return;
+  }
+
+  const publishButton = document.getElementById('publish-results');
+  publishButton.disabled = true;
+  publishButton.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Saving & publishing…`;
+
+  if (await saveAllCategories()) {
+    publicationForm.submit();
+    return;
+  }
+
+  publishButton.disabled = false;
+  publishButton.innerHTML = `<i class="ti ti-world-upload me-1"></i> Save & Publish Results`;
 });
+@endif
 </script>
 @endsection

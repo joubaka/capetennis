@@ -54,17 +54,19 @@ class EventCategoryAccessTest extends TestCase
             ->assertOk();
     }
 
-    public function test_super_user_sees_admin_only_category_note_on_overview(): void
+    public function test_super_user_sees_one_canonical_category_link_on_overview(): void
     {
         $superUser = User::factory()->create()->assignRole('super-user');
 
         $this->actingAs($superUser)
             ->get(route('admin.events.overview', $this->event))
             ->assertOk()
-            ->assertSee('Category setup: event admins and super users only');
+            ->assertSee(route('admin.events.categories', $this->event), false)
+            ->assertSee('Categories')
+            ->assertDontSee('Category setup: event admins and super users only');
     }
 
-    public function test_event_admin_does_not_see_super_user_category_note(): void
+    public function test_event_admin_sees_one_canonical_category_link_on_overview(): void
     {
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert([
@@ -75,6 +77,8 @@ class EventCategoryAccessTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.events.overview', $this->event))
             ->assertOk()
+            ->assertSee(route('admin.events.categories', $this->event), false)
+            ->assertSee('Categories')
             ->assertDontSee('Category setup: event admins and super users only');
     }
 }

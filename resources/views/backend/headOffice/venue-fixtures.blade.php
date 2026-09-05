@@ -119,20 +119,16 @@
 @endsection
 
 @section('content')
-<div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb mb-0">
-            <li class="breadcrumb-item">
-                <a href="{{ route('admin.events.overview', $event) }}">
-                    <i class="ti ti-arrow-left me-1"></i>Event Dashboard
-                </a>
-            </li>
-            <li class="breadcrumb-item">
-                <a href="{{ route('headOffice.show', $event) }}">Fixtures HQ</a>
-            </li>
-            <li class="breadcrumb-item active">{{ $venue->name }} Fixtures</li>
-        </ol>
-    </nav>
+@include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'draws',
+    'eventWorkspaceIcon' => 'ti-map-pin',
+    'eventWorkspaceSubtitle' => $venue->name . ' fixtures',
+])
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 d-print-none">
+    <div>
+        <h4 class="mb-1">{{ $venue->name }} fixtures</h4>
+        <p class="text-muted mb-0">Review, print, or update the fixtures assigned to this venue.</p>
+    </div>
     <div class="btn-group">
         <button class="btn btn-outline-secondary" onclick="window.print();">
             <i class="ti ti-printer me-1"></i> Print

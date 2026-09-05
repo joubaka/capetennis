@@ -1,7 +1,7 @@
 @extends('layouts.backend')
 @section('title', 'Masters setup')
 @section('page-style')<style>.masters-page .card{border:1px solid #ebeaf0;box-shadow:0 .25rem 1rem rgba(47,43,61,.05)}.masters-page .card-header{background:#fff;border-bottom:1px solid #ebeaf0}.masters-page .category-row{border-bottom:1px solid #ebeaf0;padding:.7rem 0}.masters-page .stepper{display:inline-flex;align-items:center;border:1px solid #d9d7e2;border-radius:.4rem;overflow:hidden}.masters-page .stepper button{border:0;background:#f7f6fa;width:2rem;height:2rem;color:#5f596d}.masters-page .stepper output{min-width:2.2rem;text-align:center;font-weight:600}</style>@endsection
-@section('content')<div class="container-xl masters-page">@include('backend.event.partials.header',['event'=>$event])<div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">Masters setup</h4><p class="text-muted mb-0">Configure the ranking categories used for this Masters event.</p></div><a href="{{ route('admin.events.overview',$event) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a></div>@include('backend.event.masters._setup')</div>@endsection
+@section('content')<div class="container-xl masters-page">@include('backend.event.partials.header',['event'=>$event])<div class="mb-3"><h4 class="mb-1">Masters setup</h4><p class="text-muted mb-0">Configure the ranking categories used for this Masters event.</p></div>@include('backend.event.masters._setup')</div>@endsection
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {

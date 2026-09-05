@@ -121,8 +121,8 @@
               <td>{{ $fixture['court'] ?: 'TBA' }}</td>
               <td>{{ $fixture['draw_name'] }}</td>
               <td><span class="stage-label">{{ $stageLabels[$fixture['stage']] ?? ($fixture['stage'] ?: 'Draw') }}</span><br>M{{ $fixture['match_nr'] ?? $fixture['id'] }}</td>
-              <td>{{ $fixture['home'] ?: 'TBD' }}</td>
-              <td>{{ $fixture['away'] ?: 'TBD' }}</td>
+              <td>{{ $fixture['home'] }}</td>
+              <td>{{ $fixture['away'] }}</td>
               <td class="result-cell">{{ $fixture['score'] }}</td>
             </tr>
           @endforeach
@@ -182,16 +182,23 @@
     @endif
 
     @if(count($draw['oops']))
-      @foreach(collect($draw['oops'])->groupBy(fn ($fixture) => $fixture['stage'] ?: 'DRAW') as $stage => $fixtures)
-        <h3>{{ $draw['name'] }} - {{ $stageLabels[$stage] ?? str($stage)->headline() }}</h3>
+      @php
+        $fixtures = collect($draw['oops'])->sortBy(fn ($fixture) => sprintf(
+          '%s|%08d',
+          $fixture['scheduled_at'] ?: '9999-12-31 23:59:59',
+          (int) ($fixture['match_nr'] ?? $fixture['id'])
+        ))->values();
+      @endphp
+        <h3>{{ $draw['name'] }} - Fixtures in scheduled order</h3>
         <table class="data">
-          <thead><tr><th style="width:7%">Match</th><th style="width:21%">Player 1</th><th style="width:21%">Player 2</th><th style="width:9%">Date</th><th style="width:8%">Time</th><th style="width:14%">Venue</th><th style="width:8%">Court</th><th style="width:12%">Result</th></tr></thead>
+          <thead><tr><th style="width:7%">Match</th><th style="width:9%">Stage</th><th style="width:19%">Player 1</th><th style="width:19%">Player 2</th><th style="width:9%">Date</th><th style="width:8%">Time</th><th style="width:12%">Venue</th><th style="width:7%">Court</th><th style="width:10%">Result</th></tr></thead>
           <tbody>
           @foreach($fixtures as $fixture)
             <tr>
               <td>M{{ $fixture['match_nr'] ?? $fixture['id'] }}@if($fixture['round'])<br><small>Round {{ $fixture['round'] }}</small>@endif</td>
-              <td>{{ $fixture['home'] ?: 'TBD' }}</td>
-              <td>{{ $fixture['away'] ?: 'TBD' }}</td>
+              <td><span class="stage-label">{{ $stageLabels[$fixture['stage']] ?? str($fixture['stage'] ?: 'Draw')->headline() }}</span></td>
+              <td>{{ $fixture['home'] }}</td>
+              <td>{{ $fixture['away'] }}</td>
               <td class="nowrap">{{ $fixture['scheduled_at'] ? \Carbon\Carbon::parse($fixture['scheduled_at'])->format('d M Y') : 'TBA' }}</td>
               <td class="nowrap">{{ $fixture['scheduled_at'] ? \Carbon\Carbon::parse($fixture['scheduled_at'])->format('H:i') : 'TBA' }}</td>
               <td>{{ $fixture['venue'] ?: 'TBA' }}</td>
@@ -201,7 +208,6 @@
           @endforeach
           </tbody>
         </table>
-      @endforeach
     @else
       <div class="empty-note">This draw has no generated fixtures yet.</div>
     @endif

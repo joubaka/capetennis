@@ -85,6 +85,19 @@ class ResultController extends Controller
   {
     $event = Event::findOrFail($id);
     $this->authorize('event.manage', $event);
+
+    if (! $event->results_published && ! $event->isTeam()) {
+      $hasSavedPositions = DB::table('category_results')
+        ->where('event_id', $event->id)
+        ->exists();
+
+      if (! $hasSavedPositions) {
+        throw ValidationException::withMessages([
+          'results' => 'Save at least one final position before publishing results.',
+        ]);
+      }
+    }
+
     $event->results_published = ! $event->results_published;
     $event->save();
 

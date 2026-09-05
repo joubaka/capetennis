@@ -9,6 +9,8 @@
       </div>
     </div>
     <div class="card-body">
+      @include('frontend.event.partials._venue-scoring')
+
       @if($eventDraws->isEmpty())
         <div class="alert alert-info mb-0" role="status">
           <div class="fw-semibold">The draws are being finalised.</div>

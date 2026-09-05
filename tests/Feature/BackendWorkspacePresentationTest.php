@@ -62,6 +62,16 @@ class BackendWorkspacePresentationTest extends TestCase
         }
         $this->assertStringNotContainsString(route('admin.events.draws', $event), $html);
         $this->assertSame(1, substr_count($html, 'aria-current="page"'));
+        $this->assertLessThan(
+            strpos($html, '>Finances</a>'),
+            strpos($html, '>Results</a>'),
+            'Results should be a primary event tab before Finances.'
+        );
+        $this->assertGreaterThan(
+            strpos($html, '>More</button>'),
+            strpos($html, '>Event directors</a>'),
+            'Event directors should live in the More menu.'
+        );
 
         $otherEvent = Event::factory()->create(['eventType' => 6]);
         $otherHtml = view('backend.event.partials.workspace-nav', ['event' => $otherEvent])->render();

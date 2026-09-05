@@ -1305,15 +1305,33 @@ class HeadOfficeController extends Controller
 
     $stagePriority = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2, 'CONS' => 3, 'BOWL' => 4, 'SHIELD' => 5, 'SPOON' => 6];
 
-    // Build feeder maps from parent_fixture_id / loser_parent_fixture_id
+    // Build feeder maps and slot-aware participant source labels from the draw graph.
     $winnerFeeders = [];
     $loserFeeders  = [];
+    $sourceLabels  = [];
     foreach ($draw->drawFixtures as $fx) {
       if ($fx->parent_fixture_id) {
         $winnerFeeders[$fx->parent_fixture_id][] = $fx->match_nr;
+        $slot = in_array((int) $fx->feeder_slot, [1, 2], true)
+          ? (int) $fx->feeder_slot - 1
+          : (! isset($sourceLabels[$fx->parent_fixture_id][0]) ? 0 : 1);
+        $sourceLabels[$fx->parent_fixture_id][$slot] = 'Winner of Match '.($fx->match_nr ?: $fx->id);
       }
       if ($fx->loser_parent_fixture_id) {
         $loserFeeders[$fx->loser_parent_fixture_id][] = $fx->match_nr;
+        $slot = in_array((int) $fx->loser_feeder_slot, [1, 2], true)
+          ? (int) $fx->loser_feeder_slot - 1
+          : (! isset($sourceLabels[$fx->loser_parent_fixture_id][0]) ? 0 : 1);
+        $sourceLabels[$fx->loser_parent_fixture_id][$slot] = 'Loser of Match '.($fx->match_nr ?: $fx->id);
+      }
+
+      foreach ([1, 2] as $slotNumber) {
+        $groupId = (int) $fx->getAttribute("registration{$slotNumber}_source_group_id");
+        $position = (int) $fx->getAttribute("registration{$slotNumber}_source_position");
+        if ($groupId && $position) {
+          $groupName = $draw->groups->firstWhere('id', $groupId)?->name ?: $groupId;
+          $sourceLabels[$fx->id][$slotNumber - 1] = "Group {$groupName} #{$position}";
+        }
       }
     }
 
@@ -1322,7 +1340,7 @@ class HeadOfficeController extends Controller
         $sp = $stagePriority[$fx->stage ?? 'RR'] ?? 99;
         return sprintf('%02d-%05d-%05d', $sp, (int)$fx->round, (int)$fx->match_nr);
       })
-      ->map(function ($fx) use ($winnerFeeders, $loserFeeders) {
+      ->map(function ($fx) use ($winnerFeeders, $loserFeeders, $sourceLabels) {
         $sets = $fx->fixtureResults
           ->sortBy('set_nr')
           ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
@@ -1341,8 +1359,10 @@ class HeadOfficeController extends Controller
           'round'        => $fx->round,
           'match_nr'     => $fx->match_nr,
           'playoff_type' => $fx->playoff_type,
-          'home'         => $fx->registration1?->display_name ?? 'TBD',
-          'away'         => $fx->registration2?->display_name ?? 'TBD',
+          'home'         => $fx->registration1?->display_name
+            ?? ($sourceLabels[$fx->id][0] ?? 'Unassigned draw position'),
+          'away'         => $fx->registration2?->display_name
+            ?? ($sourceLabels[$fx->id][1] ?? 'Unassigned draw position'),
           'r1_id'        => $fx->registration1_id,
           'r2_id'        => $fx->registration2_id,
           'score'        => $sets,

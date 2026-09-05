@@ -5,13 +5,7 @@
   </div>
 
   <div class="card-body">
-    @can('event.score', $event)
-      <div class="d-grid d-sm-flex mb-4">
-        <a href="{{ route('frontend.scoring.workspace', $event) }}" class="btn btn-primary btn-lg">
-          <i class="bi bi-clipboard-check me-1"></i> Venue scoring
-        </a>
-      </div>
-    @endcan
+    @include('frontend.event.partials._venue-scoring')
 
     {{-- ✅ Published Draws --}}
 <div class="mb-3">
@@ -67,7 +61,6 @@
         @php
           // Calculate convenor/admin permission once for this view
           $user = auth()->user();
-          $canScoreEvent = auth()->check() && $user->can('event.score', $event);
         @endphp
 
         <div class="d-flex flex-wrap gap-2">
@@ -77,16 +70,6 @@
                  class="btn btn-outline-primary btn-sm">
                 {{ $venue->name }}
               </a>
-
-              {{-- Convenor / Admin: quick Enter Scores (per-venue convenor view) --}}
-              @if($canScoreEvent)
-                {{-- Convenor enter-scores page for this venue, filtered by event and venue --}}
-                <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]) }}"
-                   class="btn btn-sm btn-light border"
-                   title="Enter scores for {{ $venue->name }}">
-                  <i class="bi bi-clipboard-data"></i> Score
-                </a>
-              @endif
             </div>
           @endforeach
         </div>

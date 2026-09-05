@@ -9,6 +9,7 @@ use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\CategoryResult;
 use App\Models\CategoryEventRegistration;
+use Illuminate\Validation\ValidationException;
 
 class EventCategoryResultController extends Controller
 {
@@ -19,27 +20,38 @@ class EventCategoryResultController extends Controller
     Event $event,
     CategoryEvent $categoryEvent
   ) {
+    $this->authorize('event.manage', $event);
+
+    if ((int) $categoryEvent->event_id !== (int) $event->id) {
+      abort(404);
+    }
+
     $request->validate([
       'positions' => ['present', 'array'],
-      'positions.*.registration_id' => ['required', 'integer'],
-      'positions.*.position' => ['required', 'integer', 'min:1'],
+      'positions.*.registration_id' => ['required', 'integer', 'distinct'],
+      'positions.*.position' => ['required', 'integer', 'min:1', 'distinct'],
     ]);
 
-    // Handle empty positions array (no players in category)
-    if (empty($request->positions)) {
-      return response()->json([
-        'status' => 'ok',
-        'message' => 'No positions to save (empty category)',
+    $submittedIds = collect($request->positions)->pluck('registration_id')->map(fn ($id) => (int) $id);
+    $submittedPositions = collect($request->positions)->pluck('position')->map(fn ($position) => (int) $position)->sort()->values();
+    $expectedPositions = collect(range(1, $submittedPositions->count()));
+
+    if ($submittedPositions->isNotEmpty() && $submittedPositions->all() !== $expectedPositions->all()) {
+      throw ValidationException::withMessages([
+        'positions' => 'Final positions must be consecutive and start at 1.',
       ]);
     }
 
-    // Check for duplicate positions in request
-    $positions = collect($request->positions)->pluck('position');
-    if ($positions->count() !== $positions->unique()->count()) {
-      return response()->json([
-        'status' => 'error',
-        'message' => 'Duplicate positions detected',
-      ], 422);
+    $activeRegistrationIds = CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
+      ->where('status', '!=', 'withdrawn')
+      ->whereIn('registration_id', $submittedIds)
+      ->pluck('registration_id')
+      ->map(fn ($id) => (int) $id);
+
+    if ($submittedIds->diff($activeRegistrationIds)->isNotEmpty()) {
+      throw ValidationException::withMessages([
+        'positions' => 'Every positioned registration must be active in this event category.',
+      ]);
     }
 
     // Get IDs of withdrawn registrations so they are excluded from results/points
@@ -67,7 +79,9 @@ class EventCategoryResultController extends Controller
         ->delete();
 
       // 🔒 Insert fresh results
-      DB::table('category_results')->insert($rows);
+      if ($rows !== []) {
+        DB::table('category_results')->insert($rows);
+      }
     });
 
     return response()->json([

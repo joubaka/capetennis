@@ -1,13 +1,12 @@
 @php
   $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
     request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
-    request()->routeIs('convenor.*') => 'directors',
+    request()->routeIs('admin.events.results.*', 'backend.scoreboard.team.show') => 'results',
     request()->routeIs('admin.events.finances*') => 'finances',
     request()->routeIs('admin.events.settings*') => 'settings',
     request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
     request()->routeIs(
-      'admin.events.results.*', 'backend.scoreboard.team.show',
-      'admin.events.categories', 'admin.events.announcements*',
+      'convenor.*', 'admin.events.categories', 'admin.events.announcements*',
       'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf'
     ) => 'more',
     default => 'overview',
@@ -18,9 +17,7 @@
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>
     <a href="{{ route($event->isTeam() ? 'admin.events.teams' : 'admin.events.entries.new', $event) }}" @if($eventWorkspaceActive === 'entries') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>{{ $event->isTeam() ? 'Teams' : 'Entries' }}</a>
     <a href="{{ route('headOffice.show', $event->id) }}" @if($eventWorkspaceActive === 'draws') aria-current="page" @endif><i class="ti ti-tournament" aria-hidden="true"></i>Draws</a>
-  @endcan
-  @can('event.manage', $event)
-    <a href="{{ route('convenor.show', $event->id) }}" @if($eventWorkspaceActive === 'directors') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Event directors</a>
+    <a href="{{ route($event->isTeam() ? 'backend.scoreboard.team.show' : 'admin.events.results.individual', $event) }}" @if($eventWorkspaceActive === 'results') aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Results</a>
   @endcan
   @can('event-finance.view', $event)
     <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
@@ -42,16 +39,12 @@
       <div class="dropdown-menu dropdown-menu-end">
         @can('event-draw.view', $event)
           <a class="dropdown-item" href="{{ route('admin.events.transactions', $event) }}"><i class="ti ti-credit-card" aria-hidden="true"></i>Transactions</a>
-          @if($event->isTeam())
-            <a class="dropdown-item" href="{{ route('backend.scoreboard.team.show', $event) }}"><i class="ti ti-scoreboard" aria-hidden="true"></i>Team scoreboard</a>
-          @else
-            <a class="dropdown-item" href="{{ route('admin.events.results.individual', $event) }}"><i class="ti ti-trophy" aria-hidden="true"></i>Results</a>
-          @endif
         @endcan
         @can('event-category.manage', $event)
           <a class="dropdown-item" href="{{ route('admin.events.categories', $event) }}"><i class="ti ti-list-details" aria-hidden="true"></i>Categories</a>
         @endcan
         @can('event.manage', $event)
+          <a class="dropdown-item" href="{{ route('convenor.show', $event->id) }}"><i class="ti ti-users" aria-hidden="true"></i>Event directors</a>
           <a class="dropdown-item" href="{{ route('admin.events.announcements', $event) }}"><i class="ti ti-megaphone" aria-hidden="true"></i>Announcements</a>
           @if(\App\Models\SiteSetting::disciplinarySystemEnabled())
             <a class="dropdown-item" href="{{ route('backend.events.disciplinary.index', $event) }}"><i class="ti ti-scale" aria-hidden="true"></i>Discipline &amp; incidents</a>

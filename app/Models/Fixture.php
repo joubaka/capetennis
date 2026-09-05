@@ -33,6 +33,7 @@ class Fixture extends Model
     'loser_parent_fixture_id',
     'winner_registration',
     'feeder_slot',
+    'loser_feeder_slot',
     'position',          // Position playoff (3 = 3rd/4th, 5 = 5th/6th, etc.)
     'playoff_type',      // Playoff type label (e.g., '3rd/4th', '5th/6th', 'cons_sf1')
 

@@ -12,6 +12,8 @@ class EventResultsController extends Controller
 {
   public function individual(Event $event)
   {
+    $this->authorize('event-draw.view', $event);
+
     // ── 1. All categories + their category name (2 queries) ──────────────────
     $categoryEvents = CategoryEvent::where('event_id', $event->id)
       ->with('category')
