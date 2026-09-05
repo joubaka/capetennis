@@ -66,6 +66,7 @@
           {{-- ========================================
                 VENUE + COURT
           ========================================= --}}
+          <div id="manual-schedule-fields" style="display:none;">
           <div class="row mb-3">
             <div class="col-md-6">
               <label class="form-label">Venue</label>
@@ -93,48 +94,52 @@
 
             <div class="col-md-6">
               <label class="form-label">Start Time</label>
-              <input type="text" class="form-control flatpickr-time" name="time" placeholder="Select time">
+              <input type="datetime-local" class="form-control" name="scheduled_at"
+                value="{{ \Illuminate\Support\Carbon::parse($draw->event?->start_date ?? now())->format('Y-m-d') }}T08:00">
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Duration (minutes)</label>
               <select class="form-select" name="duration">
-                <option value="60">60 min</option>
-                <option value="75" selected>75 min</option>
+                <option value="45">45 min</option>
+                <option value="60" selected>60 min</option>
+                <option value="75">75 min</option>
                 <option value="90">90 min</option>
                 <option value="120">120 min</option>
               </select>
             </div>
 
           </div>
+          </div>
 
 
           {{-- ========================================
                 AUTO-SCHEDULE OPTIONS
           ========================================= --}}
-          <div class="border rounded p-3 mb-3">
+          <div class="border rounded p-3 mb-3" id="auto-schedule-options">
 
             <h6 class="fw-bold mb-2">Auto-Schedule Options</h6>
 
             <div class="row mb-2">
               <div class="col-md-6">
-                <label class="form-label">Auto Start Time</label>
-                <input type="text" class="form-control flatpickr-time" id="autoStart" placeholder="08:00">
+                <label class="form-label">Start date and time</label>
+                <input type="datetime-local" class="form-control" id="autoStart"
+                  value="{{ \Illuminate\Support\Carbon::parse($draw->event?->start_date ?? now())->format('Y-m-d') }}T08:00">
               </div>
 
               <div class="col-md-3">
                 <label class="form-label">Duration</label>
-                <input type="number" id="autoDuration" class="form-control" value="75">
+                <input type="number" id="autoDuration" class="form-control" min="1" max="1440" value="60">
               </div>
 
               <div class="col-md-3">
                 <label class="form-label">Gap</label>
-                <input type="number" id="autoGap" class="form-control" value="0">
+                <input type="number" id="autoGap" class="form-control" min="0" max="1440" value="0">
               </div>
             </div>
 
             <button type="button" id="autoScheduleBtn" class="btn btn-warning w-100">
-              Auto Schedule
+              Auto-schedule entire draw
             </button>
 
           </div>
@@ -153,7 +158,7 @@
           </button>
 
           <button type="button" id="saveScheduleBtn" class="btn btn-primary">
-            Apply Schedule
+            Save selected match
           </button>
 
         </div>
@@ -180,25 +185,36 @@ function initScheduleModal() {
     };
 
     // ------------------------------------------------------------------
-    // FLATPICKR
-    // ------------------------------------------------------------------
-    $('.flatpickr-time').flatpickr({
-        noCalendar: true,
-        enableTime: true,
-        dateFormat: 'H:i',
-        time_24hr: true,
-    });
-
-    // ------------------------------------------------------------------
     // MODE SWITCHING UI
     // ------------------------------------------------------------------
-    $('.mode-radio').on('change', function () {
-        let mode = $(this).val();
+    function updateMode() {
+        const mode = $('input[name=mode]:checked').val();
         $('.mode-field').hide();
-
         if (mode === 'round') $('#round-field').show();
-        if (mode === 'match') $('#match-field').show();
-    });
+        if (mode === 'match') {
+            $('#match-field, #manual-schedule-fields, #saveScheduleBtn').show();
+            $('#auto-schedule-options').hide();
+        } else {
+            $('#manual-schedule-fields, #saveScheduleBtn').hide();
+            $('#auto-schedule-options').show();
+            $('#autoScheduleBtn').text(mode === 'round'
+                ? 'Auto-schedule selected round'
+                : 'Auto-schedule entire draw');
+        }
+    }
+    $('.mode-radio').on('change', updateMode);
+    updateMode();
+
+    function errorMessage(xhr, fallback) {
+        const response = xhr.responseJSON || {};
+        if (response.message) return response.message;
+        if (response.error) return response.error;
+        if (response.errors) {
+            const messages = Object.values(response.errors).flat();
+            if (messages.length) return messages.join(' ');
+        }
+        return fallback;
+    }
 
     // ------------------------------------------------------------------
     // LOAD FIXTURES + VENUES
@@ -211,11 +227,7 @@ function initScheduleModal() {
             matchSelect.empty().append(`<option value="">Select match</option>`);
 
             resp.fixtures.forEach(fx => {
-                matchSelect.append(
-                    `<option value="${fx.id}">
-                        #${fx.match_nr} — ${fx.p1} vs ${fx.p2}
-                     </option>`
-                );
+                matchSelect.append(new Option(`#${fx.match_nr} — ${fx.p1} vs ${fx.p2}`, fx.id));
             });
 
             // Venues
@@ -223,13 +235,13 @@ function initScheduleModal() {
             venueSelect.empty().append(`<option value="">Select venue</option>`);
 
             resp.venues.forEach(v => {
-                venueSelect.append(
-                    `<option data-courts="${v.num_courts}" value="${v.id}">${v.name}</option>`
-                );
+                const option = new Option(v.name, v.id);
+                option.dataset.courts = v.num_courts;
+                venueSelect.append(option);
             });
 
             if (thenRun) thenRun();
-        });
+        }).fail(xhr => toastr.error(errorMessage(xhr, 'Could not load scheduling data.')));
     }
 
     // Initial load
@@ -246,7 +258,7 @@ function initScheduleModal() {
         courtSelect.empty().append(`<option value="">Select court</option>`);
 
         for (let i = 1; i <= numCourts; i++) {
-            courtSelect.append(`<option value="C${i}">C${i}</option>`);
+            courtSelect.append(new Option(`Court ${i}`, String(i)));
         }
     });
 
@@ -255,26 +267,27 @@ function initScheduleModal() {
     // ------------------------------------------------------------------
     $('#saveScheduleBtn').on('click', function () {
         if (scheduleBusy) return;
+        const data = {
+            fixture_id:       $('#matchSelect').val(),
+            scheduled_at:     $('input[name=scheduled_at]').val(),
+            venue_id:         $('#venueSelect').val(),
+            court_label:      $('#courtSelect').val(),
+            duration_minutes: $('select[name=duration]').val(),
+            _token:           $('meta[name="csrf-token"]').attr('content')
+        };
+        if (!data.fixture_id || !data.scheduled_at || !data.venue_id || !data.court_label) {
+            toastr.error('Select a match, venue, court, and start date and time.');
+            return;
+        }
         scheduleBusy = true;
         $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', true);
-
-        let data = {
-            mode:       $('input[name=mode]:checked').val(),
-            venue_id:   $('#venueSelect').val(),
-            court:      $('#courtSelect').val(),
-            time:       $('input[name=time]').val(),
-            duration:   $('select[name=duration]').val(),
-            round:      $('#roundSelect').val(),
-            fixture_id: $('#matchSelect').val(),
-            _token:     $('meta[name="csrf-token"]').attr('content')
-        };
 
         $.post(routes.apply, data, function () {
             $('#scheduleModal').modal('hide');
             toastr.success("Schedule updated");
             refreshScheduleTable();
         }).fail(function(xhr) {
-            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+            toastr.error(errorMessage(xhr, 'Could not save the selected match.'));
         }).always(function() {
             scheduleBusy = false;
             $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);
@@ -286,22 +299,31 @@ function initScheduleModal() {
     // ------------------------------------------------------------------
     $('#autoScheduleBtn').on('click', function () {
         if (scheduleBusy) return;
+        const mode = $('input[name=mode]:checked').val();
+        const autoData = {
+            start:    $('#autoStart').val(),
+            duration: $('#autoDuration').val(),
+            gap:      $('#autoGap').val(),
+            _token:   $('meta[name="csrf-token"]').attr('content')
+        };
+        if (mode === 'round') autoData.round = $('#roundSelect').val();
+        if (!autoData.start) {
+            toastr.error('Select a start date and time.');
+            return;
+        }
+        if (mode === 'round' && !autoData.round) {
+            toastr.error('Select the round to schedule.');
+            return;
+        }
         scheduleBusy = true;
         $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', true);
-
-        let autoData = {
-            start_time: $('#autoStart').val(),
-            duration:   $('#autoDuration').val(),
-            gap:        $('#autoGap').val(),
-            _token:     $('meta[name="csrf-token"]').attr('content')
-        };
 
         $.post(routes.auto, autoData, function () {
             $('#scheduleModal').modal('hide');
             toastr.success("Auto-schedule complete");
             refreshScheduleTable();
         }).fail(function(xhr) {
-            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+            toastr.error(errorMessage(xhr, 'Could not auto-schedule the matches.'));
         }).always(function() {
             scheduleBusy = false;
             $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);
@@ -319,7 +341,7 @@ function initScheduleModal() {
             toastr.info("All schedules cleared");
             refreshScheduleTable();
         }).fail(function(xhr) {
-            toastr.error(xhr.responseJSON?.message || 'Could not save the schedule.');
+            toastr.error(errorMessage(xhr, 'Could not clear the schedule.'));
         }).always(function() {
             scheduleBusy = false;
             $('#saveScheduleBtn, #autoScheduleBtn, #clearScheduleBtn').prop('disabled', false);

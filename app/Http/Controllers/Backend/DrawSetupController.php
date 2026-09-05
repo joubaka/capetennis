@@ -23,6 +23,9 @@ class DrawSetupController extends Controller
     {
         $this->authorize('view', $draw);
         $fixtureIds = $draw->drawFixtures()->pluck('id');
+        $flexible = $draw->flexibleMonrad;
+        $hasFormatState = $fixtureIds->isNotEmpty() || $draw->groups()->exists()
+            || ! empty($flexible?->draft['slots']) || ! empty($flexible?->graph);
         return view('backend.draw.setup', [
             'draw' => $draw,
             'options' => self::OPTIONS,
@@ -33,7 +36,7 @@ class DrawSetupController extends Controller
                 'groups' => $draw->groups()->count(),
                 'results' => DB::table('fixture_results')->whereIn('fixture_id', $fixtureIds)->count(),
                 'roster_entries' => $draw->registrations()->reorder()->count(),
-                'has_format_state' => $fixtureIds->isNotEmpty() || $draw->groups()->exists() || $draw->flexibleMonrad()->exists(),
+                'has_format_state' => $hasFormatState,
             ],
         ]);
     }
@@ -64,7 +67,7 @@ class DrawSetupController extends Controller
                 && empty($draw->flexibleMonrad?->draft['slots'])
                 && ! $draw->flexibleMonrad?->graph;
             $hasExistingFormatState = $draw->drawFixtures()->exists() || $draw->groups()->exists()
-                || $draw->flexibleMonrad()->exists();
+                || ! empty($draw->flexibleMonrad?->draft['slots']) || ! empty($draw->flexibleMonrad?->graph);
             $resetCounts = null;
             if (! $isRoundRobinPlayoffUpgrade && $hasExistingFormatState) {
                 abort_unless((bool) ($data['reset_existing'] ?? false), 409,

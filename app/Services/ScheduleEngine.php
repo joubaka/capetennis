@@ -79,7 +79,8 @@ class ScheduleEngine
    * @param array  $venues     [ venueId => ['name' => '...', 'courts' => [1,2,...]], ... ]
    * @param string $startTime  ISO datetime string for the first slot.
    */
-  public function autoSchedule(int $drawId, int $duration = 75, array $venues = [], string $startTime = '')
+  public function autoSchedule(int $drawId, int $duration = 75, array $venues = [], string $startTime = '',
+    ?int $round = null, int $gap = 0)
   {
     if (empty($venues)) {
       throw new \InvalidArgumentException('ScheduleEngine::autoSchedule() requires a non-empty $venues array.');
@@ -90,10 +91,16 @@ class ScheduleEngine
     }
 
     if (Draw::findOrFail($drawId)->usesFlexibleMonrad()) {
+      if ($round !== null) {
+        throw new \InvalidArgumentException('Monrad rounds belong to separate placement paths. Auto-schedule the whole draw or adjust individual matches.');
+      }
+      if ($gap !== 0) {
+        throw new \InvalidArgumentException('A custom gap is not supported for Flexible Monrad scheduling.');
+      }
       return app(\App\Services\Draw\FlexibleMonradScheduler::class)->schedule($drawId, $duration, $venues, $startTime);
     }
 
-    return $this->scheduleFixtures($drawId, $duration, $venues, $startTime);
+    return $this->scheduleFixtures($drawId, $duration, $venues, $startTime, $round, [], [], $gap);
   }
 
 

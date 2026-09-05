@@ -222,11 +222,51 @@ class DrawWorkspaceTest extends TestCase
         foreach (['btn-print-fixtures', 'btn-print-matrix', 'btn-print-bracket', 'btn-print-empty-bracket', 'btn-print-combined', 'btn-print-draw-pack', 'preset-selector', 'btn-save-notes', 'autoScheduleBtn'] as $id) {
             $response->assertSee('id="'.$id.'"', false);
         }
+        $response->assertSee('name="scheduled_at"', false)
+            ->assertSee('court_label:', false)
+            ->assertSee('duration_minutes:', false)
+            ->assertSee("start:    $('#autoStart').val()", false)
+            ->assertSee('response.error', false);
         if (getenv('DRAW_WORKSPACE_SNAPSHOT') === '1') {
             $directory = storage_path('app/testing');
             if (! is_dir($directory)) mkdir($directory, 0777, true);
             file_put_contents($directory.'/draw-workspace.html', $response->getContent());
         }
+    }
+
+    public function test_selected_round_auto_schedule_only_schedules_that_round(): void
+    {
+        [$draw] = $this->workspace();
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Round-robin courts', 'event_id' => $draw->event_id]);
+        $draw->venues()->attach($venueId, ['num_courts' => 2]);
+        $players = Registration::factory()->count(4)->create();
+        $roundOne = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'round' => 1,
+            'registration1_id' => $players[0]->id,
+            'registration2_id' => $players[1]->id,
+        ]);
+        $roundTwo = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'round' => 2,
+            'registration1_id' => $players[2]->id,
+            'registration2_id' => $players[3]->id,
+        ]);
+
+        $this->postJson(route('backend.individual-schedule.auto', $draw), [
+            'start' => '2026-09-06T08:00',
+            'duration' => 60,
+            'gap' => 15,
+            'round' => 1,
+        ])->assertOk()->assertJsonPath('count', 1);
+
+        $this->assertDatabaseHas('order_of_plays', [
+            'fixture_id' => $roundOne->id,
+            'venue_id' => $venueId,
+            'duration_minutes' => 60,
+            'gap_minutes' => 15,
+        ]);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $roundTwo->id]);
     }
 
     public function test_stale_fixture_preview_cannot_replace_existing_fixtures(): void

@@ -9,7 +9,6 @@ use App\Models\Draw;
 use App\Services\ScheduleEngine;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class ScheduleController extends Controller
 {
@@ -174,24 +173,28 @@ class ScheduleController extends Controller
   public function saveFixture(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    $request->validate(['duration_minutes' => 'nullable|integer|min:1|max:1440']);
+    $data = $request->validate([
+      'fixture_id' => 'required|integer',
+      'scheduled_at' => 'nullable|date',
+      'venue_id' => 'required_with:scheduled_at|nullable|integer',
+      'court_label' => 'required_with:scheduled_at|nullable|string|max:50',
+      'duration_minutes' => 'nullable|integer|min:1|max:1440',
+    ]);
     if ($draw->usesFlexibleMonrad()) {
-      $request->validate(['fixture_id' => 'required|integer', 'scheduled_at' => 'nullable|date']);
       try {
-        app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture($draw, (int) $request->fixture_id,
-          $request->scheduled_at ?: null, (int) $request->venue_id, (string) $request->court_label,
-          $request->filled('duration_minutes') ? (int) $request->duration_minutes : null);
-      } catch (\InvalidArgumentException $e) {
+        app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture($draw, (int) $data['fixture_id'],
+          $data['scheduled_at'] ?? null, (int) ($data['venue_id'] ?? 0), (string) ($data['court_label'] ?? ''),
+          isset($data['duration_minutes']) ? (int) $data['duration_minutes'] : null);
+      } catch (\RuntimeException|\InvalidArgumentException $e) {
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
       }
       return response()->json(['status' => 'ok']);
     }
-    $request->validate(['fixture_id' => 'required|integer', 'scheduled_at' => 'nullable|date']);
     try {
-      app(ScheduleEngine::class)->saveFixture($draw, (int) $request->fixture_id, $request->scheduled_at ?: null,
-        (int) $request->venue_id, (string) $request->court_label,
-        $request->filled('duration_minutes') ? (int) $request->duration_minutes : null, true);
-    } catch (\InvalidArgumentException $e) {
+      app(ScheduleEngine::class)->saveFixture($draw, (int) $data['fixture_id'], $data['scheduled_at'] ?? null,
+        (int) ($data['venue_id'] ?? 0), (string) ($data['court_label'] ?? ''),
+        isset($data['duration_minutes']) ? (int) $data['duration_minutes'] : null, true);
+    } catch (\RuntimeException|\InvalidArgumentException $e) {
       return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
     }
     return response()->json(['status' => 'ok']);
@@ -204,14 +207,12 @@ class ScheduleController extends Controller
   public function autoSchedule(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    Log::info("🟦 AutoSchedule invoked", $request->all());
-
-    $startTime = $request->input('start');
-    $duration  = (int) ($request->input('duration', 75));
-
-    if (!$startTime) {
-      return response()->json(['error' => 'Start time is required'], 422);
-    }
+    $data = $request->validate([
+      'start' => 'required|date',
+      'duration' => 'sometimes|integer|min:1|max:1440',
+      'gap' => 'sometimes|integer|min:0|max:1440',
+      'round' => 'nullable|integer|min:1|max:100',
+    ]);
 
     // Build venue → court list from draw's assigned venues
     $venues = [];
@@ -224,14 +225,20 @@ class ScheduleController extends Controller
     }
 
     if (empty($venues)) {
-      return response()->json(['error' => 'No venues assigned to this draw.'], 422);
+      return response()->json(['message' => 'No venues assigned to this draw.'], 422);
     }
 
     try {
-      $engine = new ScheduleEngine();
-      $engine->autoSchedule($draw->id, $duration, $venues, $startTime);
-    } catch (\InvalidArgumentException $e) {
-      return response()->json(['error' => $e->getMessage()], 422);
+      app(ScheduleEngine::class)->autoSchedule(
+        $draw->id,
+        (int) ($data['duration'] ?? 75),
+        $venues,
+        $data['start'],
+        isset($data['round']) ? (int) $data['round'] : null,
+        (int) ($data['gap'] ?? 0),
+      );
+    } catch (\RuntimeException|\InvalidArgumentException $e) {
+      return response()->json(['message' => $e->getMessage()], 422);
     }
 
     $count = OrderOfPlay::where('draw_id', $draw->id)->whereNotNull('time')->count();
