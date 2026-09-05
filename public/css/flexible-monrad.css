@@ -359,12 +359,21 @@
   background: #fff0ee;
 }
 :where(.fm-surface) .fm-withdrawal-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   margin-left: 6px;
-  color: #b42318;
+  min-width: 22px;
+  padding: 2px 5px;
+  border: 1px solid #b02a37;
+  border-radius: 999px;
+  color: #fff;
+  background: #dc3545;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: .25px;
+  line-height: 1.1;
   text-transform: uppercase;
 }
 :where(.fm-surface) .fm-late-withdrawal-notice {

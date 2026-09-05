@@ -298,26 +298,25 @@ class EntryService
             return;
         }
 
-        // A player who withdraws from an already-published Flexible Monrad
+        // A player withdrawn from an already-published Flexible Monrad
         // draw remains part of that published bracket's audit trail. Store the
         // decision context before normal roster cleanup so the draw can offer
         // either a redraw or a late-withdrawal walkover without showing the
         // player as an unexplained unavailable slot.
-        if ($initiatedBy === 'player') {
-            $publishedDrawIds = DB::table('draws')
-                ->whereIn('id', $drawIds)
-                ->where('published', true)
-                ->pluck('id');
+        $publishedDrawIds = DB::table('draws')
+            ->whereIn('id', $drawIds)
+            ->where('published', true)
+            ->pluck('id');
 
-            if ($publishedDrawIds->isNotEmpty()) {
-                \App\Models\FlexibleMonradDraw::whereIn('draw_id', $publishedDrawIds)
-                    ->whereNotNull('graph')
-                    ->lockForUpdate()
-                    ->get()
-                    ->each(function (\App\Models\FlexibleMonradDraw $record) use ($entry, $registrationId) {
+        if ($publishedDrawIds->isNotEmpty()) {
+            \App\Models\FlexibleMonradDraw::whereIn('draw_id', $publishedDrawIds)
+                ->whereNotNull('graph')
+                ->lockForUpdate()
+                ->get()
+                ->each(function (\App\Models\FlexibleMonradDraw $record) use ($entry, $registrationId, $initiatedBy) {
                         $graph = $record->graph;
                         $graph['late_withdrawals'][(string) $registrationId] = [
-                            'initiated_by' => 'player',
+                            'initiated_by' => $initiatedBy,
                             'withdrawn_at' => $entry->withdrawn_at?->toIso8601String() ?? now()->toIso8601String(),
                         ];
                         $record->fill([
@@ -329,10 +328,9 @@ class EntryService
                             $record->draw_id,
                             'monrad_late_withdrawal_recorded',
                             null,
-                            ['registration_id' => $registrationId, 'initiated_by' => 'player']
+                            ['registration_id' => $registrationId, 'initiated_by' => $initiatedBy]
                         );
-                    });
-            }
+                });
         }
 
         $drawGroupIds = DB::table('draw_groups')

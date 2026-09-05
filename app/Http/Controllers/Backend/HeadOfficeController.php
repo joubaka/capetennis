@@ -70,6 +70,35 @@ class HeadOfficeController extends Controller
           || $flexibleFormatIds->contains($draw->settings?->draw_format_id));
       }
 
+      // Backward-compatible operational detection: older withdrawals and
+      // admin-initiated withdrawals may predate the explicit graph marker.
+      // Compare every generated Flexible Monrad roster with the active entry
+      // set in one bounded event query so those draws still raise an alarm.
+      $flexibleDraws = $event->draws->filter(fn ($draw) => $draw->published && $draw->flexibleMonrad?->graph);
+      $categoryIds = $flexibleDraws->pluck('category_event_id')->filter()->unique()->values();
+      $registrationIds = $flexibleDraws->flatMap(fn ($draw) => $draw->flexibleMonrad->graph['players'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
+      $activePairs = collect();
+      if ($categoryIds->isNotEmpty() && $registrationIds->isNotEmpty()) {
+        $activePairs = DB::table('category_event_registrations')
+          ->whereIn('category_event_id', $categoryIds)
+          ->whereIn('registration_id', $registrationIds)
+          ->whereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'refund_requested', 'refunded', 'cancelled'])
+          ->where('payment_status_id', 1)
+          ->whereNull('withdrawn_at')
+          ->whereNull('deleted_at')
+          ->get(['category_event_id', 'registration_id'])
+          ->mapWithKeys(fn ($row) => [$row->category_event_id.':'.$row->registration_id => true]);
+      }
+      foreach ($flexibleDraws as $draw) {
+        $graph = $draw->flexibleMonrad->graph;
+        $resolved = array_map('intval', $graph['withdrawn'] ?? []);
+        $pending = collect($graph['players'] ?? [])->map(fn ($id) => (int) $id)
+          ->reject(fn ($id) => isset($activePairs[$draw->category_event_id.':'.$id]))
+          ->reject(fn ($id) => in_array($id, $resolved, true))
+          ->unique()->count();
+        $draw->setAttribute('pending_late_withdrawal_count', $pending);
+      }
+
       return view('backend.headOffice.individual-event-show', [
         'event' => $event,
       ]);

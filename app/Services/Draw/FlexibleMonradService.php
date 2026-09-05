@@ -264,7 +264,10 @@ final class FlexibleMonradService
         $withdrawn = $record?->graph ? $this->withdrawn($draw, $record->graph) : array_values(array_diff(
             $assigned, $this->activeEntries($draw)->whereIn('registrations.id', $assigned)->pluck('registrations.id')->all()
         ));
-        $lateWithdrawals = array_map('intval', array_keys($record?->graph['late_withdrawals'] ?? []));
+        $lateWithdrawals = array_values(array_unique(array_merge(
+            array_map('intval', array_keys($record?->graph['late_withdrawals'] ?? [])),
+            $draw->published ? $withdrawn : []
+        )));
         $players = $eligible->merge(Registration::with('players')->whereIn('id', $assigned)->get())
             ->map(fn ($r) => ['id' => $r->id, 'name' => $r->displayName(),
                 'profiles' => $r->players->map(fn ($player) => [

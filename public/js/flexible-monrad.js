@@ -18,7 +18,7 @@
     demoGraph = null;
   const name = id => {
     const player = state.players.find(p => Number(p.id) === Number(id));
-    return player ? player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'})` : '') : (id ? 'Player unavailable' : 'Awaiting result');
+    return player ? player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'LW — Late withdrawal' : 'W — Withdrawn'})` : '') : (id ? 'Player unavailable' : 'Awaiting result');
   };
   const playerRecord = id => state.players.find(p => Number(p.id) === Number(id));
   function playerNameNode(id, extraClass = '') {
@@ -35,11 +35,14 @@
         link.title = `Open the name-only profile for ${profile.name}`;
         wrapper.append(link);
       });
-      if (player.withdrawn) wrapper.append(el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'));
-    } else wrapper.textContent = name(id);
-    if (!config.readOnly && player?.withdrawn) {
-      wrapper.textContent = player.name;
-      wrapper.append(el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'));
+    } else {
+      wrapper.textContent = player?.name ?? name(id);
+    }
+    if (player?.withdrawn) {
+      const badge = el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'LW' : 'W');
+      badge.title = player.late_withdrawal ? 'Late withdrawal (LW)' : 'Withdrawn (W)';
+      badge.setAttribute('aria-label', badge.title);
+      wrapper.append(badge);
     }
     return wrapper;
   }
@@ -568,7 +571,7 @@
     roster.append(el('p', '', 'Starting positions are read-only after generation. Use Edit starting positions below when the draw is unpublished and unlocked.'));
     const ids = new Set(Object.values(draft.slots).filter(slot => slot.type === 'player').map(slot => Number(slot.id)));
     const list = el('ul');
-    state.players.filter(player => ids.has(Number(player.id))).forEach(player => list.append(el('li', '', player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'})` : ''))));
+    state.players.filter(player => ids.has(Number(player.id))).forEach(player => list.append(el('li', '', player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'LW — Late withdrawal' : 'W — Withdrawn'})` : ''))));
     roster.append(list);
   }
   function renderPrint() {

@@ -399,6 +399,54 @@ class FlexibleMonradTest extends TestCase
         $this->assertSame($players[0]->id, $resolvedMatches['main_a']['withdrawn_players'][0]);
         $this->assertSame($players[1]->id, $resolvedMatches['main_a']['winner']);
         $this->assertSame($players[1]->id, Fixture::findOrFail($record->fixture_map['main_a'])->winner_registration);
+
+        $script = file_get_contents(public_path('js/flexible-monrad.js'));
+        $styles = file_get_contents(public_path('css/flexible-monrad.css'));
+        $this->assertStringContainsString("player.late_withdrawal ? 'LW' : 'W'", $script);
+        $this->assertStringContainsString("'Late withdrawal (LW)'", $script);
+        $this->assertStringContainsString('background: #dc3545;', $styles);
+    }
+
+    public function test_admin_withdrawal_after_publication_has_the_same_late_withdrawal_alarm(): void
+    {
+        [$draw, $draft, $players] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $service->generate($draw, 1);
+        $service->publish($draw, 2, true);
+
+        $entry = CategoryEventRegistration::query()
+            ->where('category_event_id', $draw->category_event_id)
+            ->where('registration_id', $players[0]->id)
+            ->firstOrFail();
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, auth()->user());
+
+        $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
+        $statePlayer = $service->state($draw->fresh())['players']->firstWhere('id', $players[0]->id);
+        $this->assertTrue($statePlayer['late_withdrawal']);
+        $this->assertTrue($service->state($draw->fresh())['withdrawals_pending']);
+        $this->assertSame('admin', $record->graph['late_withdrawals'][$players[0]->id]['initiated_by']);
+    }
+
+    public function test_dashboard_detects_an_existing_published_draw_withdrawal_without_a_new_marker(): void
+    {
+        [$draw, $draft, $players] = $this->setupDraw();
+        $draw->event->update(['eventType' => 6]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $service->generate($draw, 1);
+        $service->publish($draw, 2, true);
+
+        DB::table('category_event_registrations')
+            ->where('category_event_id', $draw->category_event_id)
+            ->where('registration_id', $players[0]->id)
+            ->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+
+        $this->assertArrayNotHasKey('late_withdrawals', FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail()->graph);
+        $this->get(route('headOffice.show', $draw->event_id))
+            ->assertOk()
+            ->assertSee('draw-attention-badge', false)
+            ->assertSee('1 late withdrawal');
     }
 
     public function test_double_withdrawal_waits_for_unresolved_opponents_and_reconciliation_is_guarded(): void
@@ -612,6 +660,7 @@ class FlexibleMonradTest extends TestCase
         // explicitly chooses redraw instead of walkover progression.
         $this->assertSame(4, DB::table('order_of_plays')->where('draw_id', $draw->id)->count());
         $this->assertTrue(app(FlexibleMonradService::class)->state($draw)['withdrawals_pending']);
+        $record = $record->fresh();
 
         $this->actingAs(User::factory()->create()->assignRole('admin'))
             ->postJson(route('flexible-monrad.withdrawal-redraw', $draw), ['revision' => $record->revision])

@@ -8,10 +8,11 @@
     : route('draw.toggle.publish', $draw->id);
   $publishRevision = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->revision ?? 0) : 0;
   $flexibleGraph = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->graph ?? []) : [];
-  $pendingLateWithdrawalCount = count(array_diff(
-    array_map('intval', array_keys($flexibleGraph['late_withdrawals'] ?? [])),
-    array_map('intval', $flexibleGraph['withdrawn'] ?? [])
-  ));
+  $pendingLateWithdrawalCount = $draw->getAttribute('pending_late_withdrawal_count');
+  $pendingLateWithdrawalCount ??= count(array_diff(
+      array_map('intval', array_keys($flexibleGraph['late_withdrawals'] ?? [])),
+      array_map('intval', $flexibleGraph['withdrawn'] ?? [])
+    ));
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
