@@ -9,6 +9,7 @@ use App\Models\RankingList;
 use App\Models\SeriesRanking;
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\PublicDrawScheduleVisibility;
+use App\Services\PublicTournamentVisibility;
 use Illuminate\Http\Request;
 
 class FlexibleMonradController extends Controller
@@ -29,6 +30,7 @@ class FlexibleMonradController extends Controller
 
     public function publicShow(Draw $draw)
     {
+        app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
         abort_unless($draw->published && $draw->flexibleMonrad?->graph, 404);
         return $this->page($draw, true);
     }

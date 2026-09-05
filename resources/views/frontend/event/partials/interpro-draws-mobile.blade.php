@@ -12,7 +12,7 @@
           @endphp
 
           {{-- PUBLISHED DRAW LINKS (PUBLIC) --}}
-          <h6 class="fw-bold mb-2">Published Draws Mobile</h6>
+          <h6 class="fw-bold mb-2">Published draws</h6>
 
           @forelse($eventDraws->where('published', true)
               ->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
@@ -22,12 +22,15 @@
                 <a href="{{ route('public.roundrobin.show', $draw->id) }}"
                    class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'primary' }} w-100">
                   {{ $draw->drawName }}
+                  <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                    {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+                  </span>
                 </a>
               @endforeach
             </div>
 
           @empty
-            <div class="alert alert-secondary">No published draws yet.</div>
+            <div class="alert alert-info"><strong>Draws are being finalised.</strong> Match times may be published separately.</div>
           @endforelse
 
           {{-- 🔹 ADMIN DRAW LIST (SEPARATE) --}}

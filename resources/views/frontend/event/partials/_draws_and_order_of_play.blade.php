@@ -27,6 +27,9 @@
           <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
             {{ $draw->drawName }}
+            <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+              {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+            </span>
           </a>
           @php
 
@@ -44,14 +47,14 @@
       @endforeach
     </div>
   @empty
-    <div class="alert alert-secondary m-0">No draws published yet.</div>
+    <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
   @endforelse
     
 
    {{-- Venues Section --}}
-    @if(isset($venues) && $venues->count())
+    @if(isset($venues) && $venues->count() && ($drawPublicationSummary['schedule_published'] ?? 0) > 0)
       <div class="mt-4">
-        <h6 class="fw-bold mb-2">Per Venue fixtures</h6>
+        <h6 class="fw-bold mb-2">Published match schedules by venue</h6>
 
         @php
           // Calculate convenor/admin permission once for this view

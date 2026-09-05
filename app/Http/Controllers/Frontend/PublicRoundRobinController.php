@@ -9,6 +9,7 @@ use App\Services\DrawService;
 use App\Models\CategoryEvent;
 use App\Http\Controllers\Controller;
 use App\Services\PublicDrawScheduleVisibility;
+use App\Services\PublicTournamentVisibility;
 
 class PublicRoundRobinController extends Controller
 {
@@ -24,6 +25,7 @@ class PublicRoundRobinController extends Controller
   // =============================================================
   public function show(Draw $draw)
   {
+    app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
     if ($draw->usesFlexibleMonrad()) {
       if (! $draw->published) {
         $this->authorize('view', $draw);
@@ -31,16 +33,6 @@ class PublicRoundRobinController extends Controller
       }
       return redirect()->route('public.flexible-monrad.show', $draw);
     }
-    // Block unpublished draws — only admin, super-user, or convenor for this event may view
-    if (!$draw->published) {
-      $user = auth()->user();
-      $isPrivileged = $user && $user->can('view', $draw);
-
-      if (!$isPrivileged) {
-        abort(403, 'This draw has not been published yet.');
-      }
-    }
-
     Log::info("🌍 [PUBLIC RR] Loading draw {$draw->id}", [
       'event_id' => $draw->event_id,
       'type' => $draw->event->eventType ?? null
@@ -49,6 +41,7 @@ class PublicRoundRobinController extends Controller
     // Minimal load
     $draw->load([
       'event',
+      'categoryEvent.category',
      
       'groups.groupRegistrations.registration.players',
       'drawFixtures.registration1.players',
@@ -109,15 +102,7 @@ class PublicRoundRobinController extends Controller
   public function mainBracket(Draw $draw)
   {
     abort_if($draw->isRoundRobinOnly(), 404);
-
-    // Block unpublished draws — only admin, super-user, or convenor for this event may view
-    if (!$draw->published) {
-      $user = auth()->user();
-      $isPrivileged = $user && $user->can('view', $draw);
-      if (!$isPrivileged) {
-        abort(403, 'This draw has not been published yet.');
-      }
-    }
+    app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
     $eventType = $draw->event->eventType ?? null;
     $isEmpty = request()->boolean('empty');

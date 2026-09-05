@@ -427,21 +427,37 @@ class DrawController extends Controller
 
   public function togglePublishSchedule($id)
   {
-    //  $draw = Draw::where('id', $id)->with('drawFixtures', function ($item) {
-    //     return $item->with('results');
-    // })->get();
-
     $draw = Draw::findOrFail($id);
     $this->authorize('publish', $draw);
 
-    if ($draw->oop_published == 1) {
-      $draw->oop_published = 0;
-    } else {
-      $draw->oop_published = 1;
+    if (!$draw->oop_published) {
+      if (!$draw->published) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Publish the draw before publishing its match schedule.',
+        ], 422);
+      }
+
+      $hasIndividualSchedule = $draw->order_of_play()->whereNotNull('time')->exists();
+      $hasTeamSchedule = TeamFixture::query()
+        ->where('draw_id', $draw->id)
+        ->whereNotNull('scheduled_at')
+        ->exists();
+
+      if (!$hasIndividualSchedule && !$hasTeamSchedule) {
+        return response()->json([
+          'success' => false,
+          'message' => 'Add at least one match time before publishing the schedule.',
+        ], 422);
+      }
     }
 
-    $draw->save();
-    return $draw;
+    $draw->update(['oop_published' => !$draw->oop_published]);
+
+    return response()->json([
+      'success' => true,
+      'oop_published' => (bool) $draw->oop_published,
+    ]);
   }
 
   public function getPDF(Request $request, $id)

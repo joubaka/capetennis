@@ -208,7 +208,7 @@
 
               <div class="d-flex align-items-center">
                 <i class="ti ti-file-description text-primary fs-5 me-2"></i>
-                <a href="{{ route('file.show', $file->id) }}" target="_blank"
+                <a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank"
                    class="fw-semibold text-dark text-decoration-none">
                   {{ $file->name }}
                 </a>

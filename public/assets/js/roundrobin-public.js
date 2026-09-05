@@ -26,6 +26,10 @@
   const RR_OOP = window.RR_OOP || [];
   const RR_STANDINGS = window.RR_STANDINGS || {};
 
+  function escapeHtml(value) {
+    return $('<div>').text(value == null ? '' : String(value)).html();
+  }
+
   /* ===============================
    * INIT
    * =============================== */
@@ -36,6 +40,7 @@
     renderMatrix();
     renderOrderOfPlay();
     renderStandings();
+    loadMainBracket();
   }
 
   /* ===============================
@@ -127,14 +132,14 @@
           <thead>
             <tr>
               <th class="bg-light"></th>
-              ${players.map(p => `<th class="text-center">${p.name}</th>`).join('')}
+              ${players.map(p => `<th class="text-center">${escapeHtml(p.name)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
       `;
 
       players.forEach(rowP => {
-        html += `<tr><th class="bg-light small">${rowP.name}</th>`;
+        html += `<tr><th class="bg-light small">${escapeHtml(rowP.name)}</th>`;
 
         players.forEach(colP => {
           if (rowP.id === colP.id) {
@@ -173,7 +178,7 @@
     const tbody = $('#rr-order-table tbody');
 
     if (!RR_OOP.length) {
-      tbody.html(`<tr><td colspan="8" class="text-muted text-center">No fixtures…</td></tr>`);
+      tbody.html(`<tr><td colspan="7" class="text-muted text-center">No matches have been scheduled.</td></tr>`);
       return;
     }
 
@@ -193,14 +198,13 @@
     sorted.forEach(fx => {
       html += `
         <tr>
-          <td>${fx.id}</td>
-          <td>${fx.home}</td>
+          <td>${escapeHtml(fx.home)}</td>
           <td class="text-center">vs</td>
-          <td>${fx.away}</td>
-          <td class="text-center">${fx.round}</td>
-          <td class="text-center">${fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '')}</td>
-          <td class="text-center">${formatDayTimeVenue(fx)}</td>
-          <td class="text-center fw-bold">${fx.score || ''}</td>
+          <td>${escapeHtml(fx.away)}</td>
+          <td class="text-center">${escapeHtml(fx.round)}</td>
+          <td class="text-center">${escapeHtml(fx.group_name ? 'Box ' + fx.group_name : (fx.stage || ''))}</td>
+          <td class="text-center">${escapeHtml(formatDayTimeVenue(fx))}</td>
+          <td class="text-center fw-bold">${escapeHtml(fx.score || '')}</td>
         </tr>`;
     });
 
@@ -329,7 +333,7 @@
         html += `
           <tr class="${rowClass}">
             <td>${i + 1}</td>
-            <td>${r.player}</td>
+            <td>${escapeHtml(r.player)}</td>
             <td class="text-center">${r.wins}</td>
             <td class="text-center">${r.losses}</td>
             <td class="text-center">${setsPct}%</td>
@@ -341,6 +345,21 @@
       html += `</tbody></table></div>`;
       wrapper.append(html);
     });
+  }
+
+  function loadMainBracket() {
+    const wrapper = document.getElementById('main-bracket-wrapper');
+    if (!wrapper || !window.RR_MAIN_BRACKET_URL) return;
+
+    fetch(window.RR_MAIN_BRACKET_URL, { headers: { Accept: 'text/html' } })
+      .then(response => {
+        if (!response.ok) throw new Error('Unable to load bracket');
+        return response.text();
+      })
+      .then(html => { wrapper.innerHTML = html; })
+      .catch(() => {
+        wrapper.innerHTML = '<div class="alert alert-warning m-3">The main bracket is not available yet.</div>';
+      });
   }
 
   /* ===============================

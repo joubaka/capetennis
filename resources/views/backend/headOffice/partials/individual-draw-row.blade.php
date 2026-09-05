@@ -9,12 +9,17 @@
   $publishRevision = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->revision ?? 0) : 0;
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
-         data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}">
+         data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
+         data-schedule="{{ $draw->oop_published ? '1' : '0' }}">
   <div class="draw-overview-info">
     <span class="draw-division-mark">@include('backend.headOffice.partials.draw-icon', ['icon' => 'bracket'])</span>
     <div class="draw-division-text">
       <h3 class="h6 mb-0"><a href="{{ $drawUrl }}" class="draw-overview-name">{{ $draw->drawName }}</a></h3>
       <div class="draw-division-state"><span class="draw-publication {{ $draw->published ? 'is-published' : 'is-draft' }}"><span class="draws-status-dot" aria-hidden="true"></span>{{ $draw->published ? 'Published' : 'Draft' }}</span>
+      <span class="draw-publication {{ $draw->oop_published ? 'is-published' : 'is-draft' }}">
+        <i class="ti ti-calendar-event" aria-hidden="true"></i>
+        {{ $draw->oop_published ? 'Schedule published' : ($draw->order_of_play_count > 0 ? 'Schedule ready' : 'Schedule not ready') }}
+      </span>
       @if($draw->locked)<span class="draw-lock">@include('backend.headOffice.partials.draw-icon', ['icon' => 'lock']) Locked</span>@endif</div>
     </div>
   </div>
@@ -38,6 +43,7 @@
               data-url="{{ $publishUrl }}" data-draw-name="{{ $draw->drawName }}"
               data-published="{{ $draw->published ? '1' : '0' }}"
               @if($isFlexible) data-revision="{{ $publishRevision }}" @endif
+              @if($draw->published && $draw->locked) disabled title="Unlock this draw before unpublishing it" @endif
               aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}">
         <i class="ti ti-{{ $draw->published ? 'eye-off' : 'eye' }}" aria-hidden="true"></i>
         <span>{{ $draw->published ? 'Unpublish' : 'Publish' }}</span>

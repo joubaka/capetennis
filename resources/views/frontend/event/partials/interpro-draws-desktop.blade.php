@@ -19,7 +19,7 @@
 
             {{-- PUBLISHED DRAW LINKS --}}
             <div class="mb-3">
-              <h6 class="fw-bold">Published Draws Desktop</h6>
+              <h6 class="fw-bold">Published draws</h6>
 
               @forelse($eventDraws->where('published', true)
                   ->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
@@ -29,12 +29,15 @@
                     <a href="{{ route('public.roundrobin.show', $draw->id) }}"
                        class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                       {{ $draw->drawName }}
+                      <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                        {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+                      </span>
                     </a>
                   @endforeach
                 </div>
 
               @empty
-                <div class="alert alert-secondary m-0">No draws published yet.</div>
+                <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> Match times may be published separately.</div>
               @endforelse
 
             </div>

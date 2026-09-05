@@ -156,7 +156,7 @@
                             <div class="row">
 
                                 <div class="col-7">
-                                    <a href="{{route('file.show',$file->id)}}" class="list-group-item list-group-item-action d-flex justify-content-between">
+                                    <a href="{{ route('events.documents.show', [$event, $file]) }}" class="list-group-item list-group-item-action d-flex justify-content-between">
                                         <div class="li-wrapper d-flex justify-content-start align-items-center">
                                             <div class="avatar avatar-sm me-3">
                                                 <span class="avatar-initial rounded-circle bg-label-success">{{($key+1)}}</span>

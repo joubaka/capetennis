@@ -22,6 +22,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use App\Domain\Draws\Guards\DrawGuard;
 use App\Services\TeamFixtureScoreService;
+use App\Services\PublicTournamentVisibility;
 
 class TeamFixtureController extends Controller
 {
@@ -919,18 +920,18 @@ class TeamFixtureController extends Controller
   }
 
   // FixtureController.php
-  public function byVenue($eventId, $venueId)
+  public function byVenue($eventId, $venueId, PublicTournamentVisibility $visibility)
   {
     $event = Event::findOrFail($eventId);
+    $visibility->ensureEventIsVisible($event, request()->user());
+    $venue = Venue::findOrFail($venueId);
+    abort_unless(
+      $event->venues()->whereKey($venue->id)->exists()
+        || $this->publicVenueFixtureQuery($event, $venue)->exists(),
+      404
+    );
 
-    // Only include fixtures that belong to this event's draws and are scheduled
-    // for the requested venue. This ensures counts and groupings only consider
-    // fixtures that have an actual scheduled time.
-    $fixtures = TeamFixture::with(['team1', 'team2', 'venue'])
-      ->whereIn('draw_id', $event->draws->pluck('id'))
-      ->where('venue_id', $venueId)
-      ->whereNotNull('scheduled_at')
-      ->when(Schema::hasColumn('team_fixtures', 'scheduled'), fn($q) => $q->where('scheduled', 1))
+    $fixtures = $this->publicVenueFixtureQuery($event, $venue)
       ->orderBy('scheduled_at', 'asc')
       ->orderBy('round_nr', 'asc')
       ->orderBy('tie_nr', 'asc')
@@ -949,15 +950,62 @@ class TeamFixtureController extends Controller
       );
     });
 
-    \Log::info('[byVenue] Final sorted fixture order', [
-      'venue_id' => $venueId,
-      'event_id' => $eventId,
-      'by_day_count' => $fixtures->groupBy(fn($fx) => \Carbon\Carbon::parse($fx->scheduled_at)->format('D'))->map->count(),
-    ]);
-
-    $venue = Venue::findOrFail($venueId);
-
     return view('frontend.fixture.byVenue', compact('event', 'venue', 'fixtures'));
+  }
+
+  public function orderOfPlay($eventId, $venueId, string $date, PublicTournamentVisibility $visibility)
+  {
+    $event = Event::findOrFail($eventId);
+    $visibility->ensureEventIsVisible($event, request()->user());
+    $venue = Venue::findOrFail($venueId);
+    abort_unless(
+      $event->venues()->whereKey($venue->id)->exists()
+        || $this->publicVenueFixtureQuery($event, $venue)->exists(),
+      404
+    );
+
+    abort_unless(
+      strtolower($date) === 'all'
+        || preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1,
+      404
+    );
+
+    $query = $this->publicVenueFixtureQuery($event, $venue);
+    $availableDates = (clone $query)->get()
+      ->map(fn(TeamFixture $fixture) => Carbon::parse($fixture->scheduled_at)->toDateString())
+      ->unique()
+      ->sort()
+      ->values();
+
+    if (strtolower($date) !== 'all') {
+      $query->whereDate('scheduled_at', $date);
+    }
+
+    $fixtures = $query->orderBy('scheduled_at')->get();
+
+    return view('frontend.fixture.orderOfPlay', compact(
+      'event', 'venue', 'fixtures', 'date', 'availableDates'
+    ));
+  }
+
+  private function publicVenueFixtureQuery(Event $event, Venue $venue)
+  {
+    $drawIds = app(PublicTournamentVisibility::class)
+      ->publishedDrawsFor($event, scheduleRequired: true)
+      ->pluck('id');
+
+    return TeamFixture::query()
+      ->with([
+        'draw:id,drawName,event_id',
+        'team1', 'team2', 'venue', 'region1Name', 'region2Name',
+        'fixturePlayers.player1', 'fixturePlayers.player2',
+        'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',
+        'fixtureResults',
+      ])
+      ->whereIn('draw_id', $drawIds)
+      ->where('venue_id', $venue->id)
+      ->whereNotNull('scheduled_at')
+      ->when(Schema::hasColumn('team_fixtures', 'scheduled'), fn($q) => $q->where('scheduled', 1));
   }
 
 

@@ -24,6 +24,39 @@
     </div>
   @endif
 
+  @if($event->draws->isNotEmpty())
+    @php
+      $drawCount = $event->draws->count();
+      $generatedCount = $event->draws->where('draw_fixtures_count', '>', 0)->count();
+      $publishedCount = $event->draws->where('published', true)->count();
+      $scheduledCount = $event->draws->where('order_of_play_count', '>', 0)->count();
+      $schedulePublishedCount = $event->draws->where('oop_published', true)->count();
+    @endphp
+    <section class="card mb-3" aria-labelledby="release-readiness-heading">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+          <div>
+            <h2 id="release-readiness-heading" class="h5 mb-1">Parent release readiness</h2>
+            <p class="text-muted small mb-0">Publishing a draw reveals players and structure. Publishing its schedule separately reveals match times and venues. Neither step happens automatically.</p>
+          </div>
+          @if($event->published)
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('events.show', $event) }}" target="_blank" rel="noopener">
+              Preview parent page <i class="ti ti-external-link ms-1" aria-hidden="true"></i>
+            </a>
+          @else
+            <span class="badge bg-label-warning">Event page is not published</span>
+          @endif
+        </div>
+        <div class="row g-2 mt-2">
+          <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Draws generated</small><strong>{{ $generatedCount }}/{{ $drawCount }}</strong></div></div>
+          <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Draws published</small><strong>{{ $publishedCount }}/{{ $drawCount }}</strong></div></div>
+          <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules prepared</small><strong>{{ $scheduledCount }}/{{ $drawCount }}</strong></div></div>
+          <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules published</small><strong>{{ $schedulePublishedCount }}/{{ $drawCount }}</strong></div></div>
+        </div>
+      </div>
+    </section>
+  @endif
+
   <section class="card draws-overview" aria-labelledby="draws-heading">
     <div class="draws-toolbar">
       <div>

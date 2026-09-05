@@ -125,10 +125,6 @@
   // 🔗 Build base URL for toggle buttons
   $baseRoute = url("event/{$event->id}/venue/{$venue->id}/order");
 
-  $today = now();
-  $friday = $today->copy()->next('Friday')->format('Y-m-d');
-  $saturday = $today->copy()->next('Saturday')->format('Y-m-d');
-  $sunday = $today->copy()->next('Sunday')->format('Y-m-d');
 @endphp
 
 
@@ -143,12 +139,12 @@
 
     {{-- 🗓 Toggle Buttons --}}
     <div class="btn-group view-toggle" role="group">
-      <a href="{{ $baseRoute }}/{{ $friday }}"
-         class="btn btn-outline-primary {{ $date == $friday ? 'active' : '' }}">Friday</a>
-      <a href="{{ $baseRoute }}/{{ $saturday }}"
-         class="btn btn-outline-primary {{ $date == $saturday ? 'active' : '' }}">Saturday</a>
-      <a href="{{ $baseRoute }}/{{ $sunday }}"
-         class="btn btn-outline-primary {{ $date == $sunday ? 'active' : '' }}">Sunday</a>
+      @foreach($availableDates as $availableDate)
+        <a href="{{ $baseRoute }}/{{ $availableDate }}"
+           class="btn btn-outline-primary {{ $date === $availableDate ? 'active' : '' }}">
+          {{ \Carbon\Carbon::parse($availableDate)->format('D j M') }}
+        </a>
+      @endforeach
       <a href="{{ $baseRoute }}/all"
          class="btn btn-outline-dark {{ strtolower($date) === 'all' ? 'active' : '' }}">All Days</a>
     </div>
@@ -157,7 +153,7 @@
   {{-- 📅 Date Display --}}
   <div class="mb-3">
     @if(strtolower($date) === 'all')
-      <h5 class="text-muted">Showing all fixtures (Friday–Sunday)</h5>
+      <h5 class="text-muted">Showing all published fixtures</h5>
     @else
       <h5 class="text-muted">
         {{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}

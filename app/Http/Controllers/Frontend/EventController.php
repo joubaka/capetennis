@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\ClothingOrder;
 use App\Models\CategoryResult;
+use App\Services\PublicTournamentVisibility;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 
@@ -242,7 +243,6 @@ class EventController extends Controller
     // STATIC TABLES (CACHED)
     // ---------------------------------------------------------
     $eventTypes = cache()->remember('event_types', 3600, fn() => EventType::all());
-    $users = cache()->remember('users_all', 3600, fn() => User::all());
     $categories = cache()->remember('categories_all', 3600, fn() => Category::all());
     $clothingItems = cache()->remember('clothing_items', 3600, fn() => ClothingItemType::all());
 
@@ -305,7 +305,7 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // SORT DRAWS
     // ---------------------------------------------------------
-    $eventDraws = $event->draws->sort(function ($a, $b) {
+    $allEventDraws = $event->draws->sort(function ($a, $b) {
       return [
         $b->published <=> $a->published,
         ($a->draw_types->drawTypeName ?? $a->drawType_id)
@@ -314,6 +314,23 @@ class EventController extends Controller
         $a->drawName <=> $b->drawName,
       ];
     })->values();
+
+    $canPreviewUnpublishedDraws = $user && $allEventDraws
+      ->contains(fn (Draw $draw) => $user->can('view', $draw));
+    $eventDraws = ($canPreviewUnpublishedDraws
+      ? $allEventDraws
+      : $allEventDraws->where('published', true))
+      ->values();
+
+    $drawPublicationSummary = [
+      'total' => $allEventDraws->count(),
+      'published' => $allEventDraws->where('published', true)->count(),
+      'schedule_published' => $allEventDraws
+        ->where('published', true)
+        ->where('oop_published', true)
+        ->count(),
+      'last_updated_at' => $allEventDraws->max('updated_at'),
+    ];
 
     $drawIds = $eventDraws->pluck('id');
 
@@ -451,7 +468,6 @@ return view('frontend.event.show', compact(
       'user',
       'signUp',
       'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen', 'mastersBatch',
-      'users',
       'eDate',
       'sDate',
       'formatEntryLine',
@@ -463,7 +479,9 @@ return view('frontend.event.show', compact(
       'entryCloseAt',
       'venues',
       'categoryResults',
-      'entryCount'
+      'entryCount',
+      'drawPublicationSummary',
+      'canPreviewUnpublishedDraws'
     ));
   }
 
@@ -673,8 +691,9 @@ return view('frontend.event.show', compact(
         return $formatDate;
     }
 
-    public function showDraw($id){
-        $data['draw'] = Draw::find($id);
+    public function showDraw($id, PublicTournamentVisibility $visibility){
+        $data['draw'] = Draw::with('event')->findOrFail($id);
+        $visibility->ensureDrawIsVisible($data['draw'], auth()->user());
         return view('frontend.draw.show',$data);
     }
 

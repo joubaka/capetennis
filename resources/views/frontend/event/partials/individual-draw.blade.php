@@ -20,18 +20,21 @@
             <a href="{{ route('public.roundrobin.show', $draw->id) }}"
                class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
               {{ $draw->drawName }}
+              <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+              </span>
             </a>
           @endforeach
         </div>
 
       @empty
-        <div class="alert alert-secondary m-0">No draws published yet.</div>
+        <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
       @endforelse
     </div>
 
 
     {{-- 🚧 Unpublished Draws (Admins only) --}}
-    @php $isAdmin = auth()->check() && in_array(auth()->id(), [1764, 584, 585]); @endphp
+    @php $isAdmin = auth()->check() && $eventDraws->contains(fn($draw) => auth()->user()->can('view', $draw)); @endphp
 
     @if($eventDraws->where('published', false)->count())
       <div class="mt-4">

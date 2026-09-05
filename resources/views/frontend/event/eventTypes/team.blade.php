@@ -190,7 +190,7 @@
         <div class="card-body pb-2">
           @forelse($event->files as $file)
             <div class="file-item border-bottom py-2 d-flex justify-content-between align-items-center">
-              <a href="{{ route('file.show', $file->id) }}" target="_blank"
+              <a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank"
                  class="fw-semibold text-dark text-decoration-none">
                 {{ $file->name }}
               </a>

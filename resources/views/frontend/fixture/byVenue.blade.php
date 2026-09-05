@@ -2,16 +2,6 @@
 
 @section('title', $venue->name . ' – Fixtures')
 
-{{-- Vendor CSS --}}
-@section('vendor-style')
-  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
-@endsection
-
-{{-- Vendor JS --}}
-@section('vendor-script')
-  <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
-@endsection
-
 @section('content')
 <style>
   .winner-home {
@@ -149,7 +139,7 @@ if (!function_exists('team_label')) {
                       if($homeRegionShort) $name .= " ({$homeRegionShort})";
                       $homeNames[] = $name;
                   } elseif ($fpRow->team1_no_profile_id) {
-                      $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
+                      $np = $fpRow->noProfile1;
                       if($np){
                           $name = trim($np->name.' '.$np->surname);
                           if($homeRegionShort) $name .= " ({$homeRegionShort})";
@@ -161,7 +151,7 @@ if (!function_exists('team_label')) {
                       if($awayRegionShort) $name .= " ({$awayRegionShort})";
                       $awayNames[] = $name;
                   } elseif ($fpRow->team2_no_profile_id) {
-                      $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
+                      $np2 = $fpRow->noProfile2;
                       if($np2){
                           $name = trim($np2->name.' '.$np2->surname);
                           if($awayRegionShort) $name .= " ({$awayRegionShort})";
@@ -213,111 +203,4 @@ if (!function_exists('team_label')) {
   </div>
 </div>
 
-<div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <form id="scoreForm">
-        @csrf
-        <div class="modal-header">
-          <h5 class="modal-title">Enter Score (Best of 3 Sets)</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p><strong id="fixtureTeams"></strong></p>
-          <input type="hidden" name="fixture_id" id="fixture_id">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Set</th>
-                <th id="modalPlayer1">Home</th>
-                <th id="modalPlayer2">Away</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for($i = 1; $i <= 3; $i++)
-                <tr>
-                  <td>Set {{ $i }}</td>
-                  <td><input type="number" class="form-control" name="set{{ $i }}_home" id="set{{ $i }}Home" min="0"></td>
-                  <td><input type="number" class="form-control" name="set{{ $i }}_away" id="set{{ $i }}Away" min="0"></td>
-                </tr>
-              @endfor
-            </tbody>
-          </table>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-success">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<script>
-$(function () {
-  const $scoreModal = $('#scoreModal');
-  const $scoreForm  = $('#scoreForm');
-  const $teams      = $('#fixtureTeams');
-
-  function updateWinnerClasses($row, winner) {
-    $row.find('.home-cell, .away-cell').removeClass('winner-home loser-home draw-cell');
-    if (winner === 'home') {
-      $row.find('.home-cell').addClass('winner-home');
-      $row.find('.away-cell').addClass('loser-home');
-    } else if (winner === 'away') {
-      $row.find('.home-cell').addClass('loser-home');
-      $row.find('.away-cell').addClass('winner-home');
-    } else if (winner === 'draw') {
-      $row.find('.home-cell, .away-cell').addClass('draw-cell');
-    }
-  }
-
-  $(document).on('click', '.edit-score-btn', function () {
-    const fixtureId = $(this).data('id');
-    const home = $(this).data('home') || 'Home';
-    const away = $(this).data('away') || 'Away';
-    
-    $teams.text(`${home} vs ${away}`);
-    $('#modalPlayer1').text(home);
-    $('#modalPlayer2').text(away);
-    $scoreForm.data('fixture-id', fixtureId);
-
-    for (let i = 1; i <= 3; i++) {
-      $(`#set${i}Home`).val($(this).data(`set${i}_home`) || '');
-      $(`#set${i}Away`).val($(this).data(`set${i}_away`) || '');
-    }
-    $scoreModal.modal('show');
-  });
-
-  $scoreForm.on('submit', function (e) {
-    e.preventDefault();
-    const fixtureId = $scoreForm.data('fixture-id');
-    const url = "{{ route('frontend.fixtures.saveScore', ':id') }}".replace(':id', fixtureId);
-
-    $.ajax({
-      url: url,
-      type: 'POST',
-      data: $scoreForm.serialize(),
-      success: function (data) {
-        if (data.success) {
-          $(`#result-col-${fixtureId}`).html(data.html);
-          updateWinnerClasses($(`#row-${fixtureId}`), data.winner);
-          const $btn = $(`#edit-btn-${fixtureId}`);
-          for (let i = 1; i <= 3; i++) {
-            $btn.data(`set${i}_home`, data.scores[`set${i}_home`] || '');
-            $btn.data(`set${i}_away`, data.scores[`set${i}_away`] || '');
-          }
-          $scoreModal.modal('hide');
-          toastr.success('✅ Score saved!');
-        } else {
-          toastr.error('❌ Save failed.');
-        }
-      },
-      error: function (xhr) {
-        toastr.error('❌ Server error.');
-      }
-    });
-  });
-});
-</script>
 @endsection

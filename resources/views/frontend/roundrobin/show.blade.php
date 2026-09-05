@@ -1,6 +1,6 @@
 @extends('layouts/contentNavbarLayout')
 
-@section('title', 'Round Robins — ' . ($draw->name ?? 'Draw'))
+@section('title', 'Round Robin — ' . ($draw->drawName ?? 'Draw'))
 
 @section('content')
 <style>
@@ -189,12 +189,19 @@
      data-draw-id="{{ $draw->id }}">
 
   <div class="col-12 mb-4">
-    <h4 class="mb-0">
-      🎾 Round Robin — {{ $draw->name }}
-    </h4>
+    <a href="{{ route('events.show', $draw->event_id) }}" class="btn btn-sm btn-outline-secondary mb-3">
+      <i class="ti ti-arrow-left me-1"></i>Back to tournament
+    </a>
+    <h4 class="mb-0">Round Robin — {{ $draw->drawName }}</h4>
     <small class="text-muted">
-      {{ $draw->category->name ?? '' }} @ {{ $draw->event->name ?? '' }}
+      {{ $draw->categoryEvent?->category?->name ?? '' }} @ {{ $draw->event->name ?? '' }}
     </small>
+    <div class="mt-2">
+      <span class="badge bg-label-success">Draw published</span>
+      <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
+        {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
+      </span>
+    </div>
   </div>
 
   {{-- ============================
@@ -207,7 +214,7 @@
             id="matrix-tab"
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
-            type="button" role="tab">
+            type="button" role="tab" aria-controls="matrix-pane" aria-selected="true">
       Boxes
     </button>
   </li>
@@ -217,7 +224,7 @@
             id="oop-tab"
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
-            type="button" role="tab">
+            type="button" role="tab" aria-controls="oop-pane" aria-selected="false">
       Order of Play
     </button>
   </li>
@@ -227,7 +234,7 @@
             id="standings-tab"
             data-bs-toggle="tab"
             data-bs-target="#standings-pane"
-            type="button" role="tab">
+            type="button" role="tab" aria-controls="standings-pane" aria-selected="false">
       Standings
     </button>
   </li>
@@ -238,7 +245,7 @@
             data-bs-toggle="tab"
             data-bs-target="#main-bracket-pane"
             type="button"
-            role="tab">
+            role="tab" aria-controls="main-bracket-pane" aria-selected="false">
       Main Bracket
     </button>
 </li>
@@ -257,7 +264,7 @@
        ============================ --}}
     <div class="tab-pane fade show active" 
          id="matrix-pane" 
-         role="tabpanel">
+         role="tabpanel" aria-labelledby="matrix-tab">
       <div class="row"> 
         <div class="col-12">
         <div class="card mb-3">
@@ -288,7 +295,7 @@
        ============================ --}}
     <div class="tab-pane fade" 
          id="oop-pane" 
-         role="tabpanel">
+         role="tabpanel" aria-labelledby="oop-tab">
        <div class="col-12">
             <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -296,10 +303,10 @@
        
         </div>
         <div class="card-body p-0">
+        @if($draw->oop_published)
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
     <thead class="table-light">
         <tr>
-            <th>ID</th>
             <th>Player 1</th>
             <th class="text-center">VS</th>
             <th>Player 2</th>
@@ -312,66 +319,22 @@
     </thead>
     <tbody></tbody>
 </table>
-
+        @else
+          <div class="alert alert-info rounded-0 mb-0 py-4 text-center" role="status">
+            <div class="fw-semibold">Match times and venues have not been published yet.</div>
+            <div class="small">The draw is available now; return here after the organiser releases the schedule.</div>
+          </div>
+        @endif
         </div>
       </div>
         </div>
      
     </div>
 
-    {{-- ============================
-         TAB 3 — SCORES
-       ============================ --}}
-    <div class="tab-pane fade" 
-         id="scores-pane" 
-         role="tabpanel">
-
-      <div class="card">
-        <div class="card-header">
-          <h5 class="card-title mb-0">Scores</h5>
-          <small class="text-muted">Select match from OOP tab</small>
-        </div>
-
-        <div class="card-body">
-          <form id="rr-score-form">
-            @csrf
-            <input type="hidden" name="fixture_id" id="rr-score-fixture-id">
-
-            <div class="mb-2">
-              <label class="form-label">Match</label>
-              <div id="rr-score-match-label" class="fw-bold small text-muted">
-                Select a match from Order of Play…
-              </div>
-            </div>
-
-            <div class="row g-2 align-items-center">
-              <div class="col-5">
-                <label class="form-label small mb-1">Home score</label>
-                <input type="text" class="form-control form-control-sm"
-                       name="home_score" id="rr-home-score"
-                       placeholder="6-4 6-3">
-              </div>
-              <div class="col-5">
-                <label class="form-label small mb-1">Away score</label>
-                <input type="text" class="form-control form-control-sm"
-                       name="away_score" id="rr-away-score"
-                       placeholder="4-6 3-6">
-              </div>
-              <div class="col-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-sm btn-success w-100">
-                  <i class="ti ti-device-floppy"></i>
-                </button>
-              </div>
-            </div>
-
-          </form>
-        </div>
-      </div>
-    </div>
   {{-- ============================
      TAB 4 — STANDINGS
    ============================ --}}
-<div class="tab-pane fade" id="standings-pane" role="tabpanel">
+<div class="tab-pane fade" id="standings-pane" role="tabpanel" aria-labelledby="standings-tab">
 
   <div class="card">
     <div class="card-header">
@@ -399,7 +362,7 @@
      Brackets
 ========================================= -->
 
-  <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
+  <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel" aria-labelledby="main-bracket-tab">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center py-2">
         <h5 class="card-title mb-0">Main Bracket</h5>
@@ -428,77 +391,6 @@
 
   </div> {{-- END TABS --}}
 </div> {{-- END APP --}}
-<!-- =========================================
-      SCORE ENTRY MODAL
-========================================= -->
-<div class="modal fade" id="rrScoreModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form id="rr-score-modal-form" class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title" id="rrm-match-label">Enter Score</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <div class="modal-body">
-
-        <input type="hidden" id="rrm-fixture-id">
-
-        <label class="form-label fw-bold mb-2">Set Scores</label>
-
-        <!-- SET 1 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 1</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set1-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set1-p1">
-          </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set1-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set1-p2">
-          </div>
-        </div>
-
-        <!-- SET 2 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 2</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set2-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set2-p1">
-          </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set2-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set2-p2">
-          </div>
-        </div>
-
-        <!-- SET 3 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 3</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set3-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set3-p1">
-          </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set3-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set3-p2">
-          </div>
-        </div>
-
-      </div>
-
-      <div class="modal-footer">
-        <button type="submit" class="btn btn-primary">Save Score</button>
-        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-      </div>
-
-    </form>
-  </div>
-</div>
-
-
-
-
 @endsection
 
 
@@ -511,45 +403,9 @@
     window.RR_OOP       = @json($oops);
     window.RR_STANDINGS = @json($standings);
 
-    window.RR_SAVE_SCORE_URL = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
-
-    window.EVENT_ID = {{ $draw->event_id }};
-    const DRAW_ID   = {{ $draw->id }};
+    window.RR_MAIN_BRACKET_URL = "{{ route('public.roundrobin.main-bracket', $draw) }}";
 </script>
-
-
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-
-<!-- ADD THIS -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-<script>
-$(document).on('click', '#btn-import-teams', function () {
-    const url = `${APP_URL}/backend/event/${EVENT_ID}/import-teams`;
-
-    Swal.fire({
-        title: 'Import Teams?',
-        text: 'This will create categories and registrations for all teams.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, import'
-    }).then((result) => {
-        if (!result.isConfirmed) return;
-
-        $.post(url, {}, function (response) {
-            toastr.success(response.message);
-            location.reload();
-        }).fail(function () {
-            toastr.error('Import failed.');
-        });
-    });
-});
-</script>
-
-<script src="{{ asset('assets/js/draw-roundrobin.js') }}?v={{ time() }}"></script>
+<script src="{{ asset('assets/js/roundrobin-public.js') }}"></script>
 
 <script>
 (function(){

@@ -1,6 +1,6 @@
 @extends('layouts/layoutMaster')
 
-@section('title', 'Cancel')
+@section('title', $draw->drawName ?? 'Tournament draw')
 
 @section('vendor-style')
 
@@ -23,37 +23,26 @@
 
 @section('content')
 @auth
-  @if(auth()->user()->id == 584)
+  @can('view', $draw)
     <div class="m-2">
       <a href="{{ route('frontend.bracket.fixtures', $draw->id) }}" class="btn btn-primary btn-sm">
-        Fixtures
+        Manage fixtures
       </a>
     </div>
-  @endif
+  @endcan
 @endauth
 
-
-
-
-
+<div class="mb-3">
+  <a href="{{ route('events.show', $draw->event_id) }}" class="btn btn-sm btn-outline-secondary">
+    <i class="ti ti-arrow-left me-1"></i>Back to tournament
+  </a>
+</div>
+<div class="alert {{ $draw->oop_published ? 'alert-success' : 'alert-info' }} py-2">
+  <strong>{{ $draw->drawName ?? 'Tournament draw' }}</strong> —
+  {{ $draw->oop_published ? 'draw and match times published' : 'draw published; match times to follow' }}.
+</div>
 <div>
-
   @include('frontend.draw.print')
 </div>
 
-
-@auth
-@if(Auth::user()->id = 584)
-<h3>Positions</h3>
-@foreach($draw->registrations as $key => $registration)
-<p>Position: {{$key+1}} {{Brackets::getPosition($key+1,$draw->id)}}</p>
-
-
-@endforeach
-@endif
-
-@endauth
-
 @endsection
-
-

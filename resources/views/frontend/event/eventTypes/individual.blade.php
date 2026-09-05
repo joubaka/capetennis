@@ -105,7 +105,7 @@
       <div class="card-body">
         @forelse($event->files as $file)
           <div class="event-document d-flex justify-content-between align-items-center gap-2 mb-2 file">
-            <a class="d-flex align-items-center gap-2 text-break" href="{{ route('file.show', $file->id) }}">
+            <a class="d-flex align-items-center gap-2 text-break" href="{{ route('events.documents.show', [$event, $file]) }}">
               <i class="ti ti-file-description fs-4 text-primary"></i>
               <span>{{ $file->name }}</span>
             </a>
@@ -130,12 +130,19 @@
     </div>
 
       {{-- DRAWS & ORDER OF PLAY --}}
-    @if(isset($eventDraws) && $eventDraws->count() > 0)
+    @if(($drawPublicationSummary['total'] ?? 0) > 0)
     <div class="card mb-4">
       <div class="card-header">
-        <small class="text-uppercase">Draws & Order of Play</small>
+        <h5 class="mb-1">Draws and match times</h5>
+        <p class="text-muted small mb-0">Draws and schedules are released separately by the organiser.</p>
       </div>
       <div class="card-body">
+@if($eventDraws->isEmpty())
+  <div class="alert alert-info mb-0" role="status">
+    <div class="fw-semibold">The draws are being finalised.</div>
+    <div class="small">They will appear here as soon as the organiser publishes them. Match times and venues may follow later.</div>
+  </div>
+@else
 <div class="d-flex flex-wrap gap-2">
 @php
   $sortedDraws = $eventDraws->sortBy([
@@ -156,9 +163,12 @@
     {{-- PUBLISHED --}}
     @if($draw->published)
       <a href="{{ route('public.roundrobin.show', $draw->id) }}"
-         class="btn btn-sm btn-success">
+         class="btn btn-sm {{ $draw->oop_published ? 'btn-success' : 'btn-outline-success' }}">
         <i class="ti ti-tournament me-1"></i>
         {{ $draw->drawName ?? 'Draw #'.$draw->id }}
+        <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+          {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+        </span>
       </a>
 
       @if($isConvenorOrSuper)
@@ -180,13 +190,6 @@
           {{ $draw->drawName ?? 'Draw #'.$draw->id }}
           <span class="badge bg-danger ms-1">Unpublished</span>
         </a>
-      @else
-        {{-- Others see button but cannot open --}}
-        <span class="btn btn-sm btn-outline-secondary disabled">
-          <i class="ti ti-tournament me-1"></i>
-          {{ $draw->drawName ?? 'Draw #'.$draw->id }}
-          <span class="badge bg-danger ms-1">Unpublished</span>
-        </span>
       @endif
 
     @endif
@@ -194,6 +197,7 @@
   </div>
 @endforeach
 </div>
+@endif
       </div>
     </div>
     @endif
@@ -201,7 +205,11 @@
     {{-- PLAYERS --}}
     <div class="card mb-4">
       <div class="card-body">
-        <small class="text-uppercase">Players</small>
+        <h5 class="mb-1">Players</h5>
+        <p class="text-muted small mb-3">Only active entries are shown. Open a category to view its players.</p>
+        <label class="visually-hidden" for="event-player-search">Search players</label>
+        <input id="event-player-search" type="search" class="form-control mb-3"
+               placeholder="Search by player name or category">
 
         @foreach($eventCats as $eventCategory)
           @php
@@ -209,14 +217,19 @@
               ->where('payment_status_id', 1)
               ->filter(fn($r) => !str_contains(strtolower($r->status ?? ''), 'withdrawn'));
           @endphp
-          <div class="event-category border rounded p-2 mb-3">
-            <span class="badge bg-label-primary mb-2">
+          @if($activeRegistrations->isNotEmpty())
+          <details class="event-category border rounded p-2 mb-3"
+                   data-search="{{ strtolower($eventCategory->category->name.' '.$activeRegistrations->map(fn($r) => optional(optional($r->registration)->players->first())->full_name)->filter()->implode(' ')) }}">
+            <summary class="d-flex align-items-center justify-content-between gap-2" style="cursor:pointer">
+            <span class="badge bg-label-primary">
               {{ $eventCategory->category->name }}
               ({{ $activeRegistrations->count() }})
             </span>
+            <span class="small text-muted">View players</span>
+            </summary>
 
-            <ul class="list-group list-group-flush">
-              @foreach($eventCategory->categoryEventRegistrations->where('payment_status_id', 1) as $cereg)
+            <ul class="list-group list-group-flush mt-2">
+              @foreach($activeRegistrations as $cereg)
                 @php
                   $registration = $cereg->registration;
                   $pivotStatus = strtolower($cereg->status ?? '');
@@ -228,39 +241,7 @@
                     {{ $player->name }}
                     {{ $player->surname }}
                   </span>
-                  @if(str_contains($pivotStatus, 'withdrawn'))
-                    <span class="d-flex align-items-center gap-1">
-                      <span class="badge bg-label-danger">
-                        Withdrawn
-                        @if($cereg->withdrawn_at)
-                          &nbsp;{{ \Carbon\Carbon::parse($cereg->withdrawn_at)->format('j/n/Y') }}
-                        @endif
-                      </span>
-                      @auth
-                        @if((int)$cereg->user_id === (int)auth()->id() || (int)auth()->id() === 584)
-                          <button type="button"
-                                  class="btn btn-xs btn-outline-secondary withdrawal-details-btn"
-                                  title="View withdrawal details"
-                                  data-bs-toggle="modal"
-                                  data-bs-target="#withdrawalDetailsModal"
-                                  data-player="{{ $player->name }} {{ $player->surname }}"
-                                  data-withdrawn-at="{{ $cereg->withdrawn_at ? \Carbon\Carbon::parse($cereg->withdrawn_at)->format('j/n/Y H:i') : '—' }}"
-                                  data-method="{{ ucfirst($cereg->refund_method ?? 'none') }}"
-                                  data-refund-method="{{ strtolower($cereg->refund_method ?? '') }}"
-                                  data-refund-status="{{ ucfirst($cereg->refund_status ?? 'n/a') }}"
-                                  data-show-wallet="{{ $cereg->refund_method === 'wallet' ? '1' : '' }}"
-                                  data-gross="{{ $cereg->refund_gross ? 'R '.number_format($cereg->refund_gross, 2) : '—' }}"
-                                  data-net="{{ $cereg->refund_net ? 'R '.number_format($cereg->refund_net, 2) : '—' }}"
-                                  data-refunded-at="{{ $cereg->refunded_at ? \Carbon\Carbon::parse($cereg->refunded_at)->format('j/n/Y') : '—' }}"
-                                  data-event-name="{{ $event->name }}"
-                                  data-reg-id="{{ $cereg->id }}"
-                                  data-user-id="{{ $cereg->user_id }}">
-                            <i class="ti ti-info-circle"></i>
-                          </button>
-                        @endif
-                      @endauth
-                    </span>
-                  @elseif(auth()->check() && (int)$cereg->user_id === (int)auth()->id() && !empty($canWithdraw) && $canWithdraw)
+                  @if(auth()->check() && (int)$cereg->user_id === (int)auth()->id() && !empty($canWithdraw) && $canWithdraw)
                     <button type="button"
                             class="btn btn-xs btn-outline-warning move-category-btn"
                             title="Change category"
@@ -276,12 +257,28 @@
                 </li>
               @endforeach
             </ul>
-          </div>
+          </details>
+          @endif
         @endforeach
       </div>
     </div>
   </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var search = document.getElementById('event-player-search');
+  if (!search) return;
+
+  search.addEventListener('input', function () {
+    var term = search.value.trim().toLowerCase();
+    document.querySelectorAll('.event-category[data-search]').forEach(function (category) {
+      var match = !term || category.dataset.search.includes(term);
+      category.hidden = !match;
+      if (term && match) category.open = true;
+    });
+  });
+});
+</script>
 <div class="modal fade" id="addFileModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">

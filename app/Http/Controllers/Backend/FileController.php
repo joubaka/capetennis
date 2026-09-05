@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\File;
+use App\Models\Event;
+use App\Services\PublicTournamentVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
@@ -53,6 +55,8 @@ class FileController extends Controller
       'myFile' => 'required|mimes:pdf,doc,docx,xls,xlsx,csv|max:5120', // ✅ allows Word, Excel, PDF up to 5MB
       'event_id' => 'required|integer',
     ]);
+    $event = Event::findOrFail($request->integer('event_id'));
+    $this->authorize('event.manage', $event);
 
     $uploadedFile = $request->file('myFile');
     $originalName = pathinfo($uploadedFile->getClientOriginalName(), PATHINFO_FILENAME);
@@ -75,13 +79,29 @@ class FileController extends Controller
   }
 
 
-  public function show($id)
+  public function show($id, PublicTournamentVisibility $visibility)
   {
     $file = File::findOrFail($id);
+    $event = Event::findOrFail($file->event_id);
+    $visibility->ensureEventIsVisible($event, auth()->user());
+
+    return $this->serve($file);
+  }
+
+  public function publicShow(Event $event, File $file, PublicTournamentVisibility $visibility)
+  {
+    $visibility->ensureEventIsVisible($event, auth()->user());
+    abort_unless((int) $file->event_id === (int) $event->id, 404);
+
+    return $this->serve($file);
+  }
+
+  private function serve(File $file)
+  {
 
     // Normalize path — only prepend storage_path() if it's not already absolute
     $path = $file->path;
-    if (!str_starts_with($path, '/')) {
+    if (!$this->isAbsolutePath($path)) {
       $path = storage_path('app/' . ltrim($path, '/'));
     }
 
@@ -99,6 +119,15 @@ class FileController extends Controller
     ]);
   }
 
+  private function isAbsolutePath(?string $path): bool
+  {
+    return is_string($path) && (
+      str_starts_with($path, '/')
+      || str_starts_with($path, '\\\\')
+      || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1
+    );
+  }
+
   public function destroy($id)
   {
     $file = File::find($id);
@@ -106,10 +135,12 @@ class FileController extends Controller
     if (!$file) {
       return response()->json(['success' => false, 'msg' => 'File not found.'], 404);
     }
+    $event = Event::findOrFail($file->event_id);
+    $this->authorize('event.manage', $event);
 
     // Delete file from storage
     $path = $file->path;
-    if (!str_starts_with($path, '/')) {
+    if (!$this->isAbsolutePath($path)) {
       $path = storage_path('app/' . ltrim($path, '/'));
     }
 

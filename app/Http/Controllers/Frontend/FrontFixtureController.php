@@ -8,11 +8,13 @@ use App\Models\Draw;
 use App\Models\Player;
 use App\Models\TeamFixture;
 use App\Models\Fixture;
-use App\Models\User;
+use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Services\DrawService;
 use App\Services\TeamFixtureScoreService;
+use App\Services\PublicDrawScheduleVisibility;
+use App\Services\PublicTournamentVisibility;
 
 
 class FrontFixtureController extends Controller
@@ -26,15 +28,7 @@ class FrontFixtureController extends Controller
   public function show($id)
   {
     $draw = Draw::with('event')->findOrFail($id);
-
-    // Block access to unpublished draws — only admin/super-user/convenor may view
-    if (!$draw->published) {
-      $user = auth()->user();
-      $isPrivileged = $user && $user->can('view', $draw);
-      if (!$isPrivileged) {
-        abort(403, 'This draw has not been published yet.');
-      }
-    }
+    app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
     if ($draw->event?->eventType == 13) {
       return $this->showInterproFixtures($draw);
@@ -62,6 +56,8 @@ class FrontFixtureController extends Controller
       ->orderByRaw('CAST(home_rank_nr AS UNSIGNED)')
       ->orderBy('match_nr')
       ->get();
+
+    $this->hidePrivateSchedule($draw, $fixtures);
 
     if ($fixtures->isEmpty()) {
       abort(404, 'No fixtures found for this draw.');
@@ -99,6 +95,8 @@ class FrontFixtureController extends Controller
       ->where('draw_id', $draw->id)
       ->orderByRaw('CAST(match_nr AS UNSIGNED)')
       ->get();
+
+    $this->hidePrivateSchedule($draw, $fixtures);
 
     if ($fixtures->isEmpty()) {
       abort(404, 'No fixtures found for this draw.');
@@ -179,14 +177,7 @@ class FrontFixtureController extends Controller
     // Load draw + event
     $draw = Draw::with('event')->findOrFail($id);
 
-    // Block access to unpublished draws — only admin/super-user/convenor may view
-    if (!$draw->published) {
-      $user = auth()->user();
-      $isPrivileged = $user && $user->can('view', $draw);
-      if (!$isPrivileged) {
-        abort(403, 'This draw has not been published yet.');
-      }
-    }
+    app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
     // Detect team vs individual
     $isTeamEvent = ($draw->event?->eventType == 3);
@@ -228,6 +219,8 @@ class FrontFixtureController extends Controller
         ->get();
 
     }
+
+    $this->hidePrivateSchedule($draw, $fixtures);
     
     // ---------------------------------------------------------
     // Empty fixtures
@@ -275,53 +268,35 @@ class FrontFixtureController extends Controller
   }
 
   public function drawFixturesRound($event, $var, $type)
-    {
+  {
+    $eventModel = Event::findOrFail($event);
+    app(PublicTournamentVisibility::class)->ensureEventIsVisible($eventModel, auth()->user());
+    $eventDraws = app(PublicTournamentVisibility::class)
+      ->publishedDrawsFor($eventModel, scheduleRequired: true)
+      ->pluck('id');
 
-        $eventDraws = Draw::where('event_id', $event)->get()->pluck('id');
-        if ($type == 'tie') {
-            $data['fixtures'] = TeamFixture::whereIn('draw_id', $eventDraws)
-                ->where('tie_nr', $var)->get();
-        } else {
-            $data['fixtures'] = TeamFixture::whereIn('draw_id', $eventDraws)
-                ->where('round_nr', $var)->get();
-        }
+    $fixtures = TeamFixture::with([
+      'draw', 'fixturePlayers.player1', 'fixturePlayers.player2',
+      'fixtureResults', 'venue', 'region1Name', 'region2Name',
+    ])
+      ->whereIn('draw_id', $eventDraws)
+      ->when($type === 'tie', fn ($query) => $query->where('tie_nr', $var))
+      ->when($type !== 'tie', fn ($query) => $query->where('round_nr', $var))
+      ->orderBy('scheduled_at')
+      ->get();
 
+    abort_if($fixtures->isEmpty(), 404, 'No published matches found.');
 
-
-        if (Auth::check()) {
-
-            $user = User::find(auth()->user()->id);
-
-            if (count($user->is_convenor($data['fixtures'][0]->draw->events->id)) > 0) {
-
-                $data['players'] = Player::all();
-
-
-                return view('backend.draw.team.draw-show-team', $data);
-            } else {
-
-                $data['players'] = Player::all();
-                return view('frontend.fixture.draw-fixtures-show', $data);
-            }
-        } else {
-            $data['players'] = Player::all();
-
-
-            return view('frontend.fixture.draw-fixtures-show', $data);
-        }
-    }
+    return view('frontend.fixture.draw-fixtures-show-team', [
+      'fixtures' => $fixtures,
+      'draw' => $fixtures->first()->draw,
+      'event' => $eventModel,
+    ]);
+  }
 
     public function bracketFixtures($id){
         $draw = Draw::with('event')->findOrFail($id);
-
-        // Block unpublished draws — only admin/super-user/convenor may view
-        if (!$draw->published) {
-          $user = auth()->user();
-          $isPrivileged = $user && $user->can('view', $draw);
-          if (!$isPrivileged) {
-            abort(403, 'This draw has not been published yet.');
-          }
-        }
+        app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
         $data['draw'] = $draw;
         $data['event'] = $draw->event;
@@ -329,6 +304,31 @@ class FrontFixtureController extends Controller
         return view('frontend.draw.fixtures.showFixtures',$data);
 
     }
+
+  private function hidePrivateSchedule(Draw $draw, $fixtures): void
+  {
+    if (auth()->user()?->can('view', $draw)) {
+      return;
+    }
+
+    $visibleIds = app(PublicDrawScheduleVisibility::class)->visibleFixtureIds($draw);
+    if ($visibleIds === null) {
+      return;
+    }
+
+    foreach ($fixtures as $fixture) {
+      if ($visibleIds->contains((int) $fixture->id)) {
+        continue;
+      }
+
+      $fixture->setAttribute('scheduled_at', null);
+      $fixture->setAttribute('venue_id', null);
+      $fixture->setRelation('venue', null);
+      if ($fixture->relationLoaded('orderOfPlay')) {
+        $fixture->setRelation('orderOfPlay', null);
+      }
+    }
+  }
 
   public function saveScore(Request $request, TeamFixture $fixture)
   {

@@ -214,7 +214,7 @@ $nominations = EventNomination::all();
                             <div class="row">
 
                                 <div class="col-7">
-                                    <a href="{{route('file.show',$file->id)}}" class="list-group-item list-group-item-action d-flex justify-content-between">
+                                    <a href="{{ route('events.documents.show', [$event, $file]) }}" class="list-group-item list-group-item-action d-flex justify-content-between">
                                         <div class="li-wrapper d-flex justify-content-start align-items-center">
                                             <div class="avatar avatar-sm me-3">
                                                 <span class="avatar-initial rounded-circle bg-label-success">{{($key+1)}}</span>
@@ -288,12 +288,15 @@ $nominations = EventNomination::all();
                 @foreach($eventDraws as $draw)
                 <div class="col m-2">
                     @if($draw->published == 1)
-                    <a href="{{route('frontend.showDraw',$draw->id)}}" class="btn btn-sm btn-success">{{$draw->drawName}}</a>
-                    @if(Auth::check())
-                    @if(Auth::user()->id == 1764 || Auth::user()->id == 584 )
+                    <a href="{{route('frontend.showDraw',$draw->id)}}" class="btn btn-sm btn-success">
+                      {{$draw->drawName}}
+                      <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                        {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+                      </span>
+                    </a>
+                    @can('view', $draw)
                     <a href="{{route('frontend.bracket.fixtures',$draw->id)}}" class="btn btn-sm btn-primary">Fixtures</a>
-                    @endif
-                    @endif
+                    @endcan
                     @else
                     <div class="badge bg-danger">{{$draw->drawName}} - Not published</div>
 
