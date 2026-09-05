@@ -33,7 +33,7 @@ final class EventVenueScheduleService
 
         $draws = $event->draws()->with([
             'venues' => fn ($query) => $query->withPivot('num_courts'),
-            'drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad',
+            'drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad', 'groups',
         ])->when($selectedDraws, fn ($query) => $query->whereIn('id', $selectedDraws))->get();
 
         $foreignDraws = array_diff($selectedDraws, $draws->pluck('id')->map(fn ($id) => (int) $id)->all());
@@ -377,6 +377,18 @@ final class EventVenueScheduleService
                 }
                 $sourceLabels[$target][$slot] = $path['type'].' of Match '.($fixture->match_nr ?: $fixture->id);
             }
+
+            foreach ([1, 2] as $slotNumber) {
+                $groupId = (int) $fixture->getAttribute("registration{$slotNumber}_source_group_id");
+                $position = (int) $fixture->getAttribute("registration{$slotNumber}_source_position");
+                if (! $groupId || ! $position) continue;
+
+                foreach ($fixtures->where('draw_group_id', $groupId)->where('stage', 'RR') as $roundRobinFixture) {
+                    $feeders[$fixture->id][] = $roundRobinFixture->id;
+                }
+                $groupName = $draw->groups->firstWhere('id', $groupId)?->name ?: $groupId;
+                $sourceLabels[$fixture->id][$slotNumber - 1] = "Group {$groupName} #{$position}";
+            }
         }
         $nodes = [];
         foreach ($fixtures as $fixture) {
@@ -385,7 +397,8 @@ final class EventVenueScheduleService
                     && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
             $labels = $sourceLabels[$fixture->id] ?? [];
             ksort($labels);
-            $nodes[$fixture->id] = $this->node($draw, $fixture, $feeders[$fixture->id] ?? [],
+            $dependencies = array_values(array_unique($feeders[$fixture->id] ?? []));
+            $nodes[$fixture->id] = $this->node($draw, $fixture, $dependencies,
                 $participants[$fixture->id] ?? [], $automatic, $fixture->fixtureResults->isNotEmpty(), $labels);
         }
         return $nodes;

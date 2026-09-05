@@ -16,16 +16,20 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\DrawSetting;
 use App\Models\Venue;
+use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
 
 class RoundRobinController extends Controller
 {
   protected DrawService $builder;
   protected EngineRouter $engine;
+  protected RoundRobinPlayoffScheduleService $playoffSchedules;
 
-  public function __construct(DrawService $builder, EngineRouter $engine)
+  public function __construct(DrawService $builder, EngineRouter $engine,
+    RoundRobinPlayoffScheduleService $playoffSchedules)
   {
     $this->builder = $builder;
     $this->engine  = $engine;
+    $this->playoffSchedules = $playoffSchedules;
   }
 
   // ============================================================
@@ -447,6 +451,8 @@ class RoundRobinController extends Controller
         $response = DB::transaction(function () use ($fixture, $validSets, $draw) {
           $resp = $this->builder->saveScore($fixture, $validSets);
           $hub  = $this->builder->loadRoundRobinHub($draw);
+          $this->playoffSchedules->prepare($draw);
+          $this->playoffSchedules->resolveFromStandings($draw, $hub['standings'] ?? []);
             $resp['oop']        = $hub['oops'] ?? [];
           $resp['rrFixtures'] = $hub['rrFixtures'] ?? [];
           $resp['standings']  = $hub['standings'] ?? [];
@@ -555,6 +561,8 @@ class RoundRobinController extends Controller
     // Reload full OOP for the draw so the front-end table refreshes
     $draw->refresh();
     $hub  = $this->builder->loadRoundRobinHub($draw);
+    $this->playoffSchedules->prepare($draw);
+    $this->playoffSchedules->resolveFromStandings($draw, $hub['standings'] ?? []);
 
     return response()->json([
       'success'    => true,
@@ -636,6 +644,24 @@ class RoundRobinController extends Controller
       // Build seeds from RR standings using loadRoundRobinHub
       $hub = $this->builder->loadRoundRobinHub($draw);
       $standings = $hub['standings'] ?? [];
+
+      // Direct finishing-position matches are prepared before scheduling and
+      // resolved in place once the relevant round-robin group is complete.
+      // Preserve their fixture IDs and existing court bookings.
+      if ($this->playoffSchedules->supportsEntireConfiguration($draw)) {
+        $created = $this->playoffSchedules->prepare($draw);
+        $resolved = $this->playoffSchedules->resolveFromStandings($draw, $standings);
+        DrawAuditLog::record($draw->id, 'bracket_generated', null, [
+          'type' => 'position_sources', 'fixture_count' => $draw->drawFixtures()->where('stage', '!=', 'RR')->count(),
+          'created' => $created->count(), 'resolved' => $resolved,
+        ]);
+
+        return response()->json([
+          'success' => true,
+          'message' => 'Playoff fixtures are prepared and will use the final round-robin positions.',
+          'fixtures' => $draw->drawFixtures()->where('stage', '!=', 'RR')->get(),
+        ]);
+      }
       $seeds = $this->buildDynamicSeeds($draw, $standings, $playoffConfig);
 
       \Log::info("🧬 [MainBracket] Dynamic seeds built", $seeds);

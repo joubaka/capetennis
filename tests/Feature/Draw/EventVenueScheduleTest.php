@@ -3,9 +3,10 @@
 namespace Tests\Feature\Draw;
 
 use App\Jobs\SendBulkEmailJob;
-use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, FixtureResult, OrderOfPlay, Player, Registration, User, Venue};
+use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, DrawGroup, DrawSetting, Event, Fixture, FixtureResult, OrderOfPlay, Player, Registration, User, Venue};
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\Scheduling\EventVenueScheduleService;
+use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -114,6 +115,49 @@ class EventVenueScheduleTest extends TestCase
         $this->assertSame(['Loser of Match 1', 'Loser of Match 2'], $matches[$playoff->id]['participants']);
         $this->assertSame(3, $matches[$final->id]['match']);
         $this->assertSame(4, $matches[$playoff->id]['match']);
+    }
+
+    public function test_position_pair_playoffs_are_prepared_and_scheduled_after_the_round_robin(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Round Robin Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'U/10B Boys']);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        DrawSetting::updateOrCreate(['draw_id' => $draw->id], [
+            'workflow' => 'round_robin_playoffs',
+            'playoff_config' => [
+                ['name' => '1st/2nd', 'slug' => 'main', 'size' => 2, 'positions' => [1, 2], 'enabled' => true],
+                ['name' => '3rd/4th', 'slug' => 'plate', 'size' => 2, 'positions' => [3, 4], 'enabled' => true],
+            ],
+        ]);
+        $group = DrawGroup::create(['draw_id' => $draw->id, 'name' => 'A']);
+        $registrations = Registration::factory()->count(4)->create();
+        foreach ($registrations as $seed => $registration) {
+            $group->registrations()->attach($registration->id, ['seed' => $seed + 1]);
+        }
+        foreach ([[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]] as $index => [$home, $away]) {
+            Fixture::factory()->create([
+                'draw_id' => $draw->id,
+                'draw_group_id' => $group->id,
+                'stage' => 'RR',
+                'round' => intdiv($index, 2) + 1,
+                'match_nr' => $index + 1,
+                'registration1_id' => $registrations[$home]->id,
+                'registration2_id' => $registrations[$away]->id,
+            ]);
+        }
+
+        $created = app(RoundRobinPlayoffScheduleService::class)->prepare($draw->fresh());
+        $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), $this->schedulingOptions());
+        $matches = collect($preview['matches']);
+        $playoffs = $matches->whereIn('fixture_id', $created->pluck('id'));
+
+        $this->assertCount(2, $created);
+        $this->assertCount(8, $matches);
+        $this->assertSame([4], $playoffs->pluck('wave')->unique()->values()->all());
+        $this->assertSame(['Group A #1', 'Group A #2'], $playoffs->firstWhere('stage', 'MAIN')['participants']);
+        $this->assertSame(['Group A #3', 'Group A #4'], $playoffs->firstWhere('stage', 'PLATE')['participants']);
+        $this->assertSame(['2026-09-10 14:45:00'], $playoffs->pluck('scheduled_at')->unique()->values()->all());
     }
 
     public function test_unresolved_flexible_monrad_fixtures_show_their_numbered_source_paths(): void

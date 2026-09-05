@@ -36,6 +36,13 @@ class Fixture extends Model
     'position',          // Position playoff (3 = 3rd/4th, 5 = 5th/6th, etc.)
     'playoff_type',      // Playoff type label (e.g., '3rd/4th', '5th/6th', 'cons_sf1')
 
+    // Deferred round-robin finishing-position sources. These let a playoff
+    // fixture keep its identity and schedule before its players are known.
+    'registration1_source_group_id',
+    'registration1_source_position',
+    'registration2_source_group_id',
+    'registration2_source_position',
+
     // Teams / Inter-districts legacy
     'region1',
     'region2',

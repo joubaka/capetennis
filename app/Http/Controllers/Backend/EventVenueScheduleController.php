@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{Event, Fixture, OrderOfPlay, Venue};
 use App\Services\EventAnnouncementService;
 use App\Services\Scheduling\EventVenueScheduleService;
+use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -250,22 +251,30 @@ final class EventVenueScheduleController extends Controller
         return response()->json(['message' => 'Age-group venue allocations saved.', 'unscheduled' => $unscheduled]);
     }
 
-    public function preview(Request $request, Event $event, EventVenueScheduleService $scheduler)
+    public function preview(Request $request, Event $event, EventVenueScheduleService $scheduler,
+        RoundRobinPlayoffScheduleService $playoffs)
     {
         $this->authorize('event.manage', $event);
         try {
-            return response()->json($scheduler->preview($event, $this->validatedOptions($request)));
+            $options = $this->validatedOptions($request);
+            $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+
+            return response()->json($scheduler->preview($event->fresh(), $options));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
     }
 
-    public function apply(Request $request, Event $event, EventVenueScheduleService $scheduler)
+    public function apply(Request $request, Event $event, EventVenueScheduleService $scheduler,
+        RoundRobinPlayoffScheduleService $playoffs)
     {
         $this->authorize('event.manage', $event);
         $request->validate(['revision' => ['required', 'string', 'size:64']]);
         try {
-            return response()->json($scheduler->apply($event, $this->validatedOptions($request), (string) $request->string('revision')));
+            $options = $this->validatedOptions($request);
+            $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+
+            return response()->json($scheduler->apply($event->fresh(), $options, (string) $request->string('revision')));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
