@@ -53,11 +53,11 @@ sync_public_html() {
     for file in $SYNC_ROOT_FILES; do [ -f "$APP_PATH/public/$file" ] && cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"; done
 }
 git -C "$APP_PATH" fetch origin main
+run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap restore_online EXIT
 git -C "$APP_PATH" merge --ff-only origin/main
 # Read the migration list shipped with the release we just pulled.
 [ -f "$APP_PATH/deploy.config" ] && source "$APP_PATH/deploy.config"
 REMOTE_HEAD="$(git -C "$APP_PATH" rev-parse HEAD)"
-run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap restore_online EXIT
 [ "$SKIP_DEPS" = true ] || composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --working-dir="$APP_PATH"
 run_php "$APP_PATH/artisan" optimize:clear
 if [ "$SKIP_MIGRATIONS" = false ] && [ "$RUN_MIGRATIONS" = true ]; then

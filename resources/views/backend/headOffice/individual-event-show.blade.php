@@ -19,7 +19,7 @@
 window.headOfficeDraws = {
     createUrl: @json(route('headoffice.createSingleDraw', $event->id)),
     bulkPublicationUrl: @json(route('backend.event-draws.bulk-publication', $event)),
-    scheduleVisibilityUrl: @json(route('backend.events.schedule-visibility', $event)),
+    scheduleVisibilityUrl: @json(route('backend.event-draws.bulk-publication', $event)),
     venueScheduleUrl: @json(route('backend.event-venue-schedule.index', $event)),
 };
 </script>
@@ -312,6 +312,7 @@ $(document).ready(function () {
     <div class="modal-content">
       <form id="scheduleVisibilityForm">
         @csrf
+        <input type="hidden" name="operation" value="schedule_visibility">
         <div class="modal-header">
           <div>
             <h5 class="modal-title" id="scheduleVisibilityModalLabel">Public match time display</h5>

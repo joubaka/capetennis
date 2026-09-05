@@ -39,7 +39,8 @@ class EventScheduleVisibilityTest extends TestCase
         $foreign->settings()->create(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL]);
 
         $this->actingAs($this->admin)
-            ->postJson(route('backend.events.schedule-visibility', $this->event), [
+            ->postJson(route('backend.event-draws.bulk-publication', $this->event), [
+                'operation' => 'schedule_visibility',
                 'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
             ])
             ->assertOk()

@@ -22,6 +22,13 @@ final class BulkDrawPublicationController extends Controller
         DrawSchedulePublicationService $schedulePublication,
         FlexibleMonradService $flexibleMonrad,
     ) {
+        // Reuse this established endpoint for event-wide display settings. This
+        // also keeps the Head Office page compatible with an older cached route
+        // table during a rolling/shared-host deployment.
+        if ($request->input('operation') === 'schedule_visibility') {
+            return app(EventScheduleVisibilityController::class)($request, $event);
+        }
+
         $data = $request->validate([
             'draw_ids' => ['required', 'array', 'min:1', 'max:200'],
             'draw_ids.*' => ['required', 'integer', 'distinct'],
