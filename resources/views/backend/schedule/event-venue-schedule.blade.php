@@ -71,6 +71,9 @@
 @endsection
 
 @section('content')
+@php
+  $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
+@endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div class="workspace-header">
@@ -131,7 +134,7 @@
                     <span class="fw-semibold">Include in this schedule</span>
                   </label>
                   <div class="d-flex flex-wrap align-items-end gap-2">
-                    @if($draw['applied_match_count'] > 0 && ! $draw['locked'] && ! $draw['published'])
+                    @if($unapplyRouteAvailable && $draw['applied_match_count'] > 0 && ! $draw['locked'] && ! $draw['published'])
                       <button type="button" class="btn btn-sm btn-outline-danger" data-unapply-draw="{{ $draw['id'] }}" data-draw-name="{{ $draw['name'] }}">
                         <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}
                       </button>
@@ -340,7 +343,7 @@
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const previewUrl = @json(route('backend.event-venue-schedule.preview', $event));
   const applyUrl = @json(route('backend.event-venue-schedule.apply', $event));
-  const unapplyUrl = @json(route('backend.event-venue-schedule.unapply', $event));
+  const unapplyUrl = @json($unapplyRouteAvailable ? route('backend.event-venue-schedule.unapply', $event) : null);
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
@@ -620,7 +623,7 @@
     if (replanning) state = '<span class="badge bg-label-warning">Replanning this venue</span>';
     const apply = planned ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Good to go — apply this venue</button>` : '';
     const change = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-primary" data-replan-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}">Change this venue</button>` : '';
-    const unapply = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
+    const unapply = unapplyUrl && fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
     const keep = replanning ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-keep-venue="${venue.id}">Keep current applied schedule</button>` : '';
     return `<div class="preview-venue-actions"><div>${state}<span class="small text-muted ms-2">Change previews new times; unapply removes saved times and returns matches to planning.</span></div><div class="d-flex flex-wrap gap-2">${keep}${change}${unapply}${apply}</div></div>`;
   };
