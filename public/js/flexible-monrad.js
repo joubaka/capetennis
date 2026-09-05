@@ -517,13 +517,14 @@
       const players = match.players.map((id, i) => id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i])).join(' vs ');
       const schedule = scheduleParts(match.schedule);
       const scheduleHidden = match.schedule_hidden === true;
+      const followedBy = 'Followed by';
       const cells = [
         ['Match', String(match.number)],
         ['Players', players],
-        ['Date', scheduleHidden ? '—' : schedule.date || 'Not scheduled'],
-        ['Time', scheduleHidden ? 'Followed by' : schedule.time || '—'],
-        ['Venue', scheduleHidden ? '—' : match.schedule?.venue || '—'],
-        ['Court', scheduleHidden ? '—' : match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
+        ['Date', scheduleHidden ? followedBy : schedule.date || 'Not scheduled'],
+        ['Time', scheduleHidden ? followedBy : schedule.time || '—'],
+        ['Venue', scheduleHidden ? followedBy : match.schedule?.venue || '—'],
+        ['Court', scheduleHidden ? followedBy : match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
       ];
       cells.forEach(([label, value]) => {
         const cell = el('td', '', String(value));

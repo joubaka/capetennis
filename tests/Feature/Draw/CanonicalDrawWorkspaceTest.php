@@ -84,7 +84,11 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertSee('Find your name, then confirm the date, time, venue and court.')
             ->assertSee('2026-09-20 09:00:00');
         $this->assertStringContainsString('td[data-label="Time"]', file_get_contents(public_path('css/flexible-monrad.css')));
-        $this->assertStringContainsString("scheduleHidden ? 'Followed by'", file_get_contents(public_path('js/flexible-monrad.js')));
+        $publicScript = file_get_contents(public_path('js/flexible-monrad.js'));
+        $this->assertStringContainsString("const followedBy = 'Followed by';", $publicScript);
+        foreach (['Date', 'Time', 'Venue', 'Court'] as $column) {
+            $this->assertStringContainsString("['{$column}', scheduleHidden ? followedBy", $publicScript);
+        }
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
         $this->assertSame(4, $draw->drawFixtures()->count());
