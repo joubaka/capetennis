@@ -381,6 +381,60 @@ class DrawPackTest extends TestCase
             ->assertJsonValidationErrors('print_type');
     }
 
+    public function test_flexible_monrad_bracket_can_be_printed_without_other_pack_sections(): void
+    {
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'drawName' => 'Boys U15 Monrad',
+        ]);
+        $draw->settings()->create(['workflow' => 'custom_monrad']);
+        FlexibleMonradDraw::create([
+            'draw_id' => $draw->id,
+            'revision' => 1,
+            'draft' => ['size' => 4, 'slots' => []],
+            'graph' => ['matches' => []],
+        ]);
+
+        $final = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'FM',
+            'round' => 2,
+            'match_nr' => 3,
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'FM',
+            'round' => 1,
+            'match_nr' => 1,
+            'parent_fixture_id' => $final->id,
+            'feeder_slot' => 1,
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'FM',
+            'round' => 1,
+            'match_nr' => 2,
+            'parent_fixture_id' => $final->id,
+            'feeder_slot' => 2,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', [
+                'event' => $this->event,
+                'draw_ids' => [$draw->id],
+                'print_type' => 'bracket',
+            ]))
+            ->assertOk()
+            ->assertSee('Bracket only')
+            ->assertSee('Boys U15 Monrad')
+            ->assertSee('Flexible Monrad')
+            ->assertSee('Bracket and placement pathways')
+            ->assertSee('Winner to M3')
+            ->assertDontSee('Complete Draw Pack')
+            ->assertDontSee('Master order of play')
+            ->assertDontSee('Fixtures in scheduled order');
+    }
+
     public function test_browser_print_builders_escape_untrusted_draw_content(): void
     {
         $workspacePrint = file_get_contents(resource_path('views/backend/draw/roundrobin/print-scripts.blade.php'));

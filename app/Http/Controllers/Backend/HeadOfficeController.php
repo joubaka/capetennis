@@ -1219,7 +1219,7 @@ class HeadOfficeController extends Controller
       'draw_ids.*' => ['required', 'integer', 'distinct'],
       'include_standings' => ['sometimes', 'boolean'],
       'download' => ['sometimes', 'boolean'],
-      'print_type' => ['sometimes', 'string', 'in:pack,venue'],
+      'print_type' => ['sometimes', 'string', 'in:pack,venue,bracket'],
     ]);
 
     $drawIds = collect($validated['draw_ids'] ?? $event->draws()->pluck('id'))
@@ -1283,9 +1283,11 @@ class HeadOfficeController extends Controller
     $pdf = Pdf::loadView('backend.draw.pdf.draw-pack', $data + ['autoPrint' => false]);
     $pdf->setPaper('A4', 'landscape');
 
-    $suffix = ($validated['print_type'] ?? 'pack') === 'venue'
-      ? '_venue_order_of_play.pdf'
-      : '_draw_pack.pdf';
+    $suffix = match ($validated['print_type'] ?? 'pack') {
+      'venue' => '_venue_order_of_play.pdf',
+      'bracket' => '_brackets.pdf',
+      default => '_draw_pack.pdf',
+    };
     $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name) . $suffix;
 
     return $pdf->download($filename);

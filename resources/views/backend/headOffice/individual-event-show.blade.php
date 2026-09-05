@@ -207,7 +207,7 @@ $(document).ready(function () {
 
         var printType = $('input[name="print_type"]:checked').val();
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
-        if (printType === 'pack' || printType === 'venue') {
+        if (printType === 'pack' || printType === 'venue' || printType === 'bracket') {
             var packParams = new URLSearchParams();
             drawIds.forEach(function (id) { packParams.append('draw_ids[]', id); });
             packParams.append('include_standings', includeStandings);
@@ -301,7 +301,7 @@ $(document).ready(function () {
         params.append('print_type', printType);
         params.append('include_standings', includeStandings);
 
-        if (printType === 'pack' || printType === 'venue') {
+        if (printType === 'pack' || printType === 'venue' || printType === 'bracket') {
             params.append('download', 1);
             window.location.href = @json(route('headoffice.drawPack', $event)) + '?' + params.toString();
             return;
@@ -495,6 +495,13 @@ $(document).ready(function () {
               <label class="form-check-label" for="pt-venue">
                 <i class="ti ti-building-stadium me-1 text-primary"></i> <strong>Per-Venue Order of Play</strong>
                 <span class="d-block small text-muted">A separate operational schedule for each venue across all selected draws</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="print_type" value="bracket" id="pt-bracket">
+              <label class="form-check-label" for="pt-bracket">
+                <i class="ti ti-tournament me-1 text-primary"></i> <strong>Bracket / Monrad Draw Only</strong>
+                <span class="d-block small text-muted">Only the bracket and placement pathways for the selected draws</span>
               </label>
             </div>
             <div class="form-check">

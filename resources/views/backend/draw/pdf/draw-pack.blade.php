@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }}</title>
+  <title>{{ $event->name }} - {{ match ($printType ?? 'pack') { 'venue' => 'Per-Venue Order of Play', 'bracket' => 'Brackets', default => 'Draw Pack' } }}</title>
   <style>
     @page { size: A4 landscape; margin: 11mm 10mm 13mm; }
     * { box-sizing: border-box; }
@@ -54,11 +54,15 @@
     .pathway { width: 100%; border-collapse: separate; border-spacing: 2mm; table-layout: fixed; margin: 0 -2mm 4mm; }
     .pathway th { padding: 1.5mm; color: #163a64; background: #edf3f8; font-size: 7pt; text-align: center; }
     .pathway td { padding: 0; vertical-align: top; }
+    .pathway .round-heading { margin-bottom: 2mm; padding: 1.5mm; color: #163a64; background: #edf3f8; font-size: 7pt; font-weight: 700; text-align: center; }
     .match-card { min-height: 18mm; margin-bottom: 2mm; padding: 2mm; border: .8pt solid #8d98a8; background: #fff; page-break-inside: avoid; }
     .match-card strong { color: #163a64; }
     .match-card .advance { margin-top: 1.5mm; padding-top: 1mm; border-top: .5pt solid #d8dee7; color: #657184; font-size: 6.5pt; }
     .matrix-ledger { page-break-inside: auto; }
     .fixture-list { page-break-before: always; }
+    .bracket-only h3 { margin-top: 2mm; }
+    .bracket-only h4 { margin-top: 2mm; }
+    .bracket-only .match-card { min-height: 15mm; margin-bottom: 1mm; padding: 1.5mm; }
     caption { height: 0; overflow: hidden; color: transparent; font-size: 0; }
     .footer { position: fixed; left: 0; right: 0; bottom: -8mm; color: #7b8593; font-size: 7pt; border-top: .5pt solid #ccd3dc; padding-top: 1.5mm; }
     .footer .page-number { float: right; }
@@ -74,7 +78,7 @@
 @endif
 
 <div class="footer">
-  {{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }} - Generated {{ now()->format('d M Y H:i') }}
+  {{ $event->name }} - {{ match ($printType ?? 'pack') { 'venue' => 'Per-Venue Order of Play', 'bracket' => 'Brackets', default => 'Draw Pack' } }} - Generated {{ now()->format('d M Y H:i') }}
   <span class="page-number">Page </span>
 </div>
 
@@ -99,6 +103,7 @@
     'SHIELD' => 'Shield', 'SPOON' => 'Spoon',
   ];
   $venueOnly = ($printType ?? 'pack') === 'venue';
+  $bracketOnly = ($printType ?? 'pack') === 'bracket';
   $venueSchedules = $schedule
     ->filter(fn ($fixture) => filled($fixture['venue']))
     ->groupBy('venue')
@@ -180,6 +185,16 @@
       </table>
     </section>
   @endforeach
+@endforeach
+@elseif($bracketOnly)
+@foreach($draws as $draw)
+  <section @class(['bracket-only', 'page' => !$loop->first])>
+    <header class="section-head">
+      <div><p class="cover-kicker">Bracket only</p><h2>{{ $draw['name'] }}</h2></div>
+      <div class="section-meta"><strong>{{ $draw['format'] }}</strong><br>{{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }}</div>
+    </header>
+    @include('backend.draw.pdf.partials.pathway-board', ['showEmptyPathway' => true])
+  </section>
 @endforeach
 @else
 <section class="cover">
@@ -318,33 +333,7 @@
       @endforeach
     @endif
 
-    @php
-      $pathwayStages = collect($draw['oops'])
-        ->reject(fn ($fixture) => ($fixture['stage'] ?? 'RR') === 'RR')
-        ->groupBy(fn ($fixture) => $fixture['stage'] ?: 'DRAW');
-    @endphp
-    @if($pathwayStages->isNotEmpty())
-      <h3>Bracket and placement pathways</h3>
-      @foreach($pathwayStages as $stage => $stageFixtures)
-        @php
-          $rounds = $stageFixtures
-            ->groupBy(fn ($fixture) => (int) ($fixture['round'] ?: 1))
-            ->sortKeys();
-        @endphp
-        <h4>{{ $stageLabels[$stage] ?? str($stage)->headline() }}</h4>
-        <table class="pathway">
-          <caption>{{ $draw['name'] }} {{ $stageLabels[$stage] ?? str($stage)->headline() }} pathway</caption>
-          <thead><tr>@foreach($rounds as $round => $roundFixtures)<th scope="col">Round {{ $round }}</th>@endforeach</tr></thead>
-          <tbody><tr>@foreach($rounds as $roundFixtures)<td>@foreach($roundFixtures as $fixture)
-            <div class="match-card">
-              <strong>M{{ $fixture['match_nr'] ?? $fixture['id'] }}</strong><br>
-              {{ $fixture['home'] }}<br>{{ $fixture['away'] }}
-              <div class="advance">Result: {{ $fixture['score'] ?: '________________' }}@if($fixture['winner_to'])<br>Winner to M{{ $fixture['winner_to'] }}@endif @if($fixture['loser_to'])<br>Loser to M{{ $fixture['loser_to'] }}@endif</div>
-            </div>
-          @endforeach</td>@endforeach</tr></tbody>
-        </table>
-      @endforeach
-    @endif
+    @include('backend.draw.pdf.partials.pathway-board')
 
     @if(count($draw['oops']))
       @php
