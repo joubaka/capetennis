@@ -340,7 +340,7 @@ final class EventVenueScheduleController extends Controller
                 if ($error) throw new \InvalidArgumentException($error);
 
                 $slot = $scheduleEngine->saveFixture($fixture->draw, $fixture->id, $data['scheduled_at'],
-                    $venueId, $court, (int) $data['duration']);
+                    $venueId, $court, (int) $data['duration'], false, false);
                 $slot->update(['gap_minutes' => (int) $data['court_gap']]);
                 DrawAuditLog::record($fixture->draw_id, 'event_venue_match_manually_scheduled', null, [
                     'event_id' => $event->id, 'fixture_id' => $fixture->id, 'venue_id' => $venueId,
@@ -416,7 +416,8 @@ final class EventVenueScheduleController extends Controller
         if (! $permittedCourts->contains($court)) return 'Choose an active court allocated to this draw.';
 
         return $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
-            $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'], (int) $data['court_gap']);
+            $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'],
+            (int) $data['court_gap'], false);
     }
 
     private function validatedOptions(Request $request): array

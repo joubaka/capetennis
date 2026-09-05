@@ -9,11 +9,12 @@ use Carbon\Carbon;
 final class ScheduleConflictService
 {
     public function conflict(Draw $draw, Fixture $fixture, int $venueId, string $court, string $start,
-        int $duration = 75, ?int $participantRest = null, ?int $courtGap = null): ?string
+        int $duration = 75, ?int $participantRest = null, ?int $courtGap = null,
+        bool $requireCourtDurationFit = true): ?string
     {
         // Manual edits retain the booking's existing turnaround gap.
         $savedGap = (int) ($fixture->orderOfPlay?->gap_minutes ?? 0);
-        $courtMinutes = $duration + ($courtGap ?? $savedGap);
+        $courtMinutes = $requireCourtDurationFit ? $duration + ($courtGap ?? $savedGap) : 1;
         $participantMinutes = $duration + ($participantRest ?? $savedGap);
         if ($draw->usesFlexibleMonrad()) {
             $conflict = app(\App\Services\Draw\FlexibleMonradScheduler::class)->conflict($draw, $fixture, $start, $participantMinutes);

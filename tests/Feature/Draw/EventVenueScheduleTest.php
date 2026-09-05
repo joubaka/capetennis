@@ -494,6 +494,14 @@ class EventVenueScheduleTest extends TestCase
             ->assertJsonPath('message', 'Schedule conflict: the court or a participant is already booked during this time.');
         $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
 
+        $this->postJson($url, array_replace($assignment, [
+            'fixture_id' => $fixtures[1]->id, 'scheduled_at' => '2026-09-10 08:45:00',
+        ]))->assertOk();
+        $this->assertDatabaseHas('order_of_plays', [
+            'fixture_id' => $fixtures[1]->id, 'venue_id' => $venue->id, 'court' => '2',
+            'time' => '2026-09-10 08:45:00', 'duration_minutes' => 75,
+        ]);
+
         DB::table('draw_venue_court_allocations')->insert([
             'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '1',
             'created_at' => now(), 'updated_at' => now(),
@@ -563,7 +571,7 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('manual-options')
             ->assertSee('draggable="true"', false)
             ->assertSee('Court idle')
-            ->assertSee('Gap too short')
+            ->assertDontSee('Gap too short')
             ->assertSee('Not allocated')
             ->assertSee('Match selected. Choose a Court idle slot.')
             ->assertSee('Choose a match for this slot')

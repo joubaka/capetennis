@@ -709,12 +709,6 @@
         if (!selectableMatches.some(match => canUseCourt(match, venue.id, court))) {
           return '<td class="bg-label-secondary text-muted"><span class="fw-semibold">Not allocated</span><div class="small">No selected draw can use this court</div></td>';
         }
-        const matchFinish = new Date(time.getTime() + Number(result.input.duration) * 60000);
-        const courtReady = new Date(time.getTime() + step * 60000);
-        const next = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) > time);
-        if (matchFinish > end || (next && courtReady > asDate(next.scheduled_at))) {
-          return '<td class="bg-label-secondary text-muted"><span class="fw-semibold">Gap too short</span><div class="small">A full match will not fit</div></td>';
-        }
         return `<td class="manual-drop-slot" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Court idle</span><span class="small text-muted d-block">Select a valid match</span></button></td>`;
       }).join('');
       return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;

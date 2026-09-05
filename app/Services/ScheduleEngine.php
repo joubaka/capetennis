@@ -245,21 +245,26 @@ class ScheduleEngine
     return null;
   }
 
-  public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court, ?int $duration, bool $allowPublished = false): ?OrderOfPlay
+  public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court,
+    ?int $duration, bool $allowPublished = false, bool $requireCourtDurationFit = true): ?OrderOfPlay
   {
-    return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $allowPublished) {
+    return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $allowPublished, $requireCourtDurationFit) {
       $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       abort_if($draw->locked || (! $allowPublished && $draw->published), 409, 'Unpublish and unlock the draw before scheduling.');
       if ($draw->usesFlexibleMonrad()) {
-        return app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture($draw, $fixtureId, $start, $venueId, $court, $duration);
+        return app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture(
+          $draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit
+        );
       }
       $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
       $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
       if ($start) {
         DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
         if ($duration < 1 || $duration > 1440) throw new \InvalidArgumentException('Match duration must be between 1 and 1440 minutes.');
-        $conflict = app(ScheduleConflictService::class)->conflict($draw, $fixture, $venueId, $court, $start, $duration);
+        $conflict = app(ScheduleConflictService::class)->conflict(
+          $draw, $fixture, $venueId, $court, $start, $duration, null, null, $requireCourtDurationFit
+        );
         if ($conflict) throw new \InvalidArgumentException($conflict);
         $slot = OrderOfPlay::updateOrCreate(['fixture_id' => $fixtureId], [
           'draw_id' => $draw->id, 'venue_id' => $venueId, 'court' => $court,

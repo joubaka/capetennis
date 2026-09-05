@@ -9,9 +9,10 @@ use Illuminate\Support\Facades\DB;
 
 final class FlexibleMonradScheduler
 {
-    public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court, ?int $duration): ?OrderOfPlay
+    public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court,
+        ?int $duration, bool $requireCourtDurationFit = true): ?OrderOfPlay
     {
-        return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration) {
+        return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
             abort_if($draw->locked, 409, 'The draw is locked.');
@@ -34,7 +35,7 @@ final class FlexibleMonradScheduler
                     throw new \InvalidArgumentException('Choose a court assigned to this draw.');
                 }
                 $conflict = app(\App\Domain\Draws\Services\ScheduleConflictService::class)
-                    ->conflict($draw, $fixture, $venueId, $court, $start, $duration);
+                    ->conflict($draw, $fixture, $venueId, $court, $start, $duration, null, null, $requireCourtDurationFit);
             } else {
                 $conflict = $this->removalConflict($draw, $fixture);
             }
