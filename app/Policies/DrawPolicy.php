@@ -13,10 +13,6 @@ class DrawPolicy
             return true;
         }
 
-        if ($user->hasRole('score-keeper') && $user->is_convenor($draw->event_id)) {
-            return true;
-        }
-
         return $allowConvenor
             && $user->hasRole('convenor')
             && $user->is_convenor($draw->event_id);
@@ -51,7 +47,8 @@ class DrawPolicy
             return false;
         }
 
-        return $this->canManage($user, $draw);
+        return $this->canManage($user, $draw)
+            || ($user->hasRole('score-keeper') && $user->is_convenor($draw->event_id));
     }
 
     /**
@@ -63,7 +60,8 @@ class DrawPolicy
             return false;
         }
 
-        return $this->canManage($user, $draw);
+        return $this->canManage($user, $draw)
+            || ($user->hasRole('score-keeper') && $user->is_convenor($draw->event_id));
     }
 
     /**

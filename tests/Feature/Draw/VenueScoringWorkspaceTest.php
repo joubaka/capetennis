@@ -86,6 +86,12 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->assertTrue(Gate::forUser($assigned)->allows('event.score', $event));
         $this->assertFalse(Gate::forUser($unassigned)->allows('event.score', $event));
+        $draw = $event->draws()->firstOrFail();
+        $this->assertTrue(Gate::forUser($assigned)->allows('saveScore', $draw));
+        $this->assertTrue(Gate::forUser($assigned)->allows('deleteScore', $draw));
+        $this->assertFalse(Gate::forUser($assigned)->allows('update', $draw));
+        $this->assertFalse(Gate::forUser($assigned)->allows('publish', $draw));
+        $this->assertFalse(Gate::forUser($assigned)->allows('lockToggle', $draw));
     }
 
     public function test_team_fixture_queue_and_score_writes_use_the_same_workspace_audit(): void

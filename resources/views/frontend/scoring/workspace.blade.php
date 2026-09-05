@@ -108,6 +108,8 @@
     </div>
 
     <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter matches">
+      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="now">Playing now</button>
+      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="upcoming">Upcoming</button>
       <button type="button" class="btn btn-primary scoring-filter" data-score-filter="outstanding">Outstanding</button>
       <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="completed">Completed</button>
       <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="all">All</button>
@@ -131,9 +133,9 @@
             $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->team1_score, (int) $set->team2_score])->values();
             $scheduleTime = $match->scheduled_at;
             $venueName = $match->venue?->name;
-            $court = $match->court ?? null;
+            $court = $match->court_label;
             $stageLabel = 'Team fixture';
-            $matchNumber = $match->home_rank_nr ?: $match->id;
+            $matchNumber = $match->match_nr ?: $match->home_rank_nr ?: $match->id;
             $canWrite = auth()->user()->can('team-fixture.saveScore', $match) && !$draw->locked;
             $normalStore = route('frontend.fixtures.score.store', $match->id);
             $normalDelete = route('frontend.fixtures.score.delete', $match->id);
@@ -157,9 +159,13 @@
             $engine = $isFlexible ? 'flexible' : 'standard';
           }
           $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $match->draw_id, 'fixture' => $match->id]) : null;
+          $scheduledMoment = $scheduleTime ? \Carbon\Carbon::parse($scheduleTime) : null;
+          $timing = $scheduledMoment && !$hasScore
+            ? ($scheduledMoment->isFuture() ? 'upcoming' : ($scheduledMoment->copy()->addMinutes(120)->isFuture() ? 'now' : 'past'))
+            : ($hasScore ? 'completed' : 'unscheduled');
         @endphp
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($hasPlayers ? '' : 'is-waiting') }}"
-                 data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}">
+                 data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}" data-score-timing="{{ $timing }}">
           <div class="card-body">
             <div class="d-flex justify-content-between gap-2 align-items-start mb-2">
               <div class="match-meta">
@@ -288,7 +294,10 @@ document.addEventListener('DOMContentLoaded', function () {
       document.querySelectorAll('[data-score-filter]').forEach(item => item.className = 'btn btn-outline-primary scoring-filter');
       button.className = 'btn btn-primary scoring-filter';
       document.querySelectorAll('[data-score-state]').forEach(function (card) {
-        card.classList.toggle('d-none', filter !== 'all' && card.dataset.scoreState !== filter);
+        const matches = filter === 'all'
+          || card.dataset.scoreState === filter
+          || card.dataset.scoreTiming === filter;
+        card.classList.toggle('d-none', !matches);
       });
     });
   });
