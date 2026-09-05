@@ -117,24 +117,38 @@
      ============================================== */
   @media (max-width: 576px) {
 
-    /* tab buttons smaller on mobile */
-    #rrTabs {
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    #rrTabs .nav-link {
-      font-size: 12px;
-      padding: 6px 10px;
-    }
+    #round-robin-app { margin-inline: -.25rem; }
+    #rrTabs .nav-link { display: grid; place-items: center; }
+
+    #matrix-pane .card,
+    #oop-pane .card,
+    #standings-pane .card,
+    #main-bracket-pane .card { border-radius: .75rem; }
+    #matrix-pane .card-header,
+    #oop-pane .card-header,
+    #standings-pane .card-header,
+    #main-bracket-pane .card-header { padding: .85rem; }
 
     /* shrink name column further */
     .rr-matrix-table thead th {
       font-size: 10px !important;
-      width: 120px !important;
+      width: 108px !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      line-height: 1.2;
     }
     .rr-matrix-table tbody th {
       font-size: 10px !important;
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      width: 108px;
+      max-width: 108px;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      line-height: 1.2;
     }
+    .rr-matrix-table thead th:first-child { position: sticky; left: 0; z-index: 3; }
 
     /* slightly smaller cells on mobile */
     .rr-matrix-table td,
@@ -168,16 +182,21 @@
     #rr-order-table td { display: block; width: 100%; }
     #rr-order-table { min-width: 0; }
     #rr-order-table thead { display: none; }
-    #rr-order-table tbody { padding: .75rem; }
+    #rr-order-table tbody { padding: .65rem; }
     #rr-order-table tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: 1rem;
       margin-bottom: .75rem;
-      padding: .75rem;
+      padding: .85rem;
       border: 1px solid #dbe5ec;
+      border-top: 4px solid #14796e;
       border-radius: .65rem;
       background: #fff;
       box-shadow: 0 .2rem .75rem rgba(23,46,69,.06);
     }
     #rr-order-table td {
+      grid-column: 1 / -1;
       display: grid;
       grid-template-columns: 5.5rem minmax(0,1fr);
       gap: .5rem;
@@ -186,6 +205,35 @@
       text-align: left !important;
       white-space: normal;
     }
+    #rr-order-table td[data-label="Date"] {
+      grid-column: 1;
+      grid-row: 1;
+      display: block;
+      padding-bottom: .6rem !important;
+      border-bottom: 1px solid #e2ebe7;
+    }
+    #rr-order-table td[data-label="Time"] {
+      grid-column: 2;
+      grid-row: 1;
+      display: block;
+      min-width: 4.5rem;
+      padding-bottom: .6rem !important;
+      border-bottom: 1px solid #e2ebe7;
+      font-size: 1.25rem;
+      text-align: right !important;
+    }
+    #rr-order-table td[data-label="Player 1"] { grid-row: 2; padding-top: .7rem !important; }
+    #rr-order-table td[data-label="Player 2"] { grid-row: 3; padding-bottom: .7rem !important; border-bottom: 1px solid #e8eef1; }
+    #rr-order-table td[data-label="Venue"] { grid-row: 4; padding-top: .65rem !important; }
+    #rr-order-table td[data-label="Court"] { grid-row: 5; padding-bottom: .65rem !important; }
+    #rr-order-table td[data-label="Match"] { grid-column: 1; grid-row: 6; }
+    #rr-order-table td[data-label="Round"] { grid-column: 2; grid-row: 6; }
+    #rr-order-table td[data-label="Stage"] { grid-column: 1; grid-row: 7; }
+    #rr-order-table td[data-label="Score"] { grid-column: 2; grid-row: 7; }
+    #rr-order-table td[data-label="Match"],
+    #rr-order-table td[data-label="Round"],
+    #rr-order-table td[data-label="Stage"],
+    #rr-order-table td[data-label="Score"] { display: block; color: #607286; font-size: .76rem; }
     #rr-order-table td::before {
       content: attr(data-label);
       color: #6b7d8f;
@@ -193,6 +241,12 @@
       font-weight: 700;
       text-transform: uppercase;
     }
+    #rr-order-table td[data-label="Date"]::before,
+    #rr-order-table td[data-label="Time"]::before,
+    #rr-order-table td[data-label="Match"]::before,
+    #rr-order-table td[data-label="Round"]::before,
+    #rr-order-table td[data-label="Stage"]::before,
+    #rr-order-table td[data-label="Score"]::before { display: block; margin-bottom: .15rem; }
 
     /* Standings mobile */
     #rr-standings-wrapper table {
@@ -203,6 +257,11 @@
       white-space: nowrap;
       padding: 4px 6px !important;
     }
+
+    .bracket-zoom-controls { gap: .25rem !important; }
+    .bracket-zoom-controls .btn { min-width: 38px; min-height: 38px; }
+    .bracket-zoom-label { display: none; }
+    .bracket-zoom-scroll { margin-inline: -.25rem; padding: .5rem .25rem; }
   }
 
   /* ==============================================

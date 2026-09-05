@@ -217,7 +217,7 @@ class ManageDrawController extends Controller
     $validated = $request->validate([
       'notes' => 'required|array',
       'notes.*' => 'nullable|string|max:5000',
-      'schedule_visibility' => 'sometimes|required|in:' . DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND . ',' . DrawSetting::SCHEDULE_VISIBILITY_FULL,
+      'schedule_visibility' => 'sometimes|required|in:' . DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH . ',' . DrawSetting::SCHEDULE_VISIBILITY_FULL,
     ]);
 
     $draw->settings()->updateOrCreate(

@@ -108,6 +108,19 @@ $(function () {
   $('#unpublish-selected-times').on('click', () => bulkPublish('schedules', 'unpublish'));
   updateBulkActions();
 
+  $('#scheduleVisibilityForm').on('submit', function (event) {
+    event.preventDefault();
+    const $form = $(this);
+    const $submit = $form.find('[type="submit"]').prop('disabled', true).attr('aria-busy', 'true');
+    $.post(config.scheduleVisibilityUrl, $form.serialize())
+      .done(function (response) {
+        toastr.success(response.message || 'Match time display updated.');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('scheduleVisibilityModal')).hide();
+      })
+      .fail(xhr => error(xhr, 'Could not update the match time display.'))
+      .always(() => $submit.prop('disabled', false).removeAttr('aria-busy'));
+  });
+
   $('#createDrawForm').on('submit', function (event) {
     event.preventDefault();
     if (!$('#drawName').val().trim()) { toastr.error('Please enter a draw name.'); return; }

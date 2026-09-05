@@ -9,7 +9,9 @@ class DrawSetting extends Model
 {
     use HasFactory;
 
-    public const SCHEDULE_VISIBILITY_CURRENT_ROUND = 'current_round';
+    public const SCHEDULE_VISIBILITY_FIRST_MATCH = 'first_match';
+    public const SCHEDULE_VISIBILITY_CURRENT_ROUND = self::SCHEDULE_VISIBILITY_FIRST_MATCH;
+    public const SCHEDULE_VISIBILITY_LEGACY_CURRENT_ROUND = 'current_round';
     public const SCHEDULE_VISIBILITY_FULL = 'full_schedule';
     
     protected $fillable = [
@@ -293,8 +295,17 @@ class DrawSetting extends Model
         return $this->belongsTo(\App\Models\Draw::class);
     }
 
+    public function showsFirstMatchOnly(): bool
+    {
+        return in_array($this->schedule_visibility, [
+            self::SCHEDULE_VISIBILITY_FIRST_MATCH,
+            self::SCHEDULE_VISIBILITY_LEGACY_CURRENT_ROUND,
+        ], true);
+    }
+
+    /** @deprecated Use showsFirstMatchOnly(). */
     public function showsCurrentRoundOnly(): bool
     {
-        return $this->schedule_visibility === self::SCHEDULE_VISIBILITY_CURRENT_ROUND;
+        return $this->showsFirstMatchOnly();
     }
 }

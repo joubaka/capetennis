@@ -98,10 +98,29 @@
 .ct-public-draw-nav .nav-link.active,
 .ct-public-draw-nav a.is-active { background: #fff; color: #172e45; box-shadow: 0 1px 4px rgba(23,46,69,.1); }
 @media (max-width: 575.98px) {
-  .ct-public-draw-header { border-radius: .7rem; }
+  .ct-public-draw-header { padding: 1rem; border-radius: .7rem; }
   .ct-public-draw-heading { flex-direction: column; }
   .ct-public-draw-actions { justify-content: flex-start; }
+  .ct-public-draw-action { width: 100%; min-height: 44px; text-align: center; }
   .ct-public-draw-preview { align-items: flex-start; flex-direction: column; gap: .15rem; }
+  .ct-public-draw-event { font-size: .9rem; line-height: 1.35; }
+  .ct-public-draw-meta { gap: .35rem; }
+  .ct-public-draw-meta span { padding: .3rem .55rem; font-size: .7rem; }
+  .ct-public-draw-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .35rem;
+    overflow: visible;
+  }
+  .ct-public-draw-nav .nav-item { min-width: 0; }
+  .ct-public-draw-nav .nav-link,
+  .ct-public-draw-nav a {
+    width: 100%;
+    min-height: 44px;
+    padding: .65rem .45rem;
+    font-size: .78rem;
+    line-height: 1.15;
+  }
 }
 @media print {
   .ct-public-draw-back, .ct-public-draw-actions, .ct-public-draw-preview, .ct-public-draw-nav { display: none !important; }

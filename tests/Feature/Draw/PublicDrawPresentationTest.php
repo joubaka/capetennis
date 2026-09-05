@@ -51,6 +51,8 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('<th>Venue</th>', $html);
         $this->assertStringContainsString('<th class="text-center">Court</th>', $html);
         $this->assertStringContainsString('roundrobin-public.js?v=', $html);
+        $this->assertStringContainsString('position: sticky', $html);
+        $this->assertStringContainsString('td[data-label="Time"]', $html);
         $this->assertStringNotContainsString('<span class="badge bg-label-success">Draw published</span>', $html);
     }
 

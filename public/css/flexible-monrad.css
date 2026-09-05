@@ -545,16 +545,25 @@
 }
 @media (max-width: 760px) {
 .fm-public-shell { padding: 12px 12px 0; }
+.fm-public-shell .ct-public-draw-nav { position: sticky; top: 8px; z-index: 20; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.fm-public-shell .ct-public-draw-nav button { width: 100%; min-height: 44px; padding: 10px 8px; }
 .fm-public-timetable { margin: 12px; padding: 18px 14px; overflow: visible; }
 .fm-public-timetable table,
 .fm-public-timetable tbody,
 .fm-public-timetable tr,
 .fm-public-timetable td { display: block; width: 100%; }
 .fm-public-timetable thead { display: none; }
-.fm-public-timetable tr { margin-bottom: 12px; padding: 12px; border: 1px solid #dbe5ec; border-radius: 10px; box-shadow: 0 3px 12px rgba(23,46,69,.06); }
-.fm-public-timetable td { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 4px 0; border: 0; }
+.fm-public-timetable tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; margin-bottom: 12px; padding: 13px; border: 1px solid #dbe5ec; border-top: 4px solid #14796e; border-radius: 10px; box-shadow: 0 3px 12px rgba(23,46,69,.06); }
+.fm-public-timetable td { grid-column: 1 / -1; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 4px 0; border: 0; }
 .fm-public-timetable td::before { content: attr(data-label); color: #6b7d8f; font-size: 11px; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; }
-.fm-public-timetable td:nth-child(4) { font-size: 17px; }
+.fm-public-timetable td[data-label="Date"] { grid-column: 1; grid-row: 1; display: block; padding-bottom: 9px; border-bottom: 1px solid #e2ebe7; color: #176448; font-weight: 750; }
+.fm-public-timetable td[data-label="Time"] { grid-column: 2; grid-row: 1; display: block; min-width: 72px; padding-bottom: 9px; border-bottom: 1px solid #e2ebe7; color: #0d675e; font-size: 20px; font-weight: 800; text-align: right; }
+.fm-public-timetable td[data-label="Date"]::before,
+.fm-public-timetable td[data-label="Time"]::before { display: block; margin-bottom: 2px; }
+.fm-public-timetable td[data-label="Players"] { grid-row: 2; padding: 11px 0 9px; border-bottom: 1px solid #e8eef1; font-size: 15px; font-weight: 700; line-height: 1.4; }
+.fm-public-timetable td[data-label="Venue"] { grid-row: 3; padding-top: 9px; }
+.fm-public-timetable td[data-label="Court"] { grid-row: 4; }
+.fm-public-timetable td[data-label="Match"] { grid-row: 5; color: #607286; font-size: 12px; }
 :where(.fm-surface) .fm-header {
     padding: 18px 16px;
     align-items: flex-start;

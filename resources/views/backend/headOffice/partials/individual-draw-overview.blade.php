@@ -9,6 +9,9 @@
     </div>
     <div class="draws-event-actions">
       @if($event->draws->isNotEmpty())
+        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#scheduleVisibilityModal">
+          <i class="ti ti-settings" aria-hidden="true"></i> Time display
+        </button>
         <a class="btn draws-button draws-button-secondary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Schedule all matches</a>
         <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Print draws</button>
       @endif

@@ -842,10 +842,10 @@
                 <div class="col-md-6">
                   <div class="form-check border rounded p-3 ps-5 h-100">
                     <input class="form-check-input schedule-visibility" type="radio" name="schedule_visibility"
-                      id="schedule-visibility-current-round" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND }}"
-                      @checked($scheduleVisibility === \App\Models\DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND)>
-                    <label class="form-check-label fw-semibold" for="schedule-visibility-current-round">Show Current Round Only</label>
-                    <div class="form-text">Show times for the earliest uncompleted scheduled round. As that round is completed, the next round's times become visible.</div>
+                      id="schedule-visibility-first-match" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH }}"
+                      @checked(optional($draw->settings)->showsFirstMatchOnly())>
+                    <label class="form-check-label fw-semibold" for="schedule-visibility-first-match">Show Each Player's First Match Only</label>
+                    <div class="form-text">Show only each player's earliest upcoming assigned match. Their next time appears after that match is completed.</div>
                   </div>
                 </div>
                 <div class="col-md-6">

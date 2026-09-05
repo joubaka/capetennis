@@ -133,6 +133,7 @@
   .individual-event-view .event-draw-name { color: #172e45; font-weight: 750; }
   .individual-event-view .event-draw-meta { display: flex; flex-wrap: wrap; gap: .35rem .7rem; margin-top: .25rem; color: #65788b; font-size: .78rem; }
   .individual-event-view .event-draw-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+  #event-draws-match-times { scroll-margin-top: 1rem; }
 
   @media (max-width: 767.98px) {
     .individual-event-view .card-body,

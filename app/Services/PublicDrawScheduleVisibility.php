@@ -18,7 +18,7 @@ class PublicDrawScheduleVisibility
             return collect();
         }
 
-        if (! $draw->settings?->showsCurrentRoundOnly()) {
+        if (! $draw->settings?->showsFirstMatchOnly()) {
             return null;
         }
 
@@ -33,17 +33,33 @@ class PublicDrawScheduleVisibility
                 $fixture->id
             ));
 
-        $current = $fixtures->first();
-        if (! $current) {
+        if ($fixtures->isEmpty()) {
             return collect();
         }
 
-        return $fixtures
-            ->filter(fn (Fixture $fixture) => ($fixture->stage ?? '') === ($current->stage ?? '')
-                && (int) $fixture->round === (int) $current->round)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $seenRegistrationIds = [];
+        $visibleFixtureIds = [];
+
+        foreach ($fixtures as $fixture) {
+            $registrationIds = collect([
+                $fixture->registration1_id,
+                $fixture->registration2_id,
+            ])->filter(fn ($id) => (int) $id > 0)->map(fn ($id) => (int) $id)->unique();
+
+            // A time is public only while this is the earliest upcoming match for
+            // every currently assigned participant. This prevents one player's
+            // second time leaking because the opponent has no earlier booking.
+            if ($registrationIds->isNotEmpty()
+                && $registrationIds->every(fn (int $id) => ! isset($seenRegistrationIds[$id]))) {
+                $visibleFixtureIds[] = (int) $fixture->id;
+            }
+
+            foreach ($registrationIds as $registrationId) {
+                $seenRegistrationIds[$registrationId] = true;
+            }
+        }
+
+        return collect($visibleFixtureIds)->unique()->values();
     }
 
     public function restrictRoundRobinHub(Draw $draw, array $hub): array

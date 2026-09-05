@@ -4,6 +4,16 @@
   {{-- LEFT COLUMN --}}
   <div class="col-xl-8 col-lg-7 col-md-7">
 
+    @if(($drawPublicationSummary['total'] ?? 0) > 0)
+      <div class="d-md-none mb-4">
+        <a href="#event-draws-match-times" class="btn btn-primary w-100">
+          <i class="ti ti-tournament me-1" aria-hidden="true"></i>
+          View draws &amp; match times
+          <i class="ti ti-arrow-down ms-1" aria-hidden="true"></i>
+        </a>
+      </div>
+    @endif
+
     {{-- INFORMATION --}}
     <div class="card event-section-card mb-4">
       <div class="card-body event-card-padding p-4 p-xl-5">
@@ -131,7 +141,7 @@
 
       {{-- DRAWS & ORDER OF PLAY --}}
     @if(($drawPublicationSummary['total'] ?? 0) > 0)
-    <div class="card mb-4">
+    <div id="event-draws-match-times" class="card mb-4" tabindex="-1">
       <div class="card-header">
         <h5 class="mb-1">Draws and match times</h5>
         <p class="text-muted small mb-0">Draws and schedules are released separately by the organiser.</p>

@@ -82,6 +82,7 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court')
             ->assertSee('Find your name, then confirm the date, time, venue and court.')
             ->assertSee('2026-09-20 09:00:00');
+        $this->assertStringContainsString('td[data-label="Time"]', file_get_contents(public_path('css/flexible-monrad.css')));
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
         $this->assertSame(4, $draw->drawFixtures()->count());

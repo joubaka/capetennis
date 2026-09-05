@@ -50,6 +50,9 @@ class PublicTournamentWorkflowTest extends TestCase
 
         $this->get(route('events.show', $event))
             ->assertOk()
+            ->assertSee('href="#event-draws-match-times"', false)
+            ->assertSee('View draws &amp; match times', false)
+            ->assertSee('id="event-draws-match-times"', false)
             ->assertSee('The draws are being finalised.')
             ->assertDontSee('Secret draft division');
     }

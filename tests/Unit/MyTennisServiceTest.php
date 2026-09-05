@@ -38,7 +38,7 @@ class MyTennisServiceTest extends TestCase
         $this->assertNotContains($otherPlayer->id, $ids);
     }
 
-    public function test_dashboard_always_shows_only_the_next_published_scheduled_match(): void
+    public function test_public_first_match_mode_exposes_only_each_players_next_assigned_match(): void
     {
         $player = Player::factory()->create();
         $opponent = Player::factory()->create();
@@ -131,7 +131,7 @@ class MyTennisServiceTest extends TestCase
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND]);
         FixtureResult::factory()->create(['fixture_id' => $first->id]);
         $this->assertSame([$following->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
-        $this->assertSame([$sameRound->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
+        $this->assertEqualsCanonicalizing([$sameRound->id, $following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
         FixtureResult::factory()->create(['fixture_id' => $sameRound->id]);
         $this->assertSame([$following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
 

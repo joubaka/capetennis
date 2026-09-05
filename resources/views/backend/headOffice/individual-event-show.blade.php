@@ -19,6 +19,7 @@
 window.headOfficeDraws = {
     createUrl: @json(route('headoffice.createSingleDraw', $event->id)),
     bulkPublicationUrl: @json(route('backend.event-draws.bulk-publication', $event)),
+    scheduleVisibilityUrl: @json(route('backend.events.schedule-visibility', $event)),
     venueScheduleUrl: @json(route('backend.event-venue-schedule.index', $event)),
 };
 </script>
@@ -294,6 +295,58 @@ $(document).ready(function () {
 @section('content')
 
 @include('backend.headOffice.partials.individual-draw-overview')
+
+@if($event->draws->isNotEmpty())
+@php
+  $eventScheduleVisibilities = $event->draws
+    ->map(fn ($draw) => $draw->settings?->showsFirstMatchOnly()
+      ? \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH
+      : \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL)
+    ->unique();
+  $eventScheduleVisibility = $eventScheduleVisibilities->count() === 1
+    ? $eventScheduleVisibilities->first()
+    : 'mixed';
+@endphp
+<div class="modal fade" id="scheduleVisibilityModal" tabindex="-1" aria-labelledby="scheduleVisibilityModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="scheduleVisibilityForm">
+        @csrf
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="scheduleVisibilityModalLabel">Public match time display</h5>
+            <p class="text-muted small mb-0 mt-1">Choose what players and parents see across every draw in this event.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          @if($eventScheduleVisibility === 'mixed')
+            <div class="alert alert-info py-2 small" role="status">Draws currently use different display settings. Saving will make them consistent.</div>
+          @endif
+          <div class="form-check border rounded p-3 ps-5 mb-3">
+            <input class="form-check-input" type="radio" name="schedule_visibility"
+                   id="event-schedule-first-match" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH }}"
+                   @checked($eventScheduleVisibility === \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH) required>
+            <label class="form-check-label fw-semibold" for="event-schedule-first-match">Show each player’s first match time only</label>
+            <div class="form-text">Only the earliest upcoming assigned match is shown for each player. Their next time appears after that match is completed.</div>
+          </div>
+          <div class="form-check border rounded p-3 ps-5">
+            <input class="form-check-input" type="radio" name="schedule_visibility"
+                   id="event-schedule-full" value="{{ \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL }}"
+                   @checked($eventScheduleVisibility === \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FULL) required>
+            <label class="form-check-label fw-semibold" for="event-schedule-full">Show all match times</label>
+            <div class="form-text">Every published time, venue and court is shown on the public draw tables.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save display setting</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+@endif
 
 <!-- Modal: Create New Draw -->
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">

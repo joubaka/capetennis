@@ -42,6 +42,7 @@ use App\Http\Controllers\Backend\ResultController;
 use App\Http\Controllers\Backend\EventAnnouncementController;
 use App\Http\Controllers\Backend\ScheduleController;
 use App\Http\Controllers\Backend\EventVenueScheduleController;
+use App\Http\Controllers\Backend\EventScheduleVisibilityController;
 use App\Http\Controllers\Backend\ScoreboardController;
 use App\Http\Controllers\Backend\SeriesController;
 use App\Http\Controllers\Backend\SettingsController;
@@ -966,6 +967,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.courts');
   Route::post('events/{event}/draws/bulk-publication', BulkDrawPublicationController::class)
     ->name('backend.event-draws.bulk-publication');
+  Route::post('events/{event}/schedule-visibility', EventScheduleVisibilityController::class)
+    ->name('backend.events.schedule-visibility');
   Route::post('events/{event}/venue-schedule/venues/{venue}/courts', [EventVenueScheduleController::class, 'configureCourts'])
     ->name('backend.event-venue-schedule.courts.configure');
 
