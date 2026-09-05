@@ -10,8 +10,13 @@
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
-         data-schedule="{{ $draw->oop_published ? '1' : '0' }}">
+         data-schedule="{{ $draw->oop_published ? '1' : '0' }}" data-has-schedule="{{ $draw->order_of_play_count > 0 ? '1' : '0' }}"
+         data-schedulable="{{ !$draw->locked && !$draw->published ? '1' : '0' }}">
   <div class="draw-overview-info">
+    <label class="draw-row-selector" for="draw-select-{{ $draw->id }}">
+      <input class="form-check-input draw-select" id="draw-select-{{ $draw->id }}" type="checkbox" value="{{ $draw->id }}">
+      <span class="visually-hidden">Select {{ $draw->drawName }}</span>
+    </label>
     <span class="draw-division-mark">@include('backend.headOffice.partials.draw-icon', ['icon' => 'bracket'])</span>
     <div class="draw-division-text">
       <h3 class="h6 mb-0"><a href="{{ $drawUrl }}" class="draw-overview-name">{{ $draw->drawName }}</a></h3>
@@ -56,8 +61,8 @@
                 class="btn draws-button {{ $draw->oop_published ? 'draws-button-secondary' : 'draw-schedule-button' }} toggle-schedule-publication"
                 data-url="{{ route('draw.toggle.publish.schedule', $draw) }}"
                 data-draw-name="{{ $draw->drawName }}"
-                data-published="{{ $draw->oop_published ? '1' : '0' }}"
-                @if(!$draw->oop_published && !$draw->published) disabled title="Publish the draw first" @endif>
+                data-draw-published="{{ $draw->published ? '1' : '0' }}"
+                data-published="{{ $draw->oop_published ? '1' : '0' }}">
           <i class="ti ti-clock" aria-hidden="true"></i>
           <span>{{ $draw->oop_published ? 'Unpublish times' : 'Publish times' }}</span>
         </button>
@@ -70,10 +75,7 @@
         <li><a class="dropdown-item" href="{{ $drawUrl }}#settings"><i class="ti ti-settings me-2" aria-hidden="true"></i>Draw settings</a></li>
         <li><a class="dropdown-item" href="{{ $drawUrl }}#groups">Players</a></li>
         <li><a class="dropdown-item" href="{{ $drawUrl }}#print">Print this draw</a></li>
-        @if($draw->published)<li><a class="dropdown-item" href="{{ route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener">Open public draw</a></li>@endif
-        @can('update', $draw)
-          <li><button type="button" class="dropdown-item btn-add-venues" data-draw-id="{{ $draw->id }}" data-draw-name="{{ $draw->drawName }}"><i class="ti ti-map-pin me-2" aria-hidden="true"></i>Assign venues</button></li>
-        @endcan
+        @if($draw->published || $draw->oop_published)<li><a class="dropdown-item" href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener">{{ $draw->published ? 'Open public draw' : 'Preview times on front page' }}</a></li>@endif
         @can('super-user')
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="{{ route('engine.draw.show', $draw->id) }}"><i class="ti ti-tool me-2" aria-hidden="true"></i>Engine diagnostics</a></li>

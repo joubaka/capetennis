@@ -159,9 +159,6 @@
 
 @foreach($sortedDraws as $draw)
   @php
-    $drawWorkflow = $draw->settings?->workflow;
-    $drawFormat = \App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$drawWorkflow][0]
-      ?? ($draw->usesFlexibleMonrad() ? 'Custom Monrad' : 'Format not specified');
     $firstSchedule = $draw->order_of_play->whereNotNull('time')->sortBy('time')->first();
     $drawVenueNames = $draw->venues->pluck('name')->filter()->unique()->values();
   @endphp
@@ -169,7 +166,6 @@
     <div>
       <div class="event-draw-name">{{ $draw->drawName ?? 'Draw #'.$draw->id }}</div>
       <div class="event-draw-meta">
-        <span>{{ $drawFormat }}</span>
         @if($drawVenueNames->isNotEmpty())<span><i class="ti ti-map-pin" aria-hidden="true"></i> {{ $drawVenueNames->join(', ') }}</span>@endif
         @if($draw->oop_published && $firstSchedule?->time)
           <span><i class="ti ti-clock" aria-hidden="true"></i> First match {{ \Carbon\Carbon::parse($firstSchedule->time)->format('H:i') }}</span>

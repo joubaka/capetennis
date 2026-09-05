@@ -6,6 +6,7 @@ use App\Models\{Category, CategoryEvent, Draw, Event, Fixture, FlexibleMonradDra
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -49,7 +50,7 @@ class FlexibleMonradTest extends TestCase
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 3])->assertForbidden();
     }
 
-    public function test_unpublishing_also_withdraws_the_flexible_monrad_schedule(): void
+    public function test_unpublishing_retains_the_flexible_monrad_schedule_for_authorized_preview(): void
     {
         [$draw, $draft] = $this->setupDraw();
         $service = app(FlexibleMonradService::class);
@@ -61,7 +62,52 @@ class FlexibleMonradTest extends TestCase
 
         $draw->refresh();
         $this->assertFalse((bool) $draw->published);
-        $this->assertFalse((bool) $draw->oop_published);
+        $this->assertTrue((bool) $draw->oop_published);
+    }
+
+    public function test_real_draw_players_link_to_a_signed_name_only_public_profile(): void
+    {
+        [$draw, $draft, $registrations] = $this->setupDraw();
+        $player = Player::factory()->create([
+            'name' => 'Privacy', 'surname' => 'Safe',
+            'email' => 'private@example.test', 'cellNr' => '0821234567', 'dateOfBirth' => '2010-04-03',
+        ]);
+        $registrations[0]->players()->attach($player);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $service->generate($draw, 1);
+        $draw->update(['published' => true]);
+
+        $statePlayer = $service->state($draw)['players']->firstWhere('id', $registrations[0]->id);
+        $this->assertCount(1, $statePlayer['profiles']);
+        $this->assertSame('Privacy Safe', $statePlayer['profiles'][0]['name']);
+        $this->assertSame([], $service->state($draw)['players']->firstWhere('id', $registrations[1]->id)['profiles']);
+
+        $signedUrl = URL::signedRoute('public.player.profile', $player);
+        $this->get($signedUrl)
+            ->assertOk()
+            ->assertSee('Privacy Safe')
+            ->assertDontSee('private@example.test')
+            ->assertDontSee('0821234567')
+            ->assertDontSee('2010-04-03');
+        $this->get(route('public.player.profile', $player))->assertForbidden();
+    }
+
+    public function test_admin_can_publish_and_open_a_schedule_preview_while_guests_cannot_open_the_draft_draw(): void
+    {
+        [$draw] = $this->setupScheduledDraw();
+
+        $this->postJson(route('draw.toggle.publish.schedule', $draw))
+            ->assertOk()
+            ->assertJsonPath('oop_published', true)
+            ->assertJsonPath('preview_only', true);
+
+        $this->get(route('public.flexible-monrad.show', $draw))
+            ->assertOk()
+            ->assertSee('2026-09-05 08:00:00');
+
+        auth()->logout();
+        $this->get(route('public.flexible-monrad.show', $draw))->assertForbidden();
     }
 
     public function test_workspace_shows_the_active_series_ranking_for_the_draw_category(): void

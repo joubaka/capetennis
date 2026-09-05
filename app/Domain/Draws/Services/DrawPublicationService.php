@@ -53,14 +53,10 @@ final class DrawPublicationService
 
         DB::transaction(function () use ($draw) {
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
-            $scheduleWasPublished = (bool) $draw->oop_published;
-            $draw->update([
-                'published' => false,
-                'oop_published' => false,
-            ]);
+            $draw->update(['published' => false]);
             DrawAuditLog::record($draw->id, 'unpublished', null, [
                 'published' => false,
-                'schedule_unpublished' => $scheduleWasPublished,
+                'schedule_preview_retained' => (bool) $draw->oop_published,
             ]);
         });
 

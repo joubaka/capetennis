@@ -13,6 +13,10 @@ class DrawPolicy
             return true;
         }
 
+        if ($user->hasRole('score-keeper') && $user->is_convenor($draw->event_id)) {
+            return true;
+        }
+
         return $allowConvenor
             && $user->hasRole('convenor')
             && $user->is_convenor($draw->event_id);

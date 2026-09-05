@@ -20,6 +20,25 @@
     const player = state.players.find(p => Number(p.id) === Number(id));
     return player ? player.name + (player.withdrawn ? ' (withdrawn)' : '') : (id ? 'Player unavailable' : 'Awaiting result');
   };
+  const playerRecord = id => state.players.find(p => Number(p.id) === Number(id));
+  function playerNameNode(id, extraClass = '') {
+    const player = playerRecord(id);
+    const wrapper = el('span', `fm-player-identity ${extraClass}`.trim());
+    const profiles = Array.isArray(player?.profiles) ? player.profiles : [];
+    if (config.readOnly && profiles.length) {
+      profiles.forEach((profile, index) => {
+        if (index) wrapper.append(document.createTextNode(' / '));
+        const link = el('a', 'fm-player-link', profile.name);
+        link.href = profile.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.title = `Open the name-only profile for ${profile.name}`;
+        wrapper.append(link);
+      });
+      if (player.withdrawn) wrapper.append(document.createTextNode(' (withdrawn)'));
+    } else wrapper.textContent = name(id);
+    return wrapper;
+  }
   const roundName = depth => ['Final', 'Semifinals', 'Quarterfinals'][depth] || `Round of ${2 ** (depth + 1)}`;
   const editable = () => config.canEdit && !state.generated && !state.published && !state.locked && !busy;
   const customStarts = !['playoffs', 'monrad'].includes(config.workflow);
@@ -342,7 +361,9 @@
           match.players.forEach((id, slot) => {
             const line = el('div', `fm-slot${id && Number(id) === Number(match.winner) ? ' winner' : ''}`);
             line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
-            const label = el('span', 'fm-slot-name', id ? name(id) : match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
+            const label = id
+              ? playerNameNode(id, 'fm-slot-name')
+              : el('span', 'fm-slot-name fm-source-name', match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
             line.append(label);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
@@ -373,10 +394,10 @@
           label = section === 'Main draw' ? 'Champion' : placement ? `Position ${placement[1]}` : 'Winner';
         endpoint.style.left = lineEnd + 10 + 'px';
         endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
-        endpoint.append(
-          el('span', 'fm-winner-label', label),
-          el('strong', 'fm-winner-name', match.winner ? name(match.winner) : 'Awaiting result')
-        );
+        const winnerName = el('strong', 'fm-winner-name');
+        if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
+        else winnerName.textContent = 'Awaiting result';
+        endpoint.append(el('span', 'fm-winner-label', label), winnerName);
         board.append(endpoint);
         winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
         width = Math.max(width, lineEnd + 10 + bracketDimensions.width);
@@ -400,7 +421,8 @@
     $('fm-positions').replaceChildren();
     state.positions.forEach(p => {
       const chip = el('div', 'fm-position');
-      chip.append(el('strong', '', p.position), el('span', '', p.player ? name(p.player) : p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
+      chip.append(el('strong', '', p.position));
+      chip.append(p.player ? playerNameNode(p.player) : el('span', 'fm-source-name', p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
       $('fm-positions').append(chip);
     });
   }

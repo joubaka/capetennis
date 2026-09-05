@@ -3,6 +3,7 @@
 namespace App\Services\Draw;
 
 use App\Models\{Draw, DrawAuditLog, DrawFormats, Fixture, FlexibleMonradDraw, Registration};
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -95,10 +96,7 @@ final class FlexibleMonradService
                 422, 'Select a draw format before publishing.');
             abort_unless($record->graph, 422, 'Generate and review the fixtures first.');
             $this->resolve($record);
-            $draw->update([
-                'published' => $published,
-                'oop_published' => $published ? $draw->oop_published : false,
-            ]);
+            $draw->update(['published' => $published]);
             $record->increment('revision');
             DrawAuditLog::record($draw->id, $published ? 'monrad_published' : 'monrad_unpublished');
             return $record->refresh();
@@ -197,6 +195,10 @@ final class FlexibleMonradService
         ));
         $players = $eligible->merge(Registration::with('players')->whereIn('id', $assigned)->get())
             ->map(fn ($r) => ['id' => $r->id, 'name' => $r->displayName(),
+                'profiles' => $r->players->map(fn ($player) => [
+                    'name' => trim($player->full_name),
+                    'url' => URL::signedRoute('public.player.profile', $player),
+                ])->filter(fn ($profile) => $profile['name'] !== '')->values()->all(),
                 'eligible' => $eligible->contains('id', $r->id) && ! in_array($r->id, $withdrawn, true),
                 'withdrawn' => in_array($r->id, $withdrawn, true)])->values();
         $fixtures = $draw->drawFixtures()->where('stage', 'FM')->with(['fixtureResults', 'oop.venue'])->get()->keyBy('id');

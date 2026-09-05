@@ -43,9 +43,15 @@ class DrawSetupController extends Controller
             abort_if($draw->locked || $draw->published, 409, 'Unlock and unpublish the draw before choosing a format.');
             abort_if($draw->team_category_id || $draw->event?->isTeam(), 422, 'Use the team draw setup for team fixtures.');
             if ($draw->settings?->workflow === $data['workflow']) return;
+            $isRoundRobinPlayoffUpgrade = $draw->settings?->workflow === 'round_robin'
+                && $data['workflow'] === 'round_robin_playoffs'
+                && ! $draw->drawFixtures()->where('stage', '!=', 'RR')->exists()
+                && empty($draw->flexibleMonrad?->draft['slots'])
+                && ! $draw->flexibleMonrad?->graph;
             // Never discard existing assignments, fixtures, or custom starting paths.
-            abort_if($draw->drawFixtures()->exists() || $draw->groups()->whereHas('registrations')->exists()
-                || ! empty($draw->flexibleMonrad?->draft['slots']) || $draw->flexibleMonrad?->graph,
+            abort_if(! $isRoundRobinPlayoffUpgrade && ($draw->drawFixtures()->exists()
+                || $draw->groups()->whereHas('registrations')->exists()
+                || ! empty($draw->flexibleMonrad?->draft['slots']) || $draw->flexibleMonrad?->graph),
                 409, 'This draw already has assignments or fixtures. Use a new empty draw to choose a different format.');
             if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
                 abort_if($draw->registrations()->reorder()->exists(), 409, 'Choose a new empty draw before changing its player category.');

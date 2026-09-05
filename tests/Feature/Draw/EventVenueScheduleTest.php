@@ -388,6 +388,51 @@ class EventVenueScheduleTest extends TestCase
         $this->assertTrue((bool) $fixture->fresh()->scheduled);
     }
 
+    public function test_event_admin_can_remove_one_match_assignment_without_clearing_the_rest(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Preview Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'locked' => false]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        $fixtures = Fixture::factory()->count(2)->create([
+            'draw_id' => $draw->id, 'round' => 1, 'bracket_id' => 1, 'scheduled' => true,
+        ]);
+        foreach ($fixtures as $index => $fixture) {
+            OrderOfPlay::create([
+                'draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+                'court' => (string) ($index + 1), 'time' => '2026-09-06 0'.($index + 8).':00:00',
+            ]);
+        }
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)
+            ->postJson(route('backend.event-venue-schedule.unapply', $event), ['fixture_id' => $fixtures[0]->id])
+            ->assertOk()
+            ->assertJsonPath('count', 1);
+
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[0]->id]);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
+        $this->assertFalse((bool) $fixtures[0]->fresh()->scheduled);
+        $this->assertTrue((bool) $fixtures[1]->fresh()->scheduled);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draw->id, 'action' => 'event_venue_schedule_unapplied',
+        ]);
+
+        $otherEvent = Event::factory()->create();
+        $otherDraw = Draw::factory()->create(['event_id' => $otherEvent->id]);
+        $otherFixture = Fixture::factory()->create(['draw_id' => $otherDraw->id, 'scheduled' => true]);
+        OrderOfPlay::create([
+            'draw_id' => $otherDraw->id, 'fixture_id' => $otherFixture->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-09-06 12:00:00',
+        ]);
+
+        $this->postJson(route('backend.event-venue-schedule.unapply', $event), ['fixture_id' => $otherFixture->id])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This match does not belong to the event.');
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $otherFixture->id]);
+    }
+
     public function test_event_admin_can_assign_several_draws_to_the_same_shared_venue(): void
     {
         $event = Event::factory()->create();

@@ -98,15 +98,18 @@
   </div>
 
   <details class="workspace-section mb-3" id="court-allocation-step" open>
+    @php
+      $firstSelectedDrawId = $draws->first(fn($draw) => $draw['selected'] && ! $draw['locked'] && ! $draw['published'])['id'] ?? null;
+    @endphp
     <summary>
       <span class="step-number">1</span>
-      <span class="section-title"><h5>Assign age groups to courts</h5><small class="text-muted"><span id="selected-draw-count">{{ $draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->count() }}</span> age groups included · open only the one you are editing</small></span>
+      <span class="section-title"><h5>Assign age groups to courts</h5><small class="text-muted"><span id="selected-draw-count">{{ $draws->filter(fn($draw) => $draw['selected'] && ! $draw['locked'] && ! $draw['published'])->count() }}</span> age groups included · open only the one you are editing</small></span>
       <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
     </summary>
     <div class="section-body">
       <div class="draw-list">
           @forelse($draws as $draw)
-            <details class="draw-panel {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $loop->first ? 'open' : '' }}>
+            <details class="draw-panel {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $firstSelectedDrawId === $draw['id'] ? 'open' : '' }}>
               <summary>
                 <span class="draw-heading">
                   <span class="draw-name fw-semibold">{{ $draw['name'] }}</span>
@@ -130,7 +133,7 @@
               <div class="draw-panel-body">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
                   <label class="form-check d-flex align-items-center gap-2 mb-0">
-                    <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : 'checked' }}>
+                    <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : ($draw['selected'] ? 'checked' : '') }}>
                     <span class="fw-semibold">Include in this schedule</span>
                   </label>
                   <div class="d-flex flex-wrap align-items-end gap-2">
@@ -671,7 +674,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Unassigned draw position')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Unassigned draw position')}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -803,6 +806,21 @@
       control.disabled = false;
     }
   }));
+
+  document.getElementById('venue-timelines').addEventListener('click', async event => {
+    const control = event.target.closest('[data-unapply-fixture]');
+    if (!control || !confirm(`Remove only ${control.dataset.matchLabel}? Its saved time, venue and court will be cleared.`)) return;
+    control.disabled = true;
+    try {
+      const result = await post(unapplyUrl, {fixture_id:Number(control.dataset.unapplyFixture)});
+      window.AppFeedback?.afterReload(result.message, 'success');
+      setStatus(document.getElementById('schedule-status'), result.message + ' Refreshing…', 'success');
+      window.location.reload();
+    } catch (error) {
+      setStatus(document.getElementById('schedule-status'), error.message, 'danger');
+      control.disabled = false;
+    }
+  });
 
   document.querySelectorAll('[data-preview-view]').forEach(button => button.addEventListener('click', () => {
     const grid = button.dataset.previewView === 'grid';

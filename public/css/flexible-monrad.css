@@ -322,6 +322,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+:where(.fm-surface) .fm-player-identity {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid #b9d8ee;
+  border-radius: 6px;
+  color: #155d91;
+  background: #eaf5fc;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.fm-surface) .fm-player-link {
+  min-width: 0;
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.fm-surface) .fm-player-link:hover { text-decoration: underline; }
+:where(.fm-surface) .fm-source-name {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #765e2a;
+  background: #fff4d6;
+  font-size: 11px;
+  font-weight: 650;
+}
 :where(.fm-surface) .fm-slot strong {
   flex-shrink: 0;
   color: #176448;
@@ -346,7 +380,13 @@
 }
 :where(.fm-surface) .fm-slot.winner {
   font-weight: 750;
-  color: #11663f;
+  color: #111;
+}
+:where(.fm-surface) .fm-slot.winner .fm-player-identity,
+:where(.fm-surface) .fm-player-identity-winner {
+  color: #111;
+  border-color: #c7cdd0;
+  background: #f1f3f3;
 }
 :where(.fm-surface) .fm-winner-endpoint {
   position: absolute;
@@ -358,7 +398,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  pointer-events: none;
+  pointer-events: auto;
 }
 :where(.fm-surface) .fm-winner-label {
   color: #607968;
@@ -369,7 +409,7 @@
   text-transform: uppercase;
 }
 :where(.fm-surface) .fm-winner-name {
-  color: #11663f;
+  color: #111;
   font-size: 13px;
   line-height: 1.35;
   overflow: hidden;

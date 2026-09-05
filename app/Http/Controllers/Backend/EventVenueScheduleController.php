@@ -12,11 +12,19 @@ use Illuminate\Support\Facades\DB;
 
 final class EventVenueScheduleController extends Controller
 {
-    public function index(Event $event, EventAnnouncementService $announcements)
+    public function index(Request $request, Event $event, EventAnnouncementService $announcements)
     {
         $this->authorize('event.manage', $event);
         $event->load('draws.venues');
         $eventDraws = $event->draws;
+        $selectionSupplied = $request->has('draw_ids');
+        $requestedDrawIds = collect($request->validate([
+            'draw_ids' => ['sometimes', 'array', 'max:200'],
+            'draw_ids.*' => ['required', 'integer', 'distinct'],
+        ])['draw_ids'] ?? [])->map(fn ($id) => (int) $id);
+        if ($selectionSupplied && $requestedDrawIds->diff($eventDraws->pluck('id')->map(fn ($id) => (int) $id))->isNotEmpty()) {
+            abort(422, 'One or more selected draws do not belong to this event.');
+        }
         $eventVenues = $event->venues()->get();
         $drawVenues = $eventDraws->flatMap(fn ($draw) => $draw->venues);
 
@@ -31,7 +39,7 @@ final class EventVenueScheduleController extends Controller
             ->groupBy('fixtures.draw_id')->selectRaw('fixtures.draw_id, COUNT(*) as aggregate')
             ->pluck('aggregate', 'fixtures.draw_id');
 
-        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts) {
+        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds) {
             $allocations = [];
             foreach ($draw->venues as $venue) {
                 $allocations[$venue->id] = ($courtAllocations[$draw->id.'|'.$venue->id] ?? collect())
@@ -41,7 +49,8 @@ final class EventVenueScheduleController extends Controller
                 'venues' => $draw->venues->pluck('id')->map(fn ($id) => (int) $id)->all(),
                 'court_allocations' => $allocations,
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
-                'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published];
+                'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published,
+                'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
             $assignedCounts = $drawVenues->where('id', $venue->id)
@@ -286,14 +295,16 @@ final class EventVenueScheduleController extends Controller
         $data = $request->validate([
             'draw_id' => ['nullable', 'integer'],
             'venue_id' => ['nullable', 'integer'],
+            'fixture_id' => ['nullable', 'integer'],
         ]);
         $drawId = isset($data['draw_id']) ? (int) $data['draw_id'] : null;
         $venueId = isset($data['venue_id']) ? (int) $data['venue_id'] : null;
-        if (($drawId === null) === ($venueId === null)) {
-            return response()->json(['message' => 'Choose either one draw or one venue to return to planning.'], 422);
+        $fixtureId = isset($data['fixture_id']) ? (int) $data['fixture_id'] : null;
+        if (collect([$drawId, $venueId, $fixtureId])->filter(fn ($id) => $id !== null)->count() !== 1) {
+            return response()->json(['message' => 'Choose one match, one draw, or one venue to return to planning.'], 422);
         }
         try {
-            return response()->json($scheduler->unapply($event, $drawId, $venueId));
+            return response()->json($scheduler->unapply($event, $drawId, $venueId, $fixtureId));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }

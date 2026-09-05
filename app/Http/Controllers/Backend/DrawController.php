@@ -430,33 +430,18 @@ class DrawController extends Controller
     $draw = Draw::findOrFail($id);
     $this->authorize('publish', $draw);
 
-    if (!$draw->oop_published) {
-      if (!$draw->published) {
-        return response()->json([
-          'success' => false,
-          'message' => 'Publish the draw before publishing its match schedule.',
-        ], 422);
-      }
-
-      $hasIndividualSchedule = $draw->order_of_play()->whereNotNull('time')->exists();
-      $hasTeamSchedule = TeamFixture::query()
-        ->where('draw_id', $draw->id)
-        ->whereNotNull('scheduled_at')
-        ->exists();
-
-      if (!$hasIndividualSchedule && !$hasTeamSchedule) {
-        return response()->json([
-          'success' => false,
-          'message' => 'Add at least one match time before publishing the schedule.',
-        ], 422);
-      }
+    try {
+      $service = app(\App\Domain\Draws\Services\DrawSchedulePublicationService::class);
+      $draw->oop_published ? $service->unpublish($draw) : $service->publish($draw);
+      $draw->refresh();
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
     }
-
-    $draw->update(['oop_published' => !$draw->oop_published]);
 
     return response()->json([
       'success' => true,
       'oop_published' => (bool) $draw->oop_published,
+      'preview_only' => (bool) $draw->oop_published && ! (bool) $draw->published,
     ]);
   }
 

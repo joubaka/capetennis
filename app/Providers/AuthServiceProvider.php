@@ -92,6 +92,15 @@ class AuthServiceProvider extends ServiceProvider
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
+        // A deliberately narrow ability for shared, telephone-based venue scoring.
+        Gate::define('event.score', function ($user, \App\Models\Event $event) {
+            if ($user->hasRole('score-keeper')) {
+                return $user->is_convenor($event->id);
+            }
+
+            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+        });
+
         // Create a new draw (individual) for an event.
         Gate::define('draw.create', function ($user, \App\Models\Event $event) {
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);

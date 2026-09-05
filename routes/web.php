@@ -21,6 +21,7 @@ use App\Http\Controllers\Backend\FileController;
 use App\Http\Controllers\Backend\FixtureController;
 use App\Http\Controllers\Backend\GoalController;
 use App\Http\Controllers\Backend\HeadOfficeController;
+use App\Http\Controllers\Backend\BulkDrawPublicationController;
 use App\Http\Controllers\Backend\ImportExportController;
 use App\Http\Controllers\Backend\LeagueController;
 use App\Http\Controllers\Backend\ManageDrawController;
@@ -963,6 +964,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.venues');
   Route::post('events/{event}/venue-schedule/courts', [EventVenueScheduleController::class, 'addCourt'])
     ->name('backend.event-venue-schedule.courts');
+  Route::post('events/{event}/draws/bulk-publication', BulkDrawPublicationController::class)
+    ->name('backend.event-draws.bulk-publication');
   Route::post('events/{event}/venue-schedule/venues/{venue}/courts', [EventVenueScheduleController::class, 'configureCourts'])
     ->name('backend.event-venue-schedule.courts.configure');
 
@@ -2011,6 +2014,8 @@ Route::get('ranking/{series}/player/{player}', [\App\Http\Controllers\Backend\Ra
 Route::get('flexible-monrad/demo', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demo'])->name('flexible-monrad.demo');
 Route::post('flexible-monrad/demo-preview', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demoPreview'])->middleware('throttle:60,1')->name('flexible-monrad.demo-preview');
 Route::get('flexible-monrad/{draw}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publicShow'])->name('public.flexible-monrad.show');
+Route::get('players/{player}/public-profile', \App\Http\Controllers\Frontend\PublicPlayerProfileController::class)
+  ->middleware(['signed', 'throttle:60,1'])->name('public.player.profile');
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])
   ->name('public.roundrobin.show');
 
@@ -2037,5 +2042,12 @@ Route::middleware(['auth', 'role:convenor|admin|super-user'])->group(function ()
   Route::get('/convenor/fixtures/venue/{event}/{venue}/enter', [\App\Http\Controllers\Frontend\TeamFixtureFrontendController::class, 'enterScoresByEventVenue'])
     ->name('frontend.fixtures.enter-scores.venue');
 
+});
+
+Route::middleware('auth')->group(function () {
+  Route::get('/events/{event}/scoring', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'index'])
+    ->name('frontend.scoring.workspace');
+  Route::post('/events/{event}/scoring/operator', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'operator'])
+    ->name('frontend.scoring.operator');
 });
 

@@ -55,7 +55,7 @@
       @else
         <a class="btn btn-sm btn-outline-primary" href="{{ $workspaceUrl }}#print">Print</a>
       @endif
-      <a class="btn btn-sm btn-outline-secondary" href="{{ route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener" data-workspace-public @if(!$draw->published) hidden @endif>Public view</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ $flexibleWorkspace ? route('public.flexible-monrad.show', $draw) : route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener" data-workspace-public @if(!$draw->published && !$draw->oop_published) hidden @endif>{{ $draw->published ? 'Public view' : 'Preview times' }}</a>
       <button class="btn btn-sm btn-outline-secondary" type="button" data-share-draw="{{ route('public.roundrobin.show', $draw) }}" @disabled(!$draw->published) title="{{ $draw->published ? 'Share public draw link' : 'Publish the draw before sharing' }}">Share</button>
       @if(($workspaceSurface ?? '') === 'roundrobin')
         @can('publish', $draw)

@@ -48,7 +48,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('12 matches', $html);
     }
 
-    public function test_legacy_draw_retains_settings_venues_and_publication_routes(): void
+    public function test_legacy_draw_retains_settings_and_publication_routes(): void
     {
         Gate::before(fn (?User $user) => true);
         $html = view('backend.headOffice.partials.individual-draw-row', ['draw' => $this->draw()])->render();
@@ -56,7 +56,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         foreach (['backend.draw.roundrobin.show', 'draw.toggle.publish', 'draws.destroy'] as $route) {
             $this->assertStringContainsString(route($route, 42), $html);
         }
-        $this->assertStringContainsString('btn-add-venues', $html);
+        $this->assertStringNotContainsString('btn-add-venues', $html);
         $this->assertStringContainsString('aria-label="Publish U/10 Boys"', $html);
     }
 
@@ -122,7 +122,11 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('Draft <span>1</span>', $html);
         $this->assertStringContainsString('Published <span>1</span>', $html);
         $this->assertStringContainsString('aria-live="polite">Showing 2 draws', $html);
+        $this->assertStringContainsString('id="draw-select-all"', $html);
+        $this->assertStringContainsString('id="schedule-selected"', $html);
+        $this->assertStringContainsString('Schedule all matches', $html);
         $this->assertStringContainsString('data-format="Custom Monrad"', $html);
+        $this->assertStringContainsString('id="draw-select-42"', $html);
         $this->assertStringContainsString('aria-label="More actions for U/10 Boys"', $html);
         $this->assertStringContainsString('<svg', $html);
     }

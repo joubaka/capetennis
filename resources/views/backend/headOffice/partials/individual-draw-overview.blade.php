@@ -9,7 +9,7 @@
     </div>
     <div class="draws-event-actions">
       @if($event->draws->isNotEmpty())
-        <a class="btn draws-button draws-button-secondary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Venue schedule</a>
+        <a class="btn draws-button draws-button-secondary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Schedule all matches</a>
         <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Print draws</button>
       @endif
       <button type="button" class="btn draws-button draws-button-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'plus']) New draw</button>
@@ -56,7 +56,7 @@
         @if($scheduledCount > $schedulePublishedCount)
           <div class="alert alert-warning mt-3 mb-0" role="status">
             <strong>{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public.</strong>
-            Publish each draw first, then use <em>Publish times</em> to release its time, venue and court details.
+            Use <em>Publish times</em> to preview time, venue and court details before releasing the draw publicly.
           </div>
         @endif
       </div>
@@ -85,6 +85,26 @@
           <button type="button" data-draw-filter="1" aria-pressed="false"><span class="draws-status-dot is-published" aria-hidden="true"></span>Published <span>{{ $event->draws->where('published', true)->count() }}</span></button>
         </div>
         <p id="draw-filter-count" role="status" aria-live="polite">Showing {{ $event->draws->count() }} draws</p>
+      </div>
+      <div class="draws-bulk-actions" aria-label="Actions for selected draws">
+        <label class="draws-select-all" for="draw-select-all">
+          <input class="form-check-input" id="draw-select-all" type="checkbox">
+          <span>Select all visible</span>
+        </label>
+        <span id="draw-selection-count" class="draws-selection-count" role="status" aria-live="polite">0 selected</span>
+        <div class="draws-bulk-buttons">
+          <button type="button" class="btn draws-button draws-button-secondary" id="schedule-selected" disabled>
+            @include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) Schedule selected
+          </button>
+          @if($event->draws->contains(fn($draw) => Gate::allows('publish', $draw)))
+            <button type="button" class="btn draws-button draws-button-primary" id="publish-selected-draws" disabled>
+              <i class="ti ti-eye" aria-hidden="true"></i> Publish draws
+            </button>
+            <button type="button" class="btn draws-button draws-button-secondary" id="publish-selected-times" disabled>
+              <i class="ti ti-clock" aria-hidden="true"></i> Publish times
+            </button>
+          @endif
+        </div>
       </div>
       <div class="draws-column-headings" aria-hidden="true"><span>Division</span><span>Draw format</span><span>Matches</span><span>Venue</span><span class="draws-actions-label">Manage draw</span></div>
     @endif

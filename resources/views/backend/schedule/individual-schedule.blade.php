@@ -352,7 +352,10 @@ $(function () {
       status_html:   fx.scheduled_at
         ? '<span class="badge bg-success"><i class="ti ti-check me-1"></i>Scheduled</span>'
         : '<span class="badge bg-secondary">Pending</span>',
-      actions_html:  `<button class="btn btn-sm btn-primary btn-save" data-id="${fx.id}"><i class="ti ti-device-floppy me-1"></i>Save</button>`,
+      actions_html:  `<div class="d-flex flex-wrap justify-content-center gap-1">
+        <button class="btn btn-sm btn-primary btn-save" data-id="${fx.id}"><i class="ti ti-device-floppy me-1"></i>Save</button>
+        ${fx.scheduled_at ? `<button class="btn btn-sm btn-outline-danger btn-remove-assignment" data-id="${fx.id}" data-match="${fx.match_nr ?? fx.id}"><i class="ti ti-calendar-off me-1"></i>Remove</button>` : ''}
+      </div>`,
     };
   }
 
@@ -436,6 +439,28 @@ $(function () {
     })
     .done(() => { toastr.success('Saved'); loadData(); })
     .fail(() => toastr.error('Save failed'));
+  });
+
+  $('#scheduleTable').on('click', '.btn-remove-assignment', function () {
+    const id = $(this).data('id');
+    const match = $(this).data('match');
+    Swal.fire({
+      title: `Remove Match ${match} assignment?`,
+      text: 'Its time, venue and court will be cleared. Other match assignments stay unchanged.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      confirmButtonText: 'Remove assignment'
+    }).then(result => {
+      if (!result.isConfirmed) return;
+      $.post(`{{ route('backend.individual-schedule.save', $draw->id) }}`, {
+        _token: csrf,
+        fixture_id: id,
+        scheduled_at: null
+      })
+      .done(() => { toastr.success('Match assignment removed'); loadData(); })
+      .fail(xhr => xhrError(xhr, 'Could not remove assignment'));
+    });
   });
 
   // -------------------------------------------------------

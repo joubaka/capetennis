@@ -156,7 +156,7 @@ class PublicTournamentWorkflowTest extends TestCase
             ->assertDontSee('2026-09-06 09:00');
     }
 
-    public function test_schedule_cannot_be_published_before_draw_and_match_time_are_ready(): void
+    public function test_schedule_can_be_published_for_authorized_preview_before_draw_is_public(): void
     {
         Role::findOrCreate('admin');
         $admin = User::factory()->create()->assignRole('admin');
@@ -164,13 +164,7 @@ class PublicTournamentWorkflowTest extends TestCase
         EventAdmin::create(['event_id' => $event->id, 'user_id' => $admin->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => false]);
 
-        $this->actingAs($admin)
-            ->postJson(route('draw.toggle.publish.schedule', $draw))
-            ->assertUnprocessable()
-            ->assertJsonPath('message', 'Publish the draw before publishing its match schedule.');
-
-        $draw->update(['published' => true]);
-        $this->postJson(route('draw.toggle.publish.schedule', $draw))
+        $this->actingAs($admin)->postJson(route('draw.toggle.publish.schedule', $draw))
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Add at least one match time before publishing the schedule.');
 
@@ -183,10 +177,15 @@ class PublicTournamentWorkflowTest extends TestCase
 
         $this->postJson(route('draw.toggle.publish.schedule', $draw))
             ->assertOk()
-            ->assertJsonPath('oop_published', true);
+            ->assertJsonPath('oop_published', true)
+            ->assertJsonPath('preview_only', true);
+
+        $draw->refresh();
+        $this->assertFalse((bool) $draw->published);
+        $this->assertTrue((bool) $draw->oop_published);
     }
 
-    public function test_unpublishing_a_draw_also_unpublishes_its_schedule(): void
+    public function test_unpublishing_a_draw_retains_its_schedule_for_authorized_preview(): void
     {
         Role::findOrCreate('admin');
         $admin = User::factory()->create()->assignRole('admin');
@@ -206,6 +205,6 @@ class PublicTournamentWorkflowTest extends TestCase
 
         $draw->refresh();
         $this->assertFalse((bool) $draw->published);
-        $this->assertFalse((bool) $draw->oop_published);
+        $this->assertTrue((bool) $draw->oop_published);
     }
 }

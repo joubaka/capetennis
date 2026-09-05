@@ -158,6 +158,38 @@ class DrawSetupTest extends TestCase
         app(FlexibleMonradService::class)->save($draw, ['size' => 4, 'slots' => $this->slots($draw)], 1);
         $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertConflict();
         $this->assertCount(4, $draw->fresh()->flexibleMonrad->draft['slots']);
+
+        $draw = $this->draw();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])->assertRedirect();
+        Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN']);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertConflict();
+        $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+    }
+
+    public function test_round_robin_with_existing_groups_and_fixtures_can_add_playoffs_without_replacing_them(): void
+    {
+        $draw = $this->draw();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])->assertRedirect();
+
+        $group = $draw->groups()->create(['name' => 'A']);
+        $slots = $this->slots($draw);
+        $group->registrations()->attach($slots['aa']['id']);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $group->id,
+            'stage' => 'RR',
+        ]);
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+
+        $draw->refresh();
+        $this->assertSame('round_robin_playoffs', $draw->settings->workflow);
+        $this->assertSame([$fixture->id], $draw->drawFixtures()->pluck('id')->all());
+        $this->assertSame([$slots['aa']['id']], $group->registrations()->pluck('registrations.id')->all());
+        $this->get(route('backend.draw.roundrobin.show', $draw))
+            ->assertOk()
+            ->assertSee('id="btn-add-playoff"', false);
     }
 
     public function test_empty_selection_can_change_without_creating_groups_or_fixtures(): void

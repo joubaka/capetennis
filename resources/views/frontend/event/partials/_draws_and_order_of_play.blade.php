@@ -5,6 +5,14 @@
   </div>
 
   <div class="card-body">
+    @can('event.score', $event)
+      <div class="d-grid d-sm-flex mb-4">
+        <a href="{{ route('frontend.scoring.workspace', $event) }}" class="btn btn-primary btn-lg">
+          <i class="bi bi-clipboard-check me-1"></i> Venue scoring
+        </a>
+      </div>
+    @endcan
+
     {{-- ✅ Published Draws --}}
 <div class="mb-3">
   <h6 class="fw-bold">Published Draws</h6>
@@ -24,7 +32,7 @@
     <div class="d-flex flex-wrap gap-2">
       @foreach($draws as $draw)
         <div class="d-flex align-items-center gap-1">
-          <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
+          <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
             {{ $draw->drawName }}
             <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
@@ -33,14 +41,14 @@
           </a>
           @php
 
-            $isConvenorOrSuper = auth()->check() && ( (method_exists(auth()->user(), 'isConvenorForEvent') && auth()->user()->isConvenorForEvent($event->id)) || (method_exists(auth()->user(), 'hasRole') && (auth()->user()->hasRole('convenor') || auth()->user()->hasRole('admin') || auth()->user()->hasRole('super-user'))) );
+            $canScoreEvent = auth()->check() && auth()->user()->can('event.score', $event);
           @endphp
           {{-- debug removed: dd() halts execution. Use @dump($var) or @dd($var) during local debugging --}}
-          @if($isConvenorOrSuper)
-            <a href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw->id]) }}"
+          @if($canScoreEvent)
+            <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
                class="btn btn-sm btn-light border"
-               title="Insert Score">
-              <i class="bi bi-clipboard-data"></i>
+               title="Score {{ $draw->drawName }}">
+              <i class="bi bi-clipboard-data"></i> Score
             </a>
           @endif
         </div>
@@ -59,7 +67,7 @@
         @php
           // Calculate convenor/admin permission once for this view
           $user = auth()->user();
-          $isConvenorOrSuper = auth()->check() && ( (method_exists($user, 'isConvenorForEvent') && $user->isConvenorForEvent($event->id)) || (method_exists($user, 'hasRole') && ($user->hasRole('convenor') || $user->hasRole('admin') || $user->hasRole('super-user'))) );
+          $canScoreEvent = auth()->check() && $user->can('event.score', $event);
         @endphp
 
         <div class="d-flex flex-wrap gap-2">
@@ -71,12 +79,12 @@
               </a>
 
               {{-- Convenor / Admin: quick Enter Scores (per-venue convenor view) --}}
-              @if($isConvenorOrSuper)
+              @if($canScoreEvent)
                 {{-- Convenor enter-scores page for this venue, filtered by event and venue --}}
-                <a href="{{ route('frontend.fixtures.enter-scores.venue', ['event' => $event->id, 'venue' => $venue->id]) }}"
+                <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]) }}"
                    class="btn btn-sm btn-light border"
                    title="Enter scores for {{ $venue->name }}">
-                  <i class="bi bi-clipboard-data"></i>
+                  <i class="bi bi-clipboard-data"></i> Score
                 </a>
               @endif
             </div>
@@ -108,10 +116,11 @@
             <h6 class="mt-3">{{ $typeName }}</h6>
             <div class="d-flex flex-wrap gap-2">
               @foreach($draws as $draw)
-                <a href="{{ route('frontend.fixtures.index', $draw->id) }}"
+                <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
                    class="btn btn-sm btn-outline-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                   {{ $draw->drawName }}
                   <span class="badge bg-danger ms-1">Unpublished</span>
+                  @if($draw->oop_published)<span class="badge bg-info ms-1">Times preview</span>@endif
                 </a>
               @endforeach
             </div>

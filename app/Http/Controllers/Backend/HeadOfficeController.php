@@ -60,7 +60,7 @@ class HeadOfficeController extends Controller
     if ((int) $event->eventType === 6) {
       $event->load(['draws' => fn ($query) => $query
         ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision'])
-        ->withCount(['drawFixtures', 'order_of_play'])
+        ->withCount(['drawFixtures', 'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time')])
         ->orderBy('drawName')]);
 
       $flexibleFormatIds = \App\Models\DrawFormats::where('name', 'Flexible Monrad')->pluck('id');
@@ -72,7 +72,6 @@ class HeadOfficeController extends Controller
 
       return view('backend.headOffice.individual-event-show', [
         'event' => $event,
-        'venues' => Venue::select('id', 'name')->orderBy('name')->get(),
       ]);
     }
 

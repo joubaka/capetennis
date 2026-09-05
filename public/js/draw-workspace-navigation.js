@@ -28,7 +28,9 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication failed.');
       button.textContent = data.oop_published ? 'Unpublish schedule' : 'Publish schedule';
-      if (status) status.textContent = data.oop_published ? 'Schedule published; it is visible when the draw is public.' : 'Schedule unpublished.';
+      if (status) status.textContent = data.oop_published
+        ? (data.preview_only ? 'Times published for authorized front-page preview; the draw remains hidden from the public.' : 'Schedule published and visible with the public draw.')
+        : 'Schedule unpublished.';
     } catch (error) { if (status) status.textContent = error.message; }
     finally { button.disabled = false; }
   }));

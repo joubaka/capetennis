@@ -5,6 +5,7 @@ namespace App\Services\Scheduling;
 use App\Domain\Draws\Services\ScheduleAvailability;
 use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, Venue};
 use App\Services\Draw\FlexibleMonradService;
+use App\Services\ScheduleEngine;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -275,11 +276,12 @@ final class EventVenueScheduleService
         });
     }
 
-    public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null): array
+    public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
     {
-        if (($drawId === null) === ($venueId === null)) {
-            throw new \InvalidArgumentException('Choose either one draw or one venue to return to planning.');
+        if (collect([$drawId, $venueId, $fixtureId])->filter(fn ($id) => $id !== null)->count() !== 1) {
+            throw new \InvalidArgumentException('Choose one match, one draw, or one venue to return to planning.');
         }
+        if ($fixtureId !== null) return $this->unapplyFixture($event, $fixtureId);
 
         return DB::transaction(function () use ($event, $drawId, $venueId) {
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
@@ -335,6 +337,29 @@ final class EventVenueScheduleService
                 'message' => $count.' '.($count === 1 ? 'match was' : 'matches were').' returned to planning. Fixtures and draw structure were preserved.',
             ];
         });
+    }
+
+    private function unapplyFixture(Event $event, int $fixtureId): array
+    {
+        $fixture = Fixture::with(['draw', 'fixtureResults', 'orderOfPlay'])
+            ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
+            ->find($fixtureId);
+        if (! $fixture) throw new \InvalidArgumentException('This match does not belong to the event.');
+        if (! $fixture->orderOfPlay?->time) throw new \InvalidArgumentException('This match has no applied assignment to remove.');
+        if ($fixture->draw?->locked) throw new \InvalidArgumentException('Unlock the draw before removing this match assignment.');
+        if ($fixture->fixtureResults->isNotEmpty()) throw new \InvalidArgumentException('A played match cannot be returned to planning.');
+
+        if ($fixture->draw->usesFlexibleMonrad()) {
+            app(\App\Services\Draw\FlexibleMonradScheduler::class)
+                ->saveFixture($fixture->draw, $fixture->id, null, 0, '', null);
+        } else {
+            app(ScheduleEngine::class)->saveFixture($fixture->draw, $fixture->id, null, 0, '', null, true);
+        }
+        DrawAuditLog::record($fixture->draw_id, 'event_venue_schedule_unapplied', null, [
+            'event_id' => $event->id, 'matches' => 1, 'scope' => 'fixture', 'fixture_id' => $fixture->id,
+        ]);
+
+        return ['count' => 1, 'message' => 'One match assignment was removed. Other scheduled matches were preserved.'];
     }
 
     private function nodesForDraw(Draw $draw, Carbon $start, int $waveMinutes): array

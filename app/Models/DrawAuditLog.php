@@ -34,6 +34,10 @@ class DrawAuditLog extends Model
      */
     public static function record(int $drawId, string $action, ?int $fixtureId = null, array $payload = []): void
     {
+        if (session()->has('venue_scoring.operator')) {
+            $payload['operator'] ??= session('venue_scoring.operator');
+        }
+
         $legacy = static::create([
             'draw_id'    => $drawId,
             'user_id'    => auth()->id(),

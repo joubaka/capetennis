@@ -3,7 +3,23 @@ $(function () {
   const config = window.headOfficeDraws;
   const csrf = $('meta[name="csrf-token"]').attr('content');
   const error = (xhr, fallback) => toastr.error(xhr.responseJSON?.message || fallback);
-  const modal = id => bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
+
+  const selectedRows = () => $('.draw-select:checked').closest('.draw-overview-row');
+  const visibleSelectors = () => $('.draw-overview-row:not([hidden]) .draw-select');
+  function updateBulkActions() {
+    const $selected = selectedRows();
+    const $visible = visibleSelectors();
+    const visibleSelected = $visible.filter(':checked').length;
+    const selectAll = document.getElementById('draw-select-all');
+    if (selectAll) {
+      selectAll.checked = $visible.length > 0 && visibleSelected === $visible.length;
+      selectAll.indeterminate = visibleSelected > 0 && visibleSelected < $visible.length;
+    }
+    $('#draw-selection-count').text($selected.length + ' selected');
+    $('#schedule-selected').prop('disabled', !$selected.filter('[data-schedulable="1"]').length);
+    $('#publish-selected-draws').prop('disabled', !$selected.filter('[data-published="0"]').length);
+    $('#publish-selected-times').prop('disabled', !$selected.filter('[data-has-schedule="1"][data-schedule="0"]').length);
+  }
 
   function filterDraws() {
     const search = String($('#draw-search').val() || '').trim().toLocaleLowerCase();
@@ -18,6 +34,7 @@ $(function () {
     $('#draw-filter-count').text('Showing ' + visible + ' of ' + $('.draw-overview-row').length + ' draws');
     $('#draw-no-results').prop('hidden', visible !== 0);
     $('[data-draw-filter]').each(function () { this.setAttribute('aria-pressed', String(this.dataset.drawFilter === status)); });
+    updateBulkActions();
   }
   $('#draw-search').on('input', filterDraws);
   $('#draw-status').on('change', filterDraws);
@@ -27,6 +44,55 @@ $(function () {
     filterDraws();
     $('#draw-search').trigger('focus');
   });
+  $('#draw-select-all').on('change', function () {
+    visibleSelectors().prop('checked', this.checked);
+    updateBulkActions();
+  });
+  $(document).on('change', '.draw-select', updateBulkActions);
+
+  $('#schedule-selected').on('click', function () {
+    const ids = selectedRows().filter('[data-schedulable="1"]').map(function () { return this.dataset.drawId; }).get();
+    if (!ids.length) { toastr.warning('Select at least one draft, unlocked draw to schedule.'); return; }
+    const url = new URL(config.venueScheduleUrl, window.location.origin);
+    ids.forEach(id => url.searchParams.append('draw_ids[]', id));
+    window.location.assign(url.toString());
+  });
+
+  function bulkPublish(operation) {
+    const schedule = operation === 'schedules';
+    const selector = schedule ? '[data-has-schedule="1"][data-schedule="0"]' : '[data-published="0"]';
+    const $rows = selectedRows().filter(selector);
+    const ids = $rows.map(function () { return Number(this.dataset.drawId); }).get();
+    if (!ids.length) {
+      toastr.warning(schedule ? 'Select at least one prepared, unpublished schedule.' : 'Select at least one unpublished draw.');
+      return;
+    }
+    const noun = schedule ? 'match times' : 'draws';
+    Swal.fire({
+      title: 'Publish selected ' + noun + '?',
+      text: schedule
+        ? ids.length + ' selected schedules will expose their times, venues and courts. Draft draws remain available only in the authorized preview.'
+        : ids.length + ' selected draws will become visible on their public links.',
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Publish ' + noun,
+    }).then(result => {
+      if (!result.isConfirmed) return;
+      const $buttons = $('.draws-bulk-buttons button').prop('disabled', true).attr('aria-busy', 'true');
+      $.post(config.bulkPublicationUrl, {_token: csrf, operation: operation, draw_ids: ids})
+        .done(function (response) {
+          if (!response.failed?.length) { window.location.reload(); return; }
+          const details = response.failed.map(item => item.name + ': ' + item.message).join('\n');
+          Swal.fire({
+            title: response.published.length ? 'Some items could not be published' : 'Nothing was published',
+            text: details, icon: 'warning', confirmButtonText: response.published.length ? 'Refresh overview' : 'Close',
+          }).then(() => { if (response.published.length) window.location.reload(); });
+        })
+        .fail(xhr => error(xhr, 'Could not publish the selected ' + noun + '.'))
+        .always(() => { $buttons.prop('disabled', false).removeAttr('aria-busy'); updateBulkActions(); });
+    });
+  }
+  $('#publish-selected-draws').on('click', () => bulkPublish('draws'));
+  $('#publish-selected-times').on('click', () => bulkPublish('schedules'));
+  updateBulkActions();
 
   $('#createDrawForm').on('submit', function (event) {
     event.preventDefault();
@@ -35,58 +101,6 @@ $(function () {
     $.post(config.createUrl, $(this).serialize())
       .done(() => location.reload())
       .fail(xhr => error(xhr, 'Could not create draw.'))
-      .always(() => $submit.prop('disabled', false));
-  });
-
-  const $venuesForm = $('#venuesForm');
-  const $container = $('#venues-container');
-  function addVenueRow(id = '', courts = 1) {
-    const $row = $('<div class="venue-row gap-2 mb-2"></div>');
-    const $select = $('<select name="venue_id[]" class="form-select" aria-label="Venue" required></select>');
-    $select.append(new Option('Select venue', ''));
-    config.venues.forEach(v => $select.append(new Option(v.name, v.id, false, String(id) === String(v.id))));
-    $row.append($select);
-    $row.append($('<input type="number" name="num_courts[]" class="form-control" min="1" aria-label="Number of courts" required>').val(courts));
-    $row.append('<button type="button" class="btn btn-outline-danger btn-remove-row" aria-label="Remove venue">&times;</button>');
-    $container.append($row);
-    $select.select2({dropdownParent: $('#venuesModal'), width: '100%'});
-  }
-  $(document).on('click', '.btn-add-venues', function () {
-    const $button = $(this).prop('disabled', true);
-    const id = $button.data('draw-id');
-    $venuesForm.attr('action', config.venueStoreUrl.replace('__ID__', id)).data('draw-id', id);
-    $('#venuesModal .modal-title').text('Venues · ' + $button.data('draw-name'));
-    $container.find('select').each(function () { $(this).select2('destroy'); });
-    $container.empty();
-    $.get(config.venueJsonUrl.replace('__ID__', id))
-      .done(function (venues) {
-        if (venues.length) venues.forEach(v => addVenueRow(v.id, v.num_courts));
-        else addVenueRow();
-        modal('venuesModal').show();
-      })
-      .fail(xhr => error(xhr, 'Could not load venues.'))
-      .always(() => $button.prop('disabled', false));
-  });
-  $('#addVenueRow').on('click', () => addVenueRow());
-  $(document).on('click', '.btn-remove-row', function () {
-    $(this).closest('.venue-row').find('select').select2('destroy');
-    $(this).closest('.venue-row').remove();
-  });
-  $venuesForm.on('submit', function (event) {
-    event.preventDefault();
-    const $submit = $(this).find('[type="submit"]').prop('disabled', true);
-    $.post($(this).attr('action'), $(this).serialize())
-      .done(function (response) {
-        if (!response.success) { toastr.error(response.message || 'Could not save venues.'); return; }
-        const names = response.venues.map(v => {
-          const courts = v.pivot?.num_courts ?? v.num_courts;
-          return v.name + ' (' + courts + ' ' + (Number(courts) === 1 ? 'court' : 'courts') + ')';
-        });
-        $('.draw-venues[data-draw-id="' + $venuesForm.data('draw-id') + '"]').text(names.join(', ') || 'Venues not set');
-        modal('venuesModal').hide();
-        toastr.success('Venues updated.');
-      })
-      .fail(xhr => error(xhr, 'Could not save venues.'))
       .always(() => $submit.prop('disabled', false));
   });
 
@@ -121,12 +135,15 @@ $(function () {
   $(document).on('click', '.toggle-schedule-publication', function () {
     const $button = $(this);
     const published = String($button.data('published')) === '1';
+    const drawPublished = String($button.data('draw-published')) === '1';
     const verb = published ? 'Unpublish' : 'Publish';
     Swal.fire({
       title: verb + ' match times?',
       text: published
         ? $button.data('draw-name') + ' times, venues and courts will be hidden from the public.'
-        : $button.data('draw-name') + ' times, venues and courts will become public.',
+        : drawPublished
+          ? $button.data('draw-name') + ' times, venues and courts will become public.'
+          : $button.data('draw-name') + ' times can be checked in the authorized front-page preview. The draw remains hidden from the public.',
       icon: 'question', showCancelButton: true, confirmButtonText: verb + ' times',
     }).then(result => {
       if (!result.isConfirmed) return;

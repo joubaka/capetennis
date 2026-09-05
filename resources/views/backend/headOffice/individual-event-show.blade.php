@@ -5,14 +5,12 @@
 
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
-<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
 @endsection
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('css/head-office-draws.css') }}?v={{ filemtime(public_path('css/head-office-draws.css')) }}">
 @endsection
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.js') }}"></script>
-<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 @endsection
 
 @section('page-script')
@@ -20,9 +18,8 @@
 <script>
 window.headOfficeDraws = {
     createUrl: @json(route('headoffice.createSingleDraw', $event->id)),
-    venueStoreUrl: @json(route('backend.draw.venues.store', ['draw' => '__ID__'])),
-    venueJsonUrl: @json(route('backend.draw.venues.json', ['draw' => '__ID__'])),
-    venues: @json($venues->map(fn($venue) => ['id' => $venue->id, 'name' => $venue->name]))
+    bulkPublicationUrl: @json(route('backend.event-draws.bulk-publication', $event)),
+    venueScheduleUrl: @json(route('backend.event-venue-schedule.index', $event)),
 };
 </script>
 <script src="{{ asset('js/head-office-draws.js') }}?v={{ filemtime(public_path('js/head-office-draws.js')) }}"></script>
@@ -297,7 +294,6 @@ $(document).ready(function () {
 @section('content')
 
 @include('backend.headOffice.partials.individual-draw-overview')
-@include('backend.draw._modals.addVenueModal')
 
 <!-- Modal: Create New Draw -->
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
