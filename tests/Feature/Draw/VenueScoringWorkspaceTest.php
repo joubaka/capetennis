@@ -26,6 +26,8 @@ class VenueScoringWorkspaceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'convenor', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'score-keeper', 'guard_name' => 'web']);
     }
@@ -92,6 +94,57 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertFalse(Gate::forUser($assigned)->allows('update', $draw));
         $this->assertFalse(Gate::forUser($assigned)->allows('publish', $draw));
         $this->assertFalse(Gate::forUser($assigned)->allows('lockToggle', $draw));
+    }
+
+    public function test_scoped_assignments_authorize_scoring_without_requiring_a_duplicate_global_role(): void
+    {
+        [$event, $draw] = $this->scheduledFixture('Main Venue');
+        $eventAdmin = User::factory()->create();
+        DB::table('event_admins')->insert([
+            'event_id' => $event->id,
+            'user_id' => $eventAdmin->id,
+        ]);
+        $eventConvenor = User::factory()->create();
+        EventConvenor::create([
+            'event_id' => $event->id,
+            'user_id' => $eventConvenor->id,
+        ]);
+        $unassignedConvenor = User::factory()->create()->assignRole('convenor');
+
+        foreach ([$eventAdmin, $eventConvenor] as $assigned) {
+            $this->assertTrue(Gate::forUser($assigned)->allows('event.score', $event));
+            $this->assertTrue(Gate::forUser($assigned)->allows('saveScore', $draw));
+            $this->actingAs($assigned)
+                ->get(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw]))
+                ->assertOk();
+        }
+
+        $this->assertFalse(Gate::forUser($unassignedConvenor)->allows('event.score', $event));
+        $this->assertFalse(Gate::forUser($unassignedConvenor)->allows('saveScore', $draw));
+        $this->actingAs($unassignedConvenor)
+            ->get(route('frontend.scoring.workspace', $event))
+            ->assertForbidden();
+    }
+
+    public function test_super_user_can_open_the_scoring_workspace_without_an_event_assignment(): void
+    {
+        [$event, $draw] = $this->scheduledFixture('Main Venue');
+        $superUser = User::factory()->create()->assignRole('super-user');
+
+        $this->assertTrue(Gate::forUser($superUser)->allows('event.score', $event));
+        $this->assertTrue(Gate::forUser($superUser)->allows('saveScore', $draw));
+        $this->actingAs($superUser)
+            ->get(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw]))
+            ->assertOk();
+    }
+
+    public function test_individual_event_score_action_uses_the_scoped_canonical_workspace(): void
+    {
+        $template = file_get_contents(resource_path('views/frontend/event/eventTypes/individual.blade.php'));
+
+        $this->assertStringContainsString("can('event.score', \$event)", $template);
+        $this->assertStringContainsString("route('frontend.scoring.workspace'", $template);
+        $this->assertStringNotContainsString("route('frontend.fixtures.enter-scores'", $template);
     }
 
     public function test_team_fixture_queue_and_score_writes_use_the_same_workspace_audit(): void

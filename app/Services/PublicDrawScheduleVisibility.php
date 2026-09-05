@@ -37,6 +37,12 @@ class PublicDrawScheduleVisibility
             return collect();
         }
 
+        $isRoundRobin = in_array($draw->settings?->workflow, [
+            'round_robin',
+            'round_robin_playoffs',
+        ], true) || $fixtures->contains(fn (Fixture $fixture) =>
+            strtoupper((string) $fixture->stage) === 'RR' || $fixture->draw_group_id !== null
+        );
         $seenRegistrationIds = [];
         $visibleFixtureIds = [];
 
@@ -46,11 +52,14 @@ class PublicDrawScheduleVisibility
                 $fixture->registration2_id,
             ])->filter(fn ($id) => (int) $id > 0)->map(fn ($id) => (int) $id)->unique();
 
-            // A time is public only while this is the earliest upcoming match for
-            // every currently assigned participant. This prevents one player's
-            // second time leaking because the opponent has no earlier booking.
+            // Odd round robins require the union of every player's earliest
+            // upcoming fixture: the player with the opening-round bye otherwise
+            // receives no time because their first match is an opponent's second.
+            // Other formats retain the stricter all-participants-first rule.
             if ($registrationIds->isNotEmpty()
-                && $registrationIds->every(fn (int $id) => ! isset($seenRegistrationIds[$id]))) {
+                && ($isRoundRobin
+                    ? $registrationIds->contains(fn (int $id) => ! isset($seenRegistrationIds[$id]))
+                    : $registrationIds->every(fn (int $id) => ! isset($seenRegistrationIds[$id])))) {
                 $visibleFixtureIds[] = (int) $fixture->id;
             }
 

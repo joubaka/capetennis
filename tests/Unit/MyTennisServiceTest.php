@@ -141,4 +141,71 @@ class MyTennisServiceTest extends TestCase
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty(), 'An unpublished schedule must not appear on the player dashboard.');
         $this->assertTrue($publicVisibility->visibleFixtureIds($draw->fresh())->isEmpty(), 'An unpublished schedule must expose no public fixture times.');
     }
+
+    public function test_round_robin_first_match_mode_gives_the_bye_player_a_time(): void
+    {
+        $event = Event::factory()->create(['end_date' => now()->addDays(5)->toDateString()]);
+        $draw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'published' => true,
+            'oop_published' => true,
+        ]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin',
+            'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
+        ]);
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Round Robin Courts']);
+        $registrations = Registration::factory()->count(3)->create();
+
+        $opening = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'RR',
+            'round' => 1,
+            'registration1_id' => $registrations[0]->id,
+            'registration2_id' => $registrations[1]->id,
+        ]);
+        $byePlayersFirstMatch = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'RR',
+            'round' => 2,
+            'registration1_id' => $registrations[1]->id,
+            'registration2_id' => $registrations[2]->id,
+        ]);
+        $laterMatch = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'RR',
+            'round' => 3,
+            'registration1_id' => $registrations[0]->id,
+            'registration2_id' => $registrations[2]->id,
+        ]);
+
+        foreach ([
+            [$opening, now()->addDay(), '1'],
+            [$byePlayersFirstMatch, now()->addDay()->addHour(), '2'],
+            [$laterMatch, now()->addDay()->addHours(2), '3'],
+        ] as [$fixture, $time, $court]) {
+            OrderOfPlay::create([
+                'fixture_id' => $fixture->id,
+                'draw_id' => $draw->id,
+                'venue_id' => $venueId,
+                'time' => $time,
+                'court' => $court,
+            ]);
+        }
+
+        $visibility = app(PublicDrawScheduleVisibility::class);
+
+        $this->assertSame(
+            [$opening->id, $byePlayersFirstMatch->id],
+            $visibility->visibleFixtureIds($draw->fresh())->all(),
+            'The player with the opening-round bye must receive their first playing time.',
+        );
+
+        FixtureResult::factory()->create(['fixture_id' => $opening->id]);
+
+        $this->assertSame(
+            [$byePlayersFirstMatch->id, $laterMatch->id],
+            $visibility->visibleFixtureIds($draw->fresh())->all(),
+        );
+    }
 }

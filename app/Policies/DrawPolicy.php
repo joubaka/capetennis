@@ -9,12 +9,14 @@ class DrawPolicy
 {
     private function canManage(User $user, Draw $draw, bool $allowConvenor = true): bool
     {
-        if ($user->hasRole('admin') && $user->is_event_admin($draw->event_id)) {
+        // Event assignments are the authoritative scope. Requiring a second,
+        // global role here made the venue-scoring gate and the write gate
+        // disagree for legitimately assigned event administrators/convenors.
+        if ($user->is_event_admin($draw->event_id)) {
             return true;
         }
 
         return $allowConvenor
-            && $user->hasRole('convenor')
             && $user->is_convenor($draw->event_id);
     }
 

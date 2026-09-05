@@ -161,10 +161,7 @@
     ['drawName', 'asc'],
   ]);
 
-  $isConvenorOrSuper = auth()->check() && (
-    (method_exists(auth()->user(), 'isConvenorForEvent') && auth()->user()->isConvenorForEvent($event->id))
-    || (method_exists(auth()->user(), 'hasRole') && (auth()->user()->hasRole('convenor') || auth()->user()->hasRole('admin') || auth()->user()->hasRole('super-user')))
-  );
+  $canScoreEvent = auth()->check() && auth()->user()->can('event.score', $event);
 @endphp
 
 @foreach($sortedDraws as $draw)
@@ -174,6 +171,7 @@
     $publicDrawUrl = $draw->usesFlexibleMonrad()
       ? route('public.flexible-monrad.show', $draw)
       : route('public.roundrobin.show', $draw);
+    $canViewDraw = auth()->check() && auth()->user()->can('view', $draw);
   @endphp
   <article class="event-draw-card">
     <div>
@@ -202,18 +200,19 @@
         <span class="badge bg-label-secondary">Times to follow</span>
       @endif
 
-      @if($isConvenorOrSuper)
-        <a href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw->id]) }}"
+      @if($canScoreEvent)
+        <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
            class="btn btn-sm btn-light border"
-           title="Insert Score">
+           title="Score {{ $draw->drawName }}">
           <i class="ti ti-clipboard-data" aria-hidden="true"></i>
+          <span class="visually-hidden">Score {{ $draw->drawName }}</span>
         </a>
       @endif
 
     {{-- UNPUBLISHED --}}
     @else
 
-      @if($isConvenorOrSuper)
+      @if($canViewDraw)
         {{-- Convenor/Admin/Super can open --}}
         <a href="{{ $publicDrawUrl }}#draw"
            class="btn btn-sm btn-outline-secondary">
