@@ -2,11 +2,6 @@
   <div class="fm-intro"><div><strong id="fm-phase">Step 2 · Bracket size and starting positions</strong><p>Drag a player into a box, or click a box to choose a player.
     {{ ($config['workflow'] ?? '') === 'playoffs' ? 'Winners advance; losers are eliminated.' : 'Winners advance; losers continue for finishing positions.' }}
   </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
-  <p class="fm-rule">{{ match ($config['workflow'] ?? 'custom_monrad') {
-    'playoffs' => 'Knockout only: place players in the opening round. No round robin or placement matches.',
-    'monrad' => 'Full placement: place everyone in the opening round. No round robin is needed.',
-    default => 'Full placement: entering a quarterfinal directly guarantees a top-eight finish.',
-  } }} Empty boxes are not byes.</p>
   <div id="fm-message" role="status" aria-live="polite"></div>
   <p id="fm-withdrawn" class="fm-rule" hidden></p>
   <div class="fm-toolbar" id="fm-toolbar">
