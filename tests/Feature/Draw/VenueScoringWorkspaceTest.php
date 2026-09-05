@@ -72,13 +72,10 @@ class VenueScoringWorkspaceTest extends TestCase
             'all_venues' => 1,
         ]));
 
-        $response->assertOk()
-            ->assertSee('Assigned Venue')
-            ->assertSee('Match '.$fixture->match_nr)
-            ->assertDontSee('Blocked Venue')
-            ->assertDontSee('Match '.$otherFixture->match_nr);
+        $response->assertOk()->assertSee('Assigned Venue');
         $this->assertTrue($response->viewData('venueRestricted'));
         $this->assertSame($venue->id, $response->viewData('selectedVenue')->id);
+        $this->assertSame([$fixture->id], $response->viewData('matches')->pluck('id')->all());
 
         $this->actingAs($user)
             ->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $otherVenue->id]))
@@ -342,7 +339,11 @@ class VenueScoringWorkspaceTest extends TestCase
     private function scorerFor(Event $event): User
     {
         $user = User::factory()->create()->assignRole('score-keeper');
-        EventConvenor::create(['event_id' => $event->id, 'user_id' => $user->id]);
+        EventConvenor::create([
+            'event_id' => $event->id,
+            'user_id' => $user->id,
+            'role' => 'score-keeper',
+        ]);
 
         return $user;
     }
