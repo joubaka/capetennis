@@ -21,7 +21,8 @@
       console.log('Response Text:', xhr.responseText);
       console.log('Response JSON:', xhr.responseJSON);
       console.groupEnd();
-      alert(`Error while processing ${context}. Check console.`);
+      const message = xhr.responseJSON?.message || `Could not finish ${context}. Please try again.`;
+      window.AppFeedback?.error(message);
     }
 
     // Open modal and prefill form
@@ -64,12 +65,13 @@
           logGroup('✅ SCORE RESPONSE', data);
 
           if (!data.success) {
-            alert('Save failed.');
+            window.AppFeedback?.error(data.message || 'Could not save the score.');
             return;
           }
 
           updateFixtureRow(fixtureId, data.html, data.winner, data.actionsHtml);
           $scoreModal.modal('hide');
+          window.AppFeedback?.success(data.message || 'Score saved.');
         },
         error: (xhr) => ajaxErrorHandler('saving score', xhr)
       });
@@ -87,15 +89,16 @@
         data: { _token: $('meta[name="csrf-token"]').attr('content') },
         success: function (data) {
           if (!data.success) {
-            alert('Delete failed.');
+            window.AppFeedback?.error(data.message || 'Could not delete the result.');
             return;
           }
 
           updateFixtureRow(fixtureId, data.html, data.winner, data.actionsHtml);
+          window.AppFeedback?.success(data.message || 'Result deleted.');
         
         },
         error: function (xhr) {
-          alert('Error deleting result. Check console.');
+          window.AppFeedback?.error(xhr.responseJSON?.message || 'Could not delete the result. Please try again.');
           console.log(xhr.responseText);
         }
       });
@@ -136,14 +139,14 @@
           data: { _token: $('meta[name="csrf-token"]').attr('content') },
           success: function (data) {
             if (!data.success) {
-              alert('Delete failed.');
+              window.AppFeedback?.error(data.message || 'Could not delete the result.');
               return;
             }
             updateFixtureRow(fixtureId, data.html, data.winner, data.actionsHtml);
-            alert('Result deleted!');
+            window.AppFeedback?.success(data.message || 'Result deleted.');
           },
           error: function (xhr) {
-            alert('Error deleting result. Check console.');
+            window.AppFeedback?.error(xhr.responseJSON?.message || 'Could not delete the result. Please try again.');
             console.log(xhr.responseText);
           }
         });

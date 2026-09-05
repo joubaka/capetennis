@@ -8,6 +8,7 @@ use App\Models\Announcement;
 use App\Services\EventAnnouncementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class EventAnnouncementController extends Controller
 {
@@ -44,10 +45,12 @@ class EventAnnouncementController extends Controller
     ]);
 
     $data = $request->validate([
-      'title' => 'required|string|max:255',
-      'message' => 'required|string',
+      'title' => ['required', 'string', 'max:255'],
+      'message' => ['required', 'string'],
       'sendMail' => 'nullable|boolean',
     ]);
+
+    $this->ensureMessageHasContent($data['message']);
 
     $announcement = $event->announcements()->create([
       'title' => $data['title'],
@@ -66,10 +69,15 @@ class EventAnnouncementController extends Controller
       Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }
 
+    $message = !empty($data['sendMail'])
+      ? $this->mailFeedbackMessage($mailStats ?? [])
+      : 'Announcement published on the event page. No email was sent.';
+
     return response()->json([
       'success' => true,
       'id' => $announcement->id,
       'mail' => $mailStats,
+      'message' => $message,
     ]);
   }
 
@@ -83,7 +91,7 @@ class EventAnnouncementController extends Controller
     return response()->json([
       'id' => $announcement->id,
       'title' => $announcement->title,
-      'message' => $announcement->message, // frontend expects `body`
+      'message' => $announcement->message,
     ]);
   }
 
@@ -95,16 +103,21 @@ class EventAnnouncementController extends Controller
     $this->authorize('event.manage', $announcement->event);
 
     $data = $request->validate([
-      'title' => 'required|string|max:255',
-      'message' => 'required|string',
+      'title' => ['required', 'string', 'max:255'],
+      'message' => ['required', 'string'],
     ]);
+
+    $this->ensureMessageHasContent($data['message']);
 
     $announcement->update([
       'title' => $data['title'],
       'message' => $data['message'],
     ]);
 
-    return response()->json(['success' => true]);
+    return response()->json([
+      'success' => true,
+      'message' => 'Announcement updated. Previously queued emails were not resent.',
+    ]);
   }
 
   public function destroy(Announcement $announcement)
@@ -113,7 +126,8 @@ class EventAnnouncementController extends Controller
     $announcement->delete(); // ✅ SOFT DELETE
 
     return response()->json([
-      'success' => true
+      'success' => true,
+      'message' => 'Announcement hidden from the public event page.',
     ]);
   }
   
@@ -131,7 +145,36 @@ class EventAnnouncementController extends Controller
 
     return response()->json([
       'hidden' => $announcement->trashed(),
+      'message' => $announcement->trashed()
+        ? 'Announcement hidden from the public event page.'
+        : 'Announcement is visible on the public event page again.',
     ]);
+  }
+
+  private function ensureMessageHasContent(string $message): void
+  {
+    $plainText = trim(html_entity_decode(strip_tags($message), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+    if ($plainText === '') {
+      throw ValidationException::withMessages([
+        'message' => 'Enter an announcement message before saving.',
+      ]);
+    }
+  }
+
+  /** @param array<string, int> $stats */
+  private function mailFeedbackMessage(array $stats): string
+  {
+    $queued = (int) ($stats['queued'] ?? 0);
+    $skipped = (int) ($stats['skipped'] ?? 0);
+    $failed = (int) ($stats['failed'] ?? 0);
+
+    $message = "Announcement published and {$queued} email".($queued === 1 ? '' : 's').' queued.';
+    if ($skipped || $failed) {
+      $message .= " {$skipped} skipped; {$failed} failed.";
+    }
+
+    return $message;
   }
 
 

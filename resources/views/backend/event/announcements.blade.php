@@ -11,9 +11,12 @@
   {{-- HEADER --}}
   <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <h4 class="mb-0">Event Announcements</h4>
+      <div>
+        <h4 class="mb-1">Event Announcements</h4>
+        <p class="text-muted mb-0 small">Publish updates on {{ $event->name }} and optionally email current participants.</p>
+      </div>
 
-      <button class="btn btn-primary btn-sm" id="newAnnouncementBtn">
+      <button type="button" class="btn btn-primary btn-sm" id="newAnnouncementBtn">
         <i class="ti ti-plus me-1"></i>New Announcement
       </button>
     </div>
@@ -51,11 +54,11 @@
   </td>
 
   <td class="text-end align-top">
-    <button class="btn btn-outline-secondary btn-sm edit-announcement-btn">
+    <button type="button" class="btn btn-outline-secondary btn-sm edit-announcement-btn">
       Edit
     </button>
 
-    <button
+    <button type="button"
       class="btn btn-sm toggle-announcement-btn
         {{ $announcement->trashed() ? 'btn-outline-success' : 'btn-outline-danger' }}">
       {{ $announcement->trashed() ? 'Show' : 'Hide' }}
@@ -78,7 +81,7 @@
 </div>
 
 {{-- MODAL --}}
-<div class="modal fade" id="announcementModal" tabindex="-1">
+<div class="modal fade" id="announcementModal" tabindex="-1" aria-labelledby="announcementModalTitle" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <form id="announcementForm" class="modal-content">
       @csrf
@@ -86,28 +89,32 @@
       <input type="hidden" id="announcement_id">
 
       <div class="modal-header">
-        <h5 class="modal-title">Announcement</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="announcementModalTitle">Create announcement</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
       <div class="modal-body">
 
         <div class="mb-3">
-          <label class="form-label">Title</label>
-          <input type="text" id="announcement_title" class="form-control" required>
+          <label class="form-label" for="announcement_title">Title</label>
+          <input type="text" id="announcement_title" name="title" class="form-control" maxlength="255" required>
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Message</label>
-          <div id="announcement_message" style="height: 200px;"></div>
+          <label class="form-label" id="announcementMessageLabel">Message</label>
+          <div id="announcement_message" style="height: 200px;" aria-labelledby="announcementMessageLabel"></div>
+          <div class="form-text">This appears on the public event page. Add the practical detail participants need next.</div>
         </div>
 
-        <div class="form-check">
+        <div class="form-check" id="announcementEmailOption">
           <input class="form-check-input" type="checkbox" id="announcement_send_email">
-          <label class="form-check-label">
+          <label class="form-check-label" for="announcement_send_email">
             Send announcement email to all players in this event
           </label>
+          <div class="form-text">Email is queued when you save. Leaving this clear only publishes the announcement online.</div>
         </div>
+
+        <div id="announcementFormFeedback" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
 
       </div>
 
@@ -115,7 +122,10 @@
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
           Cancel
         </button>
-        <button class="btn btn-primary">Save Announcement</button>
+        <button type="submit" class="btn btn-primary" id="saveAnnouncementBtn">
+          <span class="spinner-border spinner-border-sm me-1 d-none" aria-hidden="true"></span>
+          <span class="save-label">Publish announcement</span>
+        </button>
       </div>
     </form>
   </div>
@@ -140,6 +150,29 @@
 <script>
 const csrf  = document.querySelector('meta[name="csrf-token"]').content;
 const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+const announcementForm = document.getElementById('announcementForm');
+const announcementId = document.getElementById('announcement_id');
+const announcementTitle = document.getElementById('announcement_title');
+const announcementSendEmail = document.getElementById('announcement_send_email');
+const announcementEmailOption = document.getElementById('announcementEmailOption');
+const modalTitle = document.getElementById('announcementModalTitle');
+const saveButton = document.getElementById('saveAnnouncementBtn');
+const saveLabel = saveButton.querySelector('.save-label');
+const saveSpinner = saveButton.querySelector('.spinner-border');
+const formFeedback = document.getElementById('announcementFormFeedback');
+
+function setFormFeedback(message = '', type = 'danger') {
+  formFeedback.textContent = message;
+  formFeedback.className = `alert alert-${type} mt-3 mb-0${message ? '' : ' d-none'}`;
+  formFeedback.setAttribute('role', type === 'danger' ? 'alert' : 'status');
+}
+
+function setSaving(saving) {
+  saveButton.disabled = saving;
+  saveSpinner.classList.toggle('d-none', !saving);
+  announcementForm.setAttribute('aria-busy', saving ? 'true' : 'false');
+  if (saving) saveLabel.textContent = announcementId.value ? 'Saving changes…' : 'Publishing…';
+}
 
 // Initialize Quill editor
 const quill = new Quill('#announcement_message', {
@@ -155,89 +188,99 @@ const quill = new Quill('#announcement_message', {
   placeholder: 'Write your announcement...'
 });
 
-console.log('[ANNOUNCEMENTS] Script loaded');
-
 /* NEW */
 document.getElementById('newAnnouncementBtn').addEventListener('click', () => {
-  console.log('[ANNOUNCEMENTS] New announcement clicked');
   announcementForm.reset();
-  announcement_id.value = '';
+  announcementId.value = '';
   quill.root.innerHTML = '';
-  announcement_send_email.checked = false;
+  announcementSendEmail.checked = false;
+  announcementEmailOption.classList.remove('d-none');
+  modalTitle.textContent = 'Create announcement';
+  saveLabel.textContent = 'Publish announcement';
+  setFormFeedback();
   modal.show();
+  document.getElementById('announcementModal').addEventListener('shown.bs.modal', () => announcementTitle.focus(), { once: true });
 });
 
 /* EDIT */
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const btn = e.target.closest('.edit-announcement-btn');
   if (!btn) return;
 
   const id  = btn.closest('tr').dataset.id;
   const url = showAnnouncementUrlTemplate.replace('__ID__', id);
 
-  console.log('[ANNOUNCEMENTS] Edit click', { id, url });
-
-  fetch(url, { headers: { 'Accept': 'application/json' } })
-    .then(r => {
-      console.log('[ANNOUNCEMENTS] Edit response status', r.status);
-      return r.json();
-    })
-    .then(a => {
-      console.log('[ANNOUNCEMENTS] Edit payload', a);
-      announcement_id.value = a.id;
-      announcement_title.value = a.title;
-      quill.root.innerHTML = a.message;
-      announcement_send_email.checked = false;
-      modal.show();
-    })
-    .catch(err => {
-      console.error('[ANNOUNCEMENTS] Edit failed', err);
-      alert('Failed to load announcement');
-    });
+  btn.disabled = true;
+  try {
+    const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!response.ok) throw await AppFeedback.responseError(response, 'Failed to load the announcement.');
+    const announcement = await response.json();
+    announcementId.value = announcement.id;
+    announcementTitle.value = announcement.title;
+    quill.root.innerHTML = announcement.message;
+    announcementSendEmail.checked = false;
+    announcementEmailOption.classList.add('d-none');
+    modalTitle.textContent = 'Edit announcement';
+    saveLabel.textContent = 'Save changes';
+    setFormFeedback('Editing changes the public announcement only. Previously queued emails are not resent.', 'info');
+    modal.show();
+  } catch (error) {
+    AppFeedback.fromError(error, 'Failed to load the announcement.');
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 /* SAVE */
-announcementForm.addEventListener('submit', e => {
+announcementForm.addEventListener('submit', async e => {
   e.preventDefault();
 
-  const id  = announcement_id.value;
+  const id  = announcementId.value;
   const url = id
     ? updateAnnouncementUrlTemplate.replace('__ID__', id)
     : storeAnnouncementUrl;
 
-  console.log('[ANNOUNCEMENTS] Save submit', { id, url });
+  setFormFeedback();
+  if (!announcementTitle.value.trim()) {
+    setFormFeedback('Enter an announcement title before saving.');
+    announcementTitle.focus();
+    return;
+  }
+  if (!quill.getText().trim()) {
+    setFormFeedback('Enter an announcement message before saving.');
+    quill.focus();
+    return;
+  }
 
-  fetch(url, {
-    method: id ? 'PATCH' : 'POST',
-    headers: {
-      'X-CSRF-TOKEN': csrf,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      title: announcement_title.value,
-      message: quill.root.innerHTML,
-      sendMail: announcement_send_email.checked ? 1 : 0
-    })
-  })
-  .then(r => {
-    console.log('[ANNOUNCEMENTS] Save response status', r.status);
-    if (!r.ok) throw r;
-    return r.json();
-  })
-  .then(res => {
-    console.log('[ANNOUNCEMENTS] Save success', res);
+  setSaving(true);
+  try {
+    const response = await fetch(url, {
+      method: id ? 'PATCH' : 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrf,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: announcementTitle.value.trim(),
+        message: quill.root.innerHTML,
+        sendMail: !id && announcementSendEmail.checked ? 1 : 0
+      })
+    });
+    if (!response.ok) throw await AppFeedback.responseError(response, 'Could not save the announcement.');
+    const result = await response.json();
+    AppFeedback.afterReload(result.message || (id ? 'Announcement updated.' : 'Announcement published.'));
     modal.hide();
     location.reload();
-  })
-  .catch(err => {
-    console.error('[ANNOUNCEMENTS] Save failed', err);
-    alert('Save failed');
-  });
+  } catch (error) {
+    AppFeedback.fromError(error, 'Could not save the announcement.');
+    setFormFeedback(error.messages?.[0] || error.message || 'Could not save the announcement.');
+    setSaving(false);
+  }
 });
 
 /* HIDE (SOFT DELETE) */
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const btn = e.target.closest('.toggle-announcement-btn');
   if (!btn) return;
 
@@ -246,25 +289,18 @@ document.addEventListener('click', e => {
 
   const url = toggleAnnouncementUrlTemplate.replace('__ID__', id);
 
-  console.log('[ANNOUNCEMENTS] Toggle click', { id, url });
-
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'X-CSRF-TOKEN': csrf,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ _method: 'PATCH' })
-  })
-  .then(r => {
-    console.log('[ANNOUNCEMENTS] Toggle response status', r.status);
-    if (!r.ok) throw r;
-    return r.json();
-  })
-  .then(res => {
-    console.log('[ANNOUNCEMENTS] Toggle response payload', res);
-
+  btn.disabled = true;
+  try {
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'X-CSRF-TOKEN': csrf,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!response.ok) throw await AppFeedback.responseError(response, 'Could not change announcement visibility.');
+    const res = await response.json();
     const hidden = res.hidden;
 
     row.dataset.hidden = hidden ? 1 : 0;
@@ -273,11 +309,12 @@ document.addEventListener('click', e => {
     btn.textContent = hidden ? 'Show' : 'Hide';
     btn.classList.toggle('btn-outline-danger', !hidden);
     btn.classList.toggle('btn-outline-success', hidden);
-  })
-  .catch(err => {
-    console.error('[ANNOUNCEMENTS] Toggle failed', err);
-    alert('Failed to toggle announcement');
-  });
+    AppFeedback.success(res.message || (hidden ? 'Announcement hidden.' : 'Announcement is visible again.'));
+  } catch (error) {
+    AppFeedback.fromError(error, 'Could not change announcement visibility.');
+  } finally {
+    btn.disabled = false;
+  }
 });
 </script>
 @endsection

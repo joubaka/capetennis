@@ -139,8 +139,9 @@ document.addEventListener('DOMContentLoaded', function () {
       try {
         const response = await fetch(form.action + '/remove', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
         if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
+        AppFeedback.afterReload('Player removed from the Masters invitation list.');
         window.location.reload();
-      } catch (error) { alert(error.message); remove.disabled = false; }
+      } catch (error) { AppFeedback.fromError(error, 'Could not remove the player.'); remove.disabled = false; }
     });
     menu.appendChild(remove);
     const button = document.createElement('button');
@@ -168,8 +169,9 @@ document.addEventListener('DOMContentLoaded', function () {
       try {
         const response = await fetch(form.action + '/remove', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
         if (!response.ok) { const data = await response.json(); throw new Error(data.message || 'Could not remove the player.'); }
+        AppFeedback.afterReload('Reserve player removed from the Masters invitation list.');
         window.location.reload();
-      } catch (error) { alert(error.message); remove.disabled = false; }
+      } catch (error) { AppFeedback.fromError(error, 'Could not remove the player.'); remove.disabled = false; }
     });
     form.parentElement.appendChild(remove);
   });
@@ -204,8 +206,9 @@ document.addEventListener('DOMContentLoaded', function () {
         // The invitee and reserve rows have different markup and containers.
         // Reload the rendered batch so the player is immediately shown in the
         // correct stage, with refreshed counts and queue ordering.
+        AppFeedback.afterReload(data.message || 'Invitation wave updated.');
         window.location.reload();
-      } catch (error) { alert(error.message); }
+      } catch (error) { AppFeedback.fromError(error, 'Could not update the invitation wave.'); }
       finally { button.disabled = false; }
     });
   });

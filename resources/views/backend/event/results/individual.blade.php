@@ -163,11 +163,11 @@ const SAVE_URL_TEMPLATE = @json(
 // Toast helpers
 // ------------------------------
 function notifySuccess(msg) {
-  window.toastr ? toastr.success(msg) : alert(msg);
+  AppFeedback.success(msg);
 }
 
 function notifyError(msg) {
-  window.toastr ? toastr.error(msg) : alert(msg);
+  AppFeedback.error(msg);
 }
 
 // ------------------------------

@@ -85,6 +85,7 @@
             const fixtureId = el.getAttribute('data-id');
             const url = "{{ route('backend.team-fixtures.destroyResult', ':id') }}".replace(':id', fixtureId);
 
+            el.disabled = true;
             fetch(url, {
                 method: 'POST',
                 headers: {
@@ -95,7 +96,7 @@
                 body: JSON.stringify({ _method: 'DELETE' })
             }).then(res => res.json()).then(data => {
                 if (!data || !data.success) {
-                    alert('Delete failed.');
+                    AppFeedback.error(data?.message || 'Could not delete the result.');
                     return;
                 }
 
@@ -107,10 +108,11 @@
                         c.classList.remove('winner-home', 'loser-home', 'draw-cell');
                     });
                 }
+                AppFeedback.success(data.message || 'Result deleted.');
             }).catch(err => {
                 console.error('Error deleting result', err);
-                alert('Error deleting result. See console.');
-            });
+                AppFeedback.error('Could not delete the result. Please try again.');
+            }).finally(() => { el.disabled = false; });
         });
     })();
 </script>

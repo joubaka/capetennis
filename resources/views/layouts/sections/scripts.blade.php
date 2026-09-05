@@ -39,20 +39,109 @@
 <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
 <script>
 toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton: true, progressBar: true };
+
+(function (root) {
+  const storageKey = 'ct.feedback.afterReload';
+
+  function liveRegion() {
+    let region = document.getElementById('app-feedback-live-region');
+    if (region) return region;
+
+    region = document.createElement('div');
+    region.id = 'app-feedback-live-region';
+    region.className = 'visually-hidden';
+    region.setAttribute('role', 'status');
+    region.setAttribute('aria-live', 'polite');
+    region.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(region);
+    return region;
+  }
+
+  function show(message, type = 'success', title = null) {
+    if (!message) return;
+
+    const normalizedType = type === 'danger' ? 'error' : type;
+    const region = liveRegion();
+    region.setAttribute('role', normalizedType === 'error' ? 'alert' : 'status');
+    region.textContent = '';
+    window.setTimeout(() => { region.textContent = String(message); }, 10);
+
+    if (root.toastr && typeof root.toastr[normalizedType] === 'function') {
+      root.toastr[normalizedType](String(message), title || undefined);
+      return;
+    }
+
+    console[normalizedType === 'error' ? 'error' : 'log'](`[${normalizedType}] ${message}`);
+  }
+
+  function messagesFrom(data, fallback) {
+    if (data?.errors) {
+      const messages = Object.values(data.errors).flat().filter(Boolean);
+      if (messages.length) return messages;
+    }
+
+    return [data?.message || fallback || 'Something went wrong.'];
+  }
+
+  async function responseError(response, fallback) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(messagesFrom(data, fallback)[0]);
+    error.messages = messagesFrom(data, fallback);
+    error.status = response.status;
+    return error;
+  }
+
+  function fromError(error, fallback) {
+    const messages = error?.messages?.length ? error.messages : [error?.message || fallback || 'Something went wrong.'];
+    messages.forEach(message => show(message, 'error'));
+  }
+
+  function afterReload(message, type = 'success') {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ message, type }));
+    } catch (error) {
+      show(message, type);
+    }
+  }
+
+  root.AppFeedback = {
+    show,
+    success: message => show(message, 'success'),
+    error: message => show(message, 'error'),
+    warning: message => show(message, 'warning'),
+    info: message => show(message, 'info'),
+    fromError,
+    responseError,
+    afterReload,
+  };
+
+  // Compatibility for older pages that already call a global helper.
+  root.showToast = function (message, type = 'success') { show(message, type); };
+
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    sessionStorage.removeItem(storageKey);
+    if (pending?.message) show(pending.message, pending.type || 'success');
+  } catch (error) {
+    sessionStorage.removeItem(storageKey);
+  }
+}(window));
 @if(session('success'))
-  toastr.success(@json(session('success')));
+  AppFeedback.success(@json(session('success')));
 @endif
 @if(session('error'))
-  toastr.error(@json(session('error')));
+  AppFeedback.error(@json(session('error')));
 @endif
 @if(session('info'))
-  toastr.info(@json(session('info')));
+  AppFeedback.info(@json(session('info')));
 @endif
 @if(session('warning'))
-  toastr.warning(@json(session('warning')));
+  AppFeedback.warning(@json(session('warning')));
 @endif
 @if(isset($errors) && $errors->any())
-  toastr.error(@json($errors->first()));
+  @foreach($errors->all() as $message)
+    AppFeedback.error(@json($message));
+  @endforeach
 @endif
 </script>
 

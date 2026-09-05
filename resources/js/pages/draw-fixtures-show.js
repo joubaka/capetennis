@@ -33,7 +33,8 @@
       console.log('Response Text:', xhr.responseText);
       console.log('Response JSON:', xhr.responseJSON);
       console.groupEnd();
-      alert(`Error while processing ${context}. Check console.`);
+      const message = xhr.responseJSON?.message || `Could not finish ${context}. Please try again.`;
+      window.AppFeedback?.error(message);
     }
 
     function updateWinnerClasses($row, winner) {
@@ -122,7 +123,7 @@
 
           if (!data.success) {
             console.warn('Server returned success=false');
-            alert('Save failed.');
+            window.AppFeedback?.error(data.message || 'Could not save the score.');
             return;
           }
 
@@ -145,6 +146,7 @@
           }
 
           $scoreModal.modal('hide');
+          window.AppFeedback?.success(data.message || 'Score saved.');
           console.log(`🎉 Score updated for fixture ${fixtureId}`);
         },
         error: (xhr) => ajaxErrorHandler('saving score', xhr)
@@ -175,7 +177,7 @@
 
           if (!data.success) {
             console.warn('Delete returned success=false');
-            alert('Delete failed.');
+            window.AppFeedback?.error(data.message || 'Could not delete the result.');
             return;
           }
 
@@ -185,6 +187,7 @@
             .removeClass('winner-home loser-home draw-cell');
 
           console.log('Result deleted successfully');
+          window.AppFeedback?.success(data.message || 'Result deleted.');
         },
         error: (xhr) => ajaxErrorHandler('deleting result', xhr)
       });
@@ -293,7 +296,7 @@
 
           if (!data.success) {
             console.warn('Save players returned success=false');
-            alert('Save failed.');
+            window.AppFeedback?.error(data.message || 'Could not save the players.');
             return;
           }
 
@@ -307,6 +310,7 @@
           }
 
           $playersModal.modal('hide');
+          window.AppFeedback?.success(data.message || 'Players updated.');
           console.log(`🎉 Players updated for fixture ${fixtureId}`);
         },
         error: (xhr) => ajaxErrorHandler('saving players', xhr)

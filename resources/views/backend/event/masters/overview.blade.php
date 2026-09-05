@@ -123,7 +123,8 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Could not save category settings.');
       row.dataset.saved = '1';
-    } catch (error) { alert(error.message); window.location.reload(); }
+      AppFeedback.success(data.message || 'Category settings updated.');
+    } catch (error) { AppFeedback.fromError(error, 'Could not save category settings.'); window.location.reload(); }
     finally { row.classList.remove('opacity-50'); }
   };
   manager.querySelectorAll('.category-row').forEach(row => {

@@ -209,13 +209,11 @@
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw data;
-        if (window.toastr) toastr.success(data.message || 'Categories synced successfully.');
-        else alert(data.message || 'Categories synced successfully.');
+        AppFeedback.success(data.message || 'Categories synced successfully.');
       })
       .catch((err) => {
         const msg = err?.message || 'Failed to sync categories.';
-        if (window.toastr) toastr.error(msg);
-        else alert(msg);
+        AppFeedback.error(msg);
       })
       .finally(() => {
         btn.disabled = false;
