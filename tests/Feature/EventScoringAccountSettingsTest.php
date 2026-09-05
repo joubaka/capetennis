@@ -132,4 +132,60 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->assertFalse($scorer->fresh()->hasRole('score-keeper'));
         $this->assertFalse(Gate::forUser($scorer->fresh())->allows('event.score', $event));
     }
+
+    public function test_convenor_account_can_score_one_event_and_manage_another(): void
+    {
+        Role::firstOrCreate(['name' => 'convenor', 'guard_name' => 'web']);
+
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $convenor = User::factory()->create([
+            'name' => 'Convenor Scorer',
+            'email' => 'convenor-scorer@example.test',
+        ])->assignRole('convenor');
+        $activeWindow = [
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDay()->toDateString(),
+        ];
+        $scoringEvent = Event::factory()->create($activeWindow);
+        $managedEvent = Event::factory()->create($activeWindow);
+        $scoringDraw = Draw::factory()->create(['event_id' => $scoringEvent->id]);
+        $managedDraw = Draw::factory()->create(['event_id' => $managedEvent->id]);
+
+        DB::table('event_convenors')->insert([
+            'event_id' => $managedEvent->id,
+            'user_id' => $convenor->id,
+            'role' => 'hoof',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($viewer)
+            ->get(route('admin.events.settings', $scoringEvent))
+            ->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $option = $xpath->query(
+            '//select[@name="scoring_accounts"]/option[@value="'.$convenor->id.'"]'
+        )->item(0);
+        $this->assertNotNull($option);
+        $this->assertStringContainsString('convenor-scorer@example.test', $option->textContent);
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $scoringEvent), [
+                'scoring_accounts' => [$convenor->id],
+            ])
+            ->assertOk();
+
+        $convenor = $convenor->fresh();
+        $this->assertTrue($convenor->hasRole('convenor'));
+        $this->assertTrue($convenor->hasRole('score-keeper'));
+        $this->assertTrue(Gate::forUser($convenor)->allows('event.score', $scoringEvent));
+        $this->assertFalse(Gate::forUser($convenor)->allows('event.manage', $scoringEvent));
+        $this->assertTrue(Gate::forUser($convenor)->allows('saveScore', $scoringDraw));
+        $this->assertFalse(Gate::forUser($convenor)->allows('update', $scoringDraw));
+
+        $this->assertTrue(Gate::forUser($convenor)->allows('event.manage', $managedEvent));
+        $this->assertTrue(Gate::forUser($convenor)->allows('update', $managedDraw));
+    }
 }

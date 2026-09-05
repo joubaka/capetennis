@@ -69,10 +69,16 @@
       }
     </style>`;
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function(character) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character];
+    });
+  }
+
   function openPrintWindow(title, bodyHtml, landscape) {
     var styles = printStyles + (landscape ? landscapeStyles : '') + '<style>' + @json(file_get_contents(public_path('css/tennis-bracket.css'))) + '</style>';
     const w = window.open('', '_blank');
-    w.document.write('<!DOCTYPE html><html><head><title>' + title + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
+    w.document.write('<!DOCTYPE html><html><head><title>' + escapeHtml(title) + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
     w.document.close();
     // Screen overlays are aligned to the source window. Export the original vectors.
     w.document.querySelectorAll('.ct-bracket-edges').forEach(function(layer) { layer.remove(); });
@@ -122,24 +128,24 @@
     if (!oop.length) { toastr.warning('No fixtures to print.'); return; }
 
     const stageLabels = { RR: 'Round Robin', MAIN: 'Main Draw', PLATE: 'Plate', CONS: 'Consolation', BOWL: 'Bowl', SHIELD: 'Shield', SPOON: 'Spoon' };
-    let html = '<h1>' + drawName + '</h1><h2>Order of Play / Fixtures</h2>';
+    let html = '<h1>' + escapeHtml(drawName) + '</h1><h2>Order of Play / Fixtures</h2>';
     html += '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
     oop.forEach(function(fx) {
       var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
       var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
       var stage = fx.stage || 'RR';
       var stageLabel = stageLabels[stage] || stage;
-      var score = fx.score ? fx.score : '';
-      var home = (fx.home || '---');
-      var away = (fx.away || '---');
+      var score = escapeHtml(fx.score || '');
+      var home = escapeHtml(fx.home || '---');
+      var away = escapeHtml(fx.away || '---');
       var homeFeed = feederLabel(fx, 'home');
       var awayFeed = feederLabel(fx, 'away');
       if (homeFeed) home = homeFeed;
       if (awayFeed) away = awayFeed;
-      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + escapeHtml(fx.playoff_type) + '</small>' : '';
       html += '<tr>';
       html += '<td>' + (fx.match_nr || fx.id) + '</td>';
-      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + escapeHtml(stageLabel) + '</span>' + typeLabel + '</td>';
       html += '<td' + w1 + '>' + home + '</td>';
       html += '<td class="text-center">vs</td>';
       html += '<td' + w2 + '>' + away + '</td>';
@@ -178,7 +184,7 @@
     var tableW = globalMaxCols * colW;
     var cw = colW + 'px';
 
-    var html = '<h1>' + drawName + '</h1><h2>Round Robin Matrix</h2>';
+    var html = '<h1>' + escapeHtml(drawName) + '</h1><h2>Round Robin Matrix</h2>';
 
     sortedGroups.forEach(function(group) {
       var gFixtures = fixtures[group.id] || [];
@@ -186,14 +192,14 @@
         return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
       }).sort(function(a, b) { return a.seed - b.seed; });
 
-      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + '</h3>';
       html += '<table class="rr-matrix-table" style="width:' + (tableW + 60) + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
-      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + escapeHtml(p.name) + '</th>'; });
       html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
       html += '</tr></thead><tbody>';
 
       players.forEach(function(rowP) {
-        html += '<tr><th>' + rowP.name + '</th>';
+        html += '<tr><th>' + escapeHtml(rowP.name) + '</th>';
         players.forEach(function(colP) {
           if (rowP.id === colP.id) {
             html += '<td class="bg-diagonal"></td>';
@@ -232,7 +238,7 @@
         if (!standings[group.id]) return;
         var rows = Object.values(standings[group.id]);
         html += '<div class="page-break"></div>';
-        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + ' — Standings</h3>';
+        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
         html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
         rows.forEach(function(r, i) {
           var totalSets = r.sets_won + r.sets_lost;
@@ -240,7 +246,7 @@
           var totalGames = (r.games_won || 0) + (r.games_lost || 0);
           var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
           var tb = r.tiebreak || '';
-          html += '<tr><td>' + (i + 1) + '</td><td>' + r.player + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + tb + '</td></tr>';
+          html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
         });
         html += '</tbody></table>';
       });
@@ -256,7 +262,7 @@
     var oop = window.RR_OOP || [];
     if (!groups.length && !oop.length) { toastr.warning('No data to print.'); return; }
 
-    var html = '<h1>' + drawName + '</h1>';
+    var html = '<h1>' + escapeHtml(drawName) + '</h1>';
 
     // ---- MATRIX SECTION ----
     var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
@@ -285,14 +291,14 @@
           return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
         }).sort(function(a, b) { return a.seed - b.seed; });
 
-        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+        html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + '</h3>';
         html += '<table class="rr-matrix-table" style="width:' + tableW + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
-        players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+        players.forEach(function(p) { html += '<th style="width:' + cw + '">' + escapeHtml(p.name) + '</th>'; });
         html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
         html += '</tr></thead><tbody>';
 
         players.forEach(function(rowP) {
-          html += '<tr><th>' + rowP.name + '</th>';
+          html += '<tr><th>' + escapeHtml(rowP.name) + '</th>';
           players.forEach(function(colP) {
             if (rowP.id === colP.id) {
               html += '<td class="bg-diagonal"></td>';
@@ -337,17 +343,17 @@
         var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
         var stage = fx.stage || 'RR';
         var stageLabel = stageLabels[stage] || stage;
-        var score = fx.score ? fx.score : '';
-        var home = (fx.home || '---');
-        var away = (fx.away || '---');
+        var score = escapeHtml(fx.score || '');
+        var home = escapeHtml(fx.home || '---');
+        var away = escapeHtml(fx.away || '---');
         var homeFeed = feederLabel(fx, 'home');
         var awayFeed = feederLabel(fx, 'away');
         if (homeFeed) home = homeFeed;
         if (awayFeed) away = awayFeed;
-        var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+        var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + escapeHtml(fx.playoff_type) + '</small>' : '';
         html += '<tr>';
         html += '<td>' + (fx.match_nr || fx.id) + '</td>';
-        html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+        html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + escapeHtml(stageLabel) + '</span>' + typeLabel + '</td>';
         html += '<td' + w1 + '>' + home + '</td>';
         html += '<td class="text-center">vs</td>';
         html += '<td' + w2 + '>' + away + '</td>';
@@ -380,7 +386,7 @@
       var numRounds = Math.ceil(Math.log2(size));
 
       html += '<div style="margin-bottom:30px;">';
-      html += '<h3 style="font-size:15px; margin:10px 0 6px;">' + playoff.name + ' (' + size + '-draw)</h3>';
+      html += '<h3 style="font-size:15px; margin:10px 0 6px;">' + escapeHtml(playoff.name) + ' (' + size + '-draw)</h3>';
 
       // Build rounds
       for (var rd = 1; rd <= numRounds; rd++) {
@@ -461,8 +467,8 @@
     var html = '';
     for (var i = 0; i < sections.length; i++) {
       html += '<div style="margin-bottom:18px;">';
-      html += '<h3 style="font-size:18px; font-weight:700; margin:0 0 8px; color:#1e293b; border-bottom:1px solid #ddd; padding-bottom:4px;">' + sections[i].label + '</h3>';
-      html += '<div style="font-size:15px; white-space:pre-wrap; color:#333; line-height:1.7;">' + sections[i].text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+      html += '<h3 style="font-size:18px; font-weight:700; margin:0 0 8px; color:#1e293b; border-bottom:1px solid #ddd; padding-bottom:4px;">' + escapeHtml(sections[i].label) + '</h3>';
+      html += '<div style="font-size:15px; white-space:pre-wrap; color:#333; line-height:1.7;">' + escapeHtml(sections[i].text) + '</div>';
       html += '</div>';
     }
     return html;
@@ -479,7 +485,7 @@
       .done(function(svgHtml) {
         var hasContent = svgHasBracketContent(svgHtml);
         console.log('🖨️ [PrintEmptyBracket] AJAX done, length:', (svgHtml || '').length, 'hasContent:', hasContent);
-        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Blank Bracket</h2></div>';
+        var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Blank Bracket</h2></div>';
         if (hasContent) {
           console.log('🖨️ [PrintEmptyBracket] Using SVG from server');
           html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
@@ -491,7 +497,7 @@
       })
       .fail(function(xhr, status, err) {
         console.error('🖨️ [PrintEmptyBracket] AJAX FAILED:', status, err);
-        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Blank Bracket</h2></div>';
+        var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Blank Bracket</h2></div>';
         html += buildBracketFromConfig(true);
         openPrintWindow(drawName + ' — Empty Bracket', html, true);
       })
@@ -507,7 +513,7 @@
       .done(function(svgHtml) {
         var hasContent = svgHasBracketContent(svgHtml);
         console.log('🖨️ [PrintBracket] AJAX done, length:', (svgHtml || '').length, 'hasContent:', hasContent);
-        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Playoff Brackets</h2></div>';
+        var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Playoff Brackets</h2></div>';
         if (hasContent) {
           html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
         } else {
@@ -516,7 +522,7 @@
         openPrintWindow(drawName + ' — Brackets', html, true);
       })
       .fail(function() {
-        var html = '<div class="bracket-header"><h1>' + drawName + '</h1><h2>Playoff Brackets</h2></div>';
+        var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Playoff Brackets</h2></div>';
         html += buildBracketFromConfig(false);
         openPrintWindow(drawName + ' — Brackets', html, true);
       })
@@ -551,14 +557,14 @@
         return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 999) : 999 };
       }).sort(function(a, b) { return a.seed - b.seed; });
 
-      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + '</h3>';
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + '</h3>';
       html += '<table class="rr-matrix-table" style="width:' + tableW + 'px;"><thead><tr><th style="width:' + cw + '"></th>';
-      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+      players.forEach(function(p) { html += '<th style="width:' + cw + '">' + escapeHtml(p.name) + '</th>'; });
       html += '<th style="width:50px; background:#198754; color:#fff; font-weight:800;">W</th>';
       html += '</tr></thead><tbody>';
 
       players.forEach(function(rowP) {
-        html += '<tr><th>' + rowP.name + '</th>';
+        html += '<tr><th>' + escapeHtml(rowP.name) + '</th>';
         players.forEach(function(colP) {
           if (rowP.id === colP.id) {
             html += '<td class="bg-diagonal"></td>';
@@ -620,7 +626,7 @@
         if (Math.abs(aGamesPct - bGamesPct) > 0.0001) return bGamesPct - aGamesPct;
         return 0;
       });
-      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + group.name + ' — Standings</h3>';
+      html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
       html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var totalSets = r.sets_won + r.sets_lost;
@@ -628,7 +634,7 @@
         var totalGames = (r.games_won || 0) + (r.games_lost || 0);
         var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
         var tb = r.tiebreak || '';
-        html += '<tr><td>' + (i + 1) + '</td><td>' + r.player + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + tb + '</td></tr>';
+        html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
       });
       html += '</tbody></table>';
     });
@@ -650,17 +656,17 @@
       var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
       var stage = fx.stage || 'RR';
       var stageLabel = stageLabels[stage] || stage;
-      var score = fx.score ? fx.score : '';
-      var home = (fx.home || '---');
-      var away = (fx.away || '---');
+      var score = escapeHtml(fx.score || '');
+      var home = escapeHtml(fx.home || '---');
+      var away = escapeHtml(fx.away || '---');
       var homeFeed = feederLabel(fx, 'home');
       var awayFeed = feederLabel(fx, 'away');
       if (homeFeed) home = homeFeed;
       if (awayFeed) away = awayFeed;
-      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + fx.playoff_type + '</small>' : '';
+      var typeLabel = fx.playoff_type ? '<br><small style="color:#666;">' + escapeHtml(fx.playoff_type) + '</small>' : '';
       html += '<tr>';
       html += '<td>' + (fx.match_nr || fx.id) + '</td>';
-      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + stageLabel + '</span>' + typeLabel + '</td>';
+      html += '<td><span class="badge ' + (stage === 'RR' ? 'bg-secondary' : 'bg-primary') + '">' + escapeHtml(stageLabel) + '</span>' + typeLabel + '</td>';
       html += '<td' + w1 + '>' + home + '</td>';
       html += '<td class="text-center">vs</td>';
       html += '<td' + w2 + '>' + away + '</td>';
@@ -696,7 +702,7 @@
       // Store match numbers per round so later rounds can reference them
       var roundMatches = {}; // roundMatches[round] = [{nr, idx}]
 
-      html += '<h3 style="font-size:14px; margin:18px 0 6px;">' + playoff.name + ' (' + size + '-draw)</h3>';
+      html += '<h3 style="font-size:14px; margin:18px 0 6px;">' + escapeHtml(playoff.name) + ' (' + size + '-draw)</h3>';
       html += '<table><thead><tr>';
       html += '<th>M#</th><th>Round</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th>Position</th>';
       html += '</tr></thead><tbody>';
@@ -868,7 +874,7 @@
       if (incNotes) {
         var rulesHtml = buildNotesHtml();
         if (rulesHtml) {
-          html += '<h1>' + drawName + '</h1>';
+          html += '<h1>' + escapeHtml(drawName) + '</h1>';
           html += '<h2>Rules &amp; Notes</h2>';
           html += rulesHtml;
           hasContent = true;
@@ -878,7 +884,7 @@
       // --- PAGE 2: Matrix ---
       if (incMatrix) {
         if (hasContent) html += '<div class="page-break"></div>';
-        html += '<h1>' + drawName + '</h1>';
+        html += '<h1>' + escapeHtml(drawName) + '</h1>';
         html += '<h2>Round Robin Matrix</h2>';
         html += buildMatrixHtml();
         hasContent = true;
@@ -889,7 +895,7 @@
         var rrFx = buildFixturesHtml('RR');
         if (rrFx) {
           if (hasContent) html += '<div class="page-break"></div>';
-          html += '<h1>' + drawName + '</h1>';
+          html += '<h1>' + escapeHtml(drawName) + '</h1>';
           html += '<h2>Round Robin Fixtures</h2>';
           html += rrFx;
           hasContent = true;
@@ -901,7 +907,7 @@
         var bracketFx = buildBracketFixtureTableFromConfig();
         if (bracketFx) {
           if (hasContent) html += '<div class="page-break"></div>';
-          html += '<h1>' + drawName + '</h1>';
+          html += '<h1>' + escapeHtml(drawName) + '</h1>';
           html += '<h2>Playoff Fixtures</h2>';
           html += '<p style="font-size:15px; color:#444; margin-bottom:12px;">';
           html += '<span style="color:#0d6efd; font-weight:bold;">W3</span> = Winner of match 3 &nbsp; ';
@@ -916,7 +922,7 @@
       // --- PAGE 5: Empty Brackets ---
       if (incBrackets && bracketHtml && bracketHtml.indexOf('No playoff') === -1) {
         if (hasContent) html += '<div class="page-break"></div>';
-        html += '<h1>' + drawName + '</h1>';
+        html += '<h1>' + escapeHtml(drawName) + '</h1>';
         html += '<h2>Blank Brackets</h2>';
         html += bracketHtml;
         hasContent = true;

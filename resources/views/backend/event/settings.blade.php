@@ -336,7 +336,7 @@
           </option>
         @endforeach
       </select>
-      <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Each person must already have a user account.</div>
+      <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Existing convenor accounts can be used here, provided they are not also an Event director for this event.</div>
 
       <div class="row g-3 mt-1">
         <div class="col-md-6">

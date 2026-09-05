@@ -30,7 +30,6 @@ class EventSettingsController extends Controller
       ->get();
     $scoringAccounts = $assignments->filter(
       fn (EventConvenor $assignment) => $assignment->role === 'score-keeper'
-        || $assignment->user?->hasRole('score-keeper')
     );
     $convenors = $assignments->reject(
       fn (EventConvenor $assignment) => $scoringAccounts->contains('id', $assignment->id)
@@ -38,7 +37,7 @@ class EventSettingsController extends Controller
     $scoringAccountIds = $scoringAccounts->pluck('user_id');
     $scoringUsers = $users->filter(
       fn (User $user) => $scoringAccountIds->contains($user->id)
-        || ! $user->hasAnyRole(['super-user', 'admin', 'convenor'])
+        || ! $user->hasAnyRole(['super-user', 'admin'])
     );
 
     return view('backend.event.settings', [
@@ -96,7 +95,7 @@ class EventSettingsController extends Controller
         'exists:users,id',
         function (string $attribute, mixed $value, \Closure $fail): void {
           $account = User::with('roles')->find($value);
-          if ($account?->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+          if ($account?->hasAnyRole(['super-user', 'admin'])) {
             $fail('Scoring access must be assigned to a dedicated non-administrator account.');
           }
         },
@@ -164,10 +163,7 @@ class EventSettingsController extends Controller
           Role::firstOrCreate(['name' => 'score-keeper', 'guard_name' => 'web']);
           $scoringIds = collect($request->input('scoring_accounts', []))->map(fn ($id) => (int) $id)->unique();
           $previousScoringIds = EventConvenor::where('event_id', $event->id)
-            ->where(function ($query): void {
-              $query->where('role', 'score-keeper')
-                ->orWhereHas('user.roles', fn ($roles) => $roles->where('name', 'score-keeper'));
-            })
+            ->where('role', 'score-keeper')
             ->pluck('user_id');
           $removedScoringIds = $previousScoringIds->diff($scoringIds);
 

@@ -6,6 +6,9 @@ use App\Models\Draw;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FlexibleMonradDraw;
+use App\Models\DrawGroup;
+use App\Models\DrawGroupRegistration;
+use App\Models\FixtureResult;
 use App\Models\OrderOfPlay;
 use App\Models\Player;
 use App\Models\Registration;
@@ -109,6 +112,99 @@ class DrawPackTest extends TestCase
             ->assertDontSee('Private foreign draw');
     }
 
+    public function test_round_robin_matrix_orients_scores_and_prints_canonical_win_totals(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Boys U12']);
+        $draw->settings()->create(['workflow' => 'round_robin']);
+        $group = DrawGroup::factory()->create(['draw_id' => $draw->id, 'name' => 'A']);
+
+        $home = Registration::factory()->create();
+        $away = Registration::factory()->create();
+        $home->players()->attach(Player::factory()->create(['name' => 'Home', 'surname' => 'Player']));
+        $away->players()->attach(Player::factory()->create(['name' => 'Away', 'surname' => 'Player']));
+        DrawGroupRegistration::factory()->create(['draw_group_id' => $group->id, 'registration_id' => $home->id, 'seed' => 1]);
+        DrawGroupRegistration::factory()->create(['draw_group_id' => $group->id, 'registration_id' => $away->id, 'seed' => 2]);
+
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $group->id,
+            'stage' => 'RR',
+            'registration1_id' => $home->id,
+            'registration2_id' => $away->id,
+        ]);
+        FixtureResult::factory()->create([
+            'fixture_id' => $fixture->id,
+            'registration1_score' => 6,
+            'registration2_score' => 2,
+            'winner_registration' => $home->id,
+            'loser_registration' => $away->id,
+        ]);
+        $fixture->update(['winner_registration' => $home->id]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', ['event' => $this->event, 'draw_ids' => [$draw->id]]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/Home Player<\/th>.*?<td class="diagonal"><\/td>.*?<td>6-2<\/td>.*?<td>1<\/td>/s', $html);
+        $this->assertMatchesRegularExpression('/Away Player<\/th>.*?<td>2-6<\/td>.*?<td class="diagonal"><\/td>.*?<td>0<\/td>/s', $html);
+    }
+
+    public function test_timed_match_without_a_court_remains_incomplete(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id]);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+        $venue = Venue::forceCreate(['name' => 'Incomplete Venue']);
+        OrderOfPlay::create([
+            'draw_id' => $draw->id,
+            'fixture_id' => $fixture->id,
+            'venue_id' => $venue->id,
+            'court' => null,
+            'time' => '2026-09-20 09:30:00',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', ['event' => $this->event, 'draw_ids' => [$draw->id]]))
+            ->assertOk()
+            ->assertSee('1 match in this pack is not yet fully assigned a date, venue and court.')
+            ->assertSee('1 already has a time but still needs a venue or court.')
+            ->assertSee('Incomplete Venue')
+            ->assertSee('TBA');
+    }
+
+    public function test_pack_includes_saved_rules_lifecycle_state_and_pathway_board(): void
+    {
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'drawName' => 'Girls U18',
+            'published' => 0,
+            'oop_published' => 0,
+            'locked' => 0,
+        ]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin_playoffs',
+            'notes' => ['general' => 'Report to the referee before play.'],
+        ]);
+        $final = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 3]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'MAIN',
+            'round' => 1,
+            'match_nr' => 1,
+            'parent_fixture_id' => $final->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', ['event' => $this->event, 'draw_ids' => [$draw->id]]))
+            ->assertOk()
+            ->assertSee('General rules')
+            ->assertSee('Report to the referee before play.')
+            ->assertSee('Draft draw')
+            ->assertSee('Schedule unpublished')
+            ->assertSee('Bracket and placement pathways')
+            ->assertSee('Winner to M3');
+    }
+
     public function test_pack_names_unresolved_feeders_and_orders_fixture_rows_by_time(): void
     {
         $draw = Draw::factory()->create([
@@ -190,5 +286,20 @@ class DrawPackTest extends TestCase
         $this->assertStringContainsString('application/pdf', (string) $response->headers->get('content-type'));
         $this->assertStringContainsString('draw_pack.pdf', (string) $response->headers->get('content-disposition'));
         $this->assertStringStartsWith('%PDF', $response->getContent());
+    }
+
+    public function test_browser_print_builders_escape_untrusted_draw_content(): void
+    {
+        $workspacePrint = file_get_contents(resource_path('views/backend/draw/roundrobin/print-scripts.blade.php'));
+        $eventPrint = file_get_contents(resource_path('views/backend/headOffice/individual-event-show.blade.php'));
+
+        $this->assertStringContainsString('function escapeHtml(value)', $workspacePrint);
+        $this->assertStringContainsString("escapeHtml(fx.home || '---')", $workspacePrint);
+        $this->assertStringContainsString('escapeHtml(group.name)', $workspacePrint);
+        $this->assertStringContainsString('escapeHtml(drawName)', $workspacePrint);
+        $this->assertStringContainsString('function escapePrintHtml(value)', $eventPrint);
+        $this->assertStringContainsString("escapePrintHtml(fx.home || '---')", $eventPrint);
+        $this->assertStringContainsString('escapePrintHtml(drawData.name)', $eventPrint);
+        $this->assertStringNotContainsString("var home = fx.home || '---'", $eventPrint);
     }
 }

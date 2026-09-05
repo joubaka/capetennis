@@ -7,10 +7,11 @@
     @page { size: A4 landscape; margin: 11mm 10mm 13mm; }
     * { box-sizing: border-box; }
     body { margin: 0; color: #172033; font-family: DejaVu Sans, Arial, sans-serif; font-size: 8.5pt; line-height: 1.3; }
-    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3, h4, p { margin-top: 0; }
     h1 { font-size: 25pt; line-height: 1.05; margin-bottom: 4mm; }
     h2 { font-size: 15pt; color: #163a64; margin-bottom: 3mm; }
     h3 { font-size: 10pt; color: #163a64; margin: 4mm 0 2mm; }
+    h4 { font-size: 8.5pt; color: #405064; margin: 3mm 0 1.5mm; }
     small, .muted { color: #657184; }
     .page { page-break-before: always; }
     .cover { page-break-before: auto; padding: 10mm; border: 1.5pt solid #163a64; }
@@ -44,6 +45,21 @@
     .standing { width: auto !important; min-width: 125mm; }
     .standing th, .standing td { padding: 1.4mm 2mm !important; }
     .pack-warning { margin: 3mm 0; padding: 3mm; border-left: 3pt solid #d49b22; background: #fff8e7; }
+    .status-line { margin-top: 1.5mm; }
+    .status { display: inline-block; margin: 0 1.5mm 1mm 0; padding: 1mm 2mm; border: .6pt solid #9eabba; color: #405064; font-size: 6.8pt; font-weight: 700; text-transform: uppercase; }
+    .status.ready { border-color: #237f69; color: #155f50; background: #edf7f3; }
+    .status.attention { border-color: #d49b22; color: #7b5510; background: #fff8e7; }
+    .notes-block { margin: 0 0 3mm; padding: 3mm; border: .6pt solid #cdd5df; background: #f8fafc; page-break-inside: avoid; }
+    .notes-block p { margin: 0; white-space: pre-line; }
+    .pathway { width: 100%; border-collapse: separate; border-spacing: 2mm; table-layout: fixed; margin: 0 -2mm 4mm; }
+    .pathway th { padding: 1.5mm; color: #163a64; background: #edf3f8; font-size: 7pt; text-align: center; }
+    .pathway td { padding: 0; vertical-align: top; }
+    .match-card { min-height: 18mm; margin-bottom: 2mm; padding: 2mm; border: .8pt solid #8d98a8; background: #fff; page-break-inside: avoid; }
+    .match-card strong { color: #163a64; }
+    .match-card .advance { margin-top: 1.5mm; padding-top: 1mm; border-top: .5pt solid #d8dee7; color: #657184; font-size: 6.5pt; }
+    .matrix-ledger { page-break-inside: auto; }
+    .fixture-list { page-break-before: always; }
+    caption { height: 0; overflow: hidden; color: transparent; font-size: 0; }
     .footer { position: fixed; left: 0; right: 0; bottom: -8mm; color: #7b8593; font-size: 7pt; border-top: .5pt solid #ccd3dc; padding-top: 1.5mm; }
     .footer .page-number { float: right; }
     .footer .page-number:after { content: counter(page); }
@@ -64,8 +80,16 @@
 
 @php
   $totalMatches = $draws->sum(fn ($draw) => count($draw['oops']));
-  $scheduledMatches = $schedule->count();
+  $allFixtures = $draws->flatMap(fn ($draw) => $draw['oops']);
+  $scheduledMatches = $allFixtures->filter(fn ($fixture) =>
+    filled($fixture['scheduled_at']) && filled($fixture['venue']) && filled($fixture['court'])
+  )->count();
   $unscheduledMatches = $totalMatches - $scheduledMatches;
+  $timedButIncomplete = $allFixtures->filter(fn ($fixture) =>
+    filled($fixture['scheduled_at']) && (!filled($fixture['venue']) || !filled($fixture['court']))
+  )->count();
+  $draftDraws = $draws->where('published', false)->count();
+  $unpublishedSchedules = $draws->where('schedule_published', false)->count();
   $eventDate = $event->start_date
     ? $event->start_date->format('d M Y').($event->end_date && !$event->end_date->equalTo($event->start_date) ? ' - '.$event->end_date->format('d M Y') : '')
     : 'Dates to be confirmed';
@@ -86,34 +110,40 @@
     <tr>
       <td><strong>{{ $draws->count() }}</strong><span>Draws</span></td>
       <td><strong>{{ $totalMatches }}</strong><span>Total matches</span></td>
-      <td><strong>{{ $scheduledMatches }}</strong><span>Scheduled</span></td>
+      <td><strong>{{ $scheduledMatches }}</strong><span>Fully scheduled</span></td>
       <td><strong>{{ $unscheduledMatches }}</strong><span>Still to schedule</span></td>
     </tr>
   </table>
 
   @if($unscheduledMatches > 0)
-    <div class="pack-warning"><strong>Scheduling check:</strong> {{ $unscheduledMatches }} {{ Str::plural('match', $unscheduledMatches) }} in this pack {{ $unscheduledMatches === 1 ? 'is' : 'are' }} not yet assigned a date, venue and court.</div>
+    <div class="pack-warning"><strong>Scheduling check:</strong> {{ $unscheduledMatches }} {{ Str::plural('match', $unscheduledMatches) }} in this pack {{ $unscheduledMatches === 1 ? 'is' : 'are' }} not yet fully assigned a date, venue and court.@if($timedButIncomplete) {{ $timedButIncomplete }} already {{ $timedButIncomplete === 1 ? 'has' : 'have' }} a time but still {{ $timedButIncomplete === 1 ? 'needs' : 'need' }} a venue or court.@endif</div>
+  @endif
+  @if($draftDraws || $unpublishedSchedules)
+    <div class="pack-warning"><strong>Publication check:</strong> {{ $draftDraws }} draft {{ Str::plural('draw', $draftDraws) }} and {{ $unpublishedSchedules }} unpublished {{ Str::plural('schedule', $unpublishedSchedules) }} are included. Verify this copy before courtside use.</div>
   @endif
 
   <h2>Pack contents</h2>
   <div class="contents">
     <div class="contents-row"><strong>Master order of play</strong><br><small>All selected draws, grouped by day and venue</small></div>
     @foreach($draws as $draw)
-      <div class="contents-row"><strong>{{ $draw['name'] }}</strong><br><small>{{ $draw['format'] }} - {{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }}</small></div>
+      <div class="contents-row"><strong>{{ $draw['name'] }}</strong><br><small>{{ $draw['format'] }} - {{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }} - {{ $draw['published'] ? 'Published draw' : 'Draft draw' }} - {{ $draw['schedule_published'] ? 'Published schedule' : 'Unpublished schedule' }}</small></div>
     @endforeach
   </div>
 </section>
 
 @if($schedule->isNotEmpty())
-  @foreach($schedule->groupBy(fn ($fixture) => \Carbon\Carbon::parse($fixture['scheduled_at'])->format('Y-m-d')) as $date => $dayFixtures)
-    @foreach($dayFixtures->groupBy(fn ($fixture) => $fixture['venue'] ?: 'Venue to be confirmed') as $venue => $venueFixtures)
-      <section class="page">
-        <header class="section-head">
-          <div><p class="cover-kicker">Master order of play</p><h2>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</h2></div>
-          <div class="section-meta"><strong>{{ $venue }}</strong><br>{{ $venueFixtures->count() }} {{ Str::plural('match', $venueFixtures->count()) }}</div>
-        </header>
+  <section class="page">
+    <header class="section-head">
+      <div><p class="cover-kicker">Master order of play</p><h2>All scheduled times</h2></div>
+      <div class="section-meta">{{ $schedule->count() }} timed {{ Str::plural('match', $schedule->count()) }}</div>
+    </header>
+    @foreach($schedule->groupBy(fn ($fixture) => \Carbon\Carbon::parse($fixture['scheduled_at'])->format('Y-m-d')) as $date => $dayFixtures)
+      <h3>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</h3>
+      @foreach($dayFixtures->groupBy(fn ($fixture) => $fixture['venue'] ?: 'Venue to be confirmed') as $venue => $venueFixtures)
+        <h4>{{ $venue }} - {{ $venueFixtures->count() }} {{ Str::plural('match', $venueFixtures->count()) }}</h4>
         <table class="data">
-          <thead><tr><th style="width:10%">Time</th><th style="width:9%">Court</th><th style="width:17%">Draw</th><th style="width:8%">Match</th><th style="width:23%">Player 1</th><th style="width:23%">Player 2</th><th style="width:10%">Result</th></tr></thead>
+          <caption>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }} at {{ $venue }}</caption>
+          <thead><tr><th scope="col" style="width:10%">Time</th><th scope="col" style="width:9%">Court</th><th scope="col" style="width:17%">Draw</th><th scope="col" style="width:8%">Match</th><th scope="col" style="width:23%">Player 1</th><th scope="col" style="width:23%">Player 2</th><th scope="col" style="width:10%">Result</th></tr></thead>
           <tbody>
           @foreach($venueFixtures as $fixture)
             <tr>
@@ -128,9 +158,9 @@
           @endforeach
           </tbody>
         </table>
-      </section>
+      @endforeach
     @endforeach
-  @endforeach
+  </section>
 @else
   <section class="page">
     <header class="section-head"><div><p class="cover-kicker">Master order of play</p><h2>Schedule</h2></div></header>
@@ -142,8 +172,17 @@
   <section class="page">
     <header class="section-head">
       <div><p class="cover-kicker">Draw sheet</p><h2>{{ $draw['name'] }}</h2></div>
-      <div class="section-meta"><strong>{{ $draw['format'] }}</strong><br>{{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }}</div>
+      <div class="section-meta"><strong>{{ $draw['format'] }}</strong><br>{{ count($draw['oops']) }} {{ Str::plural('match', count($draw['oops'])) }}
+        <div class="status-line"><span class="status {{ $draw['published'] ? 'ready' : 'attention' }}">{{ $draw['published'] ? 'Published draw' : 'Draft draw' }}</span><span class="status {{ $draw['schedule_published'] ? 'ready' : 'attention' }}">{{ $draw['schedule_published'] ? 'Schedule published' : 'Schedule unpublished' }}</span>@if($draw['locked'])<span class="status ready">Locked</span>@endif</div>
+      </div>
     </header>
+
+    <h3>Rules and notes</h3>
+    @forelse($draw['notes'] as $label => $note)
+      <div class="notes-block"><h4>{{ $label }}</h4><p>{{ $note }}</p></div>
+    @empty
+      <div class="empty-note">No draw-specific rules or notes have been saved.</div>
+    @endforelse
 
     @if(count($draw['groups']))
       @foreach(collect($draw['groups'])->sortBy('name') as $group)
@@ -151,14 +190,16 @@
           $players = collect($group['registrations'])->sortBy(fn ($registration) => $registration['pivot']['seed'] ?? 9999)->values();
           $groupFixtures = collect($draw['rrFixtures'][$group['id']] ?? []);
         @endphp
-        <div class="matrix-wrap">
+        <div class="{{ $players->count() <= 12 ? 'matrix-wrap' : 'matrix-ledger-wrap' }}">
           <h3>Box {{ $group['name'] }} - Results matrix</h3>
+          @if($players->count() <= 12)
           <table class="matrix">
-            <thead><tr><th>Player</th>@foreach($players as $player)<th>{{ $player['display_name'] }}</th>@endforeach<th>W</th></tr></thead>
+            <caption>{{ $draw['name'] }} Box {{ $group['name'] }} results matrix</caption>
+            <thead><tr><th scope="col">Player</th>@foreach($players as $player)<th scope="col">{{ $player['display_name'] }}</th>@endforeach<th scope="col">W</th></tr></thead>
             <tbody>
             @foreach($players as $rowPlayer)
               <tr>
-                <th>{{ $rowPlayer['display_name'] }}</th>
+                <th scope="row">{{ $rowPlayer['display_name'] }}</th>
                 @foreach($players as $columnPlayer)
                   @if($rowPlayer['id'] === $columnPlayer['id'])
                     <td class="diagonal"></td>
@@ -169,15 +210,57 @@
                         ($fixture['r1_id'] === $columnPlayer['id'] && $fixture['r2_id'] === $rowPlayer['id'])
                       );
                     @endphp
-                    <td>{{ $result['score'] ?? '' }}</td>
+                    @php
+                      $orientedScore = collect($result['all_sets'] ?? [])->map(function ($set) use ($result, $rowPlayer) {
+                        [$home, $away] = array_pad(explode('-', $set, 2), 2, '');
+                        return (int) $result['r1_id'] === (int) $rowPlayer['id'] ? "{$home}-{$away}" : "{$away}-{$home}";
+                      })->implode(', ');
+                    @endphp
+                    <td>{{ $orientedScore }}</td>
                   @endif
                 @endforeach
-                <td></td>
+                <td>{{ $groupFixtures->filter(fn ($fixture) => (int) ($fixture['winner'] ?? 0) === (int) $rowPlayer['id'])->count() }}</td>
               </tr>
             @endforeach
             </tbody>
           </table>
+          @else
+            <div class="pack-warning"><strong>Large box:</strong> a {{ $players->count() }}-player grid would be unreadable on A4, so this pack uses the results ledger below.</div>
+            <table class="data matrix-ledger">
+              <caption>{{ $draw['name'] }} Box {{ $group['name'] }} large-box results ledger</caption>
+              <thead><tr><th scope="col">Match</th><th scope="col">Player 1</th><th scope="col">Player 2</th><th scope="col">Result</th></tr></thead>
+              <tbody>@foreach($groupFixtures->sortBy('id') as $fixture)<tr><td>M{{ $fixture['id'] }}</td><td>{{ $players->firstWhere('id', $fixture['r1_id'])['display_name'] ?? 'TBD' }}</td><td>{{ $players->firstWhere('id', $fixture['r2_id'])['display_name'] ?? 'TBD' }}</td><td>{{ $fixture['score'] }}</td></tr>@endforeach</tbody>
+            </table>
+          @endif
         </div>
+      @endforeach
+    @endif
+
+    @php
+      $pathwayStages = collect($draw['oops'])
+        ->reject(fn ($fixture) => ($fixture['stage'] ?? 'RR') === 'RR')
+        ->groupBy(fn ($fixture) => $fixture['stage'] ?: 'DRAW');
+    @endphp
+    @if($pathwayStages->isNotEmpty())
+      <h3>Bracket and placement pathways</h3>
+      @foreach($pathwayStages as $stage => $stageFixtures)
+        @php
+          $rounds = $stageFixtures
+            ->groupBy(fn ($fixture) => (int) ($fixture['round'] ?: 1))
+            ->sortKeys();
+        @endphp
+        <h4>{{ $stageLabels[$stage] ?? str($stage)->headline() }}</h4>
+        <table class="pathway">
+          <caption>{{ $draw['name'] }} {{ $stageLabels[$stage] ?? str($stage)->headline() }} pathway</caption>
+          <thead><tr>@foreach($rounds as $round => $roundFixtures)<th scope="col">Round {{ $round }}</th>@endforeach</tr></thead>
+          <tbody><tr>@foreach($rounds as $roundFixtures)<td>@foreach($roundFixtures as $fixture)
+            <div class="match-card">
+              <strong>M{{ $fixture['match_nr'] ?? $fixture['id'] }}</strong><br>
+              {{ $fixture['home'] }}<br>{{ $fixture['away'] }}
+              <div class="advance">Result: {{ $fixture['score'] ?: '________________' }}@if($fixture['winner_to'])<br>Winner to M{{ $fixture['winner_to'] }}@endif @if($fixture['loser_to'])<br>Loser to M{{ $fixture['loser_to'] }}@endif</div>
+            </div>
+          @endforeach</td>@endforeach</tr></tbody>
+        </table>
       @endforeach
     @endif
 
@@ -189,9 +272,11 @@
           (int) ($fixture['match_nr'] ?? $fixture['id'])
         ))->values();
       @endphp
+        <div class="fixture-list">
         <h3>{{ $draw['name'] }} - Fixtures in scheduled order</h3>
         <table class="data">
-          <thead><tr><th style="width:7%">Match</th><th style="width:9%">Stage</th><th style="width:19%">Player 1</th><th style="width:19%">Player 2</th><th style="width:9%">Date</th><th style="width:8%">Time</th><th style="width:12%">Venue</th><th style="width:7%">Court</th><th style="width:10%">Result</th></tr></thead>
+          <caption>{{ $draw['name'] }} fixtures in scheduled order</caption>
+          <thead><tr><th scope="col" style="width:7%">Match</th><th scope="col" style="width:9%">Stage</th><th scope="col" style="width:19%">Player 1</th><th scope="col" style="width:19%">Player 2</th><th scope="col" style="width:9%">Date</th><th scope="col" style="width:8%">Time</th><th scope="col" style="width:12%">Venue</th><th scope="col" style="width:7%">Court</th><th scope="col" style="width:10%">Result</th></tr></thead>
           <tbody>
           @foreach($fixtures as $fixture)
             <tr>
@@ -208,6 +293,7 @@
           @endforeach
           </tbody>
         </table>
+        </div>
     @else
       <div class="empty-note">This draw has no generated fixtures yet.</div>
     @endif
@@ -218,7 +304,8 @@
         @if($standings->isNotEmpty())
           <h3>{{ $draw['name'] }} - Box {{ $group['name'] }} standings</h3>
           <table class="data standing">
-            <thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets won</th><th>Sets lost</th><th>Games won</th><th>Games lost</th></tr></thead>
+            <caption>{{ $draw['name'] }} Box {{ $group['name'] }} standings</caption>
+            <thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">W</th><th scope="col">L</th><th scope="col">Sets won</th><th scope="col">Sets lost</th><th scope="col">Games won</th><th scope="col">Games lost</th></tr></thead>
             <tbody>@foreach($standings as $index => $row)<tr><td>{{ $index + 1 }}</td><td>{{ $row['player'] }}</td><td>{{ $row['wins'] }}</td><td>{{ $row['losses'] }}</td><td>{{ $row['sets_won'] }}</td><td>{{ $row['sets_lost'] }}</td><td>{{ $row['games_won'] ?? 0 }}</td><td>{{ $row['games_lost'] ?? 0 }}</td></tr>@endforeach</tbody>
           </table>
         @endif

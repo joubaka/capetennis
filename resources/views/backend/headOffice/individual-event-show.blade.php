@@ -42,6 +42,12 @@ $(document).ready(function () {
         $('#standings-option').toggle(val === 'pack' || val === 'matrix' || val === 'combined');
     });
 
+    function escapePrintHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function (character) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character];
+        });
+    }
+
     // Print styles for browser print window
     var printStyles = `<style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -102,14 +108,14 @@ $(document).ready(function () {
 
         var html = '';
         stageOrder.forEach(function (stage) {
-            html += '<h3 style="margin-top:18px;">' + (stageLabels[stage] || stage) + '</h3>';
+            html += '<h3 style="margin-top:18px;">' + escapePrintHtml(stageLabels[stage] || stage) + '</h3>';
             html += '<table><thead><tr><th>M#</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
             grouped[stage].forEach(function (fx) {
                 var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
                 var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
-                var typeLabel = fx.playoff_type ? ' <small style="color:#666;">(' + fx.playoff_type + ')</small>' : '';
-                var home = fx.home || '---';
-                var away = fx.away || '---';
+                var typeLabel = fx.playoff_type ? ' <small style="color:#666;">(' + escapePrintHtml(fx.playoff_type) + ')</small>' : '';
+                var home = escapePrintHtml(fx.home || '---');
+                var away = escapePrintHtml(fx.away || '---');
                 var homeFeed = feederLabel(fx, 'home');
                 var awayFeed = feederLabel(fx, 'away');
                 if (homeFeed) home = homeFeed;
@@ -120,7 +126,7 @@ $(document).ready(function () {
                 html += '<td class="text-center">vs</td>';
                 html += '<td' + w2 + '>' + away + '</td>';
                 html += '<td class="text-center">' + (fx.round || '') + '</td>';
-                html += '<td class="text-center">' + (fx.score || '') + '</td>';
+                html += '<td class="text-center">' + escapePrintHtml(fx.score || '') + '</td>';
                 html += '</tr>';
             });
             html += '</tbody></table>';
@@ -150,13 +156,13 @@ $(document).ready(function () {
             var cw = colW + 'px';
 
             html += '<div class="matrix-group">';
-            html += '<h3>Box ' + group.name + '</h3>';
+            html += '<h3>Box ' + escapePrintHtml(group.name) + '</h3>';
             html += '<table class="rr-matrix-table" style="width:' + tableW + 'px;"><thead><tr><th style="width:' + nameW + 'px;"></th>';
-            players.forEach(function (p) { html += '<th style="width:' + cw + '">' + p.name + '</th>'; });
+            players.forEach(function (p) { html += '<th style="width:' + cw + '">' + escapePrintHtml(p.name) + '</th>'; });
             html += '<th style="width:40px; background:#198754; color:#fff; font-weight:800;">W</th></tr></thead><tbody>';
 
             players.forEach(function (rowP) {
-                html += '<tr><th>' + rowP.name + '</th>';
+                html += '<tr><th>' + escapePrintHtml(rowP.name) + '</th>';
                 players.forEach(function (colP) {
                     if (rowP.id === colP.id) { html += '<td class="bg-diagonal"></td>'; return; }
                     var fx = gFixtures.find(function (f) { return (f.r1_id === rowP.id && f.r2_id === colP.id) || (f.r1_id === colP.id && f.r2_id === rowP.id); });
@@ -179,9 +185,9 @@ $(document).ready(function () {
             sortedGroups.forEach(function (group) {
                 if (!standings[group.id]) return;
                 var rows = Object.values(standings[group.id]).sort(function (a,b) { return (b.wins-a.wins)||((b.sets_won-b.sets_lost)-(a.sets_won-a.sets_lost)); });
-                html += '<h3>Box ' + group.name + ' — Standings</h3>';
+                html += '<h3>Box ' + escapePrintHtml(group.name) + ' — Standings</h3>';
                 html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets +/-</th></tr></thead><tbody>';
-                rows.forEach(function (r, i) { html += '<tr><td>'+(i+1)+'</td><td>'+r.player+'</td><td>'+r.wins+'</td><td>'+r.losses+'</td><td>'+(r.sets_won-r.sets_lost)+'</td></tr>'; });
+                rows.forEach(function (r, i) { html += '<tr><td>'+(i+1)+'</td><td>'+escapePrintHtml(r.player)+'</td><td>'+r.wins+'</td><td>'+r.losses+'</td><td>'+(r.sets_won-r.sets_lost)+'</td></tr>'; });
                 html += '</tbody></table>';
             });
         }
@@ -232,7 +238,7 @@ $(document).ready(function () {
         $bar.css('width', '0%');
 
         var eventName = @json($event->name);
-        var fullHtml = '<h1>' + eventName + '</h1>';
+        var fullHtml = '<h1>' + escapePrintHtml(eventName) + '</h1>';
         var loaded = 0;
         var total = drawIds.length;
 
@@ -247,7 +253,7 @@ $(document).ready(function () {
                 var typeLabels = { fixtures: 'Fixtures', matrix: 'Matrix', combined: 'Combined' };
                 var title = eventName + ' — ' + (typeLabels[printType] || 'Print');
                 printWin.document.open();
-                printWin.document.write('<!DOCTYPE html><html><head><title>' + title + '</title>' + printStyles + '</head><body>' + fullHtml + '</body></html>');
+                printWin.document.write('<!DOCTYPE html><html><head><title>' + escapePrintHtml(title) + '</title>' + printStyles + '</head><body>' + fullHtml + '</body></html>');
                 printWin.document.close();
                 printWin.focus();
                 setTimeout(function () { printWin.print(); }, 300);
@@ -262,7 +268,7 @@ $(document).ready(function () {
                   var drawData = resp.draw;
                   if (drawData) {
                       if (loaded > 0) fullHtml += '<div class="page-break"></div>';
-                      fullHtml += '<h2>' + drawData.name + '</h2>';
+                      fullHtml += '<h2>' + escapePrintHtml(drawData.name) + '</h2>';
                       if (printType === 'fixtures')  fullHtml += buildFixturesHtml(drawData);
                       if (printType === 'matrix')    fullHtml += buildMatrixHtml(drawData, includeStandings);
                       if (printType === 'combined') { fullHtml += buildMatrixHtml(drawData, includeStandings); fullHtml += buildFixturesHtml(drawData); }
@@ -400,12 +406,12 @@ $(document).ready(function () {
 
 <!-- Modal: Print All Draws -->
 @if($event->draws->count())
-<div class="modal fade" id="printAllDrawsModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="printAllDrawsModal" tabindex="-1" aria-labelledby="draw-pack-modal-title" aria-hidden="true">
   <div class="modal-dialog modal-md">
     <div class="modal-content">
       <div class="modal-header">
         <div>
-          <h5 class="modal-title"><i class="ti ti-printer me-1"></i> Draw Pack</h5>
+          <h5 class="modal-title" id="draw-pack-modal-title"><i class="ti ti-printer me-1"></i> Draw Pack</h5>
           <p class="small text-muted mb-0 mt-1">One paper pack for draws, fixtures and the master schedule.</p>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -414,8 +420,8 @@ $(document).ready(function () {
       <div class="modal-body">
 
         {{-- Draw selection --}}
-        <div class="mb-3">
-          <label class="form-label fw-bold">Select Draws</label>
+        <fieldset class="mb-3">
+          <legend class="form-label fw-bold">Select draws</legend>
           <div class="form-check mb-2">
             <input class="form-check-input" type="checkbox" id="chk-select-all-draws" checked>
             <label class="form-check-label fw-bold" for="chk-select-all-draws">Select All</label>
@@ -431,19 +437,19 @@ $(document).ready(function () {
               </div>
             @endforeach
           </div>
-        </div>
+        </fieldset>
 
         <hr>
 
         {{-- Print type --}}
-        <div class="mb-3">
-          <label class="form-label fw-bold">Print Type</label>
+        <fieldset class="mb-3">
+          <legend class="form-label fw-bold">Print type</legend>
           <div class="d-flex flex-column gap-2">
             <div class="form-check">
               <input class="form-check-input" type="radio" name="print_type" value="pack" id="pt-pack" checked>
               <label class="form-check-label" for="pt-pack">
                 <i class="ti ti-files me-1 text-primary"></i> <strong>Complete Draw Pack</strong>
-                <span class="d-block small text-muted">Cover, master order of play, every draw format, fixtures, courts and result space</span>
+                <span class="d-block small text-muted">Cover, publication checks, master order of play, rules, matrices, pathway boards, fixtures, courts and result space</span>
               </label>
             </div>
             <div class="form-check">
@@ -465,7 +471,7 @@ $(document).ready(function () {
               </label>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {{-- Include standings option (shown when matrix or combined selected) --}}
         <div class="form-check mb-3" id="standings-option">
@@ -482,14 +488,18 @@ $(document).ready(function () {
           </div>
         </div>
 
+        <p class="small text-muted mb-0" id="draw-pack-accessibility-note">
+          For an assistive-technology-friendly version, choose Print pack. It opens the same content as semantic HTML with labelled tables; the downloaded PDF is optimised for paper.
+        </p>
+
       </div>
 
       <div class="modal-footer">
         <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-outline-secondary" id="btn-download-pdf">
+        <button type="button" class="btn btn-outline-secondary" id="btn-download-pdf" aria-describedby="draw-pack-accessibility-note">
           <i class="ti ti-file-type-pdf me-1"></i> Download pack
         </button>
-        <button type="button" class="btn btn-primary" id="btn-print-all-draws">
+        <button type="button" class="btn btn-primary" id="btn-print-all-draws" aria-describedby="draw-pack-accessibility-note">
           <i class="ti ti-printer me-1"></i> Print pack
         </button>
       </div>

@@ -121,7 +121,8 @@ class AuthServiceProvider extends ServiceProvider
                 return true;
             }
 
-            return ! $user->hasRole('score-keeper') && $user->is_convenor($event->id);
+            return ! $user->is_event_score_keeper($event->id)
+                && $user->is_convenor($event->id);
         });
 
         Gate::define('event-category.manage', function ($user, \App\Models\Event $event) {

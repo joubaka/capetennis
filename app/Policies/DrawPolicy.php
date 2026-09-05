@@ -19,7 +19,7 @@ class DrawPolicy
         // A dedicated scorer is stored in the event assignment table so its
         // access can be time- and event-scoped. That assignment must not make
         // the account a draw manager.
-        if ($user->hasRole('score-keeper')) {
+        if ($user->is_event_score_keeper($draw->event_id)) {
             return false;
         }
 

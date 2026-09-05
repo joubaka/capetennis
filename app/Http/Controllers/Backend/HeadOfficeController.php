@@ -1299,11 +1299,15 @@ class HeadOfficeController extends Controller
         'score'      => implode(', ', $allSets),
         'home_score' => $lastSet?->registration1_score,
         'away_score' => $lastSet?->registration2_score,
-        'winner'     => $lastSet?->winner_registration ?? null,
+        'winner'     => ! is_null($fx->winner_registration)
+          ? $fx->winner_registration
+          : ($lastSet?->winner_registration ?? null),
       ];
     }
 
     $stagePriority = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2, 'CONS' => 3, 'BOWL' => 4, 'SHIELD' => 5, 'SPOON' => 6];
+    $matchNumbersById = $draw->drawFixtures
+      ->mapWithKeys(fn ($fixture) => [$fixture->id => $fixture->match_nr ?: $fixture->id]);
 
     // Build feeder maps and slot-aware participant source labels from the draw graph.
     $winnerFeeders = [];
@@ -1340,13 +1344,15 @@ class HeadOfficeController extends Controller
         $sp = $stagePriority[$fx->stage ?? 'RR'] ?? 99;
         return sprintf('%02d-%05d-%05d', $sp, (int)$fx->round, (int)$fx->match_nr);
       })
-      ->map(function ($fx) use ($winnerFeeders, $loserFeeders, $sourceLabels) {
+      ->map(function ($fx) use ($winnerFeeders, $loserFeeders, $sourceLabels, $matchNumbersById) {
         $sets = $fx->fixtureResults
           ->sortBy('set_nr')
           ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
           ->implode(', ');
 
-        $winner = optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
+        $winner = ! is_null($fx->winner_registration)
+          ? $fx->winner_registration
+          : optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
 
         $wFeed = $winnerFeeders[$fx->id] ?? [];
         $lFeed = $loserFeeders[$fx->id]  ?? [];
@@ -1373,10 +1379,38 @@ class HeadOfficeController extends Controller
           'duration'     => $fx->orderOfPlay?->duration_minutes,
           'winner_feeders' => $wFeed,
           'loser_feeders'  => $lFeed,
+          'winner_to'      => $fx->parent_fixture_id
+            ? $matchNumbersById->get($fx->parent_fixture_id)
+            : null,
+          'loser_to'       => $fx->loser_parent_fixture_id
+            ? $matchNumbersById->get($fx->loser_parent_fixture_id)
+            : null,
         ];
       })->values()->toArray();
 
     $standings = app(StandingsService::class)->forDraw($draw);
+    $notes = collect($draw->settings?->notes ?? [])
+      ->filter(fn ($note) => is_string($note) && trim($note) !== '')
+      ->mapWithKeys(function (string $note, $key) use ($draw) {
+        $key = (string) $key;
+        $label = match ($key) {
+          'general' => 'General rules',
+          'round_robin' => 'Round Robin scoring rules',
+          'playoffs' => 'Playoff rules',
+          default => str($key)->startsWith('bracket_')
+            ? str($key)->after('bracket_')->replace('_', ' ')->headline().' rules'
+            : str($key)->replace('_', ' ')->headline(),
+        };
+
+        $bracket = collect($draw->settings?->playoff_config ?? [])
+          ->firstWhere('slug', str($key)->after('bracket_')->toString());
+        if (str($key)->startsWith('bracket_') && $bracket) {
+          $label = ($bracket['name'] ?? $label).' rules';
+        }
+
+        return [$label => trim($note)];
+      })
+      ->all();
 
     return [
       'id'         => $draw->id,
@@ -1388,6 +1422,10 @@ class HeadOfficeController extends Controller
       'rrFixtures' => $rrFixtures,
       'oops'       => $oops,
       'standings'  => $standings,
+      'notes'      => $notes,
+      'published'  => (bool) $draw->published,
+      'schedule_published' => (bool) $draw->oop_published,
+      'locked'     => (bool) $draw->locked,
     ];
   }
 }

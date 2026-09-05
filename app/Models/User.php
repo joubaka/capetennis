@@ -102,6 +102,15 @@ class User extends Authenticatable
       ->active()
       ->exists();
   }
+
+  public function is_event_score_keeper($event_id): bool
+  {
+    return \App\Models\EventConvenor::where('user_id', $this->id)
+      ->where('event_id', $event_id)
+      ->where('role', 'score-keeper')
+      ->active()
+      ->exists();
+  }
   public function players()
   {
     return $this->belongsToMany(Player::class, 'user_players')
