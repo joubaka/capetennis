@@ -20,7 +20,17 @@ final class FlexibleMonradScheduler
             if ($start) {
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
                 $assigned = $draw->venues->firstWhere('id', $venueId);
-                if (! $assigned || ! ctype_digit($court) || (int) $court < 1 || (int) $court > max(1, (int) $assigned->pivot->num_courts)) {
+                $permittedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)
+                    ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
+                if ($permittedCourts->isEmpty()) {
+                    $permittedCourts = DB::table('event_venue_courts')->where('event_id', $draw->event_id)
+                        ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
+                }
+                if ($permittedCourts->isEmpty() && $assigned) {
+                    $permittedCourts = collect(range(1, max(1, (int) $assigned->pivot->num_courts)))
+                        ->map(fn ($label) => (string) $label);
+                }
+                if (! $assigned || ! $permittedCourts->contains($court)) {
                     throw new \InvalidArgumentException('Choose a court assigned to this draw.');
                 }
                 $conflict = app(\App\Domain\Draws\Services\ScheduleConflictService::class)

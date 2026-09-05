@@ -187,6 +187,7 @@ final class EventVenueScheduleService
                     'venue_id' => (int) $slot->venue_id, 'court' => (string) $slot->court,
                     'duration' => (int) ($slot->duration_minutes ?: $duration),
                     'participants' => $nodes[$slot->fixture_id]['participant_names'] ?? [],
+                    'editable' => isset($nodes[$slot->fixture_id]) && ! $nodes[$slot->fixture_id]['played'],
                 ];
             })->values()->all() : [];
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [

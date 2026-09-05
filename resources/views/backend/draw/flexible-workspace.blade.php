@@ -25,7 +25,7 @@
         <div><h2 class="h5">Schedule &amp; Venues</h2><p class="text-muted mb-0">Timetable publication is separate from draw publication.</p></div>
         <div class="d-flex flex-wrap gap-2">
           <a class="btn btn-primary" href="{{ route('backend.individual-schedule.page', $draw) }}">Manage this draw</a>
-          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule only this draw in the event timetable</a>
+          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id], 'manual' => 1]) }}">Drag matches into open slots</a>
         </div>
       </div>
       @can('publish', $draw)

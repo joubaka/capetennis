@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Event, Fixture, OrderOfPlay, Venue};
+use App\Domain\Draws\Services\ScheduleConflictService;
+use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, Venue};
 use App\Services\EventAnnouncementService;
+use App\Services\ScheduleEngine;
 use App\Services\Scheduling\EventVenueScheduleService;
 use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
 use Illuminate\Http\Request;
@@ -308,6 +310,78 @@ final class EventVenueScheduleController extends Controller
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
+    }
+
+    public function assignFixture(Request $request, Event $event, ScheduleConflictService $conflicts,
+        ScheduleEngine $scheduleEngine)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'fixture_id' => ['required', 'integer'],
+            'scheduled_at' => ['required', 'date'],
+            'venue_id' => ['required', 'integer'],
+            'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
+            'duration' => ['required', 'integer', 'min:15', 'max:480'],
+            'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
+            'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+        ]);
+
+        try {
+            $slot = DB::transaction(function () use ($data, $event, $conflicts, $scheduleEngine) {
+                DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+                $fixture = Fixture::with(['draw.venues', 'draw.flexibleMonrad', 'draw.settings', 'fixtureResults', 'orderOfPlay'])
+                    ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
+                    ->lockForUpdate()->find($data['fixture_id']);
+                if (! $fixture) throw new \InvalidArgumentException('This match does not belong to the event.');
+                if ($fixture->draw->locked || $fixture->draw->published) {
+                    throw new \InvalidArgumentException('Unpublish and unlock the draw before manually scheduling this match.');
+                }
+                if ($fixture->fixtureResults->isNotEmpty()) {
+                    throw new \InvalidArgumentException('A played match cannot be moved to another slot.');
+                }
+
+                $venueId = (int) $data['venue_id'];
+                $court = trim((string) $data['court']);
+                $assignedVenue = $fixture->draw->venues->firstWhere('id', $venueId);
+                if (! $assignedVenue) throw new \InvalidArgumentException('The selected venue is not assigned to this draw.');
+
+                $activeCourts = DB::table('event_venue_courts')->where('event_id', $event->id)
+                    ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
+                if ($activeCourts->isEmpty()) {
+                    $activeCourts = collect(range(1, max(1, (int) $assignedVenue->pivot->num_courts)))->map(fn ($label) => (string) $label);
+                }
+                $allocatedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
+                    ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
+                $permittedCourts = $allocatedCourts->isNotEmpty() ? $allocatedCourts->intersect($activeCourts) : $activeCourts;
+                if (! $permittedCourts->contains($court)) {
+                    throw new \InvalidArgumentException('Choose an active court allocated to this draw.');
+                }
+
+                DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
+                $conflict = $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
+                    $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'], (int) $data['court_gap']);
+                if ($conflict) throw new \InvalidArgumentException($conflict);
+
+                $slot = $scheduleEngine->saveFixture($fixture->draw, $fixture->id, $data['scheduled_at'],
+                    $venueId, $court, (int) $data['duration']);
+                $slot->update(['gap_minutes' => (int) $data['court_gap']]);
+                DrawAuditLog::record($fixture->draw_id, 'event_venue_match_manually_scheduled', null, [
+                    'event_id' => $event->id, 'fixture_id' => $fixture->id, 'venue_id' => $venueId,
+                    'court' => $court, 'scheduled_at' => $slot->time,
+                ]);
+
+                return $slot->fresh()->load('venue');
+            });
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Match assigned to '.$slot->venue->name.' · Court '.$slot->court.' · '.
+                \Carbon\Carbon::parse($slot->time)->format('d M Y H:i').'.',
+            'assignment' => ['fixture_id' => (int) $slot->fixture_id, 'venue_id' => (int) $slot->venue_id,
+                'court' => (string) $slot->court, 'scheduled_at' => \Carbon\Carbon::parse($slot->time)->format('Y-m-d H:i:s')],
+        ]);
     }
 
     private function validatedOptions(Request $request): array

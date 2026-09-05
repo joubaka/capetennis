@@ -433,6 +433,65 @@ class EventVenueScheduleTest extends TestCase
         $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $otherFixture->id]);
     }
 
+    public function test_event_admin_can_drag_one_match_to_an_open_allocated_slot(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Manual Schedule Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        DB::table('draw_venue_court_allocations')->insert([
+            'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '2',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $fixtures = Fixture::factory()->count(2)->create([
+            'draw_id' => $draw->id, 'round' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory(),
+            'registration2_id' => Registration::factory(),
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $url = route('backend.event-venue-schedule.manual-assignment', $event);
+        $assignment = [
+            'fixture_id' => $fixtures[0]->id, 'scheduled_at' => '2026-09-10 09:30:00',
+            'venue_id' => $venue->id, 'court' => '2', 'duration' => 75,
+            'court_gap' => 5, 'player_rest' => 60,
+        ];
+
+        $this->actingAs($admin)->postJson($url, array_replace($assignment, ['court' => '1']))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Choose an active court allocated to this draw.');
+
+        $this->postJson($url, $assignment)
+            ->assertOk()
+            ->assertJsonPath('assignment.fixture_id', $fixtures[0]->id)
+            ->assertJsonPath('assignment.court', '2');
+
+        $this->assertDatabaseHas('order_of_plays', [
+            'fixture_id' => $fixtures[0]->id, 'venue_id' => $venue->id, 'court' => '2',
+            'time' => '2026-09-10 09:30:00', 'duration_minutes' => 75, 'gap_minutes' => 5,
+        ]);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draw->id, 'action' => 'event_venue_match_manually_scheduled',
+        ]);
+
+        $this->postJson($url, array_replace($assignment, ['fixture_id' => $fixtures[1]->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Schedule conflict: the court or a participant is already booked during this time.');
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
+
+        DB::table('draw_venue_court_allocations')->insert([
+            'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '1',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $sharedPlayer = Player::factory()->create();
+        $fixtures[0]->registration1->players()->attach($sharedPlayer->id);
+        $fixtures[1]->registration1->players()->attach($sharedPlayer->id);
+        $this->postJson($url, array_replace($assignment, [
+            'fixture_id' => $fixtures[1]->id, 'court' => '1', 'scheduled_at' => '2026-09-10 11:00:00',
+        ]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Schedule conflict: the court or a participant is already booked during this time.');
+    }
+
     public function test_event_admin_can_assign_several_draws_to_the_same_shared_venue(): void
     {
         $event = Event::factory()->create();
@@ -485,6 +544,11 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('schedule=applied')
             ->assertSee('Replan all applied venues')
             ->assertSee('Unapply venue times')
+            ->assertSee('manual-assignment')
+            ->assertSee('draggable="true"', false)
+            ->assertSee('Drop or place selected match')
+            ->assertSee('Match selected. Choose an Available slot.')
+            ->assertSee("document.getElementById('generate-preview').click()", false)
             ->assertSee('venue-schedule\/unapply', false)
             ->assertSee('Next: timing rules');
     }
@@ -501,6 +565,10 @@ class EventVenueScheduleTest extends TestCase
             ->assertForbidden();
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.unapply', $event), ['draw_id' => 1])
             ->assertForbidden();
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.manual-assignment', $event), [
+            'fixture_id' => 1, 'scheduled_at' => '2026-09-10 09:00:00', 'venue_id' => 1,
+            'court' => '1', 'duration' => 75, 'court_gap' => 5, 'player_rest' => 60,
+        ])->assertForbidden();
     }
 
     public function test_preview_automatically_uses_only_venues_assigned_to_the_selected_draws(): void

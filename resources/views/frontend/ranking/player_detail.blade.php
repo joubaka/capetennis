@@ -10,6 +10,9 @@
   .status-dropped  { background-color: #dc3545; color: #fff; }
   .status-auto     { background-color: #ffc107; color: #000; }
   .points-total    { font-weight: 700; font-size: 1.1rem; }
+  .event-result-link { color: var(--bs-heading-color); font-weight: 600; text-decoration: none; }
+  .event-result-link:hover { color: #14796e; text-decoration: underline; }
+  .event-result-action { display: block; margin-top: .15rem; color: var(--bs-secondary-color); font-size: .75rem; }
 </style>
 @endsection
 
@@ -93,7 +96,18 @@
                     if ($status === 'counted') { $countedTotal += (int)($leg['points'] ?? 0); }
                   @endphp
                   <tr>
-                    <td>{{ $leg['event_name'] }}</td>
+                    <td>
+                      @if(!empty($leg['event_url']))
+                        <a href="{{ $leg['event_url'] }}" class="event-result-link">
+                          {{ $leg['event_name'] }}
+                          <i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i>
+                        </a>
+                        <span class="event-result-action">View {{ $leg['event_destination'] }}</span>
+                      @else
+                        <span>{{ $leg['event_name'] }}</span>
+                        <span class="event-result-action">Not available</span>
+                      @endif
+                    </td>
                     <td class="text-muted small">{{ $leg['category_name'] ?? '—' }}</td>
                     <td class="text-nowrap text-muted small">
                       {{ $leg['event_date'] ? \Carbon\Carbon::parse($leg['event_date'])->format('d M Y') : '—' }}

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\Point;
@@ -15,6 +16,7 @@ use App\Models\Series;
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Domain\Ranking\Services\RankingRebuildService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -212,7 +214,7 @@ class RankingController extends Controller
     abort_unless($rankingRecord, 404);
 
     $eventsById = $series->events()
-      ->select('id', 'name', 'start_date')
+      ->select('id', 'name', 'start_date', 'published', 'results_published')
       ->get()
       ->keyBy('id');
 
@@ -321,12 +323,87 @@ class RankingController extends Controller
       }
     }
 
+    $legs = $this->addPublicEventDestinations($legs, $eventsById, (int) $rankingRecord->category_id);
+
     return view('frontend.ranking.player_detail', compact(
       'series',
       'player',
       'rankingRecord',
       'legs'
     ));
+  }
+
+  private function addPublicEventDestinations(Collection $legs, Collection $eventsById, int $categoryId): Collection
+  {
+    if ($legs->isEmpty()) {
+      return $legs;
+    }
+
+    $categoryEventIds = $legs->pluck('category_event_id')->filter()->map(fn ($id) => (int) $id)->unique();
+    $eventIds = $legs->pluck('event_id')->filter()->map(fn ($id) => (int) $id)->unique();
+
+    $categoryEvents = CategoryEvent::query()
+      ->where(function ($query) use ($categoryEventIds, $eventIds, $categoryId) {
+        if ($categoryEventIds->isNotEmpty()) {
+          $query->whereIn('id', $categoryEventIds);
+        }
+
+        if ($eventIds->isNotEmpty()) {
+          $method = $categoryEventIds->isNotEmpty() ? 'orWhere' : 'where';
+          $query->{$method}(function ($eventQuery) use ($eventIds, $categoryId) {
+            $eventQuery->whereIn('event_id', $eventIds)->where('category_id', $categoryId);
+          });
+        }
+      })
+      ->get(['id', 'event_id', 'category_id']);
+
+    $categoryEventsById = $categoryEvents->keyBy('id');
+    $categoryEventByEvent = $categoryEvents
+      ->where('category_id', $categoryId)
+      ->keyBy('event_id');
+    $allEventIds = $eventIds
+      ->merge($categoryEvents->pluck('event_id')->map(fn ($id) => (int) $id))
+      ->unique();
+
+    $publishedDrawsByEvent = Draw::query()
+      ->with(['flexibleMonrad', 'settings'])
+      ->whereIn('event_id', $allEventIds)
+      ->where('published', true)
+      ->orderBy('id')
+      ->get()
+      ->groupBy('event_id');
+
+    return $legs->map(function (array $leg) use ($eventsById, $categoryEventsById, $categoryEventByEvent, $publishedDrawsByEvent) {
+      $categoryEvent = isset($leg['category_event_id'])
+        ? $categoryEventsById->get((int) $leg['category_event_id'])
+        : null;
+      $eventId = (int) ($leg['event_id'] ?? $categoryEvent?->event_id ?? 0);
+      $event = $eventsById->get($eventId);
+
+      if (! $categoryEvent && $eventId) {
+        $categoryEvent = $categoryEventByEvent->get($eventId);
+      }
+
+      $draw = $event?->published && $categoryEvent
+        ? $publishedDrawsByEvent->get($eventId, collect())
+          ->firstWhere('category_event_id', $categoryEvent->id)
+        : null;
+
+      if ($draw) {
+        $leg['event_url'] = $draw->usesFlexibleMonrad()
+          ? route('public.flexible-monrad.show', $draw)
+          : route('public.roundrobin.show', $draw);
+        $leg['event_destination'] = 'draw';
+      } elseif ($event?->published && $event->results_published) {
+        $leg['event_url'] = route('events.results', $event);
+        $leg['event_destination'] = 'results';
+      } else {
+        $leg['event_url'] = null;
+        $leg['event_destination'] = null;
+      }
+
+      return $leg;
+    });
   }
 
   public function seriesAllAjax()

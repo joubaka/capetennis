@@ -53,6 +53,14 @@
   .schedule-workspace .preview-venue-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem; padding:.75rem 1rem; border-top:1px solid var(--schedule-border); background:var(--schedule-soft); }
   .schedule-workspace .workspace-footer { position:sticky; bottom:.75rem; z-index:4; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; padding:.8rem; border:1px solid var(--schedule-border); border-radius:.75rem; background:rgba(255,255,255,.96); box-shadow:0 .5rem 1.5rem rgba(31,42,68,.1); backdrop-filter:blur(8px); }
   .schedule-workspace .compact-note { border-left:3px solid var(--bs-info); padding:.55rem .75rem; background:rgba(var(--bs-info-rgb), .06); border-radius:0 .5rem .5rem 0; }
+  .schedule-workspace .manual-match-card { display:block; width:100%; min-width:10rem; padding:.55rem; border:1px solid rgba(var(--bs-primary-rgb), .25); border-radius:.5rem; background:rgba(var(--bs-primary-rgb), .07); color:var(--bs-body-color); text-align:left; cursor:grab; }
+  .schedule-workspace .manual-match-card:hover, .schedule-workspace .manual-match-card:focus-visible { border-color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .12); outline:0; }
+  .schedule-workspace .manual-match-card.is-selected { border-color:var(--bs-primary); box-shadow:0 0 0 .2rem rgba(var(--bs-primary-rgb), .18); }
+  .schedule-workspace .manual-match-card[draggable="true"]:active { cursor:grabbing; }
+  .schedule-workspace .manual-drop-slot { min-width:10rem; background:rgba(var(--bs-success-rgb), .035); transition:background .15s ease, box-shadow .15s ease; }
+  .schedule-workspace .manual-drop-slot.is-drag-over { background:rgba(var(--bs-success-rgb), .18); box-shadow:inset 0 0 0 2px var(--bs-success); }
+  .schedule-workspace .manual-slot-button { width:100%; min-height:4rem; border:1px dashed rgba(var(--bs-success-rgb), .5); border-radius:.5rem; background:transparent; color:var(--bs-success); text-align:left; }
+  .schedule-workspace .manual-slot-button:hover, .schedule-workspace .manual-slot-button:focus-visible { border-style:solid; background:rgba(var(--bs-success-rgb), .08); outline:0; }
   @media (max-width: 767.98px) {
     .schedule-workspace .workflow-rail { grid-template-columns:1fr; }
     .schedule-workspace .workflow-step { display:none; }
@@ -283,7 +291,7 @@
   <div id="preview-view-controls" class="d-none flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <strong>Fixtures per venue</strong>
-      <div class="small text-muted">Switch to the court grid to spot unused capacity between matches.</div>
+      <div class="small text-muted">In the court grid, drag a match onto an Available slot. You can also select a match, then select a slot.</div>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <button type="button" id="keep-all-applied" class="btn btn-sm btn-outline-secondary d-none"><i class="ti ti-arrow-back-up me-1" aria-hidden="true"></i>Keep all current venue times</button>
@@ -347,12 +355,14 @@
   const previewUrl = @json(route('backend.event-venue-schedule.preview', $event));
   const applyUrl = @json(route('backend.event-venue-schedule.apply', $event));
   const unapplyUrl = @json($unapplyRouteAvailable ? route('backend.event-venue-schedule.unapply', $event) : null);
+  const manualAssignmentUrl = @json(route('backend.event-venue-schedule.manual-assignment', $event));
   const assignmentUrl = @json(route('backend.event-venue-schedule.assignments', $event));
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
   const announcementUrl = @json(route('admin.events.announcements.store', $event));
   const drawsUrl = @json(route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']));
   const eventName = @json($event->name);
+  const manualMode = @json(request()->boolean('manual'));
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->pluck('id')->values());
   let payload = null;
   let revision = null;
@@ -362,6 +372,7 @@
   let scheduleActivityHideTimer = null;
   let scheduleActivityStartedAt = 0;
   let scheduleActivityStages = [];
+  let selectedManualFixture = null;
 
   const previewActivityStages = [
     {after: 0, percent: 5, label: 'Sending the scheduling rules…'},
@@ -609,6 +620,10 @@
   const asDate = value => new Date(String(value).replace(' ', 'T'));
   const dateKey = value => asDate(value).getTime();
   const formatSlotTime = date => date.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+  const assignmentTime = date => {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
+  };
   const matchEnd = (match, result) => match.ends_at
     ? asDate(match.ends_at)
     : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
@@ -648,11 +663,12 @@
       const cells = venue.court_labels.map(court => {
         const starts = rows.find(row => String(row.court) === String(court) && dateKey(row.scheduled_at) === time.getTime());
         if (starts) {
-          return `<td class="bg-label-primary"><div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · Match ${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Applied' : ''}</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</div></td>`;
+          const movable = !starts.fixed || starts.editable;
+          return `<td>${movable ? `<button type="button" class="manual-match-card" draggable="true" data-manual-fixture="${starts.fixture_id}" aria-pressed="false" title="Drag this match to an available slot"><span class="fw-semibold">${escapeHtml(starts.draw_name)}</span><span class="small d-block">R${starts.round} · Match ${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Saved' : ''}</span><span class="small text-muted d-block">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</span></button>` : `<div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · Match ${escapeHtml(starts.match || '—')} · Fixed</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</div>`}</td>`;
         }
         const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
         if (occupied) return `<td class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
-        return '<td class="text-success"><span class="fw-semibold">Available</span><div class="small text-muted">No fixture in this slot</div></td>';
+        return `<td class="manual-drop-slot" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Available</span><span class="small text-muted d-block">Drop or place selected match</span></button></td>`;
       }).join('');
       return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
     }).join('');
@@ -690,7 +706,78 @@
     setStatus(document.getElementById('schedule-status'), result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
       : 'Preview ready. Review every venue before applying.', result.unscheduled.length ? 'danger' : 'success');
+    if (manualMode) {
+      document.querySelector('[data-preview-view="grid"]')?.click();
+      document.querySelector('#venue-slot-grids [data-preview-venue]')?.setAttribute('open', 'open');
+    }
   }
+
+  const placeMatchManually = async (fixtureId, slot) => {
+    if (!fixtureId || !slot) return;
+    const status = document.getElementById('schedule-status');
+    setStatus(status, 'Checking and saving the manual match assignment…');
+    document.getElementById('venue-slot-grids').classList.add('pe-none');
+    try {
+      const saved = await post(manualAssignmentUrl, {
+        fixture_id:Number(fixtureId), scheduled_at:slot.dataset.time,
+        venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
+        duration:Number(document.getElementById('schedule-duration').value),
+        court_gap:Number(document.getElementById('schedule-gap').value),
+        player_rest:Number(document.getElementById('schedule-rest').value),
+      });
+      selectedManualFixture = null;
+      replanVenueIds = replanVenueIds.filter(id => id !== Number(slot.dataset.venue));
+      payload = buildPayload();
+      render(await post(previewUrl, payload));
+      setStatus(status, saved.message + ' Remaining matches were replanned around it.', 'success');
+    } catch (error) {
+      setStatus(status, error.message, 'danger');
+    } finally {
+      document.getElementById('venue-slot-grids').classList.remove('pe-none');
+    }
+  };
+
+  const slotGrids = document.getElementById('venue-slot-grids');
+  slotGrids.addEventListener('dragstart', event => {
+    const match = event.target.closest('[data-manual-fixture]');
+    if (!match) return;
+    selectedManualFixture = Number(match.dataset.manualFixture);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(selectedManualFixture));
+  });
+  slotGrids.addEventListener('dragover', event => {
+    const slot = event.target.closest('[data-manual-slot]');
+    if (!slot) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    slot.classList.add('is-drag-over');
+  });
+  slotGrids.addEventListener('dragleave', event => {
+    const slot = event.target.closest('[data-manual-slot]');
+    if (slot && !slot.contains(event.relatedTarget)) slot.classList.remove('is-drag-over');
+  });
+  slotGrids.addEventListener('drop', event => {
+    const slot = event.target.closest('[data-manual-slot]');
+    if (!slot) return;
+    event.preventDefault();
+    slot.classList.remove('is-drag-over');
+    placeMatchManually(Number(event.dataTransfer.getData('text/plain') || selectedManualFixture), slot);
+  });
+  slotGrids.addEventListener('click', event => {
+    const match = event.target.closest('[data-manual-fixture]');
+    if (match) {
+      selectedManualFixture = Number(match.dataset.manualFixture);
+      slotGrids.querySelectorAll('[data-manual-fixture]').forEach(option => {
+        const selected = option === match;
+        option.classList.toggle('is-selected', selected);
+        option.setAttribute('aria-pressed', String(selected));
+      });
+      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose an Available slot.', 'success');
+      return;
+    }
+    const slot = event.target.closest('[data-manual-slot]');
+    if (slot && selectedManualFixture) placeMatchManually(selectedManualFixture, slot);
+  });
 
   const refreshVenuePreview = async (venueId, replanning) => {
     replanVenueIds = replanning
@@ -915,6 +1002,12 @@
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); button.disabled = false; }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; }
   });
+  if (manualMode) {
+    document.getElementById('court-allocation-step').open = false;
+    document.getElementById('schedule-rules-step').open = true;
+    setWorkflowStep(2);
+    window.requestAnimationFrame(() => document.getElementById('generate-preview').click());
+  }
 })();
 </script>
 @endsection

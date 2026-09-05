@@ -5,6 +5,7 @@ namespace Tests\Feature\Ranking;
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Models\Category;
 use App\Models\CategoryEvent;
+use App\Models\Draw;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\RankingList;
@@ -154,6 +155,78 @@ class PublicRankingVisibilityTest extends TestCase
                 ->assertSee('public-ranking-score--counted', false)
                 ->assertSee('public-ranking-score--dropped', false);
         }
+    }
+
+    public function test_player_event_names_prefer_published_draws_then_results_then_not_available(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create(['name' => 'u/13 Girls']);
+        $otherCategory = Category::factory()->create();
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $player = Player::factory()->create();
+
+        $drawEvent = Event::factory()->create([
+            'series_id' => $series->id,
+            'name' => 'Draw Event',
+            'results_published' => true,
+        ]);
+        $resultsEvent = Event::factory()->create([
+            'series_id' => $series->id,
+            'name' => 'Results Event',
+            'results_published' => true,
+        ]);
+        $unavailableEvent = Event::factory()->create([
+            'series_id' => $series->id,
+            'name' => 'Unavailable Event',
+            'results_published' => false,
+        ]);
+
+        $drawCategoryEvent = CategoryEvent::factory()->create(['event_id' => $drawEvent->id, 'category_id' => $category->id]);
+        $resultsCategoryEvent = CategoryEvent::factory()->create(['event_id' => $resultsEvent->id, 'category_id' => $category->id]);
+        $unavailableCategoryEvent = CategoryEvent::factory()->create(['event_id' => $unavailableEvent->id, 'category_id' => $category->id]);
+        $wrongCategoryEvent = CategoryEvent::factory()->create(['event_id' => $resultsEvent->id, 'category_id' => $otherCategory->id]);
+
+        $publishedDraw = Draw::factory()->create([
+            'event_id' => $drawEvent->id,
+            'category_event_id' => $drawCategoryEvent->id,
+            'published' => true,
+        ]);
+        Draw::factory()->create([
+            'event_id' => $resultsEvent->id,
+            'category_event_id' => $wrongCategoryEvent->id,
+            'published' => true,
+        ]);
+        Draw::factory()->create([
+            'event_id' => $unavailableEvent->id,
+            'category_event_id' => $unavailableCategoryEvent->id,
+            'published' => false,
+        ]);
+
+        $this->row(
+            $series,
+            $list,
+            $category,
+            $player,
+            RankingStatus::Published,
+            'run-live',
+            now(),
+            [
+                'counting_legs' => [
+                    ['category_event_id' => $drawCategoryEvent->id, 'position' => 1, 'points' => 100],
+                    ['category_event_id' => $resultsCategoryEvent->id, 'position' => 2, 'points' => 80],
+                    ['category_event_id' => $unavailableCategoryEvent->id, 'position' => 3, 'points' => 60],
+                ],
+            ]
+        );
+
+        $this->get(route('frontend.ranking.player-detail', [$series, $player]))
+            ->assertOk()
+            ->assertSee(route('public.roundrobin.show', $publishedDraw), false)
+            ->assertSee(route('events.results', $resultsEvent), false)
+            ->assertDontSee(route('events.results', $drawEvent), false)
+            ->assertSee('View draw')
+            ->assertSee('View results')
+            ->assertSee('Not available');
     }
 
     private function row(
