@@ -1,32 +1,14 @@
 <div class="row g-3">
 
-  {{-- EVENT MANAGEMENT --}}
+  {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
   <div class="col-xl-4 col-md-6">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
-        <i class="ti ti-settings ti-md text-primary"></i>
-        <h5 class="mb-0">Event Management</h5>
+        <i class="ti ti-world ti-md text-primary"></i>
+        <h5 class="mb-0">Results publication</h5>
       </div>
-
       <div class="card-body d-grid gap-2">
-        <a href="{{ route('admin.events.entries.new', $event) }}"
-           class="btn btn-primary">
-          <i class="ti ti-users me-1"></i>
-          Manage Categories & Entries
-        </a>
-
-        <a href="{{ route('admin.events.transactions', $event) }}"
-           class="btn btn-outline-secondary">
-          <i class="ti ti-credit-card me-1"></i>
-          Transactions
-        </a>
-
-        <a href="{{ route('admin.events.results.individual', $event) }}"
-           class="btn btn-outline-success">
-          <i class="ti ti-trophy me-1"></i>
-          Results
-        </a>
-
+        <p class="text-muted mb-2">{{ $event->results_published == 1 ? 'Final positions are currently visible to the public.' : 'Final positions remain private until you publish them.' }}</p>
         <form method="POST" action="{{ route('result.publish', $event->id) }}" class="d-inline"
               onsubmit="return confirm('Are you sure you want to {{ $event->results_published == 1 ? 'unpublish' : 'publish' }} the results?')">
           @csrf
@@ -35,80 +17,12 @@
             {{ $event->results_published == 1 ? 'Unpublish Results' : 'Publish Results' }}
           </button>
         </form>
-
-          {{-- Fixtures HQ (admin) --}}
-        <a href="{{ route('headOffice.show', $event) }}"
-           class="btn btn-outline-primary">
-          <i class="ti ti-calendar-meet me-1"></i>
-          Fixtures HQ
-        </a>
-
-        @if(\App\Models\SiteSetting::disciplinarySystemEnabled())
-        <a href="{{ route('backend.events.disciplinary.index', $event) }}"
-           class="btn btn-outline-danger">
-          <i class="ti ti-scale me-1"></i>
-          Discipline & Incidents
-        </a>
-        @endif
-
-        {{-- 🔹 SERIES LINK (ONLY IF EVENT BELONGS TO SERIES) --}}
-       @if($event->series)
-  <a href="{{ route('series.show', $event->series) }}"
-     class="btn btn-outline-info">
-    <i class="ti ti-layers me-1"></i>
-    {{ $event->series->name }}
-  </a>
-  <a href="{{ route('ranking.series.list', $event->series) }}"
-     class="btn btn-outline-dark" target="_blank">
-    <i class="ti ti-printer me-1"></i>
-    Print Series Rankings
-  </a>
-@endif
-
-      </div>
-    </div>
-  </div>
-
-  {{-- EVENT SETUP --}}
-  <div class="col-xl-4 col-md-6">
-    <div class="card h-100 border-start border-warning border-3">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="ti ti-adjustments ti-md text-warning"></i>
-        <h5 class="mb-0">Event Setup</h5>
-      </div>
-
-      <div class="card-body d-grid gap-2">
-        <a href="{{ route('admin.events.settings', $event) }}"
-           class="btn btn-outline-warning">
-          <i class="ti ti-sliders me-1"></i>
-          Event Settings
-        </a>
-
-        @can('event-category.manage', $event)
-          <a href="{{ route('admin.events.categories', $event) }}"
-             class="btn btn-outline-primary">
-            <i class="ti ti-list-details me-1"></i>
-            Manage Categories
-          </a>
-
-          @if(auth()->user()->hasRole('super-user'))
-            <div class="small text-muted text-center" data-testid="category-admin-only-note">
-              <i class="ti ti-lock me-1"></i>Category setup: event admins and super users only
-            </div>
-          @endif
-        @endcan
-
-        <a href="{{ route('admin.events.announcements', $event) }}"
-           class="btn btn-outline-info">
-          <i class="ti ti-megaphone me-1"></i>
-          Announcements
-        </a>
       </div>
     </div>
   </div>
 
   {{-- QUICK STATS --}}
-  <div class="col-xl-4 col-md-12">
+  <div class="col-xl-8 col-md-6">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
         <i class="ti ti-chart-bar ti-md text-info"></i>

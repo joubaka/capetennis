@@ -206,9 +206,14 @@
 
 <div class="container-xl">
 
-  {{-- HEADER --}}
-  <x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Entries by category" icon="ti-users" class="no-print">
-  <x-slot:actions><div class="d-flex gap-2 flex-wrap">
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'entries',
+    'eventWorkspaceIcon' => 'ti-users',
+    'eventWorkspaceSubtitle' => 'Entries by category',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Entries by category</h2><p class="text-muted mb-0">Manage players, category access and event communication.</p></div>
+    <div class="d-flex gap-2 flex-wrap">
        <button type="button"
         class="btn btn-outline-primary btn-sm email-btn"
         data-scope="event">
@@ -219,13 +224,8 @@
         <a href="{{ route('admin.events.entries.export', $event) }}" class="btn btn-outline-success btn-sm">
           <i class="ti ti-download me-1"></i>Export
         </a>
-
-        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back
-        </a>
-      </div></x-slot:actions>
-</x-backend.page-header>
-<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'entries'])</div>
+    </div>
+  </div>
 
   {{-- CATEGORY LIST --}}
   @foreach($categoryEvents as $categoryEvent)

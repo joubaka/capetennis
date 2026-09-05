@@ -55,15 +55,13 @@
 
 @section('content')
 <div class="container-xl">
-
-  {{-- HEADER --}}
-  <div class="card mb-4">
-    <div class="card-body d-flex justify-content-between align-items-center">
-      <div>
-        <h4 class="mb-1">Final Positions</h4>
-        <div class="text-muted">{{ $event->name }}</div>
-      </div>
-
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceIcon' => 'ti-trophy',
+    'eventWorkspaceSubtitle' => 'Final positions',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Final positions</h2><p class="text-muted mb-0">Confirm the finishing order used for event and ranking results.</p></div>
       <div class="d-flex align-items-center gap-2">
         <span class="badge bg-label-primary">Individual Event</span>
 
@@ -72,7 +70,6 @@
           Save All
         </button>
       </div>
-    </div>
   </div>
 
   {{-- CATEGORIES --}}

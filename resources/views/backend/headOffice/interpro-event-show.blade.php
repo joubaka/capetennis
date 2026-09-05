@@ -54,17 +54,7 @@
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'draws'])
 
 <div class="row g-3">
-  <!-- Sidebar -->
-  <div class="col-12 col-md-3">
-    <div class="card h-100">
-      <div class="card-body p-2">
-        @include('backend.adminPage.admin_show.navbar.navbar')
-      </div>
-    </div>
-  </div>
-
-  <!-- Main Content -->
-  <div class="col-12 col-md-9">
+  <div class="col-12">
     @if(session('success'))
   <div class="alert alert-success">
     {{ session('success') }}

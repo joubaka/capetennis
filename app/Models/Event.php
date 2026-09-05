@@ -246,7 +246,14 @@ class Event extends Model
 
   public function convenors()
   {
-    return $this->hasMany(EventConvenor::class, 'event_id', 'id');
+    return $this->hasMany(EventConvenor::class, 'event_id', 'id')
+      ->where('role', '!=', 'score-keeper');
+  }
+
+  public function scoringAccounts()
+  {
+    return $this->hasMany(EventConvenor::class, 'event_id', 'id')
+      ->where('role', 'score-keeper');
   }
 
   public function venueConvenors()

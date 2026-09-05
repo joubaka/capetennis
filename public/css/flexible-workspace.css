@@ -33,6 +33,8 @@
   #flexible-draw-workspace > [data-flexible-panel] { display: none !important; }
   #flexible-draw-workspace:not(.print-timetable) > [data-flexible-panel="editor"] { display: block !important; }
   #flexible-draw-workspace.print-timetable > [data-flexible-panel="schedule"] { display: block !important; }
+  #flexible-draw-workspace.print-draw-only #fm-print-content,
+  #flexible-draw-workspace.print-draw-only #fm-results { display: none !important; }
   #flexible-draw-workspace [data-flexible-panel="schedule"] a,
   #flexible-draw-workspace [data-flexible-panel="schedule"] button { display: none !important; }
   .fm-workspace-print-title { display: block; font-size: 18px; }

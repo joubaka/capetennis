@@ -13,71 +13,6 @@
     --event-canvas: #edf2f6;
     --event-line: #d7e0e8;
   }
-  .event-overview-page .ct-page-header {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    padding: 30px 32px 26px;
-    border-radius: 20px 20px 0 0;
-    color: #fff;
-    background:
-      radial-gradient(circle at 88% 18%, rgba(23, 163, 152, .25), transparent 27%),
-      linear-gradient(125deg, var(--event-navy-deep), var(--event-navy) 58%, #164866);
-    box-shadow: 0 18px 42px rgba(11, 31, 51, .16);
-  }
-  .event-overview-page .ct-page-header::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    right: -52px;
-    bottom: -92px;
-    width: 260px;
-    height: 260px;
-    border: 1px solid rgba(255, 255, 255, .11);
-    border-radius: 50%;
-    box-shadow: 0 0 0 34px rgba(255, 255, 255, .035), 0 0 0 68px rgba(255, 255, 255, .025);
-  }
-  .event-overview-page .ct-page-mark {
-    width: 64px;
-    flex-basis: 64px;
-    height: 64px;
-    border: 1px solid rgba(255, 255, 255, .22);
-    background: rgba(255, 255, 255, .1);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, .18);
-    backdrop-filter: blur(6px);
-  }
-  .event-overview-page .ct-eyebrow { color: #65d4ca; }
-  .event-overview-page .ct-page-header h1 { color: #fff; font-size: clamp(25px, 2.1vw, 34px); }
-  .event-overview-page .ct-page-meta { color: #c9d8e4; }
-  .event-overview-page .ct-page-meta > span:not(.badge) { display: inline-flex; align-items: center; }
-  .event-overview-page .ct-page-meta .badge {
-    padding: 7px 11px;
-    color: #d9fffa !important;
-    background: rgba(23, 163, 152, .22) !important;
-    border: 1px solid rgba(101, 212, 202, .35);
-  }
-  .event-overview-page .ct-context-nav {
-    gap: 5px;
-    margin: -1px 0 28px;
-    padding: 0 24px 20px;
-    border-radius: 0 0 20px 20px;
-    background: var(--event-navy);
-    box-shadow: 0 18px 42px rgba(11, 31, 51, .16);
-  }
-  .ct-backend .event-overview-page .ct-context-nav a {
-    color: #b9cad8;
-    border: 1px solid transparent;
-  }
-  .event-overview-page .ct-context-nav a:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, .08);
-  }
-  .ct-backend .event-overview-page .ct-context-nav a[aria-current="page"] {
-    color: var(--event-navy-deep);
-    background: #fff;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, .16);
-  }
-  .event-overview-page .ct-context-nav a[aria-current="page"] .ti { color: var(--event-teal); }
   .event-operations {
     overflow: hidden;
     border: 0 !important;
@@ -155,8 +90,6 @@
     .event-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (max-width: 767.98px) {
-    .event-overview-page .ct-page-header { padding: 24px 20px 22px; }
-    .event-overview-page .ct-context-nav { padding: 0 14px 16px; }
     .event-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px; }
     .event-operations__heading { padding: 19px 18px; }
     .event-warnings { padding-inline: 18px; }
@@ -165,9 +98,6 @@
     .event-warning__severity { min-width: 0; margin-right: 8px; font-size: 10px; }
   }
   @media (max-width: 399.98px) {
-    .event-overview-page .ct-page-mark { width: 48px; flex-basis: 48px; height: 48px; }
-    .event-overview-page .ct-context-nav { overflow-x: auto; flex-wrap: nowrap; }
-    .ct-backend .event-overview-page .ct-context-nav a { flex: 0 0 auto; }
     .event-kpi-grid { gap: 9px; }
     .event-kpi { padding: 14px 12px; }
     .event-kpi__value { font-size: 25px; }
@@ -175,12 +105,12 @@
   @media print {
     .no-print, .btn, .modal, .card-header .btn { display: none !important; }
     .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
-    .event-overview-page .ct-page-header,
-    .event-overview-page .ct-context-nav,
+    .event-workspace-chrome .ct-page-header,
+    .event-workspace-chrome .ct-context-nav,
     .event-operations__heading { color: #172e45 !important; background: #fff !important; box-shadow: none !important; }
-    .event-overview-page .ct-page-header h1,
+    .event-workspace-chrome .ct-page-header h1,
     .event-operations__heading h2 { color: #172e45 !important; }
-    .event-overview-page .ct-page-meta,
+    .event-workspace-chrome .ct-page-meta,
     .event-operations__heading p { color: #66788a !important; }
     body { font-size: 12px; }
   }

@@ -71,14 +71,7 @@
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'draws'])
 
 <div class="row">
-
-  {{-- LEFT NAV --}}
-  <div class="col-12 col-sm-3">
-    @include('backend.adminPage.admin_show.navbar.navbar')
-  </div>
-
-  {{-- RIGHT CONTENT --}}
-  <div class="col-12 col-sm-9">
+  <div class="col-12">
 
     <ul class="nav nav-pills mb-2">
       <li class="nav-item me-2">

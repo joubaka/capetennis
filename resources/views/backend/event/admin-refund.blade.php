@@ -4,15 +4,11 @@
 
 @section('content')
 <div class="container-xl">
-
-  {{-- BREADCRUMB --}}
-  <div class="d-flex align-items-center gap-2 mb-3 text-muted" style="font-size:.85rem;">
-    <a href="{{ route('admin.events.entries.new', $event) }}" class="text-decoration-none">
-      {{ $event->name }}
-    </a>
-    <span>›</span>
-    <span>Admin Refund</span>
-  </div>
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'entries',
+    'eventWorkspaceIcon' => 'ti-cash-banknote',
+    'eventWorkspaceSubtitle' => 'Issue an administrative refund',
+  ])
 
   <div class="card" style="max-width:600px;">
     <div class="card-header bg-warning text-dark d-flex align-items-center gap-2">

@@ -30,23 +30,18 @@
 
 @section('content')
 <div class="container-xl">
-
-  {{-- HEADER --}}
-  <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h4 class="mb-0">Manage Categories</h4>
-
-      <div class="d-flex gap-2">
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceIcon' => 'ti-list-details',
+    'eventWorkspaceSubtitle' => 'Category setup',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Manage categories</h2><p class="text-muted mb-0">Attach categories, set event fees and remove unused setup.</p></div>
+    <div class="d-flex gap-2">
         <button class="btn btn-outline-danger btn-sm" id="cleanupCategoriesBtn"
                 data-url="{{ route('admin.categories.cleanup', $event) }}">
           <i class="ti ti-trash me-1"></i>Remove Empty Categories
         </button>
-
-        <a href="{{ route('admin.events.overview', $event) }}"
-           class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back to Event
-        </a>
-      </div>
     </div>
   </div>
 

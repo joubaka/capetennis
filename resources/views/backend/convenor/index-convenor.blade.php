@@ -54,15 +54,14 @@ $configData = Helper::appClasses();
 
 @section('content')
 @isset($event)
-  @include('backend.event.partials.header', ['eventWorkspaceActive' => 'directors'])
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'directors',
+    'eventWorkspaceIcon' => 'ti-users',
+    'eventWorkspaceSubtitle' => 'Event directors and operational access',
+  ])
 @endisset
 <div class="row">
-
-    <div class="col-12 col-sm-3 col-md-3">
-        @include('backend.adminPage.admin_show.navbar.navbar')
-    </div>
-
-    <div class="col-12 col-sm-9 col-md-9">
+    <div class="col-12">
         <x-backend.panel title="Event directors">
             @forelse($convenors as $convenor)
                 <p>{{ $convenor->user?->name ?? 'User unavailable' }}</p>

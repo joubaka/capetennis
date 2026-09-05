@@ -46,6 +46,9 @@ class VenueScoringWorkspaceTest extends TestCase
         $response->assertOk()
             ->assertSee('Venue scoring')
             ->assertSee('Main Venue')
+            ->assertSee('aria-label="Filter match queue"', false)
+            ->assertSee('aria-pressed="true"', false)
+            ->assertSee('score-filter-empty', false)
             ->assertSee('Match '.$fixture->match_nr)
             ->assertDontSee('Match '.$otherFixture->match_nr);
         $this->assertNotSame($venue->id, $otherVenue->id);

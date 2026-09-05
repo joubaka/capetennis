@@ -84,13 +84,19 @@
   workspace.querySelectorAll('[data-flexible-tab]').forEach(button => button.addEventListener('click', () => { location.hash = button.dataset.flexibleTab; }));
   window.addEventListener('hashchange', open);
   document.getElementById('fm-workspace-print').addEventListener('click', () => {
+    workspace.classList.remove('print-draw-only', 'print-timetable');
+    window.print();
+  });
+  document.getElementById('fm-draw-only-print').addEventListener('click', () => {
     workspace.classList.remove('print-timetable');
+    workspace.classList.add('print-draw-only');
     window.print();
   });
   document.getElementById('fm-timetable-print').addEventListener('click', () => {
+    workspace.classList.remove('print-draw-only');
     workspace.classList.add('print-timetable');
     window.print();
   });
-  window.addEventListener('afterprint', () => workspace.classList.remove('print-timetable'));
+  window.addEventListener('afterprint', () => workspace.classList.remove('print-draw-only', 'print-timetable'));
   open();
 })();

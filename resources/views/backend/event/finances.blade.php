@@ -56,11 +56,16 @@
     </div>
   </div>
 
-  {{-- ── PAGE HEADER ──────────────────────────────────────────────────── --}}
-  <x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Event finances" icon="ti-report-money" class="no-print">
-  <x-slot:actions><div class="d-flex gap-2 flex-wrap">
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'finances',
+    'eventWorkspaceIcon' => 'ti-report-money',
+    'eventWorkspaceSubtitle' => 'Event finances',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Budget and expenses</h2><p class="text-muted mb-0">Income, costs, reimbursements and event payees.</p></div>
+    <div class="d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
-          <i class="ti ti-users me-1"></i>Event Directors
+          <i class="ti ti-users me-1"></i>Finance Payees
         </button>
         <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#manageVenueConvenorsModal">
           <i class="ti ti-map-pin me-1"></i>Venue Convenors
@@ -71,15 +76,8 @@
         <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-printer me-1"></i>Print / PDF
         </button>
-        <a href="{{ route('admin.events.transactions', $event) }}" class="btn btn-outline-primary btn-sm">
-          <i class="ti ti-credit-card me-1"></i>Transactions
-        </a>
-        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back
-        </a>
-      </div></x-slot:actions>
-</x-backend.page-header>
-<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'finances'])</div>
+    </div>
+  </div>
 
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))

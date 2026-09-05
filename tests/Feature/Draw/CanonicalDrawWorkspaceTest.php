@@ -47,7 +47,8 @@ class CanonicalDrawWorkspaceTest extends TestCase
         }
         $this->get($url)->assertOk()->assertSee('Players &amp; Positions', false)
             ->assertSee('Draw &amp; Results', false)->assertSee('Setup &amp; Rules', false)
-            ->assertSee('Print draw &amp; results', false)->assertSee('data-share-draw', false)
+            ->assertSee('Print draw &amp; results', false)->assertSee('Print draw only')
+            ->assertSee('id="fm-draw-only-print"', false)->assertSee('data-share-draw', false)
             ->assertSee('Back to Event')->assertSee('name="name"', false)
             ->assertSee('Manage full schedule')
             ->assertSee('Schedule only this draw')

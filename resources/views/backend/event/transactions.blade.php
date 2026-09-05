@@ -68,19 +68,17 @@
 
 @section('content')
 <div class="container-xl">
-
-  {{-- HEADER --}}
-  <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h4 class="mb-0">Tournament Transactions</h4>
-      <div class="d-flex gap-2">
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceIcon' => 'ti-credit-card',
+    'eventWorkspaceSubtitle' => 'Tournament transactions',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Tournament transactions</h2><p class="text-muted mb-0">Registration payments, withdrawals, fees and payouts.</p></div>
+    <div class="d-flex gap-2">
         <a href="{{ route('transactions.pdf', $event) }}" class="btn btn-outline-primary btn-sm">
           Export Transactions
         </a>
-        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary btn-sm">
-          <i class="ti ti-arrow-left me-1"></i>Back to Event
-        </a>
-      </div>
     </div>
   </div>
 

@@ -1,12 +1,11 @@
 <div class="draws-workspace">
-  <header class="draws-event-header">
-    <div class="draws-event-identity">
-      <span class="draws-event-mark">@include('backend.headOffice.partials.draw-icon', ['icon' => 'bracket'])</span>
-      <div>
-        <p class="draws-eyebrow">Tournament workspace <span>Individual event</span></p>
-        <h1>{{ $event->name }}</h1>
-      </div>
-    </div>
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'draws',
+    'eventWorkspaceIcon' => 'ti-tournament',
+    'eventWorkspaceSubtitle' => 'Individual draws, schedules and publication',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Player draws, match schedules and publication in one place.</p></div>
     <div class="draws-event-actions">
       @if($event->draws->isNotEmpty())
         <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#scheduleVisibilityModal">
@@ -17,9 +16,7 @@
       @endif
       <button type="button" class="btn draws-button draws-button-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'plus']) New draw</button>
     </div>
-  </header>
-
-  @include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'draws'])
+  </div>
 
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">

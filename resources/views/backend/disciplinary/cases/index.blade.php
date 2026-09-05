@@ -2,6 +2,13 @@
 @section('title', 'Disciplinary Cases')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
+  @if(isset($event))
+    @include('backend.event.partials.header', [
+      'eventWorkspaceActive' => 'more',
+      'eventWorkspaceIcon' => 'ti-scale',
+      'eventWorkspaceSubtitle' => 'Discipline and incidents',
+    ])
+  @endif
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
     <div>
       <h4 class="mb-1"><i class="ti ti-scale me-2"></i>{{ isset($event) ? $event->name.' Discipline' : 'Disciplinary Cases' }}</h4>

@@ -1,11 +1,6 @@
 
 <div class="row">
-
-    <div class="col-12 col-md-3">
-        @include('backend.adminPage.admin_show.navbar.navbar')
-       
-    </div>
-    <div class="col-12 col-md-9">
+    <div class="col-12">
      
         <div class="card">
             <div class="row">

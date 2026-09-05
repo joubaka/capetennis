@@ -6,26 +6,68 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 <style>
-  .scoring-shell { max-width: 980px; margin-inline: auto; }
+  .scoring-shell { max-width: 1100px; margin-inline: auto; }
   .scoring-hero { background: linear-gradient(135deg, #004177, #087ea4); color: #fff; border: 0; }
   .scoring-progress { height: .65rem; background: rgba(255,255,255,.25); }
   .scoring-progress .progress-bar { background: #7ee2a8; }
-  .scoring-filter { min-height: 42px; }
+  .scoring-filter { min-height: 44px; flex: 0 0 auto; white-space: nowrap; }
+  .scoring-filter-card .card-body { display: grid; gap: 1rem; min-width: 0; }
+  .scoring-filter-card .card-body > div { min-width: 0; }
+  .scoring-filter-label { color: #53657a; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .scoring-option-strip, .scoring-status-strip { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+  .scoring-option-strip > * { flex: 0 0 auto; white-space: nowrap; }
+  .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; }
+  .scoring-queue-summary { margin-left: auto; color: #6c7a8c; font-size: .875rem; white-space: nowrap; }
   .match-card { border-left: 5px solid #f0ad4e; }
   .match-card.is-completed { border-left-color: #28a745; }
   .match-card.is-waiting { border-left-color: #adb5bd; }
-  .match-meta { display: flex; flex-wrap: wrap; gap: .4rem .8rem; color: #6c757d; font-size: .86rem; }
-  .match-player { font-size: 1rem; font-weight: 650; min-width: 0; }
+  .match-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+  .match-meta { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: #6c757d; font-size: .86rem; }
+  .match-status { flex: 0 0 auto; }
+  .match-players { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .75rem; }
+  .match-player { font-size: 1rem; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
+  .match-player:last-child { text-align: right; }
+  .match-versus { color: #7c8998; font-size: .8rem; font-weight: 700; text-transform: uppercase; }
   .match-score { font-size: 1.08rem; font-weight: 750; color: #004177; }
   .score-action { min-height: 46px; }
   .score-input { min-height: 48px; font-size: 1.05rem; text-align: center; }
-  .venue-pill, .draw-pill { min-height: 42px; display: inline-flex; align-items: center; }
+  .venue-pill, .draw-pill { min-height: 44px; display: inline-flex; align-items: center; }
+  .operator-summary { cursor: pointer; list-style: none; }
+  .operator-summary::-webkit-details-marker { display: none; }
+  .operator-summary::after { content: 'Change'; margin-left: auto; color: var(--bs-primary); font-size: .82rem; font-weight: 700; }
+  #score-filter-empty { border: 1px dashed #c9d4df; background: #fff; }
   @media (max-width: 575.98px) {
-    .scoring-shell { margin-inline: -.25rem; }
-    .scoring-title { font-size: 1.35rem; }
+    .container-xxl { padding-inline: .75rem; }
+    .scoring-shell { margin-inline: 0; }
+    .scoring-title { font-size: 1.3rem; }
+    .scoring-hero .card-body { padding: 1rem !important; }
+    .scoring-hero .btn { min-height: 40px; }
+    .scoring-filter-card { margin-inline: -.75rem; border-radius: 0; border-inline: 0; }
+    .scoring-filter-card .card-body { padding-inline: .75rem !important; }
+    .scoring-option-strip, .scoring-status-strip {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      max-width: calc(100% + 1.5rem);
+      margin-inline: -.75rem;
+      padding: .125rem .75rem .5rem;
+      scroll-padding-inline: .75rem;
+      scrollbar-width: thin;
+      -webkit-overflow-scrolling: touch;
+    }
+    .scoring-queue-toolbar { display: block; margin-inline: -.75rem; }
+    .scoring-queue-summary { display: block; margin: .25rem .75rem 0; white-space: normal; }
     .match-card .card-body { padding: .9rem; }
-    .modal-dialog { margin: 0; min-height: 100%; }
-    .modal-content { min-height: 100vh; border: 0; border-radius: 0; }
+    .match-card-header { display: block; }
+    .match-status { display: inline-flex; margin-top: .65rem; }
+    .match-players { grid-template-columns: minmax(0, 1fr); gap: .45rem; text-align: left; }
+    .match-player:last-child { text-align: left; }
+    .match-versus { display: flex; align-items: center; gap: .5rem; }
+    .match-versus::before, .match-versus::after { content: ''; height: 1px; background: #dde3ea; flex: 1; }
+    .match-score { text-align: left !important; }
+    #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; min-height: 100%; }
+    #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
+    #score-entry-modal .modal-body { overflow-y: auto; }
+    .modal-footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
   }
 </style>
 
@@ -63,57 +105,85 @@
     @endif
 
     <div class="card mb-3">
-      <div class="card-body p-3">
+      @if($operatorName)
+        <details>
+          <summary class="operator-summary card-body p-3 d-flex align-items-center gap-2">
+            <i class="ti ti-device-mobile text-primary" aria-hidden="true"></i>
+            <span><span class="text-muted">Scoring as</span> <strong>{{ $operatorName }}</strong></span>
+          </summary>
+          <div class="card-body border-top p-3">
+      @else
+          <div class="card-body p-3">
+      @endif
         <form method="POST" action="{{ route('frontend.scoring.operator', $event) }}" class="row g-2 align-items-end">
           @csrf
           <div class="col-12 col-sm">
-            <label for="scoring-operator" class="form-label fw-semibold mb-1">Who is using this telephone?</label>
+            <label for="scoring-operator" class="form-label fw-semibold mb-1">Who is using this device?</label>
             <input id="scoring-operator" name="operator" class="form-control" maxlength="80" required
                    value="{{ old('operator', $operatorName) }}" placeholder="Name or initials">
             @error('operator')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
           </div>
           <div class="col-12 col-sm-auto">
-            <button class="btn btn-outline-primary w-100" type="submit">Remember on this telephone</button>
+            <button class="btn btn-outline-primary w-100" type="submit">Remember on this device</button>
           </div>
         </form>
-      </div>
+      @if($operatorName)
+          </div>
+        </details>
+      @else
+        </div>
+      @endif
     </div>
 
-    <div class="card mb-3">
+    <div class="card scoring-filter-card mb-3">
       <div class="card-body p-3">
-        <div class="fw-semibold mb-2">Choose venue</div>
-        <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-sm venue-pill {{ !$selectedVenue ? 'btn-primary' : 'btn-outline-primary' }}"
-             href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}">All venues</a>
-          @foreach($venues as $venue)
-            <a class="btn btn-sm venue-pill {{ $selectedVenue?->id === $venue->id ? 'btn-primary' : 'btn-outline-primary' }}"
-               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}">
-              {{ $venue->name }}
-            </a>
-          @endforeach
+        <div>
+          <div class="scoring-filter-label mb-2" id="venue-filter-label">Venue</div>
+          <nav class="scoring-option-strip" aria-labelledby="venue-filter-label">
+            <a class="btn btn-sm venue-pill {{ !$selectedVenue ? 'btn-primary' : 'btn-outline-primary' }}"
+               @if(!$selectedVenue) aria-current="true" @endif
+               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}">All venues</a>
+            @foreach($venues as $venue)
+              <a class="btn btn-sm venue-pill {{ $selectedVenue?->id === $venue->id ? 'btn-primary' : 'btn-outline-primary' }}"
+                 @if($selectedVenue?->id === $venue->id) aria-current="true" @endif
+                 href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}">
+                {{ $venue->name }}
+              </a>
+            @endforeach
+          </nav>
         </div>
 
-        <div class="fw-semibold mt-3 mb-2">Limit to draw</div>
-        <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-sm draw-pill {{ !$selectedDraw ? 'btn-dark' : 'btn-outline-dark' }}"
-             href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id]) }}">All draws</a>
-          @foreach($draws as $draw)
-            <a class="btn btn-sm draw-pill {{ $selectedDraw?->id === $draw->id ? 'btn-dark' : 'btn-outline-dark' }}"
-               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}">
-              {{ $draw->drawName }}
-            </a>
-          @endforeach
+        <div>
+          <div class="scoring-filter-label mb-2" id="draw-filter-label">Draw</div>
+          <nav class="scoring-option-strip" aria-labelledby="draw-filter-label">
+            <a class="btn btn-sm draw-pill {{ !$selectedDraw ? 'btn-dark' : 'btn-outline-dark' }}"
+               @if(!$selectedDraw) aria-current="true" @endif
+               href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id]) }}">All draws</a>
+            @foreach($draws as $draw)
+              <a class="btn btn-sm draw-pill {{ $selectedDraw?->id === $draw->id ? 'btn-dark' : 'btn-outline-dark' }}"
+                 @if($selectedDraw?->id === $draw->id) aria-current="true" @endif
+                 href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}">
+                {{ $draw->drawName }}
+              </a>
+            @endforeach
+          </nav>
         </div>
       </div>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter matches">
-      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="now">Playing now</button>
-      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="upcoming">Upcoming</button>
-      <button type="button" class="btn btn-primary scoring-filter" data-score-filter="outstanding">Outstanding</button>
-      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="completed">Completed</button>
-      <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="all">All</button>
-      <span class="ms-auto align-self-center small text-muted">{{ $ready }} matches have both players</span>
+    <div class="scoring-queue-toolbar mb-3">
+      <div class="scoring-status-strip" role="group" aria-label="Filter match queue">
+        <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="now" aria-pressed="false">Playing now</button>
+        <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="upcoming" aria-pressed="false">Upcoming</button>
+        <button type="button" class="btn btn-primary scoring-filter" data-score-filter="outstanding" aria-pressed="true">Outstanding</button>
+        <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="completed" aria-pressed="false">Completed</button>
+        <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="all" aria-pressed="false">All</button>
+      </div>
+      <div class="scoring-queue-summary" aria-live="polite">
+        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty())->count() }}</strong>
+        <span id="score-visible-label">outstanding</span>
+        <span class="d-none d-md-inline"> · {{ $ready }} ready to score</span>
+      </div>
     </div>
 
     <div id="score-match-list" class="d-grid gap-3">
@@ -166,21 +236,21 @@
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($hasPlayers ? '' : 'is-waiting') }}"
                  data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}" data-score-timing="{{ $timing }}">
           <div class="card-body">
-            <div class="d-flex justify-content-between gap-2 align-items-start mb-2">
+            <div class="match-card-header mb-2">
               <div class="match-meta">
                 @if($scheduleTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($scheduleTime)->format('D H:i') }}</span>@endif
                 @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
                 @if($court)<span>Court {{ $court }}</span>@endif
               </div>
-              <span class="badge {{ $hasScore ? 'bg-label-success' : ($hasPlayers ? 'bg-label-warning' : 'bg-label-secondary') }}">
+              <span class="badge match-status {{ $hasScore ? 'bg-label-success' : ($hasPlayers ? 'bg-label-warning' : 'bg-label-secondary') }}">
                 {{ $hasScore ? 'Completed' : ($hasPlayers ? 'Awaiting score' : 'Waiting for players') }}
               </span>
             </div>
             <div class="small text-muted mb-2">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
-            <div class="row g-2 align-items-center">
-              <div class="col match-player">{{ $home }}</div>
-              <div class="col-auto text-muted">vs</div>
-              <div class="col match-player text-end">{{ $away }}</div>
+            <div class="match-players">
+              <div class="match-player">{{ $home }}</div>
+              <div class="match-versus">vs</div>
+              <div class="match-player">{{ $away }}</div>
             </div>
             <div class="match-score text-center mt-2">
               {{ $hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'No score entered' }}
@@ -207,6 +277,11 @@
           <p class="text-muted mb-0">Choose another venue or draw, or publish and apply the order of play first.</p>
         </div></div>
       @endforelse
+    </div>
+    <div id="score-filter-empty" class="rounded text-center px-3 py-5 d-none" role="status">
+      <i class="ti ti-filter-off fs-2 text-muted" aria-hidden="true"></i>
+      <h2 class="h6 mt-2 mb-1">No matches in this view</h2>
+      <p class="small text-muted mb-0">Try another queue filter, venue, or draw.</p>
     </div>
 
     @if($recentActivity->isNotEmpty())
@@ -288,14 +363,24 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-score-filter]').forEach(function (button) {
     button.addEventListener('click', function () {
       const filter = button.dataset.scoreFilter;
-      document.querySelectorAll('[data-score-filter]').forEach(item => item.className = 'btn btn-outline-primary scoring-filter');
-      button.className = 'btn btn-primary scoring-filter';
+      document.querySelectorAll('[data-score-filter]').forEach(function (item) {
+        const active = item === button;
+        item.classList.toggle('btn-primary', active);
+        item.classList.toggle('btn-outline-primary', !active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+      let visible = 0;
       document.querySelectorAll('[data-score-state]').forEach(function (card) {
         const matches = filter === 'all'
           || card.dataset.scoreState === filter
           || card.dataset.scoreTiming === filter;
         card.classList.toggle('d-none', !matches);
+        if (matches) visible++;
       });
+      document.getElementById('score-visible-count').textContent = visible;
+      document.getElementById('score-visible-label').textContent = filter === 'all' ? 'matches' : filter.replace('now', 'playing now');
+      document.getElementById('score-filter-empty').classList.toggle('d-none', visible !== 0);
+      button.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
     });
   });
 

@@ -7,19 +7,16 @@
 <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 
 <div class="container-xl">
-
-  {{-- HEADER --}}
-  <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <div>
-        <h4 class="mb-1">Event Announcements</h4>
-        <p class="text-muted mb-0 small">Publish updates on {{ $event->name }} and optionally email current participants.</p>
-      </div>
-
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceIcon' => 'ti-megaphone',
+    'eventWorkspaceSubtitle' => 'Event announcements',
+  ])
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Event announcements</h2><p class="text-muted mb-0">Publish updates and optionally email current participants.</p></div>
       <button type="button" class="btn btn-primary btn-sm" id="newAnnouncementBtn">
         <i class="ti ti-plus me-1"></i>New Announcement
       </button>
-    </div>
   </div>
 
   {{-- LIST --}}

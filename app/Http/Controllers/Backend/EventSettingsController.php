@@ -5,9 +5,15 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\CategoryEvent;
+use App\Models\EventConvenor;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 class EventSettingsController extends Controller
 {
@@ -16,8 +22,31 @@ class EventSettingsController extends Controller
    */
   public function index(Event $event)
   {
+    Gate::authorize('event.manage', $event);
+
+    $users = User::with('roles')->orderBy('name')->get();
+    $assignments = EventConvenor::where('event_id', $event->id)
+      ->with('user.roles')
+      ->get();
+    $scoringAccounts = $assignments->filter(
+      fn (EventConvenor $assignment) => $assignment->role === 'score-keeper'
+        || $assignment->user?->hasRole('score-keeper')
+    );
+    $convenors = $assignments->reject(
+      fn (EventConvenor $assignment) => $scoringAccounts->contains('id', $assignment->id)
+    );
+    $scoringAccountIds = $scoringAccounts->pluck('user_id');
+    $scoringUsers = $users->filter(
+      fn (User $user) => $scoringAccountIds->contains($user->id)
+        || ! $user->hasAnyRole(['super-user', 'admin', 'convenor'])
+    );
+
     return view('backend.event.settings', [
       'event' => $event,
+      'users' => $users,
+      'convenors' => $convenors,
+      'scoringAccounts' => $scoringAccounts,
+      'scoringUsers' => $scoringUsers,
     ]);
   }
 
@@ -26,6 +55,8 @@ class EventSettingsController extends Controller
    */
   public function update(Request $request, Event $event)
   {
+    Gate::authorize('event.manage', $event);
+
     Log::info('🛠 Event settings update START', [
       'event_id' => $event->id,
       'payload' => $request->all(),
@@ -58,7 +89,31 @@ class EventSettingsController extends Controller
       'convenors.*' => 'integer|exists:users,id',
       'convenor_starts_at' => 'sometimes|nullable|date',
       'convenor_expires_at' => 'sometimes|nullable|date|after_or_equal:convenor_starts_at',
+      'scoring_accounts' => 'sometimes|array',
+      'scoring_accounts.*' => [
+        'integer',
+        'distinct',
+        'exists:users,id',
+        function (string $attribute, mixed $value, \Closure $fail): void {
+          $account = User::with('roles')->find($value);
+          if ($account?->hasAnyRole(['super-user', 'admin', 'convenor'])) {
+            $fail('Scoring access must be assigned to a dedicated non-administrator account.');
+          }
+        },
+      ],
+      'scoring_starts_at' => 'sometimes|nullable|date',
+      'scoring_expires_at' => 'sometimes|nullable|date|after_or_equal:scoring_starts_at',
     ]);
+
+    $scoringIds = collect($data['scoring_accounts'] ?? [])->map(fn ($id) => (int) $id);
+    $managementIds = collect($data['admins'] ?? [])
+      ->merge($data['convenors'] ?? [])
+      ->map(fn ($id) => (int) $id);
+    if ($scoringIds->intersect($managementIds)->isNotEmpty()) {
+      throw ValidationException::withMessages([
+        'scoring_accounts' => 'Use separate accounts for scoring and event management.',
+      ]);
+    }
 
     Log::debug('📥 Validated data', $data);
 
@@ -80,49 +135,104 @@ class EventSettingsController extends Controller
       $event->logo = basename($data['logo_existing']);
     }
 
-    // Convenors (pivot table: event_convenors)
-    if ($request->has('convenors') || $request->has('convenor_starts_at') || $request->has('convenor_expires_at')) {
+    // Event directors and scoring accounts share the existing event-scoped
+    // assignment table. The row role keeps dedicated scorers out of the
+    // operational/finance director list while the global role admits them to
+    // the scorer routes.
+    if ($request->hasAny([
+      'convenors', 'convenor_starts_at', 'convenor_expires_at',
+      'scoring_accounts', 'scoring_starts_at', 'scoring_expires_at',
+    ])) {
       Log::info('👥 Syncing convenors', [
         'event_id' => $event->id,
         'convenors' => $request->input('convenors'),
+        'scoring_accounts' => $request->input('scoring_accounts'),
       ]);
 
-      // Default dates to event start/end if not provided
-      $startsAt  = $request->input('convenor_starts_at') ?: ($event->start_date ? $event->start_date->format('Y-m-d H:i:s') : null);
-      $expiresAt = $request->input('convenor_expires_at') ?: ($event->end_date ? $event->end_date->format('Y-m-d H:i:s') : null);
+      $directorStartsAt = $request->input('convenor_starts_at') ?: $event->start_date?->format('Y-m-d H:i:s');
+      $directorExpiresAt = $request->input('convenor_expires_at') ?: $event->end_date?->format('Y-m-d H:i:s');
+      $scoringStartsAt = $request->input('scoring_starts_at') ?: $event->start_date?->format('Y-m-d H:i:s');
+      $scoringExpiresAt = $request->input('scoring_expires_at') ?: $event->end_date?->format('Y-m-d H:i:s');
 
-      // If only dates changed (no convenors array sent), update existing rows
-      if (!$request->has('convenors')) {
-        \App\Models\EventConvenor::where('event_id', $event->id)->update([
-          'starts_at'  => $startsAt,
-          'expires_at' => $expiresAt,
-          'updated_at' => now(),
-        ]);
-      } else {
-        // Full resync: remove and re-insert
-        \App\Models\EventConvenor::where('event_id', $event->id)->delete();
-        $rows = collect($request->input('convenors', []))->map(function ($uid) use ($event, $startsAt, $expiresAt) {
-          return [
-            'event_id'   => $event->id,
-            'user_id'    => $uid,
-            'starts_at'  => $startsAt,
-            'expires_at' => $expiresAt,
-            'created_at' => now(),
-            'updated_at' => now(),
-          ];
-        })->toArray();
+      DB::transaction(function () use (
+        $request, $event, $directorStartsAt, $directorExpiresAt,
+        $scoringStartsAt, $scoringExpiresAt
+      ): void {
+        $removedScoringIds = collect();
 
-        if (!empty($rows)) {
-          \DB::table('event_convenors')->insert($rows);
+        if ($request->has('scoring_accounts')) {
+          Role::firstOrCreate(['name' => 'score-keeper', 'guard_name' => 'web']);
+          $scoringIds = collect($request->input('scoring_accounts', []))->map(fn ($id) => (int) $id)->unique();
+          $previousScoringIds = EventConvenor::where('event_id', $event->id)
+            ->where(function ($query): void {
+              $query->where('role', 'score-keeper')
+                ->orWhereHas('user.roles', fn ($roles) => $roles->where('name', 'score-keeper'));
+            })
+            ->pluck('user_id');
+          $removedScoringIds = $previousScoringIds->diff($scoringIds);
+
+          // Remove old scoring assignments first. If an account is being moved
+          // to Event directors, the director sync below recreates it safely.
+          EventConvenor::where('event_id', $event->id)
+            ->whereIn('user_id', $removedScoringIds)
+            ->delete();
         }
-      }
+
+        if ($request->has('convenors')) {
+          $directorIds = collect($request->input('convenors', []))->map(fn ($id) => (int) $id)->unique();
+          EventConvenor::where('event_id', $event->id)
+            ->where('role', '!=', 'score-keeper')
+            ->whereNotIn('user_id', $directorIds)
+            ->delete();
+
+          foreach ($directorIds as $userId) {
+            EventConvenor::updateOrCreate(
+              ['event_id' => $event->id, 'user_id' => $userId],
+              ['role' => 'hoof', 'starts_at' => $directorStartsAt, 'expires_at' => $directorExpiresAt]
+            );
+          }
+        } elseif ($request->has('convenor_starts_at') || $request->has('convenor_expires_at')) {
+          EventConvenor::where('event_id', $event->id)
+            ->where('role', '!=', 'score-keeper')
+            ->update(['starts_at' => $directorStartsAt, 'expires_at' => $directorExpiresAt]);
+        }
+
+        if ($request->has('scoring_accounts')) {
+          EventConvenor::where('event_id', $event->id)
+            ->where('role', 'score-keeper')
+            ->whereNotIn('user_id', $scoringIds)
+            ->delete();
+
+          foreach (User::whereIn('id', $scoringIds)->get() as $account) {
+            $account->assignRole('score-keeper');
+            EventConvenor::updateOrCreate(
+              ['event_id' => $event->id, 'user_id' => $account->id],
+              ['role' => 'score-keeper', 'starts_at' => $scoringStartsAt, 'expires_at' => $scoringExpiresAt]
+            );
+          }
+
+          foreach (User::whereIn('id', $removedScoringIds)->get() as $account) {
+            if (! EventConvenor::where('user_id', $account->id)->where('role', 'score-keeper')->exists()) {
+              $account->removeRole('score-keeper');
+            }
+          }
+        } elseif ($request->has('scoring_starts_at') || $request->has('scoring_expires_at')) {
+          EventConvenor::where('event_id', $event->id)
+            ->where('role', 'score-keeper')
+            ->update(['starts_at' => $scoringStartsAt, 'expires_at' => $scoringExpiresAt]);
+        }
+      });
     }
 
     /**
      * UPDATE EVENT FIELDS
      */
     $updateData = collect($data)
-      ->except(['admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at', 'logo_upload', 'logo_existing'])
+      ->except([
+        'admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at',
+        'scoring_accounts', 'scoring_starts_at', 'scoring_expires_at',
+        'logo_upload', 'logo_existing',
+      ])
       ->toArray();
 
     // Boolean safety

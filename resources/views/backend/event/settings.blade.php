@@ -27,7 +27,8 @@
   .save-status { min-width: 118px; }
   .form-label { font-weight: 500; }
   .field-help { margin-top: .35rem; font-size: .8125rem; color: var(--bs-secondary-color); }
-  .select2-admins + .select2-container .select2-selection__choice { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .select2-admins + .select2-container .select2-selection__choice,
+  .select2-scoring-accounts + .select2-container .select2-selection__choice { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   @media (max-width: 767.98px) {
     .settings-hero .card-body { padding: 1.25rem; }
     .settings-card .card-body { padding: 1.25rem; }
@@ -45,13 +46,17 @@
 @csrf
 @method('PATCH')
 
-<x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Event settings" icon="ti-settings" class="no-print">
-  <x-slot:actions><div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
+@include('backend.event.partials.header', [
+  'eventWorkspaceActive' => 'settings',
+  'eventWorkspaceIcon' => 'ti-settings',
+  'eventWorkspaceSubtitle' => 'Event settings',
+])
+<div class="d-flex justify-content-end mb-3 no-print">
+  <div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
       <i class="ti ti-circle-check"></i>
       <span>All changes saved</span>
-    </div></x-slot:actions>
-</x-backend.page-header>
-<div class="no-print">@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'settings'])</div>
+  </div>
+</div>
 
 <div class="row g-4">
 
@@ -231,7 +236,7 @@
       <select class="form-select select2-admins"
               name="admins" multiple
               data-placeholder="Select event admins">
-        @foreach(\App\Models\User::orderBy('name')->get() as $user)
+        @foreach($users as $user)
           <option value="{{ $user->id }}"
             @selected($event->admins->contains($user->id))>
             {{ $user->name }} ({{ $user->email }})
@@ -243,10 +248,7 @@
 </div>
 
 {{-- CONVENORS --}}
-@php
-  $convenors = \App\Models\EventConvenor::where('event_id', $event->id)->with('user')->get();
-  $convenorIds = $convenors->pluck('user_id')->toArray();
-@endphp
+@php $convenorIds = $convenors->pluck('user_id')->toArray(); @endphp
 <div class="col-lg-7">
   <div class="card settings-card h-100">
     <div class="card-header d-flex align-items-start gap-3">
@@ -257,10 +259,10 @@
       <select class="form-select select2-convenors"
               name="convenors" multiple
               data-placeholder="Select event directors">
-        @foreach(\App\Models\User::orderBy('name')->get() as $user)
+        @foreach($users as $user)
           <option value="{{ $user->id }}"
             @selected(in_array($user->id, $convenorIds))>
-            {{ $user->name }}
+            {{ $user->name }} ({{ $user->email }})
           </option>
         @endforeach
       </select>
@@ -304,6 +306,68 @@
         </div>
       @endif
 
+    </div>
+  </div>
+</div>
+
+{{-- SCORING ACCOUNTS --}}
+@php
+  $scoringAccountIds = $scoringAccounts->pluck('user_id')->toArray();
+  $firstScoringAccount = $scoringAccounts->first();
+@endphp
+<div class="col-12">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-scoreboard"></i></span>
+      <div>
+        <h5 class="mb-1">Scoring accounts</h5>
+        <p class="text-muted small mb-0">Give dedicated user accounts score-entry access for this event only.</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <label class="form-label" for="scoring-accounts">Accounts allowed to score</label>
+      <select id="scoring-accounts"
+              class="form-select select2-scoring-accounts"
+              name="scoring_accounts" multiple
+              data-placeholder="Select scoring accounts">
+        @foreach($scoringUsers as $user)
+          <option value="{{ $user->id }}" @selected(in_array($user->id, $scoringAccountIds))>
+            {{ $user->name }} ({{ $user->email }})
+          </option>
+        @endforeach
+      </select>
+      <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Each person must already have a user account.</div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label" for="scoring-starts-at">Scoring access starts</label>
+          <input id="scoring-starts-at" type="datetime-local" class="form-control autosave"
+                 name="scoring_starts_at"
+                 value="{{ $firstScoringAccount?->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="scoring-expires-at">Scoring access expires</label>
+          <input id="scoring-expires-at" type="datetime-local" class="form-control autosave"
+                 name="scoring_expires_at"
+                 value="{{ $firstScoringAccount?->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
+        </div>
+      </div>
+
+      @if($scoringAccounts->isNotEmpty())
+        <div class="mt-3">
+          <small class="text-muted fw-semibold">Assigned scoring accounts</small>
+          <ul class="list-unstyled mb-0 mt-1">
+            @foreach($scoringAccounts as $account)
+              <li class="d-flex flex-column flex-sm-row justify-content-between gap-1 py-2 border-bottom">
+                <span>{{ $account->user->name ?? 'Unknown' }} <span class="text-muted">{{ $account->user->email ?? '' }}</span></span>
+                <span class="badge {{ $account->isActive() ? 'bg-success' : 'bg-secondary' }} align-self-start">
+                  {{ $account->isActive() ? 'Scoring access active' : 'Outside access window' }}
+                </span>
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      @endif
     </div>
   </div>
 </div>
@@ -381,6 +445,7 @@ $(function () {
 
       payload.admins = $('.select2-admins').val() || [];
       payload.convenors = $('.select2-convenors').val() || [];
+      payload.scoring_accounts = $('.select2-scoring-accounts').val() || [];
 
       // 🔹 Withdrawal logic
       if (payload.withdrawal_days !== undefined && payload.start_date) {
@@ -458,6 +523,15 @@ $(function () {
     placeholder: $('.select2-convenors').data('placeholder')
   }).on('change', function () {
     console.log('👥 Convenors changed:', $(this).val());
+    autosave();
+  });
+
+  $('.select2-scoring-accounts').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: $('.select2-scoring-accounts').data('placeholder')
+  }).on('change', function () {
+    console.log('🎾 Scoring accounts changed:', $(this).val());
     autosave();
   });
 

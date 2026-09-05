@@ -65,12 +65,17 @@
 
 @section('content')
 
-<x-backend.page-header :title="$event->name" eyebrow="Tournament workspace" subtitle="Team draws, fixtures and venues." icon="ti-tournament">
-  <x-slot:actions><button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
+@include('backend.event.partials.header', [
+  'eventWorkspaceActive' => 'draws',
+  'eventWorkspaceIcon' => 'ti-tournament',
+  'eventWorkspaceSubtitle' => 'Team draws, fixtures and venues',
+])
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+  <div><h2 class="h4 mb-1">Team draws</h2><p class="text-muted mb-0">Create draws, allocate venues and manage fixtures.</p></div>
+  <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
-    </button></x-slot:actions>
-</x-backend.page-header>
-@include('backend.event.partials.workspace-nav', ['eventWorkspaceActive' => 'draws'])
+  </button>
+</div>
 
 <div class="row mb-4">
   <div class="col-sm-6 col-lg-3">

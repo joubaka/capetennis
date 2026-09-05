@@ -173,6 +173,9 @@ class ScheduleController extends Controller
   public function saveFixture(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
+    if ($request->filled('court_label')) {
+      $request->merge(['court_label' => (string) $request->input('court_label')]);
+    }
     $data = $request->validate([
       'fixture_id' => 'required|integer',
       'scheduled_at' => 'nullable|date',

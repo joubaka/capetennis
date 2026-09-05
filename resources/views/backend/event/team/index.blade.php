@@ -1,59 +1,6 @@
 <div class="row g-3">
 
-  {{-- TEAM MANAGEMENT --}}
-  <div class="col-xl-4 col-md-6">
-    <div class="card h-100">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="ti ti-users-group ti-md text-primary"></i>
-        <h5 class="mb-0">Team Management</h5>
-      </div>
-
-      <div class="card-body d-grid gap-2">
-
-        <a href="{{ route('admin.events.teams', $event) }}"
-           class="btn btn-primary">
-          <i class="ti ti-users me-1"></i>
-          Teams & Regions
-        </a>
-
-        {{-- Fixtures HQ (admin) --}}
-        <a href="{{ route('headOffice.show', $event) }}"
-           class="btn btn-outline-primary">
-          <i class="ti ti-calendar-meet me-1"></i>
-          Fixtures HQ
-        </a>
-
-        <a href="{{ route('admin.events.transactions', $event) }}"
-           class="btn btn-outline-success">
-          <i class="ti ti-credit-card me-1"></i>
-          Team Payments
-        </a>
-
-        <a href="{{ route('admin.events.draws', $event) }}"
-           class="btn btn-outline-secondary">
-          <i class="ti ti-tournament me-1"></i>
-          Draws
-        </a>
-
-        <a href="{{ route('backend.scoreboard.team.show', $event) }}"
-           class="btn btn-outline-secondary">
-          <i class="ti ti-trophy me-1"></i>
-          Team Scoreboard
-        </a>
-
-        @if(\App\Models\SiteSetting::disciplinarySystemEnabled())
-        <a href="{{ route('backend.events.disciplinary.index', $event) }}"
-           class="btn btn-outline-danger">
-          <i class="ti ti-scale me-1"></i>
-          Discipline & Incidents
-        </a>
-        @endif
-
-      </div>
-    </div>
-  </div>
-
-  {{-- TEAM SETUP --}}
+  {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
   <div class="col-xl-4 col-md-6">
     <div class="card h-100 border-start border-info border-3">
       <div class="card-header d-flex align-items-center gap-2">
@@ -63,18 +10,6 @@
 
       <div class="card-body d-grid gap-2">
 
-        <a href="{{ route('admin.events.settings', $event) }}"
-           class="btn btn-outline-info">
-          <i class="ti ti-sliders me-1"></i>
-          Event Settings
-        </a>
-
-        <a href="{{ route('admin.events.categories', $event) }}"
-           class="btn btn-outline-primary">
-          <i class="ti ti-list-details me-1"></i>
-          Manage Categories
-        </a>
-
         <button type="button"
                 class="btn btn-outline-success"
                 id="sync-team-categories-btn"
@@ -83,26 +18,12 @@
           Sync Categories from Teams
         </button>
 
-        <a href="{{ route('admin.events.announcements', $event) }}"
-           class="btn btn-outline-warning">
-          <i class="ti ti-megaphone me-1"></i>
-          Team Announcements
-        </a>
-
-        @if($event->series)
-          <a href="{{ route('series.show', $event->series) }}"
-             class="btn btn-outline-secondary">
-            <i class="ti ti-layers me-1"></i>
-            {{ $event->series->name }}
-          </a>
-        @endif
-
       </div>
     </div>
   </div>
 
   {{-- TEAM STATS --}}
-  <div class="col-xl-4 col-md-12">
+  <div class="col-xl-8 col-md-6">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
         <i class="ti ti-chart-pie ti-md text-success"></i>

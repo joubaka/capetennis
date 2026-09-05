@@ -103,6 +103,11 @@
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
+  @include('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceIcon' => 'ti-calendar-event',
+    'eventWorkspaceSubtitle' => 'Event venue schedule',
+  ])
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
@@ -110,7 +115,6 @@
       <p class="text-muted mb-0">Schedule every assigned age group in three clear steps: assign courts, set the timing, then review.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
-      <a class="btn btn-label-secondary" href="{{ url()->previous() }}"><i class="ti ti-arrow-left me-1"></i>Back</a>
       <button type="button" class="btn btn-outline-primary" id="open-venue-announcement"
         data-bs-toggle="modal" data-bs-target="#venueAnnouncementModal"
         {{ $announcementDraft['assignments']->isEmpty() ? 'disabled' : '' }}>

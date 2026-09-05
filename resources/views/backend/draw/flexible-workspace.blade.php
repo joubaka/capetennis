@@ -70,6 +70,7 @@
       <h2 class="h5">Print draw</h2>
       <p>Print the same bracket and results shown in this workspace, with fixture references and final positions.</p>
       <button type="button" class="btn btn-primary" id="fm-workspace-print">Print draw &amp; results</button>
+      <button type="button" class="btn btn-outline-secondary" id="fm-draw-only-print">Print draw only</button>
       <button type="button" class="btn btn-outline-secondary" id="fm-timetable-print">Print schedule</button>
       <p class="text-muted small mt-3 mb-0">The print dialog also lets you save a PDF. Share the published public link for live updates.</p>
     </div>
