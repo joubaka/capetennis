@@ -110,11 +110,19 @@
                   <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
                 </div>
                 <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
-                <div>
-                  @foreach($venues as $venue)
+                @php
+                  [$selectedVenues, $availableVenues] = $venues->partition(fn($venue) => in_array($venue['id'], $draw['venues']));
+                  $orderedVenues = $selectedVenues->concat($availableVenues);
+                @endphp
+                <div class="venue-list">
+                  @foreach($orderedVenues as $venue)
                     @php
                       $venueAssigned = in_array($venue['id'], $draw['venues']);
                       $allocatedLabels = $draw['court_allocations'][$venue['id']] ?? [];
+                      [$selectedCourts, $availableCourts] = collect($venue['court_list'])->partition(
+                        fn($court) => $venueAssigned && (empty($allocatedLabels) || in_array($court['label'], $allocatedLabels))
+                      );
+                      $orderedCourts = $selectedCourts->concat($availableCourts);
                     @endphp
                     <div class="venue-assignment">
                       <div class="d-flex align-items-center gap-2">
@@ -123,7 +131,7 @@
                         <button class="btn btn-sm btn-text-secondary court-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courts-{{ $draw['id'] }}-{{ $venue['id'] }}" aria-expanded="false" aria-controls="courts-{{ $draw['id'] }}-{{ $venue['id'] }}">Choose courts</button>
                       </div>
                       <div class="collapse" id="courts-{{ $draw['id'] }}-{{ $venue['id'] }}"><div class="court-choices">
-                        @foreach($venue['court_list'] as $court)
+                        @foreach($orderedCourts as $court)
                           @php $courtChecked = $venueAssigned && (empty($allocatedLabels) || in_array($court['label'], $allocatedLabels)); @endphp
                           <label class="court-choice"><input class="form-check-input court-allocation mt-0" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" type="checkbox" value="{{ $court['label'] }}" {{ $courtChecked ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}>Court {{ $court['label'] }}@if($court['ball_type']) · {{ ucfirst($court['ball_type']) }}@endif</label>
                         @endforeach
@@ -378,6 +386,13 @@
     const count = document.getElementById('selected-draw-count');
     if (count) count.textContent = document.querySelectorAll('.draw-choice:checked').length;
   };
+  const sortCheckedFirst = (container, checkboxSelector, itemSelector) => {
+    if (!container) return;
+    [...container.querySelectorAll(checkboxSelector)]
+      .map((checkbox, index) => ({checkbox, index, item:checkbox.closest(itemSelector)}))
+      .sort((left, right) => Number(right.checkbox.checked) - Number(left.checkbox.checked) || left.index - right.index)
+      .forEach(({item}) => { if (item) container.appendChild(item); });
+  };
   const buildPayload = () => ({
     start: document.getElementById('schedule-start').value,
     end: document.getElementById('schedule-end').value || null,
@@ -436,7 +451,13 @@
   document.querySelectorAll('.draw-panel').forEach(panel => panel.addEventListener('toggle', () => {
     if (!panel.open) return;
     document.querySelectorAll('.draw-panel').forEach(other => { if (other !== panel) other.open = false; });
+    sortCheckedFirst(panel.querySelector('.venue-list'), '.assignment-choice', '.venue-assignment');
   }));
+  document.querySelectorAll('.court-choices').forEach(choices => {
+    choices.closest('.collapse')?.addEventListener('show.bs.collapse', () => {
+      sortCheckedFirst(choices, '.court-allocation', '.court-choice');
+    });
+  });
   document.getElementById('court-allocation-step')?.addEventListener('toggle', event => {
     if (event.currentTarget.open) setWorkflowStep(1);
   });

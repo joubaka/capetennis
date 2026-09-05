@@ -132,6 +132,7 @@ class EventVenueScheduleTest extends TestCase
     public function test_event_admin_can_assign_several_draws_to_the_same_shared_venue(): void
     {
         $event = Event::factory()->create();
+        $availableVenue = $this->venue($event, 'Available Venue');
         $venue = $this->venue($event, 'Shared Venue');
         $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
         $admin = User::factory()->create()->assignRole('admin');
@@ -147,7 +148,7 @@ class EventVenueScheduleTest extends TestCase
             'venues' => [['id' => $venue->id, 'courts' => 8]],
             'assignments' => $draws->map(fn ($draw) => [
                 'draw_id' => $draw->id, 'venue_ids' => [$venue->id],
-                'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => array_map('strval', range(1, 8))]],
+                'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['2', '8']]],
             ])->all(),
         ]);
 
@@ -162,7 +163,8 @@ class EventVenueScheduleTest extends TestCase
         $this->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()
             ->assertSee('Schedule every assigned age group')
-            ->assertSee('Shared Venue')
+            ->assertSeeInOrder(['Shared Venue', $availableVenue->name])
+            ->assertSeeInOrder(['Court 2', 'Court 8', 'Court 1'])
             ->assertSee('open only the one you are editing')
             ->assertSee('id="court-allocation-step"', false)
             ->assertSee('id="schedule-rules-step"', false)
