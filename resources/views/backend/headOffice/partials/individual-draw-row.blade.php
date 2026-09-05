@@ -3,6 +3,10 @@
   $drawUrl = route('backend.draw.roundrobin.show', $draw->id);
   $format = \App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0]
     ?? ($isFlexible ? 'Custom Monrad' : null);
+  $publishUrl = $isFlexible
+    ? route('flexible-monrad.publish', $draw->id)
+    : route('draw.toggle.publish', $draw->id);
+  $publishRevision = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->revision ?? 0) : 0;
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}">
@@ -29,23 +33,26 @@
   <div class="draw-overview-actions">
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ $drawUrl }}#schedule">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
+    @can('publish', $draw)
+      <button type="button" class="btn draws-button draw-publish-button toggle-publish"
+              data-url="{{ $publishUrl }}" data-draw-name="{{ $draw->drawName }}"
+              data-published="{{ $draw->published ? '1' : '0' }}"
+              @if($isFlexible) data-revision="{{ $publishRevision }}" @endif
+              aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}">
+        <i class="ti ti-{{ $draw->published ? 'eye-off' : 'eye' }}" aria-hidden="true"></i>
+        <span>{{ $draw->published ? 'Unpublish' : 'Publish' }}</span>
+      </button>
+    @endcan
     <div class="dropdown">
       <button type="button" class="btn draws-button draw-more-button" data-bs-toggle="dropdown"
               aria-expanded="false" aria-label="More actions for {{ $draw->drawName }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'dots'])</button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li><a class="dropdown-item" href="{{ $drawUrl }}#settings"><i class="ti ti-settings me-2" aria-hidden="true"></i>Draw settings</a></li>
         <li><a class="dropdown-item" href="{{ $drawUrl }}#groups">Players</a></li>
-        <li><a class="dropdown-item" href="{{ $drawUrl }}#print">Print draw</a></li>
-        @if($draw->published)<li><a class="dropdown-item" href="{{ route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener">Public view / sharing link</a></li>@endif
+        <li><a class="dropdown-item" href="{{ $drawUrl }}#print">Print this draw</a></li>
+        @if($draw->published)<li><a class="dropdown-item" href="{{ route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener">Open public draw</a></li>@endif
         @can('update', $draw)
           <li><button type="button" class="dropdown-item btn-add-venues" data-draw-id="{{ $draw->id }}" data-draw-name="{{ $draw->drawName }}"><i class="ti ti-map-pin me-2" aria-hidden="true"></i>Assign venues</button></li>
-        @endcan
-        @can('publish', $draw)
-          @if($isFlexible)
-            <li><a class="dropdown-item" href="{{ $drawUrl }}"><i class="ti ti-eye me-2" aria-hidden="true"></i>Publication in draw editor</a></li>
-          @else
-            <li><button type="button" class="dropdown-item toggle-publish" data-url="{{ route('draw.toggle.publish', $draw->id) }}"><i class="ti ti-{{ $draw->published ? 'eye-off' : 'eye' }} me-2" aria-hidden="true"></i>{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button></li>
-          @endif
         @endcan
         @can('super-user')
           <li><hr class="dropdown-divider"></li>

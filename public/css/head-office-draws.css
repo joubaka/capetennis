@@ -44,7 +44,7 @@
 .draws-status-filters button[aria-pressed="true"] > span:not(.draws-status-dot) { color: #fff; background: var(--draws-ink); }
 .draws-status-filters button:hover { background: #f1f5f8; }
 .draws-list-controls > p { color: #708193; margin: 0; font-size: 12px; }
-.draws-column-headings, .draw-overview-row { display: grid; grid-template-columns: minmax(170px, 1.15fr) minmax(145px, 1fr) 68px minmax(130px, 1fr) 282px; align-items: center; gap: 22px; }
+.draws-column-headings, .draw-overview-row { display: grid; grid-template-columns: minmax(170px, 1.15fr) minmax(145px, 1fr) 68px minmax(130px, 1fr) 342px; align-items: center; gap: 22px; }
 .draws-column-headings { padding: 11px 26px; border-block: 1px solid var(--draws-border); color: #708193; background: #f8fafc; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
 .draws-actions-label { text-align: right; padding-right: 3px; }
 .draw-overview-row { position: relative; min-height: 94px; padding: 20px 26px; transition: background-color .15s; }
@@ -78,6 +78,11 @@
 .draw-overview-actions .draws-icon { width: 16px; height: 16px; }
 .draws-workspace .draw-schedule-button { color: #586b7e; background: #fff; border-color: #dce4ec; }
 .draws-workspace .draw-schedule-button:hover { color: var(--draws-ink); border-color: #aebecd; background: #f1f5f8; }
+.draws-workspace .draw-publish-button { color: #fff; background: var(--draws-accent); border-color: var(--draws-accent); }
+.draws-workspace .draw-publish-button:hover { color: #fff; background: #0f665d; border-color: #0f665d; }
+.draw-overview-row[data-published="1"] .draw-publish-button { color: #536a7e; background: #fff; border-color: #d5dee7; }
+.draw-overview-row[data-published="1"] .draw-publish-button:hover { color: #8a413d; background: #fff7f6; border-color: #e6c7c4; }
+.draw-publish-button[aria-busy="true"] { opacity: .68; }
 .draws-workspace .draw-more-button { width: 34px; padding-inline: 6px; color: #5a6e81; background: transparent; }
 .draws-workspace .draw-more-button:hover, .draws-workspace .draw-more-button[aria-expanded="true"] { color: var(--draws-ink); background: #eaf0f5; }
 .draws-workspace .dropdown-menu { border: 1px solid var(--draws-border); padding: 6px; border-radius: 10px; box-shadow: 0 10px 35px #172e451a; }
@@ -119,7 +124,7 @@
   .draws-list-controls { padding: 0 18px 15px; gap: 10px; }
   .draw-overview-row { grid-template-columns: minmax(0, 1fr) 80px; grid-template-areas: "identity identity" "format matches" "venue venue" "actions actions"; gap: 14px 16px; padding: 20px 18px; }
   .draw-overview-actions { justify-content: flex-start; border-top: 1px solid #edf1f5; padding-top: 12px; }
-  .draw-overview-actions > a { flex: 1; }
+  .draw-overview-actions > :is(a, .draw-publish-button) { flex: 1; }
   .draw-overview-actions .draws-button { min-height: 40px; }
   .draw-venue-cell .draw-column-label { display: inline; margin-right: 7px; }
 }

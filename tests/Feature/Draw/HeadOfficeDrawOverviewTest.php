@@ -5,6 +5,7 @@ namespace Tests\Feature\Draw;
 use App\Models\Draw;
 use App\Models\DrawSetting;
 use App\Models\Event;
+use App\Models\FlexibleMonradDraw;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -22,6 +23,9 @@ class HeadOfficeDrawOverviewTest extends TestCase
             'workflow' => $flexible ? 'custom_monrad' : 'round_robin_playoffs',
         ]));
         $draw->setRelation('venues', collect());
+        $draw->setRelation('flexibleMonrad', $flexible
+            ? (new FlexibleMonradDraw)->forceFill(['draw_id' => 42, 'revision' => 7])
+            : null);
 
         return $draw;
     }
@@ -34,8 +38,11 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42), $html);
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#schedule', $html);
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#print', $html);
-        $this->assertStringContainsString('Publication in draw editor', $html);
+        $this->assertStringContainsString(route('flexible-monrad.publish', 42), $html);
+        $this->assertStringContainsString('data-revision="7"', $html);
+        $this->assertStringContainsString('>Publish</span>', $html);
         $this->assertStringNotContainsString(route('draw.toggle.publish', 42), $html);
+        $this->assertStringNotContainsString('Publication in draw editor', $html);
         $this->assertStringContainsString('Custom Monrad', $html);
         $this->assertStringContainsString('12 matches', $html);
     }
@@ -49,6 +56,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
             $this->assertStringContainsString(route($route, 42), $html);
         }
         $this->assertStringContainsString('btn-add-venues', $html);
+        $this->assertStringContainsString('aria-label="Publish U/10 Boys"', $html);
     }
 
     public function test_published_or_locked_draw_never_offers_delete_even_with_super_user_gate(): void
@@ -65,7 +73,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
     public function test_unauthorized_view_does_not_offer_mutations_or_diagnostics(): void
     {
         $html = view('backend.headOffice.partials.individual-draw-row', ['draw' => $this->draw()])->render();
-        foreach (['btn-add-venues', 'toggle-publish', 'btn-delete-draw', 'Engine diagnostics'] as $action) {
+        foreach (['btn-add-venues', 'draw-publish-button', 'btn-delete-draw', 'Engine diagnostics'] as $action) {
             $this->assertStringNotContainsString($action, $html);
         }
     }

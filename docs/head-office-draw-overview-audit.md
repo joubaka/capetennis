@@ -12,8 +12,8 @@ Audited and restructured locally on 2026-09-03. Scope: the individual-event page
 | Team-Singles describes the old type field even on an individual event. | Show the configured workflow when known, individual fixture counts, publication state and venues. Unknown formats are not guessed. |
 | The page has venue handlers but no venue modal. | Restore the shared modal; add request errors, safe text rendering, field labels and duplicate-submit protection. |
 | Deletion tries to remove a `.list-group-item`, but the page uses draw cards. | Reload on successful deletion so rows, totals, empty state and print selection agree. Retain confirmation; hide deletion for locked/published draws. |
-| Publishing only changes the clicked button, leaving stale badges. | Reload all status-derived UI after success; display server rejection messages and prevent repeated clicks while pending. |
-| Custom Monrad publication is rejected by the legacy endpoint. | Send flexible-format publication to the draw editor, which owns its revision and publication workflow. |
+| Publishing is a repeated tournament-day task but is hidden in each row's overflow menu. | Promote Publish/Unpublish to a visible row action, confirm the public visibility change, then reload all status-derived UI after success. |
+| Custom Monrad publication is rejected by the legacy endpoint. | Use its revision-aware publication endpoint directly from the overview; server-side graph/readiness, locking and authorization checks remain authoritative. |
 | Bulk PDF/round-robin printing cannot represent all flexible brackets. | Exclude those draws from bulk export and direct users to Print in their draw editor. |
 | Individual overview loads unused team summaries, categories and formats. | Return individual view data early; load individual match counts and required relations only. No historical fixtures are loaded into memory. |
 | Unused editors, tables, date pickers, validation libraries and obsolete fixture-generation handlers are loaded. | Remove those page dependencies and handlers. Keep the libraries used by the remaining controls. |
@@ -24,7 +24,7 @@ Audited and restructured locally on 2026-09-03. Scope: the individual-event page
 2. Compact event navigation.
 3. Draw total and published/draft counts, search and status filter.
 4. Draw rows with name, format where known, match count, venues and publication state.
-5. Open draw and Schedule, followed by settings, venues, publication and eligible administrative actions in the menu.
+5. Open draw, Schedule and Publish/Unpublish, followed by settings, players, single-draw print, venues and eligible administrative actions in the menu.
 
 The layout stacks on mobile; labels, empty filter results and a live result count support keyboard and screen-reader use. Existing server authorization and mutation services remain authoritative.
 

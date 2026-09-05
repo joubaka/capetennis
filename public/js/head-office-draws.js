@@ -91,14 +91,32 @@ $(function () {
   });
 
   $(document).on('click', '.toggle-publish', function () {
-    const $button = $(this).prop('disabled', true);
-    $.post($button.data('url'), {_token: csrf})
-      .done(function (response) {
-        if (response.success) location.reload(); // Refresh status, counts and permitted actions together.
-        else toastr.error(response.message || 'Could not update publication.');
-      })
-      .fail(xhr => error(xhr, 'Could not update publication.'))
-      .always(() => $button.prop('disabled', false));
+    const $button = $(this);
+    const published = String($button.data('published')) === '1';
+    const verb = published ? 'Unpublish' : 'Publish';
+    const payload = {_token: csrf};
+    if ($button.is('[data-revision]')) {
+      payload.revision = Number($button.attr('data-revision'));
+      payload.published = published ? 0 : 1;
+    }
+
+    Swal.fire({
+      title: verb + ' draw?',
+      text: published
+        ? $button.data('draw-name') + ' will no longer be visible on the public draw link.'
+        : $button.data('draw-name') + ' will become visible on its public draw link.',
+      icon: 'question', showCancelButton: true, confirmButtonText: verb + ' draw',
+    }).then(result => {
+      if (!result.isConfirmed) return;
+      $button.prop('disabled', true).attr('aria-busy', 'true');
+      $.post($button.data('url'), payload)
+        .done(function (response) {
+          if (response.success === false) { toastr.error(response.message || 'Could not update publication.'); return; }
+          location.reload(); // Refresh status, counts, filters and permitted actions together.
+        })
+        .fail(xhr => error(xhr, 'Could not update publication.'))
+        .always(() => $button.prop('disabled', false).removeAttr('aria-busy'));
+    });
   });
   $(document).on('click', '.btn-delete-draw', function () {
     const $button = $(this);
