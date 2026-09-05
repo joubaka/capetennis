@@ -249,18 +249,18 @@
         <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
         <span id="schedule-status" class="align-self-center text-muted small" role="status" aria-live="polite">Preview the full event before applying.</span>
       </div>
-      <div id="preview-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
+      <div id="schedule-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
           <div class="d-flex align-items-center gap-2">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-            <strong id="preview-activity-label" role="status" aria-live="polite">Preparing the combined preview…</strong>
+            <span id="schedule-activity-spinner" class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <strong id="schedule-activity-label" role="status" aria-live="polite">Preparing the combined preview…</strong>
           </div>
-          <span id="preview-activity-meta" class="small text-muted">About 5% · 0s elapsed</span>
+          <span id="schedule-activity-meta" class="small text-muted">About 5% · 0s elapsed</span>
         </div>
-        <div class="progress" style="height: 8px;" aria-label="Estimated preview progress">
-          <div id="preview-activity-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 5%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="5"></div>
+        <div class="progress" style="height: 8px;" aria-label="Estimated scheduling progress">
+          <div id="schedule-activity-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 5%;" aria-valuemin="0" aria-valuemax="100" aria-valuenow="5"></div>
         </div>
-        <small class="text-muted d-block mt-2">Progress is estimated while the server builds and validates the complete schedule.</small>
+        <small id="schedule-activity-note" class="text-muted d-block mt-2">Progress is estimated while the server builds and validates the complete schedule.</small>
       </div>
     </div>
   </details>
@@ -333,13 +333,17 @@
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
   const announcementUrl = @json(route('admin.events.announcements.store', $event));
+  const drawsUrl = @json(route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']));
   const eventName = @json($event->name);
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->pluck('id')->values());
   let payload = null;
   let revision = null;
   let replanVenueIds = [];
   let allocationsDirty = false;
-  let previewActivityTimer = null;
+  let scheduleActivityTimer = null;
+  let scheduleActivityHideTimer = null;
+  let scheduleActivityStartedAt = 0;
+  let scheduleActivityStages = [];
 
   const previewActivityStages = [
     {after: 0, percent: 5, label: 'Sending the scheduling rules…'},
@@ -350,6 +354,19 @@
     {after: 15000, percent: 86, label: 'Balancing age groups across the timetable…'},
     {after: 25000, percent: 94, label: 'Finalising and validating the preview…'},
   ];
+  const applyActivityStages = [
+    {after: 0, percent: 5, label: 'Submitting the approved schedule…'},
+    {after: 700, percent: 18, label: 'Locking the schedule revision…'},
+    {after: 2200, percent: 34, label: 'Applying fixtures to their courts…'},
+    {after: 5000, percent: 50, label: 'Saving the combined timetable…'},
+    {after: 9000, percent: 60, label: 'Confirming the applied fixtures…'},
+  ];
+  const revalidationActivityStages = [
+    {after: 0, percent: 66, label: 'Rebuilding the applied schedule view…'},
+    {after: 1200, percent: 76, label: 'Loading the fixed court bookings…'},
+    {after: 3500, percent: 87, label: 'Rechecking courts and player conflicts…'},
+    {after: 7000, percent: 95, label: 'Finalising the applied schedule…'},
+  ];
 
   const values = selector => [...document.querySelectorAll(selector + ':checked')].map(el => Number(el.value));
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
@@ -358,29 +375,54 @@
     element.classList.remove('text-muted', 'text-danger', 'text-success', 'text-warning');
     element.classList.add(`text-${tone}`);
   };
-  const updatePreviewActivity = startedAt => {
-    const elapsed = Math.max(0, performance.now() - startedAt);
-    const stage = [...previewActivityStages].reverse().find(item => elapsed >= item.after) || previewActivityStages[0];
+  const updateScheduleActivity = () => {
+    const elapsed = Math.max(0, performance.now() - scheduleActivityStartedAt);
+    const stage = [...scheduleActivityStages].reverse().find(item => elapsed >= item.after) || scheduleActivityStages[0];
     const elapsedSeconds = Math.floor(elapsed / 1000);
-    document.getElementById('preview-activity-label').textContent = stage.label;
-    document.getElementById('preview-activity-meta').textContent = `About ${stage.percent}% · ${elapsedSeconds}s elapsed`;
-    const bar = document.getElementById('preview-activity-bar');
+    document.getElementById('schedule-activity-label').textContent = stage.label;
+    document.getElementById('schedule-activity-meta').textContent = `About ${stage.percent}% · ${elapsedSeconds}s elapsed`;
+    const bar = document.getElementById('schedule-activity-bar');
     bar.style.width = `${stage.percent}%`;
     bar.setAttribute('aria-valuenow', String(stage.percent));
   };
-  const startPreviewActivity = () => {
-    if (previewActivityTimer) window.clearInterval(previewActivityTimer);
-    const startedAt = performance.now();
-    document.getElementById('preview-activity').classList.remove('d-none');
-    document.getElementById('preview-activity').setAttribute('aria-busy', 'true');
-    updatePreviewActivity(startedAt);
-    previewActivityTimer = window.setInterval(() => updatePreviewActivity(startedAt), 250);
+  const setScheduleActivityPhase = stages => {
+    scheduleActivityStages = stages;
+    scheduleActivityStartedAt = performance.now();
+    updateScheduleActivity();
   };
-  const stopPreviewActivity = () => {
-    if (previewActivityTimer) window.clearInterval(previewActivityTimer);
-    previewActivityTimer = null;
-    document.getElementById('preview-activity').setAttribute('aria-busy', 'false');
-    document.getElementById('preview-activity').classList.add('d-none');
+  const startScheduleActivity = (stages, note) => {
+    if (scheduleActivityTimer) window.clearInterval(scheduleActivityTimer);
+    if (scheduleActivityHideTimer) window.clearTimeout(scheduleActivityHideTimer);
+    scheduleActivityHideTimer = null;
+    document.getElementById('schedule-activity').classList.remove('d-none');
+    document.getElementById('schedule-activity').setAttribute('aria-busy', 'true');
+    document.getElementById('schedule-activity-spinner').classList.remove('d-none');
+    document.getElementById('schedule-activity-bar').classList.add('progress-bar-animated');
+    document.getElementById('schedule-activity-note').textContent = note;
+    setScheduleActivityPhase(stages);
+    scheduleActivityTimer = window.setInterval(updateScheduleActivity, 250);
+  };
+  const stopScheduleActivity = () => {
+    if (scheduleActivityTimer) window.clearInterval(scheduleActivityTimer);
+    scheduleActivityTimer = null;
+    document.getElementById('schedule-activity').setAttribute('aria-busy', 'false');
+    document.getElementById('schedule-activity').classList.add('d-none');
+  };
+  const finishScheduleActivity = label => {
+    if (scheduleActivityTimer) window.clearInterval(scheduleActivityTimer);
+    scheduleActivityTimer = null;
+    const bar = document.getElementById('schedule-activity-bar');
+    bar.style.width = '100%';
+    bar.setAttribute('aria-valuenow', '100');
+    bar.classList.remove('progress-bar-animated');
+    document.getElementById('schedule-activity-spinner').classList.add('d-none');
+    document.getElementById('schedule-activity-label').textContent = label;
+    document.getElementById('schedule-activity-meta').textContent = '100% · Complete';
+    document.getElementById('schedule-activity').setAttribute('aria-busy', 'false');
+    scheduleActivityHideTimer = window.setTimeout(() => {
+      document.getElementById('schedule-activity').classList.add('d-none');
+      scheduleActivityHideTimer = null;
+    }, 800);
   };
   const invalidatePreview = (message = 'Settings changed. Generate a new preview before applying.') => {
     payload = null;
@@ -587,7 +629,7 @@
       const cells = venue.court_labels.map(court => {
         const starts = rows.find(row => String(row.court) === String(court) && dateKey(row.scheduled_at) === time.getTime());
         if (starts) {
-          return `<td class="bg-label-primary"><div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · M${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Applied' : ''}</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Players TBD')}</div></td>`;
+          return `<td class="bg-label-primary"><div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">R${starts.round} · Match ${escapeHtml(starts.match || '—')}${starts.fixed ? ' · Applied' : ''}</div><div class="small text-muted">${escapeHtml((starts.participants || []).join(' / ') || 'Unassigned draw position')}</div></td>`;
         }
         const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
         if (occupied) return `<td class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
@@ -607,13 +649,13 @@
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length + (result.existing_matches || []).length, 'Court bookings', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
-    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue with planned fixtures can still be approved and applied on its own.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} R${row.round} M${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
+    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue with planned fixtures can still be approved and applied on its own.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} R${row.round} Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td>${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'TBD')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-success ms-2">Applied · fixed</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? `R${row.round}` : `Wave ${row.wave} · R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Unassigned draw position')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
@@ -694,10 +736,11 @@
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
     document.getElementById('apply-preview').disabled = true;
     setStatus(document.getElementById('schedule-status'), 'Building the combined preview…');
-    startPreviewActivity();
-    try { render(await post(previewUrl, payload)); }
+    startScheduleActivity(previewActivityStages, 'Progress is estimated while the server builds and validates the complete schedule.');
+    let completed = false;
+    try { render(await post(previewUrl, payload)); completed = true; finishScheduleActivity('Combined preview ready.'); }
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); }
-    finally { stopPreviewActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
+    finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
   });
   document.getElementById('save-allocations')?.addEventListener('click', async event => {
     const button = event.currentTarget;
@@ -741,15 +784,26 @@
   }));
   document.getElementById('apply-preview').addEventListener('click', async event => {
     if (!payload || !revision || !confirm('Apply this combined schedule to every selected draw?')) return;
-    const button = event.currentTarget; button.disabled = true; setStatus(document.getElementById('schedule-status'), 'Applying and revalidating…');
+    const button = event.currentTarget;
+    const originalButtonHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Applying schedule…';
+    setStatus(document.getElementById('schedule-status'), 'Applying and revalidating…');
+    startScheduleActivity(applyActivityStages, 'Progress is estimated while the server applies the fixtures and rebuilds the final schedule.');
+    let completed = false;
     try {
       const applied = await post(applyUrl, {...payload, revision});
       replanVenueIds = [];
       payload = {...buildPayload(), replan_venue_ids:[]};
+      setScheduleActivityPhase(revalidationActivityStages);
       render(await post(previewUrl, payload));
-      setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures. They are now fixed in planning until explicitly changed.`, 'success');
+      setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures. Opening tournament draws…`, 'success');
+      completed = true;
+      finishScheduleActivity('Schedule applied. Opening tournament draws…');
+      window.setTimeout(() => window.location.assign(drawsUrl), 1000);
     }
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); button.disabled = false; }
+    finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; }
   });
 })();
 </script>

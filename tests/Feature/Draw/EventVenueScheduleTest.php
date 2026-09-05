@@ -4,6 +4,7 @@ namespace Tests\Feature\Draw;
 
 use App\Jobs\SendBulkEmailJob;
 use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
+use App\Services\Draw\FlexibleMonradService;
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
@@ -79,6 +80,76 @@ class EventVenueScheduleTest extends TestCase
         $this->assertCount(1, $preview['matches']);
         $this->assertSame(3, $preview['matches'][0]['wave']);
         $this->assertSame('2026-09-10 11:00:00', $preview['matches'][0]['scheduled_at']);
+    }
+
+    public function test_unresolved_legacy_fixtures_show_winner_and_loser_match_paths(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Path Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        $semifinals = collect([1, 2])->map(fn ($match) => Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => $match, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]));
+        $final = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 2, 'match_nr' => 3, 'bracket_id' => 1,
+            'registration1_id' => null, 'registration2_id' => null,
+        ]);
+        $playoff = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 2, 'match_nr' => 4, 'bracket_id' => 2,
+            'registration1_id' => null, 'registration2_id' => null,
+        ]);
+        foreach ($semifinals as $slot => $semifinal) {
+            $semifinal->update(['parent_fixture_id' => $final->id, 'feeder_slot' => $slot + 1,
+                'loser_parent_fixture_id' => $playoff->id]);
+            DB::table('fixtures')->where('id', $semifinal->id)->update(['loser_feeder_slot' => $slot + 1]);
+        }
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions());
+        $matches = collect($preview['matches'])->keyBy('fixture_id');
+
+        $this->assertSame(['Winner of Match 1', 'Winner of Match 2'], $matches[$final->id]['participants']);
+        $this->assertSame(['Loser of Match 1', 'Loser of Match 2'], $matches[$playoff->id]['participants']);
+        $this->assertSame(3, $matches[$final->id]['match']);
+        $this->assertSame(4, $matches[$playoff->id]['match']);
+    }
+
+    public function test_unresolved_flexible_monrad_fixtures_show_their_numbered_source_paths(): void
+    {
+        $event = Event::factory()->create();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id]);
+        $venue = $this->venue($event, 'Monrad Venue');
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        $registrations = Registration::factory()->count(4)->create();
+        foreach ($registrations as $registration) {
+            $registration->categoryEvents()->attach($category->id, ['status' => 'registered', 'payment_status_id' => 1]);
+        }
+        $slots = [];
+        foreach (['aa', 'ab', 'ba', 'bb'] as $index => $path) {
+            $slots[$path] = ['type' => 'player', 'id' => $registrations[$index]->id];
+        }
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, ['size' => 4, 'slots' => $slots], 0);
+        $record = $service->generate($draw, 1);
+
+        $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), $this->schedulingOptions());
+        $matches = collect($preview['matches'])->keyBy('fixture_id');
+
+        $this->assertSame(['Winner of Match 1', 'Winner of Match 2'],
+            $matches[$record->fixture_map['main_final']]['participants']);
+        $this->assertSame(['Loser of Match 1', 'Loser of Match 2'],
+            $matches[$record->fixture_map['place_3']]['participants']);
+
+        $record = $service->score($draw, $record->fixture_map['main_a'], [[6, 2]], $record->revision, false);
+        $partlyResolved = app(EventVenueScheduleService::class)
+            ->preview($event->fresh(), $this->schedulingOptions());
+        $finalParticipants = collect($partlyResolved['matches'])
+            ->firstWhere('fixture_id', $record->fixture_map['main_final'])['participants'];
+        $this->assertCount(2, $finalParticipants);
+        $this->assertSame('Winner of Match 2', $finalParticipants[1]);
     }
 
     public function test_player_rest_is_protected_across_draws_and_different_venues(): void
@@ -235,11 +306,18 @@ class EventVenueScheduleTest extends TestCase
             ->assertSeeInOrder(['Court 2', 'Court 8', 'Court 1'])
             ->assertSee('data-draw-summary="'.$draws->first()->id.'"', false)
             ->assertSee('Shared Venue · 2 courts')
-            ->assertSee('<details class="card preview-venue mb-4">', false)
+            ->assertSee('<details class="card preview-venue mb-4"', false)
             ->assertDontSee('<details class="card preview-venue mb-4" open>', false)
             ->assertSee('open only the one you are editing')
             ->assertSee('id="court-allocation-step"', false)
             ->assertSee('id="schedule-rules-step"', false)
+            ->assertSee('id="schedule-activity"', false)
+            ->assertSee('id="schedule-activity-bar"', false)
+            ->assertSee('Applying schedule…')
+            ->assertSee('Rebuilding the applied schedule view…')
+            ->assertSee('100% · Complete')
+            ->assertSee('window.location.assign(drawsUrl)', false)
+            ->assertSee('schedule=applied')
             ->assertSee('Next: timing rules');
     }
 

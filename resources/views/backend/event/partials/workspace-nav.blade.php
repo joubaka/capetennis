@@ -22,3 +22,8 @@
     <a href="{{ route('admin.events.settings', $event) }}" @if($eventWorkspaceActive === 'settings') aria-current="page" @endif><i class="ti ti-settings" aria-hidden="true"></i>Settings</a>
   @endcan
 </x-backend.context-nav>
+@if(request('schedule') === 'applied')
+  <div class="alert alert-success" role="status">
+    <strong>Schedule applied.</strong> Review each draw's order of play, then publish it when you are ready.
+  </div>
+@endif

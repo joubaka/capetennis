@@ -281,12 +281,17 @@ final class EventVenueScheduleService
             $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
             $participants = ScheduleAvailability::participants($matches);
             $keyToId = collect($matches)->mapWithKeys(fn ($match, $key) => [$key => $match['id']])->all();
+            $matchNumbers = collect($matches)->mapWithKeys(fn ($match, $key) => [$key => $match['number']])->all();
             $nodes = [];
             foreach ($matches as $key => $match) {
                 $fixture = $draw->drawFixtures->firstWhere('id', $match['id']);
+                $sourceLabels = collect($match['sources'])->map(fn ($source) => isset($source['match'])
+                    ? ucfirst((string) $source['type']).' of Match '.($matchNumbers[$source['match']] ?? $source['match'])
+                    : (($source['type'] ?? null) === 'bye' ? 'Bye' : 'Unassigned draw position'))->all();
                 $nodes[$match['id']] = $this->node($draw, $fixture, array_values(array_filter(array_map(
                     fn ($source) => isset($source['match']) ? ($keyToId[$source['match']] ?? null) : null,
-                    $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets']);
+                    $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'],
+                    $sourceLabels);
             }
             return $nodes;
         }
@@ -294,9 +299,21 @@ final class EventVenueScheduleService
         $fixtures = $draw->drawFixtures->keyBy('id');
         $participants = ScheduleAvailability::legacyParticipants($fixtures);
         $feeders = [];
+        $sourceLabels = [];
         foreach ($fixtures as $fixture) {
-            foreach ([$fixture->parent_fixture_id, $fixture->loser_parent_fixture_id] as $target) {
-                if ($target && isset($fixtures[$target])) $feeders[$target][] = $fixture->id;
+            foreach ([
+                ['target' => $fixture->parent_fixture_id, 'type' => 'Winner', 'slot' => $fixture->feeder_slot],
+                ['target' => $fixture->loser_parent_fixture_id, 'type' => 'Loser',
+                    'slot' => $fixture->getAttribute('loser_feeder_slot')],
+            ] as $path) {
+                $target = $path['target'];
+                if (! $target || ! isset($fixtures[$target])) continue;
+                $feeders[$target][] = $fixture->id;
+                $slot = in_array((int) $path['slot'], [1, 2], true) ? (int) $path['slot'] - 1 : null;
+                if ($slot === null || isset($sourceLabels[$target][$slot])) {
+                    $slot = ! isset($sourceLabels[$target][0]) ? 0 : 1;
+                }
+                $sourceLabels[$target][$slot] = $path['type'].' of Match '.($fixture->match_nr ?: $fixture->id);
             }
         }
         $nodes = [];
@@ -304,17 +321,24 @@ final class EventVenueScheduleService
             $automatic = $fixture->fixtureResults->isEmpty() && (! $fixture->registration1_id || ! $fixture->registration2_id)
                 && ($fixture->winner_registration || (empty($feeders[$fixture->id])
                     && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
+            $labels = $sourceLabels[$fixture->id] ?? [];
+            ksort($labels);
             $nodes[$fixture->id] = $this->node($draw, $fixture, $feeders[$fixture->id] ?? [],
-                $participants[$fixture->id] ?? [], $automatic, $fixture->fixtureResults->isNotEmpty());
+                $participants[$fixture->id] ?? [], $automatic, $fixture->fixtureResults->isNotEmpty(), $labels);
         }
         return $nodes;
     }
 
     private function node(Draw $draw, Fixture $fixture, array $dependencies, array $participants,
-        bool $automatic, bool $played): array
+        bool $automatic, bool $played, array $sourceLabels = []): array
     {
-        $names = collect([$fixture->registration1, $fixture->registration2])->filter()
-            ->flatMap(fn ($registration) => $registration->players?->pluck('full_name') ?? [])->values()->all();
+        $names = collect([$fixture->registration1, $fixture->registration2])->map(function ($registration, $slot) use ($sourceLabels) {
+            if ($registration) {
+                $name = $registration->displayName();
+                return $name !== 'Unassigned' ? $name : 'Entry '.$registration->id;
+            }
+            return $sourceLabels[$slot] ?? 'Unassigned draw position';
+        })->values()->all();
         return [
             'fixture' => $fixture, 'draw_id' => $draw->id, 'draw_name' => $draw->drawName,
             'stage' => $fixture->stage, 'round' => max(1, (int) $fixture->round), 'match' => $fixture->match_nr,
