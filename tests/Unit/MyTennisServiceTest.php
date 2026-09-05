@@ -109,22 +109,31 @@ class MyTennisServiceTest extends TestCase
         $this->assertEqualsCanonicalizing([$first->id, $sameRound->id], $publicVisibility->visibleFixtureIds($draw)->all());
         $restrictedHub = $publicVisibility->restrictRoundRobinHub($draw, [
             'rrFixtures' => [[
-                ['id' => $first->id, 'time' => 'first', 'venue_name' => 'Centre Court'],
-                ['id' => $sameRound->id, 'time' => 'same round', 'venue_name' => 'Centre Court'],
-                ['id' => $following->id, 'time' => 'following', 'venue_name' => 'Centre Court'],
+                ['id' => $first->id, 'time' => '2026-09-06 08:00:00', 'venue_name' => 'Centre Court'],
+                ['id' => $sameRound->id, 'time' => '2026-09-06 09:00:00', 'venue_name' => 'Centre Court'],
+                ['id' => $following->id, 'time' => '2026-09-06 10:00:00', 'venue_name' => 'Centre Court'],
+                ['id' => 999999, 'time' => null, 'venue_name' => null],
             ]],
             'oops' => collect([
-                ['id' => $first->id, 'time' => 'first', 'venue_name' => 'Centre Court', 'court' => '1'],
-                ['id' => $sameRound->id, 'time' => 'same round', 'venue_name' => 'Centre Court', 'court' => '3'],
-                ['id' => $following->id, 'time' => 'following', 'venue_name' => 'Centre Court', 'court' => '2'],
+                ['id' => $first->id, 'time' => '2026-09-06 08:00:00', 'venue_name' => 'Centre Court', 'court' => '1'],
+                ['id' => $sameRound->id, 'time' => '2026-09-06 09:00:00', 'venue_name' => 'Centre Court', 'court' => '3'],
+                ['id' => $following->id, 'time' => '2026-09-06 10:00:00', 'venue_name' => 'Centre Court', 'court' => '2'],
+                ['id' => 999999, 'time' => null, 'venue_name' => null, 'court' => null],
             ]),
         ]);
-        $this->assertSame('first', $restrictedHub['oops'][0]['time']);
-        $this->assertSame('same round', $restrictedHub['oops'][1]['time']);
+        $this->assertSame('2026-09-06 08:00:00', $restrictedHub['oops'][0]['time']);
+        $this->assertSame('2026-09-06 09:00:00', $restrictedHub['oops'][1]['time']);
         $this->assertNull($restrictedHub['oops'][2]['time']);
         $this->assertTrue($restrictedHub['oops'][2]['schedule_hidden']);
+        $this->assertSame('2026-09-06', $restrictedHub['oops'][2]['scheduled_date']);
+        $this->assertSame('Centre Court', $restrictedHub['oops'][2]['venue_name']);
+        $this->assertNull($restrictedHub['oops'][2]['court']);
         $this->assertNull($restrictedHub['rrFixtures'][0][2]['time']);
         $this->assertTrue($restrictedHub['rrFixtures'][0][2]['schedule_hidden']);
+        $this->assertSame('2026-09-06', $restrictedHub['rrFixtures'][0][2]['scheduled_date']);
+        $this->assertSame('Centre Court', $restrictedHub['rrFixtures'][0][2]['venue_name']);
+        $this->assertArrayNotHasKey('schedule_hidden', $restrictedHub['oops'][3]);
+        $this->assertArrayNotHasKey('schedule_hidden', $restrictedHub['rrFixtures'][0][3]);
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL]);
         $this->assertSame([$first->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());

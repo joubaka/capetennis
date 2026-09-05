@@ -69,9 +69,10 @@
    * FORMAT TIME
    * =============================== */
   function formatScheduleParts(fx) {
-    if (!fx.time) return { date: '', time: '' };
+    const dateSource = fx.time || (fx.scheduled_date ? `${fx.scheduled_date} 00:00:00` : '');
+    if (!dateSource) return { date: '', time: '' };
 
-    const dt = new Date(fx.time.replace(' ', 'T'));
+    const dt = new Date(dateSource.replace(' ', 'T'));
 
     if (Number.isNaN(dt.getTime())) return { date: '', time: '' };
 
@@ -80,11 +81,13 @@
       day: 'numeric',
       month: 'short',
     });
-    const time = dt.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const time = fx.time
+      ? dt.toLocaleTimeString('en-GB', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })
+      : '';
 
     return { date, time };
   }
@@ -223,10 +226,10 @@
           <td data-label="Player 2">${escapeHtml(fx.away)}</td>
           <td data-label="Round" class="text-center">${escapeHtml(fx.round)}</td>
           <td data-label="Stage" class="text-center">${escapeHtml(stage)}</td>
-          <td data-label="Date" class="text-center">${escapeHtml(scheduleHidden ? followedBy : schedule.date || '—')}</td>
+          <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
           <td data-label="Time" class="text-center">${escapeHtml(scheduleHidden ? followedBy : schedule.time || '—')}</td>
-          <td data-label="Venue">${escapeHtml(scheduleHidden ? followedBy : fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
-          <td data-label="Court" class="text-center">${escapeHtml(scheduleHidden ? followedBy : court || '—')}</td>
+          <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
+          <td data-label="Court" class="text-center">${escapeHtml(scheduleHidden ? '' : court || '—')}</td>
           <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });

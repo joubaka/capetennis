@@ -71,10 +71,10 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString("'Court ' + fx.court", $script);
         $this->assertStringContainsString("const followedBy = 'Followed by';", $script);
         $this->assertStringContainsString("fx.schedule_hidden === true\n            ? 'Followed by'", $script);
-        foreach (['Date', 'Time', 'Venue', 'Court'] as $column) {
-            $this->assertStringContainsString("data-label=\"{$column}\"", $script);
-            $this->assertStringContainsString("scheduleHidden ? followedBy", $script);
-        }
+        $this->assertStringContainsString("data-label=\"Date\" class=\"text-center\">\${escapeHtml(schedule.date || '—')}", $script);
+        $this->assertStringContainsString("data-label=\"Time\" class=\"text-center\">\${escapeHtml(scheduleHidden ? followedBy", $script);
+        $this->assertStringContainsString("data-label=\"Venue\">\${escapeHtml(fx.venue_name", $script);
+        $this->assertStringContainsString("data-label=\"Court\" class=\"text-center\">\${escapeHtml(scheduleHidden ? ''", $script);
         $this->assertStringNotContainsString('if (a.round !== b.round)', $script);
     }
 }

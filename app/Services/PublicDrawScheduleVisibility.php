@@ -83,9 +83,7 @@ class PublicDrawScheduleVisibility
         foreach ($hub['rrFixtures'] as &$groupFixtures) {
             foreach ($groupFixtures as &$fixture) {
                 if (! $isVisible($fixture['id'] ?? null)) {
-                    $fixture['schedule_hidden'] = true;
-                    $fixture['time'] = null;
-                    $fixture['venue_name'] = null;
+                    $fixture = $this->hideScheduledTime($fixture);
                 }
             }
             unset($fixture);
@@ -94,15 +92,29 @@ class PublicDrawScheduleVisibility
 
         $hub['oops'] = collect($hub['oops'])->map(function (array $fixture) use ($isVisible): array {
             if (! $isVisible($fixture['id'] ?? null)) {
-                $fixture['schedule_hidden'] = true;
-                $fixture['time'] = null;
-                $fixture['venue_name'] = null;
-                $fixture['court'] = null;
+                $fixture = $this->hideScheduledTime($fixture);
             }
 
             return $fixture;
         });
 
         return $hub;
+    }
+
+    private function hideScheduledTime(array $fixture): array
+    {
+        if (empty($fixture['time'])) {
+            return $fixture;
+        }
+
+        $fixture['schedule_hidden'] = true;
+        $fixture['scheduled_date'] = date('Y-m-d', strtotime((string) $fixture['time']));
+        $fixture['time'] = null;
+
+        if (array_key_exists('court', $fixture)) {
+            $fixture['court'] = null;
+        }
+
+        return $fixture;
     }
 }
