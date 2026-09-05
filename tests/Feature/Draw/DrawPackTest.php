@@ -3,6 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
+use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FlexibleMonradDraw;
@@ -14,6 +15,7 @@ use App\Models\Player;
 use App\Models\Registration;
 use App\Models\User;
 use App\Models\Venue;
+use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -381,62 +383,39 @@ class DrawPackTest extends TestCase
             ->assertJsonValidationErrors('print_type');
     }
 
-    public function test_flexible_monrad_bracket_print_redirects_to_the_canonical_graphical_workspace(): void
+    public function test_multiple_flexible_monrad_brackets_download_as_one_direct_pdf(): void
     {
-        $draw = Draw::factory()->create([
-            'event_id' => $this->event->id,
-            'drawName' => 'Boys U15 Monrad',
-        ]);
-        $draw->settings()->create(['workflow' => 'custom_monrad']);
-        FlexibleMonradDraw::create([
-            'draw_id' => $draw->id,
-            'revision' => 1,
-            'draft' => ['size' => 4, 'slots' => []],
-            'graph' => ['matches' => []],
-        ]);
-
-        $final = Fixture::factory()->create([
-            'draw_id' => $draw->id,
-            'stage' => 'FM',
-            'round' => 2,
-            'match_nr' => 3,
-        ]);
-        Fixture::factory()->create([
-            'draw_id' => $draw->id,
-            'stage' => 'FM',
-            'round' => 1,
-            'match_nr' => 1,
-            'parent_fixture_id' => $final->id,
-            'feeder_slot' => 1,
-        ]);
-        Fixture::factory()->create([
-            'draw_id' => $draw->id,
-            'stage' => 'FM',
-            'round' => 1,
-            'match_nr' => 2,
-            'parent_fixture_id' => $final->id,
-            'feeder_slot' => 2,
-        ]);
-
-        $workspaceUrl = route('backend.draw.roundrobin.show', $draw).'?print=draw#matrix';
+        $boys = $this->generatedFlexibleMonradDraw('Boys U15 Monrad');
+        $girls = $this->generatedFlexibleMonradDraw('Girls U15 Monrad');
 
         $this->actingAs($this->admin)
             ->get(route('headoffice.drawPack', [
                 'event' => $this->event,
-                'draw_ids' => [$draw->id],
+                'draw_ids' => [$boys->id, $girls->id],
                 'print_type' => 'bracket',
+                'download' => 1,
             ]))
-            ->assertRedirect($workspaceUrl);
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf')
+            ->assertDownload('Cape_Junior_Championships_monrad_brackets.pdf');
 
         $eventPage = $this->get(route('headOffice.show', $this->event));
         $eventPage->assertOk()
             ->assertSee('Flexible Monrad Bracket Only')
             ->assertSee('Print the graphical bracket exactly as shown in the Monrad workspace')
-            ->assertSee('data-monrad-print-url="'.route('backend.draw.roundrobin.show', $draw).'"', false);
+            ->assertSee('Select one or more Flexible Monrad draws above')
+            ->assertSee('Each selected draw is fitted to one PDF page.');
 
-        $navigation = file_get_contents(public_path('js/draw-workspace-navigation.js'));
-        $this->assertStringContainsString("get('print') === 'draw'", $navigation);
-        $this->assertStringContainsString("workspace.classList.add('print-draw-only')", $navigation);
+        $modal = file_get_contents(resource_path('views/backend/headOffice/individual-event-show.blade.php'));
+        $this->assertStringContainsString('function downloadSelectedMonradBrackets()', $modal);
+        $this->assertStringContainsString("params.append('draw_ids[]', $(this).val())", $modal);
+        $this->assertStringNotContainsString('openSelectedMonradBracket', $modal);
+        $this->assertStringNotContainsString('data-monrad-print-url', $modal);
+
+        $pdfView = file_get_contents(resource_path('views/backend/draw/pdf/flexible-monrad-brackets.blade.php'));
+        $this->assertStringContainsString('height: 166mm', $pdfView);
+        $this->assertStringContainsString('page-break-after: always', $pdfView);
+        $this->assertStringContainsString('All brackets and final positions', $pdfView);
 
         $standardDraw = Draw::factory()->create([
             'event_id' => $this->event->id,
@@ -449,6 +428,35 @@ class DrawPackTest extends TestCase
         ]))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('draw_ids');
+    }
+
+    private function generatedFlexibleMonradDraw(string $name, int $size = 4): Draw
+    {
+        $category = CategoryEvent::factory()->create(['event_id' => $this->event->id]);
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'category_event_id' => $category->id,
+            'drawName' => $name,
+        ]);
+        $registrations = Registration::factory()->count($size)->create();
+        foreach ($registrations as $registration) {
+            $registration->players()->attach(Player::factory()->create());
+            $registration->categoryEvents()->attach($category->id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
+        }
+        $slots = [];
+        $depth = (int) log($size, 2);
+        foreach ($registrations as $index => $registration) {
+            $path = strtr(str_pad(decbin($index), $depth, '0', STR_PAD_LEFT), ['0' => 'a', '1' => 'b']);
+            $slots[$path] = ['type' => 'player', 'id' => $registrations[$index]->id];
+        }
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, ['size' => $size, 'mode' => 'custom_monrad', 'slots' => $slots], 0);
+        $service->generate($draw, 1);
+
+        return $draw->refresh();
     }
 
     public function test_browser_print_builders_escape_untrusted_draw_content(): void

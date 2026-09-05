@@ -31,12 +31,9 @@ $(document).ready(function () {
         $('.print-draw-chk:not(:disabled)').prop('checked', $(this).is(':checked'));
     });
     $(document).on('change', '.print-draw-chk', function () {
-        if ($('input[name="print_type"]:checked').val() === 'bracket' && $(this).is(':checked')) {
-            $('.print-draw-chk').not(this).prop('checked', false);
-        }
         var total = $('.print-draw-chk:not(:disabled)').length;
         var checked = $('.print-draw-chk:checked').length;
-        $('#chk-select-all-draws').prop('checked', total === checked);
+        $('#chk-select-all-draws').prop('checked', total > 0 && total === checked);
     });
 
     var defaultAccessibilityNote = $('#draw-pack-accessibility-note').text().trim();
@@ -47,20 +44,24 @@ $(document).ready(function () {
         $('#standings-option').toggle(val === 'pack' || val === 'matrix' || val === 'combined');
         var bracketOnly = val === 'bracket';
         if (bracketOnly) {
-            $('.print-draw-chk').prop('checked', false).each(function () {
-                $(this).prop('disabled', $(this).data('flexible-monrad') !== 1);
+            $('.print-draw-chk').each(function () {
+                var isMonrad = $(this).data('flexible-monrad') === 1;
+                $(this).prop('disabled', !isMonrad);
+                if (!isMonrad) $(this).prop('checked', false);
             });
         } else {
             $('.print-draw-chk').prop('disabled', false);
         }
-        $('#chk-select-all-draws').prop({ checked: false, disabled: bracketOnly });
+        var eligible = $('.print-draw-chk:not(:disabled)').length;
+        var selected = $('.print-draw-chk:checked').length;
+        $('#chk-select-all-draws').prop({ checked: eligible > 0 && eligible === selected, disabled: false });
         $('#monrad-bracket-help').toggleClass('d-none', !bracketOnly);
         $('#btn-download-pdf').toggleClass('d-none', bracketOnly);
         $('#draw-pack-accessibility-note').text(bracketOnly
-            ? 'The graphical Monrad board opens in a new tab and starts the print dialog. Choose Save as PDF there if you need a file.'
+            ? 'Downloads one PDF immediately, with one fitted landscape page for each selected Flexible Monrad draw.'
             : defaultAccessibilityNote);
         $('#btn-print-all-draws').html(bracketOnly
-            ? '<i class="ti ti-printer me-1"></i> Print Monrad bracket'
+            ? '<i class="ti ti-file-type-pdf me-1"></i> Download bracket PDF'
             : '<i class="ti ti-printer me-1"></i> Print pack');
     });
 
@@ -222,23 +223,15 @@ $(document).ready(function () {
         return ids;
     }
 
-    function openSelectedMonradBracket() {
+    function downloadSelectedMonradBrackets() {
         var selected = $('.print-draw-chk:checked');
-        if (selected.length !== 1) {
-            toastr.warning('Select one Flexible Monrad draw to print its graphical bracket.');
+        if (!selected.length) {
+            toastr.warning('Select at least one Flexible Monrad draw for the bracket PDF.');
             return false;
         }
-        var url = selected.first().data('monrad-print-url');
-        if (!url) {
-            toastr.warning('The selected draw is not a Flexible Monrad draw.');
-            return false;
-        }
-        var printWindow = window.open(url + (url.includes('?') ? '&' : '?') + 'print=draw#matrix', '_blank');
-        if (!printWindow) {
-            toastr.error('Popup blocked - please allow popups for this site.');
-            return false;
-        }
-        printWindow.opener = null;
+        var params = new URLSearchParams({ print_type: 'bracket', download: '1' });
+        selected.each(function () { params.append('draw_ids[]', $(this).val()); });
+        window.location.href = @json(route('headoffice.drawPack', $event)) + '?' + params.toString();
         bootstrap.Modal.getOrCreateInstance(document.getElementById('printAllDrawsModal')).hide();
         return true;
     }
@@ -251,7 +244,7 @@ $(document).ready(function () {
         var printType = $('input[name="print_type"]:checked').val();
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
         if (printType === 'bracket') {
-            openSelectedMonradBracket();
+            downloadSelectedMonradBrackets();
             return;
         }
         if (printType === 'pack' || printType === 'venue') {
@@ -344,7 +337,7 @@ $(document).ready(function () {
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
 
         if (printType === 'bracket') {
-            openSelectedMonradBracket();
+            downloadSelectedMonradBrackets();
             return;
         }
 
@@ -515,8 +508,7 @@ $(document).ready(function () {
               <div class="form-check">
                 <input class="form-check-input print-draw-chk" type="checkbox"
                        value="{{ $draw->id }}" id="chk-draw-{{ $draw->id }}" checked
-                       data-flexible-monrad="{{ $draw->is_flexible ? 1 : 0 }}"
-                       data-monrad-print-url="{{ $draw->is_flexible ? route('backend.draw.roundrobin.show', $draw) : '' }}">
+                       data-flexible-monrad="{{ $draw->is_flexible ? 1 : 0 }}">
                 <label class="form-check-label" for="chk-draw-{{ $draw->id }}">
                   {{ $draw->drawName ?? 'Draw #' . $draw->id }}
                 </label>
@@ -573,7 +565,7 @@ $(document).ready(function () {
           </div>
         </fieldset>
 
-        <p class="small text-muted d-none" id="monrad-bracket-help">Select one Flexible Monrad draw above. Non-Monrad draws are disabled for this print type.</p>
+        <p class="small text-muted d-none" id="monrad-bracket-help">Select one or more Flexible Monrad draws above. Non-Monrad draws are disabled. Each selected draw is fitted to one PDF page.</p>
 
         {{-- Include standings option (shown when matrix or combined selected) --}}
         <div class="form-check mb-3" id="standings-option">

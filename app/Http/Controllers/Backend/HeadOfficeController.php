@@ -1252,13 +1252,47 @@ class HeadOfficeController extends Controller
     }
 
     if (($validated['print_type'] ?? 'pack') === 'bracket') {
-      if ($draws->count() !== 1 || ! $draws->first()->usesFlexibleMonrad()) {
+      if ($draws->isEmpty()) {
         throw ValidationException::withMessages([
-          'draw_ids' => 'Select exactly one Flexible Monrad draw for graphical bracket printing.',
+          'draw_ids' => 'Select at least one Flexible Monrad draw for the bracket PDF.',
+        ]);
+      }
+      if ($draws->contains(fn (Draw $draw) => ! $draw->usesFlexibleMonrad())) {
+        throw ValidationException::withMessages([
+          'draw_ids' => 'Bracket PDF selections may contain only Flexible Monrad draws.',
         ]);
       }
 
-      return redirect(route('backend.draw.roundrobin.show', $draws->first()).'?print=draw#matrix');
+      $monrad = app(\App\Services\Draw\FlexibleMonradService::class);
+      $layout = app(\App\Services\Draw\FlexibleMonradPdfLayout::class);
+      $bracketDraws = $draws->map(function (Draw $draw) use ($monrad, $layout) {
+        $state = $monrad->state($draw);
+        if (! $state['generated']) {
+          throw ValidationException::withMessages([
+            'draw_ids' => "{$draw->drawName} does not have a generated Flexible Monrad bracket yet.",
+          ]);
+        }
+
+        $drawLayout = $layout->build($state);
+
+        return [
+          'id' => $draw->id,
+          'name' => $draw->drawName ?? 'Draw #'.$draw->id,
+          'svg' => view('backend.draw.pdf.partials.flexible-monrad-board-svg', [
+            'drawName' => $draw->drawName ?? 'Draw #'.$draw->id,
+            'layout' => $drawLayout,
+          ])->render(),
+        ];
+      });
+
+      $pdf = Pdf::loadView('backend.draw.pdf.flexible-monrad-brackets', [
+        'event' => $event,
+        'draws' => $bracketDraws,
+      ])->setPaper('A4', 'landscape');
+
+      $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name).'_monrad_brackets.pdf';
+
+      return $pdf->download($filename);
     }
 
     $drawsData = $draws->map(fn (Draw $draw) => $this->buildDrawPrintData($draw))->values();
