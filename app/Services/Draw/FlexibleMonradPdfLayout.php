@@ -2,6 +2,7 @@
 
 namespace App\Services\Draw;
 
+use Carbon\Carbon;
 use Illuminate\Support\Str;
 
 final class FlexibleMonradPdfLayout
@@ -39,16 +40,21 @@ final class FlexibleMonradPdfLayout
                 $key = $entry['key'];
                 $match = $entry['match'];
                 $position = $layout['positions'][$key];
+                $participantLabels = [
+                    $this->participantLabel($match, 0, $players, $matches),
+                    $this->participantLabel($match, 1, $players, $matches),
+                ];
                 $cards[] = [
                     'key' => $key,
                     'x' => $position['x'],
-                    'y' => $position['top'],
+                    'top' => $position['top'],
+                    'bottom' => $position['bottom'],
+                    'middle' => $position['middle'],
                     'width' => self::CARD_WIDTH,
-                    'height' => $position['bottom'] - $position['top'] + self::SLOT_HEIGHT,
                     'number' => $match['number'],
-                    'players' => [
-                        $this->participantLabel($match, 0, $players, $matches),
-                        $this->participantLabel($match, 1, $players, $matches),
+                    'participants' => [
+                        ['label' => $participantLabels[0], 'style' => $this->participantStyle($match, 0, $players), 'width' => $this->pillWidth($participantLabels[0])],
+                        ['label' => $participantLabels[1], 'style' => $this->participantStyle($match, 1, $players), 'width' => $this->pillWidth($participantLabels[1])],
                     ],
                     'scores' => [
                         collect($match['sets'] ?? [])->pluck(0)->implode(' '),
@@ -56,6 +62,7 @@ final class FlexibleMonradPdfLayout
                     ],
                     'winner' => $match['winner'] ?? null,
                     'player_ids' => $match['players'] ?? [null, null],
+                    'schedule' => $this->scheduleLabel($match['schedule'] ?? null),
                     'note' => match ($match['automatic'] ?? null) {
                         'walkover' => 'Walkover',
                         'void' => 'Closed - no active players',
@@ -95,7 +102,7 @@ final class FlexibleMonradPdfLayout
                 preg_match('/^Positions\s+(\d+)/u', $section, $placement);
                 $endpoints[] = [
                     'x' => $lineEnd + 10,
-                    'y' => $position['middle'] - 10,
+                    'y' => $position['middle'] - self::SLOT_HEIGHT,
                     'label' => $section === 'Main draw' ? 'Champion' : (isset($placement[1]) ? 'Position '.$placement[1] : 'Winner'),
                     'name' => !empty($entry['match']['winner'])
                         ? ($players[(int) $entry['match']['winner']]['name'] ?? 'Winner')
@@ -222,5 +229,42 @@ final class FlexibleMonradPdfLayout
         $type = ($source['type'] ?? null) === 'winner' ? 'Winner' : 'Loser';
         $number = isset($source['match'], $matches[$source['match']]) ? $matches[$source['match']]['number'] : '?';
         return $type.' of Match '.$number;
+    }
+
+    private function participantStyle(array $match, int $slot, $players): string
+    {
+        $id = $match['players'][$slot] ?? null;
+        $withdrawn = $match['withdrawn_players'][$slot] ?? null;
+        $pending = $match['pending_withdrawal_players'][$slot] ?? null;
+        if ($withdrawn || $pending || ($id && !empty($players[(int) $id]['withdrawn']))) {
+            return 'withdrawn';
+        }
+        if ($id) {
+            return (int) $id === (int) ($match['winner'] ?? 0) ? 'winner' : 'player';
+        }
+
+        return 'source';
+    }
+
+    private function pillWidth(string $label): int
+    {
+        return max(42, min(190, 13 + Str::length($label) * 5));
+    }
+
+    private function scheduleLabel(?array $schedule): ?string
+    {
+        if (empty($schedule['time'])) {
+            return null;
+        }
+        try {
+            $label = Carbon::parse($schedule['time'])->format('D d M Y H:i');
+        } catch (\Throwable) {
+            $label = (string) $schedule['time'];
+        }
+        if (!empty($schedule['court'])) {
+            $label .= ' · Court '.$schedule['court'];
+        }
+
+        return $label;
     }
 }

@@ -459,6 +459,19 @@ class DrawPackTest extends TestCase
         return $draw->refresh();
     }
 
+    public function test_qa_writes_canonical_monrad_pdf(): void
+    {
+        $draw = $this->generatedFlexibleMonradDraw('u/15 Girls', 8);
+        $response = $this->actingAs($this->admin)->get(route('headoffice.drawPack', [
+            'event' => $this->event,
+            'draw_ids' => [$draw->id],
+            'print_type' => 'bracket',
+            'download' => 1,
+        ]));
+        $response->assertOk();
+        file_put_contents(base_path('tmp/pdfs/canonical-monrad-qa.pdf'), $response->getContent());
+    }
+
     public function test_browser_print_builders_escape_untrusted_draw_content(): void
     {
         $workspacePrint = file_get_contents(resource_path('views/backend/draw/roundrobin/print-scripts.blade.php'));
