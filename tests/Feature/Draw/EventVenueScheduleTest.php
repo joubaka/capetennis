@@ -160,7 +160,13 @@ class EventVenueScheduleTest extends TestCase
         Schema::table('events', fn (Blueprint $table) => $table->string('venues')->nullable());
         DB::table('events')->where('id', $event->id)->update(['venues' => 'Legacy venue description']);
         $this->get(route('backend.event-venue-schedule.index', $event))
-            ->assertOk()->assertSee('Schedule every assigned age group')->assertSee('Shared Venue');
+            ->assertOk()
+            ->assertSee('Schedule every assigned age group')
+            ->assertSee('Shared Venue')
+            ->assertSee('open only the one you are editing')
+            ->assertSee('id="court-allocation-step"', false)
+            ->assertSee('id="schedule-rules-step"', false)
+            ->assertSee('Next: timing rules');
     }
 
     public function test_an_admin_of_another_event_cannot_open_or_generate_the_schedule(): void

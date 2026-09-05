@@ -2,73 +2,146 @@
 
 @section('title', 'Venue Schedule – '.$event->name)
 
+@section('page-style')
+<style>
+  .schedule-workspace { --schedule-border:#e6e8ee; --schedule-muted:#667085; --schedule-soft:#f7f8fa; }
+  .schedule-workspace .workspace-header { max-width: 52rem; }
+  .schedule-workspace .workspace-actions .btn { white-space: nowrap; }
+  .schedule-workspace .workflow-rail { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); border:1px solid var(--schedule-border); border-radius:.85rem; background:#fff; overflow:hidden; }
+  .schedule-workspace .workflow-step { display:flex; align-items:center; gap:.75rem; min-width:0; padding:.9rem 1rem; color:var(--schedule-muted); }
+  .schedule-workspace .workflow-step + .workflow-step { border-left:1px solid var(--schedule-border); }
+  .schedule-workspace .workflow-step.is-active { color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .055); }
+  .schedule-workspace .step-number { display:grid; place-items:center; flex:0 0 1.75rem; width:1.75rem; height:1.75rem; border-radius:50%; background:var(--schedule-soft); font-size:.78rem; font-weight:700; }
+  .schedule-workspace .is-active .step-number { color:#fff; background:var(--bs-primary); }
+  .schedule-workspace .workflow-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.84rem; font-weight:600; }
+  .schedule-workspace .workspace-section { border:1px solid var(--schedule-border); border-radius:.9rem; background:#fff; box-shadow:0 .35rem 1.25rem rgba(31, 42, 68, .045); overflow:hidden; }
+  .schedule-workspace .workspace-section > summary { list-style:none; display:flex; align-items:center; gap:1rem; padding:1.15rem 1.25rem; cursor:pointer; }
+  .schedule-workspace .workspace-section > summary::-webkit-details-marker,
+  .schedule-workspace .draw-panel > summary::-webkit-details-marker,
+  .schedule-workspace .venue-editor > summary::-webkit-details-marker { display:none; }
+  .schedule-workspace .section-title { flex:1; min-width:0; }
+  .schedule-workspace .section-title h5 { margin:0 0 .2rem; }
+  .schedule-workspace .summary-chevron { color:var(--schedule-muted); transition:transform .2s ease; }
+  .schedule-workspace details[open] > summary .summary-chevron { transform:rotate(180deg); }
+  .schedule-workspace .section-body { border-top:1px solid var(--schedule-border); padding:1.25rem; }
+  .schedule-workspace .draw-list { border:1px solid var(--schedule-border); border-radius:.75rem; overflow:hidden; }
+  .schedule-workspace .draw-panel + .draw-panel { border-top:1px solid var(--schedule-border); }
+  .schedule-workspace .draw-panel > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; cursor:pointer; background:#fff; }
+  .schedule-workspace .draw-panel[open] > summary { background:var(--schedule-soft); }
+  .schedule-workspace .draw-panel-body { padding:1rem; border-top:1px solid var(--schedule-border); }
+  .schedule-workspace .venue-assignment { border-top:1px solid var(--schedule-border); padding:.8rem 0; }
+  .schedule-workspace .venue-assignment:first-child { border-top:0; }
+  .schedule-workspace .venue-assignment > .d-flex { flex-wrap:wrap; }
+  .schedule-workspace .venue-assignment label { min-width:12rem; }
+  .schedule-workspace .court-toggle { margin-left:auto; padding:.15rem .35rem; text-decoration:none; }
+  .schedule-workspace .court-choices { padding:.75rem 0 0 1.8rem; }
+  .schedule-workspace .court-choice { display:inline-flex; align-items:center; gap:.35rem; padding:.38rem .55rem; margin:0 .35rem .35rem 0; border:1px solid var(--schedule-border); border-radius:.45rem; background:#fff; color:var(--bs-body-color); font-size:.78rem; font-weight:500; }
+  .schedule-workspace .venue-management { border:1px solid var(--schedule-border); border-radius:.75rem; background:var(--schedule-soft); }
+  .schedule-workspace .venue-management > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:1rem; cursor:pointer; }
+  .schedule-workspace .venue-management-body { padding:0 1rem 1rem; }
+  .schedule-workspace .venue-editor { border-top:1px solid var(--schedule-border); }
+  .schedule-workspace .venue-editor > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 0; cursor:pointer; }
+  .schedule-workspace .venue-editor-body { padding:0 0 1rem; }
+  .schedule-workspace .workspace-footer { position:sticky; bottom:.75rem; z-index:4; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; padding:.8rem; border:1px solid var(--schedule-border); border-radius:.75rem; background:rgba(255,255,255,.96); box-shadow:0 .5rem 1.5rem rgba(31,42,68,.1); backdrop-filter:blur(8px); }
+  .schedule-workspace .compact-note { border-left:3px solid var(--bs-info); padding:.55rem .75rem; background:rgba(var(--bs-info-rgb), .06); border-radius:0 .5rem .5rem 0; }
+  @media (max-width: 767.98px) {
+    .schedule-workspace .workflow-rail { grid-template-columns:1fr; }
+    .schedule-workspace .workflow-step { display:none; }
+    .schedule-workspace .workflow-step.is-active { display:flex; }
+    .schedule-workspace .workflow-step + .workflow-step { border-left:0; }
+    .schedule-workspace .workspace-actions, .schedule-workspace .workspace-actions .btn { width:100%; }
+    .schedule-workspace .workspace-section > summary, .schedule-workspace .section-body { padding:1rem; }
+    .schedule-workspace .workspace-footer { position:static; align-items:stretch; flex-direction:column; }
+    .schedule-workspace .workspace-footer .btn { width:100%; }
+    .schedule-workspace .court-choices { padding-left:0; }
+  }
+</style>
+@endsection
+
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y">
+<div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-    <div>
+    <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h3 class="mb-1">{{ $event->name }}</h3>
-      <p class="text-muted mb-0">Schedule every assigned age group across the event's shared physical courts.</p>
+      <p class="text-muted mb-0">Schedule every assigned age group in three clear steps: assign courts, set the timing, then review.</p>
     </div>
-    <div class="d-flex flex-wrap gap-2">
-      <button type="button" class="btn btn-primary" id="open-venue-announcement"
+    <div class="d-flex flex-wrap gap-2 workspace-actions">
+      <a class="btn btn-label-secondary" href="{{ url()->previous() }}"><i class="ti ti-arrow-left me-1"></i>Back</a>
+      <button type="button" class="btn btn-outline-primary" id="open-venue-announcement"
         data-bs-toggle="modal" data-bs-target="#venueAnnouncementModal"
         {{ $announcementDraft['assignments']->isEmpty() ? 'disabled' : '' }}>
         <i class="ti ti-megaphone me-1"></i>Announce assigned courts
       </button>
-      <a class="btn btn-outline-secondary" href="{{ url()->previous() }}"><i class="ti ti-arrow-left me-1"></i>Back</a>
     </div>
   </div>
 
-  <div class="alert alert-info d-flex gap-2 align-items-start" role="note">
-    <i class="ti ti-info-circle mt-1" aria-hidden="true"></i>
-    <div><strong>How byes are timed:</strong> a bye uses no court but still advances through its round wave. A player with two byes first appears in the third wave.</div>
+  <div class="workflow-rail mb-3" aria-label="Schedule workflow">
+    <div class="workflow-step is-active"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></div>
+    <div class="workflow-step"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></div>
+    <div class="workflow-step"><span class="step-number">3</span><span class="workflow-label">Review & apply</span></div>
   </div>
 
-  <div class="card mb-4">
-    <div class="card-header"><h5 class="mb-1">1. Assign age groups to courts</h5><small class="text-muted">Choose the physical courts each age group may use, then save these allocations before previewing.</small></div>
-    <div class="card-body row g-4">
-      <div class="col-lg-7">
-        <div class="row g-2">
+  <details class="workspace-section mb-3" id="court-allocation-step" open>
+    <summary>
+      <span class="step-number">1</span>
+      <span class="section-title"><h5>Assign age groups to courts</h5><small class="text-muted"><span id="selected-draw-count">{{ $draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->count() }}</span> age groups included · open only the one you are editing</small></span>
+      <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
+    </summary>
+    <div class="section-body">
+      <div class="draw-list">
           @forelse($draws as $draw)
-            <div class="col-md-6">
-              <div class="border rounded p-3 h-100 {{ $draw['locked'] || $draw['published'] ? 'bg-light text-muted' : '' }}">
-                <label class="d-flex gap-2 mb-2 align-items-center">
-                <input class="form-check-input draw-choice" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : 'checked' }}>
-                <strong>{{ $draw['name'] }}</strong>
-                @if($draw['locked'] || $draw['published'])<span class="badge bg-label-secondary ms-auto">{{ $draw['published'] ? 'Published' : 'Locked' }}</span>@endif
-                </label>
-                <label class="small text-muted d-block mb-2">Start this age group later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
-                <div class="small text-muted mb-1">Permitted venues</div>
-                <div class="d-grid gap-2">
+            <details class="draw-panel {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $loop->first ? 'open' : '' }}>
+              <summary>
+                <span class="flex-grow-1 fw-semibold">{{ $draw['name'] }}</span>
+                @if($draw['locked'] || $draw['published'])
+                  <span class="badge bg-label-secondary">{{ $draw['published'] ? 'Published' : 'Locked' }}</span>
+                @else
+                  <span class="small text-muted" data-draw-summary="{{ $draw['id'] }}">{{ count($draw['venues']) }} {{ Str::plural('venue', count($draw['venues'])) }}</span>
+                @endif
+                <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
+              </summary>
+              <div class="draw-panel-body">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+                  <label class="form-check d-flex align-items-center gap-2 mb-0">
+                    <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : 'checked' }}>
+                    <span class="fw-semibold">Include in this schedule</span>
+                  </label>
+                  <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
+                </div>
+                <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
+                <div>
                   @foreach($venues as $venue)
                     @php
                       $venueAssigned = in_array($venue['id'], $draw['venues']);
                       $allocatedLabels = $draw['court_allocations'][$venue['id']] ?? [];
                     @endphp
-                    <div class="border rounded p-2 venue-assignment">
-                      <label class="small fw-semibold d-flex align-items-center"><input class="form-check-input assignment-choice me-2" data-draw="{{ $draw['id'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}>{{ $venue['name'] }} <span class="text-muted fw-normal ms-auto">{{ $venue['courts'] }} courts</span></label>
-                      <div class="d-flex flex-wrap gap-2 mt-2 ps-3">
+                    <div class="venue-assignment">
+                      <div class="d-flex align-items-center gap-2">
+                        <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
+                        <span class="small text-muted" data-court-summary="{{ $draw['id'] }}-{{ $venue['id'] }}">{{ $venueAssigned ? (empty($allocatedLabels) ? 'All '.$venue['courts'] : count($allocatedLabels).' of '.$venue['courts']) : 'Not used' }}</span>
+                        <button class="btn btn-sm btn-text-secondary court-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courts-{{ $draw['id'] }}-{{ $venue['id'] }}" aria-expanded="false" aria-controls="courts-{{ $draw['id'] }}-{{ $venue['id'] }}">Choose courts</button>
+                      </div>
+                      <div class="collapse" id="courts-{{ $draw['id'] }}-{{ $venue['id'] }}"><div class="court-choices">
                         @foreach($venue['court_list'] as $court)
                           @php $courtChecked = $venueAssigned && (empty($allocatedLabels) || in_array($court['label'], $allocatedLabels)); @endphp
-                          <label class="badge bg-label-secondary text-body fw-normal"><input class="form-check-input court-allocation me-1" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" type="checkbox" value="{{ $court['label'] }}" {{ $courtChecked ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}>Court {{ $court['label'] }}@if($court['ball_type']) · {{ ucfirst($court['ball_type']) }}@endif</label>
+                          <label class="court-choice"><input class="form-check-input court-allocation mt-0" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" type="checkbox" value="{{ $court['label'] }}" {{ $courtChecked ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}>Court {{ $court['label'] }}@if($court['ball_type']) · {{ ucfirst($court['ball_type']) }}@endif</label>
                         @endforeach
-                      </div>
+                      </div></div>
                     </div>
                   @endforeach
                 </div>
               </div>
-            </div>
+            </details>
           @empty
-            <div class="text-muted">No draws have been created for this event.</div>
+            <div class="text-muted p-3">No draws have been created for this event.</div>
           @endforelse
-        </div>
       </div>
-      <div class="col-lg-5">
-        <details class="border rounded mb-3" id="venue-management">
-          <summary class="p-3 fw-semibold cursor-pointer">Manage venues and court setup</summary>
-          <div class="px-3 pb-3">
-          <div class="border rounded p-3 mb-3 bg-light">
+
+      <details class="venue-management mt-3" id="venue-management">
+        <summary><i class="ti ti-settings" aria-hidden="true"></i><span class="flex-grow-1"><strong>Manage venues and court setup</strong><span class="d-block small text-muted">{{ $venues->count() }} venues · {{ $venues->sum('courts') }} courts available</span></span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
+        <div class="venue-management-body">
+          <div class="border rounded p-3 mb-2 bg-white">
             <h6>Add another venue</h6>
             <label class="form-label small" for="new-venue-id">Use an existing venue</label>
             <select id="new-venue-id" class="form-select form-select-sm mb-2"><option value="">Create a new venue instead…</option>@foreach($allVenues as $option)<option value="{{ $option->id }}">{{ $option->name }}</option>@endforeach</select>
@@ -82,8 +155,9 @@
             <div id="venue-add-status" class="small text-muted mt-2" role="status" aria-live="polite"></div>
           </div>
           @forelse($venues as $venue)
-          <div class="border rounded p-3 mb-2">
-            <div class="d-flex align-items-center justify-content-between gap-2"><strong>{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span></div>
+          <details class="venue-editor">
+            <summary><strong class="flex-grow-1">{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
+            <div class="venue-editor-body">
             <div class="small fw-semibold mt-3 mb-2">Edit this venue's court setup</div>
             <div class="row g-2 venue-court-setup" data-url="{{ route('backend.event-venue-schedule.courts.configure', [$event, $venue['id']]) }}">
               <div class="col-sm-4"><label class="visually-hidden">Total courts at {{ $venue['name'] }}</label><input type="number" class="form-control form-control-sm setup-court-count" value="{{ $venue['courts'] }}" min="1" max="100" aria-label="Total courts at {{ $venue['name'] }}"></div>
@@ -103,25 +177,33 @@
             </div>
             <div class="small fw-semibold mt-3">Add a specially named court</div>
             <div class="row g-2 mt-2"><div class="col-sm-5"><input class="form-control form-control-sm add-court-label" data-venue="{{ $venue['id'] }}" aria-label="New court label at {{ $venue['name'] }}" placeholder="Court label"></div><div class="col-7 col-sm-4"><select class="form-select form-select-sm add-court-ball" data-venue="{{ $venue['id'] }}" aria-label="New court type"><option value="standard">Standard</option><option value="yellow">Yellow</option><option value="orange">Orange</option><option value="green">Green</option><option value="red">Red</option></select></div><div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-primary w-100 add-court" data-venue="{{ $venue['id'] }}">Add</button></div></div>
-          </div>
+            </div>
+          </details>
           @empty
             <div class="alert alert-warning mb-0">Add the first venue and its courts before creating allocations.</div>
           @endforelse
-          </div>
-        </details>
-      </div>
+        </div>
+      </details>
+
       @if($draws->isNotEmpty() && $venues->isNotEmpty())
-        <div class="col-12 d-flex flex-wrap align-items-center gap-2 border-top pt-3">
-          <button type="button" id="save-allocations" class="btn btn-outline-primary"><i class="ti ti-device-floppy me-1"></i>Save court allocations</button>
-          <span id="allocation-status" class="small text-muted" role="status" aria-live="polite">Saved allocations will be used by the combined preview.</span>
+        <div class="workspace-footer">
+          <span id="allocation-status" class="small text-muted" role="status" aria-live="polite">Save changes before creating a preview.</span>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" id="save-allocations" class="btn btn-outline-primary"><i class="ti ti-device-floppy me-1"></i>Save allocations</button>
+            <button type="button" id="continue-to-rules" class="btn btn-primary">Next: timing rules<i class="ti ti-arrow-right ms-1"></i></button>
+          </div>
         </div>
       @endif
     </div>
-  </div>
+  </details>
 
-  <div class="card mb-4">
-    <div class="card-header"><h5 class="mb-1">2. Scheduling rules</h5><small class="text-muted">Player rest and court turnaround are calculated separately.</small></div>
-    <div class="card-body">
+  <details class="workspace-section mb-3" id="schedule-rules-step">
+    <summary>
+      <span class="step-number">2</span>
+      <span class="section-title"><h5>Scheduling rules</h5><small class="text-muted">Set the event window, match length and player rest.</small></span>
+      <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
+    </summary>
+    <div class="section-body">
       <div class="row g-3">
         <div class="col-md-3"><label class="form-label" for="schedule-start">Schedule starts</label><input id="schedule-start" type="datetime-local" class="form-control" value="{{ optional($event->start_date)->format('Y-m-d') }}T08:00"></div>
         <div class="col-md-3"><label class="form-label" for="schedule-end">Schedule ends</label><input id="schedule-end" type="datetime-local" class="form-control" value="{{ optional($event->start_date)->format('Y-m-d') }}T18:00"></div>
@@ -130,6 +212,7 @@
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="5" min="0" max="120"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="60" min="0" max="480"></div>
       </div>
+      <div class="compact-note small text-muted mt-3" role="note"><strong class="text-body">How byes are timed:</strong> a bye uses no court but still advances through its round wave. A player with two byes first appears in the third wave.</div>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button type="button" id="generate-preview" class="btn btn-primary"><i class="ti ti-wand me-1"></i>Generate combined preview</button>
         <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
@@ -149,7 +232,7 @@
         <small class="text-muted d-block mt-2">Progress is estimated while the server builds and validates the complete schedule.</small>
       </div>
     </div>
-  </div>
+  </details>
 
   <div id="preview-summary" class="row g-3 mb-3 d-none"></div>
   <div id="preview-warnings"></div>
@@ -278,6 +361,23 @@
     setStatus(document.getElementById('allocation-status'), 'Unsaved court allocation changes.', 'warning');
     invalidatePreview('Save the court allocations, then generate a new preview.');
   };
+  const setWorkflowStep = step => {
+    document.querySelectorAll('.workflow-step').forEach((item, index) => item.classList.toggle('is-active', index === step - 1));
+  };
+  const updateCourtSummary = (drawId, venueId) => {
+    const venue = document.querySelector(`.assignment-choice[data-draw="${drawId}"][value="${venueId}"]`);
+    const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venueId}"]`)];
+    const selected = courts.filter(court => court.checked).length;
+    const summary = document.querySelector(`[data-court-summary="${drawId}-${venueId}"]`);
+    if (summary) summary.textContent = !venue?.checked ? 'Not used' : selected === courts.length ? `All ${courts.length}` : `${selected} of ${courts.length}`;
+  };
+  const updateDrawSummary = drawId => {
+    const assigned = document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`).length;
+    const summary = document.querySelector(`[data-draw-summary="${drawId}"]`);
+    if (summary) summary.textContent = `${assigned} ${assigned === 1 ? 'venue' : 'venues'}`;
+    const count = document.getElementById('selected-draw-count');
+    if (count) count.textContent = document.querySelectorAll('.draw-choice:checked').length;
+  };
   const buildPayload = () => ({
     start: document.getElementById('schedule-start').value,
     end: document.getElementById('schedule-end').value || null,
@@ -333,15 +433,41 @@
       publishAnnouncement.disabled = false;
     }
   });
+  document.querySelectorAll('.draw-panel').forEach(panel => panel.addEventListener('toggle', () => {
+    if (!panel.open) return;
+    document.querySelectorAll('.draw-panel').forEach(other => { if (other !== panel) other.open = false; });
+  }));
+  document.getElementById('court-allocation-step')?.addEventListener('toggle', event => {
+    if (event.currentTarget.open) setWorkflowStep(1);
+  });
+  document.getElementById('schedule-rules-step')?.addEventListener('toggle', event => {
+    if (event.currentTarget.open) setWorkflowStep(2);
+  });
+  document.getElementById('continue-to-rules')?.addEventListener('click', () => {
+    if (allocationsDirty) {
+      setStatus(document.getElementById('allocation-status'), 'Save the court allocations before continuing.', 'danger');
+      document.getElementById('save-allocations')?.focus();
+      return;
+    }
+    const rules = document.getElementById('schedule-rules-step');
+    rules.open = true;
+    document.getElementById('court-allocation-step').open = false;
+    setWorkflowStep(2);
+    rules.scrollIntoView({behavior:'smooth', block:'start'});
+  });
   document.querySelectorAll('.assignment-choice').forEach(input => input.addEventListener('change', () => {
     document.querySelectorAll(`.court-allocation[data-draw="${input.dataset.draw}"][data-venue="${input.value}"]`)
       .forEach(court => { court.checked = input.checked; });
+    updateCourtSummary(input.dataset.draw, input.value);
+    updateDrawSummary(input.dataset.draw);
     markAllocationsDirty();
   }));
   document.querySelectorAll('.court-allocation').forEach(input => input.addEventListener('change', () => {
     const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${input.dataset.draw}"][data-venue="${input.dataset.venue}"]`)];
     const venue = document.querySelector(`.assignment-choice[data-draw="${input.dataset.draw}"][value="${input.dataset.venue}"]`);
     venue.checked = courts.some(court => court.checked);
+    updateCourtSummary(input.dataset.draw, input.dataset.venue);
+    updateDrawSummary(input.dataset.draw);
     markAllocationsDirty();
   }));
   document.querySelectorAll('.draw-choice, .draw-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest')
@@ -349,6 +475,7 @@
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => {
     const start = document.querySelector(`.draw-start[data-draw="${input.value}"]`);
     if (start) start.disabled = !input.checked;
+    updateDrawSummary(input.value);
   }));
   const existingVenue = document.getElementById('new-venue-id');
   const newVenueName = document.getElementById('new-venue-name');
@@ -401,6 +528,7 @@
 
   function render(result) {
     revision = result.revision;
+    setWorkflowStep(3);
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Court bookings', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
