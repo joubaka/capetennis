@@ -108,6 +108,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
 
     public function test_overview_has_accessible_status_filters_and_searchable_formats(): void
     {
+        Gate::before(fn (?User $user) => true);
         $event = (new Event)->forceFill(['id' => 233, 'name' => 'Trial <event>']);
         $published = $this->draw();
         $published->forceFill(['id' => 43, 'published' => true]);
@@ -124,6 +125,10 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('aria-live="polite">Showing 2 draws', $html);
         $this->assertStringContainsString('id="draw-select-all"', $html);
         $this->assertStringContainsString('id="schedule-selected"', $html);
+        $this->assertStringContainsString('id="publish-selected-draws"', $html);
+        $this->assertStringContainsString('id="unpublish-selected-draws"', $html);
+        $this->assertStringContainsString('id="publish-selected-times"', $html);
+        $this->assertStringContainsString('id="unpublish-selected-times"', $html);
         $this->assertStringContainsString('Schedule all matches', $html);
         $this->assertStringContainsString('data-format="Custom Monrad"', $html);
         $this->assertStringContainsString('id="draw-select-42"', $html);

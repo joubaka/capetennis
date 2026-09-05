@@ -26,7 +26,9 @@ final class BulkDrawPublicationController extends Controller
             'draw_ids' => ['required', 'array', 'min:1', 'max:200'],
             'draw_ids.*' => ['required', 'integer', 'distinct'],
             'operation' => ['required', Rule::in(['draws', 'schedules'])],
+            'action' => ['sometimes', Rule::in(['publish', 'unpublish'])],
         ]);
+        $action = $data['action'] ?? 'publish';
 
         $ids = collect($data['draw_ids'])->map(fn ($id) => (int) $id)->values();
         $draws = Draw::query()
@@ -47,29 +49,34 @@ final class BulkDrawPublicationController extends Controller
             Gate::authorize('publish', $draws[$id]);
         }
 
-        $published = [];
+        $changed = [];
         $unchanged = [];
         $failed = [];
 
         foreach ($ids as $id) {
             $draw = $draws[$id];
-            $alreadyPublished = $data['operation'] === 'draws'
+            $currentlyPublished = $data['operation'] === 'draws'
                 ? (bool) $draw->published
                 : (bool) $draw->oop_published;
-            if ($alreadyPublished) {
+            $targetPublished = $action === 'publish';
+            if ($currentlyPublished === $targetPublished) {
                 $unchanged[] = $draw->id;
                 continue;
             }
 
             try {
                 if ($data['operation'] === 'schedules') {
-                    $schedulePublication->publish($draw);
+                    $targetPublished
+                        ? $schedulePublication->publish($draw)
+                        : $schedulePublication->unpublish($draw);
                 } elseif ($draw->usesFlexibleMonrad()) {
-                    $flexibleMonrad->publish($draw, (int) ($draw->flexibleMonrad?->revision ?? 0), true);
-                } else {
+                    $flexibleMonrad->publish($draw, (int) ($draw->flexibleMonrad?->revision ?? 0), $targetPublished);
+                } elseif ($targetPublished) {
                     $drawPublication->publish($draw);
+                } else {
+                    $drawPublication->unpublish($draw);
                 }
-                $published[] = $draw->id;
+                $changed[] = $draw->id;
             } catch (\RuntimeException $exception) {
                 if ($exception instanceof \Illuminate\Database\QueryException) {
                     throw $exception;
@@ -85,7 +92,10 @@ final class BulkDrawPublicationController extends Controller
         return response()->json([
             'success' => count($failed) === 0,
             'operation' => $data['operation'],
-            'published' => $published,
+            'action' => $action,
+            'changed' => $changed,
+            'published' => $action === 'publish' ? $changed : [],
+            'unpublished' => $action === 'unpublish' ? $changed : [],
             'unchanged' => $unchanged,
             'failed' => $failed,
         ]);

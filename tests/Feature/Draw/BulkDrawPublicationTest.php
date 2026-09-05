@@ -69,6 +69,37 @@ class BulkDrawPublicationTest extends TestCase
         $this->assertFalse((bool) $notPrepared->fresh()->oop_published);
     }
 
+    public function test_event_admin_can_bulk_unpublish_selected_draws_and_times(): void
+    {
+        $draws = collect([$this->readyDraw(), $this->readyDraw()]);
+        foreach ($draws as $draw) {
+            $draw->update(['published' => true, 'oop_published' => true]);
+        }
+
+        $this->actingAs($this->admin)->postJson(route('backend.event-draws.bulk-publication', $this->event), [
+            'operation' => 'schedules',
+            'action' => 'unpublish',
+            'draw_ids' => $draws->pluck('id')->all(),
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(2, 'unpublished')
+            ->assertJsonCount(2, 'changed');
+
+        $this->assertSame(0, Draw::whereIn('id', $draws->pluck('id'))->where('oop_published', true)->count());
+        $this->assertSame(2, Draw::whereIn('id', $draws->pluck('id'))->where('published', true)->count());
+
+        $this->actingAs($this->admin)->postJson(route('backend.event-draws.bulk-publication', $this->event), [
+            'operation' => 'draws',
+            'action' => 'unpublish',
+            'draw_ids' => $draws->pluck('id')->all(),
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(2, 'unpublished')
+            ->assertJsonCount(2, 'changed');
+
+        $this->assertSame(0, Draw::whereIn('id', $draws->pluck('id'))->where('published', true)->count());
+    }
+
     public function test_bulk_publication_rejects_cross_event_ids_before_any_changes(): void
     {
         $local = $this->readyDraw();

@@ -100,8 +100,14 @@
             <button type="button" class="btn draws-button draws-button-primary" id="publish-selected-draws" disabled>
               <i class="ti ti-eye" aria-hidden="true"></i> Publish draws
             </button>
+            <button type="button" class="btn draws-button draws-button-secondary" id="unpublish-selected-draws" disabled>
+              <i class="ti ti-eye-off" aria-hidden="true"></i> Unpublish draws
+            </button>
             <button type="button" class="btn draws-button draws-button-secondary" id="publish-selected-times" disabled>
               <i class="ti ti-clock" aria-hidden="true"></i> Publish times
+            </button>
+            <button type="button" class="btn draws-button draws-button-secondary" id="unpublish-selected-times" disabled>
+              <i class="ti ti-clock-off" aria-hidden="true"></i> Unpublish times
             </button>
           @endif
         </div>
