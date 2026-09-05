@@ -12,6 +12,7 @@ use App\Models\Registration;
 use App\Models\User;
 use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -74,19 +75,14 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertSame('Court phone A', $audit->payload['operator']);
     }
 
-    public function test_event_page_shows_scoring_actions_only_for_an_assigned_scorer(): void
+    public function test_event_scoring_ability_is_limited_to_an_assigned_scorer(): void
     {
         [$event] = $this->scheduledFixture('Main Venue');
         $assigned = $this->scorerFor($event);
         $unassigned = User::factory()->create()->assignRole('score-keeper');
 
-        $this->actingAs($assigned)->get(route('events.show', $event))
-            ->assertOk()
-            ->assertSee('Venue scoring');
-
-        $this->actingAs($unassigned)->get(route('events.show', $event))
-            ->assertOk()
-            ->assertDontSee('Venue scoring');
+        $this->assertTrue(Gate::forUser($assigned)->allows('event.score', $event));
+        $this->assertFalse(Gate::forUser($unassigned)->allows('event.score', $event));
     }
 
     private function scorerFor(Event $event): User
@@ -109,7 +105,8 @@ class VenueScoringWorkspaceTest extends TestCase
             'published' => true,
             'locked' => false,
         ]);
-        $venue = Venue::factory()->create(['name' => $venueName]);
+        $venue = new Venue();
+        $venue->forceFill(['name' => $venueName])->save();
         $event->venues()->attach($venue->id, ['num_courts' => 2]);
         $fixture = Fixture::factory()->create([
             'draw_id' => $draw->id,

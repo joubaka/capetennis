@@ -45,7 +45,9 @@
           <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-light">Tournament</a>
         </div>
 
-        @php($progress = $fixtures->count() ? (int) round(($completed / $fixtures->count()) * 100) : 0)
+        @php
+          $progress = $fixtures->count() ? (int) round(($completed / $fixtures->count()) * 100) : 0;
+        @endphp
         <div class="d-flex justify-content-between mt-3 mb-1 small">
           <span><strong>{{ $completed }}</strong> of {{ $fixtures->count() }} entered</span>
           <span>{{ $progress }}%</span>
