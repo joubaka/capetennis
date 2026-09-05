@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ $event->name }} - Draw Pack</title>
+  <title>{{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }}</title>
   <style>
     @page { size: A4 landscape; margin: 11mm 10mm 13mm; }
     * { box-sizing: border-box; }
@@ -74,7 +74,7 @@
 @endif
 
 <div class="footer">
-  {{ $event->name }} - Draw Pack - Generated {{ now()->format('d M Y H:i') }}
+  {{ $event->name }} - {{ ($printType ?? 'pack') === 'venue' ? 'Per-Venue Order of Play' : 'Draw Pack' }} - Generated {{ now()->format('d M Y H:i') }}
   <span class="page-number">Page </span>
 </div>
 
@@ -98,8 +98,74 @@
     'PLATE' => 'Plate', 'CONS' => 'Consolation', 'BOWL' => 'Bowl',
     'SHIELD' => 'Shield', 'SPOON' => 'Spoon',
   ];
+  $venueOnly = ($printType ?? 'pack') === 'venue';
+  $venueSchedules = $schedule
+    ->filter(fn ($fixture) => filled($fixture['venue']))
+    ->groupBy('venue')
+    ->sortKeys();
+  $venueScheduleMatches = $venueSchedules->flatten(1);
+  $notInVenueCopies = $totalMatches - $venueScheduleMatches->count();
+  $incompleteVenueCopies = $venueScheduleMatches->filter(fn ($fixture) => !filled($fixture['court']))->count();
 @endphp
 
+@if($venueOnly)
+<section class="cover">
+  <p class="cover-kicker">Per-Venue Order of Play</p>
+  <h1>{{ $event->name }}</h1>
+  <div class="cover-rule"></div>
+  <p class="event-dates">{{ $eventDate }}</p>
+
+  <table class="stats" role="presentation">
+    <tr>
+      <td><strong>{{ $venueSchedules->count() }}</strong><span>{{ Str::plural('Venue', $venueSchedules->count()) }}</span></td>
+      <td><strong>{{ $draws->count() }}</strong><span>Selected draws</span></td>
+      <td><strong>{{ $venueScheduleMatches->count() }}</strong><span>Venue schedule rows</span></td>
+      <td><strong>{{ $notInVenueCopies }}</strong><span>Not assigned to a venue</span></td>
+    </tr>
+  </table>
+
+  @if($notInVenueCopies > 0 || $incompleteVenueCopies > 0)
+    <div class="pack-warning"><strong>Scheduling check:</strong>@if($notInVenueCopies > 0) {{ $notInVenueCopies }} {{ Str::plural('match', $notInVenueCopies) }} {{ $notInVenueCopies === 1 ? 'is' : 'are' }} not included because no applied time and venue are available.@endif @if($incompleteVenueCopies > 0){{ $incompleteVenueCopies }} venue {{ Str::plural('row', $incompleteVenueCopies) }} still {{ $incompleteVenueCopies === 1 ? 'needs' : 'need' }} a court assignment.@endif</div>
+  @endif
+
+  <h2>Venue copies</h2>
+  <div class="contents">
+    @forelse($venueSchedules as $venue => $venueFixtures)
+      <div class="contents-row"><strong>{{ $venue }}</strong><br><small>{{ $venueFixtures->count() }} {{ Str::plural('match', $venueFixtures->count()) }} across {{ $venueFixtures->pluck('draw_id')->unique()->count() }} {{ Str::plural('draw', $venueFixtures->pluck('draw_id')->unique()->count()) }}</small></div>
+    @empty
+      <div class="empty-note">No selected matches have an applied venue and time yet.</div>
+    @endforelse
+  </div>
+</section>
+
+@foreach($venueSchedules as $venue => $venueFixtures)
+  @foreach($venueFixtures->groupBy(fn ($fixture) => \Carbon\Carbon::parse($fixture['scheduled_at'])->format('Y-m-d')) as $date => $dayFixtures)
+    <section class="page">
+      <header class="section-head">
+        <div><p class="cover-kicker">Venue order of play</p><h2>{{ $venue }}</h2></div>
+        <div class="section-meta"><strong>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</strong><br>{{ $dayFixtures->count() }} {{ Str::plural('match', $dayFixtures->count()) }}</div>
+      </header>
+      <table class="data">
+        <caption>{{ $venue }} order of play for {{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</caption>
+        <thead><tr><th scope="col" style="width:9%">Time</th><th scope="col" style="width:8%">Court</th><th scope="col" style="width:17%">Draw</th><th scope="col" style="width:8%">Match</th><th scope="col" style="width:24%">Player 1</th><th scope="col" style="width:24%">Player 2</th><th scope="col" style="width:10%">Result</th></tr></thead>
+        <tbody>
+        @foreach($dayFixtures as $fixture)
+          <tr>
+            <td class="nowrap"><strong>{{ \Carbon\Carbon::parse($fixture['scheduled_at'])->format('H:i') }}</strong>@if($fixture['duration'])<br><small>{{ $fixture['duration'] }} min</small>@endif</td>
+            <td>{{ $fixture['court'] ?: 'TBA' }}</td>
+            <td>{{ $fixture['draw_name'] }}</td>
+            <td><span class="stage-label">{{ $stageLabels[$fixture['stage']] ?? ($fixture['stage'] ?: 'Draw') }}</span><br>M{{ $fixture['match_nr'] ?? $fixture['id'] }}</td>
+            <td>{{ $fixture['home'] }}</td>
+            <td>{{ $fixture['away'] }}</td>
+            <td class="result-cell">{{ $fixture['score'] }}</td>
+          </tr>
+        @endforeach
+        </tbody>
+      </table>
+    </section>
+  @endforeach
+@endforeach
+@else
 <section class="cover">
   <p class="cover-kicker">Complete Draw Pack</p>
   <h1>{{ $event->name }}</h1>
@@ -313,6 +379,7 @@
     @endif
   </section>
 @endforeach
+@endif
 
 @if($autoPrint)
 <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 250); });</script>

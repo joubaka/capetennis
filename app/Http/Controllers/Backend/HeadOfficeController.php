@@ -1219,6 +1219,7 @@ class HeadOfficeController extends Controller
       'draw_ids.*' => ['required', 'integer', 'distinct'],
       'include_standings' => ['sometimes', 'boolean'],
       'download' => ['sometimes', 'boolean'],
+      'print_type' => ['sometimes', 'string', 'in:pack,venue'],
     ]);
 
     $drawIds = collect($validated['draw_ids'] ?? $event->draws()->pluck('id'))
@@ -1272,6 +1273,7 @@ class HeadOfficeController extends Controller
       'schedule' => $schedule,
       'includeStandings' => (bool) ($validated['include_standings'] ?? true),
       'autoPrint' => ! (bool) ($validated['download'] ?? false),
+      'printType' => $validated['print_type'] ?? 'pack',
     ];
 
     if (! (bool) ($validated['download'] ?? false)) {
@@ -1281,7 +1283,10 @@ class HeadOfficeController extends Controller
     $pdf = Pdf::loadView('backend.draw.pdf.draw-pack', $data + ['autoPrint' => false]);
     $pdf->setPaper('A4', 'landscape');
 
-    $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name) . '_draw_pack.pdf';
+    $suffix = ($validated['print_type'] ?? 'pack') === 'venue'
+      ? '_venue_order_of_play.pdf'
+      : '_draw_pack.pdf';
+    $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name) . $suffix;
 
     return $pdf->download($filename);
   }

@@ -320,6 +320,60 @@ class DrawPackTest extends TestCase
         $this->assertStringStartsWith('%PDF', $response->getContent());
     }
 
+    public function test_per_venue_order_of_play_separates_selected_draws_into_venue_copies(): void
+    {
+        $firstDraw = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Boys U14']);
+        $secondDraw = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Girls U14']);
+        $newlands = Venue::forceCreate(['name' => 'Newlands Tennis Club']);
+        $rondebosch = Venue::forceCreate(['name' => 'Rondebosch Tennis Club']);
+
+        foreach ([
+            [$firstDraw, $newlands, 'Court 1', '2026-09-20 09:00:00'],
+            [$secondDraw, $newlands, 'Court 2', '2026-09-20 10:30:00'],
+            [$secondDraw, $rondebosch, 'Court 3', '2026-09-21 08:30:00'],
+        ] as [$draw, $venue, $court, $time]) {
+            $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+            OrderOfPlay::create([
+                'draw_id' => $draw->id,
+                'fixture_id' => $fixture->id,
+                'venue_id' => $venue->id,
+                'court' => $court,
+                'time' => $time,
+            ]);
+        }
+
+        $response = $this->actingAs($this->admin)->get(route('headoffice.drawPack', [
+            'event' => $this->event,
+            'draw_ids' => [$firstDraw->id, $secondDraw->id],
+            'print_type' => 'venue',
+        ]));
+
+        $response->assertOk()
+            ->assertSee('Per-Venue Order of Play')
+            ->assertSee('Venue order of play')
+            ->assertSee('Newlands Tennis Club')
+            ->assertSee('Rondebosch Tennis Club')
+            ->assertSee('Boys U14')
+            ->assertSee('Girls U14')
+            ->assertSee('Court 1')
+            ->assertSee('Court 2')
+            ->assertSee('Court 3')
+            ->assertDontSee('Complete Draw Pack');
+
+        $this->assertSame(2, substr_count($response->getContent(), 'Venue order of play'));
+    }
+
+    public function test_pack_rejects_unknown_print_type(): void
+    {
+        $this->actingAs($this->admin)
+            ->getJson(route('headoffice.drawPack', [
+                'event' => $this->event,
+                'print_type' => 'private-data',
+            ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('print_type');
+    }
+
     public function test_browser_print_builders_escape_untrusted_draw_content(): void
     {
         $workspacePrint = file_get_contents(resource_path('views/backend/draw/roundrobin/print-scripts.blade.php'));

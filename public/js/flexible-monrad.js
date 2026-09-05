@@ -348,7 +348,7 @@
     if (match.players?.[slot]) return name(match.players[slot]);
     if (match.withdrawn_players?.[slot]) return name(match.withdrawn_players[slot]);
     if (match.byes?.[slot]) return 'Bye';
-    return match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]);
+    return match.vacant?.[slot] ? 'Bye (inactive)' : sourceLabel(match.sources[slot]);
   }
   function generatedBoard() {
     const board = $('fm-board'),
@@ -390,7 +390,7 @@
               ? playerNameNode(id, 'fm-slot-name')
               : withdrawnId
               ? playerNameNode(withdrawnId, 'fm-slot-name fm-player-identity-withdrawal')
-              : el('span', 'fm-slot-name fm-source-name', match.byes?.[slot] ? 'Bye' : (match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot])));
+              : el('span', 'fm-slot-name fm-source-name', match.byes?.[slot] ? 'Bye' : (match.vacant?.[slot] ? 'Bye (inactive)' : sourceLabel(match.sources[slot])));
             line.append(label);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
