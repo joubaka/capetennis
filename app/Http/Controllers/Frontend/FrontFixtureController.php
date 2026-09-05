@@ -324,6 +324,7 @@ class FrontFixtureController extends Controller
       $fixture->setAttribute('scheduled_at', null);
       $fixture->setAttribute('venue_id', null);
       $fixture->setRelation('venue', null);
+      $fixture->setRelation('schedule', null);
       if ($fixture->relationLoaded('orderOfPlay')) {
         $fixture->setRelation('orderOfPlay', null);
       }

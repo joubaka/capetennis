@@ -48,6 +48,21 @@ class FlexibleMonradTest extends TestCase
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 3])->assertForbidden();
     }
 
+    public function test_unpublishing_also_withdraws_the_flexible_monrad_schedule(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $service->generate($draw, 1);
+        $draw->update(['published' => true, 'oop_published' => true]);
+
+        $service->publish($draw, 2, false);
+
+        $draw->refresh();
+        $this->assertFalse((bool) $draw->published);
+        $this->assertFalse((bool) $draw->oop_published);
+    }
+
     public function test_workspace_shows_the_active_series_ranking_for_the_draw_category(): void
     {
         [$draw, $draft] = $this->setupDraw();

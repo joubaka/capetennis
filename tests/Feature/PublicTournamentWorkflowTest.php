@@ -128,6 +128,34 @@ class PublicTournamentWorkflowTest extends TestCase
             ->assertDontSee('Private schedule');
     }
 
+    public function test_public_fixture_page_explains_and_hides_an_unpublished_schedule(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $venue = new Venue();
+        $venue->name = 'Private fixture venue';
+        $venue->save();
+        $draw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'drawName' => 'Public team draw',
+            'published' => true,
+            'oop_published' => false,
+        ]);
+        TeamFixture::create([
+            'draw_id' => $draw->id,
+            'match_nr' => 1,
+            'scheduled' => true,
+            'scheduled_at' => '2026-09-06 09:00:00',
+            'venue_id' => $venue->id,
+        ]);
+
+        $this->get(route('frontend.fixtures.index', $draw))
+            ->assertOk()
+            ->assertSee('Match times to follow')
+            ->assertSee('match times and venues have not been published yet')
+            ->assertDontSee('Private fixture venue')
+            ->assertDontSee('2026-09-06 09:00');
+    }
+
     public function test_schedule_cannot_be_published_before_draw_and_match_time_are_ready(): void
     {
         Role::findOrCreate('admin');
@@ -156,5 +184,28 @@ class PublicTournamentWorkflowTest extends TestCase
         $this->postJson(route('draw.toggle.publish.schedule', $draw))
             ->assertOk()
             ->assertJsonPath('oop_published', true);
+    }
+
+    public function test_unpublishing_a_draw_also_unpublishes_its_schedule(): void
+    {
+        Role::findOrCreate('admin');
+        $admin = User::factory()->create()->assignRole('admin');
+        $event = Event::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $draw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'published' => true,
+            'oop_published' => true,
+            'locked' => false,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('draw.toggle.publish', $draw))
+            ->assertOk()
+            ->assertJsonPath('published', false);
+
+        $draw->refresh();
+        $this->assertFalse((bool) $draw->published);
+        $this->assertFalse((bool) $draw->oop_published);
     }
 }

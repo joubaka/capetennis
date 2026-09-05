@@ -6,7 +6,23 @@ use App\Helpers\Fixtures;
 
 ?>
 
-<h3>{{$fixtures[0]->draw->drawName}} {{$fixtures[0]->draw->age}} {{$fixtures[0]->draw_type->drawTypeName}}<a class="btn btn-danger btn-sm ms-2" href="{{ url()->previous() }}">Back</a></h3>
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
+        <span class="badge bg-label-success">Draw published</span>
+        <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
+            {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
+        </span>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ route('events.show', $event) }}">
+        <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
+    </a>
+</div>
+@unless($draw->oop_published)
+    <div class="alert alert-info" role="status">
+        The draw is available, but match times and venues have not been published yet.
+    </div>
+@endunless
 <div class="table-responsive">
     <table class="table" id="schedule">
         <thead class="table-dark">

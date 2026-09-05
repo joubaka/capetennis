@@ -33,8 +33,8 @@ final class DrawPublicationService
         }
 
         DB::transaction(function () use ($draw) {
-            $draw->published = true;
-            $draw->save();
+            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            $draw->update(['published' => true]);
             DrawAuditLog::record($draw->id, 'published', null, ['published' => true]);
         });
 
@@ -51,9 +51,16 @@ final class DrawPublicationService
         DrawGuard::requireMutable($draw, 'unpublish');
 
         DB::transaction(function () use ($draw) {
-            $draw->published = false;
-            $draw->save();
-            DrawAuditLog::record($draw->id, 'unpublished', null, ['published' => false]);
+            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            $scheduleWasPublished = (bool) $draw->oop_published;
+            $draw->update([
+                'published' => false,
+                'oop_published' => false,
+            ]);
+            DrawAuditLog::record($draw->id, 'unpublished', null, [
+                'published' => false,
+                'schedule_unpublished' => $scheduleWasPublished,
+            ]);
         });
 
         Log::info('[DrawPublication] Draw unpublished', ['draw_id' => $draw->id]);

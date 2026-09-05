@@ -1,17 +1,3 @@
-@extends('layouts/layoutMaster')
-
-@section('title', $draw->drawName . ' Fixtures')
-
-@section('vendor-style')
-  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
-@endsection
-
-@section('vendor-script')
-  <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
-@endsection
-
-@section('content')
-
 <style>
   .winner-home { background-color: rgba(40,167,69,0.25) !important; color:#155724 !important; }
   .loser-home  { background-color: rgba(220,53,69,0.25) !important; color:#721c24 !important; }
@@ -112,17 +98,30 @@ function fx_winner_classes($fx) {
 
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <h3 class="mb-0">{{ $draw->drawName }} {{ $draw->age }}</h3>
-    <a href="{{ url()->previous() }}" class="btn btn-sm btn-danger">Back</a>
+    <div>
+      <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
+      <span class="badge bg-label-success">Draw published</span>
+      <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
+        {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
+      </span>
+    </div>
+    <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary">
+      <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
+    </a>
   </div>
 
   <div class="card-body">
+
+    @unless($draw->oop_published)
+      <div class="alert alert-info" role="status">
+        The draw is available, but match times and venues have not been published yet.
+      </div>
+    @endunless
 
     <div class="table-responsive">
       <table class="table table-bordered align-middle" id="fixturesTable">
         <thead class="table-dark">
           <tr>
-            <th class="d-none d-md-table-cell" style="width:5%">#</th>
             <th class="d-table-cell d-md-none text-center" style="width:5%">+</th>
             <th style="width:25%">Player/Team 1</th>
             <th style="width:25%">Player/Team 2</th>
@@ -140,13 +139,12 @@ function fx_winner_classes($fx) {
 
           <tr id="row-{{ $fx->id }}">
 
-            {{-- ID (desktop only) --}}
-            <td class="d-none d-md-table-cell">{{ $fx->id }}</td>
-
             {{-- mobile toggle --}}
             <td class="d-table-cell d-md-none text-center">
               <button class="btn btn-xs btn-outline-primary rounded-circle toggle-details"
                 type="button" data-target="#details-{{ $fx->id }}"
+                aria-expanded="false" aria-controls="details-{{ $fx->id }}"
+                aria-label="Show match details"
                 style="width:1.5rem;height:1.5rem;line-height:1;font-size:0.75rem;">
                 <i class="ti ti-plus"></i>
               </button>
@@ -228,7 +226,7 @@ function fx_winner_classes($fx) {
           </tr>
 
           @empty
-          <tr><td colspan="10" class="text-center text-muted py-4">No fixtures found.</td></tr>
+          <tr><td colspan="6" class="text-center text-muted py-4">No matches found.</td></tr>
           @endforelse
 
         </tbody>
@@ -245,7 +243,8 @@ $(document).on('click', '.toggle-details', function () {
   const $row = $(target);
   $row.toggleClass('d-none');
   $(this).find('i').toggleClass('ti-plus ti-minus');
+  const expanded = !$row.hasClass('d-none');
+  $(this).attr('aria-expanded', expanded ? 'true' : 'false')
+    .attr('aria-label', expanded ? 'Hide match details' : 'Show match details');
 });
 </script>
-
-@endsection

@@ -93,7 +93,10 @@ final class FlexibleMonradService
             $this->revision($record, $revision);
             abort_unless($record->graph, 422, 'Generate and review the fixtures first.');
             $this->resolve($record);
-            $draw->update(['published' => $published]);
+            $draw->update([
+                'published' => $published,
+                'oop_published' => $published ? $draw->oop_published : false,
+            ]);
             $record->increment('revision');
             DrawAuditLog::record($draw->id, $published ? 'monrad_published' : 'monrad_unpublished');
             return $record->refresh();
