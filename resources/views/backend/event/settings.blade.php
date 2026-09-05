@@ -1,13 +1,11 @@
 @extends('layouts.backend')
 
 @section('vendor-style')
-<link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
 @endsection
 
 @section('vendor-script')
-<script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 @endsection
@@ -18,20 +16,29 @@
 <style>
   .select2-container { z-index: 1055; }
   .settings-shell { max-width: 1180px; margin-inline: auto; }
-  .settings-hero { border: 0; background: linear-gradient(135deg, rgba(105, 108, 255, .12), rgba(105, 108, 255, .03)); }
-  .settings-card { border: 0; box-shadow: 0 .125rem .5rem rgba(34, 48, 62, .06); }
+  .settings-card { border: 1px solid var(--bs-border-color); box-shadow: 0 .125rem .5rem rgba(34, 48, 62, .045); scroll-margin-top: 10rem; }
   .settings-card .card-header { padding-bottom: .25rem; border-bottom: 0; }
   .section-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .5rem; color: var(--bs-primary); background: rgba(105, 108, 255, .12); flex: 0 0 auto; }
   .logo-preview-wrap { min-height: 152px; background: var(--bs-body-bg); border: 1px dashed var(--bs-border-color); border-radius: .5rem; }
   .logo-preview { max-width: 180px; max-height: 112px; object-fit: contain; }
   .save-status { min-width: 118px; }
+  .settings-toolbar { position: sticky; top: .75rem; z-index: 1015; border: 1px solid var(--bs-border-color); background: rgba(var(--bs-body-bg-rgb), .94); backdrop-filter: blur(12px); }
+  .settings-jump-links { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .settings-jump-links a { padding: .35rem .65rem; border-radius: 999px; color: var(--bs-body-color); font-size: .8125rem; font-weight: 500; }
+  .settings-jump-links a:hover, .settings-jump-links a:focus { color: var(--bs-primary); background: rgba(105, 108, 255, .1); }
+  #settings-access { scroll-margin-top: 10rem; }
+  .access-heading { display: flex; align-items: center; gap: .75rem; margin-top: .25rem; }
+  .access-heading::after { content: ''; height: 1px; flex: 1; background: var(--bs-border-color); }
+  .access-window { padding: 1rem; border: 1px solid var(--bs-border-color); border-radius: .6rem; background: var(--bs-body-bg); }
+  .assignment-list li:last-child { border-bottom: 0 !important; }
   .form-label { font-weight: 500; }
   .field-help { margin-top: .35rem; font-size: .8125rem; color: var(--bs-secondary-color); }
   .select2-admins + .select2-container .select2-selection__choice,
   .select2-scoring-accounts + .select2-container .select2-selection__choice { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   @media (max-width: 767.98px) {
-    .settings-hero .card-body { padding: 1.25rem; }
     .settings-card .card-body { padding: 1.25rem; }
+    .settings-toolbar { top: .35rem; }
+    .settings-toolbar .settings-jump-links { display: none; }
     .save-status { min-width: 0; }
   }
 </style>
@@ -41,6 +48,7 @@
 <div class="container-xl settings-shell">
 
 <form method="POST"
+      id="event-settings-form"
       action="{{ route('admin.events.settings.update', $event) }}"
       enctype="multipart/form-data">
 @csrf
@@ -51,10 +59,16 @@
   'eventWorkspaceIcon' => 'ti-settings',
   'eventWorkspaceSubtitle' => 'Event settings',
 ])
-<div class="d-flex justify-content-end mb-3 no-print">
-  <div id="save-status" class="save-status d-flex align-items-center justify-content-sm-end gap-2 text-success" aria-live="polite">
+<div class="settings-toolbar rounded-3 d-flex align-items-center justify-content-between gap-3 px-3 py-2 mb-4 no-print">
+  <nav class="settings-jump-links" aria-label="Settings sections">
+    <a href="#settings-basics">Basics</a>
+    <a href="#settings-information">Public information</a>
+    <a href="#settings-schedule">Schedule</a>
+    <a href="#settings-access">Access</a>
+  </nav>
+  <div id="save-status" class="save-status d-flex align-items-center justify-content-end gap-2 text-success ms-auto" role="status" aria-live="polite" aria-atomic="true">
       <i class="ti ti-circle-check"></i>
-      <span>All changes saved</span>
+      <span>Up to date</span>
   </div>
 </div>
 
@@ -62,7 +76,7 @@
 
 {{-- BASICS --}}
 <div class="col-12">
-  <div class="card settings-card">
+  <div class="card settings-card" id="settings-basics">
     <div class="card-header d-flex align-items-start gap-3">
       <span class="section-icon"><i class="ti ti-adjustments-horizontal"></i></span>
       <div><h5 class="mb-1">Basics & visibility</h5><p class="text-muted small mb-0">The event identity and what visitors can access.</p></div>
@@ -161,7 +175,7 @@
 
 {{-- INFORMATION --}}
 <div class="col-12">
-  <div class="card settings-card">
+  <div class="card settings-card" id="settings-information">
     <div class="card-header d-flex align-items-start gap-3">
       <span class="section-icon"><i class="ti ti-file-description"></i></span>
       <div><h5 class="mb-1">Public information</h5><p class="text-muted small mb-0">The description players and parents will see on the event page.</p></div>
@@ -174,7 +188,7 @@
 
 {{-- DATES --}}
 <div class="col-12">
-  <div class="card settings-card">
+  <div class="card settings-card" id="settings-schedule">
     <div class="card-header d-flex align-items-start gap-3">
       <span class="section-icon"><i class="ti ti-calendar-event"></i></span>
       <div><h5 class="mb-1">Schedule & registration</h5><p class="text-muted small mb-0">Set the event dates, deadlines, fee and organizer contact.</p></div>
@@ -226,14 +240,24 @@
 </div>
 
 {{-- ADMINS --}}
+<div class="col-12" id="settings-access">
+  <div class="access-heading">
+    <span class="section-icon"><i class="ti ti-lock-access" aria-hidden="true"></i></span>
+    <div>
+      <h4 class="mb-1">Access &amp; responsibilities</h4>
+      <p class="text-muted mb-0">Keep management and score-entry permissions separate and time-bound.</p>
+    </div>
+  </div>
+</div>
 <div class="col-lg-5">
-  <div class="card settings-card h-100">
+  <div class="card settings-card">
     <div class="card-header d-flex align-items-start gap-3">
       <span class="section-icon"><i class="ti ti-shield-lock"></i></span>
       <div><h5 class="mb-1">Event admins</h5><p class="text-muted small mb-0">Full event management access.</p></div>
     </div>
     <div class="card-body">
-      <select class="form-select select2-admins"
+      <label class="form-label" for="event-admins">Administrators</label>
+      <select class="form-select select2-admins" id="event-admins"
               name="admins" multiple
               data-placeholder="Select event admins">
         @foreach($users as $user)
@@ -243,6 +267,7 @@
           </option>
         @endforeach
       </select>
+      <div class="field-help">Can change settings, manage draws and control publication. Assign this role sparingly.</div>
     </div>
   </div>
 </div>
@@ -250,13 +275,14 @@
 {{-- CONVENORS --}}
 @php $convenorIds = $convenors->pluck('user_id')->toArray(); @endphp
 <div class="col-lg-7">
-  <div class="card settings-card h-100">
+  <div class="card settings-card">
     <div class="card-header d-flex align-items-start gap-3">
       <span class="section-icon"><i class="ti ti-users"></i></span>
       <div><h5 class="mb-1">Event directors</h5><p class="text-muted small mb-0">Time-limited operational access for tournament staff.</p></div>
     </div>
     <div class="card-body">
-      <select class="form-select select2-convenors"
+      <label class="form-label" for="event-directors">Directors</label>
+      <select class="form-select select2-convenors" id="event-directors"
               name="convenors" multiple
               data-placeholder="Select event directors">
         @foreach($users as $user)
@@ -267,25 +293,29 @@
         @endforeach
       </select>
 
-      <div class="row g-3 mt-1">
+      <div class="access-window mt-3">
+      <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Director access window</span></div>
+      <div class="row g-3">
         <div class="col-md-6">
-          <label class="form-label">Access starts</label>
+          <label class="form-label" for="director-starts-at">Access starts</label>
           <input type="datetime-local" class="form-control autosave"
-                 name="convenor_starts_at"
-                 value="{{ optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
+                 id="director-starts-at" name="convenor_starts_at" aria-describedby="director-window-help"
+                 value="{{ optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? $event->start_date?->copy()->startOfDay()->format('Y-m-d\TH:i') }}">
         </div>
         <div class="col-md-6">
-          <label class="form-label">Access expires</label>
+          <label class="form-label" for="director-expires-at">Access expires</label>
           <input type="datetime-local" class="form-control autosave"
-                 name="convenor_expires_at"
-                 value="{{ optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
+                 id="director-expires-at" name="convenor_expires_at" aria-describedby="director-window-help"
+                 value="{{ optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? $event->end_date?->copy()->endOfDay()->format('Y-m-d\TH:i') }}">
         </div>
+      </div>
+      <div class="field-help" id="director-window-help">Expiry must be later than the start. Access is unavailable outside this window.</div>
       </div>
 
       @if($convenors->isNotEmpty())
         <div class="mt-3">
           <small class="text-muted fw-semibold">Active Event Directors</small>
-          <ul class="list-unstyled mb-0 mt-1">
+          <ul class="list-unstyled assignment-list mb-0 mt-1">
             @foreach($convenors as $c)
               <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
                 <span>{{ $c->user->name ?? 'Unknown' }}</span>
@@ -318,7 +348,7 @@
 <div class="col-12">
   <div class="card settings-card">
     <div class="card-header d-flex align-items-start gap-3">
-      <span class="section-icon"><i class="ti ti-scoreboard"></i></span>
+      <span class="section-icon"><i class="ti ti-clipboard-check"></i></span>
       <div>
         <h5 class="mb-1">Scoring accounts</h5>
         <p class="text-muted small mb-0">Give dedicated user accounts score-entry access for this event only.</p>
@@ -338,25 +368,29 @@
       </select>
       <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Existing convenor accounts can be used here, provided they are not also an Event director for this event.</div>
 
-      <div class="row g-3 mt-1">
+      <div class="access-window mt-3">
+      <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Scoring access window</span></div>
+      <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label" for="scoring-starts-at">Scoring access starts</label>
           <input id="scoring-starts-at" type="datetime-local" class="form-control autosave"
-                 name="scoring_starts_at"
-                 value="{{ $firstScoringAccount?->starts_at?->format('Y-m-d\TH:i') ?? optional($event->start_date)->format('Y-m-d\TH:i') }}">
+                 name="scoring_starts_at" aria-describedby="scoring-window-help"
+                 value="{{ $firstScoringAccount?->starts_at?->format('Y-m-d\TH:i') ?? $event->start_date?->copy()->startOfDay()->format('Y-m-d\TH:i') }}">
         </div>
         <div class="col-md-6">
           <label class="form-label" for="scoring-expires-at">Scoring access expires</label>
           <input id="scoring-expires-at" type="datetime-local" class="form-control autosave"
-                 name="scoring_expires_at"
-                 value="{{ $firstScoringAccount?->expires_at?->format('Y-m-d\TH:i') ?? optional($event->end_date)->format('Y-m-d\TH:i') }}">
+                 name="scoring_expires_at" aria-describedby="scoring-window-help"
+                 value="{{ $firstScoringAccount?->expires_at?->format('Y-m-d\TH:i') ?? $event->end_date?->copy()->endOfDay()->format('Y-m-d\TH:i') }}">
         </div>
+      </div>
+      <div class="field-help" id="scoring-window-help">Expiry must be later than the start. Access is unavailable outside this window.</div>
       </div>
 
       @if($scoringAccounts->isNotEmpty())
         <div class="mt-3">
           <small class="text-muted fw-semibold">Assigned scoring accounts</small>
-          <ul class="list-unstyled mb-0 mt-1">
+          <ul class="list-unstyled assignment-list mb-0 mt-1">
             @foreach($scoringAccounts as $account)
               <li class="d-flex flex-column flex-sm-row justify-content-between gap-1 py-2 border-bottom">
                 <span>{{ $account->user->name ?? 'Unknown' }} <span class="text-muted">{{ $account->user->email ?? '' }}</span></span>
@@ -382,12 +416,14 @@
 <script>
 $(function () {
 
-  console.log('⚙️ Event settings JS initialised');
-
   const csrf = $('meta[name="csrf-token"]').attr('content');
   const updateUrl = @json(route('admin.events.settings.update', $event));
+  const userSearchUrl = @json(route('admin.events.settings.users', $event));
+  const feedback = window.AppFeedback;
 
-  toastr.options = { closeButton:true, progressBar:true, timeOut:2000 };
+  if (window.toastr) {
+    Object.assign(window.toastr.options, { closeButton:true, progressBar:true, timeOut:3500, preventDuplicates:true });
+  }
 
   let saveTimer = null;
 
@@ -410,9 +446,54 @@ $(function () {
      HELPERS
   ========================= */
   function computeDate(start, days) {
-    const d = new Date(start);
+    const d = new Date(start + 'T12:00:00');
     d.setDate(d.getDate() - days);
     return d.toISOString().slice(0, 10);
+  }
+
+  function showRequestErrors(xhr, fallback) {
+    $('.settings-validation').remove();
+    $('.is-invalid').removeClass('is-invalid');
+
+    const errors = xhr.responseJSON?.errors || {};
+    Object.entries(errors).forEach(function ([name, messages]) {
+      const field = $('[name="' + name.split('.')[0] + '"]').first();
+      if (!field.length) return;
+      field.addClass('is-invalid');
+      const anchor = field.hasClass('select2-hidden-accessible') ? field.next('.select2') : field;
+      $('<div class="invalid-feedback settings-validation d-block"></div>')
+        .text(Array.isArray(messages) ? messages[0] : messages)
+        .insertAfter(anchor);
+    });
+
+    const messages = Object.values(errors).flat().filter(Boolean);
+    (messages.length ? messages : [xhr.responseJSON?.message || fallback]).forEach(function (message) {
+      feedback.error(message);
+    });
+    $('.is-invalid').first().trigger('focus');
+  }
+
+  function accessWindowsAreValid() {
+    const pairs = [
+      ['convenor_starts_at', 'convenor_expires_at', 'Director access expiry must be later than its start.'],
+      ['scoring_starts_at', 'scoring_expires_at', 'Scoring access expiry must be later than its start.']
+    ];
+
+    $('.settings-validation').remove();
+    $('.autosave').removeClass('is-invalid');
+    for (const pair of pairs) {
+      const start = $('[name="' + pair[0] + '"]').val();
+      const end = $('[name="' + pair[1] + '"]').val();
+      if (start && end && new Date(end) <= new Date(start)) {
+        const field = $('[name="' + pair[1] + '"]').addClass('is-invalid');
+        $('<div class="invalid-feedback settings-validation d-block"></div>').text(pair[2]).insertAfter(field);
+        setSaveStatus('error', 'Fix access window');
+        feedback.warning(pair[2]);
+        field.trigger('focus');
+        return false;
+      }
+    }
+    return true;
   }
 
   /* =========================
@@ -425,6 +506,8 @@ $(function () {
     clearTimeout(saveTimer);
 
     saveTimer = setTimeout(function () {
+
+      if (!accessWindowsAreValid()) return;
 
       console.groupCollapsed('💾 AUTOSAVE PAYLOAD BUILD');
 
@@ -484,7 +567,7 @@ $(function () {
       .done(function (res) {
         console.log('✅ Saved response:', res);
         setSaveStatus('saved', 'All changes saved');
-        toastr.success('Saved');
+        feedback.success(res.message || 'Event settings saved.');
         updatePreviews();
       })
       .fail(function (xhr) {
@@ -492,12 +575,8 @@ $(function () {
         console.error('Status:', xhr.status);
         console.error('Response:', xhr.responseText);
 
-        if (xhr.responseJSON?.errors) {
-          console.table(xhr.responseJSON.errors);
-        }
-
         setSaveStatus('error', 'Changes not saved');
-        toastr.error('Save failed');
+        showRequestErrors(xhr, 'Event settings could not be saved. Please try again.');
       });
 
     }, 700);
@@ -507,11 +586,23 @@ $(function () {
      BIND AUTOSAVE
   ========================= */
   $(document).on('change keyup', '.autosave', autosave);
+  $('#event-settings-form').on('submit', function (event) {
+    event.preventDefault();
+    autosave();
+  });
 
   $('.select2-admins').select2({
     width: '100%',
     allowClear: true,
-    placeholder: $('.select2-admins').data('placeholder')
+    placeholder: $('.select2-admins').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
   }).on('change', function () {
     console.log('👥 Admins changed:', $(this).val());
     autosave();
@@ -520,7 +611,15 @@ $(function () {
   $('.select2-convenors').select2({
     width: '100%',
     allowClear: true,
-    placeholder: $('.select2-convenors').data('placeholder')
+    placeholder: $('.select2-convenors').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
   }).on('change', function () {
     console.log('👥 Convenors changed:', $(this).val());
     autosave();
@@ -529,7 +628,15 @@ $(function () {
   $('.select2-scoring-accounts').select2({
     width: '100%',
     allowClear: true,
-    placeholder: $('.select2-scoring-accounts').data('placeholder')
+    placeholder: $('.select2-scoring-accounts').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'scoring' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
   }).on('change', function () {
     console.log('🎾 Scoring accounts changed:', $(this).val());
     autosave();
@@ -564,12 +671,12 @@ $(function () {
       .done(() => {
         console.log('✅ Info saved');
         setSaveStatus('saved', 'All changes saved');
-        toastr.success('Info saved');
+        feedback.success('Public information saved.');
       })
       .fail((xhr) => {
         console.error('❌ Info save failed', xhr.responseText);
         setSaveStatus('error', 'Information not saved');
-        toastr.error('Info save failed');
+        showRequestErrors(xhr, 'Public information could not be saved.');
       });
 
     }, 1000);
@@ -586,7 +693,7 @@ $(function () {
     console.log('📅 Preview update', { start, reg, wit });
 
     if (start && !isNaN(reg)) {
-      const d = new Date(start);
+      const d = new Date(start + 'T12:00:00');
       d.setDate(d.getDate() - reg);
 
       $('#registration-closure-text').html(
@@ -599,7 +706,7 @@ $(function () {
     }
 
     if (start && !isNaN(wit)) {
-      const d = new Date(start);
+      const d = new Date(start + 'T12:00:00');
       d.setDate(d.getDate() - wit);
 
       $('#withdrawal-closure-text').html(
@@ -653,9 +760,15 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
   const existing = $('#logo-existing-select').val();
 
   if (file) {
+    if (file.size > 2 * 1024 * 1024) {
+      $('[name="logo_upload"]').val('');
+      setSaveStatus('error', 'Logo not saved');
+      feedback.error('The event logo must be 2 MB or smaller.');
+      return;
+    }
     formData.append('logo_upload', file);
-  } else if (existing) {
-    formData.append('logo_existing', existing);
+  } else {
+    formData.append('logo_existing', existing || '');
   }
 
   $.ajax({
@@ -668,12 +781,12 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
   .done(() => {
     console.log('✅ Logo autosaved');
     setSaveStatus('saved', 'All changes saved');
-    toastr.success('Logo saved');
+    feedback.success(existing || file ? 'Event logo saved.' : 'Event logo removed.');
   })
   .fail((xhr) => {
     console.error('❌ Logo autosave failed', xhr.responseText);
     setSaveStatus('error', 'Logo not saved');
-    toastr.error('Logo save failed');
+    showRequestErrors(xhr, 'The event logo could not be saved.');
   });
 
 });

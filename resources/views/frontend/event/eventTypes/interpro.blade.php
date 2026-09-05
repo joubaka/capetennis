@@ -233,6 +233,9 @@
       </div>
 
 
+      {{-- Scorers need a venue-first entry point on every screen size. --}}
+      @include('frontend.event.partials._venue-scoring')
+
       {{-- 🔹 Draws and Order of Play (Desktop only) --}}
       @include('frontend.event.partials.interpro-draws-desktop')
 

@@ -22,7 +22,7 @@
   @can('event-finance.view', $event)
     <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
   @endcan
-  @can('event.manage', $event)
+  @can('event.settings.manage', $event)
     <a href="{{ route('admin.events.settings', $event) }}" @if($eventWorkspaceActive === 'settings') aria-current="page" @endif><i class="ti ti-settings" aria-hidden="true"></i>Settings</a>
   @endcan
   @php

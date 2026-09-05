@@ -16,11 +16,13 @@ final class EventScheduleVisibilityController extends Controller
     {
         Gate::authorize('event.manage', $event);
 
+        $applyNumSets = $request->filled('num_sets');
         $data = $request->validate([
             'schedule_visibility' => ['required', Rule::in([
                 DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
                 DrawSetting::SCHEDULE_VISIBILITY_FULL,
             ])],
+            'num_sets' => ['sometimes', 'nullable', 'integer', Rule::in([1, 2, 3, 5])],
         ]);
 
         $draws = $event->draws()->with('settings')->get();
@@ -28,21 +30,38 @@ final class EventScheduleVisibilityController extends Controller
         // Authorize the complete event selection before changing any setting.
         foreach ($draws as $draw) {
             Gate::authorize('editNotes', $draw);
+
+            if ($applyNumSets) {
+                Gate::authorize('update', $draw);
+            }
         }
 
-        DB::transaction(function () use ($draws, $data): void {
+        DB::transaction(function () use ($draws, $data, $applyNumSets): void {
             foreach ($draws as $draw) {
+                $settings = [
+                    'schedule_visibility' => $data['schedule_visibility'],
+                ];
+
+                if ($applyNumSets) {
+                    $settings['num_sets'] = $data['num_sets'];
+                }
+
                 $draw->settings()->updateOrCreate(
                     ['draw_id' => $draw->id],
-                    ['schedule_visibility' => $data['schedule_visibility']],
+                    $settings,
                 );
             }
         });
 
+        $message = $applyNumSets
+            ? 'Draw settings updated for every draw.'
+            : 'Match time display updated for every draw.';
+
         return response()->json([
             'success' => true,
-            'message' => 'Match time display updated for every draw.',
+            'message' => $message,
             'schedule_visibility' => $data['schedule_visibility'],
+            'num_sets' => $applyNumSets ? $data['num_sets'] : null,
             'updated_draws' => $draws->count(),
         ]);
     }

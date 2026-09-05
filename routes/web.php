@@ -711,6 +711,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     'event/{event}/settings',
     [EventSettingsController::class, 'update']
   )->name('admin.events.settings.update');
+  Route::get(
+    'event/{event}/settings/users',
+    [EventSettingsController::class, 'searchUsers']
+  )->name('admin.events.settings.users');
   Route::patch(
     'event/category/{categoryEvent}/fee',
     [EventSettingsController::class, 'updateCategoryFee']

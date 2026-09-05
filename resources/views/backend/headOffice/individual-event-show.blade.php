@@ -19,7 +19,7 @@
 window.headOfficeDraws = {
     createUrl: @json(route('headoffice.createSingleDraw', $event->id)),
     bulkPublicationUrl: @json(route('backend.event-draws.bulk-publication', $event)),
-    scheduleVisibilityUrl: @json(route('backend.event-draws.bulk-publication', $event)),
+    drawSettingsUrl: @json(route('backend.event-draws.bulk-publication', $event)),
     venueScheduleUrl: @json(route('backend.event-venue-schedule.index', $event)),
 };
 </script>
@@ -328,21 +328,50 @@ $(document).ready(function () {
   $eventScheduleVisibility = $eventScheduleVisibilities->count() === 1
     ? $eventScheduleVisibilities->first()
     : 'mixed';
+  $eventSetFormats = $event->draws
+    ->map(fn ($draw) => (int) ($draw->settings?->num_sets ?: 3))
+    ->unique();
+  $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
+  $supportedEventSetFormats = [1, 2, 3, 5];
+  $eventScoringSettingsLocked = $event->draws->contains(
+    fn ($draw) => (bool) $draw->locked || (bool) $draw->published
+  );
 @endphp
-<div class="modal fade" id="scheduleVisibilityModal" tabindex="-1" aria-labelledby="scheduleVisibilityModalLabel" aria-hidden="true">
+<div class="modal fade" id="drawSettingsModal" tabindex="-1" aria-labelledby="drawSettingsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <form id="scheduleVisibilityForm">
+      <form id="drawSettingsForm">
         @csrf
         <input type="hidden" name="operation" value="schedule_visibility">
         <div class="modal-header">
           <div>
-            <h5 class="modal-title" id="scheduleVisibilityModalLabel">Public match time display</h5>
-            <p class="text-muted small mb-0 mt-1">Choose what players and parents see across every draw in this event.</p>
+            <h5 class="modal-title" id="drawSettingsModalLabel">Draw settings</h5>
+            <p class="text-muted small mb-0 mt-1">Set the shared match rules and public display for this tournament day.</p>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
+          <fieldset class="mb-4">
+            <legend class="h6 mb-1">Match scoring</legend>
+            <p class="text-muted small">Apply the existing Sets per Match setting to every draw. Individual draw pages use this same setting.</p>
+            @if($eventScoringSettingsLocked)
+              <div class="alert alert-warning py-2 small" role="status">Scoring cannot be changed globally while any draw is published or locked. Unpublish and unlock those draws first.</div>
+            @endif
+            <label class="form-label fw-semibold" for="event-num-sets">Sets per match</label>
+            <select class="form-select" id="event-num-sets" name="num_sets" @disabled($eventScoringSettingsLocked)>
+              @if($eventSetFormat === 'mixed' || ! in_array($eventSetFormat, $supportedEventSetFormats, true))
+                <option value="" selected>Keep current per-draw formats</option>
+              @endif
+              @foreach($supportedEventSetFormats as $sets)
+                <option value="{{ $sets }}" @selected($eventSetFormat === $sets)>Best of {{ $sets }}</option>
+              @endforeach
+            </select>
+            <div class="form-text">This changes scoring across all {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }} for the day.</div>
+          </fieldset>
+
+          <fieldset>
+            <legend class="h6 mb-1">Public match time display</legend>
+            <p class="text-muted small">Choose what players and parents see across every draw in this event.</p>
           @if($eventScheduleVisibility === 'mixed')
             <div class="alert alert-info py-2 small" role="status">Draws currently use different display settings. Saving will make them consistent.</div>
           @endif
@@ -360,10 +389,11 @@ $(document).ready(function () {
             <label class="form-check-label fw-semibold" for="event-schedule-full">Show all match times</label>
             <div class="form-text">Every published time, venue and court is shown on the public draw tables.</div>
           </div>
+          </fieldset>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save display setting</button>
+          <button type="submit" class="btn btn-primary">Save draw settings</button>
         </div>
       </form>
     </div>

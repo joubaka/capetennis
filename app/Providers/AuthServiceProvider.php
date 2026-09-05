@@ -125,6 +125,10 @@ class AuthServiceProvider extends ServiceProvider
                 && $user->is_convenor($event->id);
         });
 
+        Gate::define('event.settings.manage', function ($user, \App\Models\Event $event) {
+            return $user->is_event_admin($event->id);
+        });
+
         Gate::define('event-category.manage', function ($user, \App\Models\Event $event) {
             return $user->is_event_admin($event->id);
         });

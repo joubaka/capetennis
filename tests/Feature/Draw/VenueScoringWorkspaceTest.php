@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventConvenor;
 use App\Models\EventType;
 use App\Models\Fixture;
+use App\Models\FixtureResult;
 use App\Models\OrderOfPlay;
 use App\Models\Registration;
 use App\Models\TeamFixture;
@@ -52,6 +53,55 @@ class VenueScoringWorkspaceTest extends TestCase
             ->assertSee('Match '.$fixture->match_nr)
             ->assertDontSee('Match '.$otherFixture->match_nr);
         $this->assertNotSame($venue->id, $otherVenue->id);
+    }
+
+    public function test_queue_defaults_to_time_then_age_group_then_natural_court_number_and_scores_do_not_change_that_order(): void
+    {
+        [$event, $under14, , $under14Court2] = $this->scheduledFixture('Under 14 Venue');
+        $under14->update(['drawName' => 'Under 14']);
+        $under14Court2->orderOfPlay()->update(['court' => '2']);
+        $under14Court2->update(['match_nr' => 142]);
+
+        $under12 = Draw::factory()->create([
+            'event_id' => $event->id,
+            'drawName' => 'Under 12',
+            'published' => true,
+            'locked' => false,
+        ]);
+        [, , , $under12Court10] = $this->scheduledFixture('Under 12 Court 10 Venue', $event, $under12);
+        $under12Court10->orderOfPlay()->update(['court' => '10']);
+        $under12Court10->update(['match_nr' => 1210]);
+        [, , , $under12Court1] = $this->scheduledFixture('Under 12 Court 1 Venue', $event, $under12);
+        $under12Court1->orderOfPlay()->update(['court' => '1']);
+        $under12Court1->update(['match_nr' => 121]);
+
+        $under18 = Draw::factory()->create([
+            'event_id' => $event->id,
+            'drawName' => 'Under 18',
+            'published' => true,
+            'locked' => false,
+        ]);
+        [, , , $earlierUnder18] = $this->scheduledFixture('Earlier Venue', $event, $under18);
+        $earlierUnder18->orderOfPlay()->update(['court' => '9', 'time' => '2026-09-10 07:30:00']);
+        $earlierUnder18->update(['match_nr' => 189]);
+
+        $user = $this->scorerFor($event);
+        $expected = [$earlierUnder18->id, $under12Court1->id, $under12Court10->id, $under14Court2->id];
+
+        $before = $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'all_venues' => 1]));
+        $before->assertOk();
+        $this->assertSame($expected, $before->viewData('matches')->pluck('id')->all());
+
+        FixtureResult::create([
+            'fixture_id' => $under12Court10->id,
+            'registration1_score' => 6,
+            'registration2_score' => 3,
+            'set_nr' => 1,
+        ]);
+
+        $after = $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'all_venues' => 1]));
+        $after->assertOk()->assertSee('data-score-state="completed"', false);
+        $this->assertSame($expected, $after->viewData('matches')->pluck('id')->all());
     }
 
     public function test_venue_scoring_control_offers_assigned_convenor_a_link_for_each_scheduled_venue(): void

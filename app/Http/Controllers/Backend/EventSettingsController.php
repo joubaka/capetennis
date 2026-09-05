@@ -22,9 +22,8 @@ class EventSettingsController extends Controller
    */
   public function index(Event $event)
   {
-    Gate::authorize('event.manage', $event);
+    Gate::authorize('event.settings.manage', $event);
 
-    $users = User::with('roles')->orderBy('name')->get();
     $assignments = EventConvenor::where('event_id', $event->id)
       ->with('user.roles')
       ->get();
@@ -34,11 +33,15 @@ class EventSettingsController extends Controller
     $convenors = $assignments->reject(
       fn (EventConvenor $assignment) => $scoringAccounts->contains('id', $assignment->id)
     );
+    $selectedUserIds = $event->admins()->pluck('users.id')
+      ->merge($assignments->pluck('user_id'))
+      ->unique();
+    $users = User::with('roles')
+      ->whereIn('id', $selectedUserIds)
+      ->orderBy('name')
+      ->get();
     $scoringAccountIds = $scoringAccounts->pluck('user_id');
-    $scoringUsers = $users->filter(
-      fn (User $user) => $scoringAccountIds->contains($user->id)
-        || ! $user->hasAnyRole(['super-user', 'admin'])
-    );
+    $scoringUsers = $users->whereIn('id', $scoringAccountIds);
 
     return view('backend.event.settings', [
       'event' => $event,
@@ -54,7 +57,7 @@ class EventSettingsController extends Controller
    */
   public function update(Request $request, Event $event)
   {
-    Gate::authorize('event.manage', $event);
+    Gate::authorize('event.settings.manage', $event);
 
     Log::info('🛠 Event settings update START', [
       'event_id' => $event->id,
@@ -79,7 +82,17 @@ class EventSettingsController extends Controller
       'signUp' => 'sometimes|boolean',
       'organizer' => 'sometimes|nullable|string|max:191',
 
-      'logo_existing' => 'sometimes|nullable|string', 
+      'logo_existing' => [
+        'sometimes',
+        'nullable',
+        'string',
+        'max:255',
+        function (string $attribute, mixed $value, \Closure $fail): void {
+          if ($value !== null && ! is_file(public_path('assets/img/logos/'.basename($value)))) {
+            $fail('The selected event logo is no longer available.');
+          }
+        },
+      ],
       'logo_upload' => 'sometimes|image|max:2048',
 
       'admins' => 'sometimes|array',
@@ -87,7 +100,7 @@ class EventSettingsController extends Controller
       'convenors' => 'sometimes|array',
       'convenors.*' => 'integer|exists:users,id',
       'convenor_starts_at' => 'sometimes|nullable|date',
-      'convenor_expires_at' => 'sometimes|nullable|date|after_or_equal:convenor_starts_at',
+      'convenor_expires_at' => 'sometimes|nullable|date|after:convenor_starts_at',
       'scoring_accounts' => 'sometimes|array',
       'scoring_accounts.*' => [
         'integer',
@@ -101,7 +114,7 @@ class EventSettingsController extends Controller
         },
       ],
       'scoring_starts_at' => 'sometimes|nullable|date',
-      'scoring_expires_at' => 'sometimes|nullable|date|after_or_equal:scoring_starts_at',
+      'scoring_expires_at' => 'sometimes|nullable|date|after:scoring_starts_at',
     ]);
 
     $scoringIds = collect($data['scoring_accounts'] ?? [])->map(fn ($id) => (int) $id);
@@ -130,8 +143,8 @@ class EventSettingsController extends Controller
       $event->logo = $filename;
 
       Log::info('🖼 Logo uploaded', ['logo' => $filename]);
-    } elseif (!empty($data['logo_existing'])) {
-      $event->logo = basename($data['logo_existing']);
+    } elseif ($request->has('logo_existing')) {
+      $event->logo = empty($data['logo_existing']) ? null : basename($data['logo_existing']);
     }
 
     // Event directors and scoring accounts share the existing event-scoped
@@ -277,7 +290,47 @@ class EventSettingsController extends Controller
       'event_id' => $event->id,
     ]);
 
-    return response()->json(['success' => true]);
+    return response()->json([
+      'success' => true,
+      'message' => 'Event settings saved.',
+      'saved_at' => now()->toIso8601String(),
+    ]);
+  }
+
+  /**
+   * Search assignable users without exposing the full user directory in HTML.
+   */
+  public function searchUsers(Request $request, Event $event)
+  {
+    Gate::authorize('event.settings.manage', $event);
+
+    $data = $request->validate([
+      'q' => 'sometimes|nullable|string|max:100',
+      'scope' => 'sometimes|in:management,scoring',
+    ]);
+    $query = trim($data['q'] ?? '');
+
+    $users = User::query()
+      ->with('roles:id,name')
+      ->when(($data['scope'] ?? 'management') === 'scoring', function ($builder) {
+        $builder->whereDoesntHave('roles', fn ($roleQuery) => $roleQuery->whereIn('name', ['super-user', 'admin']));
+      })
+      ->when($query !== '', function ($builder) use ($query) {
+        $builder->where(function ($userQuery) use ($query) {
+          $userQuery->where('name', 'like', "%{$query}%")
+            ->orWhere('email', 'like', "%{$query}%");
+        });
+      })
+      ->orderBy('name')
+      ->limit(20)
+      ->get(['id', 'name', 'email']);
+
+    return response()->json([
+      'results' => $users->map(fn (User $user) => [
+        'id' => $user->id,
+        'text' => "{$user->name} ({$user->email})",
+      ])->values(),
+    ]);
   }
 
   /**

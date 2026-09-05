@@ -8,8 +8,8 @@
     <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Player draws, match schedules and publication in one place.</p></div>
     <div class="draws-event-actions">
       @if($event->draws->isNotEmpty())
-        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#scheduleVisibilityModal">
-          <i class="ti ti-settings" aria-hidden="true"></i> Time display
+        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#drawSettingsModal">
+          <i class="ti ti-settings" aria-hidden="true"></i> Draw settings
         </button>
         <a class="btn draws-button draws-button-secondary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Schedule all matches</a>
         <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Draw pack</button>

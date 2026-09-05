@@ -10,6 +10,7 @@
 
             @php
               $deskUser = auth()->user();
+              $canScoreEvent = $deskUser && $deskUser->can('event.score', $event);
               $canViewUnpublished = $deskUser && (
                 (method_exists($deskUser, 'isConvenorForEvent') && $deskUser->isConvenorForEvent($event->id)) ||
                 (method_exists($deskUser, 'is_convenor') && $deskUser->is_convenor($event->id)) ||
@@ -26,13 +27,23 @@
 
                 <div class="d-flex flex-wrap gap-2 mt-1">
                   @foreach($draws as $draw)
-                    <a href="{{ route('public.roundrobin.show', $draw->id) }}"
-                       class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
-                      {{ $draw->drawName }}
-                      <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-                        {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
-                      </span>
-                    </a>
+                    <div class="d-flex align-items-center gap-1">
+                      <a href="{{ route('public.roundrobin.show', $draw->id) }}"
+                         class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
+                        {{ $draw->drawName }}
+                        <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                          {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+                        </span>
+                      </a>
+                      @if($canScoreEvent)
+                        <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
+                           class="btn btn-sm btn-light border"
+                           title="Score {{ $draw->drawName }}">
+                          <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Score
+                          <span class="visually-hidden"> {{ $draw->drawName }}</span>
+                        </a>
+                      @endif
+                    </div>
                   @endforeach
                 </div>
 

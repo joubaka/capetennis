@@ -10,6 +10,7 @@ use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\TeamFixture;
 use App\Models\Venue;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -21,7 +22,7 @@ class VenueScoringController extends Controller
         $this->authorize('event.score', $event);
 
         $draws = $event->draws()
-            ->with(['settings', 'flexibleMonrad', 'draw_types'])
+            ->with(['settings', 'flexibleMonrad', 'draw_types', 'categoryEvent.category'])
             ->orderBy('drawName')
             ->get();
         $drawIds = $draws->pluck('id');
@@ -58,6 +59,7 @@ class VenueScoringController extends Controller
             ->with([
                 'draw.settings',
                 'draw.flexibleMonrad',
+                'draw.categoryEvent.category',
                 'registration1.players',
                 'registration2.players',
                 'fixtureResults',
@@ -78,6 +80,7 @@ class VenueScoringController extends Controller
             ->with([
                 'draw.settings',
                 'draw.flexibleMonrad',
+                'draw.categoryEvent.category',
                 'fixturePlayers.player1',
                 'fixturePlayers.player2',
                 'fixtureResults',
@@ -93,10 +96,29 @@ class VenueScoringController extends Controller
             ->limit(500)
             ->get();
 
-        $matches = $fixtures->concat($teamFixtures)->sortBy(function ($match) {
-            return $match instanceof Fixture
-                ? ($match->orderOfPlay?->time ?? '9999-12-31 23:59:59')
-                : ($match->scheduled_at ?? '9999-12-31 23:59:59');
+        $matches = $fixtures->concat($teamFixtures)->sort(function ($left, $right): int {
+            $timeOrder = $this->scheduledTime($left) <=> $this->scheduledTime($right);
+            if ($timeOrder !== 0) {
+                return $timeOrder;
+            }
+
+            $ageOrder = strnatcasecmp($this->ageGroup($left), $this->ageGroup($right));
+            if ($ageOrder !== 0) {
+                return $ageOrder;
+            }
+
+            $courtOrder = strnatcasecmp($this->courtNumber($left), $this->courtNumber($right));
+            if ($courtOrder !== 0) {
+                return $courtOrder;
+            }
+
+            $drawOrder = strnatcasecmp((string) $left->draw?->drawName, (string) $right->draw?->drawName);
+            if ($drawOrder !== 0) {
+                return $drawOrder;
+            }
+
+            return [$left instanceof TeamFixture ? 1 : 0, $left->id]
+                <=> [$right instanceof TeamFixture ? 1 : 0, $right->id];
         })->values();
 
         $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty())->count();
@@ -139,5 +161,32 @@ class VenueScoringController extends Controller
         $request->session()->put('venue_scoring.operator', trim($validated['operator']));
 
         return back()->with('success', 'Scoring operator saved for this telephone.');
+    }
+
+    private function scheduledTime(Fixture|TeamFixture $match): int
+    {
+        $time = $match instanceof Fixture ? $match->orderOfPlay?->time : $match->scheduled_at;
+
+        if ($time instanceof CarbonInterface) {
+            return $time->getTimestamp();
+        }
+
+        return $time ? strtotime((string) $time) : PHP_INT_MAX;
+    }
+
+    private function ageGroup(Fixture|TeamFixture $match): string
+    {
+        return trim((string) (
+            $match->draw?->categoryEvent?->category?->name
+            ?: ($match instanceof TeamFixture ? $match->age : null)
+            ?: $match->draw?->drawName
+        ));
+    }
+
+    private function courtNumber(Fixture|TeamFixture $match): string
+    {
+        $court = $match instanceof Fixture ? $match->orderOfPlay?->court : $match->court_label;
+
+        return $court === null || $court === '' ? "\u{10FFFF}" : (string) $court;
     }
 }

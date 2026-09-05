@@ -21,6 +21,7 @@ class EventScoringAccountSettingsTest extends TestCase
         parent::setUp();
 
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'score-keeper', 'guard_name' => 'web']);
         DB::table('eventtypes')->updateOrInsert(
             ['id' => 1],
@@ -46,7 +47,9 @@ class EventScoringAccountSettingsTest extends TestCase
             ->get(route('admin.events.settings', $event))
             ->assertOk()
             ->assertSee('Scoring accounts')
-            ->assertSee('score-entry access for this event only');
+            ->assertSee('score-entry access for this event only')
+            ->assertSee('Access &amp; responsibilities', false)
+            ->assertSee('userSearchUrl', false);
 
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());
@@ -133,6 +136,70 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->assertFalse(Gate::forUser($scorer->fresh())->allows('event.score', $event));
     }
 
+    public function test_access_windows_require_a_real_positive_duration(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $event = Event::factory()->create();
+        $instant = now()->addDay()->startOfHour()->format('Y-m-d H:i:s');
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'convenor_starts_at' => $instant,
+                'convenor_expires_at' => $instant,
+                'scoring_starts_at' => $instant,
+                'scoring_expires_at' => $instant,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['convenor_expires_at', 'scoring_expires_at']);
+    }
+
+    public function test_event_directors_cannot_open_or_mutate_sensitive_settings(): void
+    {
+        $director = User::factory()->create();
+        $event = Event::factory()->create();
+        DB::table('event_convenors')->insert([
+            'event_id' => $event->id,
+            'user_id' => $director->id,
+            'role' => 'hoof',
+            'starts_at' => now()->subHour(),
+            'expires_at' => now()->addHour(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->get(route('admin.events.settings', $event))
+            ->assertForbidden();
+        $this->actingAs($director)
+            ->patchJson(route('admin.events.settings.update', $event), ['name' => 'Escalated'])
+            ->assertForbidden();
+        $this->actingAs($director)
+            ->getJson(route('admin.events.settings.users', $event))
+            ->assertForbidden();
+        $this->assertNotSame('Escalated', $event->fresh()->name);
+    }
+
+    public function test_scoring_account_search_is_bounded_and_excludes_administrators(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $administrator = User::factory()->create([
+            'name' => 'Searchable Administrator',
+            'email' => 'searchable-admin@example.test',
+        ])->assignRole('admin');
+        User::factory()->count(25)->create();
+        $event = Event::factory()->create();
+
+        $response = $this->actingAs($viewer)
+            ->getJson(route('admin.events.settings.users', [
+                'event' => $event,
+                'scope' => 'scoring',
+            ]))
+            ->assertOk()
+            ->assertJsonCount(20, 'results');
+
+        $this->assertNotContains($administrator->id, collect($response->json('results'))->pluck('id'));
+    }
+
     public function test_convenor_account_can_score_one_event_and_manage_another(): void
     {
         Role::firstOrCreate(['name' => 'convenor', 'guard_name' => 'web']);
@@ -159,17 +226,17 @@ class EventScoringAccountSettingsTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $response = $this->actingAs($viewer)
-            ->get(route('admin.events.settings', $scoringEvent))
-            ->assertOk();
-        $document = new \DOMDocument;
-        @$document->loadHTML($response->getContent());
-        $xpath = new \DOMXPath($document);
-        $option = $xpath->query(
-            '//select[@name="scoring_accounts"]/option[@value="'.$convenor->id.'"]'
-        )->item(0);
-        $this->assertNotNull($option);
-        $this->assertStringContainsString('convenor-scorer@example.test', $option->textContent);
+        $this->actingAs($viewer)
+            ->getJson(route('admin.events.settings.users', [
+                'event' => $scoringEvent,
+                'scope' => 'scoring',
+                'q' => 'convenor-scorer@example.test',
+            ]))
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $convenor->id,
+                'text' => 'Convenor Scorer (convenor-scorer@example.test)',
+            ]);
 
         $this->actingAs($viewer)
             ->patchJson(route('admin.events.settings.update', $scoringEvent), [

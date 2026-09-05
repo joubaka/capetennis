@@ -131,8 +131,8 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('id="unpublish-selected-times"', $html);
         $this->assertStringContainsString('Schedule all matches', $html);
         $this->assertStringContainsString('Draw pack', $html);
-        $this->assertStringContainsString('data-bs-target="#scheduleVisibilityModal"', $html);
-        $this->assertStringContainsString('Time display', $html);
+        $this->assertStringContainsString('data-bs-target="#drawSettingsModal"', $html);
+        $this->assertStringContainsString('Draw settings', $html);
         $this->assertStringContainsString('data-format="Custom Monrad"', $html);
         $this->assertStringContainsString('id="draw-select-42"', $html);
         $this->assertStringContainsString('aria-label="More actions for U/10 Boys"', $html);

@@ -108,16 +108,16 @@ $(function () {
   $('#unpublish-selected-times').on('click', () => bulkPublish('schedules', 'unpublish'));
   updateBulkActions();
 
-  $('#scheduleVisibilityForm').on('submit', function (event) {
+  $('#drawSettingsForm').on('submit', function (event) {
     event.preventDefault();
     const $form = $(this);
     const $submit = $form.find('[type="submit"]').prop('disabled', true).attr('aria-busy', 'true');
-    $.post(config.scheduleVisibilityUrl, $form.serialize())
+    $.post(config.drawSettingsUrl, $form.serialize())
       .done(function (response) {
-        toastr.success(response.message || 'Match time display updated.');
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('scheduleVisibilityModal')).hide();
+        toastr.success(response.message || 'Draw settings updated.');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('drawSettingsModal')).hide();
       })
-      .fail(xhr => error(xhr, 'Could not update the match time display.'))
+      .fail(xhr => error(xhr, 'Could not update the draw settings.'))
       .always(() => $submit.prop('disabled', false).removeAttr('aria-busy'));
   });
 
