@@ -167,6 +167,8 @@ class EventVenueScheduleTest extends TestCase
             ->assertSeeInOrder(['Court 2', 'Court 8', 'Court 1'])
             ->assertSee('data-draw-summary="'.$draws->first()->id.'"', false)
             ->assertSee('Shared Venue · 2 courts')
+            ->assertSee('<details class="card preview-venue mb-4">', false)
+            ->assertDontSee('<details class="card preview-venue mb-4" open>', false)
             ->assertSee('open only the one you are editing')
             ->assertSee('id="court-allocation-step"', false)
             ->assertSee('id="schedule-rules-step"', false)

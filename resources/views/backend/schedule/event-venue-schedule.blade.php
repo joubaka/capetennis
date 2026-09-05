@@ -18,7 +18,8 @@
   .schedule-workspace .workspace-section > summary { list-style:none; display:flex; align-items:center; gap:1rem; padding:1.15rem 1.25rem; cursor:pointer; }
   .schedule-workspace .workspace-section > summary::-webkit-details-marker,
   .schedule-workspace .draw-panel > summary::-webkit-details-marker,
-  .schedule-workspace .venue-editor > summary::-webkit-details-marker { display:none; }
+  .schedule-workspace .venue-editor > summary::-webkit-details-marker,
+  .schedule-workspace .preview-venue > summary::-webkit-details-marker { display:none; }
   .schedule-workspace .section-title { flex:1; min-width:0; }
   .schedule-workspace .section-title h5 { margin:0 0 .2rem; }
   .schedule-workspace .summary-chevron { color:var(--schedule-muted); transition:transform .2s ease; }
@@ -46,6 +47,9 @@
   .schedule-workspace .venue-editor { border-top:1px solid var(--schedule-border); }
   .schedule-workspace .venue-editor > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 0; cursor:pointer; }
   .schedule-workspace .venue-editor-body { padding:0 0 1rem; }
+  .schedule-workspace .preview-venue > summary { list-style:none; align-items:center; cursor:pointer; }
+  .schedule-workspace .preview-venue > summary:hover { background:var(--schedule-soft); }
+  .schedule-workspace .preview-venue > summary:focus-visible { outline:2px solid var(--bs-primary); outline-offset:-2px; }
   .schedule-workspace .workspace-footer { position:sticky; bottom:.75rem; z-index:4; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; padding:.8rem; border:1px solid var(--schedule-border); border-radius:.75rem; background:rgba(255,255,255,.96); box-shadow:0 .5rem 1.5rem rgba(31,42,68,.1); backdrop-filter:blur(8px); }
   .schedule-workspace .compact-note { border-left:3px solid var(--bs-info); padding:.55rem .75rem; background:rgba(var(--bs-info-rgb), .06); border-radius:0 .5rem .5rem 0; }
   @media (max-width: 767.98px) {
@@ -577,7 +581,7 @@
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<div class="card mb-4"><div class="card-header d-flex flex-wrap justify-content-between gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span>${venue.courts} courts · ${rows.length} fixtures</span></div><div class="table-responsive"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</div>`;
+    return `<details class="card preview-venue mb-4"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary><div class="table-responsive"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function render(result) {
@@ -592,7 +596,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<div class="card mb-4"><div class="card-header d-flex justify-content-between"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span>${venue.courts} courts · ${rows.length} fixtures</span></div><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-secondary ms-2">Existing</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? '' : `Wave ${row.wave} · `}R${row.round}</td><td>${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'TBD')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></div>`;
+      return `<details class="card preview-venue mb-4"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}${row.fixed ? '<span class="badge bg-label-secondary ms-2">Existing</span>' : ''}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.fixed ? '' : `Wave ${row.wave} · `}R${row.round}</td><td>${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'TBD')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
