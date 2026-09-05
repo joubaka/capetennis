@@ -7,6 +7,11 @@
     ? route('flexible-monrad.publish', $draw->id)
     : route('draw.toggle.publish', $draw->id);
   $publishRevision = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->revision ?? 0) : 0;
+  $flexibleGraph = $draw->relationLoaded('flexibleMonrad') ? ($draw->flexibleMonrad?->graph ?? []) : [];
+  $pendingLateWithdrawalCount = count(array_diff(
+    array_map('intval', array_keys($flexibleGraph['late_withdrawals'] ?? [])),
+    array_map('intval', $flexibleGraph['withdrawn'] ?? [])
+  ));
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
@@ -19,7 +24,14 @@
     </label>
     <span class="draw-division-mark">@include('backend.headOffice.partials.draw-icon', ['icon' => 'bracket'])</span>
     <div class="draw-division-text">
-      <h3 class="h6 mb-0"><a href="{{ $drawUrl }}" class="draw-overview-name">{{ $draw->drawName }}</a></h3>
+      <h3 class="h6 mb-0 draw-overview-title"><a href="{{ $drawUrl }}" class="draw-overview-name">{{ $draw->drawName }}</a>
+        @if($pendingLateWithdrawalCount > 0)
+          <a href="{{ $drawUrl }}" class="draw-attention-badge" aria-label="{{ $pendingLateWithdrawalCount }} late {{ Str::plural('withdrawal', $pendingLateWithdrawalCount) }} {{ $pendingLateWithdrawalCount === 1 ? 'requires' : 'require' }} attention in {{ $draw->drawName }}" title="Open draw to review the late withdrawal">
+            <i class="ti ti-alert-triangle-filled" aria-hidden="true"></i>
+            {{ $pendingLateWithdrawalCount }} {{ Str::plural('late withdrawal', $pendingLateWithdrawalCount) }}
+          </a>
+        @endif
+      </h3>
       <div class="draw-division-state"><span class="draw-publication {{ $draw->published ? 'is-published' : 'is-draft' }}"><span class="draws-status-dot" aria-hidden="true"></span>{{ $draw->published ? 'Published' : 'Draft' }}</span>
       <span class="draw-publication {{ $draw->oop_published ? 'is-published' : 'is-draft' }}">
         <i class="ti ti-calendar-event" aria-hidden="true"></i>

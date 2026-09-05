@@ -14,8 +14,8 @@
     <button type="button" id="fm-generate" class="fm-primary">Generate fixtures</button>
     <button type="button" id="fm-publish" class="fm-primary" hidden>Publish draw</button>
     <button type="button" id="fm-reopen" hidden>Edit starting positions</button>
-    <button type="button" id="fm-withdrawals" hidden>Apply withdrawals</button>
-    <button type="button" id="fm-withdrawal-redraw" hidden>Redraw after withdrawal</button>
+    <button type="button" id="fm-withdrawals" hidden>Continue as late withdrawal</button>
+    <button type="button" id="fm-withdrawal-redraw" hidden>Redraw without player</button>
   </div>
   <div class="fm-workspace">
     <aside id="fm-sidebar"><h2>Players <span id="fm-count"></span></h2><label for="fm-search">Search players</label><input id="fm-search" type="search" placeholder="Name…"><p class="fm-help">Drag names from this list or between draw boxes. Placed players stay green in the list. Drag a name back here to clear its placement, or click a box for more options.</p><div id="fm-players"></div></aside>

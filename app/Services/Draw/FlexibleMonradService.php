@@ -264,6 +264,7 @@ final class FlexibleMonradService
         $withdrawn = $record?->graph ? $this->withdrawn($draw, $record->graph) : array_values(array_diff(
             $assigned, $this->activeEntries($draw)->whereIn('registrations.id', $assigned)->pluck('registrations.id')->all()
         ));
+        $lateWithdrawals = array_map('intval', array_keys($record?->graph['late_withdrawals'] ?? []));
         $players = $eligible->merge(Registration::with('players')->whereIn('id', $assigned)->get())
             ->map(fn ($r) => ['id' => $r->id, 'name' => $r->displayName(),
                 'profiles' => $r->players->map(fn ($player) => [
@@ -271,14 +272,22 @@ final class FlexibleMonradService
                     'url' => URL::signedRoute('public.player.profile', $player),
                 ])->filter(fn ($profile) => $profile['name'] !== '')->values()->all(),
                 'eligible' => $eligible->contains('id', $r->id) && ! in_array($r->id, $withdrawn, true),
-                'withdrawn' => in_array($r->id, $withdrawn, true)])->values();
+                'withdrawn' => in_array($r->id, $withdrawn, true),
+                'late_withdrawal' => in_array($r->id, $lateWithdrawals, true)])->values();
         $fixtures = $draw->drawFixtures()->where('stage', 'FM')->with(['fixtureResults', 'oop.venue'])->get()->keyBy('id');
-        $progression = $record?->graph ? $this->progression($record, $fixtures, $withdrawn) : ['matches' => [], 'positions' => []];
+        $reconciledWithdrawals = array_map('intval', $record?->graph['withdrawn'] ?? []);
+        $pendingWithdrawals = array_values(array_diff($withdrawn, $reconciledWithdrawals));
+        // Until an organiser chooses redraw or continuation, retain both names
+        // and leave the winner unresolved. The published bracket can show the
+        // red withdrawal status without making the operational decision itself.
+        $progression = $record?->graph ? $this->progression($record, $fixtures, $reconciledWithdrawals) : ['matches' => [], 'positions' => []];
         $matches = [];
         foreach ($record?->graph['nodes'] ?? [] as $key => $node) {
             $fx = $fixtures->get($record->fixture_map[$key]);
             if (! $fx) continue;
             $matches[$key] = $node + $progression['matches'][$key] + ['id' => $fx->id, 'number' => $fx->match_nr,
+                'pending_withdrawal_players' => array_map(fn ($id) => in_array((int) $id, $pendingWithdrawals, true) ? (int) $id : null,
+                    $progression['matches'][$key]['players']),
                 'schedule' => $fx->oop ? ['time' => $fx->oop->time, 'court' => $fx->oop->court, 'venue' => $fx->oop->venue?->name] : null,
                 'sets' => $fx->fixtureResults->sortBy('set_nr')->map(fn ($r) => [$r->registration1_score, $r->registration2_score])->values()->all()];
         }

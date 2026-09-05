@@ -473,15 +473,26 @@ class CategoryEventRegistration extends Model
 
     $event = $this->categoryEvent->event;
 
-    // Draw has been finalised (category locked) — non-admins cannot withdraw
-    // once the draw is published, as their slot may already be scheduled.
+    // A finalised category normally blocks self-service changes. The exception
+    // is a generated, published Flexible Monrad draw: the player may still
+    // withdraw, but the published slot is retained for the organiser's explicit
+    // redraw-or-late-withdrawal decision.
     if (!$isAdmin && $this->categoryEvent->isLocked()) {
-      return [
-        'ok' => false,
-        'reason' => 'draw_locked',
-        'refund_allowed' => false,
-        'message' => 'Withdrawals are not allowed after the draw has been finalised. Please contact the event administrator.',
-      ];
+      $publishedFlexibleDrawExists = Draw::query()
+        ->where('event_id', $this->categoryEvent->event_id)
+        ->where('category_event_id', $this->category_event_id)
+        ->where('published', true)
+        ->whereHas('flexibleMonrad', fn ($query) => $query->whereNotNull('graph'))
+        ->exists();
+
+      if (!$publishedFlexibleDrawExists) {
+        return [
+          'ok' => false,
+          'reason' => 'draw_locked',
+          'refund_allowed' => false,
+          'message' => 'Withdrawals are not allowed after the draw has been finalised. Please contact the event administrator.',
+        ];
+      }
     }
 
     // 🔴 Deadline passed → withdraw OK, refund NOT OK

@@ -18,7 +18,7 @@
     demoGraph = null;
   const name = id => {
     const player = state.players.find(p => Number(p.id) === Number(id));
-    return player ? player.name + (player.withdrawn ? ' (withdrawn)' : '') : (id ? 'Player unavailable' : 'Awaiting result');
+    return player ? player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'})` : '') : (id ? 'Player unavailable' : 'Awaiting result');
   };
   const playerRecord = id => state.players.find(p => Number(p.id) === Number(id));
   function playerNameNode(id, extraClass = '') {
@@ -35,8 +35,12 @@
         link.title = `Open the name-only profile for ${profile.name}`;
         wrapper.append(link);
       });
-      if (player.withdrawn) wrapper.append(document.createTextNode(' (withdrawn)'));
+      if (player.withdrawn) wrapper.append(el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'));
     } else wrapper.textContent = name(id);
+    if (!config.readOnly && player?.withdrawn) {
+      wrapper.textContent = player.name;
+      wrapper.append(el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'));
+    }
     return wrapper;
   }
   const roundName = depth => ['Final', 'Semifinals', 'Quarterfinals'][depth] || `Round of ${2 ** (depth + 1)}`;
@@ -369,8 +373,14 @@
           match.players.forEach((id, slot) => {
             const line = el('div', `fm-slot${id && Number(id) === Number(match.winner) ? ' winner' : ''}`);
             line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
-            const label = id
+            const withdrawnId = match.withdrawn_players?.[slot];
+            const pendingWithdrawalId = match.pending_withdrawal_players?.[slot];
+            const label = pendingWithdrawalId
+              ? playerNameNode(pendingWithdrawalId, 'fm-slot-name fm-player-identity-withdrawal')
+              : id
               ? playerNameNode(id, 'fm-slot-name')
+              : withdrawnId
+              ? playerNameNode(withdrawnId, 'fm-slot-name fm-player-identity-withdrawal')
               : el('span', 'fm-slot-name fm-source-name', match.vacant?.[slot] ? 'No active entrant' : sourceLabel(match.sources[slot]));
             line.append(label);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
@@ -383,8 +393,12 @@
             schedule.setAttribute('aria-label', `Scheduled ${scheduleLabel(match.schedule, true)}`);
             card.append(schedule);
           }
-          if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover' ? 'Walkover · no score played' : 'Closed · no active players'));
-          if (config.canScore && !state.locked && !match.automatic && match.players.every(Boolean)) {
+          if (match.pending_withdrawal_players?.some(Boolean)) {
+            card.append(el('div', 'fm-match-note fm-match-note-alert', 'Late withdrawal · admin decision required'));
+          } else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
+            ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : 'Walkover · no score played')
+            : 'Closed · no active players'));
+          if (config.canScore && !state.locked && !match.automatic && !match.pending_withdrawal_players?.some(Boolean) && match.players.every(Boolean)) {
             const score = el('button', 'fm-score-button', match.winner ? 'Edit result' : 'Enter result');
             score.type = 'button';
             score.disabled = busy;
@@ -475,12 +489,15 @@
     $('fm-reopen').disabled = busy;
     const withdrawn = state.players.filter(p => p.withdrawn);
     $('fm-withdrawn').hidden = !withdrawn.length;
-    $('fm-withdrawn').textContent = `Withdrawn: ${withdrawn.map(p => p.name).join(', ')}. ` +
+    const lateWithdrawals = withdrawn.filter(p => p.late_withdrawal);
+    $('fm-withdrawn').classList.toggle('fm-late-withdrawal-notice', lateWithdrawals.length > 0);
+    $('fm-withdrawn').textContent = `${lateWithdrawals.length ? 'Late withdrawal' : 'Withdrawal'}: ${withdrawn.map(p => p.name).join(', ')}. ` +
       (state.generated ? 'Completed results remain recorded. Unplayed matches advance active opponents by walkover; withdrawn players receive no final position.' :
         'Remove their starting assignments before saving or generating.') +
-      (state.generated && state.withdrawals_pending && config.canScore && !state.locked ? ' Apply withdrawals to update fixtures and schedules, or continue scoring another match.' : '');
+      (state.generated && state.withdrawals_pending && config.canScore && !state.locked ? ' Choose Redraw without player, or Continue as late withdrawal to record the player as the loser and advance the opponent.' : '');
     $('fm-withdrawals').hidden = !state.generated || config.readOnly || !config.canScore || state.locked || !state.withdrawals_pending;
     $('fm-withdrawals').disabled = busy;
+    $('fm-withdrawals').textContent = lateWithdrawals.length ? 'Continue as late withdrawal' : 'Apply withdrawal';
     $('fm-withdrawal-redraw').hidden = !state.generated || config.readOnly || !config.canPrepareWithdrawalRedraw || state.locked || !state.has_withdrawals;
     $('fm-withdrawal-redraw').disabled = busy;
     if ($('fm-public')) $('fm-public').hidden = !state.published;
@@ -551,7 +568,7 @@
     roster.append(el('p', '', 'Starting positions are read-only after generation. Use Edit starting positions below when the draw is unpublished and unlocked.'));
     const ids = new Set(Object.values(draft.slots).filter(slot => slot.type === 'player').map(slot => Number(slot.id)));
     const list = el('ul');
-    state.players.filter(player => ids.has(Number(player.id))).forEach(player => list.append(el('li', '', player.name + (player.withdrawn ? ' (withdrawn)' : ''))));
+    state.players.filter(player => ids.has(Number(player.id))).forEach(player => list.append(el('li', '', player.name + (player.withdrawn ? ` (${player.late_withdrawal ? 'Late withdrawal' : 'Withdrawn'})` : ''))));
     roster.append(list);
   }
   function renderPrint() {
@@ -883,7 +900,7 @@
   );
   $('fm-withdrawals').addEventListener('click', () => run(async () => {
     state = await request(config.urls.withdrawals, { revision: state.revision });
-    message('Withdrawals applied. Completed results are preserved; active opponents advance by walkover.');
+    message('Late withdrawal recorded. The withdrawn player is the loser and the active opponent advances by walkover.');
   }));
   $('fm-withdrawal-redraw').addEventListener('click', () => {
     if (!confirm('Prepare a new draw without the withdrawn player? This unpublishes and clears only this category’s fixtures and times. A schedule snapshot is retained for rebuilding the same footprint; every other category remains unchanged.')) return;

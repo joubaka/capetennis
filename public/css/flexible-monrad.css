@@ -353,6 +353,25 @@
   text-overflow: ellipsis;
 }
 :where(.fm-surface) .fm-player-link:hover { text-decoration: underline; }
+:where(.fm-surface) .fm-player-identity-withdrawal {
+  color: #b42318;
+  border-color: #f1a7a1;
+  background: #fff0ee;
+}
+:where(.fm-surface) .fm-withdrawal-label {
+  flex-shrink: 0;
+  margin-left: 6px;
+  color: #b42318;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .25px;
+  text-transform: uppercase;
+}
+:where(.fm-surface) .fm-late-withdrawal-notice {
+  border-color: #e15b52;
+  color: #9f2118;
+  background: #fff0ee;
+}
 :where(.fm-surface) .fm-source-name {
   display: inline-flex;
   max-width: 100%;
@@ -441,6 +460,7 @@
   font-size: 10px;
   color: #64748b;
 }
+:where(.fm-surface) .fm-match-note-alert { color: #b42318; font-weight: 750; }
 :where(.fm-surface) .fm-links {
   position: absolute;
   /* Keep vertical strokes above slot backgrounds, including at fractional zoom. */

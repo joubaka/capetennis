@@ -188,6 +188,7 @@ class EntryService
             $entry->update([
                 'status'         => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'   => now(),
+                'withdrawn_by'   => $actingUser->id,
                 'refund_status'  => 'not_refunded',
                 'refund_method'  => null,
                 'refund_gross'   => 0,
@@ -196,7 +197,7 @@ class EntryService
                 'refunded_at'    => null,
             ]);
 
-            $this->removeFromUnplayedDrawParticipation($entry);
+            $this->removeFromUnplayedDrawParticipation($entry, 'player');
 
             activity('withdrawal')
                 ->performedOn($entry)
@@ -241,6 +242,7 @@ class EntryService
             $entry->update([
                 'status'        => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'  => now(),
+                'withdrawn_by'  => $actingUser->id,
                 'refund_status' => 'not_refunded',
                 'refund_method' => null,
                 'refund_gross'  => 0,
@@ -249,7 +251,7 @@ class EntryService
                 'refunded_at'   => null,
             ]);
 
-            $this->removeFromUnplayedDrawParticipation($entry);
+            $this->removeFromUnplayedDrawParticipation($entry, 'admin');
 
             activity('withdrawal')
                 ->performedOn($entry)
@@ -275,7 +277,10 @@ class EntryService
      * the fixtures that actually contain the withdrawn registration before
      * clearing their slots so unrelated schedules are never treated as orphans.
      */
-    private function removeFromUnplayedDrawParticipation(CategoryEventRegistration $entry): void
+    private function removeFromUnplayedDrawParticipation(
+        CategoryEventRegistration $entry,
+        string $initiatedBy
+    ): void
     {
         $registrationId = (int) $entry->registration_id;
         $categoryEvent = $entry->categoryEvent;
@@ -291,6 +296,43 @@ class EntryService
 
         if ($drawIds->isEmpty()) {
             return;
+        }
+
+        // A player who withdraws from an already-published Flexible Monrad
+        // draw remains part of that published bracket's audit trail. Store the
+        // decision context before normal roster cleanup so the draw can offer
+        // either a redraw or a late-withdrawal walkover without showing the
+        // player as an unexplained unavailable slot.
+        if ($initiatedBy === 'player') {
+            $publishedDrawIds = DB::table('draws')
+                ->whereIn('id', $drawIds)
+                ->where('published', true)
+                ->pluck('id');
+
+            if ($publishedDrawIds->isNotEmpty()) {
+                \App\Models\FlexibleMonradDraw::whereIn('draw_id', $publishedDrawIds)
+                    ->whereNotNull('graph')
+                    ->lockForUpdate()
+                    ->get()
+                    ->each(function (\App\Models\FlexibleMonradDraw $record) use ($entry, $registrationId) {
+                        $graph = $record->graph;
+                        $graph['late_withdrawals'][(string) $registrationId] = [
+                            'initiated_by' => 'player',
+                            'withdrawn_at' => $entry->withdrawn_at?->toIso8601String() ?? now()->toIso8601String(),
+                        ];
+                        $record->fill([
+                            'graph' => $graph,
+                            'revision' => $record->revision + 1,
+                        ])->save();
+
+                        \App\Models\DrawAuditLog::record(
+                            $record->draw_id,
+                            'monrad_late_withdrawal_recorded',
+                            null,
+                            ['registration_id' => $registrationId, 'initiated_by' => 'player']
+                        );
+                    });
+            }
         }
 
         $drawGroupIds = DB::table('draw_groups')

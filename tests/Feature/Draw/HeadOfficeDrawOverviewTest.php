@@ -24,7 +24,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         ]));
         $draw->setRelation('venues', collect());
         $draw->setRelation('flexibleMonrad', $flexible
-            ? (new FlexibleMonradDraw)->forceFill(['draw_id' => 42, 'revision' => 7])
+            ? (new FlexibleMonradDraw)->forceFill(['draw_id' => 42, 'revision' => 7, 'graph' => []])
             : null);
 
         return $draw;
@@ -58,6 +58,29 @@ class HeadOfficeDrawOverviewTest extends TestCase
         }
         $this->assertStringNotContainsString('btn-add-venues', $html);
         $this->assertStringContainsString('aria-label="Publish U/10 Boys"', $html);
+    }
+
+    public function test_pending_late_withdrawal_displays_an_alarm_badge_on_the_draw(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $draw = $this->draw(true);
+        $draw->flexibleMonrad->graph = [
+            'late_withdrawals' => ['501' => ['initiated_by' => 'player']],
+            'withdrawn' => [],
+        ];
+
+        $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+
+        $this->assertStringContainsString('draw-attention-badge', $html);
+        $this->assertStringContainsString('1 late withdrawal', $html);
+        $this->assertStringContainsString('requires attention in U/10 Boys', $html);
+
+        $draw->flexibleMonrad->graph = [
+            'late_withdrawals' => ['501' => ['initiated_by' => 'player']],
+            'withdrawn' => [501],
+        ];
+        $resolved = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+        $this->assertStringNotContainsString('draw-attention-badge', $resolved);
     }
 
     public function test_prepared_schedule_has_an_explicit_publication_action(): void

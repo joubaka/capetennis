@@ -355,6 +355,52 @@ class FlexibleMonradTest extends TestCase
         $this->assertNull(Fixture::findOrFail($final)->winner_registration);
     }
 
+    public function test_player_withdrawal_after_publication_is_flagged_until_admin_chooses_late_withdrawal(): void
+    {
+        [$draw, $draft, $players] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $service->publish($draw, 2, true);
+
+        $playerUser = User::factory()->create();
+        $entry = CategoryEventRegistration::query()
+            ->where('category_event_id', $draw->category_event_id)
+            ->where('registration_id', $players[0]->id)
+            ->firstOrFail();
+        $entry->update(['user_id' => $playerUser->id]);
+        $draw->categoryEvent->update(['locked_at' => now()]);
+
+        app(EntryService::class)->withdrawEntry($entry->fresh(), $playerUser);
+
+        $state = $service->state($draw->fresh());
+        $statePlayer = $state['players']->firstWhere('id', $players[0]->id);
+        $this->assertTrue($statePlayer['withdrawn']);
+        $this->assertTrue($statePlayer['late_withdrawal']);
+        $this->assertTrue($state['withdrawals_pending']);
+        $matches = (array) $state['matches'];
+        $this->assertSame($players[0]->id, $matches['main_a']['pending_withdrawal_players'][0]);
+        $this->assertNull($matches['main_a']['winner']);
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $entry->id,
+            'status' => 'withdrawn',
+            'withdrawn_by' => $playerUser->id,
+        ]);
+
+        $pendingRecord = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
+        $this->assertArrayHasKey((string) $players[0]->id, $pendingRecord->graph['late_withdrawals']);
+        $this->assertNotContains($players[0]->id, $pendingRecord->graph['withdrawn'] ?? []);
+
+        $service->reconcileWithdrawals($draw->fresh(), $pendingRecord->revision);
+
+        $resolvedRecord = $pendingRecord->fresh();
+        $this->assertContains($players[0]->id, $resolvedRecord->graph['withdrawn']);
+        $resolvedMatches = (array) $service->state($draw->fresh())['matches'];
+        $this->assertSame($players[0]->id, $resolvedMatches['main_a']['withdrawn_players'][0]);
+        $this->assertSame($players[1]->id, $resolvedMatches['main_a']['winner']);
+        $this->assertSame($players[1]->id, Fixture::findOrFail($record->fixture_map['main_a'])->winner_registration);
+    }
+
     public function test_double_withdrawal_waits_for_unresolved_opponents_and_reconciliation_is_guarded(): void
     {
         [$draw, $draft, $players] = $this->setupDraw();

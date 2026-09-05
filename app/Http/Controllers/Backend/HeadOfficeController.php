@@ -59,7 +59,7 @@ class HeadOfficeController extends Controller
     // The individual draw overview needs neither team fixtures nor team formats.
     if ((int) $event->eventType === 6) {
       $event->load(['draws' => fn ($query) => $query
-        ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision'])
+        ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
         ->withCount(['drawFixtures', 'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time')])
         ->orderBy('drawName')]);
 

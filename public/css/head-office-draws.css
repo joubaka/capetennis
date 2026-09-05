@@ -66,6 +66,9 @@
 .draws-workspace .draw-overview-name { color: var(--draws-ink); font-size: 14px; font-weight: 700; line-height: 1.4; text-decoration: none; overflow-wrap: anywhere; }
 .draws-workspace .draw-overview-name:hover { color: var(--draws-accent); text-decoration: underline; text-underline-offset: 3px; }
 .draw-division-state { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 6px; }
+.draw-overview-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.draw-attention-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #e9a29c; border-radius: 999px; color: #a5231a; background: #fff0ee; font-size: 10px; font-weight: 750; line-height: 1.2; text-decoration: none; }
+.draw-attention-badge:hover, .draw-attention-badge:focus-visible { color: #7f1710; background: #ffe3df; border-color: #d86961; }
 .draw-publication, .draw-lock { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 550; line-height: 1.25; }
 .draw-publication.is-draft { color: #7c6747; }
 .draw-publication.is-published { color: #21765b; }
