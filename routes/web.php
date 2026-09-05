@@ -1071,6 +1071,7 @@ Route::delete(
   Route::post('draw/{draw}/flexible-monrad/generate', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'generate'])->name('flexible-monrad.generate');
   Route::post('draw/{draw}/flexible-monrad/publish', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publish'])->name('flexible-monrad.publish');
   Route::post('draw/{draw}/flexible-monrad/reopen', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reopen'])->name('flexible-monrad.reopen');
+  Route::post('draw/{draw}/flexible-monrad/withdrawal-redraw', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'prepareWithdrawalRedraw'])->name('flexible-monrad.withdrawal-redraw');
   Route::post('draw/{draw}/flexible-monrad/withdrawals', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reconcileWithdrawals'])->name('flexible-monrad.withdrawals');
   Route::put('draw/{draw}/flexible-monrad/score/{fixture}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'score'])->name('flexible-monrad.score');
 
@@ -1302,6 +1303,9 @@ Route::delete(
 
   Route::get('/event/{event}/print-draws-pdf', [HeadOfficeController::class, 'printDrawsPdf'])
     ->name('headoffice.printDrawsPdf');
+
+  Route::get('/event/{event}/draw-pack', [HeadOfficeController::class, 'printDrawPack'])
+    ->name('headoffice.drawPack');
 
 
   Route::post('/backend/headoffice/recreateFixtures/{draw}', [TeamFixtureController::class, 'recreateFixturesForDraw'])

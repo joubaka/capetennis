@@ -7,6 +7,7 @@ use App\Models\DrawAuditLog;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
+use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ use Tests\TestCase;
  *  1.  Guest cannot save bracket score
  *  2.  Guest cannot delete bracket score
  *  3.  Locked draw blocks bracket score save (API)
- *  4.  Published draw blocks bracket score save (API)
+ *  4.  Published draw allows bracket score save (API)
  *  5.  Locked draw blocks bracket score delete (API)
  *  6.  Locked draw blocks main bracket generation
  *  7.  Locked draw blocks plate bracket generation
@@ -130,17 +131,70 @@ class BracketHardeningTest extends TestCase
     }
 
     // ─────────────────────────────────────────────
-    // 4. Published draw blocks bracket score save (API)
+    // 4. Published draw allows bracket score save (API)
     // ─────────────────────────────────────────────
 
-    public function test_published_draw_blocks_bracket_score_save(): void
+    public function test_published_draw_allows_bracket_score_save(): void
     {
         $draw    = $this->makeDraw(['published' => true]);
-        $fixture = $this->makeBracketFixture($draw);
+        $fixture = $this->makeBracketFixture($draw, [
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
 
         $this->actingAs($this->adminUser($draw))
              ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3']])
-             ->assertStatus(403);
+             ->assertOk()
+             ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('fixture_results', [
+            'fixture_id' => $fixture->id,
+            'registration1_score' => 6,
+            'registration2_score' => 3,
+        ]);
+    }
+
+    public function test_published_draw_allows_bracket_score_delete(): void
+    {
+        $draw = $this->makeDraw(['published' => true]);
+        $fixture = $this->makeBracketFixture($draw, [
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+            'match_status' => 1,
+        ]);
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+
+        $this->actingAs($this->adminUser($draw))
+            ->deleteJson($this->scoreUrl($draw, $fixture))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
+    }
+
+    public function test_size_two_named_final_is_rendered_as_a_real_match(): void
+    {
+        $draw = $this->makeDraw(['published' => true]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin_playoffs',
+            'playoff_config' => [[
+                'name' => '1st/2nd (#1 vs #2)',
+                'slug' => 'main',
+                'size' => 2,
+                'positions' => [1, 2],
+                'enabled' => true,
+            ]],
+        ]);
+        $fixture = $this->makeBracketFixture($draw, [
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+            'playoff_type' => '1st/2nd (#1 vs #2)',
+            'position' => null,
+        ]);
+
+        $bracket = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+
+        $this->assertSame($fixture->id, $bracket['brackets'][0]['rounds'][1][0]['fx']->id);
     }
 
     // ─────────────────────────────────────────────

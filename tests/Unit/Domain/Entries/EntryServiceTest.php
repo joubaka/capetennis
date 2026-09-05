@@ -9,9 +9,13 @@ use App\Domain\Entries\Services\EntryService;
 use App\Domain\Entries\StateMachine\EntryStateMachine;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
 use App\Models\Event;
+use App\Models\Fixture;
+use App\Models\OrderOfPlay;
 use App\Models\SiteSetting;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -401,6 +405,74 @@ class EntryServiceTest extends TestCase
             'draw_group_id'   => $group->id,
             'registration_id' => $registrationId,
         ]);
+    }
+
+    public function test_withdrawal_removes_only_directly_affected_category_fixture_schedules(): void
+    {
+        $user = User::factory()->create();
+        $event = Event::factory()->create();
+        $category = CategoryEvent::factory()->for($event)->create();
+        $otherCategory = CategoryEvent::factory()->for($event)->create();
+        $entry = CategoryEventRegistration::factory()->for($category)->create([
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+        $registrationId = $entry->registration_id;
+
+        $draw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'category_event_id' => $category->id,
+        ]);
+        $otherDraw = Draw::factory()->create([
+            'event_id' => $event->id,
+            'category_event_id' => $otherCategory->id,
+        ]);
+        $venue = tap(new Venue(), fn (Venue $model) => $model->forceFill(['name' => 'Withdrawal Courts'])->save());
+
+        $affected = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'registration1_id' => $registrationId,
+            'registration2_id' => null,
+            'scheduled' => 1,
+        ]);
+        $unresolvedSameDraw = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'registration1_id' => null,
+            'registration2_id' => null,
+            'scheduled' => 1,
+        ]);
+        $unresolvedOtherCategory = Fixture::factory()->create([
+            'draw_id' => $otherDraw->id,
+            'registration1_id' => null,
+            'registration2_id' => null,
+            'scheduled' => 1,
+        ]);
+
+        foreach ([$affected, $unresolvedSameDraw, $unresolvedOtherCategory] as $index => $fixture) {
+            OrderOfPlay::create([
+                'fixture_id' => $fixture->id,
+                'draw_id' => $fixture->draw_id,
+                'venue_id' => $venue->id,
+                'court' => (string) ($index + 1),
+                'time' => '2026-09-06 10:00:00',
+                'duration_minutes' => 45,
+                'gap_minutes' => 0,
+            ]);
+        }
+
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, $user);
+
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $affected->id]);
+        $this->assertDatabaseHas('fixtures', [
+            'id' => $affected->id,
+            'registration1_id' => null,
+            'scheduled' => 0,
+        ]);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $unresolvedSameDraw->id]);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $unresolvedOtherCategory->id]);
+        $this->assertDatabaseHas('fixtures', ['id' => $unresolvedSameDraw->id, 'scheduled' => 1]);
+        $this->assertDatabaseHas('fixtures', ['id' => $unresolvedOtherCategory->id, 'scheduled' => 1]);
+        $this->assertSame(2, OrderOfPlay::count());
     }
 
     public function test_withdrawn_entry_status_is_withdrawn(): void

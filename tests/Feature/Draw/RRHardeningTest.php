@@ -74,11 +74,15 @@ class RRHardeningTest extends TestCase
 
     private function makeDraw(array $attrs = []): Draw
     {
-        return Draw::factory()->create(array_merge([
+        $draw = Draw::factory()->create(array_merge([
             'event_id'  => Event::factory()->create()->id,
             'locked'    => false,
             'published' => false,
         ], $attrs));
+
+        $draw->settings()->create(['workflow' => 'round_robin']);
+
+        return $draw;
     }
 
     private function makeRRFixture(Draw $draw): Fixture
@@ -138,6 +142,24 @@ class RRHardeningTest extends TestCase
         );
 
         $response->assertOk();
+    }
+
+    public function test_published_draw_allows_score_save_for_playoff_fixture(): void
+    {
+        $draw = $this->makeDraw(['published' => true]);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'MAIN',
+            'round' => 1,
+            'match_nr' => 2,
+        ]);
+
+        $this->actingAs($this->adminUser($draw))->post(
+            route('backend.roundrobin.score.store', $fixture),
+            ['sets' => ['6-4', '6-3']]
+        )->assertOk();
+
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id]);
     }
 
     // ─────────────────────────────────────────────

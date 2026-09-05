@@ -13,7 +13,7 @@
           <i class="ti ti-settings" aria-hidden="true"></i> Time display
         </button>
         <a class="btn draws-button draws-button-secondary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Schedule all matches</a>
-        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Print draws</button>
+        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Draw pack</button>
       @endif
       <button type="button" class="btn draws-button draws-button-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'plus']) New draw</button>
     </div>

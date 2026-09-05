@@ -191,7 +191,7 @@
     z-index: 1080;
   }
 
-  .col-actions .dropdown-menu {
+  .entry-actions-menu {
     max-height: min(60vh, 360px);
     overflow-y: auto;
   }
@@ -563,21 +563,62 @@ const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
 /* =====================
    ACTIONS DROPDOWN INIT
 ===================== */
+const entryDropdownMenus = new WeakMap();
+
+document.addEventListener('show.bs.dropdown', (event) => {
+    const toggle = event.target.matches('.col-actions .dropdown-toggle')
+        ? event.target
+        : event.target.querySelector?.('.col-actions .dropdown-toggle');
+    if (!toggle) return;
+
+    const dropdown = toggle.closest('.dropdown');
+    const menu = dropdown?.querySelector('.dropdown-menu');
+    const scrollArea = toggle.closest('.table-scroll-wrapper');
+    if (!dropdown || !menu || !scrollArea) return;
+
+    const toggleRect = toggle.getBoundingClientRect();
+    const areaRect = scrollArea.getBoundingClientRect();
+    const visibleTop = Math.max(8, areaRect.top);
+    const visibleBottom = Math.min(window.innerHeight - 8, areaRect.bottom);
+    const menuHeight = Math.min(menu.scrollHeight || 220, window.innerHeight * .6);
+    const roomBelow = visibleBottom - toggleRect.bottom;
+    const roomAbove = toggleRect.top - visibleTop;
+
+    dropdown.classList.toggle('dropup', roomBelow < menuHeight && roomAbove > roomBelow);
+    menu.classList.add('entry-actions-menu');
+    entryDropdownMenus.set(toggle, { menu, dropdown });
+    document.body.appendChild(menu);
+});
+
+document.addEventListener('hidden.bs.dropdown', (event) => {
+    const toggle = event.target.matches('.col-actions .dropdown-toggle')
+        ? event.target
+        : event.target.querySelector?.('.col-actions .dropdown-toggle');
+    const mounted = toggle ? entryDropdownMenus.get(toggle) : null;
+    if (mounted) {
+        mounted.dropdown.appendChild(mounted.menu);
+        entryDropdownMenus.delete(toggle);
+    }
+});
+
 document.querySelectorAll('.col-actions .dropdown-toggle').forEach((el) => {
     bootstrap.Dropdown.getOrCreateInstance(el, {
         popperConfig: (defaultConfig) => ({
             ...defaultConfig,
             strategy: 'fixed',
-            placement: 'bottom-end',
             modifiers: [
                 ...(defaultConfig.modifiers || []),
+                {
+                    name: 'computeStyles',
+                    options: { adaptive: false }
+                },
                 {
                     name: 'preventOverflow',
                     options: { boundary: 'viewport', padding: 8 }
                 },
                 {
                     name: 'flip',
-                    options: { fallbackPlacements: ['top-end'] }
+                    options: { fallbackPlacements: ['top-end', 'bottom-end'] }
                 }
             ]
         })
@@ -787,6 +828,47 @@ document.addEventListener('click', function(e) {
 
     const playerName = btn.dataset.player || 'this player';
 
+    const escapeWithdrawalHtml = value => String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+    const showDrawImpact = (impact, redirectUrl) => {
+        if (!impact?.requires_attention || !Array.isArray(impact.draws) || !impact.draws.length) {
+            if (redirectUrl) window.location.href = redirectUrl;
+            return;
+        }
+
+        const drawItems = impact.draws.map(draw => {
+            const scheduleNote = draw.has_schedule
+                ? `${draw.scheduled_matches} scheduled ${draw.scheduled_matches === 1 ? 'match' : 'matches'} must be reviewed`
+                : 'not scheduled yet';
+
+            return `<li><strong>${escapeWithdrawalHtml(draw.name)}</strong> — ${escapeWithdrawalHtml(scheduleNote)}</li>`;
+        }).join('');
+        const oneDraw = impact.draws.length === 1 ? impact.draws[0] : null;
+
+        Swal.fire({
+            title: 'Draw and schedule need attention',
+            html: `<p class="text-start">${escapeWithdrawalHtml(playerName)} was already placed in a draw.</p>
+                   <ul class="text-start mb-3">${drawItems}</ul>
+                   <p class="text-start mb-0"><strong>Next:</strong> redraw without this player first, then reschedule that draw. The other draws can stay unchanged.</p>`,
+            icon: 'warning',
+            confirmButtonText: redirectUrl ? 'Continue to refund' : (oneDraw ? 'Open affected draw' : 'OK'),
+            showCancelButton: !redirectUrl && !!oneDraw,
+            cancelButtonText: 'Stay on entries',
+            allowOutsideClick: false,
+        }).then(result => {
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+            } else if (result.isConfirmed && oneDraw?.draw_url) {
+                window.location.href = oneDraw.draw_url;
+            }
+        });
+    };
+
     Swal.fire({
         title: 'Withdraw ' + playerName + '?',
         text: 'This will withdraw the player from the event. This cannot be undone.',
@@ -812,11 +894,6 @@ document.addEventListener('click', function(e) {
         const ct = r.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
             return r.json().then(res => {
-                // If a redirect URL is returned (e.g. refund page for paid super-users), follow it
-                if (res.redirect) {
-                    window.location.href = res.redirect;
-                    return;
-                }
                 const row = btn.closest('tr');
                 const card = btn.closest('.category-card');
                 if (row) {
@@ -835,6 +912,7 @@ document.addEventListener('click', function(e) {
                 updateWithdrawnCount(card, +1);
                 reindexRows(card);
                 toastr.success(playerName + ' has been withdrawn.');
+                showDrawImpact(res.draw_impact, res.redirect);
             });
         } else {
             // Controller returned a redirect (e.g. refund page) – follow it

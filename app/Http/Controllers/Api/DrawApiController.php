@@ -50,14 +50,9 @@ class DrawApiController extends Controller
     {
         $this->authorize('saveScore', $draw);
 
-        // Guard: locked + published check
+        // Published draws remain scoreable; locking is the operational stop.
         if ($draw->locked) {
             return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
-        }
-        // Allow scoring on published draws for round robin fixtures
-        $isRoundRobin = $fixture->stage === 'RR';
-        if ($draw->published && !$isRoundRobin) {
-            return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
         }
 
         // Guard: fixture must belong to this draw
@@ -112,12 +107,6 @@ class DrawApiController extends Controller
         // Guard before authorize so JSON body is preserved for locked/published draws
         if ($draw->locked) {
             return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);
-        }
-
-        // Allow deleting scores on published draws for round robin fixtures
-        $isRoundRobin = $fixture->stage === 'RR';
-        if ($draw->published && !$isRoundRobin) {
-            return response()->json(['success' => false, 'message' => 'Draw is published.'], 403);
         }
 
         $this->authorize('deleteScore', $draw);

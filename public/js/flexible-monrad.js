@@ -481,6 +481,8 @@
       (state.generated && state.withdrawals_pending && config.canScore && !state.locked ? ' Apply withdrawals to update fixtures and schedules, or continue scoring another match.' : '');
     $('fm-withdrawals').hidden = !state.generated || config.readOnly || !config.canScore || state.locked || !state.withdrawals_pending;
     $('fm-withdrawals').disabled = busy;
+    $('fm-withdrawal-redraw').hidden = !state.generated || config.readOnly || !config.canPrepareWithdrawalRedraw || state.locked || !state.has_withdrawals;
+    $('fm-withdrawal-redraw').disabled = busy;
     if ($('fm-public')) $('fm-public').hidden = !state.published;
     $('fm-results').hidden = !state.generated;
     if (state.generated) generatedBoard();
@@ -883,6 +885,14 @@
     state = await request(config.urls.withdrawals, { revision: state.revision });
     message('Withdrawals applied. Completed results are preserved; active opponents advance by walkover.');
   }));
+  $('fm-withdrawal-redraw').addEventListener('click', () => {
+    if (!confirm('Prepare a new draw without the withdrawn player? This unpublishes and clears only this category’s fixtures and times. A schedule snapshot is retained for rebuilding the same footprint; every other category remains unchanged.')) return;
+    run(async () => {
+      state = await request(config.urls.prepareWithdrawalRedraw, { revision: state.revision });
+      dirty = false;
+      message(`Withdrawal redraw prepared. ${state.preserved_schedule_count || 0} previous time slots were preserved in the audit snapshot. Review the remaining players and generate the replacement draw, then preview this category in Schedule.`);
+    });
+  });
   $('fm-reopen').addEventListener('click', () =>
     run(async () => {
       if (config.demo) {

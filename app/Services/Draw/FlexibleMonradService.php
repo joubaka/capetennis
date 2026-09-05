@@ -5,6 +5,7 @@ namespace App\Services\Draw;
 use App\Models\{Draw, DrawAuditLog, DrawFormats, Fixture, FlexibleMonradDraw, Registration};
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -123,6 +124,76 @@ final class FlexibleMonradService
         });
     }
 
+    /**
+     * Reopen a withdrawal-affected draw while retaining an auditable copy of
+     * its complete schedule footprint. Other draws and bookings are untouched.
+     *
+     * @return array{record: FlexibleMonradDraw, schedule_count: int}
+     */
+    public function prepareWithdrawalRedraw(Draw $draw, int $revision): array
+    {
+        return DB::transaction(function () use ($draw, $revision) {
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            abort_if($draw->locked, 409, 'Unlock the draw before preparing a withdrawal redraw.');
+
+            $record = FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->firstOrFail();
+            $this->revision($record, $revision);
+            abort_unless($record->graph, 422, 'Generate fixtures before preparing a withdrawal redraw.');
+
+            $fixtures = $draw->drawFixtures()->where('stage', 'FM');
+            abort_if((clone $fixtures)->whereHas('fixtureResults')->exists(), 409,
+                'This draw has results. Use withdrawal walkovers so completed history is preserved.');
+
+            $withdrawn = $this->withdrawn($draw, $record->graph);
+            abort_unless($withdrawn, 422, 'This draw has no withdrawn players to remove.');
+
+            $publishedBefore = (bool) $draw->published;
+            $schedulePublishedBefore = (bool) $draw->oop_published;
+            $draftBefore = $record->draft;
+
+            $fixtureIds = $fixtures->pluck('id');
+            $schedule = DB::table('order_of_plays')
+                ->whereIn('fixture_id', $fixtureIds)
+                ->orderBy('time')->orderBy('venue_id')->orderBy('court')
+                ->get(['fixture_id', 'draw_id', 'venue_id', 'court', 'time', 'duration_minutes', 'gap_minutes', 'round_number'])
+                ->map(fn ($row) => (array) $row)->values()->all();
+
+            $draft = $record->draft;
+            $draft['slots'] = collect($draft['slots'] ?? [])->reject(fn ($source) =>
+                ($source['type'] ?? null) === 'player'
+                && in_array((int) ($source['id'] ?? 0), $withdrawn, true)
+            )->all();
+
+            DB::table('order_of_plays')->whereIn('fixture_id', $fixtureIds)->delete();
+            if (Schema::hasTable('schedules')) {
+                DB::table('schedules')->where(function ($query) use ($draw, $fixtureIds) {
+                    $query->where('draw_id', $draw->id)
+                        ->orWhereIn('fixture_id', $fixtureIds);
+                })->delete();
+            }
+            $fixtures->delete();
+            $draw->registrations()->detach($withdrawn);
+            $draw->update(['published' => false, 'oop_published' => false, 'oop_created' => false]);
+            $record->fill([
+                'draft' => $draft,
+                'graph' => null,
+                'fixture_map' => null,
+                'revision' => $revision + 1,
+            ])->save();
+
+            DrawAuditLog::record($draw->id, 'monrad_withdrawal_redraw_prepared', null, [
+                'withdrawn' => $withdrawn,
+                'published_before' => $publishedBefore,
+                'schedule_published_before' => $schedulePublishedBefore,
+                'draft_before' => $draftBefore,
+                'schedule_snapshot' => $schedule,
+                'schedule_count' => count($schedule),
+            ]);
+
+            return ['record' => $record, 'schedule_count' => count($schedule)];
+        });
+    }
+
     public function score(Draw $draw, int $fixtureId, ?array $sets, int $revision, bool $resetDependents): FlexibleMonradDraw
     {
         return DB::transaction(function () use ($draw, $fixtureId, $sets, $revision, $resetDependents) {
@@ -218,6 +289,7 @@ final class FlexibleMonradService
             'best_of' => (int) ($draw->settings?->num_sets ?: 1),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
             'players' => $players, 'matches' => (object) $matches, 'positions' => $progression['positions'],
+            'has_withdrawals' => (bool) $withdrawn,
             'withdrawals_pending' => (bool) array_diff($withdrawn, $record?->graph['withdrawn'] ?? [])];
     }
 

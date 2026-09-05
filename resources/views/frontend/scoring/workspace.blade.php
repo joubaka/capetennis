@@ -152,8 +152,7 @@
             $stageLabel = $match->stage ?: 'Draw';
             $matchNumber = $match->match_nr ?: $match->id;
             $canWrite = auth()->user()->can('saveScore', $draw)
-              && !$draw->locked
-              && ($isFlexible || !$draw->published || $match->stage === 'RR');
+              && !$draw->locked;
             $normalStore = route('api.draws.fixtures.score.store', ['draw' => $match->draw_id, 'fixture' => $match->id]);
             $normalDelete = route('api.draws.fixtures.score.delete', ['draw' => $match->draw_id, 'fixture' => $match->id]);
             $engine = $isFlexible ? 'flexible' : 'standard';
@@ -198,8 +197,6 @@
               </button>
             @elseif($draw->locked)
               <div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">This draw is locked.</div>
-            @elseif(!$isTeamFixture && $draw->published && !$isFlexible && $match->stage !== 'RR')
-              <div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">Published bracket scores must be managed from the draw workspace.</div>
             @endif
           </div>
         </article>

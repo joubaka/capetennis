@@ -91,6 +91,15 @@ class DrawPolicy
     }
 
     /**
+     * Prepare a published or unpublished result-free draw for regeneration
+     * after a withdrawal. This destructive action remains admin-only.
+     */
+    public function prepareWithdrawalRedraw(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && $this->canManage($user, $draw, false);
+    }
+
+    /**
      * Modify group assignments (drag/drop, save-groups).
      */
     public function modifyGroups(User $user, Draw $draw): bool

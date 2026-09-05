@@ -61,31 +61,20 @@ class TeamFixtureFrontendController extends Controller
   public function enterScores($draw)
   {
     $drawModel = Draw::findOrFail($draw);
-    $this->authorize('team-fixture.saveScore', $drawModel);
 
     // Round-Robin draws use the Fixture model, not TeamFixture
     $rrCount = \App\Models\Fixture::where('draw_id', $draw)->count();
     if ($rrCount > 0) {
-      $fixtures = \App\Models\Fixture::where('draw_id', $draw)
-          ->with([
-            'registration1.players',
-            'registration2.players',
-            'fixtureResults',
-            'drawGroup',
-          ])
-          ->orderByRaw("FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS')")
-          ->orderBy('round')
-          ->orderBy('draw_group_id')
-          ->orderBy('match_nr')
-          ->get(); 
+      $this->authorize('event.score', $drawModel->event);
 
-      return view('frontend.fixtures.enter-score-rr', [
-        'draw'     => $drawModel,
-        'fixtures' => $fixtures,
+      return redirect()->route('frontend.scoring.workspace', [
+        'event' => $drawModel->event_id,
+        'draw' => $drawModel->id,
       ]);
     }
 
     // Team-based draws use TeamFixture
+    $this->authorize('team-fixture.saveScore', $drawModel);
     $fixtures = \App\Models\TeamFixture::with([
             'draw',
             'venue',

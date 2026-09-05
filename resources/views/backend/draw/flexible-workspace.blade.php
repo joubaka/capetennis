@@ -23,7 +23,10 @@
       <h2 class="fm-workspace-print-title">{{ $title }} · {{ $draw->event->name }}</h2>
       <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
         <div><h2 class="h5">Schedule &amp; Venues</h2><p class="text-muted mb-0">Timetable publication is separate from draw publication.</p></div>
-        <a class="btn btn-primary" href="{{ route('backend.individual-schedule.page', $draw) }}">Manage schedule &amp; venues</a>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary" href="{{ route('backend.individual-schedule.page', $draw) }}">Manage this draw</a>
+          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule only this draw in the event timetable</a>
+        </div>
       </div>
       @can('publish', $draw)
         <button type="button" class="btn btn-outline-secondary mb-3" data-workspace-publish-schedule="{{ route('draw.toggle.publish.schedule', $draw) }}">{{ $draw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}</button>

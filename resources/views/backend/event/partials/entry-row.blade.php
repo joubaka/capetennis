@@ -45,7 +45,6 @@
       <button type="button"
               class="btn btn-outline-secondary btn-sm dropdown-toggle"
               data-bs-toggle="dropdown"
-              data-bs-strategy="fixed"
               aria-expanded="false">
         Actions
       </button>

@@ -87,6 +87,18 @@ class FlexibleMonradController extends Controller
         return response()->json($this->monrad->state($draw->fresh()));
     }
 
+    public function prepareWithdrawalRedraw(Request $request, Draw $draw)
+    {
+        $this->authorize('prepareWithdrawalRedraw', $draw);
+        $data = $request->validate(['revision' => 'required|integer|min:0']);
+        $result = $this->monrad->prepareWithdrawalRedraw($draw, $data['revision']);
+
+        return response()->json($this->monrad->state($draw->fresh()) + [
+            'redraw_prepared' => true,
+            'preserved_schedule_count' => $result['schedule_count'],
+        ]);
+    }
+
     public function score(Request $request, Draw $draw, int $fixture)
     {
         $this->authorize($request->input('sets') === null ? 'deleteScore' : 'saveScore', $draw);
@@ -142,12 +154,14 @@ class FlexibleMonradController extends Controller
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),
             'canPublish' => ! $public && auth()->user()->can('publish', $draw),
+            'canPrepareWithdrawalRedraw' => ! $public && auth()->user()->can('prepareWithdrawalRedraw', $draw),
             'backUrl' => $public ? null : route('backend.draw.roundrobin.show', $draw),
             'publicUrl' => route('public.flexible-monrad.show', $draw),
             'urls' => $public ? [] : [
                 'save' => route('flexible-monrad.save', $draw), 'generate' => route('flexible-monrad.generate', $draw),
                 'publish' => route('flexible-monrad.publish', $draw),
                 'reopen' => route('flexible-monrad.reopen', $draw),
+                'prepareWithdrawalRedraw' => route('flexible-monrad.withdrawal-redraw', $draw),
                 'withdrawals' => route('flexible-monrad.withdrawals', $draw),
                 'score' => route('flexible-monrad.score', [$draw, '__FIXTURE__']),
             ], 'state' => $state,

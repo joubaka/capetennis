@@ -140,11 +140,39 @@ class VenueScoringWorkspaceTest extends TestCase
 
     public function test_individual_event_score_action_uses_the_scoped_canonical_workspace(): void
     {
-        $template = file_get_contents(resource_path('views/frontend/event/eventTypes/individual.blade.php'));
+        $template = file_get_contents(resource_path('views/frontend/event/eventTypes/individual.blade.php'))
+            .file_get_contents(resource_path('views/frontend/event/partials/event-draws.blade.php'));
 
         $this->assertStringContainsString("can('event.score', \$event)", $template);
         $this->assertStringContainsString("route('frontend.scoring.workspace'", $template);
         $this->assertStringNotContainsString("route('frontend.fixtures.enter-scores'", $template);
+    }
+
+    public function test_legacy_individual_score_url_redirects_to_the_canonical_workspace(): void
+    {
+        [$event, $draw] = $this->scheduledFixture('Main Venue');
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)
+            ->get(route('frontend.fixtures.enter-scores', $draw))
+            ->assertRedirect(route('frontend.scoring.workspace', [
+                'event' => $event,
+                'draw' => $draw,
+            ]));
+    }
+
+    public function test_published_bracket_match_is_scoreable_in_the_frontend_workspace(): void
+    {
+        [$event, $draw, , $fixture] = $this->scheduledFixture('Main Venue');
+        $draw->update(['published' => true]);
+        $fixture->update(['stage' => 'MAIN']);
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)
+            ->get(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw]))
+            ->assertOk()
+            ->assertSee('Enter score')
+            ->assertDontSee('Published bracket scores must be managed from the draw workspace.');
     }
 
     public function test_team_fixture_queue_and_score_writes_use_the_same_workspace_audit(): void

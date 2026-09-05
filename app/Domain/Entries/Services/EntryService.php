@@ -196,59 +196,7 @@ class EntryService
                 'refunded_at'    => null,
             ]);
 
-            // Remove from any RR draw groups for this event
-            if ($entry->registration_id) {
-                $eventId = optional($entry->categoryEvent)->event_id;
-                if ($eventId) {
-                    $drawGroupIds = \DB::table('draw_groups')
-                        ->join('draws', 'draws.id', '=', 'draw_groups.draw_id')
-                        ->where('draws.event_id', $eventId)
-                        ->pluck('draw_groups.id');
-
-                    if ($drawGroupIds->isNotEmpty()) {
-                        \DB::table('draw_group_registrations')
-                            ->whereIn('draw_group_id', $drawGroupIds)
-                            ->where('registration_id', $entry->registration_id)
-                            ->delete();
-                    }
-
-                    // Null out unplayed fixture slots for this registration
-                    $regId = $entry->registration_id;
-                    $drawIds = \DB::table('draws')
-                        ->where('event_id', $eventId)
-                        ->pluck('id');
-
-                    if ($drawIds->isNotEmpty()) {
-                        \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where('registration1_id', $regId)
-                            ->update(['registration1_id' => null]);
-
-                        \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where('registration2_id', $regId)
-                            ->update(['registration2_id' => null]);
-
-                        // Remove schedules for those now-orphaned unplayed fixtures
-                        $orphanedFixtureIds = \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where(function ($q) use ($regId) {
-                                $q->whereNull('registration1_id')
-                                  ->orWhereNull('registration2_id');
-                            })
-                            ->pluck('id');
-
-                        if ($orphanedFixtureIds->isNotEmpty()) {
-                            \DB::table('order_of_plays')
-                                ->whereIn('fixture_id', $orphanedFixtureIds)
-                                ->delete();
-                        }
-                    }
-                }
-            }
+            $this->removeFromUnplayedDrawParticipation($entry);
 
             activity('withdrawal')
                 ->performedOn($entry)
@@ -301,59 +249,7 @@ class EntryService
                 'refunded_at'   => null,
             ]);
 
-            // Remove from any RR draw groups for this event
-            if ($entry->registration_id) {
-                $eventId = optional($entry->categoryEvent)->event_id;
-                if ($eventId) {
-                    $drawGroupIds = \DB::table('draw_groups')
-                        ->join('draws', 'draws.id', '=', 'draw_groups.draw_id')
-                        ->where('draws.event_id', $eventId)
-                        ->pluck('draw_groups.id');
-
-                    if ($drawGroupIds->isNotEmpty()) {
-                        \DB::table('draw_group_registrations')
-                            ->whereIn('draw_group_id', $drawGroupIds)
-                            ->where('registration_id', $entry->registration_id)
-                            ->delete();
-                    }
-
-                    // Null out unplayed fixture slots for this registration
-                    $regId = $entry->registration_id;
-                    $drawIds = \DB::table('draws')
-                        ->where('event_id', $eventId)
-                        ->pluck('id');
-
-                    if ($drawIds->isNotEmpty()) {
-                        \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where('registration1_id', $regId)
-                            ->update(['registration1_id' => null]);
-
-                        \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where('registration2_id', $regId)
-                            ->update(['registration2_id' => null]);
-
-                        // Remove schedules for those now-orphaned unplayed fixtures
-                        $orphanedFixtureIds = \DB::table('fixtures')
-                            ->whereIn('draw_id', $drawIds)
-                            ->whereNull('winner_registration')
-                            ->where(function ($q) use ($regId) {
-                                $q->whereNull('registration1_id')
-                                  ->orWhereNull('registration2_id');
-                            })
-                            ->pluck('id');
-
-                        if ($orphanedFixtureIds->isNotEmpty()) {
-                            \DB::table('order_of_plays')
-                                ->whereIn('fixture_id', $orphanedFixtureIds)
-                                ->delete();
-                        }
-                    }
-                }
-            }
+            $this->removeFromUnplayedDrawParticipation($entry);
 
             activity('withdrawal')
                 ->performedOn($entry)
@@ -370,6 +266,100 @@ class EntryService
 
             DB::afterCommit(fn () => event(new EntryWithdrawn($entry, $actingUser, 'admin')));
         });
+    }
+
+    /**
+     * Remove only this category entry from unplayed draw participation.
+     *
+     * Future dependency fixtures legitimately have unresolved entrants. Capture
+     * the fixtures that actually contain the withdrawn registration before
+     * clearing their slots so unrelated schedules are never treated as orphans.
+     */
+    private function removeFromUnplayedDrawParticipation(CategoryEventRegistration $entry): void
+    {
+        $registrationId = (int) $entry->registration_id;
+        $categoryEvent = $entry->categoryEvent;
+
+        if (! $registrationId || ! $categoryEvent) {
+            return;
+        }
+
+        $drawIds = DB::table('draws')
+            ->where('event_id', $categoryEvent->event_id)
+            ->where('category_event_id', $categoryEvent->id)
+            ->pluck('id');
+
+        if ($drawIds->isEmpty()) {
+            return;
+        }
+
+        $drawGroupIds = DB::table('draw_groups')
+            ->whereIn('draw_id', $drawIds)
+            ->pluck('id');
+
+        if ($drawGroupIds->isNotEmpty()) {
+            DB::table('draw_group_registrations')
+                ->whereIn('draw_group_id', $drawGroupIds)
+                ->where('registration_id', $registrationId)
+                ->delete();
+        }
+
+        // Flexible Monrad owns withdrawal progression. Leaving its fixture and
+        // schedule rows intact gives the operator a choice between walkovers and
+        // a category redraw that can reuse the complete existing slot footprint.
+        $flexibleDrawIds = DB::table('flexible_monrad_draws')
+            ->whereIn('draw_id', $drawIds)
+            ->whereNotNull('graph')
+            ->pluck('draw_id');
+        $directCleanupDrawIds = $drawIds->diff($flexibleDrawIds)->values();
+
+        if ($directCleanupDrawIds->isEmpty()) {
+            return;
+        }
+
+        $affectedFixtureIds = DB::table('fixtures')
+            ->whereIn('draw_id', $directCleanupDrawIds)
+            ->whereNull('winner_registration')
+            ->where(function ($query) use ($registrationId) {
+                $query->where('registration1_id', $registrationId)
+                    ->orWhere('registration2_id', $registrationId);
+            })
+            ->pluck('id');
+
+        if ($affectedFixtureIds->isEmpty()) {
+            return;
+        }
+
+        DB::table('fixtures')
+            ->whereIn('id', $affectedFixtureIds)
+            ->whereNull('winner_registration')
+            ->where('registration1_id', $registrationId)
+            ->update(['registration1_id' => null]);
+
+        DB::table('fixtures')
+            ->whereIn('id', $affectedFixtureIds)
+            ->whereNull('winner_registration')
+            ->where('registration2_id', $registrationId)
+            ->update(['registration2_id' => null]);
+
+        $orphanedFixtureIds = DB::table('fixtures')
+            ->whereIn('id', $affectedFixtureIds)
+            ->whereNull('winner_registration')
+            ->where(function ($query) {
+                $query->whereNull('registration1_id')
+                    ->orWhereNull('registration2_id');
+            })
+            ->pluck('id');
+
+        if ($orphanedFixtureIds->isEmpty()) {
+            return;
+        }
+
+        DB::table('order_of_plays')->whereIn('fixture_id', $orphanedFixtureIds)->delete();
+        if (Schema::hasTable('schedules')) {
+            DB::table('schedules')->whereIn('fixture_id', $orphanedFixtureIds)->delete();
+        }
+        DB::table('fixtures')->whereIn('id', $orphanedFixtureIds)->update(['scheduled' => 0]);
     }
 
     /**

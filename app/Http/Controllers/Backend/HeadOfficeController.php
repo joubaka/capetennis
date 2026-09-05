@@ -1128,6 +1128,7 @@ class HeadOfficeController extends Controller
         'drawFixtures.registration2.players',
         'drawFixtures.fixtureResults',
         'drawFixtures.drawGroup',
+        'drawFixtures.orderOfPlay.venue',
       ])
       ->first();
 
@@ -1157,6 +1158,7 @@ class HeadOfficeController extends Controller
         'drawFixtures.registration2.players',
         'drawFixtures.fixtureResults',
         'drawFixtures.drawGroup',
+        'drawFixtures.orderOfPlay.venue',
       ])
       ->orderBy('drawName')
       ->get();
@@ -1173,6 +1175,85 @@ class HeadOfficeController extends Controller
     $pdf->setPaper('A4', 'portrait');
 
     $filename = str_replace(' ', '_', $event->name) . '_draws.pdf';
+    return $pdf->download($filename);
+  }
+
+  /**
+   * Render or download the event's complete paper operations pack.
+   */
+  public function printDrawPack(Request $request, Event $event)
+  {
+    $this->authorize('event-draw.view', $event);
+
+    $validated = $request->validate([
+      'draw_ids' => ['sometimes', 'array', 'max:200'],
+      'draw_ids.*' => ['required', 'integer', 'distinct'],
+      'include_standings' => ['sometimes', 'boolean'],
+      'download' => ['sometimes', 'boolean'],
+    ]);
+
+    $drawIds = collect($validated['draw_ids'] ?? $event->draws()->pluck('id'))
+      ->map(fn ($id) => (int) $id)
+      ->values();
+
+    if ($drawIds->isEmpty()) {
+      throw ValidationException::withMessages(['draw_ids' => 'Select at least one draw for the pack.']);
+    }
+
+    $draws = Draw::where('event_id', $event->id)
+      ->whereIn('id', $drawIds)
+      ->with([
+        'settings.drawFormat',
+        'flexibleMonrad',
+        'groups.groupRegistrations.registration.players',
+        'drawFixtures.registration1.players',
+        'drawFixtures.registration2.players',
+        'drawFixtures.fixtureResults',
+        'drawFixtures.drawGroup',
+        'drawFixtures.orderOfPlay.venue',
+      ])
+      ->orderBy('drawName')
+      ->get();
+
+    if ($draws->count() !== $drawIds->unique()->count()) {
+      throw ValidationException::withMessages([
+        'draw_ids' => 'One or more selected draws do not belong to this event.',
+      ]);
+    }
+
+    $drawsData = $draws->map(fn (Draw $draw) => $this->buildDrawPrintData($draw))->values();
+    $schedule = $drawsData->flatMap(fn (array $draw) => collect($draw['oops'])
+      ->whereNotNull('scheduled_at')
+      ->map(fn (array $fixture) => $fixture + [
+        'draw_id' => $draw['id'],
+        'draw_name' => $draw['name'],
+      ]))
+      ->sortBy(fn (array $fixture) => sprintf(
+        '%s|%s|%s|%08d',
+        $fixture['scheduled_at'],
+        $fixture['venue'] ?? '',
+        $fixture['court'] ?? '',
+        (int) ($fixture['match_nr'] ?? $fixture['id'])
+      ))
+      ->values();
+
+    $data = [
+      'event' => $event,
+      'draws' => $drawsData,
+      'schedule' => $schedule,
+      'includeStandings' => (bool) ($validated['include_standings'] ?? true),
+      'autoPrint' => ! (bool) ($validated['download'] ?? false),
+    ];
+
+    if (! (bool) ($validated['download'] ?? false)) {
+      return view('backend.draw.pdf.draw-pack', $data);
+    }
+
+    $pdf = Pdf::loadView('backend.draw.pdf.draw-pack', $data + ['autoPrint' => false]);
+    $pdf->setPaper('A4', 'landscape');
+
+    $filename = preg_replace('/[^A-Za-z0-9_-]+/', '_', $event->name) . '_draw_pack.pdf';
+
     return $pdf->download($filename);
   }
 
@@ -1266,6 +1347,10 @@ class HeadOfficeController extends Controller
           'r2_id'        => $fx->registration2_id,
           'score'        => $sets,
           'winner'       => $winner,
+          'scheduled_at' => $fx->orderOfPlay?->time,
+          'venue'        => $fx->orderOfPlay?->venue?->name,
+          'court'        => $fx->orderOfPlay?->court,
+          'duration'     => $fx->orderOfPlay?->duration_minutes,
           'winner_feeders' => $wFeed,
           'loser_feeders'  => $lFeed,
         ];
@@ -1276,6 +1361,9 @@ class HeadOfficeController extends Controller
     return [
       'id'         => $draw->id,
       'name'       => $draw->drawName ?? 'Draw #' . $draw->id,
+      'format'     => $draw->usesFlexibleMonrad()
+        ? 'Flexible Monrad'
+        : ($draw->settings?->drawFormat?->name ?? str($draw->settings?->workflow ?? 'Draw')->headline()->toString()),
       'groups'     => $groups,
       'rrFixtures' => $rrFixtures,
       'oops'       => $oops,

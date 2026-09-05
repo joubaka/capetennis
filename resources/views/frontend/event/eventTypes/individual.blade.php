@@ -5,7 +5,7 @@
   <div class="col-xl-8 col-lg-7 col-md-7">
 
     @if(($drawPublicationSummary['total'] ?? 0) > 0)
-      <div class="d-md-none mb-4">
+      <div class="mb-4">
         <a href="#event-draws-match-times" class="btn btn-primary w-100">
           <i class="ti ti-tournament me-1" aria-hidden="true"></i>
           View draws &amp; match times
@@ -139,99 +139,7 @@
       </div>
     </div>
 
-      {{-- DRAWS & ORDER OF PLAY --}}
-    @if(($drawPublicationSummary['total'] ?? 0) > 0)
-    <div id="event-draws-match-times" class="card mb-4" tabindex="-1">
-      <div class="card-header">
-        <h5 class="mb-1">Draws and match times</h5>
-        <p class="text-muted small mb-0">Draws and schedules are released separately by the organiser.</p>
-      </div>
-      <div class="card-body">
-@if($eventDraws->isEmpty())
-  <div class="alert alert-info mb-0" role="status">
-    <div class="fw-semibold">The draws are being finalised.</div>
-    <div class="small">They will appear here as soon as the organiser publishes them. Match times and venues may follow later.</div>
-  </div>
-@else
-<div class="event-draw-grid">
-@php
-  $sortedDraws = $eventDraws->sortBy([
-    ['published', 'desc'],
-    [fn($d) => $d->draw_types?->ageCategory ?? $d->drawName ?? '', 'asc'],
-    ['drawName', 'asc'],
-  ]);
-
-  $canScoreEvent = auth()->check() && auth()->user()->can('event.score', $event);
-@endphp
-
-@foreach($sortedDraws as $draw)
-  @php
-    $firstSchedule = $draw->order_of_play->whereNotNull('time')->sortBy('time')->first();
-    $drawVenueNames = $draw->venues->pluck('name')->filter()->unique()->values();
-    $publicDrawUrl = $draw->usesFlexibleMonrad()
-      ? route('public.flexible-monrad.show', $draw)
-      : route('public.roundrobin.show', $draw);
-    $canViewDraw = auth()->check() && auth()->user()->can('view', $draw);
-  @endphp
-  <article class="event-draw-card">
-    <div>
-      <div class="event-draw-name">{{ $draw->drawName ?? 'Draw #'.$draw->id }}</div>
-      <div class="event-draw-meta">
-        @if($drawVenueNames->isNotEmpty())<span><i class="ti ti-map-pin" aria-hidden="true"></i> {{ $drawVenueNames->join(', ') }}</span>@endif
-        @if($draw->oop_published && $firstSchedule?->time)
-          <span><i class="ti ti-clock" aria-hidden="true"></i> First match {{ \Carbon\Carbon::parse($firstSchedule->time)->format('H:i') }}</span>
-        @endif
-      </div>
-    </div>
-    <div class="event-draw-actions">
-
-    {{-- PUBLISHED --}}
-    @if($draw->published)
-      <a href="{{ $publicDrawUrl }}#draw"
-         class="btn btn-sm btn-outline-primary">
-        <i class="ti ti-tournament me-1"></i>
-        View draw
-      </a>
-      @if($draw->oop_published)
-        <a href="{{ $publicDrawUrl }}#schedule" class="btn btn-sm btn-success">
-          <i class="ti ti-clock me-1" aria-hidden="true"></i> View schedule
-        </a>
-      @else
-        <span class="badge bg-label-secondary">Times to follow</span>
-      @endif
-
-      @if($canScoreEvent)
-        <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
-           class="btn btn-sm btn-light border"
-           title="Score {{ $draw->drawName }}">
-          <i class="ti ti-clipboard-data" aria-hidden="true"></i>
-          <span class="visually-hidden">Score {{ $draw->drawName }}</span>
-        </a>
-      @endif
-
-    {{-- UNPUBLISHED --}}
-    @else
-
-      @if($canViewDraw)
-        {{-- Convenor/Admin/Super can open --}}
-        <a href="{{ $publicDrawUrl }}#draw"
-           class="btn btn-sm btn-outline-secondary">
-          <i class="ti ti-tournament me-1"></i>
-          Preview draw
-        </a>
-        <span class="badge bg-label-warning">Draft</span>
-      @endif
-
-    @endif
-
-    </div>
-  </article>
-@endforeach
-</div>
-@endif
-      </div>
-    </div>
-    @endif
+    @include('frontend.event.partials.event-draws')
 
     {{-- PLAYERS --}}
     <div class="card mb-4">

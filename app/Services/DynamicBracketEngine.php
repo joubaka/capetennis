@@ -109,8 +109,9 @@ class DynamicBracketEngine
         $maxHeight = 0;
 
         // Separate main bracket from position playoffs
-        $mainFixtures = $hasFixtures 
-            ? $stageFixtures->filter(fn($fx) => is_null($fx->playoff_type))
+        $mainFixtures = $hasFixtures
+            ? $stageFixtures->filter(fn($fx) => is_null($fx->position)
+                && ! str_contains($fx->playoff_type ?? '', 'cons_sf'))
             : collect();
 
         // Virtual seed labels for empty bracket

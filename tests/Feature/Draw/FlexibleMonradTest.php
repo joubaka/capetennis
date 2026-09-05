@@ -2,7 +2,8 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Category, CategoryEvent, Draw, Event, Fixture, FlexibleMonradDraw, Player, RankingList, Registration, Series, SeriesRanking, User};
+use App\Domain\Entries\Services\EntryService;
+use App\Models\{Category, CategoryEvent, CategoryEventRegistration, Draw, DrawAuditLog, Event, Fixture, FlexibleMonradDraw, Player, RankingList, Registration, Series, SeriesRanking, User};
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -247,7 +248,7 @@ class FlexibleMonradTest extends TestCase
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('flexible-monrad.reopen', $draw), ['revision' => 2])->assertOk()->assertJsonPath('generated', false);
         $this->assertSame(0, $draw->drawFixtures()->count());
-        $this->assertEquals($draft, FlexibleMonradDraw::where('draw_id', $draw->id)->first()->draft);
+        $this->assertEquals($draft + ['mode' => 'custom_monrad'], FlexibleMonradDraw::where('draw_id', $draw->id)->first()->draft);
         $record = $service->generate($draw, 3);
         $service->score($draw, $record->fixture_map['main_a'], [[6, 2]], 4, false);
         $this->postJson(route('flexible-monrad.reopen', $draw), ['revision' => 5])->assertConflict();
@@ -397,12 +398,10 @@ class FlexibleMonradTest extends TestCase
 
     private function withdrawRegistration(Draw $draw, int $registration): void
     {
-        // Mirror the entry lifecycle's category status and unplayed-slot cleanup.
+        // Flexible Monrad retains its generated fixtures until the operator
+        // chooses either walkovers or a category-scoped redraw.
         DB::table('category_event_registrations')->where('registration_id', $registration)
             ->where('category_event_id', $draw->category_event_id)->update(['status' => 'withdrawn']);
-        foreach (['registration1_id', 'registration2_id'] as $column) {
-            $draw->drawFixtures()->whereNull('winner_registration')->where($column, $registration)->update([$column => null]);
-        }
     }
 
     public function test_withdrawal_reconciliation_is_category_scoped_and_removes_only_closed_match_schedules(): void
@@ -524,7 +523,7 @@ class FlexibleMonradTest extends TestCase
 
     private function setupScheduledDraw(): array
     {
-        [$draw, $draft] = $this->setupDraw();
+        [$draw, $draft, $players] = $this->setupDraw();
         $service = app(FlexibleMonradService::class);
         $service->save($draw, $draft, 0);
         $record = $service->generate($draw, 1);
@@ -533,7 +532,101 @@ class FlexibleMonradTest extends TestCase
         $this->postJson(route('backend.individual-schedule.auto', $draw), [
             'start' => '2026-09-05 08:00:00', 'duration' => 60,
         ])->assertOk();
-        return [$draw, $record->fresh(), $venue];
+        return [$draw, $record->fresh(), $venue, $players];
+    }
+
+    public function test_admin_withdrawal_can_prepare_a_category_scoped_redraw_without_disturbing_other_schedules(): void
+    {
+        [$draw, $record, $venue, $players] = $this->setupScheduledDraw();
+        $eventAdmin = auth()->user();
+        $draw->update(['published' => true, 'oop_published' => true, 'oop_created' => true]);
+
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $draw->event_id]);
+        $otherDraw = Draw::factory()->create([
+            'event_id' => $draw->event_id,
+            'category_event_id' => $otherCategory->id,
+        ]);
+        $otherFixture = Fixture::factory()->create(['draw_id' => $otherDraw->id, 'scheduled' => 1]);
+        \App\Models\OrderOfPlay::create([
+            'draw_id' => $otherDraw->id,
+            'fixture_id' => $otherFixture->id,
+            'venue_id' => $venue,
+            'court' => 2,
+            'time' => '2026-09-05 08:00:00',
+            'duration_minutes' => 60,
+        ]);
+
+        $entry = CategoryEventRegistration::query()
+            ->where('category_event_id', $draw->category_event_id)
+            ->where('registration_id', $players[0]->id)
+            ->firstOrFail();
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, auth()->user());
+
+        // Withdrawal preserves the complete old footprint until the operator
+        // explicitly chooses redraw instead of walkover progression.
+        $this->assertSame(4, DB::table('order_of_plays')->where('draw_id', $draw->id)->count());
+        $this->assertTrue(app(FlexibleMonradService::class)->state($draw)['withdrawals_pending']);
+
+        $this->actingAs(User::factory()->create()->assignRole('admin'))
+            ->postJson(route('flexible-monrad.withdrawal-redraw', $draw), ['revision' => $record->revision])
+            ->assertForbidden();
+        $this->actingAs($eventAdmin);
+
+        $this->postJson(route('flexible-monrad.withdrawal-redraw', $draw), ['revision' => $record->revision])
+            ->assertOk()
+            ->assertJsonPath('generated', false)
+            ->assertJsonPath('published', false)
+            ->assertJsonPath('preserved_schedule_count', 4);
+
+        $draw->refresh();
+        $this->assertFalse((bool) $draw->published);
+        $this->assertFalse((bool) $draw->oop_published);
+        $this->assertFalse((bool) $draw->oop_created);
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame(0, DB::table('order_of_plays')->where('draw_id', $draw->id)->count());
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $otherFixture->id]);
+        $this->assertDatabaseHas('fixtures', ['id' => $otherFixture->id, 'scheduled' => 1]);
+        $this->assertDatabaseMissing('draw_registrations', [
+            'draw_id' => $draw->id,
+            'registration_id' => $players[0]->id,
+        ]);
+
+        $updated = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
+        $this->assertNull($updated->graph);
+        $this->assertNull($updated->fixture_map);
+        $this->assertFalse(collect($updated->draft['slots'])->contains(
+            fn ($slot) => ($slot['type'] ?? null) === 'player' && (int) ($slot['id'] ?? 0) === $players[0]->id
+        ));
+
+        $audit = DrawAuditLog::where('draw_id', $draw->id)
+            ->where('action', 'monrad_withdrawal_redraw_prepared')->latest('id')->firstOrFail();
+        $this->assertSame(4, $audit->payload['schedule_count']);
+        $this->assertTrue($audit->payload['published_before']);
+        $this->assertTrue($audit->payload['schedule_published_before']);
+        $this->assertCount(4, $audit->payload['schedule_snapshot']);
+    }
+
+    public function test_withdrawal_redraw_is_blocked_after_results_exist(): void
+    {
+        [$draw, $record, , $players] = $this->setupScheduledDraw();
+        $record = app(FlexibleMonradService::class)->score(
+            $draw,
+            $record->fixture_map['main_a'],
+            [[6, 2]],
+            $record->revision,
+            false
+        );
+        $this->withdrawRegistration($draw, $players[0]->id);
+
+        $this->postJson(route('flexible-monrad.withdrawal-redraw', $draw), ['revision' => $record->revision])
+            ->assertConflict();
+
+        $this->assertSame(4, $draw->drawFixtures()->count());
+        $this->assertSame(4, DB::table('order_of_plays')->where('draw_id', $draw->id)->count());
+        $this->assertDatabaseMissing('draw_audit_logs', [
+            'draw_id' => $draw->id,
+            'action' => 'monrad_withdrawal_redraw_prepared',
+        ]);
     }
 
     public function test_failed_monrad_reset_preserves_schedule_and_success_keeps_played_history(): void

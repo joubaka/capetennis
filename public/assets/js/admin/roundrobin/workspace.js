@@ -50,11 +50,18 @@
     AdminState.setFixtures(hub.rrFixtures || {});
     AdminState.setOop(hub.oops || []);
     AdminState.setStandings(hub.standings || {});
-    $('#rr-next-step').text(
-      hub.oops.length ? 'Fixtures ready · review results and schedule' : 'Start with your players and groups'
-    );
-    $('#rr-fixture-summary').text(hub.oops.length + ' fixtures · ' + hub.oops.filter(f => f.score).length + ' scored');
+    updateSummary();
     return hub;
+  }
+  function updateSummary() {
+    const fixtures = new Map();
+    Object.values(AdminState.getFixtures() || {}).flat().forEach(fixture => fixtures.set(String(fixture.id), fixture));
+    (AdminState.getOop() || []).forEach(fixture => fixtures.set(String(fixture.id), fixture));
+    const values = Array.from(fixtures.values());
+    $('#rr-next-step').text(
+      values.length ? 'Fixtures ready · review results and schedule' : 'Start with your players and groups'
+    );
+    $('#rr-fixture-summary').text(values.length + ' fixtures · ' + values.filter(fixture => fixture.score).length + ' scored');
   }
   $(function () {
     $('[data-workspace]').on('click', function () {
@@ -76,6 +83,10 @@
     $('#rr-refresh-ops-btn').on('click', function () {
       refreshHub().catch(error => AdminToast.error(error.message));
     });
+    AdminState.on('rr:fixtures:updated', updateSummary);
+    AdminState.on('rr:oop:updated', updateSummary);
+    AdminState.on('score:saved', updateSummary);
+    AdminState.on('score:deleted', updateSummary);
     $('#rr-publish-draw, #rr-publish-schedule').on('click', async function () {
       if (root.RRGroups && (RRGroups.isDirty() || RRGroups.isBusy())) {
         AdminToast.warning('Save your assignments before changing publication.');

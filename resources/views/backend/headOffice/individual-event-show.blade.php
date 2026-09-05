@@ -39,7 +39,7 @@ $(document).ready(function () {
     // Show/hide standings option
     $('input[name="print_type"]').on('change', function () {
         var val = $(this).val();
-        $('#standings-option').toggle(val === 'matrix' || val === 'combined');
+        $('#standings-option').toggle(val === 'pack' || val === 'matrix' || val === 'combined');
     });
 
     // Print styles for browser print window
@@ -199,6 +199,17 @@ $(document).ready(function () {
         var drawIds = getSelectedDrawIds();
         if (!drawIds.length) { toastr.warning('Please select at least one draw.'); return; }
 
+        var printType = $('input[name="print_type"]:checked').val();
+        var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
+        if (printType === 'pack') {
+            var packParams = new URLSearchParams();
+            drawIds.forEach(function (id) { packParams.append('draw_ids[]', id); });
+            packParams.append('include_standings', includeStandings);
+            window.open(@json(route('headoffice.drawPack', $event)) + '?' + packParams.toString(), '_blank', 'noopener');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('printAllDrawsModal')).hide();
+            return;
+        }
+
         // Open window NOW (synchronous, on user click) so popup blocker won't block it
         var printWin = window.open('', '_blank');
         if (!printWin) {
@@ -211,7 +222,6 @@ $(document).ready(function () {
         // Keep focus on the modal so user sees the progress bar
         window.focus();
 
-        var printType = $('input[name="print_type"]:checked').val();
         var includeStandings = $('#chk-include-standings').is(':checked');
         var $btn = $(this).prop('disabled', true);
         var $progress = $('#print-progress');
@@ -283,6 +293,12 @@ $(document).ready(function () {
         drawIds.forEach(function (id) { params.append('draw_ids[]', id); });
         params.append('print_type', printType);
         params.append('include_standings', includeStandings);
+
+        if (printType === 'pack') {
+            params.append('download', 1);
+            window.location.href = @json(route('headoffice.drawPack', $event)) + '?' + params.toString();
+            return;
+        }
 
         window.location.href = "{{ route('headoffice.printDrawsPdf', $event->id) }}?" + params.toString();
     });
@@ -388,27 +404,27 @@ $(document).ready(function () {
   <div class="modal-dialog modal-md">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="ti ti-printer me-1"></i> Print Draws</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div>
+          <h5 class="modal-title"><i class="ti ti-printer me-1"></i> Draw Pack</h5>
+          <p class="small text-muted mb-0 mt-1">One paper pack for draws, fixtures and the master schedule.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
       <div class="modal-body">
 
         {{-- Draw selection --}}
-        @if($event->draws->contains('is_flexible', true))
-          <p class="small text-muted">For Custom Monrad, Monrad and Playoffs draws, use Print inside the draw editor. Those draws are excluded from this bulk export.</p>
-        @endif
         <div class="mb-3">
           <label class="form-label fw-bold">Select Draws</label>
           <div class="form-check mb-2">
-            <input class="form-check-input" type="checkbox" id="chk-select-all-draws" @checked($event->draws->contains('is_flexible', false)) @disabled(!$event->draws->contains('is_flexible', false))>
+            <input class="form-check-input" type="checkbox" id="chk-select-all-draws" checked>
             <label class="form-check-label fw-bold" for="chk-select-all-draws">Select All</label>
           </div>
           <div class="ps-3" id="print-draw-list">
             @foreach($event->draws as $draw)
               <div class="form-check">
                 <input class="form-check-input print-draw-chk" type="checkbox"
-                       value="{{ $draw->id }}" id="chk-draw-{{ $draw->id }}" @checked(!$draw->is_flexible) @disabled($draw->is_flexible)>
+                       value="{{ $draw->id }}" id="chk-draw-{{ $draw->id }}" checked>
                 <label class="form-check-label" for="chk-draw-{{ $draw->id }}">
                   {{ $draw->drawName ?? 'Draw #' . $draw->id }}
                 </label>
@@ -424,7 +440,14 @@ $(document).ready(function () {
           <label class="form-label fw-bold">Print Type</label>
           <div class="d-flex flex-column gap-2">
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="print_type" value="fixtures" id="pt-fixtures" checked>
+              <input class="form-check-input" type="radio" name="print_type" value="pack" id="pt-pack" checked>
+              <label class="form-check-label" for="pt-pack">
+                <i class="ti ti-files me-1 text-primary"></i> <strong>Complete Draw Pack</strong>
+                <span class="d-block small text-muted">Cover, master order of play, every draw format, fixtures, courts and result space</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="print_type" value="fixtures" id="pt-fixtures">
               <label class="form-check-label" for="pt-fixtures">
                 <i class="ti ti-list-details me-1 text-primary"></i> Order of Play / Fixtures
               </label>
@@ -445,8 +468,8 @@ $(document).ready(function () {
         </div>
 
         {{-- Include standings option (shown when matrix or combined selected) --}}
-        <div class="form-check mb-3" id="standings-option" style="display:none;">
-          <input class="form-check-input" type="checkbox" id="chk-include-standings">
+        <div class="form-check mb-3" id="standings-option">
+          <input class="form-check-input" type="checkbox" id="chk-include-standings" checked>
           <label class="form-check-label" for="chk-include-standings">Include Standings</label>
         </div>
 
@@ -463,11 +486,11 @@ $(document).ready(function () {
 
       <div class="modal-footer">
         <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-outline-secondary" id="btn-download-pdf" @disabled(!$event->draws->contains('is_flexible', false))>
-          <i class="ti ti-file-type-pdf me-1"></i> Download PDF
+        <button type="button" class="btn btn-outline-secondary" id="btn-download-pdf">
+          <i class="ti ti-file-type-pdf me-1"></i> Download pack
         </button>
-        <button type="button" class="btn btn-primary" id="btn-print-all-draws" @disabled(!$event->draws->contains('is_flexible', false))>
-          <i class="ti ti-printer me-1"></i> Print
+        <button type="button" class="btn btn-primary" id="btn-print-all-draws">
+          <i class="ti ti-printer me-1"></i> Print pack
         </button>
       </div>
     </div>

@@ -120,20 +120,113 @@
     padding-inline: .75rem;
   }
 
-  .individual-event-view .event-draw-grid { display: grid; gap: .7rem; }
-  .individual-event-view .event-draw-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: .75rem;
-    padding: .85rem;
+  .individual-event-view .event-draws-card {
     border: 1px solid #dbe5ec;
-    border-radius: .7rem;
-    background: #fff;
+    box-shadow: 0 .35rem 1.25rem rgba(23, 46, 69, .08);
+    overflow: hidden;
   }
-  .individual-event-view .event-draw-name { color: #172e45; font-weight: 750; }
-  .individual-event-view .event-draw-meta { display: flex; flex-wrap: wrap; gap: .35rem .7rem; margin-top: .25rem; color: #65788b; font-size: .78rem; }
-  .individual-event-view .event-draw-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
-  #event-draws-match-times { scroll-margin-top: 1rem; }
+  .individual-event-view .event-draws-header {
+    align-items: flex-start;
+    background: linear-gradient(135deg, rgba(20, 121, 110, .09), rgba(60, 105, 180, .06));
+    border-bottom: 1px solid #e2eaf0;
+    display: flex;
+    gap: .75rem;
+  }
+  .individual-event-view .event-draws-header-icon {
+    align-items: center;
+    background: #14796e;
+    border-radius: .65rem;
+    color: #fff;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 1.2rem;
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
+  }
+  .individual-event-view .event-draw-grid { display: grid; gap: .8rem; }
+  .individual-event-view .event-draw-card {
+    background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
+    border: 1px solid #dbe5ec;
+    border-left: 3px solid #14796e;
+    border-radius: .75rem;
+    display: grid;
+    gap: .9rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .individual-event-view .event-draw-card:hover {
+    border-color: #a9c9c4;
+    box-shadow: 0 .4rem 1rem rgba(23, 46, 69, .08);
+    transform: translateY(-1px);
+  }
+  .individual-event-view .event-draw-card-heading {
+    align-items: flex-start;
+    display: flex;
+    gap: .65rem;
+    justify-content: space-between;
+  }
+  .individual-event-view .event-draw-name {
+    color: #172e45;
+    font-size: 1rem;
+    font-weight: 750;
+    line-height: 1.3;
+    min-width: 0;
+  }
+  .individual-event-view .event-draw-state {
+    background: rgba(20, 121, 110, .1);
+    border-radius: 999px;
+    color: #11665d;
+    flex: 0 0 auto;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    padding: .25rem .5rem;
+    text-transform: uppercase;
+  }
+  .individual-event-view .event-draw-meta {
+    color: #65788b;
+    display: grid;
+    font-size: .82rem;
+    gap: .45rem;
+    margin-top: .55rem;
+  }
+  .individual-event-view .event-draw-meta > span {
+    align-items: start;
+    display: grid;
+    gap: .45rem;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    line-height: 1.35;
+  }
+  .individual-event-view .event-draw-meta > span > i {
+    color: #14796e;
+    font-size: 1rem;
+    margin-top: .05rem;
+  }
+  .individual-event-view .event-draw-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-start;
+  }
+  .individual-event-view .event-draw-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    flex: 1 1 6rem;
+    justify-content: center;
+    min-height: 2.35rem;
+  }
+  .individual-event-view .event-draw-actions .event-draw-score {
+    flex: 0 0 auto;
+    padding-inline: .7rem;
+  }
+  #event-draws-match-times { scroll-margin-top: 8rem; }
+  #event-draws-match-times:focus,
+  #event-draws-match-times:target {
+    outline: 3px solid rgba(20, 121, 110, .28);
+    outline-offset: 2px;
+  }
 
   @media (max-width: 767.98px) {
     .individual-event-view .card-body,
@@ -152,8 +245,8 @@
     .user-profile-header .flex-grow-1 { margin-top: .75rem !important; }
     .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
     .individual-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
-    .individual-event-view .event-draw-card { grid-template-columns: 1fr; }
-    .individual-event-view .event-draw-actions { justify-content: flex-start; }
+    .individual-event-view .event-draw-card { padding: .9rem; }
+    .individual-event-view .event-draw-actions .btn:not(.event-draw-score) { flex-basis: 100%; }
   }
 
   @media (max-width: 991.98px) {

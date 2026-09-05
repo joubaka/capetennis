@@ -4,10 +4,15 @@ namespace Tests\Feature;
 
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
 use App\Models\Event;
+use App\Models\Fixture;
+use App\Models\OrderOfPlay;
 use App\Models\Registration;
 use App\Models\User;
+use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -17,7 +22,7 @@ use Tests\TestCase;
  *
  * Route: POST /backend/admin/category-registration/{registration}/withdraw
  *        named admin.category.registration.withdraw
- *        Middleware: auth (no role check — any authenticated user, e.g. event admin)
+ *        Access: authenticated admin or super-user with event management scope
  */
 class AdminCategoryWithdrawTest extends TestCase
 {
@@ -49,6 +54,16 @@ class AdminCategoryWithdrawTest extends TestCase
         return $user;
     }
 
+    private function actingAsEventAdmin(User $user, CategoryEventRegistration $registration): static
+    {
+        DB::table('event_admins')->insert([
+            'event_id' => $registration->categoryEvent->event_id,
+            'user_id' => $user->id,
+        ]);
+
+        return $this->actingAs($user);
+    }
+
     // -----------------------------------------------------------------------
     // Auth guard
     // -----------------------------------------------------------------------
@@ -62,6 +77,28 @@ class AdminCategoryWithdrawTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
+    public function test_admin_cannot_withdraw_a_registration_from_another_event(): void
+    {
+        $admin = $this->adminUser();
+        $ownEvent = Event::factory()->create();
+        $registration = $this->activeRegistration();
+
+        DB::table('event_admins')->insert([
+            'event_id' => $ownEvent->id,
+            'user_id' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.category.registration.withdraw', $registration))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $registration->id,
+            'status' => 'active',
+            'withdrawn_at' => null,
+        ]);
+    }
+
     // -----------------------------------------------------------------------
     // Already-withdrawn guard
     // -----------------------------------------------------------------------
@@ -71,7 +108,7 @@ class AdminCategoryWithdrawTest extends TestCase
         $admin = $this->adminUser();
         $reg   = CategoryEventRegistration::factory()->withdrawn()->create();
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         $response = $this->post(route('admin.category.registration.withdraw', $reg));
 
@@ -88,7 +125,7 @@ class AdminCategoryWithdrawTest extends TestCase
         $admin = $this->adminUser();
         $reg   = $this->activeRegistration(['pf_transaction_id' => null]);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         $response = $this->post(route('admin.category.registration.withdraw', $reg));
 
@@ -117,7 +154,7 @@ class AdminCategoryWithdrawTest extends TestCase
             ->paid()
             ->create(['status' => 'active']);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         // We expect a redirect to the admin refund chooser page
         // The controller does: redirect()->route('admin.registration.refund.choose', [$event, $registration])
@@ -142,7 +179,7 @@ class AdminCategoryWithdrawTest extends TestCase
         $admin = $this->adminUser();
         $reg   = $this->activeRegistration();
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         $this->post(route('admin.category.registration.withdraw', $reg));
 
@@ -161,7 +198,7 @@ class AdminCategoryWithdrawTest extends TestCase
             'refund_net'   => 90.00,
         ]);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         $this->post(route('admin.category.registration.withdraw', $reg));
 
@@ -170,6 +207,76 @@ class AdminCategoryWithdrawTest extends TestCase
         $this->assertEquals(0, $reg->refund_fee);
         $this->assertEquals(0, $reg->refund_net);
         $this->assertNull($reg->refund_method);
+    }
+
+    public function test_ajax_withdrawal_warns_when_the_entry_was_in_a_scheduled_draw(): void
+    {
+        $admin = $this->adminUser();
+        $event = Event::factory()->create();
+        $categoryEvent = CategoryEvent::factory()->for($event)->create();
+        $reg = $this->activeRegistration([
+            'category_event_id' => $categoryEvent->id,
+            'pf_transaction_id' => null,
+        ]);
+
+        $draw = Draw::create([
+            'drawName' => 'Girls under 13',
+            'drawType_id' => 1,
+            'category_event_id' => $categoryEvent->id,
+            'event_id' => $event->id,
+        ]);
+        $draw->registrations()->attach($reg->registration_id);
+
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'registration1_id' => $reg->registration_id,
+        ]);
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Centre Court', 'event_id' => $event->id])->save();
+        OrderOfPlay::create([
+            'draw_id' => $draw->id,
+            'fixture_id' => $fixture->id,
+            'venue_id' => $venue->id,
+            'court' => '1',
+            'time' => now()->addDay(),
+        ]);
+
+        $this->actingAsEventAdmin($admin, $reg);
+
+        $response = $this->postJson(route('admin.category.registration.withdraw', $reg));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('draw_impact.requires_attention', true)
+            ->assertJsonPath('draw_impact.draws.0.id', $draw->id)
+            ->assertJsonPath('draw_impact.draws.0.name', 'Girls under 13')
+            ->assertJsonPath('draw_impact.draws.0.has_schedule', true)
+            ->assertJsonPath('draw_impact.draws.0.scheduled_matches', 1)
+            ->assertJsonPath('draw_impact.draws.0.draw_url', route('draws.manage', $draw->id))
+            ->assertJsonPath('draw_impact.draws.0.schedule_url', route('backend.event-venue-schedule.index', [
+                'event' => $event->id,
+                'draw_ids' => [$draw->id],
+            ]));
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'id' => $reg->id,
+            'status' => 'withdrawn',
+        ]);
+    }
+
+    public function test_ajax_withdrawal_has_no_draw_warning_for_an_unplaced_entry(): void
+    {
+        $admin = $this->adminUser();
+        $reg = $this->activeRegistration(['pf_transaction_id' => null]);
+
+        $this->actingAsEventAdmin($admin, $reg);
+
+        $this->postJson(route('admin.category.registration.withdraw', $reg))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('draw_impact.requires_attention', false)
+            ->assertJsonCount(0, 'draw_impact.draws');
     }
 
     // -----------------------------------------------------------------------
@@ -211,7 +318,7 @@ class AdminCategoryWithdrawTest extends TestCase
             'registration_id' => $registrationId,
         ]);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
         $this->post(route('admin.category.registration.withdraw', $reg));
 
         // HOTFIX 3: draw_group_registrations must be removed
@@ -247,7 +354,7 @@ class AdminCategoryWithdrawTest extends TestCase
             'registration_id' => $reg->registration_id,
         ]);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
         $this->post(route('admin.category.registration.withdraw', $reg));
 
         $reg->refresh();
@@ -267,7 +374,7 @@ class AdminCategoryWithdrawTest extends TestCase
             ->paid()
             ->create(['status' => 'active']);
 
-        $this->actingAs($admin);
+        $this->actingAsEventAdmin($admin, $reg);
 
         $response = $this->post(route('admin.category.registration.withdraw', $reg));
 
