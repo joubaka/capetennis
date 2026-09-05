@@ -21,6 +21,7 @@ final class EventVenueScheduleService
         $playerRest = (int) ($options['player_rest'] ?? 60);
         $selectedDraws = array_map('intval', $options['draw_ids'] ?? []);
         $selectedVenues = array_map('intval', $options['venue_ids'] ?? []);
+        $replanVenues = array_values(array_unique(array_map('intval', $options['replan_venue_ids'] ?? [])));
         $drawStarts = collect($options['draw_starts'] ?? [])->filter(fn ($row) => ! empty($row['start']))
             ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => Carbon::parse($row['start'])])->sortKeys();
         if (array_key_exists('draw_ids', $options) && ! $selectedDraws) {
@@ -49,6 +50,9 @@ final class EventVenueScheduleService
             throw new \InvalidArgumentException('One or more selected venues are not assigned to the selected draws.');
         }
         if ($selectedVenues) $venueIds = $venueIds->filter(fn ($id) => in_array((int) $id, $selectedVenues, true))->values();
+        if (array_diff($replanVenues, $venueIds->map(fn ($id) => (int) $id)->all())) {
+            throw new \InvalidArgumentException('One or more venues selected for replanning are not available in this preview.');
+        }
         $venues = Venue::whereIn('id', $venueIds)->orderBy('name')->get()->keyBy('id');
         $courtLabels = $this->courtLabels($event, $draws, $venues);
         $allocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $draws->pluck('id'))
@@ -72,8 +76,11 @@ final class EventVenueScheduleService
                         ->filter(fn ($label) => in_array((string) $label, $courtLabels[$venueId], true))->values()->all();
                     $node['venue_courts'][$venueId] = $restricted ?: $courtLabels[$venueId];
                 }
+                $slot = $node['fixture']->orderOfPlay;
+                $node['fixed'] = ! $node['played'] && $slot?->time
+                    && ! in_array((int) $slot->venue_id, $replanVenues, true);
                 $nodes[$id] = $node;
-                if (! $node['played']) $excluded[] = $id;
+                if (! $node['played'] && ! $node['fixed']) $excluded[] = $id;
             }
         }
 
@@ -91,6 +98,10 @@ final class EventVenueScheduleService
                 $finished[$id] = $slot?->time
                     ? Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration) + $playerRest)
                     : $node['not_before']->copy();
+            } elseif ($node['fixed']) {
+                $slot = $node['fixture']->orderOfPlay;
+                $finished[$id] = Carbon::parse($slot->time)
+                    ->addMinutes($slot->occupiedMinutes($duration) + $playerRest);
             } else {
                 $pending[$id] = $node;
             }
@@ -135,6 +146,7 @@ final class EventVenueScheduleService
                 'fixture_id' => $id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
                 'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
+                'dependencies' => $node['dependencies'],
                 'scheduled_at' => $best['time']->format('Y-m-d H:i:s'), 'venue_id' => $best['venue_id'],
                 'venue_name' => $venues[$best['venue_id']]->name, 'court' => $best['court'],
                 'duration' => $duration, 'participants' => $node['participant_names'],
@@ -162,7 +174,7 @@ final class EventVenueScheduleService
             ->where('time', '>=', $start->copy()->subMinutes(600))->where('time', '<', $displayEnd)
             ->orderBy('time')->orderBy('venue_id')->orderBy('court')->limit(2000)->get()
             ->filter(fn (OrderOfPlay $slot) => Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration))->gt($start))
-            ->map(function (OrderOfPlay $slot) use ($duration) {
+            ->map(function (OrderOfPlay $slot) use ($duration, $nodes) {
                 $startsAt = Carbon::parse($slot->time);
                 $fixture = $slot->fixture;
                 return [
@@ -172,12 +184,14 @@ final class EventVenueScheduleService
                     'match' => $fixture?->match_nr, 'scheduled_at' => $startsAt->format('Y-m-d H:i:s'),
                     'ends_at' => $startsAt->copy()->addMinutes($slot->occupiedMinutes($duration))->format('Y-m-d H:i:s'),
                     'venue_id' => (int) $slot->venue_id, 'court' => (string) $slot->court,
-                    'duration' => (int) ($slot->duration_minutes ?: $duration), 'participants' => [],
+                    'duration' => (int) ($slot->duration_minutes ?: $duration),
+                    'participants' => $nodes[$slot->fixture_id]['participant_names'] ?? [],
                 ];
             })->values()->all() : [];
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
             'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'),
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
+            'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
         ];
@@ -197,6 +211,8 @@ final class EventVenueScheduleService
     public function apply(Event $event, array $options, string $expectedRevision): array
     {
         return DB::transaction(function () use ($event, $options, $expectedRevision) {
+            $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
+            unset($options['apply_venue_ids']);
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $drawIds = $event->draws()->orderBy('id')->pluck('id');
             DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')->lockForUpdate()->get();
@@ -210,16 +226,35 @@ final class EventVenueScheduleService
             if (! hash_equals($preview['revision'], $expectedRevision)) {
                 throw new \InvalidArgumentException('The draws or venue schedule changed. Generate a fresh preview before applying.');
             }
-            if ($preview['unscheduled']) {
+            $previewVenueIds = collect($preview['venues'])->pluck('id')->map(fn ($id) => (int) $id)->all();
+            if (array_diff($applyVenueIds, $previewVenueIds)) {
+                throw new \InvalidArgumentException('One or more venues selected for applying are not available in this preview.');
+            }
+            if (! $applyVenueIds && $preview['unscheduled']) {
                 throw new \InvalidArgumentException('The preview contains unscheduled matches. Resolve them before applying.');
             }
 
-            $scheduledFixtureIds = collect($preview['matches'])->pluck('fixture_id')->all();
-            if ($preview['automatic_fixture_ids']) {
-                OrderOfPlay::whereIn('fixture_id', $preview['automatic_fixture_ids'])->delete();
-                Fixture::whereIn('id', $preview['automatic_fixture_ids'])->update(['scheduled' => 0]);
+            $matches = collect($preview['matches'])
+                ->when($applyVenueIds, fn (Collection $rows) => $rows->whereIn('venue_id', $applyVenueIds))->values();
+            if ($applyVenueIds && $matches->isEmpty()) {
+                throw new \InvalidArgumentException('This venue has no new or changed fixtures to apply.');
             }
-            foreach ($preview['matches'] as $row) {
+            if ($applyVenueIds) {
+                $selectedFixtureIds = $matches->pluck('fixture_id')->all();
+                $otherPlannedFixtureIds = collect($preview['matches'])->pluck('fixture_id')->diff($selectedFixtureIds)->all();
+                if ($matches->contains(fn ($row) => array_intersect($row['dependencies'] ?? [], $otherPlannedFixtureIds))) {
+                    throw new \InvalidArgumentException('This venue contains a match that depends on an unapplied match at another venue. Apply the prerequisite venue first or apply the combined schedule.');
+                }
+            }
+            $scheduledFixtureIds = $matches->pluck('fixture_id')->all();
+            $appliedDrawIds = $matches->pluck('draw_id')->unique()->values();
+            $automaticFixtureIds = Fixture::whereIn('id', $preview['automatic_fixture_ids'])
+                ->when($applyVenueIds, fn ($query) => $query->whereIn('draw_id', $appliedDrawIds))->pluck('id');
+            if ($automaticFixtureIds->isNotEmpty()) {
+                OrderOfPlay::whereIn('fixture_id', $automaticFixtureIds)->delete();
+                Fixture::whereIn('id', $automaticFixtureIds)->update(['scheduled' => 0]);
+            }
+            foreach ($matches as $row) {
                 $fixture = Fixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
                 OrderOfPlay::updateOrCreate(['fixture_id' => $fixture->id], [
                     'draw_id' => $row['draw_id'], 'venue_id' => $row['venue_id'], 'court' => $row['court'],
@@ -228,12 +263,15 @@ final class EventVenueScheduleService
                 ]);
                 $fixture->update(['scheduled' => 1]);
             }
-            foreach (collect($preview['matches'])->groupBy('draw_id') as $drawId => $rows) {
+            foreach ($matches->groupBy('draw_id') as $drawId => $rows) {
                 DrawAuditLog::record((int) $drawId, 'event_venue_schedule_applied', null, [
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
+                    'venue_ids' => $rows->pluck('venue_id')->unique()->values()->all(),
+                    'partial' => (bool) $applyVenueIds,
                 ]);
             }
-            return ['count' => count($scheduledFixtureIds), 'revision' => $expectedRevision];
+            return ['count' => count($scheduledFixtureIds), 'revision' => $expectedRevision,
+                'venue_ids' => $matches->pluck('venue_id')->unique()->values()->all()];
         });
     }
 

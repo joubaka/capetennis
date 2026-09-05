@@ -129,6 +129,74 @@ class EventVenueScheduleTest extends TestCase
         $this->assertTrue((bool) $fixture->fresh()->scheduled);
     }
 
+    public function test_a_single_venue_can_be_applied_while_other_venues_remain_in_planning(): void
+    {
+        $event = Event::factory()->create();
+        $venues = collect([$this->venue($event, 'Approved Venue'), $this->venue($event, 'Still Planning')]);
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
+        $fixtures = collect();
+        foreach ($draws as $index => $draw) {
+            $draw->venues()->attach($venues[$index]->id, ['num_courts' => 1]);
+            $fixtures->push(Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]));
+        }
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions();
+        $preview = $service->preview($event, $options);
+
+        $otherEvent = Event::factory()->create();
+        $foreignVenue = $this->venue($otherEvent, 'Foreign Venue');
+        try {
+            $service->apply($event, $options + ['apply_venue_ids' => [$foreignVenue->id]], $preview['revision']);
+            $this->fail('A venue outside the preview was accepted.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame('One or more venues selected for applying are not available in this preview.', $exception->getMessage());
+        }
+
+        $applied = $service->apply($event, $options + ['apply_venue_ids' => [$venues[0]->id]], $preview['revision']);
+
+        $this->assertSame(1, $applied['count']);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixtures[0]->id, 'venue_id' => $venues[0]->id]);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
+
+        $nextPreview = $service->preview($event->fresh(), $options);
+        $this->assertSame([$fixtures[0]->id], collect($nextPreview['existing_matches'])->pluck('fixture_id')->all());
+        $this->assertSame([$fixtures[1]->id], collect($nextPreview['matches'])->pluck('fixture_id')->all());
+        $this->assertSame(collect($preview['matches'])->firstWhere('fixture_id', $fixtures[0]->id)['scheduled_at'],
+            $nextPreview['existing_matches'][0]['scheduled_at']);
+    }
+
+    public function test_an_applied_venue_is_only_replanned_when_explicitly_requested(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Fixed Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions();
+        $preview = $service->preview($event, $options);
+        $service->apply($event, $options, $preview['revision']);
+
+        $laterOptions = array_replace($options, ['start' => '2026-09-10 09:00:00']);
+        $fixedPreview = $service->preview($event->fresh(), $laterOptions);
+        $this->assertCount(0, $fixedPreview['matches']);
+        $this->assertSame('2026-09-10 08:00:00', collect($fixedPreview['existing_matches'])
+            ->firstWhere('fixture_id', $fixture->id)['scheduled_at']);
+
+        $replanned = $service->preview($event->fresh(), $laterOptions + ['replan_venue_ids' => [$venue->id]]);
+        $this->assertCount(0, $replanned['existing_matches']);
+        $this->assertSame('2026-09-10 09:00:00', collect($replanned['matches'])
+            ->firstWhere('fixture_id', $fixture->id)['scheduled_at']);
+    }
+
     public function test_event_admin_can_assign_several_draws_to_the_same_shared_venue(): void
     {
         $event = Event::factory()->create();

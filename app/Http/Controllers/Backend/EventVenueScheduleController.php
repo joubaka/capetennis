@@ -276,6 +276,8 @@ final class EventVenueScheduleController extends Controller
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
             'draw_ids' => ['nullable', 'array'], 'draw_ids.*' => ['integer'],
             'venue_ids' => ['nullable', 'array'], 'venue_ids.*' => ['integer'],
+            'replan_venue_ids' => ['nullable', 'array'], 'replan_venue_ids.*' => ['integer'],
+            'apply_venue_ids' => ['nullable', 'array'], 'apply_venue_ids.*' => ['integer'],
             'draw_starts' => ['nullable', 'array'],
             'draw_starts.*.draw_id' => ['required', 'integer'],
             'draw_starts.*.start' => ['nullable', 'date'],
