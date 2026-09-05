@@ -13,9 +13,14 @@
 .fm-surface {
   margin: 0;
 }
-.fm-public-timetable { padding: 24px 32px; overflow-x: auto; }
+.fm-public-panel[hidden] { display: none; }
+.fm-public-timetable { margin: 20px 24px; padding: 24px 32px; overflow-x: auto; border: 1px solid #dbe5ec; border-radius: 14px; background: #fff; }
+.fm-public-timetable-help { margin: -4px 0 18px; color: #617269; font-size: 14px; }
 .fm-public-timetable table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .fm-public-timetable th, .fm-public-timetable td { padding: 10px; border-bottom: 1px solid #cbdad2; text-align: left; }
+.fm-public-timetable th { color: #526579; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.fm-public-timetable td:nth-child(4) { color: #0d675e; font-size: 16px; font-weight: 800; white-space: nowrap; }
+.fm-public-schedule-pending { display: flex; flex-direction: column; gap: 4px; padding: 18px; border-left: 4px solid #d79000; border-radius: 8px; background: #fff7df; color: #704b00; }
 :where(.fm-surface) button,
 :where(.fm-surface) input,
 :where(.fm-surface) select {
@@ -72,6 +77,8 @@
 .fm-public-shell { padding: 20px 24px 0; }
 .fm-public-shell .ct-public-draw-header { margin-bottom: 12px; }
 .fm-public-shell .ct-public-draw-nav { margin-bottom: 0; }
+.fm-public-shell .ct-public-draw-nav button { flex: 1 0 auto; border: 0; border-radius: .5rem; padding: .5rem 1rem; background: transparent; color: #526579; }
+.fm-public-shell .ct-public-draw-nav button.active { background: #fff; color: #172e45; box-shadow: 0 1px 4px rgba(23,46,69,.1); }
 :where(.fm-surface) .fm-eyebrow {
   font-size: 11px;
   font-weight: 750;
@@ -538,6 +545,16 @@
 }
 @media (max-width: 760px) {
 .fm-public-shell { padding: 12px 12px 0; }
+.fm-public-timetable { margin: 12px; padding: 18px 14px; overflow: visible; }
+.fm-public-timetable table,
+.fm-public-timetable tbody,
+.fm-public-timetable tr,
+.fm-public-timetable td { display: block; width: 100%; }
+.fm-public-timetable thead { display: none; }
+.fm-public-timetable tr { margin-bottom: 12px; padding: 12px; border: 1px solid #dbe5ec; border-radius: 10px; box-shadow: 0 3px 12px rgba(23,46,69,.06); }
+.fm-public-timetable td { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 4px 0; border: 0; }
+.fm-public-timetable td::before { content: attr(data-label); color: #6b7d8f; font-size: 11px; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; }
+.fm-public-timetable td:nth-child(4) { font-size: 17px; }
 :where(.fm-surface) .fm-header {
     padding: 18px 16px;
     align-items: flex-start;

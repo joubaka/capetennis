@@ -318,15 +318,23 @@
     if (source.type === 'player') return 'Direct entry';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.match]?.number ?? '?'}`;
   }
-  function scheduleLabel(schedule, includeVenue = false) {
-    if (!schedule?.time) return '';
+  function scheduleParts(schedule) {
+    if (!schedule?.time) return { date: '', time: '' };
     const parsed = new Date(String(schedule.time).replace(' ', 'T'));
-    const time = Number.isNaN(parsed.getTime())
-      ? String(schedule.time)
-      : new Intl.DateTimeFormat('en-ZA', {
-          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false
-        }).format(parsed).replace(',', '');
-    return [time, includeVenue ? schedule.venue : null, schedule.court ? `Court ${schedule.court}` : null]
+    if (Number.isNaN(parsed.getTime())) return { date: String(schedule.time), time: '' };
+    return {
+      date: new Intl.DateTimeFormat('en-ZA', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
+      }).format(parsed).replace(',', ''),
+      time: new Intl.DateTimeFormat('en-ZA', {
+        hour: '2-digit', minute: '2-digit', hour12: false
+      }).format(parsed),
+    };
+  }
+  function scheduleLabel(schedule, includeVenue = false) {
+    const parts = scheduleParts(schedule);
+    if (!parts.date) return '';
+    return [parts.time ? `${parts.date} ${parts.time}` : parts.date, includeVenue ? schedule.venue : null, schedule.court ? `Court ${schedule.court}` : null]
       .filter(Boolean).join(' · ');
   }
   function generatedBoard() {
@@ -501,13 +509,26 @@
     const table = el('table');
     const head = el('thead');
     const titles = el('tr');
-    ['Match', 'Players / feeder paths', 'Time', 'Venue', 'Court'].forEach(title => titles.append(el('th', '', title)));
+    ['Match', 'Players / feeder paths', 'Date', 'Time', 'Venue', 'Court'].forEach(title => titles.append(el('th', '', title)));
     head.append(titles); table.append(head);
     const body = el('tbody');
     matches.sort((a, b) => String(a.schedule?.time || '9999').localeCompare(String(b.schedule?.time || '9999')) || a.number - b.number).forEach(match => {
       const row = el('tr');
       const players = match.players.map((id, i) => id ? name(id) : match.vacant?.[i] ? 'No active entrant' : sourceLabel(match.sources[i])).join(' vs ');
-      [String(match.number), players, match.schedule?.time || 'Not scheduled', match.schedule?.venue || '—', match.schedule?.court || '—'].forEach(value => row.append(el('td', '', String(value))));
+      const schedule = scheduleParts(match.schedule);
+      const cells = [
+        ['Match', String(match.number)],
+        ['Players', players],
+        ['Date', schedule.date || 'Not scheduled'],
+        ['Time', schedule.time || '—'],
+        ['Venue', match.schedule?.venue || '—'],
+        ['Court', match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
+      ];
+      cells.forEach(([label, value]) => {
+        const cell = el('td', '', String(value));
+        cell.dataset.label = label;
+        row.append(cell);
+      });
       body.append(row);
     });
     table.append(body); root.append(table);

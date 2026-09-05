@@ -71,9 +71,16 @@ class CanonicalDrawWorkspaceTest extends TestCase
             'venue_id' => $venueId, 'court' => 'Confidential court', 'time' => '2026-09-20 09:00:00']);
         app(FlexibleMonradService::class)->publish($draw, 2, true);
         $public = route('public.flexible-monrad.show', $draw);
-        $this->get($public)->assertOk()->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
+        $this->get($public)->assertOk()
+            ->assertSee('data-fm-public-tab="schedule"', false)
+            ->assertSee('data-fm-public-tab="draw"', false)
+            ->assertSee('id="fm-schedule-panel"', false)
+            ->assertSee('id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab" hidden', false)
+            ->assertSee('Match times have not been published yet.')
+            ->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
         $this->postJson(route('draw.toggle.publish.schedule', $draw))->assertOk();
         $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court')
+            ->assertSee('Find your name, then confirm the date, time, venue and court.')
             ->assertSee('2026-09-20 09:00:00');
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
