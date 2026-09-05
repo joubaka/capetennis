@@ -548,6 +548,9 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('draggable="true"', false)
             ->assertSee('Drop or place selected match')
             ->assertSee('Match selected. Choose an Available slot.')
+            ->assertSee('Choose a match for this slot')
+            ->assertSee('Search by age group, match or player')
+            ->assertSee('openMatchPicker(slot)', false)
             ->assertSee("document.getElementById('generate-preview').click()", false)
             ->assertSee('venue-schedule\/unapply', false)
             ->assertSee('Next: timing rules');

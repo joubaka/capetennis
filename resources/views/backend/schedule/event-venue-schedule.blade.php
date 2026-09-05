@@ -61,6 +61,8 @@
   .schedule-workspace .manual-drop-slot.is-drag-over { background:rgba(var(--bs-success-rgb), .18); box-shadow:inset 0 0 0 2px var(--bs-success); }
   .schedule-workspace .manual-slot-button { width:100%; min-height:4rem; border:1px dashed rgba(var(--bs-success-rgb), .5); border-radius:.5rem; background:transparent; color:var(--bs-success); text-align:left; }
   .schedule-workspace .manual-slot-button:hover, .schedule-workspace .manual-slot-button:focus-visible { border-style:solid; background:rgba(var(--bs-success-rgb), .08); outline:0; }
+  .manual-match-picker-option { text-align:left; }
+  .manual-match-picker-option .match-picker-meta { color:var(--bs-secondary-color); font-size:.78rem; }
   @media (max-width: 767.98px) {
     .schedule-workspace .workflow-rail { grid-template-columns:1fr; }
     .schedule-workspace .workflow-step { display:none; }
@@ -306,6 +308,30 @@
   <div id="venue-slot-grids" class="d-none"></div>
 </div>
 
+<div class="modal fade" id="manualMatchPickerModal" tabindex="-1" aria-labelledby="manualMatchPickerLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="manualMatchPickerLabel">Choose a match for this slot</h5>
+          <div class="small text-muted mt-1" id="manual-match-picker-slot"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label visually-hidden" for="manual-match-picker-search">Search matches</label>
+        <div class="input-group mb-3">
+          <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
+          <input type="search" id="manual-match-picker-search" class="form-control" placeholder="Search by age group, match or player" autocomplete="off">
+        </div>
+        <div class="small text-muted mb-2">Selecting a match moves it to this box immediately. Match order, court conflicts and player rest are checked before saving.</div>
+        <div class="list-group" id="manual-match-picker-list"></div>
+        <div class="alert alert-info mb-0 d-none" id="manual-match-picker-empty">No matching schedulable matches are available.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="venueAnnouncementModal" tabindex="-1" aria-labelledby="venueAnnouncementLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -373,6 +399,8 @@
   let scheduleActivityStartedAt = 0;
   let scheduleActivityStages = [];
   let selectedManualFixture = null;
+  let pendingManualSlot = null;
+  let lastScheduleResult = null;
 
   const previewActivityStages = [
     {after: 0, percent: 5, label: 'Sending the scheduling rules…'},
@@ -678,6 +706,7 @@
   }
 
   function render(result) {
+    lastScheduleResult = result;
     revision = result.revision;
     replanVenueIds = (result.input.replan_venue_ids || []).map(Number);
     setWorkflowStep(3);
@@ -738,6 +767,54 @@
   };
 
   const slotGrids = document.getElementById('venue-slot-grids');
+  const matchPickerModal = document.getElementById('manualMatchPickerModal');
+  const matchPickerList = document.getElementById('manual-match-picker-list');
+  const matchPickerSearch = document.getElementById('manual-match-picker-search');
+  const matchPickerEmpty = document.getElementById('manual-match-picker-empty');
+  const pickerCandidates = () => {
+    const rows = [
+      ...(lastScheduleResult?.matches || []),
+      ...(lastScheduleResult?.existing_matches || []).filter(match => match.editable),
+    ];
+    return [...new Map(rows.map(match => [Number(match.fixture_id), match])).values()]
+      .sort((left, right) => String(left.draw_name).localeCompare(String(right.draw_name), undefined, {numeric:true})
+        || Number(left.wave || left.round) - Number(right.wave || right.round)
+        || Number(left.match || left.fixture_id) - Number(right.match || right.fixture_id));
+  };
+  const filterMatchPicker = () => {
+    const query = matchPickerSearch.value.trim().toLowerCase();
+    let visible = 0;
+    matchPickerList.querySelectorAll('[data-picker-fixture]').forEach(option => {
+      const show = !query || option.dataset.search.includes(query);
+      option.classList.toggle('d-none', !show);
+      if (show) visible += 1;
+    });
+    matchPickerEmpty.classList.toggle('d-none', visible > 0);
+  };
+  const openMatchPicker = slot => {
+    pendingManualSlot = slot;
+    const venue = lastScheduleResult?.venues?.find(item => Number(item.id) === Number(slot.dataset.venue));
+    document.getElementById('manual-match-picker-slot').textContent = `${venue?.name || 'Venue'} · Court ${slot.dataset.court} · ${formatSlotTime(asDate(slot.dataset.time))}`;
+    matchPickerSearch.value = '';
+    matchPickerList.innerHTML = pickerCandidates().map(match => {
+      const players = (match.participants || []).join(' / ') || 'Unassigned draw position';
+      const current = match.scheduled_at ? `${match.fixed ? 'Saved' : 'Preview'}: ${match.scheduled_at.slice(0, 16)} · Court ${match.court}` : 'Not currently placed';
+      const searchable = `${match.draw_name} match ${match.match || ''} ${players}`.toLowerCase();
+      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${match.fixture_id}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · Match ${escapeHtml(match.match || '—')}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">Round ${match.round}${match.wave ? ` · Wave ${match.wave}` : ''} · ${escapeHtml(current)}</span></button>`;
+    }).join('');
+    filterMatchPicker();
+    bootstrap.Modal.getOrCreateInstance(matchPickerModal).show();
+    matchPickerModal.addEventListener('shown.bs.modal', () => matchPickerSearch.focus(), {once:true});
+  };
+  matchPickerSearch.addEventListener('input', filterMatchPicker);
+  matchPickerList.addEventListener('click', event => {
+    const option = event.target.closest('[data-picker-fixture]');
+    if (!option || !pendingManualSlot) return;
+    const slot = pendingManualSlot;
+    pendingManualSlot = null;
+    bootstrap.Modal.getOrCreateInstance(matchPickerModal).hide();
+    placeMatchManually(Number(option.dataset.pickerFixture), slot);
+  });
   slotGrids.addEventListener('dragstart', event => {
     const match = event.target.closest('[data-manual-fixture]');
     if (!match) return;
@@ -777,6 +854,7 @@
     }
     const slot = event.target.closest('[data-manual-slot]');
     if (slot && selectedManualFixture) placeMatchManually(selectedManualFixture, slot);
+    else if (slot) openMatchPicker(slot);
   });
 
   const refreshVenuePreview = async (venueId, replanning) => {
