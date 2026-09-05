@@ -39,7 +39,8 @@
   <button type="button" data-workspace="schedule">Schedule</button>
   <button type="button" data-workspace="setup">Setup &amp; Rules</button>
 </nav>
-<ul class="nav nav-tabs mb-3" id="rrTabs" role="tablist">
+<div class="d-flex flex-wrap align-items-start gap-2 mb-3">
+<ul class="nav nav-tabs mb-0 flex-grow-1" id="rrTabs" role="tablist">
 
   {{-- View tabs --}}
   <li class="nav-item" role="presentation">
@@ -93,6 +94,10 @@
   </li>
 
 </ul>
+<a class="btn btn-primary d-none" data-full-schedule-action href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">
+  <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Manage full schedule
+</a>
+</div>
 
   {{-- ============================
        TAB CONTENT
@@ -773,6 +778,9 @@
         <small class="text-muted">Assign times, venues and courts to matches</small>
       </div>
       <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">
+          <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Manage full schedule
+        </a>
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#scheduleModal">
           <i class="ti ti-calendar-plus me-1"></i> Schedule Matches
         </button>

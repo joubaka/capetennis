@@ -48,7 +48,11 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $this->get($url)->assertOk()->assertSee('Players &amp; Positions', false)
             ->assertSee('Draw &amp; Results', false)->assertSee('Setup &amp; Rules', false)
             ->assertSee('Print draw &amp; results', false)->assertSee('data-share-draw', false)
-            ->assertSee('Back to Event')->assertSee('name="name"', false);
+            ->assertSee('Back to Event')->assertSee('name="name"', false)
+            ->assertSee('Manage full schedule')
+            ->assertSee('Schedule only this draw')
+            ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]))
+            ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id], 'manual' => 1]));
         $this->assertSame(4, $draw->drawFixtures()->count());
         $this->assertSame(0, $draw->groups()->count());
         $this->assertSame(2, $draw->flexibleMonrad->revision);

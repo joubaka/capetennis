@@ -43,7 +43,10 @@ class DrawWorkspaceTest extends TestCase
             ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Players &amp; Groups', false)->assertSee('Draw &amp; Results', false)
-            ->assertSee('Setup &amp; Rules', false)->assertSee('Print Draw Pack');
+            ->assertSee('Setup &amp; Rules', false)->assertSee('Print Draw Pack')
+            ->assertSee('Manage full schedule')
+            ->assertSee('data-full-schedule-action', false)
+            ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]));
         $this->assertSame(0, $draw->groups()->count());
         $this->assertSame(0, $draw->drawFixtures()->count());
     }

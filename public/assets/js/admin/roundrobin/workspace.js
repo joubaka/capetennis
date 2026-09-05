@@ -19,6 +19,9 @@
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', String(selected));
     });
+    document.querySelectorAll('[data-full-schedule-action]').forEach(action => {
+      action.classList.toggle('d-none', area !== 'schedule');
+    });
     $('#rrTabs > li').each(function () {
       const id = $(this).find('button').attr('id').replace(/-tab$/, '');
       $(this).toggleClass('rr-tab-hidden', !areas[area].includes(id) || areas[area].length === 1);

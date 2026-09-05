@@ -506,6 +506,17 @@ class EventVenueScheduleTest extends TestCase
             'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '1',
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        $this->postJson($url, array_replace($assignment, [
+            'court' => '1', 'scheduled_at' => '2026-09-10 12:30:00',
+        ]))->assertOk()
+            ->assertJsonPath('assignment.fixture_id', $fixtures[0]->id)
+            ->assertJsonPath('assignment.court', '1')
+            ->assertJsonPath('assignment.scheduled_at', '2026-09-10 12:30:00');
+        $this->assertDatabaseCount('order_of_plays', 2);
+        $this->assertDatabaseHas('order_of_plays', [
+            'fixture_id' => $fixtures[0]->id, 'venue_id' => $venue->id, 'court' => '1',
+            'time' => '2026-09-10 12:30:00',
+        ]);
         $sharedPlayer = Player::factory()->create();
         $fixtures[0]->registration1->players()->attach($sharedPlayer->id);
         $fixtures[1]->registration1->players()->attach($sharedPlayer->id);
@@ -570,10 +581,23 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('manual-assignment')
             ->assertSee('manual-options')
             ->assertSee('draggable="true"', false)
-            ->assertSee('Court idle')
+            ->assertSee('Available')
+            ->assertSee('Drop or select a valid match')
+            ->assertSee('Remove from schedule')
+            ->assertSee('id="toggle-schedule-full-page"', false)
+            ->assertSee('Exit full page')
+            ->assertSee('schedule-full-page-active')
+            ->assertSee("scrollArea.scrollLeft += 24", false)
+            ->assertSee('court-grid-scroll')
+            ->assertSee('Scroll sideways to see every court')
+            ->assertSee('Court headings and start times remain visible while you scroll.')
             ->assertDontSee('Gap too short')
-            ->assertSee('Not allocated')
-            ->assertSee('Match selected. Choose a Court idle slot.')
+            ->assertDontSee('Not allocated')
+            ->assertSee('Suggested · not saved')
+            ->assertSee('Saved matches stay in the grid; unsaved suggestions adapt around them.')
+            ->assertSee('removes it from this list, and adapts the remaining unsaved suggestions')
+            ->assertSee('the remaining unsaved suggestions were adapted around it')
+            ->assertSee('Match selected. Choose an Available slot.')
             ->assertSee('Choose a match for this slot')
             ->assertSee('Search by age group, match or player')
             ->assertSee('result?.unscheduled')
