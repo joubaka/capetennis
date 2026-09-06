@@ -2064,9 +2064,9 @@ Route::middleware('auth')->group(function () {
     ->name('frontend.scoring.workspace');
   Route::post('/events/{event}/scoring/operator', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'operator'])
     ->name('frontend.scoring.operator');
-  Route::post('/events/{event}/scoring/fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'startFixture'])
+  Route::post('/events/{event}/scoring/fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'setFixturePlaying'])
     ->name('frontend.scoring.fixtures.playing');
-  Route::post('/events/{event}/scoring/team-fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'startTeamFixture'])
+  Route::post('/events/{event}/scoring/team-fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'setTeamFixturePlaying'])
     ->name('frontend.scoring.team-fixtures.playing');
 });
 

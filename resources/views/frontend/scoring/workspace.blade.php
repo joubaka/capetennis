@@ -262,11 +262,12 @@
               </div>
               @if($canWrite && $hasPlayers)
               <div class="match-actions">
-                @unless($hasScore || $isPlaying)
-                <button type="button" class="btn btn-sm btn-outline-warning score-action js-start-match"
+                @unless($hasScore)
+                <button type="button" class="btn btn-sm {{ $isPlaying ? 'btn-outline-secondary' : 'btn-outline-warning' }} score-action js-toggle-match"
                         data-playing-url="{{ $playingUrl }}"
-                        aria-label="Mark {{ $home }} versus {{ $away }} as on court">
-                  Mark as on court
+                        data-playing="{{ $isPlaying ? 'false' : 'true' }}"
+                        aria-label="Mark {{ $home }} versus {{ $away }} as {{ $isPlaying ? 'off' : 'on' }} court">
+                  {{ $isPlaying ? 'Mark off court' : 'Mark as on court' }}
                 </button>
                 @endunless
                 <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
@@ -406,13 +407,17 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  function showWorkspaceError(message) {
-    document.querySelector('.js-workspace-error')?.remove();
+  function showWorkspaceNotice(message, level) {
+    document.querySelector('.js-workspace-notice')?.remove();
     const alert = document.createElement('div');
-    alert.className = 'alert alert-danger js-workspace-error';
+    alert.className = 'alert alert-' + (level || 'danger') + ' js-workspace-notice';
     alert.setAttribute('role', 'alert');
     alert.textContent = message;
     document.querySelector('.scoring-shell')?.prepend(alert);
+  }
+
+  function showWorkspaceError(message) {
+    showWorkspaceNotice(message, 'danger');
   }
 
   async function refreshWorkspace(url, options) {
@@ -479,14 +484,19 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    const startButton = event.target.closest('.js-start-match');
-    if (startButton) {
-      startButton.disabled = true;
-      request(startButton.dataset.playingUrl, 'POST', {})
-        .then(function () { return refreshWorkspace(window.location.href); })
+    const toggleButton = event.target.closest('.js-toggle-match');
+    if (toggleButton) {
+      const playing = toggleButton.dataset.playing === 'true';
+      if (!playing && !confirm('Mark these players off court? The match will return to Awaiting court.')) return;
+      toggleButton.disabled = true;
+      request(toggleButton.dataset.playingUrl, 'POST', {playing: playing})
+        .then(async function (result) {
+          await refreshWorkspace(window.location.href);
+          showWorkspaceNotice(result.message, playing ? 'success' : 'warning');
+        })
         .catch(function (failure) {
           showWorkspaceError(failure.message);
-          startButton.disabled = false;
+          toggleButton.disabled = false;
         });
     }
   });
