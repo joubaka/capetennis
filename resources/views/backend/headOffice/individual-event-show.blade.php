@@ -26,6 +26,45 @@ window.headOfficeDraws = {
 <script src="{{ asset('js/head-office-draws.js') }}?v={{ filemtime(public_path('js/head-office-draws.js')) }}"></script>
 <script>
 $(document).ready(function () {
+    // Keep this draw-specific action with the server-rendered button so a
+    // partially refreshed public asset cannot leave a visible dead control.
+    $(document).on('click', '.progress-draw', function () {
+        var $button = $(this);
+        Swal.fire({
+            title: 'Progress this draw?',
+            text: 'This will use the final round-robin standings to create missing playoff fixtures, or move completed-match winners into fixtures that already exist.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Progress draw'
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+
+            $button.prop('disabled', true).attr('aria-busy', 'true');
+            $.post($button.data('url'), {
+                _token: $('meta[name="csrf-token"]').attr('content')
+            })
+            .done(function (response) {
+                if (response.success === false) {
+                    toastr.error(response.message || 'Could not progress the draw.');
+                    return;
+                }
+
+                Swal.fire({
+                    title: 'Draw progressed',
+                    text: response.message,
+                    icon: 'success',
+                    confirmButtonText: 'Refresh draws'
+                }).then(function () { window.location.reload(); });
+            })
+            .fail(function (xhr) {
+                toastr.error(xhr.responseJSON?.message || 'Could not progress ' + $button.data('draw-name') + '.');
+            })
+            .always(function () {
+                $button.prop('disabled', false).removeAttr('aria-busy');
+            });
+        });
+    });
+
     // Toggle select-all checkbox
     $('#chk-select-all-draws').on('change', function () {
         $('.print-draw-chk:not(:disabled)').prop('checked', $(this).is(':checked'));
