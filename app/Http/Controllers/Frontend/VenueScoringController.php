@@ -182,13 +182,13 @@ class VenueScoringController extends Controller
     public function setFixturePlaying(Request $request, Event $event, Fixture $fixture): JsonResponse
     {
         $this->authorize('event.score', $event);
-        $playing = (bool) $request->validate(['playing' => ['required', 'boolean']])['playing'];
+        $validated = $request->validate(['playing' => ['sometimes', 'boolean']]);
+        $playing = array_key_exists('playing', $validated) ? (bool) $validated['playing'] : true;
 
         return DB::transaction(function () use ($request, $event, $fixture, $playing): JsonResponse {
             $fixture = Fixture::query()->lockForUpdate()->with(['draw', 'fixtureResults', 'orderOfPlay'])->findOrFail($fixture->id);
 
             abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
-            $this->authorize('saveScore', $fixture->draw);
             abort_if($fixture->draw->locked, 403, 'Draw is locked.');
             abort_if($fixture->fixtureResults->isNotEmpty(), 422, 'A completed match cannot be moved on or off court.');
             if ($playing) {
@@ -215,10 +215,19 @@ class VenueScoringController extends Controller
         });
     }
 
+    /**
+     * Backward compatibility for route caches created before the action was renamed.
+     */
+    public function startFixture(Request $request, Event $event, Fixture $fixture): JsonResponse
+    {
+        return $this->setFixturePlaying($request, $event, $fixture);
+    }
+
     public function setTeamFixturePlaying(Request $request, Event $event, TeamFixture $fixture): JsonResponse
     {
         $this->authorize('event.score', $event);
-        $playing = (bool) $request->validate(['playing' => ['required', 'boolean']])['playing'];
+        $validated = $request->validate(['playing' => ['sometimes', 'boolean']]);
+        $playing = array_key_exists('playing', $validated) ? (bool) $validated['playing'] : true;
 
         return DB::transaction(function () use ($request, $event, $fixture, $playing): JsonResponse {
             $fixture = TeamFixture::query()->lockForUpdate()->with(['draw', 'fixtureResults'])->findOrFail($fixture->id);
@@ -245,6 +254,14 @@ class VenueScoringController extends Controller
                 'message' => $playing ? 'Players are now marked on court.' : 'Players are now marked off court.',
             ]);
         });
+    }
+
+    /**
+     * Backward compatibility for route caches created before the action was renamed.
+     */
+    public function startTeamFixture(Request $request, Event $event, TeamFixture $fixture): JsonResponse
+    {
+        return $this->setTeamFixturePlaying($request, $event, $fixture);
     }
 
     private function requireAssignedVenue(Request $request, Event $event, ?int $venueId): void

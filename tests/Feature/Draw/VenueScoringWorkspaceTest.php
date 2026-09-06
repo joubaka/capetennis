@@ -10,6 +10,7 @@ use App\Models\EventConvenor;
 use App\Models\EventType;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
+use App\Models\FlexibleMonradDraw;
 use App\Models\OrderOfPlay;
 use App\Models\Registration;
 use App\Models\TeamFixture;
@@ -151,6 +152,8 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertStringContainsString("request(toggleButton.dataset.playingUrl, 'POST', {playing: playing})", $template);
         $this->assertStringContainsString('Mark off court', $template);
         $this->assertStringContainsString("showWorkspaceNotice(result.message, playing ? 'success' : 'warning')", $template);
+        $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startFixture'));
+        $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startTeamFixture'));
         $this->assertStringContainsString('await refreshWorkspace(window.location.href)', $template);
         $this->assertStringContainsString("history.pushState({}, '', options.historyUrl || url)", $template);
         $this->assertStringContainsString("window.addEventListener('popstate'", $template);
@@ -229,7 +232,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['venue_scoring.operator' => 'Court phone A'])
-            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]), ['playing' => true])
+            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]))
             ->assertOk()
             ->assertJsonPath('status', 'playing');
 
@@ -292,6 +295,31 @@ class VenueScoringWorkspaceTest extends TestCase
             ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]), ['playing' => false])
             ->assertUnprocessable();
         $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $fixture->fresh()->match_status);
+    }
+
+    public function test_flexible_monrad_match_can_be_marked_on_court_without_using_a_legacy_draw_mutation(): void
+    {
+        [$event, $draw, , $fixture] = $this->scheduledFixture('Monrad Venue');
+        FlexibleMonradDraw::create([
+            'draw_id' => $draw->id,
+            'revision' => 1,
+            'draft' => ['size' => 4, 'slots' => []],
+        ]);
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)
+            ->withSession(['venue_scoring.operator' => 'Monrad court phone'])
+            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]), ['playing' => true])
+            ->assertOk()
+            ->assertJsonPath('status', 'playing')
+            ->assertJsonPath('message', 'Players are now marked on court.');
+
+        $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $fixture->fresh()->match_status);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draw->id,
+            'fixture_id' => $fixture->id,
+            'action' => 'match_started',
+        ]);
     }
 
     public function test_score_keeper_cannot_mark_another_events_match_playing(): void
@@ -425,7 +453,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['venue_scoring.operator' => 'Team phone'])
-            ->postJson(route('frontend.scoring.team-fixtures.playing', [$event, $fixture]), ['playing' => true])
+            ->postJson(route('frontend.scoring.team-fixtures.playing', [$event, $fixture]))
             ->assertOk()
             ->assertJsonPath('status', 'playing');
         $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $fixture->fresh()->match_status);
