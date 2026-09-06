@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\Ranking\Services\RankingAuditService;
+use App\Domain\Ranking\Services\RankingListDetailService;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Http\Controllers\Controller;
@@ -58,6 +59,7 @@ class SeriesRankingController extends Controller
       ->where('status', 'archived')
       ->whereNotNull('run_id')
       ->exists();
+    $detailService = app(RankingListDetailService::class);
 
     return view('backend.ranking.series.list', [
       'series' => $series,
@@ -66,6 +68,8 @@ class SeriesRankingController extends Controller
       'activeRunId' => $activeRunId,
       'activeStatus' => $activeStatus,
       'hasArchivedSnapshot' => $hasArchivedSnapshot,
+      'scoreDetails' => $detailService->scoreDetails($series, $rankings),
+      'headToHeadAdvisories' => $detailService->headToHeadAdvisories($series, $rankings),
     ]);
   }
 

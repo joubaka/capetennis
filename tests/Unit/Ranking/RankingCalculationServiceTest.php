@@ -10,6 +10,8 @@ use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\Player;
 use App\Models\Registration;
+use App\Models\Draw;
+use App\Models\Fixture;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -23,10 +25,8 @@ use Tests\TestCase;
  * Rules tested:
  *  1.  Normal points calculation
  *  2.  Best-N reduction
- *  3.  Two-way tiebreak — most wins
- *  4.  Two-way tiebreak — best single score
- *  5.  Two-way tiebreak — lowest positions sum
- *  6.  Two-way tiebreak — earliest win date
+ *  3.  Tiebreak — highest third-event score
+ *  4.  Tiebreak — latest head-to-head result
  *  7.  Tied players receive the same rank position
  *  8.  Withdrawn players (excluded player IDs)
  *  9.  Zero-point player excluded from results
@@ -196,40 +196,64 @@ class RankingCalculationServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 3. Tiebreak — most wins
+    // 3. Tiebreak — highest third-event score
     // ------------------------------------------------------------------
 
-    public function test_tiebreak_most_wins_takes_precedence(): void
+    public function test_tiebreak_uses_highest_third_event_score(): void
     {
-        // Both have 1000+800 = 1800
-        // Player 1: wins=2 (pos 1 in both), Player 2: wins=0
+        $this->series->update(['auto_award_rule' => false]);
+
         $this->seedPositions([
-            [1, 101, 1], [1, 102, 1],
-            [2, 101, 2], [2, 102, 2],
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
         ]);
 
         $result = $this->service()->calculate($this->list);
 
         $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
+        $this->assertStringContainsString('third-event score (600 points)', $this->rowFor($result, 1)->tiebreakNotes[0]);
     }
 
     // ------------------------------------------------------------------
-    // 4. Tiebreak — best single score
+    // 4. Tiebreak — latest head-to-head
     // ------------------------------------------------------------------
 
-    public function test_tiebreak_best_single_score(): void
+    public function test_tiebreak_uses_the_most_recent_recorded_head_to_head(): void
     {
-        // Both total 1600; Player 1 has 1000+600, Player 2 has 800+800
-        // Player 1 best single = 1000 > 800 → Player 1 wins
+        $this->series->update(['auto_award_rule' => false]);
         $this->seedPositions([
             [1, 101, 1], [1, 102, 3],
-            [2, 101, 2], [2, 102, 2],
+            [2, 101, 3], [2, 102, 1],
+        ]);
+
+        $oldCategoryEvent = DB::table('category_events')->where('id', 101)->first();
+        $newCategoryEvent = DB::table('category_events')->where('id', 102)->first();
+        DB::table('events')->where('id', $oldCategoryEvent->event_id)->update(['start_date' => '2026-01-01']);
+        DB::table('events')->where('id', $newCategoryEvent->event_id)->update(['start_date' => '2026-02-01']);
+
+        // Historical draws may not have category_event_id populated. The shared
+        // category-event memberships still identify the match safely.
+        $oldDraw = Draw::factory()->create(['event_id' => $oldCategoryEvent->event_id, 'category_event_id' => null]);
+        $newDraw = Draw::factory()->create(['event_id' => $newCategoryEvent->event_id, 'category_event_id' => null]);
+        Fixture::factory()->create([
+            'draw_id' => $oldDraw->id,
+            'registration1_id' => $this->resultRegistrationIds['1:101'],
+            'registration2_id' => $this->resultRegistrationIds['2:101'],
+            'winner_registration' => $this->resultRegistrationIds['1:101'],
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $newDraw->id,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['2:102'],
         ]);
 
         $result = $this->service()->calculate($this->list);
 
-        $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
+        $this->assertEquals(1, $this->rowFor($result, 2)->rankPosition);
+        $this->assertEquals(2, $this->rowFor($result, 1)->rankPosition);
+        $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
     }
 
     // ------------------------------------------------------------------
@@ -257,10 +281,10 @@ class RankingCalculationServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 6. Tiebreak — earliest win date
+    // Former tiebreak criteria no longer override an unresolved tie
     // ------------------------------------------------------------------
 
-    public function test_tiebreak_earliest_win_date(): void
+    public function test_earliest_win_date_does_not_break_a_tie(): void
     {
         // Player 1 won CE 101 (older event), Player 2 won CE 102 (newer event)
         // Both total 1000+600 = 1600, wins=1, same best single=1000
@@ -299,9 +323,10 @@ class RankingCalculationServiceTest extends TestCase
 
         $result = $this->service()->calculate($this->list);
 
-        // Both 1600 pts, both 1 win — Player 1 wins earlier → ranked 1st
-        $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
-        $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
+        $this->assertEquals(
+            $this->rowFor($result, 1)->rankPosition,
+            $this->rowFor($result, 2)->rankPosition
+        );
     }
 
     // ------------------------------------------------------------------
@@ -569,15 +594,16 @@ class RankingCalculationServiceTest extends TestCase
 
     public function test_tiebreak_reason_is_recorded(): void
     {
+        $this->series->update(['auto_award_rule' => false]);
         $this->seedPositions([
-            [1, 101, 1], [1, 102, 3],
-            [2, 101, 2], [2, 102, 2],
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
         ]);
 
         $result = $this->service()->calculate($this->list);
 
         $this->assertStringContainsString(
-            'most counting-event wins',
+            'third-event score',
             $this->rowFor($result, 1)->tiebreakNotes[0]
         );
     }

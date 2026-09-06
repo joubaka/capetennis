@@ -22,7 +22,7 @@ use Illuminate\Support\Collection;
  *  3. Apply walkover/default exclusion (if configured)
  *  4. Apply 2-of-3 auto-award rule (if series.auto_award_rule = true)
  *  5. Apply best-N reduction
- *  6. Apply two-way tiebreak
+ *  6. Apply dropped-score, then latest head-to-head tiebreak
  *  7. Assign rank positions (shared for ties)
  */
 final class RankingCalculationService
@@ -133,15 +133,16 @@ final class RankingCalculationService
         // Reduce to best-N and build RankingRow objects
         $rows = $this->reduceToBestN($byPlayer, $bestN, $pointsMap);
 
-        // Two-way tiebreak
-        [$rows, $tiebreakWarnings] = $this->applyTiebreak($rows, $byPlayer);
+        // Tiebreak: highest dropped score, then latest recorded head-to-head.
+        $headToHeadWinners = $this->latestHeadToHeadWinners($list, $rows->pluck('playerId'));
+        [$rows, $tiebreakWarnings, $appliedHeadToHeadPairs] = $this->applyTiebreak($rows, $headToHeadWinners);
         $warnings = array_merge($warnings, $tiebreakWarnings);
 
         // applyTiebreak returns rows sorted points-desc with peers in tiebreak order.
         // No further re-sort is needed.
 
         // Assign rank positions (shared rank for equal totals only when truly unresolvable)
-        $this->assignRankPositions($rows, $byPlayer);
+        $this->assignRankPositions($rows, $appliedHeadToHeadPairs);
 
         // Build audit trail
         $audit = $this->buildAudit($rows, $byPlayer, $catEventIds, $bestN, $pointsMap);
@@ -378,29 +379,27 @@ final class RankingCalculationService
     }
 
     // ------------------------------------------------------------------
-    // Step 4 — Two-way tiebreak
+    // Step 4 — Tiebreak
     // ------------------------------------------------------------------
 
     /**
-     * Tiebreak order (when totalPoints are equal):
-     *  1. Most events played
-     *  2. Most wins (position 1) in counting legs
-     *  3. Highest single-leg score in counting legs
-     *  4. Lowest sum of positions in counting legs
-     *  5. Earliest win date
+     * Tiebreak order (when best-N totalPoints are equal):
+     *  1. Highest score outside the best-N total (zero when there is none)
+     *  2. Winner of the most recent recorded head-to-head match
+     *  3. Shared rank when neither rule resolves the tie
      *
      * @param  Collection<RankingRow>   $rows
-     * @param  array<int, RankingLeg[]> $byPlayer
-     * @return array{Collection<RankingRow>, string[]}
+     * @return array{Collection<RankingRow>, string[], array<string, array<string, mixed>>}
      */
-    private function applyTiebreak(Collection $rows, array $byPlayer): array
+    private function applyTiebreak(Collection $rows, array $headToHeadWinners): array
     {
         $warnings = [];
+        $appliedHeadToHeadPairs = [];
 
         // Sort groups by points descending so flatMap produces the final ordering
         $sorted = $rows->groupBy(fn(RankingRow $r) => $r->totalPoints)
             ->sortKeysDesc()
-            ->flatMap(function (Collection $group) use ($byPlayer, &$warnings) {
+            ->flatMap(function (Collection $group) use ($headToHeadWinners, &$warnings, &$appliedHeadToHeadPairs) {
                 if ($group->count() <= 1) {
                     return $group;
                 }
@@ -409,56 +408,46 @@ final class RankingCalculationService
                 $ids = $group->pluck('playerId')->implode(', ');
                 $warnings[] = "Tiebreak applied for {$group->count()} players at {$pts} pts (IDs: {$ids}).";
 
-                $arr = $group->values()->all();
-                usort($arr, function (RankingRow $a, RankingRow $b) use ($byPlayer) {
-                    // 1) most valid event results, including results dropped by best-N
-                    if ($a->eventsPlayed !== $b->eventsPlayed) {
-                        return $b->eventsPlayed <=> $a->eventsPlayed;
-                    }
-                    // 2) most wins
-                    if ($a->wins !== $b->wins) {
-                        return $b->wins <=> $a->wins;
-                    }
-                    // 3) best single
-                    if ($a->bestSingle !== $b->bestSingle) {
-                        return $b->bestSingle <=> $a->bestSingle;
-                    }
-                    // 4) lowest positions sum
-                    if ($a->positionsSum !== $b->positionsSum) {
-                        return $a->positionsSum <=> $b->positionsSum;
-                    }
-                    // 4) earliest win date
-                    $aDate = $this->earliestWinDate($byPlayer[$a->playerId] ?? []);
-                    $bDate = $this->earliestWinDate($byPlayer[$b->playerId] ?? []);
-                    if ($aDate !== $bDate) {
-                        if ($aDate === null) return 1;
-                        if ($bDate === null) return -1;
-                        return strcmp($aDate, $bDate);
-                    }
-                    return 0;
-                });
+                return $group
+                    ->groupBy(fn (RankingRow $row) => $this->nextBestScore($row))
+                    ->sortKeysDesc()
+                    ->flatMap(function (Collection $thirdScoreGroup) use ($group, $headToHeadWinners, $pts, &$appliedHeadToHeadPairs) {
+                        $rows = $thirdScoreGroup->values()->all();
+                        $thirdScore = $this->nextBestScore($rows[0]);
 
-                foreach ($arr as $index => $row) {
-                    $peer = $arr[$index - 1] ?? $arr[$index + 1] ?? null;
-                    if ($peer) {
-                        $criterion = $this->tiebreakCriterion($row, $peer, $byPlayer);
-                        $row->tiebreakNotes = [$criterion
-                            ? "Tied on {$pts} points; ordered by {$criterion}."
-                            : "Tied on {$pts} points; all configured tiebreaks remain equal."];
-                    }
-                }
+                        if ($thirdScoreGroup->count() === 2) {
+                            $pairKey = $this->playerPairKey($rows[0]->playerId, $rows[1]->playerId);
+                            if (isset($headToHeadWinners[$pairKey])) {
+                                $appliedHeadToHeadPairs[$pairKey] = $headToHeadWinners[$pairKey];
+                            }
+                            usort($rows, fn (RankingRow $a, RankingRow $b) => $this->compareTiedRows($a, $b, $headToHeadWinners));
+                        }
 
-                return collect($arr);
+                        foreach ($rows as $row) {
+                            if ($thirdScoreGroup->count() === 1) {
+                                $row->tiebreakNotes = ["Tied on {$pts} points; compared by third-event score ({$thirdScore} points)."];
+                                continue;
+                            }
+
+                            $peer = collect($rows)->first(fn (RankingRow $candidate) => $candidate->playerId !== $row->playerId);
+                            $criterion = $peer ? $this->tiebreakCriterion($row, $peer, $headToHeadWinners) : null;
+                            $row->tiebreakNotes = [$criterion
+                                ? "Tied on {$pts} points and third-event score; ordered by {$criterion}."
+                                : "Tied on {$pts} points and third-event score; no decisive head-to-head was found."];
+                        }
+
+                        return collect($rows);
+                    });
             })->values();
 
-        return [$sorted, $warnings];
+        return [$sorted, $warnings, $appliedHeadToHeadPairs];
     }
 
     // ------------------------------------------------------------------
     // Step 5 — Assign rank positions
     // ------------------------------------------------------------------
 
-    private function assignRankPositions(Collection $rows, array $byPlayer): void
+    private function assignRankPositions(Collection $rows, array $appliedHeadToHeadPairs): void
     {
         $rank = 1;
 
@@ -472,8 +461,7 @@ final class RankingCalculationService
             /** @var RankingRow $prev */
             $prev = $rows[$i - 1];
 
-            // Share rank only when all tiebreak criteria (including win date) are identical.
-            if ($this->isTrueTie($prev, $row, $byPlayer)) {
+            if ($this->isTrueTie($prev, $row, $appliedHeadToHeadPairs)) {
                 $row->rankPosition = $prev->rankPosition;
             } else {
                 $row->rankPosition = $rank;
@@ -484,32 +472,135 @@ final class RankingCalculationService
     }
 
     /** Returns true when two rows are genuinely unresolvable by any tiebreak criterion. */
-    private function isTrueTie(RankingRow $a, RankingRow $b, array $byPlayer): bool
+    private function isTrueTie(RankingRow $a, RankingRow $b, array $headToHeadWinners): bool
     {
         if ($a->totalPoints !== $b->totalPoints) return false;
-        if ($a->eventsPlayed !== $b->eventsPlayed) return false;
-        if ($a->wins !== $b->wins) return false;
-        if ($a->bestSingle !== $b->bestSingle) return false;
-        if ($a->positionsSum !== $b->positionsSum) return false;
+        if ($this->nextBestScore($a) !== $this->nextBestScore($b)) return false;
 
-        $aDate = $this->earliestWinDate($byPlayer[$a->playerId] ?? []);
-        $bDate = $this->earliestWinDate($byPlayer[$b->playerId] ?? []);
-
-        return $aDate === $bDate;
+        return ! isset($headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)]);
     }
 
-    private function tiebreakCriterion(RankingRow $a, RankingRow $b, array $byPlayer): ?string
+    private function tiebreakCriterion(RankingRow $a, RankingRow $b, array $headToHeadWinners): ?string
     {
-        if ($a->eventsPlayed !== $b->eventsPlayed) return 'most events played';
-        if ($a->wins !== $b->wins) return 'most counting-event wins';
-        if ($a->bestSingle !== $b->bestSingle) return 'highest single-event score';
-        if ($a->positionsSum !== $b->positionsSum) return 'lowest sum of counting positions';
+        if ($this->nextBestScore($a) !== $this->nextBestScore($b)) {
+            return 'higher third-event score';
+        }
 
-        $aDate = $this->earliestWinDate($byPlayer[$a->playerId] ?? []);
-        $bDate = $this->earliestWinDate($byPlayer[$b->playerId] ?? []);
-        if ($aDate !== $bDate) return 'earliest event win';
+        $headToHead = $headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)] ?? null;
+        if ($headToHead) {
+            return 'latest head-to-head winner ('.$headToHead['event_name'].')';
+        }
 
         return null;
+    }
+
+    private function compareTiedRows(RankingRow $a, RankingRow $b, array $headToHeadWinners): int
+    {
+        $thirdScoreComparison = $this->nextBestScore($b) <=> $this->nextBestScore($a);
+        if ($thirdScoreComparison !== 0) {
+            return $thirdScoreComparison;
+        }
+
+        $headToHead = $headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)] ?? null;
+        if (! $headToHead) {
+            return 0;
+        }
+
+        return $headToHead['winner_player_id'] === $a->playerId ? -1 : 1;
+    }
+
+    private function nextBestScore(RankingRow $row): int
+    {
+        return empty($row->droppedLegs) ? 0 : max(array_column($row->droppedLegs, 'points'));
+    }
+
+    /**
+     * Resolve one winner per player pair from the latest recorded match in the
+     * category events linked to this ranking list.
+     *
+     * @return array<string, array{winner_player_id:int,event_id:int,event_name:string,fixture_id:int}>
+     */
+    private function latestHeadToHeadWinners(RankingList $list, Collection $playerIds): array
+    {
+        if ($playerIds->count() < 2) {
+            return [];
+        }
+
+        $categoryEventIds = $this->listCategoryEventIds($list);
+        $fixtures = \DB::table('fixtures as ranking_fixtures')
+            ->join('draws as ranking_draws', 'ranking_draws.id', '=', 'ranking_fixtures.draw_id')
+            ->join('events as ranking_events', 'ranking_events.id', '=', 'ranking_draws.event_id')
+            ->join('player_registrations as ranking_pr1', 'ranking_pr1.registration_id', '=', 'ranking_fixtures.registration1_id')
+            ->join('player_registrations as ranking_pr2', 'ranking_pr2.registration_id', '=', 'ranking_fixtures.registration2_id')
+            ->where(function ($query) use ($categoryEventIds) {
+                $query->whereIn('ranking_draws.category_event_id', $categoryEventIds)
+                    ->orWhereExists(function ($membership) use ($categoryEventIds) {
+                        $membership->selectRaw('1')
+                            ->from('category_event_registrations as ranking_cer1')
+                            ->join('category_event_registrations as ranking_cer2', 'ranking_cer2.category_event_id', '=', 'ranking_cer1.category_event_id')
+                            ->join('category_events as ranking_member_ce', 'ranking_member_ce.id', '=', 'ranking_cer1.category_event_id')
+                            ->whereColumn('ranking_cer1.registration_id', 'ranking_fixtures.registration1_id')
+                            ->whereColumn('ranking_cer2.registration_id', 'ranking_fixtures.registration2_id')
+                            ->whereColumn('ranking_member_ce.event_id', 'ranking_draws.event_id')
+                            ->whereIn('ranking_member_ce.id', $categoryEventIds);
+                    });
+            })
+            ->whereIn('ranking_pr1.player_id', $playerIds)
+            ->whereIn('ranking_pr2.player_id', $playerIds)
+            ->orderByDesc('ranking_events.start_date')
+            ->orderByDesc('ranking_fixtures.id')
+            ->get([
+                'ranking_fixtures.id',
+                'ranking_fixtures.registration1_id',
+                'ranking_fixtures.registration2_id',
+                'ranking_fixtures.winner_registration',
+                'ranking_pr1.player_id as player1_id',
+                'ranking_pr2.player_id as player2_id',
+                'ranking_events.id as event_id',
+                'ranking_events.name as event_name',
+            ]);
+        $resultWinners = \DB::table('fixture_results')
+            ->whereIn('fixture_id', $fixtures->pluck('id'))
+            ->whereNotNull('winner_registration')
+            ->orderByDesc('set_nr')
+            ->orderByDesc('id')
+            ->get(['fixture_id', 'winner_registration'])
+            ->groupBy('fixture_id')
+            ->map(fn (Collection $results) => (int) $results->first()->winner_registration);
+        $winners = [];
+
+        foreach ($fixtures as $fixture) {
+            $pairKey = $this->playerPairKey((int) $fixture->player1_id, (int) $fixture->player2_id);
+            if (isset($winners[$pairKey])) {
+                continue;
+            }
+
+            $winnerRegistration = (int) ($fixture->winner_registration ?: $resultWinners->get($fixture->id, 0));
+            if ($winnerRegistration === (int) $fixture->registration1_id) {
+                $winnerPlayerId = (int) $fixture->player1_id;
+            } elseif ($winnerRegistration === (int) $fixture->registration2_id) {
+                $winnerPlayerId = (int) $fixture->player2_id;
+            } else {
+                continue;
+            }
+
+            $winners[$pairKey] = [
+                'winner_player_id' => $winnerPlayerId,
+                'event_id' => (int) $fixture->event_id,
+                'event_name' => (string) $fixture->event_name,
+                'fixture_id' => (int) $fixture->id,
+            ];
+        }
+
+        return $winners;
+    }
+
+    private function playerPairKey(int $playerA, int $playerB): string
+    {
+        $ids = [$playerA, $playerB];
+        sort($ids);
+
+        return implode(':', $ids);
     }
 
     // ------------------------------------------------------------------
@@ -585,16 +676,4 @@ final class RankingCalculationService
             ->pluck('category_event_id');
     }
 
-    private function earliestWinDate(array $legs): ?string
-    {
-        $wins = array_filter($legs, fn(RankingLeg $l) => $l->position === 1);
-        if (empty($wins)) {
-            return null;
-        }
-        usort($wins, fn(RankingLeg $x, RankingLeg $y) => strcmp(
-            (string) $x->eventDate,
-            (string) $y->eventDate
-        ));
-        return (string) reset($wins)->eventDate;
-    }
 }
