@@ -97,7 +97,7 @@ final class RankingRebuildService
             }
 
             if (!$dryRun) {
-                $linked = $this->linkEmptyListsFromResults($series, $lists);
+                $linked = $this->linkEligibleCategoryEventsFromResults($series, $lists);
                 $topology['linked_category_events'] += $linked;
 
                 if ($linked > 0) {
@@ -264,16 +264,16 @@ final class RankingRebuildService
     }
 
     /**
-     * Repair only completely empty historical lists. Curated lists that already
-     * contain at least one event are never expanded automatically.
+     * Link saved results to their canonical ranking lists.
+     *
+     * Empty historical lists are fully repaired. Existing lists retain their
+     * curated history, but newly published events that occur after the latest
+     * linked event are appended automatically. This lets a later leg in the
+     * same series participate in the next rebuild without re-adding an older
+     * event that an administrator intentionally removed.
      */
-    private function linkEmptyListsFromResults(Series $series, Collection $lists): int
+    private function linkEligibleCategoryEventsFromResults(Series $series, Collection $lists): int
     {
-        $emptyLists = $lists->filter(fn(RankingList $list) => !$list->rank_cats()->exists());
-        if ($emptyLists->isEmpty()) {
-            return 0;
-        }
-
         $eventsByName = DB::table('category_events as ce')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
             ->join('categories as c', 'c.id', '=', 'ce.category_id')
@@ -282,9 +282,16 @@ final class RankingRebuildService
                     ->on('cr.category_id', '=', 'ce.category_id');
             })
             ->where('e.series_id', $series->id)
-            ->select('ce.id', 'c.name as category_name', 'e.start_date')
-            ->groupBy('ce.id', 'c.name', 'e.start_date')
+            ->select(
+                'ce.id',
+                'e.id as event_id',
+                'c.name as category_name',
+                'e.start_date',
+                'e.results_published'
+            )
+            ->groupBy('ce.id', 'e.id', 'c.name', 'e.start_date', 'e.results_published')
             ->orderBy('e.start_date')
+            ->orderBy('e.id')
             ->orderBy('ce.id')
             ->get()
             ->groupBy(fn($categoryEvent) => $this->normalizeCategoryName($categoryEvent->category_name));
@@ -292,20 +299,66 @@ final class RankingRebuildService
         $linked = 0;
         $now = now();
 
-        foreach ($emptyLists as $list) {
-            $categoryName = $this->normalizeCategoryName((string) $list->category?->name);
-            foreach ($eventsByName->get($categoryName, collect())->values() as $index => $categoryEvent) {
-                $linked += DB::table('ranking_list_category_events')->insertOrIgnore([
+        $listsByName = $lists->groupBy(
+            fn(RankingList $list) => $this->normalizeCategoryName((string) $list->category?->name)
+        );
+
+        foreach ($listsByName as $categoryName => $matchingLists) {
+            // Do not guess when duplicate canonical lists make the destination
+            // ambiguous. Such topology must be corrected explicitly.
+            if ($categoryName === '' || $matchingLists->count() !== 1) {
+                continue;
+            }
+
+            /** @var RankingList $list */
+            $list = $matchingLists->first();
+            $linkedRows = DB::table('ranking_list_category_events as rlce')
+                ->join('category_events as ce', 'ce.id', '=', 'rlce.category_event_id')
+                ->join('events as e', 'e.id', '=', 'ce.event_id')
+                ->where('rlce.ranking_list_id', $list->id)
+                ->select('rlce.category_event_id', 'rlce.sort_order', 'e.id as event_id', 'e.start_date')
+                ->get();
+
+            $candidates = $eventsByName->get($categoryName, collect());
+            if ($linkedRows->isNotEmpty()) {
+                $latestLinkedKey = $linkedRows
+                    ->map(fn($row) => $this->eventOrderKey($row))
+                    ->max();
+
+                $candidates = $candidates->filter(fn($categoryEvent) =>
+                    (bool) $categoryEvent->results_published
+                    && $this->eventOrderKey($categoryEvent) > $latestLinkedKey
+                );
+            }
+
+            $nextSortOrder = (int) ($linkedRows->max('sort_order') ?? $linkedRows->count());
+
+            foreach ($candidates as $categoryEvent) {
+                $alreadyLinked = DB::table('ranking_list_category_events')
+                    ->where('category_event_id', $categoryEvent->id)
+                    ->exists();
+                if ($alreadyLinked) {
+                    continue;
+                }
+
+                $nextSortOrder++;
+                DB::table('ranking_list_category_events')->insert([
                     'ranking_list_id' => $list->id,
                     'category_event_id' => $categoryEvent->id,
-                    'sort_order' => $index + 1,
+                    'sort_order' => $nextSortOrder,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
+                $linked++;
             }
         }
 
         return $linked;
+    }
+
+    private function eventOrderKey(object $event): string
+    {
+        return sprintf('%s:%020d', (string) ($event->start_date ?? '0000-00-00'), (int) $event->event_id);
     }
 
     // ------------------------------------------------------------------

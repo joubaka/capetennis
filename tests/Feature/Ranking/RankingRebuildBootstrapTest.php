@@ -160,6 +160,165 @@ class RankingRebuildBootstrapTest extends TestCase
         $this->assertDatabaseMissing('series_rankings', ['id' => $staleRanking->id]);
     }
 
+    public function test_rebuild_appends_matching_results_from_a_later_published_series_event(): void
+    {
+        $series = Series::factory()->create([
+            'best_num_of_scores' => 3,
+            'auto_award_rule' => false,
+        ]);
+        $category = Category::factory()->create(['name' => 'U/13 Girls']);
+        $player = Player::factory()->create();
+
+        DB::table('points')->insert([
+            ['series_id' => $series->id, 'position' => 1, 'score' => 1000],
+        ]);
+
+        $firstCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->subMonths(2)->toDateString()
+        );
+        $list = RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $firstCategoryEvent->id,
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $thirdLegCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->toDateString(),
+            true
+        );
+
+        $report = app(RankingRebuildService::class)->rebuild($series);
+
+        $this->assertTrue($report['persisted']);
+        $this->assertSame(1, $report['topology']['linked_category_events']);
+        $this->assertDatabaseHas('ranking_list_category_events', [
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $thirdLegCategoryEvent->id,
+            'sort_order' => 2,
+        ]);
+        $this->assertDatabaseHas('series_rankings', [
+            'series_id' => $series->id,
+            'ranking_list_id' => $list->id,
+            'player_id' => $player->id,
+            'total_points' => 2000,
+            'status' => 'calculated',
+        ]);
+    }
+
+    public function test_rebuild_does_not_append_results_from_an_unpublished_later_event(): void
+    {
+        $series = Series::factory()->create([
+            'best_num_of_scores' => 2,
+            'auto_award_rule' => false,
+        ]);
+        $category = Category::factory()->create(['name' => 'U/15 Boys']);
+        $player = Player::factory()->create();
+
+        DB::table('points')->insert([
+            ['series_id' => $series->id, 'position' => 1, 'score' => 1000],
+        ]);
+
+        $firstCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->subMonth()->toDateString()
+        );
+        $list = RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $firstCategoryEvent->id,
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $unpublishedCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->toDateString(),
+            false
+        );
+
+        $report = app(RankingRebuildService::class)->rebuild($series);
+
+        $this->assertTrue($report['persisted']);
+        $this->assertSame(0, $report['topology']['linked_category_events']);
+        $this->assertDatabaseMissing('ranking_list_category_events', [
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $unpublishedCategoryEvent->id,
+        ]);
+    }
+
+    public function test_rebuild_does_not_restore_an_older_event_omitted_from_a_curated_list(): void
+    {
+        $series = Series::factory()->create([
+            'best_num_of_scores' => 2,
+            'auto_award_rule' => false,
+        ]);
+        $category = Category::factory()->create(['name' => 'U/19 Girls']);
+        $player = Player::factory()->create();
+
+        DB::table('points')->insert([
+            ['series_id' => $series->id, 'position' => 1, 'score' => 1000],
+        ]);
+
+        $omittedOlderCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->subMonths(2)->toDateString()
+        );
+        $linkedNewerCategoryEvent = $this->seedResult(
+            $series,
+            $category,
+            $player,
+            now()->subMonth()->toDateString()
+        );
+        $list = RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $linkedNewerCategoryEvent->id,
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $report = app(RankingRebuildService::class)->rebuild($series);
+
+        $this->assertTrue($report['persisted']);
+        $this->assertSame(0, $report['topology']['linked_category_events']);
+        $this->assertDatabaseMissing('ranking_list_category_events', [
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $omittedOlderCategoryEvent->id,
+        ]);
+        $this->assertDatabaseHas('series_rankings', [
+            'series_id' => $series->id,
+            'ranking_list_id' => $list->id,
+            'player_id' => $player->id,
+            'total_points' => 1000,
+        ]);
+    }
+
     public function test_bootstrap_merges_same_named_categories_with_different_ids(): void
     {
         $series = Series::factory()->create([
@@ -191,11 +350,18 @@ class RankingRebuildBootstrapTest extends TestCase
         ]);
     }
 
-    private function seedResult(Series $series, Category $category, Player $player, string $eventDate): CategoryEvent
+    private function seedResult(
+        Series $series,
+        Category $category,
+        Player $player,
+        string $eventDate,
+        bool $resultsPublished = true
+    ): CategoryEvent
     {
         $event = Event::factory()->create([
             'series_id' => $series->id,
             'start_date' => $eventDate,
+            'results_published' => $resultsPublished,
         ]);
         $categoryEvent = CategoryEvent::factory()->create([
             'event_id' => $event->id,
