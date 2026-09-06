@@ -1186,7 +1186,9 @@ class FlexibleMonradTest extends TestCase
         $draw->settings()->update(['num_sets' => 3]);
         $this->putJson($url, ['revision' => 2, 'sets' => [[6, 4]]])->assertUnprocessable();
         $this->putJson($url, ['revision' => 2, 'sets' => [[6, 4], [6, 2], [2, 6]]])->assertUnprocessable();
-        $this->putJson($url, ['revision' => 2, 'sets' => [[7, 6], [5, 7], [6, 4]]])->assertOk();
+        $this->putJson($url, ['revision' => 2, 'sets' => [[7, 6], [5, 7], [9, 7]]])->assertUnprocessable();
+        $this->putJson($url, ['revision' => 2, 'sets' => [[7, 6], [5, 7], [10, 9]]])->assertUnprocessable();
+        $this->putJson($url, ['revision' => 2, 'sets' => [[7, 6], [5, 7], [23, 21]]])->assertOk();
         $this->assertSame(3, Fixture::findOrFail($record->fixture_map['main_a'])->fixtureResults()->count());
     }
 

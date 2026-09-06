@@ -108,7 +108,7 @@ class FlexibleMonradController extends Controller
         abort_unless($request->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
       }
       $data = $request->validate(['revision' => 'required|integer|min:0', 'sets' => 'present|nullable|array|min:1|max:5',
-            'sets.*' => 'array|size:2', 'sets.*.*' => 'required|integer|min:0|max:20', 'reset_dependents' => 'sometimes|boolean']);
+            'sets.*' => 'array|size:2', 'sets.*.*' => 'required|integer|min:0|max:999', 'reset_dependents' => 'sometimes|boolean']);
         $this->monrad->score($draw, $fixture, $data['sets'], $data['revision'], $data['reset_dependents'] ?? false);
         return response()->json($this->monrad->state($draw->fresh()));
     }

@@ -13,7 +13,7 @@ final class FlexibleMonradScoreValidator
         if (! $sets || count($sets) > $bestOf) $fail("Enter a completed best-of-{$bestOf} match.");
         $needed = intdiv($bestOf, 2) + 1;
         $wins = [0, 0];
-        foreach ($sets as $set) {
+        foreach ($sets as $index => $set) {
             if (max($wins) === $needed) $fail('Remove sets entered after the match was already won.');
             if (! is_array($set) || ! array_is_list($set) || count($set) !== 2 || ! is_int($set[0]) || ! is_int($set[1])) {
                 $fail('Each set needs two whole-number scores.');
@@ -26,7 +26,11 @@ final class FlexibleMonradScoreValidator
             }
             if ($requireFullSets) {
                 [$high, $low] = [max($set), min($set)];
-                if (!(($high === 6 && $low >= 0 && $low <= 4) || ($high === 7 && in_array($low, [5, 6], true)))) {
+                $isThirdSetMatchTiebreak = $bestOf === 3 && $index === 2;
+                if ($isThirdSetMatchTiebreak && ($high < 10 || $high - $low < 2)) {
+                    $fail('The third set match tiebreak must reach 10 points and be won by two.');
+                }
+                if (! $isThirdSetMatchTiebreak && !(($high === 6 && $low >= 0 && $low <= 4) || ($high === 7 && in_array($low, [5, 6], true)))) {
                     $fail('Enter a completed set: 6–0 to 6–4, 7–5 or 7–6.');
                 }
             }

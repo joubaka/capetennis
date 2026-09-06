@@ -16,8 +16,11 @@ final class ScoreValidationService
             return ['valid' => false, 'message' => 'Enter between one and three sets.'];
         }
 
-        foreach ($sets as [$home, $away]) {
-            if ($home < 0 || $away < 0 || $home > 20 || $away > 20 || $home === $away) {
+        foreach ($sets as $index => [$home, $away]) {
+            $exceedsRange = $index === 2
+                ? $home > 999 || $away > 999
+                : $home > 20 || $away > 20;
+            if ($home < 0 || $away < 0 || $exceedsRange || $home === $away) {
                 return ['valid' => false, 'message' => 'Each set must have different, non-negative scores within the valid range.'];
             }
         }

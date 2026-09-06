@@ -334,9 +334,9 @@
         <div class="row g-2 text-center fw-semibold mb-1"><div class="col" id="score-home-label">Player 1</div><div class="col" id="score-away-label">Player 2</div></div>
         @for($set = 1; $set <= 5; $set++)
           <div class="row g-2 align-items-center mb-2 score-set-row">
-            <div class="col"><input type="number" min="0" max="20" inputmode="numeric" class="form-control score-input" data-side="home" data-set="{{ $set }}" aria-label="Set {{ $set }} home score"></div>
+            <div class="col"><input type="number" min="0" @if($set !== 3) max="20" @endif inputmode="numeric" class="form-control score-input" data-side="home" data-set="{{ $set }}" aria-label="Set {{ $set }} home score"></div>
             <div class="col-auto text-muted small">Set {{ $set }}</div>
-            <div class="col"><input type="number" min="0" max="20" inputmode="numeric" class="form-control score-input" data-side="away" data-set="{{ $set }}" aria-label="Set {{ $set }} away score"></div>
+            <div class="col"><input type="number" min="0" @if($set !== 3) max="20" @endif inputmode="numeric" class="form-control score-input" data-side="away" data-set="{{ $set }}" aria-label="Set {{ $set }} away score"></div>
           </div>
         @endfor
       </div>
