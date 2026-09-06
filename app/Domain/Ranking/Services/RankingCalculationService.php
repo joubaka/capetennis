@@ -245,8 +245,9 @@ final class RankingCalculationService
 
     /**
      * If a player won exactly 2 out of 3 legs and missed 1,
-     * they are awarded a synthetic 1st in the missed leg,
-     * and the actual winner's points for that leg are capped to 2nd-place points.
+     * they are awarded a synthetic 1st in the missed leg. Every actual
+     * finisher in that leg is shifted down one position and receives the
+     * points for the shifted position.
      *
      * @param  array<int, RankingLeg[]> $byPlayer
      * @param  int[]                    $ceIds
@@ -263,17 +264,6 @@ final class RankingCalculationService
         $warnings = [];
 
         $firstPts = (int) ($pointsMap->get(1) ?? 0);
-        $capPts   = min((int) ($pointsMap->get(2) ?? 0), $firstPts);
-
-        // Map ceId → actual winner player_id
-        $winnerByCE = [];
-        foreach ($byPlayer as $pid => $legs) {
-            foreach ($legs as $leg) {
-                if ($leg->position === 1) {
-                    $winnerByCE[$leg->categoryEventId] = (int) $pid;
-                }
-            }
-        }
 
         // Which players won exactly 2 events and have an event date available
         foreach ($byPlayer as $pid => $legs) {
@@ -314,18 +304,23 @@ final class RankingCalculationService
 
             $warnings[] = "Player {$pid} awarded synthetic 1st in CE {$missedCeId} (2-of-3 rule).";
 
-            // Cap actual winner for that missed event
-            $actualWinner = $winnerByCE[$missedCeId] ?? null;
-            if ($actualWinner !== null && $actualWinner !== (int) $pid) {
-                foreach ($byPlayer[$actualWinner] as &$leg) {
-                    if ($leg->categoryEventId === $missedCeId && $leg->position === 1) {
-                        $leg = $leg->withPoints($capPts);
-                        $warnings[] = "Player {$actualWinner} capped to {$capPts} pts in CE {$missedCeId} (displaced by 2-of-3 rule).";
-                        break;
+            $shifted = 0;
+            foreach ($byPlayer as &$playerLegs) {
+                foreach ($playerLegs as &$leg) {
+                    if ($leg->categoryEventId !== $missedCeId || $leg->synthetic) {
+                        continue;
                     }
+
+                    $shiftedPosition = $leg->position + 1;
+                    $shiftedPoints = (int) ($pointsMap->get($shiftedPosition) ?? 0);
+                    $leg = $leg->withPositionAndPoints($shiftedPosition, $shiftedPoints);
+                    $shifted++;
                 }
                 unset($leg);
             }
+            unset($playerLegs);
+
+            $warnings[] = "Shifted {$shifted} finisher(s) down one position in CE {$missedCeId} after the 2-of-3 automatic award.";
         }
 
         return [$byPlayer, $warnings];
@@ -359,7 +354,7 @@ final class RankingCalculationService
             $wins        = count(array_filter($counting, fn(RankingLeg $l) => $l->position === 1));
             $bestSingle  = empty($counting) ? 0 : max(array_column($counting, 'points'));
             $posSum      = array_sum(array_column($counting, 'position'));
-            $hasAutoAward = !empty(array_filter($counting, fn(RankingLeg $l) => $l->synthetic));
+            $hasAutoAward = !empty(array_filter($legs, fn(RankingLeg $l) => $l->synthetic));
 
             if ($total === 0) {
                 continue; // exclude players with zero total

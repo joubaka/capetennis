@@ -29,4 +29,17 @@ final readonly class RankingLeg
             $this->note,
         );
     }
+
+    public function withPositionAndPoints(int $position, int $points): self
+    {
+        return new self(
+            $this->playerId,
+            $this->categoryEventId,
+            $position,
+            $points,
+            $this->eventDate,
+            $this->synthetic,
+            $this->note,
+        );
+    }
 }

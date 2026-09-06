@@ -413,10 +413,10 @@ class RankingCalculationServiceTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 12. 2-of-3 auto-award: actual winner capped
+    // 12. 2-of-3 auto-award: every actual finisher shifts down
     // ------------------------------------------------------------------
 
-    public function test_auto_award_caps_displaced_winners_points(): void
+    public function test_auto_award_shifts_every_actual_finisher_down_one_position(): void
     {
         $this->series->update(['auto_award_rule' => true]);
 
@@ -427,6 +427,7 @@ class RankingCalculationServiceTest extends TestCase
             [2, 102, 2],
             [2, 103, 1],
             [3, 103, 2],
+            [4, 103, 3],
         ]);
 
         DB::table('ranking_list_category_events')->insertOrIgnore([
@@ -438,13 +439,40 @@ class RankingCalculationServiceTest extends TestCase
         $result = $this->service()->calculate($this->list);
 
         $p2 = $this->rowFor($result, 2);
-        // Player 2 won CE103 but was displaced; their CE103 leg should be capped to 2nd-place pts (800)
-        $ce103Leg = collect($p2->countingLegs)->firstWhere('categoryEventId', 103)
-            ?? collect($p2->droppedLegs)->firstWhere('categoryEventId', 103);
+        $p3 = $this->rowFor($result, 3);
+        $p4 = $this->rowFor($result, 4);
 
-        if ($ce103Leg) {
-            $this->assertLessThanOrEqual(800, $ce103Leg->points);
-        }
+        $player2Leg = collect($p2->countingLegs)->firstWhere('categoryEventId', 103)
+            ?? collect($p2->droppedLegs)->firstWhere('categoryEventId', 103);
+        $player3Leg = collect($p3->countingLegs)->firstWhere('categoryEventId', 103)
+            ?? collect($p3->droppedLegs)->firstWhere('categoryEventId', 103);
+        $player4Leg = collect($p4->countingLegs)->firstWhere('categoryEventId', 103)
+            ?? collect($p4->droppedLegs)->firstWhere('categoryEventId', 103);
+
+        $this->assertSame(2, $player2Leg->position);
+        $this->assertSame(800, $player2Leg->points);
+        $this->assertSame(3, $player3Leg->position);
+        $this->assertSame(600, $player3Leg->points);
+        $this->assertSame(4, $player4Leg->position);
+        $this->assertSame(400, $player4Leg->points);
+    }
+
+    public function test_auto_award_is_retained_when_synthetic_leg_is_dropped_by_best_two(): void
+    {
+        $this->series->update(['auto_award_rule' => true]);
+
+        $this->seedPositions([
+            [1, 102, 1],
+            [1, 103, 1],
+            [2, 101, 1],
+            [3, 101, 2],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+        $player = $this->rowFor($result, 1);
+
+        $this->assertTrue($player->autoAward);
+        $this->assertNotEmpty(array_filter($player->droppedLegs, fn(RankingLeg $leg) => $leg->synthetic));
     }
 
     // ------------------------------------------------------------------

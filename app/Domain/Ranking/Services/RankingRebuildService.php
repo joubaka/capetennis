@@ -425,6 +425,8 @@ final class RankingRebuildService
                 'category_event_id' => $l->categoryEventId,
                 'position'          => $l->position,
                 'points'            => $l->points,
+                'synthetic'         => $l->synthetic,
+                'note'              => $l->note,
                 'event_date'        => $l->eventDate,
             ], $row->droppedLegs),
             'tiebreak_notes' => $row->tiebreakNotes,

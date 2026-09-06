@@ -258,8 +258,8 @@ class RankingController extends Controller
           'event_date'    => $ce?->event?->start_date ?? null,
           'category_name' => $rankingCategoryName,
           'status'        => 'dropped',
-          'colour'        => 'red',
-          'is_auto'       => false,
+          'colour'        => !empty($leg['synthetic']) ? 'yellow' : 'red',
+          'is_auto'       => !empty($leg['synthetic']),
         ]);
       });
 
