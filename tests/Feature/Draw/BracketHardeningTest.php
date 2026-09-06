@@ -197,6 +197,46 @@ class BracketHardeningTest extends TestCase
         $this->assertSame($fixture->id, $bracket['brackets'][0]['rounds'][1][0]['fx']->id);
     }
 
+    public function test_position_bearing_championship_final_is_rendered_as_a_real_match(): void
+    {
+        $draw = $this->makeDraw(['published' => true]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin_playoffs',
+            'playoff_config' => [[
+                'name' => 'Main Draw (1-4)',
+                'slug' => 'main',
+                'size' => 4,
+                'positions' => [1],
+                'enabled' => true,
+            ]],
+        ]);
+
+        foreach ([1000, 1001] as $matchNr) {
+            $this->makeBracketFixture($draw, [
+                'round' => 1,
+                'match_nr' => $matchNr,
+                'position' => null,
+                'playoff_type' => null,
+            ]);
+        }
+
+        $final = $this->makeBracketFixture($draw, [
+            'round' => 2,
+            'match_nr' => 1002,
+            'position' => 1,
+            'playoff_type' => null,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+
+        $bracket = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+
+        $renderedFinal = $bracket['brackets'][0]['rounds'][2][0]['fx'];
+        $this->assertSame($final->id, $renderedFinal->id);
+        $this->assertSame($final->registration1_id, $renderedFinal->registration1_id);
+        $this->assertSame($final->registration2_id, $renderedFinal->registration2_id);
+    }
+
     // ─────────────────────────────────────────────
     // 5. Locked draw blocks bracket score delete (API)
     // ─────────────────────────────────────────────

@@ -110,7 +110,10 @@ class DynamicBracketEngine
 
         // Separate main bracket from position playoffs
         $mainFixtures = $hasFixtures
-            ? $stageFixtures->filter(fn($fx) => is_null($fx->position)
+            ? $stageFixtures->filter(fn($fx) =>
+                // Championship finals carry a finishing position but no
+                // playoff_type. A real position playoff has both fields.
+                ($fx->playoff_type === null || $fx->position === null)
                 && ! str_contains($fx->playoff_type ?? '', 'cons_sf'))
             : collect();
 
