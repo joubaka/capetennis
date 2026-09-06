@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Models\TeamFixture;
 use App\Models\TeamFixtureResult;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +45,10 @@ class TeamFixtureScoreService
                     TeamFixtureResult::whereIn('id', $results->pluck('id'))->delete();
                 }
             }
+
+            TeamFixture::whereKey($fixture->id)->update([
+                'match_status' => FixtureState::STATUS_COMPLETED,
+            ]);
         });
     }
 
@@ -52,6 +57,9 @@ class TeamFixtureScoreService
         DB::transaction(function () use ($fixture): void {
             TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
+            TeamFixture::whereKey($fixture->id)->update([
+                'match_status' => FixtureState::STATUS_PENDING,
+            ]);
         });
     }
 }

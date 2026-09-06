@@ -13,6 +13,7 @@ class TeamFixture extends Model
   protected $casts = [
     'scheduled' => 'boolean',
     'scheduled_at' => 'datetime',
+    'match_status' => 'integer',
   ];
 
   protected $with = ['teamResults', 'fixturePlayers', 'draw'];
@@ -35,6 +36,7 @@ class TeamFixture extends Model
     'venue_id',
     'court_label',
     'duration_min',
+    'match_status',
     // v2 rubber fields
     'team_tie_id',
     'rubber_sequence',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use App\Models\Event;
@@ -84,7 +85,11 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->actingAs($user)
             ->postJson(route('backend.roundrobin.score.store', $otherFixture), ['sets' => ['6-2', '6-3']])
             ->assertForbidden();
+        $this->actingAs($user)
+            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $otherFixture]))
+            ->assertForbidden();
         $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $otherFixture->id]);
+        $this->assertSame(FixtureState::STATUS_PENDING, (int) $otherFixture->fresh()->match_status);
     }
 
     public function test_queue_defaults_to_time_then_age_group_then_natural_court_number_and_scores_do_not_change_that_order(): void
@@ -198,6 +203,62 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $audit = DrawAuditLog::where('draw_id', $draw->id)->where('fixture_id', $fixture->id)->latest()->firstOrFail();
         $this->assertSame('Court phone A', $audit->payload['operator']);
+    }
+
+    public function test_individual_match_can_be_marked_playing_and_score_completion_turns_it_green(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Main Venue');
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)
+            ->withSession(['venue_scoring.operator' => 'Court phone A'])
+            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]))
+            ->assertOk()
+            ->assertJsonPath('status', 'playing');
+
+        $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $fixture->fresh()->match_status);
+        $this->assertDatabaseHas('draw_audit_logs', [
+            'draw_id' => $draw->id,
+            'fixture_id' => $fixture->id,
+            'action' => 'match_started',
+        ]);
+        $this->actingAs($user)
+            ->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]))
+            ->assertOk();
+        $this->assertSame(1, DrawAuditLog::where('draw_id', $draw->id)
+            ->where('fixture_id', $fixture->id)
+            ->where('action', 'match_started')
+            ->count());
+
+        $playing = $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]));
+        $playing->assertOk()
+            ->assertSee('data-score-state="playing"', false)
+            ->assertSee('is-playing', false)
+            ->assertSee('Playing now');
+
+        $this->actingAs($user)
+            ->postJson(route('api.draws.fixtures.score.store', [$draw, $fixture]), ['sets' => ['6-2', '6-3']])
+            ->assertOk();
+
+        $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $fixture->fresh()->match_status);
+        $completed = $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]));
+        $completed->assertOk()
+            ->assertSee('data-score-state="completed"', false)
+            ->assertSee('is-completed', false)
+            ->assertSee('Completed');
+    }
+
+    public function test_score_keeper_cannot_mark_another_events_match_playing(): void
+    {
+        [$event] = $this->scheduledFixture('Main Venue');
+        [$otherEvent, , , $otherFixture] = $this->scheduledFixture('Other Venue');
+        $user = $this->scorerFor($event);
+
+        $this->actingAs($user)
+            ->postJson(route('frontend.scoring.fixtures.playing', [$otherEvent, $otherFixture]))
+            ->assertForbidden();
+
+        $this->assertSame(FixtureState::STATUS_PENDING, (int) $otherFixture->fresh()->match_status);
     }
 
     public function test_event_scoring_ability_is_limited_to_an_assigned_scorer(): void
@@ -316,6 +377,13 @@ class VenueScoringWorkspaceTest extends TestCase
         ]);
         $user = $this->scorerFor($event);
 
+        $this->actingAs($user)
+            ->withSession(['venue_scoring.operator' => 'Team phone'])
+            ->postJson(route('frontend.scoring.team-fixtures.playing', [$event, $fixture]))
+            ->assertOk()
+            ->assertJsonPath('status', 'playing');
+        $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $fixture->fresh()->match_status);
+
         $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]))
             ->assertOk()
             ->assertSee('Team Cup')
@@ -329,6 +397,8 @@ class VenueScoringWorkspaceTest extends TestCase
                 'set2_home' => 6,
                 'set2_away' => 4,
             ])->assertOk();
+
+        $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $fixture->fresh()->match_status);
 
         $audit = DrawAuditLog::where('draw_id', $draw->id)->where('fixture_id', $fixture->id)->latest()->firstOrFail();
         $this->assertSame('team', $audit->payload['fixture_type']);

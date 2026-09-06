@@ -24,13 +24,15 @@
   .operator-change { margin-left: auto; color: var(--bs-primary); font-size: .82rem; font-weight: 700; }
   .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; }
   .scoring-queue-summary { margin-left: auto; color: #6c7a8c; font-size: .875rem; white-space: nowrap; }
-  .match-card { border-left: 5px solid #f0ad4e; }
-  .match-card.is-completed { border-left-color: #28a745; }
+  .match-card { border-left: 5px solid #6c8aa6; transition: background-color .2s ease, border-color .2s ease; }
+  .match-card.is-playing { background: #fff5e6; border-left-color: #f59f00; }
+  .match-card.is-completed { background: #edf9f0; border-left-color: #28a745; }
   .match-card.is-waiting { border-left-color: #adb5bd; }
   .match-card .card-body { padding: .85rem 1rem; }
   .match-card-header { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-bottom: .4rem; }
   .match-meta { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: #6c757d; font-size: .86rem; }
   .match-status { flex: 0 0 auto; }
+  .match-status-light { display: inline-block; width: .55rem; height: .55rem; margin-right: .3rem; border-radius: 50%; background: currentColor; vertical-align: .03rem; }
   .match-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; }
   .match-identity { min-width: 0; }
   .match-players { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }
@@ -39,6 +41,9 @@
   .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: #004177; text-align: right; }
   .match-score.is-empty { color: #7c8998; font-size: .82rem; font-weight: 600; }
   .score-action { min-height: 38px; white-space: nowrap; }
+  .match-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
+  .court-label.is-playing { color: #9a5b00; font-weight: 750; }
+  .court-label.is-completed { color: #237a3b; font-weight: 750; }
   .score-input { min-height: 48px; font-size: 1.05rem; text-align: center; }
   .operator-summary { cursor: pointer; list-style: none; }
   .operator-summary::-webkit-details-marker { display: none; }
@@ -69,7 +74,7 @@
     .match-identity { grid-column: 1 / -1; }
     .match-players { align-items: center; }
     .match-score { min-width: 0; text-align: left; }
-    .score-action { justify-self: end; }
+    .match-actions { justify-self: end; flex-wrap: wrap; }
     #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; min-height: 100%; }
     #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
     #score-entry-modal .modal-body { overflow-y: auto; }
@@ -181,6 +186,7 @@
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
           $draw = $match->draw;
           $hasScore = $match->fixtureResults->isNotEmpty();
+          $isPlaying = !$hasScore && (int) ($match->match_status ?? 0) === \App\Domain\Draws\Enums\FixtureState::STATUS_PARTIAL;
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
 
           if ($isTeamFixture) {
@@ -198,6 +204,7 @@
             $canWrite = auth()->user()->can('team-fixture.saveScore', $match) && !$draw->locked;
             $normalStore = route('frontend.fixtures.score.store', $match->id);
             $normalDelete = route('frontend.fixtures.score.delete', $match->id);
+            $playingUrl = route('frontend.scoring.team-fixtures.playing', ['event' => $event, 'fixture' => $match->id]);
             $engine = 'team';
           } else {
             $schedule = $match->orderOfPlay;
@@ -214,25 +221,27 @@
               && !$draw->locked;
             $normalStore = route('api.draws.fixtures.score.store', ['draw' => $match->draw_id, 'fixture' => $match->id]);
             $normalDelete = route('api.draws.fixtures.score.delete', ['draw' => $match->draw_id, 'fixture' => $match->id]);
+            $playingUrl = route('frontend.scoring.fixtures.playing', ['event' => $event, 'fixture' => $match->id]);
             $engine = $isFlexible ? 'flexible' : 'standard';
           }
           $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $match->draw_id, 'fixture' => $match->id]) : null;
           $scheduledMoment = $scheduleTime ? \Carbon\Carbon::parse($scheduleTime) : null;
-          $timing = $scheduledMoment && !$hasScore
-            ? ($scheduledMoment->isFuture() ? 'upcoming' : ($scheduledMoment->copy()->addMinutes(120)->isFuture() ? 'now' : 'past'))
+          $timing = $scheduledMoment && !$hasScore && !$isPlaying
+            ? ($scheduledMoment->isFuture() ? 'upcoming' : 'past')
             : ($hasScore ? 'completed' : 'unscheduled');
+          $state = $hasScore ? 'completed' : ($isPlaying ? 'playing' : 'outstanding');
         @endphp
-        <article class="card match-card {{ $hasScore ? 'is-completed' : ($hasPlayers ? '' : 'is-waiting') }}"
-                 data-score-state="{{ $hasScore ? 'completed' : 'outstanding' }}" data-score-timing="{{ $timing }}">
+        <article class="card match-card {{ $hasScore ? 'is-completed' : ($isPlaying ? 'is-playing' : ($hasPlayers ? '' : 'is-waiting')) }}"
+                 data-score-state="{{ $state }}" data-score-timing="{{ $timing }}">
           <div class="card-body">
             <div class="match-card-header">
               <div class="match-meta">
                 @if($scheduleTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($scheduleTime)->format('D H:i') }}</span>@endif
                 @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
-                @if($court)<span>Court {{ $court }}</span>@endif
+                @if($court)<span class="court-label {{ $isPlaying ? 'is-playing' : ($hasScore ? 'is-completed' : '') }}">Court {{ $court }}</span>@endif
               </div>
-              <span class="badge match-status {{ $hasScore ? 'bg-label-success' : ($hasPlayers ? 'bg-label-warning' : 'bg-label-secondary') }}">
-                {{ $hasScore ? 'Completed' : ($hasPlayers ? 'Awaiting score' : 'Waiting for players') }}
+              <span class="badge match-status {{ $hasScore ? 'bg-label-success' : ($isPlaying ? 'bg-label-warning' : ($hasPlayers ? 'bg-label-primary' : 'bg-label-secondary')) }}">
+                <span class="match-status-light" aria-hidden="true"></span>{{ $hasScore ? 'Completed' : ($isPlaying ? 'Playing now' : ($hasPlayers ? 'Awaiting court' : 'Waiting for players')) }}
               </span>
             </div>
             <div class="match-card-main">
@@ -248,15 +257,23 @@
                 {{ $hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'Not scored' }}
               </div>
               @if($canWrite && $hasPlayers)
-              <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
+              <div class="match-actions">
+                @unless($hasScore || $isPlaying)
+                <button type="button" class="btn btn-sm btn-outline-warning score-action js-start-match"
+                        data-playing-url="{{ $playingUrl }}">
+                  On court
+                </button>
+                @endunless
+                <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
                       data-fixture="{{ $match->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
                       data-engine="{{ $engine }}"
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
                       data-scores='@json($sets)'>
-                {{ $hasScore ? 'Correct score' : 'Enter score' }}
-              </button>
+                  {{ $hasScore ? 'Correct score' : 'Enter score' }}
+                </button>
+              </div>
               @elseif($draw->locked)
                 <span class="badge bg-label-secondary">Draw locked</span>
               @endif
@@ -371,6 +388,8 @@ document.addEventListener('DOMContentLoaded', function () {
       let visible = 0;
       document.querySelectorAll('[data-score-state]').forEach(function (card) {
         const matches = filter === 'all'
+          || (filter === 'outstanding' && card.dataset.scoreState !== 'completed')
+          || (filter === 'now' && card.dataset.scoreState === 'playing')
           || card.dataset.scoreState === filter
           || card.dataset.scoreTiming === filter;
         card.classList.toggle('d-none', !matches);
@@ -399,6 +418,19 @@ document.addEventListener('DOMContentLoaded', function () {
       });
       clearButton.classList.toggle('d-none', scores.length === 0);
       modal.show();
+    });
+  });
+
+  document.querySelectorAll('.js-start-match').forEach(function (button) {
+    button.addEventListener('click', async function () {
+      button.disabled = true;
+      try {
+        await request(button.dataset.playingUrl, 'POST', {});
+        window.location.reload();
+      } catch (failure) {
+        alert(failure.message);
+        button.disabled = false;
+      }
     });
   });
 

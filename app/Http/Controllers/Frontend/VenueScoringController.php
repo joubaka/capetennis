@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Frontend;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
@@ -11,8 +12,10 @@ use App\Models\OrderOfPlay;
 use App\Models\TeamFixture;
 use App\Models\Venue;
 use Carbon\CarbonInterface;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class VenueScoringController extends Controller
@@ -140,6 +143,7 @@ class VenueScoringController extends Controller
         $recentActivity = DrawAuditLog::query()
             ->whereIn('draw_id', $drawIds)
             ->whereIn('action', [
+                'match_started',
                 'score_saved', 'score_corrected', 'bracket_score_saved',
                 'bracket_score_corrected', 'score_deleted', 'monrad_score_changed',
             ])
@@ -173,6 +177,67 @@ class VenueScoringController extends Controller
         $request->session()->put('venue_scoring.operator', trim($validated['operator']));
 
         return back()->with('success', 'Scoring operator saved for this telephone.');
+    }
+
+    public function startFixture(Request $request, Event $event, Fixture $fixture): JsonResponse
+    {
+        $this->authorize('event.score', $event);
+
+        return DB::transaction(function () use ($request, $event, $fixture): JsonResponse {
+            $fixture = Fixture::query()->lockForUpdate()->with(['draw', 'fixtureResults', 'orderOfPlay'])->findOrFail($fixture->id);
+
+            abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
+            $this->authorize('saveScore', $fixture->draw);
+            abort_if($fixture->draw->locked, 403, 'Draw is locked.');
+            abort_if($fixture->fixtureResults->isNotEmpty(), 422, 'This match already has a result.');
+            abort_unless($fixture->registration1_id && $fixture->registration2_id, 422, 'Both players must be known before the match can start.');
+
+            $venueId = $fixture->orderOfPlay?->venue_id;
+            $this->requireAssignedVenue($request, $event, $venueId === null ? null : (int) $venueId);
+
+            if ((int) $fixture->match_status !== FixtureState::STATUS_PARTIAL) {
+                $fixture->update(['match_status' => FixtureState::STATUS_PARTIAL]);
+                DrawAuditLog::record($fixture->draw_id, 'match_started', $fixture->id, [
+                    'fixture_type' => 'individual',
+                    'venue_id' => $venueId,
+                ]);
+            }
+
+            return response()->json(['success' => true, 'status' => 'playing']);
+        });
+    }
+
+    public function startTeamFixture(Request $request, Event $event, TeamFixture $fixture): JsonResponse
+    {
+        $this->authorize('event.score', $event);
+
+        return DB::transaction(function () use ($request, $event, $fixture): JsonResponse {
+            $fixture = TeamFixture::query()->lockForUpdate()->with(['draw', 'fixtureResults'])->findOrFail($fixture->id);
+
+            abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
+            $this->authorize('team-fixture.saveScore', $fixture);
+            abort_if($fixture->draw->locked, 403, 'Draw is locked.');
+            abort_if($fixture->fixtureResults->isNotEmpty(), 422, 'This match already has a result.');
+
+            $this->requireAssignedVenue($request, $event, $fixture->venue_id === null ? null : (int) $fixture->venue_id);
+
+            if ((int) $fixture->match_status !== FixtureState::STATUS_PARTIAL) {
+                $fixture->update(['match_status' => FixtureState::STATUS_PARTIAL]);
+                DrawAuditLog::record($fixture->draw_id, 'match_started', $fixture->id, [
+                    'fixture_type' => 'team',
+                    'venue_id' => $fixture->venue_id,
+                ]);
+            }
+
+            return response()->json(['success' => true, 'status' => 'playing']);
+        });
+    }
+
+    private function requireAssignedVenue(Request $request, Event $event, ?int $venueId): void
+    {
+        if ($request->user()->is_event_score_keeper($event->id)) {
+            abort_unless($request->user()->canScoreVenue($event->id, $venueId), 403);
+        }
     }
 
     private function scheduledTime(Fixture|TeamFixture $match): int
