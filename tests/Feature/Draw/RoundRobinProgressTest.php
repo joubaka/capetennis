@@ -3,9 +3,11 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\{CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, FixtureResult, Player, Registration, User};
+use App\Services\DrawService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class RoundRobinProgressTest extends TestCase
@@ -162,5 +164,84 @@ class RoundRobinProgressTest extends TestCase
         $draw->update(['locked' => true]);
 
         $this->postJson(route('backend.draw.progress', $draw))->assertForbidden();
+    }
+
+    public function test_correcting_a_bracket_winner_replaces_winner_and_loser_in_downstream_fixtures(): void
+    {
+        [$draw, $category] = $this->draw([]);
+        [$one, $two, $three, $four] = $this->entrants($category, 4);
+
+        $final = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 103,
+        ]);
+        $third = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 104,
+        ]);
+        $semiOne = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 1, 'match_nr' => 101,
+            'registration1_id' => $one->id, 'registration2_id' => $two->id,
+            'parent_fixture_id' => $final->id, 'loser_parent_fixture_id' => $third->id,
+        ]);
+        $semiTwo = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 1, 'match_nr' => 102,
+            'registration1_id' => $three->id, 'registration2_id' => $four->id,
+            'parent_fixture_id' => $final->id, 'loser_parent_fixture_id' => $third->id,
+        ]);
+
+        $service = app(DrawService::class);
+        $service->saveBracketScore($semiOne, [[3, 1]]);
+        $service->saveBracketScore($semiTwo, [[0, 3]]);
+
+        $this->assertSame($four->id, $final->fresh()->registration2_id);
+        $this->assertSame($three->id, $third->fresh()->registration2_id);
+
+        $service->saveBracketScore($semiTwo->fresh(), [[3, 0]]);
+
+        $this->assertSame($three->id, $final->fresh()->registration2_id);
+        $this->assertSame($four->id, $third->fresh()->registration2_id);
+        $this->assertSame($three->id, $semiTwo->fresh()->winner_registration);
+        $this->assertDatabaseCount('fixture_results', 2);
+        $this->assertDatabaseHas('fixture_results', [
+            'fixture_id' => $semiTwo->id,
+            'registration1_score' => 3,
+            'registration2_score' => 0,
+            'winner_registration' => $three->id,
+        ]);
+    }
+
+    public function test_winner_changing_correction_is_blocked_after_downstream_result_exists(): void
+    {
+        [$draw, $category] = $this->draw([]);
+        [$one, $two, $otherFinalist] = $this->entrants($category, 3);
+
+        $final = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2, 'match_nr' => 202,
+            'registration2_id' => $otherFinalist->id,
+        ]);
+        $semi = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 1, 'match_nr' => 201,
+            'registration1_id' => $one->id, 'registration2_id' => $two->id,
+            'parent_fixture_id' => $final->id,
+        ]);
+
+        $service = app(DrawService::class);
+        $service->saveBracketScore($semi, [[3, 1]]);
+        $service->saveBracketScore($final->fresh(), [[3, 0]]);
+
+        try {
+            $service->saveBracketScore($semi->fresh(), [[1, 3]]);
+            $this->fail('Expected the correction to be blocked.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+            $this->assertStringContainsString('Delete that downstream result first', $exception->getMessage());
+        }
+
+        $this->assertSame($one->id, $semi->fresh()->winner_registration);
+        $this->assertSame($one->id, $final->fresh()->registration1_id);
+        $this->assertDatabaseHas('fixture_results', [
+            'fixture_id' => $semi->id,
+            'registration1_score' => 3,
+            'registration2_score' => 1,
+        ]);
     }
 }

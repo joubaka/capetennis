@@ -1210,21 +1210,55 @@ class DrawService
     ]);
 
     DB::transaction(function () use ($fixture, $sets) {
+      $fixture = Fixture::query()
+        ->with(['draw', 'fixtureResults'])
+        ->lockForUpdate()
+        ->findOrFail($fixture->id);
+
+      $wins1 = 0;
+      $wins2 = 0;
+
+      foreach ($sets as [$s1, $s2]) {
+        if ($s1 > $s2) $wins1++;
+        if ($s2 > $s1) $wins2++;
+      }
+
+      $winner = $wins1 > $wins2
+        ? $fixture->registration1_id
+        : $fixture->registration2_id;
+
+      $loser = ($winner === $fixture->registration1_id)
+        ? $fixture->registration2_id
+        : $fixture->registration1_id;
+
+      $winnerChanged = $fixture->winner_registration !== null
+        && (int) $fixture->winner_registration !== (int) $winner;
+
+      if ($winnerChanged) {
+        $this->assertDownstreamFixturesAreUnscored($fixture);
+
+        // Remove the old winner and loser from their downstream slots before
+        // applying the corrected result. Advancement is deliberately
+        // idempotent and will not overwrite a different occupied player.
+        $this->engine->forDraw($fixture->draw)->rollbackFixture(
+          $fixture,
+          fn(Fixture $fx) => $this->canonicalProgression->rollback($fx)
+        );
+
+        $fixture->refresh();
+      }
 
       // DELETE OLD RESULTS
       Log::info("🧹 [BracketScore] Clearing old fixtureResults for fixture {$fixture->id}");
       $fixture->fixtureResults()->delete();
 
-      $wins1 = 0;
-      $wins2 = 0;
-
       foreach ($sets as $i => [$s1, $s2]) {
 
-        $winner = $s1 > $s2
+        $setWinner = $s1 > $s2
           ? $fixture->registration1_id
           : $fixture->registration2_id;
 
-        $loser = $s1 > $s2
+        $setLoser = $s1 > $s2
           ? $fixture->registration2_id
           : $fixture->registration1_id;
 
@@ -1233,32 +1267,19 @@ class DrawService
           'set_nr' => $i + 1,
           'p1_score' => $s1,
           'p2_score' => $s2,
-          'winner_of_set' => $winner,
-          'loser_of_set' => $loser,
+          'winner_of_set' => $setWinner,
+          'loser_of_set' => $setLoser,
         ]);
 
         $fixture->fixtureResults()->create([
           'set_nr' => $i + 1,
           'registration1_score' => $s1,
           'registration2_score' => $s2,
-          'winner_registration' => $winner,
-          'loser_registration' => $loser,
+          'winner_registration' => $setWinner,
+          'loser_registration' => $setLoser,
         ]);
 
-        if ($s1 > $s2)
-          $wins1++;
-        if ($s2 > $s1)
-          $wins2++;
       }
-
-      // DETERMINE MATCH WINNER
-      $winner = $wins1 > $wins2
-        ? $fixture->registration1_id
-        : $fixture->registration2_id;
-
-      $loser = ($winner === $fixture->registration1_id)
-        ? $fixture->registration2_id
-        : $fixture->registration1_id;
 
       Log::info("🏆 [BracketScore] Fixture Winner Calculated", [
         'fixture_id' => $fixture->id,
@@ -1330,6 +1351,42 @@ class DrawService
     ];
 
 
+  }
+
+  /**
+   * A winner-changing correction may replace players in the immediately
+   * following fixtures, but it must never invalidate a result already entered
+   * for one of those fixtures.
+   */
+  private function assertDownstreamFixturesAreUnscored(Fixture $fixture): void
+  {
+    $targetIds = collect([
+      $fixture->parent_fixture_id,
+      $fixture->loser_parent_fixture_id,
+    ])->filter()->unique()->values();
+
+    if ($targetIds->isEmpty()) {
+      return;
+    }
+
+    $scoredTarget = Fixture::query()
+      ->whereIn('id', $targetIds)
+      ->withCount('fixtureResults')
+      ->lockForUpdate()
+      ->get()
+      ->first(fn(Fixture $target) =>
+        $target->fixture_results_count > 0
+        || $target->winner_registration !== null
+        || (int) $target->match_status > 0
+      );
+
+    abort_if(
+      $scoredTarget !== null,
+      409,
+      'This correction changes the winner, but downstream match '
+        . ($scoredTarget?->match_nr ?? $scoredTarget?->id)
+        . ' already has a result. Delete that downstream result first, then correct this score.'
+    );
   }
 
 
