@@ -463,20 +463,26 @@
     draft.slots = Object.assign({}, draft.slots);
     $('fm-board').replaceChildren();
     $('fm-size').value = draft.size;
-    $('fm-status').textContent = state.locked
-      ? 'Locked'
-      : state.published
-      ? 'Published'
-      : state.generated
-      ? config.demo
-        ? 'Demo preview'
-        : 'Ready to publish'
-      : dirty
-      ? 'Unsaved draft'
-      : 'Draft';
-    $('fm-phase').textContent = state.generated
-      ? (config.workflow === 'playoffs' ? 'Play the knockout draw' : 'Play the draw and complete every position')
-      : 'Step 2 · Bracket size and starting positions';
+    const status = $('fm-status');
+    if (status) {
+      status.textContent = state.locked
+        ? 'Locked'
+        : state.published
+        ? 'Published'
+        : state.generated
+        ? config.demo
+          ? 'Demo preview'
+          : 'Ready to publish'
+        : dirty
+        ? 'Unsaved draft'
+        : 'Draft';
+    }
+    const phase = $('fm-phase');
+    if (phase) {
+      phase.textContent = state.generated
+        ? (config.workflow === 'playoffs' ? 'Play the knockout draw' : 'Play the draw and complete every position')
+        : 'Step 2 · Bracket size and starting positions';
+    }
     $('fm-board-title').textContent = state.generated ? (config.workflow === 'playoffs' ? 'Playoff bracket' : 'Main draw & placement matches') : 'Starting positions';
     $('fm-sidebar').hidden = state.generated || config.readOnly;
     $('fm-workspace')?.classList.toggle('generated', state.generated);

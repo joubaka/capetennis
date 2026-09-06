@@ -47,6 +47,8 @@ class CanonicalDrawWorkspaceTest extends TestCase
         }
         $this->get($url)->assertOk()->assertSee('Players &amp; Positions', false)
             ->assertSee('Draw &amp; Results', false)->assertSee('Setup &amp; Rules', false)
+            ->assertSee('Step 2 · Bracket size and starting positions')
+            ->assertSee('Drag a player into a box, or click a box to choose a player.')
             ->assertSee('Print draw &amp; results', false)->assertSee('Print draw only')
             ->assertSee('id="fm-draw-only-print"', false)->assertSee('data-share-draw', false)
             ->assertSee('Back to Event')->assertSee('name="name"', false)
@@ -83,6 +85,9 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertSee('id="fm-schedule-panel" class="fm-public-panel fm-public-timetable" role="tabpanel" aria-labelledby="fm-schedule-tab" hidden', false)
             ->assertSee('id="fm-draw-panel" class="fm-public-panel" role="tabpanel" aria-labelledby="fm-draw-tab"', false)
             ->assertSee('Match times have not been published yet.')
+            ->assertDontSee('Play the draw and complete every position')
+            ->assertDontSee('Drag a player into a box, or click a box to choose a player.')
+            ->assertDontSee('id="fm-status"', false)
             ->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
         $this->postJson(route('draw.toggle.publish.schedule', $draw))->assertOk();
         $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court')
