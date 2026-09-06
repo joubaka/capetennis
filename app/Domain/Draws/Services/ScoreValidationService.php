@@ -12,8 +12,17 @@ final class ScoreValidationService
      */
     public function validate(Fixture $fixture, array $sets): array
     {
-        if ($sets === [] || count($sets) > 3) {
-            return ['valid' => false, 'message' => 'Enter between one and three sets.'];
+        $draw = $fixture->relationLoaded('draw')
+            ? $fixture->getRelation('draw')
+            : ($fixture->exists ? $fixture->draw : null);
+        $settings = $draw?->relationLoaded('settings')
+            ? $draw->getRelation('settings')
+            : ($draw?->exists ? $draw->settings : null);
+        $configuredSets = max(1, min(5, (int) ($settings?->num_sets ?: 3)));
+        if ($sets === [] || count($sets) > $configuredSets) {
+            $label = $configuredSets === 1 ? 'set' : 'sets';
+
+            return ['valid' => false, 'message' => "This draw allows {$configuredSets} {$label} per match."];
         }
 
         foreach ($sets as $index => [$home, $away]) {

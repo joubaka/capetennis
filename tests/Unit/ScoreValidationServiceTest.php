@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Domain\Draws\Services\ScoreValidationService;
+use App\Models\Draw;
+use App\Models\DrawSetting;
 use App\Models\Fixture;
 use PHPUnit\Framework\TestCase;
 
@@ -26,5 +28,18 @@ class ScoreValidationServiceTest extends TestCase
         );
 
         $this->assertFalse($result['valid']);
+    }
+
+    public function test_a_one_set_draw_rejects_an_accidental_second_set(): void
+    {
+        $draw = (new Draw())->setRelation('settings', new DrawSetting(['num_sets' => 1]));
+        $fixture = (new Fixture())->setRelation('draw', $draw);
+        $validator = new ScoreValidationService();
+
+        $this->assertTrue($validator->validate($fixture, [[3, 1]])['valid']);
+        $this->assertSame(
+            'This draw allows 1 set per match.',
+            $validator->validate($fixture, [[3, 1], [3, 0]])['message'],
+        );
     }
 }

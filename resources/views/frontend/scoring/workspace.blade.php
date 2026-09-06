@@ -276,6 +276,7 @@
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
+                      data-num-sets="{{ max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
                       data-require-full-sets="{{ $isFlexible && ($draw->settings?->requiresFullSets() ?? true) ? '1' : '0' }}"
                       data-scores='@json($sets)'>
                   {{ $hasScore ? 'Correct score' : 'Enter score' }}
@@ -480,6 +481,12 @@ document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       document.getElementById('score-home-label').textContent = active.home;
       document.getElementById('score-away-label').textContent = active.away;
+      const numberOfSets = Math.max(1, Math.min(5, Number(active.numSets || 3)));
+      document.querySelectorAll('.score-set-row').forEach(function (row, index) {
+        const hidden = index >= numberOfSets;
+        row.classList.toggle('d-none', hidden);
+        row.querySelectorAll('input').forEach(input => input.disabled = hidden);
+      });
       const scores = JSON.parse(active.scores || '[]');
       document.querySelectorAll('.score-input').forEach(input => input.value = '');
       scores.forEach(function (set, index) {
