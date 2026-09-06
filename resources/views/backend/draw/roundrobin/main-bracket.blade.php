@@ -72,7 +72,7 @@
      ============================================================ -->
 <line x1="458" y1="138" x2="658" y2="138" stroke="black"/>
 
-<text x="468" y="135" class="svg_name">
+<text x="468" y="135" class="svg_name bracket-winner">
     {{ $final?->winner?->players?->pluck('full_name')->join(' / ') ?? '' }}
 </text>
 

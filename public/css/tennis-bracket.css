@@ -30,6 +30,24 @@
 .ct-bracket-svg [data-ct-source] { visibility: hidden !important; }
 .ct-bracket-svg .match-row-bg { fill: #fff; stroke: none; }
 .ct-bracket-svg .player-name { fill: var(--ct-bracket-ink); }
+.ct-bracket-svg .player-name,
+.ct-bracket-svg .svg_name,
+.ct-bracket-svg .name {
+  font-size: 12px;
+  font-weight: 700;
+}
+.ct-bracket-svg .svg_name,
+.ct-bracket-svg .name {
+  fill: #155d91;
+  paint-order: stroke fill;
+  stroke: #eaf5fc;
+  stroke-width: 7px;
+  stroke-linejoin: round;
+}
+.ct-bracket-svg .player-name.bye {
+  fill: #94a3b8;
+  font-style: italic;
+}
 .ct-bracket-svg .player-identity-bg {
   fill: #eaf5fc;
   stroke: #b9d8ee;
@@ -48,7 +66,13 @@
 }
 .ct-bracket-svg .score-green,
 .ct-bracket-svg .match-score,
-.ct-bracket-svg .score-svg { fill: var(--ct-bracket-score); }
+.ct-bracket-svg .score-svg,
+.ct-bracket-svg .score { fill: var(--ct-bracket-score); }
+.ct-bracket-svg .bracket-winner {
+  fill: var(--ct-bracket-score) !important;
+  font-weight: 700;
+  stroke: #fff;
+}
 .ct-bracket-svg .id-red { fill: var(--ct-bracket-muted); }
 @media print {
   .ct-bracket-svg { max-width: 100%; height: auto; overflow: visible; }

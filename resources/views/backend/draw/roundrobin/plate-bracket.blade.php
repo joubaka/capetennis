@@ -72,8 +72,8 @@
     <line x1="108" y1="148" x2="258" y2="148" stroke="black"/>
     <line x1="108" y1="188" x2="258" y2="188" stroke="black"/>
     <line x1="258" y1="148" x2="258" y2="188" stroke="black"/>
-    <text x="118" y="143" class="name">{{ $name($m1, 1) }}</text>
-    <text x="118" y="183" class="name">{{ $name($m1, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $m1, 'slot' => 1, 'x' => 118, 'y' => 143, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $m1, 'slot' => 2, 'x' => 118, 'y' => 183, 'maxWidth' => 135])
     <text x="120" y="166" class="score">{{ $score($m1) }}</text>
 
     <!-- P-R1-M2 -->
@@ -81,8 +81,8 @@
     <line x1="108" y1="228" x2="258" y2="228" stroke="black"/>
     <line x1="108" y1="268" x2="258" y2="268" stroke="black"/>
     <line x1="258" y1="228" x2="258" y2="268" stroke="black"/>
-    <text x="118" y="223" class="name">{{ $name($m2, 1) }}</text>
-    <text x="118" y="263" class="name">{{ $name($m2, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $m2, 'slot' => 1, 'x' => 118, 'y' => 223, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $m2, 'slot' => 2, 'x' => 118, 'y' => 263, 'maxWidth' => 135])
     <text x="118" y="248" class="score">{{ $score($m2) }}</text>
 
     <!-- P-R1-M3 -->
@@ -90,8 +90,8 @@
     <line x1="108" y1="308" x2="258" y2="308" stroke="black"/>
     <line x1="108" y1="348" x2="258" y2="348" stroke="black"/>
     <line x1="258" y1="308" x2="258" y2="348" stroke="black"/>
-    <text x="118" y="303" class="name">{{ $name($m3, 1) }}</text>
-    <text x="118" y="343" class="name">{{ $name($m3, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $m3, 'slot' => 1, 'x' => 118, 'y' => 303, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $m3, 'slot' => 2, 'x' => 118, 'y' => 343, 'maxWidth' => 135])
     <text x="118" y="328" class="score">{{ $score($m3) }}</text>
 
     <!-- P-R1-M4 -->
@@ -99,8 +99,8 @@
     <line x1="108" y1="388" x2="258" y2="388" stroke="black"/>
     <line x1="108" y1="428" x2="258" y2="428" stroke="black"/>
     <line x1="258" y1="388" x2="258" y2="428" stroke="black"/>
-    <text x="118" y="383" class="name">{{ $name($m4, 1) }}</text>
-    <text x="118" y="423" class="name">{{ $name($m4, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $m4, 'slot' => 1, 'x' => 118, 'y' => 383, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $m4, 'slot' => 2, 'x' => 118, 'y' => 423, 'maxWidth' => 135])
     <text x="118" y="408" class="score">{{ $score($m4) }}</text>
 
     <!-- ============================================================
@@ -112,8 +112,8 @@
     <line x1="258" y1="168" x2="458" y2="168" stroke="black"/>
     <line x1="258" y1="248" x2="458" y2="248" stroke="black"/>
     <line x1="458" y1="168" x2="458" y2="248" stroke="black"/>
-    <text x="268" y="163" class="name">{{ $name($sf1, 1) }}</text>
-    <text x="268" y="243" class="name">{{ $name($sf1, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $sf1, 'slot' => 1, 'x' => 268, 'y' => 163, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['fixture' => $sf1, 'slot' => 2, 'x' => 268, 'y' => 243, 'maxWidth' => 185])
     <text x="268" y="208" class="score">{{ $score($sf1) }}</text>
 
     <!-- P-R2-M6 -->
@@ -121,8 +121,8 @@
     <line x1="258" y1="328" x2="458" y2="328" stroke="black"/>
     <line x1="258" y1="408" x2="458" y2="408" stroke="black"/>
     <line x1="458" y1="328" x2="458" y2="408" stroke="black"/>
-    <text x="268" y="323" class="name">{{ $name($sf2, 1) }}</text>
-    <text x="268" y="403" class="name">{{ $name($sf2, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $sf2, 'slot' => 1, 'x' => 268, 'y' => 323, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['fixture' => $sf2, 'slot' => 2, 'x' => 268, 'y' => 403, 'maxWidth' => 185])
     <text x="268" y="368" class="score">{{ $score($sf2) }}</text>
 
     <!-- ============================================================
@@ -133,13 +133,13 @@
     <text x="440" y="163" class="mnr">P-R3-M7</text>
     <line x1="658" y1="208" x2="658" y2="122" stroke="black"/>
     <line x1="458" y1="122" x2="658" y2="122" stroke="black"/>
-    <text x="465" y="104" class="name">{{ $regName($main_sf_loser2) }}</text>
+    @include('draw.partials.svg-player-identity', ['registration' => $main_sf_loser2, 'x' => 465, 'y' => 104, 'maxWidth' => 185])
 
     <!-- P-R3-M8 -->
     <text x="440" y="408" class="mnr">P-R3-M8</text>
     <line x1="458" y1="457" x2="658" y2="457" stroke="black"/>
     <line x1="657" y1="367" x2="658" y2="457" stroke="black"/>
-    <text x="466" y="444" class="name">{{ $regName($main_sf_loser1) }}</text>
+    @include('draw.partials.svg-player-identity', ['registration' => $main_sf_loser1, 'x' => 466, 'y' => 444, 'maxWidth' => 185])
 
     <!-- ============================================================
          ROUND 4
@@ -149,8 +149,8 @@
     <text x="638" y="288" class="mnr">P-R4-M9</text>
     <line x1="458" y1="208" x2="658" y2="208" stroke="black"/>
     <line x1="458" y1="367" x2="658" y2="367" stroke="black"/>
-    <text x="468" y="203" class="name">{{ $name($final, 1) }}</text>
-    <text x="466" y="361" class="name">{{ $name($final, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $final, 'slot' => 1, 'x' => 468, 'y' => 203, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['fixture' => $final, 'slot' => 2, 'x' => 466, 'y' => 361, 'maxWidth' => 185])
     <text x="468" y="288" class="score">{{ $score($final) }}</text>
 
     <!-- P-R4-M10 (3rd/4th) -->
@@ -158,8 +158,8 @@
     <line x1="658" y1="508" x2="858" y2="508" stroke="black"/>
     <line x1="658" y1="548" x2="858" y2="548" stroke="black"/>
     <line x1="858" y1="508" x2="858" y2="548" stroke="black"/>
-    <text x="668" y="503" class="name">{{ $regName($sf1_loser) }}</text>
-    <text x="668" y="543" class="name">{{ $regName($sf2_loser) }}</text>
+    @include('draw.partials.svg-player-identity', ['registration' => $sf1_loser, 'x' => 668, 'y' => 503, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['registration' => $sf2_loser, 'x' => 668, 'y' => 543, 'maxWidth' => 185])
     <text x="668" y="523" class="score">{{ $score($plate_34) }}</text>
 
     <!-- WINNER LINE – P-R4-M10 -->
@@ -170,8 +170,8 @@
     <line x1="258" y1="508" x2="458" y2="508" stroke="black"/>
     <line x1="258" y1="548" x2="458" y2="548" stroke="black"/>
     <line x1="458" y1="508" x2="458" y2="548" stroke="black"/>
-    <text x="268" y="503" class="name">{{ $regName($sf1_loser) }}</text>
-    <text x="268" y="543" class="name">{{ $regName($sf2_loser) }}</text>
+    @include('draw.partials.svg-player-identity', ['registration' => $sf1_loser, 'x' => 268, 'y' => 503, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['registration' => $sf2_loser, 'x' => 268, 'y' => 543, 'maxWidth' => 185])
     <text x="268" y="523" class="score">{{ $score($plate_78 ?? null) }}</text>
     <line x1="458" y1="528" x2="558" y2="528" stroke="black"/>
 
@@ -193,8 +193,8 @@
     <line x1="108" y1="718" x2="258" y2="718" stroke="black"/>
     <line x1="258" y1="678" x2="258" y2="718" stroke="black"/>
 
-    <text x="118" y="673" class="name">{{ $regName($csf1?->registration1) }}</text>
-    <text x="118" y="713" class="name">{{ $regName($csf1?->registration2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $csf1, 'slot' => 1, 'x' => 118, 'y' => 673, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $csf1, 'slot' => 2, 'x' => 118, 'y' => 713, 'maxWidth' => 135])
     <text x="118" y="696" class="score">{{ $score($csf1) }}</text>
 </g>
 
@@ -206,8 +206,8 @@
     <line x1="108" y1="798" x2="258" y2="798" stroke="black"/>
     <line x1="258" y1="758" x2="258" y2="798" stroke="black"/>
 
-    <text x="118" y="753" class="name">{{ $regName($csf2?->registration1) }}</text>
-    <text x="118" y="793" class="name">{{ $regName($csf2?->registration2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $csf2, 'slot' => 1, 'x' => 118, 'y' => 753, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['fixture' => $csf2, 'slot' => 2, 'x' => 118, 'y' => 793, 'maxWidth' => 135])
     <text x="118" y="776" class="score">{{ $score($csf2) }}</text>
 </g>
 
@@ -219,15 +219,15 @@
     <line x1="258" y1="778" x2="458" y2="778" stroke="black"/>
     <line x1="458" y1="698" x2="458" y2="778" stroke="black"/>
 
-    <text x="268" y="693" class="name">{{ $name($cfinal, 1) }}</text>
-    <text x="268" y="773" class="name">{{ $name($cfinal, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['fixture' => $cfinal, 'slot' => 1, 'x' => 268, 'y' => 693, 'maxWidth' => 185])
+    @include('draw.partials.svg-player-identity', ['fixture' => $cfinal, 'slot' => 2, 'x' => 268, 'y' => 773, 'maxWidth' => 185])
     <text x="268" y="733" class="score">{{ $score($cfinal) }}</text>
 </g>
 
 <!-- WINNER LINE — Consolation Final -->
 <line x1="458" y1="738" x2="658" y2="738" stroke="black"/>
 
-<text x="468" y="735" class="name">
+<text x="468" y="735" class="name bracket-winner">
     {{ $cfinal?->winner?->players?->pluck('full_name')->join(' / ') ?? '' }}
 </text>
 
@@ -239,8 +239,8 @@
     <line x1="108" y1="878" x2="258" y2="878" stroke="black"/>
     <line x1="258" y1="838" x2="258" y2="878" stroke="black"/>
 
-    <text x="118" y="833" class="name">{{ $name($csf1?->loser_fixture ?? null, 1) }}</text>
-    <text x="118" y="873" class="name">{{ $name($csf2?->loser_fixture ?? null, 2) }}</text>
+    @include('draw.partials.svg-player-identity', ['name' => $name($csf1?->loser_fixture ?? null, 1), 'x' => 118, 'y' => 833, 'maxWidth' => 135])
+    @include('draw.partials.svg-player-identity', ['name' => $name($csf2?->loser_fixture ?? null, 2), 'x' => 118, 'y' => 873, 'maxWidth' => 135])
     <text x="118" y="856" class="score">
         {{ $score($c34 ?? null) }}
     </text>

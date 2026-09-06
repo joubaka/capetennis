@@ -21,6 +21,16 @@
   }
 </style>
 
+@php
+    $registration1 = $fx?->registration1;
+    $registration2 = $fx?->registration2;
+    $player1Name = $registration1?->players?->pluck('full_name')->join(' / ') ?: ($registration2 ? 'BYE' : '---');
+    $player2Name = $registration2?->players?->pluck('full_name')->join(' / ') ?: ($registration1 ? 'BYE' : '---');
+    $winnerRegistration = (int) ($fx?->winner_registration ?? 0);
+    $automaticBye = $winnerRegistration > 0
+        && (($registration1 && ! $registration2) || (! $registration1 && $registration2));
+@endphp
+
 <g transform="translate({{ $x }}, {{ $y }})">
 
     {{-- MATCH NUMBER (center-left) --}}
@@ -44,13 +54,18 @@
     <line x1="150" y1="0" x2="150" y2="{{ $height }}" stroke="black"/>
 
     {{-- PLAYER 1 NAME (top) --}}
-    <text x="10" y="-3" class="svg_name">
-        {{ name1($fx) }}
-    </text>
+    @include('draw.partials.svg-player-identity', [
+        'name' => $player1Name,
+        'x' => 10,
+        'y' => -3,
+        'maxWidth' => 136,
+        'isBye' => ! $registration1 && (bool) $registration2,
+        'isWinner' => $registration1 && $winnerRegistration === (int) $registration1->id,
+    ])
 
     {{-- SCORE (under player 1 name) --}}
     <text x="10" y="{{ $height/2 }}" class="score-svg">
-        {{ score($fx) }}
+        {{ $automaticBye ? 'BYE · ADVANCES' : score($fx) }}
     </text>
 
     {{-- SCHEDULE (centered, 5px above bottom) --}}
@@ -78,9 +93,14 @@
     </text>
 
     {{-- PLAYER 2 BELOW --}}
-    <text x="10" y="{{ $height + 13 }}" class="svg_name">
-        {{ name2($fx) }}
-    </text>
+    @include('draw.partials.svg-player-identity', [
+        'name' => $player2Name,
+        'x' => 10,
+        'y' => $height + 13,
+        'maxWidth' => 136,
+        'isBye' => ! $registration2 && (bool) $registration1,
+        'isWinner' => $registration2 && $winnerRegistration === (int) $registration2->id,
+    ])
 
 </g>
 
@@ -112,7 +132,7 @@
     <text
         x="{{ $x + $boxWidth + $lineWidth - 90 }}"
         y="{{ $y + ($height / 2) - 6 }}"
-        class="svg_name"
+        class="svg_name bracket-winner"
     >
         {{ $winner }}
     </text>

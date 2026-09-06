@@ -51,4 +51,18 @@ class CanonicalBracketPresentationTest extends TestCase
         $this->assertSame(1, substr_count($html, 'css/tennis-bracket.css?v='));
         $this->assertSame(1, substr_count($html, 'js/tennis-bracket.js?v='));
     }
+
+    public function test_all_active_playoff_renderers_share_monrad_player_identity_styles(): void
+    {
+        $css = file_get_contents(public_path('css/tennis-bracket.css'));
+        $interproMatch = file_get_contents(resource_path('views/svg/match.blade.php'));
+        $legacyPlate = file_get_contents(resource_path('views/backend/draw/roundrobin/plate-bracket.blade.php'));
+
+        $this->assertStringContainsString('.player-identity-bg', $css);
+        $this->assertStringContainsString('.player-identity-text', $css);
+        $this->assertStringContainsString('.bracket-winner', $css);
+        $this->assertStringContainsString("draw.partials.svg-player-identity", $interproMatch);
+        $this->assertStringContainsString("draw.partials.svg-player-identity", $legacyPlate);
+        $this->assertStringContainsString('BYE · ADVANCES', $interproMatch);
+    }
 }
