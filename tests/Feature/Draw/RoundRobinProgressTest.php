@@ -3,6 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\{CategoryEvent, CategoryEventRegistration, Draw, Event, Fixture, FixtureResult, Player, Registration, User};
+use App\Domain\Draws\Services\ByeAdvancementService;
 use App\Services\DrawService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -242,6 +243,56 @@ class RoundRobinProgressTest extends TestCase
             'fixture_id' => $semi->id,
             'registration1_score' => 3,
             'registration2_score' => 1,
+        ]);
+    }
+
+    public function test_bracket_score_cascades_a_loser_into_a_terminal_bye_playoff(): void
+    {
+        [$draw, $category] = $this->draw([]);
+        [$byeWinner, $winner, $loser] = $this->entrants($category, 3);
+
+        $placingMatch = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'PLATE',
+            'round' => 2,
+            'match_nr' => 1007,
+            'position' => 7,
+            'playoff_type' => '7th/8th',
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'PLATE',
+            'round' => 1,
+            'match_nr' => 1004,
+            'registration1_id' => $byeWinner->id,
+            'registration2_id' => null,
+            'winner_registration' => $byeWinner->id,
+            'loser_parent_fixture_id' => $placingMatch->id,
+        ]);
+        $playedSemi = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'PLATE',
+            'round' => 1,
+            'match_nr' => 1005,
+            'registration1_id' => $winner->id,
+            'registration2_id' => $loser->id,
+            'loser_parent_fixture_id' => $placingMatch->id,
+        ]);
+
+        // The earlier BYE cannot resolve the placing match until its other
+        // semifinal has supplied a loser.
+        app(ByeAdvancementService::class)->advance($draw);
+        $this->assertNull($placingMatch->fresh()->winner_registration);
+
+        app(DrawService::class)->saveBracketScore($playedSemi, [[3, 2]]);
+
+        $placingMatch->refresh();
+        $this->assertSame($loser->id, $placingMatch->registration2_id);
+        $this->assertSame($loser->id, $placingMatch->winner_registration);
+        $this->assertSame(3, (int) $placingMatch->match_status);
+        $this->assertSame(0, (int) $placingMatch->scheduled);
+        $this->assertDatabaseMissing('fixture_results', [
+            'fixture_id' => $placingMatch->id,
         ]);
     }
 }

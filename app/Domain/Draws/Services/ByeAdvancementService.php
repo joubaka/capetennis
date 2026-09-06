@@ -6,6 +6,7 @@ use App\Domain\Draws\Guards\DrawGuard;
 use App\Models\Draw;
 use App\Models\Fixture;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -89,8 +90,7 @@ final class ByeAdvancementService
             }
 
             $winner = $hasReg1 ? $fx->registration1_id : $fx->registration2_id;
-            $fx->winner_registration = $winner;
-            $fx->save();
+            $this->completeWalkover($fx, $winner);
 
             Log::info('[ByeAdvancement] Bye advanced', [
                 'fixture_id' => $fx->id,
@@ -154,8 +154,7 @@ final class ByeAdvancementService
         // Consolation fixture already has exactly one real player and no winner yet.
         if (($hasReg1 xor $hasReg2) && is_null($cons->winner_registration)) {
             $consWinner = $hasReg1 ? $cons->registration1_id : $cons->registration2_id;
-            $cons->winner_registration = $consWinner;
-            $cons->save();
+            $this->completeWalkover($cons, $consWinner);
 
             Log::info('[ByeAdvancement] Consolation walkover', [
                 'cons_fixture_id' => $cons->id,
@@ -207,6 +206,19 @@ final class ByeAdvancementService
                 'from'      => $fromId,
             ]);
         }
+    }
+
+    /** Match the Flexible Monrad convention for automatic no-play matches. */
+    private function completeWalkover(Fixture $fixture, int $winner): void
+    {
+        $fixture->fill([
+            'winner_registration' => $winner,
+            'match_status' => 3,
+            'scheduled' => 0,
+        ])->save();
+
+        DB::table('order_of_plays')->where('fixture_id', $fixture->id)->delete();
+        DB::table('schedules')->where('fixture_id', $fixture->id)->delete();
     }
 
     /** Merge configured custom playoff stages with the known static ones. */

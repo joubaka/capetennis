@@ -170,6 +170,12 @@
                     $isFeeder2 = str_starts_with($p2, 'W') || str_starts_with($p2, 'L');
                     $feederIsWin1 = str_starts_with($p1, 'W');
                     $feederIsWin2 = str_starts_with($p2, 'W');
+                    $identity1 = !$empty1 && !$isFeeder1 && !$isEmpty;
+                    $identity2 = !$empty2 && !$isFeeder2 && !$isEmpty;
+                    $winner1 = $identity1 && $hasWinner && (int) $fx->winner_registration === (int) $fx->registration1_id;
+                    $winner2 = $identity2 && $hasWinner && (int) $fx->winner_registration === (int) $fx->registration2_id;
+                    $identityWidth1 = min(160, max(42, min(mb_strlen($p1), 22) * 7 + 12));
+                    $identityWidth2 = min(160, max(42, min(mb_strlen($p2), 22) * 7 + 12));
                 @endphp
 
                 <g>
@@ -177,7 +183,10 @@
                     <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" class="match-row-bg" fill="#ffffff" />
 
                     {{-- Top Player --}}
-                    <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
+                    @if($identity1)
+                        <rect x="{{ $x + 1 }}" y="{{ $topLineY - 20 }}" width="{{ $identityWidth1 }}" height="17" rx="6" class="player-identity-bg{{ $winner1 ? ' winner' : '' }}" />
+                    @endif
+                    <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : '' }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p1, 22) }}</text>
                     @if($origin1 && $isAdmin)
@@ -193,7 +202,10 @@
 
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
-                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
+                    @if($identity2)
+                        <rect x="{{ $x + 1 }}" y="{{ $bottomLineY - 20 }}" width="{{ $identityWidth2 }}" height="17" rx="6" class="player-identity-bg{{ $winner2 ? ' winner' : '' }}" />
+                    @endif
+                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : '' }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p2, 22) }}</text>
                     @if($origin2 && $isAdmin)
@@ -229,7 +241,7 @@
                         
                         {{-- Winner name --}}
                         @if($winnerName && !$isEmpty)
-                            <text x="{{ $winnerLineEndX + 10 }}" y="{{ $midY + 5 }}" class="player-name" style="fill: #059669; font-weight: 700;">
+                            <text x="{{ $winnerLineEndX + 10 }}" y="{{ $midY + 5 }}" class="player-name" style="fill: #176448; font-weight: 700;">
                                 🏆 {{ Str::limit($winnerName, 30) }}
                             </text>
                         @endif
@@ -239,9 +251,12 @@
                     @php
                         $scoreStr = $fx?->fixtureResults?->sortBy('set_nr')->map(fn($r) => $r->registration1_score . '-' . $r->registration2_score)->implode('  ');
                         $canEnterScore = !$empty1 && !$empty2 && !$hasWinner;
+                        $automaticBye = $hasWinner && $empty1 !== $empty2 && !$scoreStr;
                     @endphp
                     @if($scoreStr && !$isEmpty)
                         <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" class="match-score" text-anchor="middle">{{ $scoreStr }}</text>
+                    @elseif($automaticBye && !$isEmpty)
+                        <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" class="automatic-note" text-anchor="middle">BYE · ADVANCES</text>
                     @endif
 
                     @if(!$isEmpty)
@@ -344,6 +359,12 @@
                     $isFeeder2 = str_starts_with($p2, 'W') || str_starts_with($p2, 'L');
                     $feederIsWin1 = str_starts_with($p1, 'W');
                     $feederIsWin2 = str_starts_with($p2, 'W');
+                    $identity1 = !$empty1 && !$isFeeder1 && !$isEmpty;
+                    $identity2 = !$empty2 && !$isFeeder2 && !$isEmpty;
+                    $winner1 = $identity1 && $hasWinner && (int) $fx->winner_registration === (int) $fx->registration1_id;
+                    $winner2 = $identity2 && $hasWinner && (int) $fx->winner_registration === (int) $fx->registration2_id;
+                    $identityWidth1 = min(160, max(42, min(mb_strlen($p1), 22) * 7 + 12));
+                    $identityWidth2 = min(160, max(42, min(mb_strlen($p2), 22) * 7 + 12));
                 @endphp
 
                 <g>
@@ -356,7 +377,10 @@
                     </text>
 
                     {{-- Top Player --}}
-                    <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name"
+                    @if($identity1)
+                        <rect x="{{ $x + 1 }}" y="{{ $topLineY - 20 }}" width="{{ $identityWidth1 }}" height="17" rx="6" class="player-identity-bg{{ $winner1 ? ' winner' : '' }}" />
+                    @endif
+                    <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : '' }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p1, 22) }}</text>
                     @if($origin1 && $isAdmin)
@@ -372,7 +396,10 @@
 
                     {{-- Bottom Player --}}
                     <line x1="{{ $x }}" y1="{{ $bottomLineY }}" x2="{{ $rightX }}" y2="{{ $bottomLineY }}" class="bracket-line" />
-                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name"
+                    @if($identity2)
+                        <rect x="{{ $x + 1 }}" y="{{ $bottomLineY - 20 }}" width="{{ $identityWidth2 }}" height="17" rx="6" class="player-identity-bg{{ $winner2 ? ' winner' : '' }}" />
+                    @endif
+                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : '' }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
                         @endif>{{ Str::limit($p2, 22) }}</text>
                     @if($origin2 && $isAdmin)
@@ -413,9 +440,12 @@
                     @php
                         $scoreStr = $fx?->fixtureResults?->sortBy('set_nr')->map(fn($r) => $r->registration1_score . '-' . $r->registration2_score)->implode('  ');
                         $canEnterScore = !$empty1 && !$empty2 && !$hasWinner;
+                        $automaticBye = $hasWinner && $empty1 !== $empty2 && !$scoreStr;
                     @endphp
                     @if($scoreStr && !$isEmpty)
                         <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" class="match-score" text-anchor="middle">{{ $scoreStr }}</text>
+                    @elseif($automaticBye && !$isEmpty)
+                        <text x="{{ $x + ($w / 2) }}" y="{{ $midY + 4 }}" class="automatic-note" text-anchor="middle">BYE · ADVANCES</text>
                     @endif
 
                     @if(!$isEmpty)

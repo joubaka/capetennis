@@ -39,6 +39,8 @@ class CanonicalBracketPresentationTest extends TestCase
         $this->assertSame(2, substr_count($html, 'class="match-row-bg"'));
         // A public/anonymous viewer must not gain score controls from presentation.
         $this->assertStringNotContainsString('class="match-hit bracket-score-btn"', $html);
+        $this->assertStringContainsString('.ct-bracket-svg .player-identity-bg', $html);
+        $this->assertStringContainsString('.ct-bracket-svg .automatic-note', $html);
     }
 
     public function test_shared_assets_are_emitted_once_and_cache_busted(): void

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Domain\Draws\Services\StandingsService;
 use App\Domain\Draws\Services\RoundRobinGenerationService;
+use App\Domain\Draws\Services\ByeAdvancementService;
 use App\Domain\Fixtures\Services\FixtureProgressionService;
 use App\Domain\Engine\EngineRouter;
 use App\Models\Draw;
@@ -30,6 +31,7 @@ class DrawService
   private StandingsService            $canonicalStandings;
   private RoundRobinGenerationService $canonicalRR;
   private FixtureProgressionService   $canonicalProgression;
+  private ByeAdvancementService       $canonicalByes;
 
   public function __construct()
   {
@@ -37,6 +39,7 @@ class DrawService
     $this->canonicalStandings   = app(StandingsService::class);
     $this->canonicalRR          = app(RoundRobinGenerationService::class);
     $this->canonicalProgression = app(FixtureProgressionService::class);
+    $this->canonicalByes        = app(ByeAdvancementService::class);
   }
   // ============================================================
   // PUBLIC: ROUND ROBIN HUB (MATRIX + OOP + STANDINGS)
@@ -1300,6 +1303,13 @@ class DrawService
           $winner,
           $loser,
           fn(Fixture $f, int $w, int $l) => $this->autoAdvanceBracket($f, $w, $l)
+        );
+
+        // A loser may complete a placing match whose other feeder was a BYE.
+        // Re-run BYE resolution now that the downstream slot is populated.
+        $this->engine->forDraw($fixture->draw)->advanceByes(
+          $fixture->draw,
+          fn(Draw $draw) => $this->canonicalByes->advance($draw)
         );
       }
     });
