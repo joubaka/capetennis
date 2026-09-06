@@ -18,6 +18,8 @@ class Series extends Model
     'best_num_of_scores',
     'points_template_created', // ✅ ADD THIS
     'auto_award_rule',
+    'use_third_score_tiebreak',
+    'use_head_to_head_tiebreak',
   ];
   protected $casts = [
     'year' => 'integer',
@@ -25,6 +27,8 @@ class Series extends Model
     'published' => 'boolean',
     'leaderboard_published' => 'boolean',
     'auto_award_rule' => 'boolean',
+    'use_third_score_tiebreak' => 'boolean',
+    'use_head_to_head_tiebreak' => 'boolean',
   ];
 
   //used

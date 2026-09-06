@@ -225,6 +225,33 @@
               </div>
             </div>
 
+            <div class="mt-4 mb-2">
+              <div class="fw-semibold">Tiebreak Rules</div>
+              <div class="form-text">Applied in this order after the best-results total. Rebuild the rankings after changing these settings.</div>
+            </div>
+
+            <div class="toggle-row mt-2">
+              <div class="toggle-info">
+                <strong>1. Use Third-Event Score</strong>
+                <small>If best-results totals are equal, rank the player with the higher next excluded score first. A player without another score has 0.</small>
+              </div>
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" name="use_third_score_tiebreak" id="use_third_score_tiebreak"
+                       {{ ($series->use_third_score_tiebreak ?? true) ? 'checked' : '' }}>
+              </div>
+            </div>
+
+            <div class="toggle-row mt-2">
+              <div class="toggle-info">
+                <strong>2. Use Latest Head-to-Head</strong>
+                <small>If two players are still tied, use the winner of their most recent recorded match in a linked series event.</small>
+              </div>
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" name="use_head_to_head_tiebreak" id="use_head_to_head_tiebreak"
+                       {{ ($series->use_head_to_head_tiebreak ?? true) ? 'checked' : '' }}>
+              </div>
+            </div>
+
           </form>
         </div>
         <div class="card-footer bg-white border-top d-flex justify-content-end">
@@ -344,6 +371,8 @@
       best_num_of_scores:   document.querySelector('[name="best_num_of_scores"]').value,
       rank_type:            document.querySelector('[name="rank_type"]:not([disabled])') ? document.querySelector('[name="rank_type"]').value : null,
       auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
+      use_third_score_tiebreak: document.getElementById('use_third_score_tiebreak').checked ? 1 : 0,
+      use_head_to_head_tiebreak: document.getElementById('use_head_to_head_tiebreak').checked ? 1 : 0,
     };
 
     if (!leaderboardToggle.disabled) {

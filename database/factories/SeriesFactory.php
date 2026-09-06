@@ -19,6 +19,8 @@ class SeriesFactory extends Factory
             'best_num_of_scores'     => 2,
             'points_template_created'=> 0,
             'auto_award_rule'        => true,
+            'use_third_score_tiebreak' => true,
+            'use_head_to_head_tiebreak' => true,
         ];
     }
 }

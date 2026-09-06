@@ -215,6 +215,26 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertStringContainsString('third-event score (600 points)', $this->rowFor($result, 1)->tiebreakNotes[0]);
     }
 
+    public function test_third_event_tiebreak_can_be_disabled_for_a_series(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_third_score_tiebreak' => false,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertSame(
+            $this->rowFor($result, 1)->rankPosition,
+            $this->rowFor($result, 2)->rankPosition
+        );
+    }
+
     // ------------------------------------------------------------------
     // 4. Tiebreak — latest head-to-head
     // ------------------------------------------------------------------
@@ -254,6 +274,36 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertEquals(1, $this->rowFor($result, 2)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 1)->rankPosition);
         $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
+    }
+
+    public function test_head_to_head_tiebreak_can_be_disabled_for_a_series(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 3], [2, 102, 1],
+        ]);
+        $categoryEvent = DB::table('category_events')->where('id', 102)->first();
+        $draw = Draw::factory()->create([
+            'event_id' => $categoryEvent->event_id,
+            'category_event_id' => 102,
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['2:102'],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertSame(
+            $this->rowFor($result, 1)->rankPosition,
+            $this->rowFor($result, 2)->rankPosition
+        );
     }
 
     // ------------------------------------------------------------------

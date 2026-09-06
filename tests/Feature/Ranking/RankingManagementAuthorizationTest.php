@@ -266,6 +266,27 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertTrue($series->fresh()->leaderboard_published);
     }
 
+    public function test_series_settings_can_store_both_tiebreak_rules(): void
+    {
+        [, $series] = $this->rankingListFixture();
+
+        $this->actingAs($this->admin)
+            ->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertSee('id="use_third_score_tiebreak"', false)
+            ->assertSee('id="use_head_to_head_tiebreak"', false);
+
+        $this->postJson(route('ranking.series.update', $series), [
+            'best_num_of_scores' => 2,
+            'use_third_score_tiebreak' => 0,
+            'use_head_to_head_tiebreak' => 0,
+        ])->assertOk();
+
+        $series->refresh();
+        $this->assertFalse($series->use_third_score_tiebreak);
+        $this->assertFalse($series->use_head_to_head_tiebreak);
+    }
+
     public function test_series_dashboard_exposes_the_safe_review_then_publish_flow(): void
     {
         [$list, $series] = $this->rankingListFixture();

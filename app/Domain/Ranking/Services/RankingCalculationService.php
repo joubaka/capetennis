@@ -133,16 +133,24 @@ final class RankingCalculationService
         // Reduce to best-N and build RankingRow objects
         $rows = $this->reduceToBestN($byPlayer, $bestN, $pointsMap);
 
-        // Tiebreak: highest dropped score, then latest recorded head-to-head.
-        $headToHeadWinners = $this->latestHeadToHeadWinners($list, $rows->pluck('playerId'));
-        [$rows, $tiebreakWarnings, $appliedHeadToHeadPairs] = $this->applyTiebreak($rows, $headToHeadWinners);
+        // Series-configured tiebreaks, applied in their fixed displayed order.
+        $useThirdScoreTiebreak = (bool) ($series?->use_third_score_tiebreak ?? true);
+        $useHeadToHeadTiebreak = (bool) ($series?->use_head_to_head_tiebreak ?? true);
+        $headToHeadWinners = $useHeadToHeadTiebreak
+            ? $this->latestHeadToHeadWinners($list, $rows->pluck('playerId'))
+            : [];
+        [$rows, $tiebreakWarnings, $appliedHeadToHeadPairs] = $this->applyTiebreak(
+            $rows,
+            $headToHeadWinners,
+            $useThirdScoreTiebreak
+        );
         $warnings = array_merge($warnings, $tiebreakWarnings);
 
         // applyTiebreak returns rows sorted points-desc with peers in tiebreak order.
         // No further re-sort is needed.
 
         // Assign rank positions (shared rank for equal totals only when truly unresolvable)
-        $this->assignRankPositions($rows, $appliedHeadToHeadPairs);
+        $this->assignRankPositions($rows, $appliedHeadToHeadPairs, $useThirdScoreTiebreak);
 
         // Build audit trail
         $audit = $this->buildAudit($rows, $byPlayer, $catEventIds, $bestN, $pointsMap);
@@ -391,7 +399,7 @@ final class RankingCalculationService
      * @param  Collection<RankingRow>   $rows
      * @return array{Collection<RankingRow>, string[], array<string, array<string, mixed>>}
      */
-    private function applyTiebreak(Collection $rows, array $headToHeadWinners): array
+    private function applyTiebreak(Collection $rows, array $headToHeadWinners, bool $useThirdScoreTiebreak): array
     {
         $warnings = [];
         $appliedHeadToHeadPairs = [];
@@ -399,7 +407,7 @@ final class RankingCalculationService
         // Sort groups by points descending so flatMap produces the final ordering
         $sorted = $rows->groupBy(fn(RankingRow $r) => $r->totalPoints)
             ->sortKeysDesc()
-            ->flatMap(function (Collection $group) use ($headToHeadWinners, &$warnings, &$appliedHeadToHeadPairs) {
+            ->flatMap(function (Collection $group) use ($headToHeadWinners, $useThirdScoreTiebreak, &$warnings, &$appliedHeadToHeadPairs) {
                 if ($group->count() <= 1) {
                     return $group;
                 }
@@ -409,9 +417,9 @@ final class RankingCalculationService
                 $warnings[] = "Tiebreak applied for {$group->count()} players at {$pts} pts (IDs: {$ids}).";
 
                 return $group
-                    ->groupBy(fn (RankingRow $row) => $this->nextBestScore($row))
+                    ->groupBy(fn (RankingRow $row) => $useThirdScoreTiebreak ? $this->nextBestScore($row) : 0)
                     ->sortKeysDesc()
-                    ->flatMap(function (Collection $thirdScoreGroup) use ($group, $headToHeadWinners, $pts, &$appliedHeadToHeadPairs) {
+                    ->flatMap(function (Collection $thirdScoreGroup) use ($group, $headToHeadWinners, $pts, $useThirdScoreTiebreak, &$appliedHeadToHeadPairs) {
                         $rows = $thirdScoreGroup->values()->all();
                         $thirdScore = $this->nextBestScore($rows[0]);
 
@@ -420,20 +428,30 @@ final class RankingCalculationService
                             if (isset($headToHeadWinners[$pairKey])) {
                                 $appliedHeadToHeadPairs[$pairKey] = $headToHeadWinners[$pairKey];
                             }
-                            usort($rows, fn (RankingRow $a, RankingRow $b) => $this->compareTiedRows($a, $b, $headToHeadWinners));
+                            usort($rows, fn (RankingRow $a, RankingRow $b) => $this->compareTiedRows(
+                                $a,
+                                $b,
+                                $headToHeadWinners,
+                                $useThirdScoreTiebreak
+                            ));
                         }
 
                         foreach ($rows as $row) {
-                            if ($thirdScoreGroup->count() === 1) {
+                            if ($useThirdScoreTiebreak && $thirdScoreGroup->count() === 1) {
                                 $row->tiebreakNotes = ["Tied on {$pts} points; compared by third-event score ({$thirdScore} points)."];
                                 continue;
                             }
 
                             $peer = collect($rows)->first(fn (RankingRow $candidate) => $candidate->playerId !== $row->playerId);
-                            $criterion = $peer ? $this->tiebreakCriterion($row, $peer, $headToHeadWinners) : null;
+                            $criterion = $peer ? $this->tiebreakCriterion(
+                                $row,
+                                $peer,
+                                $headToHeadWinners,
+                                $useThirdScoreTiebreak
+                            ) : null;
                             $row->tiebreakNotes = [$criterion
                                 ? "Tied on {$pts} points and third-event score; ordered by {$criterion}."
-                                : "Tied on {$pts} points and third-event score; no decisive head-to-head was found."];
+                                : "Tied on {$pts} points; no enabled tiebreak rule resolved the tie."];
                         }
 
                         return collect($rows);
@@ -447,7 +465,11 @@ final class RankingCalculationService
     // Step 5 — Assign rank positions
     // ------------------------------------------------------------------
 
-    private function assignRankPositions(Collection $rows, array $appliedHeadToHeadPairs): void
+    private function assignRankPositions(
+        Collection $rows,
+        array $appliedHeadToHeadPairs,
+        bool $useThirdScoreTiebreak
+    ): void
     {
         $rank = 1;
 
@@ -461,7 +483,7 @@ final class RankingCalculationService
             /** @var RankingRow $prev */
             $prev = $rows[$i - 1];
 
-            if ($this->isTrueTie($prev, $row, $appliedHeadToHeadPairs)) {
+            if ($this->isTrueTie($prev, $row, $appliedHeadToHeadPairs, $useThirdScoreTiebreak)) {
                 $row->rankPosition = $prev->rankPosition;
             } else {
                 $row->rankPosition = $rank;
@@ -472,17 +494,27 @@ final class RankingCalculationService
     }
 
     /** Returns true when two rows are genuinely unresolvable by any tiebreak criterion. */
-    private function isTrueTie(RankingRow $a, RankingRow $b, array $headToHeadWinners): bool
+    private function isTrueTie(
+        RankingRow $a,
+        RankingRow $b,
+        array $headToHeadWinners,
+        bool $useThirdScoreTiebreak
+    ): bool
     {
         if ($a->totalPoints !== $b->totalPoints) return false;
-        if ($this->nextBestScore($a) !== $this->nextBestScore($b)) return false;
+        if ($useThirdScoreTiebreak && $this->nextBestScore($a) !== $this->nextBestScore($b)) return false;
 
         return ! isset($headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)]);
     }
 
-    private function tiebreakCriterion(RankingRow $a, RankingRow $b, array $headToHeadWinners): ?string
+    private function tiebreakCriterion(
+        RankingRow $a,
+        RankingRow $b,
+        array $headToHeadWinners,
+        bool $useThirdScoreTiebreak
+    ): ?string
     {
-        if ($this->nextBestScore($a) !== $this->nextBestScore($b)) {
+        if ($useThirdScoreTiebreak && $this->nextBestScore($a) !== $this->nextBestScore($b)) {
             return 'higher third-event score';
         }
 
@@ -494,11 +526,18 @@ final class RankingCalculationService
         return null;
     }
 
-    private function compareTiedRows(RankingRow $a, RankingRow $b, array $headToHeadWinners): int
+    private function compareTiedRows(
+        RankingRow $a,
+        RankingRow $b,
+        array $headToHeadWinners,
+        bool $useThirdScoreTiebreak
+    ): int
     {
-        $thirdScoreComparison = $this->nextBestScore($b) <=> $this->nextBestScore($a);
-        if ($thirdScoreComparison !== 0) {
-            return $thirdScoreComparison;
+        if ($useThirdScoreTiebreak) {
+            $thirdScoreComparison = $this->nextBestScore($b) <=> $this->nextBestScore($a);
+            if ($thirdScoreComparison !== 0) {
+                return $thirdScoreComparison;
+            }
         }
 
         $headToHead = $headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)] ?? null;

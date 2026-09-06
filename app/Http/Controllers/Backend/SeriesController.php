@@ -297,6 +297,8 @@ class SeriesController extends Controller
       'rank_type' => ['sometimes', 'nullable', 'integer', 'exists:rank_types,id'],
       'leaderboard_published' => ['sometimes', 'integer', 'in:0,1'],
       'auto_award_rule' => ['sometimes', 'integer', 'in:0,1'],
+      'use_third_score_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
+      'use_head_to_head_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
     ]);
 
     // Prevent rank_type change if points template already created
