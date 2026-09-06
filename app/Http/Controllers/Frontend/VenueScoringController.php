@@ -11,6 +11,7 @@ use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\TeamFixture;
 use App\Models\Venue;
+use App\Services\Scheduling\VenueMatchOrder;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +21,10 @@ use Illuminate\View\View;
 
 class VenueScoringController extends Controller
 {
+    public function __construct(private readonly VenueMatchOrder $venueMatchOrder)
+    {
+    }
+
     public function index(Request $request, Event $event): View
     {
         $this->authorize('event.score', $event);
@@ -110,30 +115,9 @@ class VenueScoringController extends Controller
             ->limit(500)
             ->get();
 
-        $matches = $fixtures->concat($teamFixtures)->sort(function ($left, $right): int {
-            $timeOrder = $this->scheduledTime($left) <=> $this->scheduledTime($right);
-            if ($timeOrder !== 0) {
-                return $timeOrder;
-            }
-
-            $ageOrder = strnatcasecmp($this->ageGroup($left), $this->ageGroup($right));
-            if ($ageOrder !== 0) {
-                return $ageOrder;
-            }
-
-            $courtOrder = strnatcasecmp($this->courtNumber($left), $this->courtNumber($right));
-            if ($courtOrder !== 0) {
-                return $courtOrder;
-            }
-
-            $drawOrder = strnatcasecmp((string) $left->draw?->drawName, (string) $right->draw?->drawName);
-            if ($drawOrder !== 0) {
-                return $drawOrder;
-            }
-
-            return [$left instanceof TeamFixture ? 1 : 0, $left->id]
-                <=> [$right instanceof TeamFixture ? 1 : 0, $right->id];
-        })->values();
+        $matches = $fixtures->concat($teamFixtures)
+            ->sort(fn ($left, $right): int => $this->venueMatchOrder->compare($left, $right))
+            ->values();
 
         $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty())->count();
         $ready = $matches->filter(fn ($match) => $match instanceof Fixture
@@ -296,19 +280,4 @@ class VenueScoringController extends Controller
             : (bool) ($match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam));
     }
 
-    private function ageGroup(Fixture|TeamFixture $match): string
-    {
-        return trim((string) (
-            $match->draw?->categoryEvent?->category?->name
-            ?: ($match instanceof TeamFixture ? $match->age : null)
-            ?: $match->draw?->drawName
-        ));
-    }
-
-    private function courtNumber(Fixture|TeamFixture $match): string
-    {
-        $court = $match instanceof Fixture ? $match->orderOfPlay?->court : $match->court_label;
-
-        return $court === null || $court === '' ? "\u{10FFFF}" : (string) $court;
-    }
 }

@@ -63,6 +63,38 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertNotSame($venue->id, $otherVenue->id);
     }
 
+    public function test_venue_queue_uses_canonical_time_then_natural_court_order(): void
+    {
+        [$event, $draw, $venue, $courtTen] = $this->scheduledFixture('Canonical Venue');
+        $courtTen->update(['match_nr' => 10, 'play_order' => 1]);
+        $courtTen->orderOfPlay()->update(['court' => 'Court 10']);
+
+        $courtTwo = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'stage' => 'RR',
+            'round' => 1,
+            'match_nr' => 2,
+            'play_order' => 2,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+        ]);
+        OrderOfPlay::create([
+            'fixture_id' => $courtTwo->id,
+            'draw_id' => $draw->id,
+            'venue_id' => $venue->id,
+            'court' => 'Court 2',
+            'time' => '2026-09-10 08:00:00',
+        ]);
+
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event,
+            'venue' => $venue->id,
+        ]));
+
+        $response->assertOk();
+        $this->assertSame([$courtTwo->id, $courtTen->id], $response->viewData('matches')->pluck('id')->all());
+    }
+
     public function test_next_on_court_panel_contains_only_the_next_two_eligible_matches(): void
     {
         [$event, $draw, $venue, $first] = $this->scheduledFixture('Queue Venue');

@@ -330,8 +330,8 @@ class DrawPackTest extends TestCase
         $rondebosch = Venue::forceCreate(['name' => 'Rondebosch Tennis Club']);
 
         foreach ([
-            [$firstDraw, $newlands, 'Court 1', '2026-09-20 09:00:00'],
-            [$secondDraw, $newlands, 'Court 2', '2026-09-20 10:30:00'],
+            [$firstDraw, $newlands, 'Court 10', '2026-09-20 09:00:00'],
+            [$secondDraw, $newlands, 'Court 2', '2026-09-20 09:00:00'],
             [$secondDraw, $rondebosch, 'Court 3', '2026-09-21 08:30:00'],
         ] as [$draw, $venue, $court, $time]) {
             $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
@@ -362,7 +362,7 @@ class DrawPackTest extends TestCase
             ->assertSee('Rondebosch Tennis Club')
             ->assertSee('Boys U14')
             ->assertSee('Girls U14')
-            ->assertSee('Court 1')
+            ->assertSee('Court 10')
             ->assertSee('Court 2')
             ->assertSee('Court 3')
             ->assertSee('Not on venue list: Boys U14 - M99')
@@ -370,6 +370,8 @@ class DrawPackTest extends TestCase
             ->assertDontSee('Complete Draw Pack');
 
         $this->assertSame(2, substr_count($response->getContent(), 'Venue order of play'));
+        $newlandsRows = str($response->getContent())->after('<caption>Newlands Tennis Club order of play');
+        $this->assertTrue($newlandsRows->position('Girls U14') < $newlandsRows->position('Boys U14'));
     }
 
     public function test_pack_rejects_unknown_print_type(): void

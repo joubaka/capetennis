@@ -1296,19 +1296,14 @@ class HeadOfficeController extends Controller
     }
 
     $drawsData = $draws->map(fn (Draw $draw) => $this->buildDrawPrintData($draw))->values();
+    $venueMatchOrder = app(\App\Services\Scheduling\VenueMatchOrder::class);
     $schedule = $drawsData->flatMap(fn (array $draw) => collect($draw['oops'])
       ->whereNotNull('scheduled_at')
       ->map(fn (array $fixture) => $fixture + [
         'draw_id' => $draw['id'],
         'draw_name' => $draw['name'],
       ]))
-      ->sortBy(fn (array $fixture) => sprintf(
-        '%s|%s|%s|%08d',
-        $fixture['scheduled_at'],
-        $fixture['venue'] ?? '',
-        $fixture['court'] ?? '',
-        (int) ($fixture['match_nr'] ?? $fixture['id'])
-      ))
+      ->sort(fn (array $left, array $right): int => $venueMatchOrder->compare($left, $right))
       ->values();
 
     $data = [
@@ -1442,6 +1437,7 @@ class HeadOfficeController extends Controller
           'stage'        => $fx->stage,
           'round'        => $fx->round,
           'match_nr'     => $fx->match_nr,
+          'play_order'   => $fx->play_order,
           'playoff_type' => $fx->playoff_type,
           'home'         => $fx->registration1?->display_name
             ?? ($sourceLabels[$fx->id][0] ?? 'Unassigned draw position'),
