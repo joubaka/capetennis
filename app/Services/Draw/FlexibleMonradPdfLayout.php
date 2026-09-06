@@ -9,7 +9,7 @@ final class FlexibleMonradPdfLayout
 {
     private const CARD_WIDTH = 220;
     private const COLUMN_GAP = 260;
-    private const SLOT_HEIGHT = 30;
+    private const SLOT_HEIGHT = 32;
     private const LINE_GAP = 64;
 
     public function build(array $state): array
@@ -33,7 +33,7 @@ final class FlexibleMonradPdfLayout
                 'column' => (int) $roundColumns[(int) $entry['match']['round']],
                 'sources' => $entry['match']['sources'],
             ])->all();
-            $layout = $this->layout($layoutEntries, $sectionTop + 68);
+            $layout = $this->layout($layoutEntries, $sectionTop + 96);
 
             $cards = [];
             foreach ($entries as $entry) {
@@ -125,7 +125,7 @@ final class FlexibleMonradPdfLayout
 
             $boards[] = compact('section', 'sectionTop', 'cards', 'connections', 'endpoints', 'roundHeadings');
             $maxWidth = max($maxWidth, $layout['width']);
-            $yOffset = $layout['height'] + 38;
+            $yOffset = $layout['height'] + 35;
         }
 
         $positions = collect($state['positions'] ?? [])->map(fn ($position) => [

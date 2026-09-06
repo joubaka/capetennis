@@ -7,6 +7,7 @@
 
 <style>
   .scoring-shell { max-width: 1180px; margin-inline: auto; }
+  .scoring-shell.is-refreshing { opacity: .65; pointer-events: none; }
   .scoring-hero { background: linear-gradient(135deg, #004177, #087ea4); color: #fff; border: 0; }
   .scoring-hero-main { display: flex; align-items: center; gap: 1rem; }
   .scoring-hero-copy { min-width: 0; }
@@ -83,7 +84,10 @@
 </style>
 
 <div class="container-xxl py-3 py-md-4">
-  <div class="scoring-shell">
+  <div class="scoring-shell"
+       data-selected-venue="{{ $selectedVenue?->id }}"
+       data-available-venues='@json($venues->pluck('id')->map(fn($id) => (int) $id)->values())'
+       data-force-all-venues="{{ request()->boolean('all_venues') ? '1' : '0' }}">
     <div class="card scoring-hero shadow-sm mb-3">
       <div class="card-body p-3">
         @php
@@ -260,8 +264,9 @@
               <div class="match-actions">
                 @unless($hasScore || $isPlaying)
                 <button type="button" class="btn btn-sm btn-outline-warning score-action js-start-match"
-                        data-playing-url="{{ $playingUrl }}">
-                  On court
+                        data-playing-url="{{ $playingUrl }}"
+                        aria-label="Mark {{ $home }} versus {{ $away }} as on court">
+                  Mark as on court
                 </button>
                 @endunless
                 <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
@@ -344,30 +349,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('[data-nav-select]').forEach(function (select) {
-    select.addEventListener('change', function () {
-      if (select.value) window.location.assign(select.value);
-    });
-  });
-
   const venueStorageKey = 'cape-tennis.scoring.venue.{{ $event->id }}';
-  const selectedVenue = @json($selectedVenue?->id);
-  const availableVenues = @json($venues->pluck('id')->map(fn($id) => (int) $id)->values());
-  const forceAllVenues = @json(request()->boolean('all_venues'));
-  if (forceAllVenues) {
-    localStorage.removeItem(venueStorageKey);
-  } else if (selectedVenue) {
-    localStorage.setItem(venueStorageKey, String(selectedVenue));
-  } else {
-    const rememberedVenue = Number(localStorage.getItem(venueStorageKey));
-    if (rememberedVenue && availableVenues.includes(rememberedVenue)) {
-      const target = new URL(window.location.href);
-      target.searchParams.set('venue', rememberedVenue);
-      window.location.replace(target.toString());
-      return;
-    }
-  }
-
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const modalElement = document.getElementById('score-entry-modal');
   const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
@@ -375,36 +357,112 @@ document.addEventListener('DOMContentLoaded', function () {
   const error = document.getElementById('score-entry-error');
   const clearButton = document.getElementById('score-clear');
   let active = null;
+  let workspaceRequestSequence = 0;
 
-  document.querySelectorAll('[data-score-filter]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      const filter = button.dataset.scoreFilter;
-      document.querySelectorAll('[data-score-filter]').forEach(function (item) {
-        const active = item === button;
-        item.classList.toggle('btn-primary', active);
-        item.classList.toggle('btn-outline-primary', !active);
-        item.setAttribute('aria-pressed', String(active));
-      });
-      let visible = 0;
-      document.querySelectorAll('[data-score-state]').forEach(function (card) {
-        const matches = filter === 'all'
-          || (filter === 'outstanding' && card.dataset.scoreState !== 'completed')
-          || (filter === 'now' && card.dataset.scoreState === 'playing')
-          || card.dataset.scoreState === filter
-          || card.dataset.scoreTiming === filter;
-        card.classList.toggle('d-none', !matches);
-        if (matches) visible++;
-      });
-      document.getElementById('score-visible-count').textContent = visible;
-      document.getElementById('score-visible-label').textContent = filter === 'all' ? 'matches' : filter.replace('now', 'playing now');
-      document.getElementById('score-filter-empty').classList.toggle('d-none', visible !== 0);
-      button.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+  function currentFilter() {
+    return document.querySelector('[data-score-filter][aria-pressed="true"]')?.dataset.scoreFilter || 'outstanding';
+  }
+
+  function applyScoreFilter(filter, scrollButton) {
+    let selectedButton = null;
+    document.querySelectorAll('[data-score-filter]').forEach(function (item) {
+      const isActive = item.dataset.scoreFilter === filter;
+      item.classList.toggle('btn-primary', isActive);
+      item.classList.toggle('btn-outline-primary', !isActive);
+      item.setAttribute('aria-pressed', String(isActive));
+      if (isActive) selectedButton = item;
     });
+    let visible = 0;
+    document.querySelectorAll('[data-score-state]').forEach(function (card) {
+      const matches = filter === 'all'
+        || (filter === 'outstanding' && card.dataset.scoreState !== 'completed')
+        || (filter === 'now' && card.dataset.scoreState === 'playing')
+        || card.dataset.scoreState === filter
+        || card.dataset.scoreTiming === filter;
+      card.classList.toggle('d-none', !matches);
+      if (matches) visible++;
+    });
+    document.getElementById('score-visible-count').textContent = visible;
+    document.getElementById('score-visible-label').textContent = filter === 'all' ? 'matches' : filter.replace('now', 'playing now');
+    document.getElementById('score-filter-empty').classList.toggle('d-none', visible !== 0);
+    if (scrollButton && selectedButton) selectedButton.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+  }
+
+  function syncRememberedVenue(allowRedirect) {
+    const shell = document.querySelector('.scoring-shell');
+    const selectedVenue = Number(shell.dataset.selectedVenue || 0);
+    const availableVenues = JSON.parse(shell.dataset.availableVenues || '[]');
+    if (shell.dataset.forceAllVenues === '1') {
+      localStorage.removeItem(venueStorageKey);
+    } else if (selectedVenue) {
+      localStorage.setItem(venueStorageKey, String(selectedVenue));
+    } else if (allowRedirect) {
+      const rememberedVenue = Number(localStorage.getItem(venueStorageKey));
+      if (rememberedVenue && availableVenues.includes(rememberedVenue)) {
+        const target = new URL(window.location.href);
+        target.searchParams.set('venue', rememberedVenue);
+        refreshWorkspace(target.toString(), {pushState: false});
+      }
+    }
+  }
+
+  function showWorkspaceError(message) {
+    document.querySelector('.js-workspace-error')?.remove();
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-danger js-workspace-error';
+    alert.setAttribute('role', 'alert');
+    alert.textContent = message;
+    document.querySelector('.scoring-shell')?.prepend(alert);
+  }
+
+  async function refreshWorkspace(url, options) {
+    options = options || {};
+    const sequence = ++workspaceRequestSequence;
+    const filter = options.filter || currentFilter();
+    const shell = document.querySelector('.scoring-shell');
+    shell.classList.add('is-refreshing');
+    shell.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch(url, {
+        method: options.method || 'GET',
+        credentials: 'same-origin',
+        headers: {'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest'},
+        body: options.body
+      });
+      const html = await response.text();
+      if (!response.ok) throw new Error('The scoring workspace could not be refreshed.');
+      if (sequence !== workspaceRequestSequence) return;
+      const replacement = new DOMParser().parseFromString(html, 'text/html').querySelector('.scoring-shell');
+      if (!replacement) throw new Error('The scoring workspace returned an unexpected response.');
+      shell.replaceWith(replacement);
+      if (options.pushState) history.pushState({}, '', options.historyUrl || url);
+      syncRememberedVenue(false);
+      applyScoreFilter(filter, false);
+    } catch (failure) {
+      if (sequence !== workspaceRequestSequence) return;
+      shell.classList.remove('is-refreshing');
+      shell.removeAttribute('aria-busy');
+      showWorkspaceError(failure.message);
+      throw failure;
+    }
+  }
+
+  document.addEventListener('change', function (event) {
+    const select = event.target.closest('[data-nav-select]');
+    if (!select || !select.value) return;
+    refreshWorkspace(select.value, {pushState: true}).catch(function () {});
   });
 
-  document.querySelectorAll('.js-open-score').forEach(function (button) {
-    button.addEventListener('click', function () {
-      active = button.dataset;
+  document.addEventListener('click', function (event) {
+    const filterButton = event.target.closest('[data-score-filter]');
+    if (filterButton) {
+      applyScoreFilter(filterButton.dataset.scoreFilter, true);
+      return;
+    }
+
+    const scoreButton = event.target.closest('.js-open-score');
+    if (scoreButton) {
+      active = scoreButton.dataset;
       error.classList.add('d-none');
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       document.getElementById('score-home-label').textContent = active.home;
@@ -418,20 +476,38 @@ document.addEventListener('DOMContentLoaded', function () {
       });
       clearButton.classList.toggle('d-none', scores.length === 0);
       modal.show();
+      return;
+    }
+
+    const startButton = event.target.closest('.js-start-match');
+    if (startButton) {
+      startButton.disabled = true;
+      request(startButton.dataset.playingUrl, 'POST', {})
+        .then(function () { return refreshWorkspace(window.location.href); })
+        .catch(function (failure) {
+          showWorkspaceError(failure.message);
+          startButton.disabled = false;
+        });
+    }
+  });
+
+  document.addEventListener('submit', function (event) {
+    const operatorForm = event.target.closest('.scoring-operator form');
+    if (!operatorForm) return;
+    event.preventDefault();
+    const submit = operatorForm.querySelector('[type="submit"]');
+    submit.disabled = true;
+    refreshWorkspace(operatorForm.action, {
+      method: 'POST',
+      body: new FormData(operatorForm),
+      historyUrl: window.location.href
+    }).catch(function () {
+      submit.disabled = false;
     });
   });
 
-  document.querySelectorAll('.js-start-match').forEach(function (button) {
-    button.addEventListener('click', async function () {
-      button.disabled = true;
-      try {
-        await request(button.dataset.playingUrl, 'POST', {});
-        window.location.reload();
-      } catch (failure) {
-        alert(failure.message);
-        button.disabled = false;
-      }
-    });
+  window.addEventListener('popstate', function () {
+    refreshWorkspace(window.location.href, {pushState: false}).catch(function () {});
   });
 
   function setsFromForm() {
@@ -489,7 +565,9 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         await request(active.store, 'POST', {sets: sets.map(set => set[0] + '-' + set[1])});
       }
-      window.location.reload();
+      modal.hide();
+      active = null;
+      await refreshWorkspace(window.location.href);
     } catch (failure) {
       error.textContent = failure.message;
       error.classList.remove('d-none');
@@ -507,13 +585,18 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         await request(active.delete, 'DELETE');
       }
-      window.location.reload();
+      modal.hide();
+      active = null;
+      await refreshWorkspace(window.location.href);
     } catch (failure) {
       error.textContent = failure.message;
       error.classList.remove('d-none');
       clearButton.disabled = false;
     }
   });
+
+  syncRememberedVenue(true);
+  applyScoreFilter(currentFilter(), false);
 });
 </script>
 @endsection

@@ -51,6 +51,7 @@ class VenueScoringWorkspaceTest extends TestCase
             ->assertSee('id="venue-filter"', false)
             ->assertSee('id="draw-filter"', false)
             ->assertSee('class="match-card-main"', false)
+            ->assertSee('Mark as on court')
             ->assertSee('aria-label="Filter match queue"', false)
             ->assertSee('aria-pressed="true"', false)
             ->assertSee('score-filter-empty', false)
@@ -139,6 +140,20 @@ class VenueScoringWorkspaceTest extends TestCase
         $after = $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'all_venues' => 1]));
         $after->assertOk()->assertSee('data-score-state="completed"', false);
         $this->assertSame($expected, $after->viewData('matches')->pluck('id')->all());
+    }
+
+    public function test_workspace_uses_ajax_for_filters_operator_and_score_lifecycle_actions(): void
+    {
+        $template = file_get_contents(resource_path('views/frontend/scoring/workspace.blade.php'));
+
+        $this->assertStringContainsString('refreshWorkspace(select.value', $template);
+        $this->assertStringContainsString('new FormData(operatorForm)', $template);
+        $this->assertStringContainsString("request(startButton.dataset.playingUrl, 'POST', {})", $template);
+        $this->assertStringContainsString('await refreshWorkspace(window.location.href)', $template);
+        $this->assertStringContainsString("history.pushState({}, '', options.historyUrl || url)", $template);
+        $this->assertStringContainsString("window.addEventListener('popstate'", $template);
+        $this->assertStringNotContainsString('window.location.reload()', $template);
+        $this->assertStringNotContainsString('window.location.assign(', $template);
     }
 
     public function test_venue_scoring_control_offers_assigned_convenor_a_link_for_each_scheduled_venue(): void

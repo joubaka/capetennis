@@ -417,6 +417,12 @@ class DrawPackTest extends TestCase
         $this->assertStringContainsString('page-break-after: always', $pdfView);
         $this->assertStringContainsString('All brackets and final positions', $pdfView);
 
+        $boardView = file_get_contents(resource_path('views/backend/draw/pdf/partials/flexible-monrad-board-svg.blade.php'));
+        $this->assertStringContainsString('data-ct-edge=""', $boardView);
+        $this->assertStringContainsString("'#eaf5fc'", $boardView);
+        $this->assertStringContainsString("'#fff4d6'", $boardView);
+        $this->assertStringNotContainsString('class="card"', $boardView);
+
         $standardDraw = Draw::factory()->create([
             'event_id' => $this->event->id,
             'drawName' => 'Standard Knockout',
@@ -457,19 +463,6 @@ class DrawPackTest extends TestCase
         $service->generate($draw, 1);
 
         return $draw->refresh();
-    }
-
-    public function test_qa_writes_canonical_monrad_pdf(): void
-    {
-        $draw = $this->generatedFlexibleMonradDraw('u/15 Girls', 8);
-        $response = $this->actingAs($this->admin)->get(route('headoffice.drawPack', [
-            'event' => $this->event,
-            'draw_ids' => [$draw->id],
-            'print_type' => 'bracket',
-            'download' => 1,
-        ]));
-        $response->assertOk();
-        file_put_contents(base_path('tmp/pdfs/canonical-monrad-qa.pdf'), $response->getContent());
     }
 
     public function test_browser_print_builders_escape_untrusted_draw_content(): void
