@@ -18,6 +18,7 @@ class DeploymentConfigTest extends TestCase
             '2026_08_18_120100_create_audit_daily_seals_table.php',
             '2026_09_04_213500_create_event_venue_court_allocations.php',
             '2026_09_05_000001_add_schedule_visibility_to_draw_settings.php',
+            '2026_09_06_000001_add_require_full_sets_to_draw_settings.php',
         ] as $migration) {
             $this->assertStringContainsString($migration, $config);
         }

@@ -90,6 +90,30 @@ class EventScheduleVisibilityTest extends TestCase
         $this->assertSame(1, $withoutSettings->settings()->count());
     }
 
+    public function test_event_admin_can_allow_custom_set_scores_for_every_event_draw(): void
+    {
+        $existing = Draw::factory()->create(['event_id' => $this->event->id]);
+        $existing->settings()->create(['require_full_sets' => true]);
+        $withoutSettings = Draw::factory()->create(['event_id' => $this->event->id]);
+        $foreign = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $foreign->settings()->create(['require_full_sets' => true]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.events.schedule-visibility', $this->event), [
+                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL,
+                'require_full_sets' => false,
+            ])
+            ->assertOk()
+            ->assertJsonPath('require_full_sets', false)
+            ->assertJsonPath('updated_draws', 2);
+
+        $this->assertFalse($existing->fresh()->settings->requiresFullSets());
+        $this->assertFalse($withoutSettings->fresh()->settings->requiresFullSets());
+        $this->assertTrue($foreign->fresh()->settings->requiresFullSets());
+        $this->assertSame(1, $existing->settings()->count());
+        $this->assertSame(1, $withoutSettings->settings()->count());
+    }
+
     public function test_published_tournament_format_remains_editable_until_the_first_result(): void
     {
         $draw = Draw::factory()->create([

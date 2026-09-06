@@ -152,6 +152,8 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertStringContainsString("request(toggleButton.dataset.playingUrl, 'POST', {playing: playing})", $template);
         $this->assertStringContainsString('Mark off court', $template);
         $this->assertStringContainsString("showWorkspaceNotice(result.message, playing ? 'success' : 'warning')", $template);
+        $this->assertStringContainsString('saveButton.disabled = false;', $template);
+        $this->assertStringContainsString('clearButton.disabled = false;', $template);
         $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startFixture'));
         $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startTeamFixture'));
         $this->assertStringContainsString('await refreshWorkspace(window.location.href)', $template);

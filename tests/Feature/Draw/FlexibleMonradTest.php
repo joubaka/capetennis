@@ -1190,6 +1190,45 @@ class FlexibleMonradTest extends TestCase
         $this->assertSame(3, Fixture::findOrFail($record->fixture_map['main_a'])->fixtureResults()->count());
     }
 
+    public function test_monrad_scoring_accepts_custom_set_scores_when_the_rule_is_disabled(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings()->update(['num_sets' => 3, 'require_full_sets' => false]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $url = route('flexible-monrad.score', [$draw, $record->fixture_map['main_a']]);
+
+        $this->putJson($url, ['revision' => 2, 'sets' => [[1, 4], [3, 5]]])
+            ->assertOk();
+
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $this->assertSame($fixture->registration2_id, $fixture->winner_registration);
+        $this->assertSame(
+            [[1, 4], [3, 5]],
+            $fixture->fixtureResults()->orderBy('set_nr')->get()
+                ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])
+                ->all(),
+        );
+    }
+
+    public function test_custom_set_scores_still_require_a_decisive_completed_match(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings()->update(['num_sets' => 3, 'require_full_sets' => false]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $url = route('flexible-monrad.score', [$draw, $record->fixture_map['main_a']]);
+
+        $this->putJson($url, ['revision' => 2, 'sets' => [[4, 4], [3, 5]]])
+            ->assertUnprocessable();
+        $this->putJson($url, ['revision' => 2, 'sets' => [[1, 4], [5, 3]]])
+            ->assertUnprocessable();
+
+        $this->assertNull(Fixture::findOrFail($record->fixture_map['main_a'])->winner_registration);
+    }
+
     public function test_auto_schedule_respects_every_winner_and_loser_dependency_on_one_and_multiple_courts(): void
     {
         [$draw, $record] = $this->setupMixedMonrad();

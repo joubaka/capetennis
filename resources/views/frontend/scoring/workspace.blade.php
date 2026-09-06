@@ -276,6 +276,7 @@
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
+                      data-require-full-sets="{{ $isFlexible && ($draw->settings?->requiresFullSets() ?? true) ? '1' : '0' }}"
                       data-scores='@json($sets)'>
                   {{ $hasScore ? 'Correct score' : 'Enter score' }}
                 </button>
@@ -323,7 +324,7 @@
     <form class="modal-content" id="score-entry-form">
       <div class="modal-header">
         <div>
-          <div class="small text-muted">Enter completed sets</div>
+          <div class="small text-muted" id="score-entry-guidance">Enter completed sets</div>
           <h2 class="modal-title h5" id="score-match-title">Match score</h2>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -357,6 +358,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const form = document.getElementById('score-entry-form');
   const error = document.getElementById('score-entry-error');
   const clearButton = document.getElementById('score-clear');
+  const saveButton = document.getElementById('score-save');
   let active = null;
   let workspaceRequestSequence = 0;
 
@@ -468,7 +470,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const scoreButton = event.target.closest('.js-open-score');
     if (scoreButton) {
       active = scoreButton.dataset;
+      saveButton.disabled = false;
+      clearButton.disabled = false;
       error.classList.add('d-none');
+      document.getElementById('score-entry-guidance').textContent =
+        active.engine === 'flexible' && active.requireFullSets === '0'
+          ? 'Custom set scores allowed'
+          : 'Enter completed sets';
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       document.getElementById('score-home-label').textContent = active.home;
       document.getElementById('score-away-label').textContent = active.away;
@@ -554,8 +562,7 @@ document.addEventListener('DOMContentLoaded', function () {
     event.preventDefault();
     if (!active) return;
     error.classList.add('d-none');
-    const save = document.getElementById('score-save');
-    save.disabled = true;
+    saveButton.disabled = true;
     try {
       const sets = setsFromForm();
       if (active.engine === 'flexible') {
@@ -581,7 +588,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (failure) {
       error.textContent = failure.message;
       error.classList.remove('d-none');
-      save.disabled = false;
+      saveButton.disabled = false;
     }
   });
 

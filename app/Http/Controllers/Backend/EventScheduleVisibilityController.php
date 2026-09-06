@@ -17,12 +17,15 @@ final class EventScheduleVisibilityController extends Controller
         Gate::authorize('event.manage', $event);
 
         $applyNumSets = $request->filled('num_sets');
+        $applyFullSetRule = $request->has('require_full_sets');
+        $applyScoringRules = $applyNumSets || $applyFullSetRule;
         $data = $request->validate([
             'schedule_visibility' => ['required', Rule::in([
                 DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
                 DrawSetting::SCHEDULE_VISIBILITY_FULL,
             ])],
             'num_sets' => ['sometimes', 'nullable', 'integer', Rule::in([1, 2, 3, 5])],
+            'require_full_sets' => ['sometimes', 'boolean'],
         ]);
 
         $draws = $event->draws()->with('settings')->get();
@@ -31,13 +34,13 @@ final class EventScheduleVisibilityController extends Controller
         foreach ($draws as $draw) {
             Gate::authorize('editNotes', $draw);
 
-            if ($applyNumSets) {
+            if ($applyScoringRules) {
                 Gate::authorize('editCompetitionRules', $draw);
             }
         }
 
-        DB::transaction(function () use ($event, $draws, $data, $applyNumSets): void {
-            if ($applyNumSets) {
+        DB::transaction(function () use ($event, $draws, $data, $applyNumSets, $applyFullSetRule, $applyScoringRules): void {
+            if ($applyScoringRules) {
                 $lockedDraws = \App\Models\Draw::query()
                     ->whereIn('id', $draws->pluck('id'))
                     ->lockForUpdate()
@@ -58,6 +61,9 @@ final class EventScheduleVisibilityController extends Controller
                 if ($applyNumSets) {
                     $settings['num_sets'] = $data['num_sets'];
                 }
+                if ($applyFullSetRule) {
+                    $settings['require_full_sets'] = $data['require_full_sets'];
+                }
 
                 $draw->settings()->updateOrCreate(
                     ['draw_id' => $draw->id],
@@ -66,7 +72,7 @@ final class EventScheduleVisibilityController extends Controller
             }
         });
 
-        $message = $applyNumSets
+        $message = $applyScoringRules
             ? 'Draw settings updated for every draw.'
             : 'Match time display updated for every draw.';
 
@@ -75,6 +81,7 @@ final class EventScheduleVisibilityController extends Controller
             'message' => $message,
             'schedule_visibility' => $data['schedule_visibility'],
             'num_sets' => $applyNumSets ? $data['num_sets'] : null,
+            'require_full_sets' => $applyFullSetRule ? $data['require_full_sets'] : null,
             'updated_draws' => $draws->count(),
         ]);
     }

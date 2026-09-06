@@ -22,6 +22,7 @@ class DrawSetting extends Model
       'boxes',
       'playoff_size',
       'num_sets',
+      'require_full_sets',
       'playoff_config',  // JSON: playoff brackets configuration
       'preset_key',      // Store which preset template was used
       'notes',           // JSON: editable rules/notes per section
@@ -31,7 +32,13 @@ class DrawSetting extends Model
     protected $casts = [
       'playoff_config' => 'array',
       'notes' => 'array',
+      'require_full_sets' => 'boolean',
     ];
+
+    public function requiresFullSets(): bool
+    {
+      return $this->require_full_sets ?? true;
+    }
 
     /**
      * Get available preset templates

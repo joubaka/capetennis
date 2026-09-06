@@ -379,6 +379,12 @@ $(document).ready(function () {
     ->unique();
   $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
   $supportedEventSetFormats = [1, 2, 3, 5];
+  $eventFullSetRules = $event->draws
+    ->map(fn ($draw) => $draw->settings?->requiresFullSets() ?? true)
+    ->unique();
+  $eventRequiresFullSets = $eventFullSetRules->count() === 1
+    ? $eventFullSetRules->first()
+    : true;
   $eventScoringSettingsLocked = $event->draws->contains(fn ($draw) => (bool) $draw->locked)
     || $event->hasRecordedResults();
 @endphp
@@ -414,6 +420,14 @@ $(document).ready(function () {
               @endforeach
             </select>
             <div class="form-text">This changes scoring across all {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }} for the day.</div>
+            <div class="form-check border rounded p-3 ps-5 mt-3">
+              <input type="hidden" name="require_full_sets" value="0" @disabled($eventScoringSettingsLocked)>
+              <input class="form-check-input" type="checkbox" id="event-require-full-sets"
+                     name="require_full_sets" value="1" @checked($eventRequiresFullSets)
+                     @disabled($eventScoringSettingsLocked)>
+              <label class="form-check-label fw-semibold" for="event-require-full-sets">Require full tennis sets</label>
+              <div class="form-text">Untick this to accept custom completed set scores such as 1–4 or 3–5. Every set must still have a winner, and the match must reach the selected best-of result.</div>
+            </div>
           </fieldset>
 
           <fieldset>

@@ -212,7 +212,12 @@ final class FlexibleMonradService
                     'Both active players must qualify before entering a score. Withdrawals advance by walkover.');
             }
             if ($sets !== null) {
-                app(FlexibleMonradScoreValidator::class)->validate($sets, (int) ($draw->settings?->num_sets ?: 1));
+                $settings = $draw->settings;
+                app(FlexibleMonradScoreValidator::class)->validate(
+                    $sets,
+                    (int) ($settings?->num_sets ?: 1),
+                    $settings?->requiresFullSets() ?? true,
+                );
             }
             $old = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($r) => [(int) $r->registration1_score, (int) $r->registration2_score])->values()->all();
             if ($old === ($sets ?? [])) {
