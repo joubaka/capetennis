@@ -1104,6 +1104,9 @@ Route::delete(
   Route::post('draw/{draw}/generate-main-bracket', [RoundRobinController::class, 'generateMainBracket'])
     ->name('backend.draw.generate-main-bracket');
 
+  Route::post('draw/{draw}/progress', [RoundRobinController::class, 'progress'])
+    ->name('backend.draw.progress');
+
   Route::get('draw/{draw}/plate-bracket', [RoundRobinController::class, 'plateBracket'])
     ->name('backend.draw.plate-bracket');
 

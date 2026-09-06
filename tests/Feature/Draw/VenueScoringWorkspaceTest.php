@@ -53,12 +53,62 @@ class VenueScoringWorkspaceTest extends TestCase
             ->assertSee('id="draw-filter"', false)
             ->assertSee('class="match-card-main"', false)
             ->assertSee('Mark as on court')
+            ->assertSee('Next on court')
+            ->assertSee('Next two matches')
             ->assertSee('aria-label="Filter match queue"', false)
             ->assertSee('aria-pressed="true"', false)
             ->assertSee('score-filter-empty', false)
             ->assertSee('Match '.$fixture->match_nr)
             ->assertDontSee('Match '.$otherFixture->match_nr);
         $this->assertNotSame($venue->id, $otherVenue->id);
+    }
+
+    public function test_next_on_court_panel_contains_only_the_next_two_eligible_matches(): void
+    {
+        [$event, $draw, $venue, $first] = $this->scheduledFixture('Queue Venue');
+        $first->update(['match_nr' => 11]);
+        $first->orderOfPlay()->update(['time' => '2026-09-10 08:00:00']);
+
+        $makeFixture = function (int $number, string $time, int $status = FixtureState::STATUS_PENDING) use ($draw, $venue): Fixture {
+            $fixture = Fixture::factory()->create([
+                'draw_id' => $draw->id,
+                'stage' => 'RR',
+                'round' => 1,
+                'match_nr' => $number,
+                'match_status' => $status,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+            OrderOfPlay::create([
+                'fixture_id' => $fixture->id,
+                'draw_id' => $draw->id,
+                'venue_id' => $venue->id,
+                'court' => (string) $number,
+                'time' => $time,
+            ]);
+
+            return $fixture;
+        };
+
+        $playing = $makeFixture(9, '2026-09-10 07:00:00', FixtureState::STATUS_PARTIAL);
+        $completed = $makeFixture(10, '2026-09-10 07:30:00');
+        FixtureResult::factory()->create(['fixture_id' => $completed->id, 'set_nr' => 1]);
+        $second = $makeFixture(12, '2026-09-10 09:00:00');
+        $third = $makeFixture(13, '2026-09-10 10:00:00');
+        $user = $this->scorerFor($event);
+
+        $response = $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event,
+            'venue' => $venue->id,
+        ]));
+
+        $response->assertOk();
+        $this->assertSame([$first->id, $second->id], $response->viewData('nextMatches')->pluck('id')->all());
+        $response->assertSee('data-next-fixture="'.$first->id.'"', false)
+            ->assertSee('data-next-fixture="'.$second->id.'"', false)
+            ->assertDontSee('data-next-fixture="'.$playing->id.'"', false)
+            ->assertDontSee('data-next-fixture="'.$completed->id.'"', false)
+            ->assertDontSee('data-next-fixture="'.$third->id.'"', false);
     }
 
     public function test_venue_limited_score_keeper_cannot_view_or_score_another_venue(): void

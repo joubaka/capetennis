@@ -714,6 +714,131 @@ class RoundRobinController extends Controller
   }
 
   /**
+   * Idempotently move a completed round robin into its configured playoffs.
+   *
+   * This is deliberately separate from destructive bracket regeneration: it
+   * is safe on a published tournament-day draw, preserves existing fixtures
+   * and bookings, and only creates a bracket when none exists yet.
+   */
+  public function progress(Draw $draw)
+  {
+    if ($draw->locked) {
+      return response()->json(['success' => false, 'message' => 'Unlock this draw before progressing it.'], 403);
+    }
+
+    $this->authorize('progress', $draw);
+    $draw->loadMissing(['settings', 'groups', 'event']);
+
+    if ($draw->settings?->workflow !== 'round_robin_playoffs') {
+      return response()->json([
+        'success' => false,
+        'message' => 'Progress is only available for round robin to playoffs draws.',
+      ], 422);
+    }
+
+    $roundRobin = $draw->drawFixtures()->where('stage', 'RR');
+    $total = (clone $roundRobin)->count();
+    $completed = (clone $roundRobin)->whereHas('fixtureResults')->count();
+    if ($total === 0 || $completed !== $total) {
+      $remaining = max(0, $total - $completed);
+      return response()->json([
+        'success' => false,
+        'message' => $total === 0
+          ? 'Create the round-robin fixtures before progressing this draw.'
+          : "Complete all round-robin results first. {$remaining} of {$total} matches still need a result.",
+        'round_robin' => compact('total', 'completed', 'remaining'),
+      ], 422);
+    }
+
+    try {
+      $result = DB::transaction(function () use ($draw, $total, $completed) {
+        Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+        $hub = $this->builder->loadRoundRobinHub($draw);
+        $standings = $hub['standings'] ?? [];
+        $existingBefore = $draw->drawFixtures()->where('stage', '!=', 'RR')->count();
+        $created = 0;
+        $resolved = 0;
+
+        if ($this->playoffSchedules->supportsEntireConfiguration($draw)) {
+          $created = $this->playoffSchedules->prepare($draw)->count();
+          $resolved = $this->playoffSchedules->resolveFromStandings($draw, $standings);
+        } elseif ($existingBefore === 0) {
+          $playoffConfig = $draw->settings?->playoff_config
+            ?? DrawSetting::defaultPlayoffConfig($draw->groups->count());
+          $seeds = $this->buildDynamicSeeds($draw, $standings, $playoffConfig);
+          $this->generateDynamicPlayoffFixtures($draw, $playoffConfig, $seeds);
+          $created = $draw->drawFixtures()->where('stage', '!=', 'RR')->count();
+        }
+
+        // Reconcile winners from completed playoff fixtures. Normal score save
+        // already does this; the explicit Progress action also repairs a missed
+        // or interrupted handoff without replacing an occupied target slot.
+        $fixtures = $draw->drawFixtures()->where('stage', '!=', 'RR')
+          ->with('fixtureResults')->orderBy('round')->orderBy('match_nr')->get();
+        $beforeSlots = $fixtures->mapWithKeys(fn ($fixture) => [$fixture->id => [
+          $fixture->registration1_id, $fixture->registration2_id,
+        ]]);
+
+        $progression = app(\App\Domain\Fixtures\Services\FixtureProgressionService::class);
+        foreach ($fixtures as $fixture) {
+          if ($fixture->fixtureResults->isEmpty() || ! $fixture->winner_registration
+              || ! $fixture->registration1_id || ! $fixture->registration2_id) {
+            continue;
+          }
+
+          $loser = (int) $fixture->winner_registration === (int) $fixture->registration1_id
+            ? (int) $fixture->registration2_id
+            : (int) $fixture->registration1_id;
+          $progression->advance($fixture, (int) $fixture->winner_registration, $loser);
+        }
+
+        $this->autoAdvanceByes($draw);
+        $fixturesAfter = $draw->drawFixtures()->where('stage', '!=', 'RR')->get();
+        $advancedSlots = $fixturesAfter->sum(function ($fixture) use ($beforeSlots) {
+          $before = $beforeSlots->get($fixture->id, [null, null]);
+          return (int) ($before[0] === null && $fixture->registration1_id !== null)
+            + (int) ($before[1] === null && $fixture->registration2_id !== null);
+        });
+        $playoffCount = $fixturesAfter->count();
+        $unscheduled = $draw->drawFixtures()->where('stage', '!=', 'RR')
+          ->whereDoesntHave('orderOfPlay')->count();
+
+        return compact(
+          'total', 'completed', 'existingBefore', 'created', 'resolved',
+          'advancedSlots', 'playoffCount', 'unscheduled'
+        );
+      });
+
+      DrawAuditLog::record($draw->id, 'bracket_progressed', null, $result);
+
+      $message = $result['created'] > 0
+        ? "Created {$result['created']} playoff fixtures from the final round-robin standings."
+        : ($result['resolved'] > 0 || $result['advancedSlots'] > 0
+          ? 'Progressed the qualified players and completed-match winners into their playoff fixtures.'
+          : 'The playoff fixtures are already up to date.');
+      if ($result['unscheduled'] > 0) {
+        $message .= " {$result['unscheduled']} playoff fixtures still need to be scheduled.";
+      }
+
+      return response()->json([
+        'success' => true,
+        'message' => $message,
+        'progress' => $result,
+      ]);
+    } catch (\Throwable $exception) {
+      Log::error('[RoundRobinProgress] Failed', [
+        'draw_id' => $draw->id,
+        'error' => $exception->getMessage(),
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'The draw could not be progressed: '.$exception->getMessage(),
+      ], 422);
+    }
+  }
+
+  /**
    * Build seeds from RR standings for dynamic playoff config
    */
   protected function buildDynamicSeeds(Draw $draw, array $standings, array $playoffConfig): array

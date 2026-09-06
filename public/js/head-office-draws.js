@@ -108,6 +108,27 @@ $(function () {
   $('#unpublish-selected-times').on('click', () => bulkPublish('schedules', 'unpublish'));
   updateBulkActions();
 
+  $(document).on('click', '.progress-draw', function () {
+    const $button = $(this);
+    Swal.fire({
+      title: 'Progress this draw?',
+      text: 'This will use the final round-robin standings to create missing playoff fixtures, or move completed-match winners into fixtures that already exist.',
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Progress draw',
+    }).then(result => {
+      if (!result.isConfirmed) return;
+      $button.prop('disabled', true).attr('aria-busy', 'true');
+      $.post($button.data('url'), {_token: csrf})
+        .done(function (response) {
+          if (response.success === false) { toastr.error(response.message || 'Could not progress the draw.'); return; }
+          Swal.fire({
+            title: 'Draw progressed', text: response.message, icon: 'success', confirmButtonText: 'Refresh draws',
+          }).then(() => window.location.reload());
+        })
+        .fail(xhr => error(xhr, 'Could not progress ' + $button.data('draw-name') + '.'))
+        .always(() => $button.prop('disabled', false).removeAttr('aria-busy'));
+    });
+  });
+
   $('#drawSettingsForm').on('submit', function (event) {
     event.preventDefault();
     const $form = $(this);

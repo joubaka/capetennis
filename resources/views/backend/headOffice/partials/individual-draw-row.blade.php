@@ -56,6 +56,17 @@
   <div class="draw-overview-actions">
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ $drawUrl }}#schedule">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
+    @if($draw->settings?->workflow === 'round_robin_playoffs')
+      @can('progress', $draw)
+        <button type="button" class="btn draws-button draws-button-primary progress-draw"
+                data-url="{{ route('backend.draw.progress', $draw) }}"
+                data-draw-name="{{ $draw->drawName }}"
+                aria-label="Progress {{ $draw->drawName }} to its playoffs">
+          <i class="ti ti-player-track-next" aria-hidden="true"></i>
+          <span>Progress</span>
+        </button>
+      @endcan
+    @endif
     @can('publish', $draw)
       <button type="button" class="btn draws-button draw-publish-button {{ $draw->published ? 'draws-button-secondary' : 'draws-button-primary' }} toggle-publish"
               data-url="{{ $publishUrl }}" data-draw-name="{{ $draw->drawName }}"

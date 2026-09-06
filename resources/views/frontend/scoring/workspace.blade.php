@@ -49,6 +49,16 @@
   .operator-summary { cursor: pointer; list-style: none; }
   .operator-summary::-webkit-details-marker { display: none; }
   #score-filter-empty { border: 1px dashed #c9d4df; background: #fff; }
+  .next-court-button {
+    position: fixed;
+    top: calc(5rem + env(safe-area-inset-top));
+    right: max(1rem, env(safe-area-inset-right));
+    z-index: 1025;
+    min-height: 44px;
+    box-shadow: 0 .5rem 1.25rem rgba(0, 39, 73, .2);
+  }
+  .next-court-panel { width: min(92vw, 390px) !important; }
+  .next-court-match { border-left: 4px solid var(--bs-primary); }
   @media (max-width: 575.98px) {
     .container-xxl { padding-inline: .75rem; }
     .scoring-shell { margin-inline: 0; }
@@ -80,6 +90,7 @@
     #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
     #score-entry-modal .modal-body { overflow-y: auto; }
     .modal-footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .next-court-button { top: calc(4.65rem + env(safe-area-inset-top)); right: max(.75rem, env(safe-area-inset-right)); }
   }
 </style>
 
@@ -88,6 +99,70 @@
        data-selected-venue="{{ $selectedVenue?->id }}"
        data-available-venues='@json($venues->pluck('id')->map(fn($id) => (int) $id)->values())'
        data-force-all-venues="{{ request()->boolean('all_venues') ? '1' : '0' }}">
+    <button type="button" class="btn btn-primary next-court-button d-flex align-items-center gap-2"
+            data-bs-toggle="offcanvas" data-bs-target="#next-on-court-panel"
+            aria-controls="next-on-court-panel">
+      <i class="ti ti-player-play" aria-hidden="true"></i>
+      <span>Next on court</span>
+      <span class="badge bg-white text-primary">{{ $nextMatches->count() }}</span>
+    </button>
+
+    <div class="offcanvas offcanvas-end next-court-panel" tabindex="-1" id="next-on-court-panel"
+         aria-labelledby="next-on-court-title">
+      <div class="offcanvas-header border-bottom">
+        <div>
+          <div class="small text-muted text-uppercase fw-semibold">{{ $selectedVenue?->name ?? 'All venues' }}</div>
+          <h2 class="offcanvas-title h5 mb-0" id="next-on-court-title">Next two matches</h2>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+      </div>
+      <div class="offcanvas-body bg-light">
+        @forelse($nextMatches as $nextMatch)
+          @php
+            $nextIsTeam = $nextMatch instanceof \App\Models\TeamFixture;
+            if ($nextIsTeam) {
+              $nextHomePlayers = $nextMatch->fixturePlayers->pluck('player1')->filter()->pluck('full_name')->filter();
+              $nextAwayPlayers = $nextMatch->fixturePlayers->pluck('player2')->filter()->pluck('full_name')->filter();
+              $nextHome = $nextHomePlayers->isNotEmpty() ? $nextHomePlayers->implode(' + ') : ($nextMatch->homeTeam?->name ?? $nextMatch->region1Name?->name ?? 'To be decided');
+              $nextAway = $nextAwayPlayers->isNotEmpty() ? $nextAwayPlayers->implode(' + ') : ($nextMatch->awayTeam?->name ?? $nextMatch->region2Name?->name ?? 'To be decided');
+              $nextTime = $nextMatch->scheduled_at;
+              $nextCourt = $nextMatch->court_label;
+              $nextVenue = $nextMatch->venue?->name;
+            } else {
+              $nextHome = $nextMatch->registration1?->players?->first()?->full_name ?? 'Player 1';
+              $nextAway = $nextMatch->registration2?->players?->first()?->full_name ?? 'Player 2';
+              $nextTime = $nextMatch->orderOfPlay?->time;
+              $nextCourt = $nextMatch->orderOfPlay?->court;
+              $nextVenue = $nextMatch->orderOfPlay?->venue?->name;
+            }
+            $nextNumber = $nextMatch->match_nr ?: ($nextIsTeam ? $nextMatch->home_rank_nr : null) ?: $nextMatch->id;
+          @endphp
+          <article class="card next-court-match shadow-sm mb-3" data-next-fixture="{{ $nextMatch->id }}">
+            <div class="card-body">
+              <div class="d-flex justify-content-between gap-2 mb-2">
+                <strong>{{ $nextMatch->draw?->drawName }}</strong>
+                <span class="badge bg-label-primary">Match {{ $nextNumber }}</span>
+              </div>
+              <div class="fw-semibold">{{ $nextHome }}</div>
+              <div class="small text-muted my-1">versus</div>
+              <div class="fw-semibold">{{ $nextAway }}</div>
+              <div class="small text-muted mt-3 d-flex flex-wrap gap-2">
+                @if($nextTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($nextTime)->format('D H:i') }}</span>@endif
+                @if($nextCourt)<span><i class="ti ti-ball-tennis"></i> Court {{ $nextCourt }}</span>@endif
+                @if($nextVenue && !$selectedVenue)<span><i class="ti ti-map-pin"></i> {{ $nextVenue }}</span>@endif
+              </div>
+            </div>
+          </article>
+        @empty
+          <div class="text-center py-5">
+            <i class="ti ti-circle-check fs-1 text-success" aria-hidden="true"></i>
+            <h3 class="h6 mt-3">No matches waiting to go on</h3>
+            <p class="small text-muted mb-0">Playing, completed, unresolved and unscheduled matches are excluded.</p>
+          </div>
+        @endforelse
+      </div>
+    </div>
+
     <div class="card scoring-hero shadow-sm mb-3">
       <div class="card-body p-3">
         @php

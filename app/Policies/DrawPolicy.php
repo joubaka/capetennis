@@ -98,6 +98,18 @@ class DrawPolicy
     }
 
     /**
+     * Progress a live round-robin draw into its configured playoffs.
+     *
+     * Unlike bracket regeneration, this is an idempotent tournament-day
+     * operation and may run while the draw is published. It must never run
+     * against a locked draw or be available to a score-keeper-only account.
+     */
+    public function progress(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && $this->canManage($user, $draw);
+    }
+
+    /**
      * Edit match format and tournament rules until the first result exists.
      * Publication is a visibility boundary, not the start-of-play boundary.
      */

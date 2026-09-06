@@ -139,6 +139,12 @@ class VenueScoringController extends Controller
         $ready = $matches->filter(fn ($match) => $match instanceof Fixture
             ? ($match->registration1_id && $match->registration2_id)
             : ($match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam)))->count();
+        $nextMatches = $matches->filter(fn ($match) =>
+            $match->fixtureResults->isEmpty()
+            && (int) ($match->match_status ?? 0) !== FixtureState::STATUS_PARTIAL
+            && $this->scheduledTime($match) !== PHP_INT_MAX
+            && $this->hasKnownParticipants($match)
+        )->take(2)->values();
 
         $recentActivity = DrawAuditLog::query()
             ->whereIn('draw_id', $drawIds)
@@ -161,6 +167,7 @@ class VenueScoringController extends Controller
             'selectedDraw' => $selectedDraw,
             'completed' => $completed,
             'ready' => $ready,
+            'nextMatches' => $nextMatches,
             'recentActivity' => $recentActivity,
             'operatorName' => (string) $request->session()->get('venue_scoring.operator', ''),
             'venueRestricted' => $restrictedVenueId !== null,
@@ -280,6 +287,13 @@ class VenueScoringController extends Controller
         }
 
         return $time ? strtotime((string) $time) : PHP_INT_MAX;
+    }
+
+    private function hasKnownParticipants(Fixture|TeamFixture $match): bool
+    {
+        return $match instanceof Fixture
+            ? (bool) ($match->registration1_id && $match->registration2_id)
+            : (bool) ($match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam));
     }
 
     private function ageGroup(Fixture|TeamFixture $match): string
