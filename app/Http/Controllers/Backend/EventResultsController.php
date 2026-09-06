@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\Registration;
+use App\Services\Draw\DrawResultOrderService;
 use Illuminate\Support\Facades\DB;
 
 class EventResultsController extends Controller
 {
-  public function individual(Event $event)
+  public function individual(Event $event, DrawResultOrderService $drawResultOrder)
   {
     $this->authorize('event-draw.view', $event);
 
@@ -96,21 +97,48 @@ class EventResultsController extends Controller
       ->get()
       ->groupBy('category_event_id');
 
+    // Draw results are a read-only default for categories that do not yet
+    // have saved final positions. Historical unlinked draws are included only
+    // when their participants all belong to one qualifying category.
+    $eventDraws = $event->draws()->with([
+      'flexibleMonrad',
+      'settings',
+      'registrations:id',
+      'groups.groupRegistrations.registration',
+      'drawFixtures.fixtureResults',
+      'drawFixtures.registration1.players',
+      'drawFixtures.registration2.players',
+    ])->get();
+    $registrationIdsByCategoryEvent = $pivotRows->map(fn($rows) => $rows
+      ->pluck('registration_id')
+      ->filter(fn($id) => $registrations->has($id))
+      ->map(fn($id) => (int) $id)
+      ->values());
+
     // ── 6. Assemble per-category in PHP (no more queries) ────────────────────
-    $categories = $categoryEvents->map(function ($category) use ($registrations, $savedPositions, $pivotRows) {
+    $categories = $categoryEvents->map(function ($category) use ($registrations, $savedPositions, $pivotRows, $eventDraws, $drawResultOrder, $registrationIdsByCategoryEvent) {
       $categoryResults = $savedPositions->get($category->category_id, collect());
       $hasSavedResults = $categoryResults->isNotEmpty();
+
+      $categoryRegistrationIds = $pivotRows
+        ->get($category->id, collect())
+        ->pluck('registration_id')
+        ->filter(fn($id) => $registrations->has($id));
+      $drawOrder = $hasSavedResults
+        ? collect()
+        : $drawResultOrder->forCategory($category, $eventDraws, $categoryRegistrationIds, $registrationIdsByCategoryEvent);
+      $drawPositions = $drawOrder->flip();
 
       $catRegistrations = $pivotRows
         ->get($category->id, collect())
         ->pluck('registration_id')
         ->map(fn($id) => $registrations->get($id))
         ->filter()
-        ->map(function ($reg) use ($categoryResults, $hasSavedResults) {
+        ->map(function ($reg) use ($categoryResults, $hasSavedResults, $drawPositions) {
           // If no results have been saved yet, treat all players as positioned (not removed)
           $reg->position = $hasSavedResults
             ? ($categoryResults->get($reg->id)?->position ?? null)
-            : -1; // -1 = unsaved default (not removed)
+            : ($drawPositions->has($reg->id) ? $drawPositions->get($reg->id) + 1 : -1);
           return $reg;
         })
         ->sortBy([
@@ -122,6 +150,7 @@ class EventResultsController extends Controller
         ->values();
 
       $category->setRelation('registrations', $catRegistrations);
+      $category->setAttribute('uses_draw_result_default', ! $hasSavedResults && $drawOrder->isNotEmpty());
 
       return $category;
     });

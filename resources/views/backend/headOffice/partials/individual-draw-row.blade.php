@@ -60,6 +60,7 @@
       @can('progress', $draw)
         <button type="button" class="btn draws-button draws-button-primary progress-draw"
                 data-url="{{ route('backend.draw.progress', $draw) }}"
+                data-review-url="{{ route('backend.draw.progress-review', $draw) }}"
                 data-draw-name="{{ $draw->drawName }}"
                 aria-label="Progress {{ $draw->drawName }} to its playoffs">
           <i class="ti ti-player-track-next" aria-hidden="true"></i>

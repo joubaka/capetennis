@@ -101,6 +101,12 @@
       </div>
 
       <div class="card-body">
+        @if($category->uses_draw_result_default)
+          <div class="alert alert-info py-2 small" role="status">
+            <i class="ti ti-bracket me-1" aria-hidden="true"></i>
+            Default order loaded from the recorded draw results. Review it, then save the final positions.
+          </div>
+        @endif
         <ul class="list-group sortable-results"
             data-category="{{ $category->id }}">
 

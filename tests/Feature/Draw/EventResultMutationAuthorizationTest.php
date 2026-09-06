@@ -3,7 +3,9 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\CategoryEvent;
+use App\Models\Draw;
 use App\Models\Event;
+use App\Models\Fixture;
 use App\Models\Player;
 use App\Models\Position;
 use App\Models\Registration;
@@ -85,6 +87,100 @@ class EventResultMutationAuthorizationTest extends TestCase
             ->assertJsonValidationErrors('results');
 
         $this->assertFalse($this->event->fresh()->results_published);
+    }
+
+    public function test_unsaved_final_positions_default_to_the_recorded_draw_result_order(): void
+    {
+        [$first, $second, $third, $fourth] = collect([
+            'First Seed', 'Second Seed', 'Third Seed', 'Fourth Seed',
+        ])->map(fn (string $name) => $this->paidRegistration($name));
+
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'category_event_id' => null,
+        ]);
+        Fixture::create([
+            'draw_id' => $draw->id,
+            'stage' => 'F',
+            'match_nr' => 7,
+            'round' => 3,
+            'registration1_id' => $second->id,
+            'registration2_id' => $first->id,
+            'winner_registration' => $second->id,
+            'match_status' => 1,
+        ]);
+        Fixture::create([
+            'draw_id' => $draw->id,
+            'stage' => '3/4',
+            'match_nr' => 12,
+            'round' => 3,
+            'registration1_id' => $fourth->id,
+            'registration2_id' => $third->id,
+            'winner_registration' => $fourth->id,
+            'match_status' => 1,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.events.results.individual', $this->event))
+            ->assertOk()
+            ->assertSee('Default order loaded from the recorded draw results')
+            ->assertViewHas('categories', function ($categories) use ($first, $second, $third, $fourth) {
+                $category = $categories->firstWhere('id', $this->categoryEvent->id);
+
+                return $category?->uses_draw_result_default
+                    && $category->registrations->pluck('id')->all() === [
+                        $second->id, $first->id, $fourth->id, $third->id,
+                    ];
+            });
+    }
+
+    public function test_saved_final_positions_override_the_draw_result_fallback(): void
+    {
+        $first = $this->paidRegistration('Draw Winner');
+        $second = $this->paidRegistration('Saved Winner');
+        $draw = Draw::factory()->create([
+            'event_id' => $this->event->id,
+            'category_event_id' => $this->categoryEvent->id,
+        ]);
+        Fixture::create([
+            'draw_id' => $draw->id,
+            'stage' => 'F',
+            'match_nr' => 7,
+            'round' => 3,
+            'registration1_id' => $first->id,
+            'registration2_id' => $second->id,
+            'winner_registration' => $first->id,
+            'match_status' => 1,
+        ]);
+        DB::table('category_results')->insert([
+            [
+                'event_id' => $this->event->id,
+                'category_id' => $this->categoryEvent->category_id,
+                'registration_id' => $second->id,
+                'position' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'event_id' => $this->event->id,
+                'category_id' => $this->categoryEvent->category_id,
+                'registration_id' => $first->id,
+                'position' => 2,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.events.results.individual', $this->event))
+            ->assertOk()
+            ->assertDontSee('Default order loaded from the recorded draw results')
+            ->assertViewHas('categories', function ($categories) use ($first, $second) {
+                $category = $categories->firstWhere('id', $this->categoryEvent->id);
+
+                return ! $category?->uses_draw_result_default
+                    && $category->registrations->pluck('id')->all() === [$second->id, $first->id];
+            });
     }
 
     public function test_category_result_save_is_authorized_and_event_scoped(): void
@@ -182,5 +278,19 @@ class EventResultMutationAuthorizationTest extends TestCase
             'player_id' => $registeredPlayer->id,
             'position' => 1,
         ]);
+    }
+
+    private function paidRegistration(string $name): Registration
+    {
+        [$firstName, $surname] = array_pad(explode(' ', $name, 2), 2, 'Player');
+        $player = Player::factory()->create(['name' => $firstName, 'surname' => $surname]);
+        $registration = Registration::factory()->create();
+        $registration->players()->attach($player->id);
+        $this->categoryEvent->registrations()->attach($registration->id, [
+            'status' => 'active',
+            'payment_status_id' => 1,
+        ]);
+
+        return $registration;
     }
 }

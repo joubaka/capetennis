@@ -2,70 +2,90 @@
 
 @section('title', 'Venue scoring — ' . $event->name)
 
-@section('content')
-<meta name="csrf-token" content="{{ csrf_token() }}">
-
+@section('page-style')
 <style>
-  .scoring-shell { max-width: 1180px; margin-inline: auto; }
+  .scoring-shell { max-width: 1280px; margin-inline: auto; }
   .scoring-shell.is-refreshing { opacity: .65; pointer-events: none; }
-  .scoring-hero { background: linear-gradient(135deg, #004177, #087ea4); color: #fff; border: 0; }
-  .scoring-hero-main { display: flex; align-items: center; gap: 1rem; }
+  .scoring-hero {
+    position: relative;
+    overflow: hidden;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ct-ink, #172e45) 0%, #0e5360 72%, var(--ct-accent, #14796e) 145%);
+    border: 0;
+  }
+  .scoring-hero::after {
+    position: absolute;
+    top: -7rem;
+    right: -4.5rem;
+    width: 13rem;
+    height: 13rem;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 50%;
+    content: '';
+  }
+  .scoring-hero-main { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 17rem) auto; align-items: center; gap: 1.5rem; }
   .scoring-hero-copy { min-width: 0; }
-  .scoring-hero-progress { width: 210px; margin-left: auto; }
-  .scoring-progress { height: .45rem; background: rgba(255,255,255,.25); }
-  .scoring-progress .progress-bar { background: #7ee2a8; }
-  .scoring-filter { min-height: 38px; flex: 0 0 auto; white-space: nowrap; padding-block: .45rem; }
+  .scoring-hero-copy .scoring-title { color: #fff !important; }
+  .scoring-hero-eyebrow { color: rgba(255, 255, 255, .72); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .scoring-hero-context { color: rgba(255, 255, 255, .8); }
+  .scoring-hero-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; }
+  .scoring-hero-actions .btn { min-height: 42px; white-space: nowrap; }
+  .scoring-hero .btn-light { color: var(--ct-ink, #172e45); }
+  .scoring-hero .btn-outline-light { color: #fff; border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .06); }
+  .scoring-hero .btn-outline-light:hover { color: var(--ct-ink, #172e45) !important; background: #fff !important; border-color: #fff !important; }
+  .scoring-progress { height: .45rem; background: rgba(255,255,255,.22); }
+  .scoring-progress .progress-bar { background: #78d8b2; }
+  .scoring-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+  .scoring-filter { min-height: 40px; flex: 0 0 auto; white-space: nowrap; padding-inline: .9rem; padding-block: .45rem; }
   .scoring-select-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
   .scoring-select-grid > div { min-width: 0; }
-  .scoring-filter-label { color: #53657a; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .scoring-select { min-height: 40px; font-weight: 600; color: #243b53; }
+  .scoring-filter-label { color: var(--ct-muted, #66788a); font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+  .scoring-select { min-height: 42px; font-weight: 600; color: var(--ct-ink, #172e45); }
   .scoring-status-strip { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0; }
-  .scoring-operator { border-top: 1px solid #e6ebf0; }
-  .scoring-operator .operator-summary { padding: .65rem 1rem; }
-  .operator-change { margin-left: auto; color: var(--bs-primary); font-size: .82rem; font-weight: 700; }
-  .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; }
-  .scoring-queue-summary { margin-left: auto; color: #6c7a8c; font-size: .875rem; white-space: nowrap; }
-  .match-card { border-left: 5px solid #6c8aa6; transition: background-color .2s ease, border-color .2s ease; }
-  .match-card.is-playing { background: #fff5e6; border-left-color: #f59f00; }
-  .match-card.is-completed { background: #edf9f0; border-left-color: #28a745; }
-  .match-card.is-waiting { border-left-color: #adb5bd; }
+  .scoring-operator { border-top: 1px solid var(--ct-border, #e1e8ee); }
+  .scoring-operator .operator-summary { min-height: 52px; padding: .7rem 1rem; }
+  .operator-change { margin-left: auto; color: var(--ct-accent, #14796e); font-size: .82rem; font-weight: 700; }
+  .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; padding: .55rem; background: var(--ct-soft, #eef3f6); border: 1px solid var(--ct-border, #e1e8ee); border-radius: 12px; }
+  .scoring-queue-summary { color: var(--ct-muted, #66788a); font-size: .875rem; white-space: nowrap; }
+  .match-card { border-left: 5px solid #8aa0b2; transition: background-color .2s ease, border-color .2s ease; }
+  .match-card.is-playing { background: #fff8ed; border-left-color: #d98b10; }
+  .match-card.is-completed { background: #f0f8f5; border-left-color: var(--ct-accent, #14796e); }
+  .match-card.is-waiting { border-left-color: #aebbc6; }
   .match-card .card-body { padding: .85rem 1rem; }
   .match-card-header { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-bottom: .4rem; }
-  .match-meta { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: #6c757d; font-size: .86rem; }
+  .match-meta { display: flex; flex-wrap: wrap; gap: .35rem .8rem; color: var(--ct-muted, #66788a); font-size: .86rem; }
   .match-status { flex: 0 0 auto; }
   .match-status-light { display: inline-block; width: .55rem; height: .55rem; margin-right: .3rem; border-radius: 50%; background: currentColor; vertical-align: .03rem; }
   .match-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; }
   .match-identity { min-width: 0; }
   .match-players { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }
   .match-player { font-size: .96rem; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
-  .match-versus { color: #7c8998; font-size: .8rem; font-weight: 700; text-transform: uppercase; }
-  .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: #004177; text-align: right; }
-  .match-score.is-empty { color: #7c8998; font-size: .82rem; font-weight: 600; }
+  .match-versus { color: var(--ct-muted, #66788a); font-size: .8rem; font-weight: 700; text-transform: uppercase; }
+  .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: var(--ct-ink, #172e45); text-align: right; }
+  .match-score.is-empty { color: var(--ct-muted, #66788a); font-size: .82rem; font-weight: 600; }
   .score-action { min-height: 38px; white-space: nowrap; }
   .match-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
-  .court-label.is-playing { color: #9a5b00; font-weight: 750; }
-  .court-label.is-completed { color: #237a3b; font-weight: 750; }
+  .court-label.is-playing { color: #8b5600; font-weight: 750; }
+  .court-label.is-completed { color: var(--ct-accent, #14796e); font-weight: 750; }
   .score-input { min-height: 48px; font-size: 1.05rem; text-align: center; }
   .operator-summary { cursor: pointer; list-style: none; }
   .operator-summary::-webkit-details-marker { display: none; }
-  #score-filter-empty { border: 1px dashed #c9d4df; background: #fff; }
-  .next-court-button {
-    position: fixed;
-    top: calc(5rem + env(safe-area-inset-top));
-    right: max(1rem, env(safe-area-inset-right));
-    z-index: 1025;
-    min-height: 44px;
-    box-shadow: 0 .5rem 1.25rem rgba(0, 39, 73, .2);
-  }
+  #score-filter-empty { border: 1px dashed var(--ct-border, #e1e8ee); background: var(--ct-surface, #fff); }
   .next-court-panel { width: min(92vw, 390px) !important; }
-  .next-court-match { border-left: 4px solid var(--bs-primary); }
+  .next-court-match { border-left: 4px solid var(--ct-accent, #14796e); }
+  .scoring-activity summary { min-height: 54px; cursor: pointer; list-style: none; }
+  .scoring-activity summary::-webkit-details-marker { display: none; }
+  @media (max-width: 991.98px) {
+    .scoring-hero-main { grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem); }
+    .scoring-hero-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  }
   @media (max-width: 575.98px) {
-    .container-xxl { padding-inline: .75rem; }
     .scoring-shell { margin-inline: 0; }
     .scoring-title { font-size: 1.3rem; }
     .scoring-hero .card-body { padding: 1rem !important; }
-    .scoring-hero-main { align-items: flex-start; flex-wrap: wrap; }
-    .scoring-hero-progress { order: 3; width: 100%; }
+    .scoring-hero-main { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+    .scoring-hero-actions { justify-content: stretch; }
+    .scoring-hero-actions .btn { flex: 1 1 0; }
     .scoring-filter-card { margin-inline: -.75rem; border-radius: 0; border-inline: 0; }
     .scoring-filter-card .card-body { padding-inline: .75rem !important; }
     .scoring-select-grid { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
@@ -79,8 +99,9 @@
       scrollbar-width: thin;
       -webkit-overflow-scrolling: touch;
     }
-    .scoring-queue-toolbar { display: block; margin-inline: -.75rem; }
-    .scoring-queue-summary { display: block; margin: .25rem .75rem 0; white-space: normal; }
+    .scoring-section-heading { display: block; }
+    .scoring-queue-summary { margin-top: .35rem; white-space: normal; }
+    .scoring-queue-toolbar { margin-inline: -.75rem; padding-inline: .75rem; overflow: hidden; border-inline: 0; border-radius: 0; }
     .match-card-main { grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; }
     .match-identity { grid-column: 1 / -1; }
     .match-players { align-items: center; }
@@ -90,23 +111,18 @@
     #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
     #score-entry-modal .modal-body { overflow-y: auto; }
     .modal-footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-    .next-court-button { top: calc(4.65rem + env(safe-area-inset-top)); right: max(.75rem, env(safe-area-inset-right)); }
   }
 </style>
+@endsection
+
+@section('content')
+<meta name="csrf-token" content="{{ csrf_token() }}">
 
 <div class="container-xxl py-3 py-md-4">
   <div class="scoring-shell"
        data-selected-venue="{{ $selectedVenue?->id }}"
        data-available-venues='@json($venues->pluck('id')->map(fn($id) => (int) $id)->values())'
        data-force-all-venues="{{ request()->boolean('all_venues') ? '1' : '0' }}">
-    <button type="button" class="btn btn-primary next-court-button d-flex align-items-center gap-2"
-            data-bs-toggle="offcanvas" data-bs-target="#next-on-court-panel"
-            aria-controls="next-on-court-panel">
-      <i class="ti ti-player-play" aria-hidden="true"></i>
-      <span>Next on court</span>
-      <span class="badge bg-white text-primary">{{ $nextMatches->count() }}</span>
-    </button>
-
     <div class="offcanvas offcanvas-end next-court-panel" tabindex="-1" id="next-on-court-panel"
          aria-labelledby="next-on-court-title">
       <div class="offcanvas-header border-bottom">
@@ -163,16 +179,18 @@
       </div>
     </div>
 
-    <div class="card scoring-hero shadow-sm mb-3">
-      <div class="card-body p-3">
+    <header class="card scoring-hero mb-4" aria-labelledby="scoring-workspace-title">
+      <div class="card-body p-4">
         @php
           $progress = $matches->count() ? (int) round(($completed / $matches->count()) * 100) : 0;
         @endphp
         <div class="scoring-hero-main">
           <div class="scoring-hero-copy">
-            <div class="small text-white-50 text-uppercase fw-semibold">Venue scoring</div>
-            <h1 class="scoring-title h4 mb-1 text-truncate">{{ $event->name }}</h1>
-            <div class="small text-white-50 text-truncate">
+            <div class="scoring-hero-eyebrow mb-2">Tournament operations</div>
+            <h1 class="scoring-title h3 mb-2" id="scoring-workspace-title">{{ $event->name }}</h1>
+            <div class="scoring-hero-context small">
+              <i class="ti ti-device-mobile me-1" aria-hidden="true"></i> Venue scoring
+              <span aria-hidden="true"> · </span>
               {{ $selectedVenue?->name ?? 'All scheduled venues' }}
               @if($selectedDraw) · {{ $selectedDraw->drawName }} @endif
             </div>
@@ -186,16 +204,33 @@
               <div class="progress-bar" style="width: {{ $progress }}%"></div>
             </div>
           </div>
-          <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-light">Tournament</a>
+          <div class="scoring-hero-actions">
+            <a href="{{ route('events.show', $event) }}" class="btn btn-light">
+              <i class="ti ti-arrow-left me-1" aria-hidden="true"></i> Tournament
+            </a>
+            <button type="button" class="btn btn-outline-light d-flex align-items-center justify-content-center gap-2"
+                    data-bs-toggle="offcanvas" data-bs-target="#next-on-court-panel"
+                    aria-controls="next-on-court-panel">
+              <i class="ti ti-player-play" aria-hidden="true"></i>
+              <span>Next on court</span>
+              <span class="badge bg-white text-primary">{{ $nextMatches->count() }}</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </header>
 
     @if(session('success'))
       <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
-    <div class="card scoring-filter-card mb-3">
+    <section class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title">
+      <div class="card-header scoring-section-heading py-3">
+        <div>
+          <h2 class="h6 mb-1" id="scoring-context-title">Scoring context</h2>
+          <p class="small text-muted mb-0">Choose the venue and draw this device is working on.</p>
+        </div>
+      </div>
       <div class="card-body p-3">
         <div class="scoring-select-grid">
         <div>
@@ -242,8 +277,20 @@
           </form>
         </div>
       </details>
-    </div>
+    </section>
 
+    <section aria-labelledby="match-queue-title">
+    <div class="scoring-section-heading mb-3 px-1">
+      <div>
+        <h2 class="h5 mb-1" id="match-queue-title">Match queue</h2>
+        <p class="small text-muted mb-0">Start play, enter results, or review completed matches.</p>
+      </div>
+      <div class="scoring-queue-summary" aria-live="polite">
+        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty())->count() }}</strong>
+        <span id="score-visible-label">outstanding</span>
+        <span> · {{ $ready }} ready to score</span>
+      </div>
+    </div>
     <div class="scoring-queue-toolbar mb-3">
       <div class="scoring-status-strip" role="group" aria-label="Filter match queue">
         <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="now" aria-pressed="false">Playing now</button>
@@ -251,11 +298,6 @@
         <button type="button" class="btn btn-primary scoring-filter" data-score-filter="outstanding" aria-pressed="true">Outstanding</button>
         <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="completed" aria-pressed="false">Completed</button>
         <button type="button" class="btn btn-outline-primary scoring-filter" data-score-filter="all" aria-pressed="false">All</button>
-      </div>
-      <div class="scoring-queue-summary" aria-live="polite">
-        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty())->count() }}</strong>
-        <span id="score-visible-label">outstanding</span>
-        <span class="d-none d-md-inline"> · {{ $ready }} ready to score</span>
       </div>
     </div>
 
@@ -376,10 +418,15 @@
       <h2 class="h6 mt-2 mb-1">No matches in this view</h2>
       <p class="small text-muted mb-0">Try another queue filter, venue, or draw.</p>
     </div>
+    </section>
 
     @if($recentActivity->isNotEmpty())
-      <details class="card mt-4">
-        <summary class="card-header fw-semibold">Recent scoring activity</summary>
+      <details class="card scoring-activity mt-4">
+        <summary class="card-header d-flex align-items-center gap-2 fw-semibold">
+          <i class="ti ti-history text-primary" aria-hidden="true"></i>
+          <span>Recent scoring activity</span>
+          <i class="ti ti-chevron-down ms-auto text-muted" aria-hidden="true"></i>
+        </summary>
         <div class="list-group list-group-flush">
           @foreach($recentActivity as $activity)
             <div class="list-group-item small">

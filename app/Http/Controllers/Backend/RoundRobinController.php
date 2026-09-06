@@ -714,13 +714,10 @@ class RoundRobinController extends Controller
   }
 
   /**
-   * Idempotently move a completed round robin into its configured playoffs.
-   *
-   * This is deliberately separate from destructive bracket regeneration: it
-   * is safe on a published tournament-day draw, preserves existing fixtures
-   * and bookings, and only creates a bracket when none exists yet.
+   * Return the canonical, completed group standings that must be confirmed
+   * before a round-robin draw can be progressed into its playoffs.
    */
-  public function progress(Draw $draw)
+  public function progressReview(Draw $draw)
   {
     if ($draw->locked) {
       return response()->json(['success' => false, 'message' => 'Unlock this draw before progressing it.'], 403);
@@ -736,18 +733,73 @@ class RoundRobinController extends Controller
       ], 422);
     }
 
-    $roundRobin = $draw->drawFixtures()->where('stage', 'RR');
-    $total = (clone $roundRobin)->count();
-    $completed = (clone $roundRobin)->whereHas('fixtureResults')->count();
-    if ($total === 0 || $completed !== $total) {
-      $remaining = max(0, $total - $completed);
+    $readiness = $this->roundRobinProgressReadiness($draw);
+    if (! $readiness['ready']) {
       return response()->json([
         'success' => false,
-        'message' => $total === 0
-          ? 'Create the round-robin fixtures before progressing this draw.'
-          : "Complete all round-robin results first. {$remaining} of {$total} matches still need a result.",
-        'round_robin' => compact('total', 'completed', 'remaining'),
+        'message' => $readiness['message'],
+        'round_robin' => $readiness['round_robin'],
       ], 422);
+    }
+
+    return response()->json([
+      'success' => true,
+      'draw' => ['id' => $draw->id, 'name' => $draw->drawName],
+      'review' => $this->roundRobinProgressReview($draw),
+    ]);
+  }
+
+  /**
+   * Idempotently move a completed round robin into its configured playoffs.
+   *
+   * This is deliberately separate from destructive bracket regeneration: it
+   * is safe on a published tournament-day draw, preserves existing fixtures
+   * and bookings, and only creates a bracket when none exists yet.
+   */
+  public function progress(Request $request, Draw $draw)
+  {
+    if ($draw->locked) {
+      return response()->json(['success' => false, 'message' => 'Unlock this draw before progressing it.'], 403);
+    }
+
+    $this->authorize('progress', $draw);
+    $draw->loadMissing(['settings', 'groups', 'event']);
+
+    if ($draw->settings?->workflow !== 'round_robin_playoffs') {
+      return response()->json([
+        'success' => false,
+        'message' => 'Progress is only available for round robin to playoffs draws.',
+      ], 422);
+    }
+
+    $readiness = $this->roundRobinProgressReadiness($draw);
+    if (! $readiness['ready']) {
+      return response()->json([
+        'success' => false,
+        'message' => $readiness['message'],
+        'round_robin' => $readiness['round_robin'],
+      ], 422);
+    }
+
+    ['total' => $total, 'completed' => $completed] = $readiness['round_robin'];
+    $review = $this->roundRobinProgressReview($draw);
+    $confirmedGroupIds = collect($request->input('confirmed_group_ids', []))
+      ->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+    $requiredGroupIds = collect($review['groups'])->pluck('id')->sort()->values()->all();
+
+    if ($confirmedGroupIds !== $requiredGroupIds) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Review and confirm every round-robin group before progressing to the playoffs.',
+      ], 422);
+    }
+
+    $submittedSnapshot = (string) $request->input('standings_snapshot', '');
+    if ($submittedSnapshot === '' || ! hash_equals($review['snapshot'], $submittedSnapshot)) {
+      return response()->json([
+        'success' => false,
+        'message' => 'The round-robin standings changed during review. Please review every group again.',
+      ], 409);
     }
 
     try {
@@ -836,6 +888,58 @@ class RoundRobinController extends Controller
         'message' => 'The draw could not be progressed: '.$exception->getMessage(),
       ], 422);
     }
+  }
+
+  private function roundRobinProgressReadiness(Draw $draw): array
+  {
+    $roundRobin = $draw->drawFixtures()->where('stage', 'RR');
+    $total = (clone $roundRobin)->count();
+    $completed = (clone $roundRobin)->whereHas('fixtureResults')->count();
+    $remaining = max(0, $total - $completed);
+
+    return [
+      'ready' => $total > 0 && $completed === $total,
+      'message' => $total === 0
+        ? 'Create the round-robin fixtures before progressing this draw.'
+        : "Complete all round-robin results first. {$remaining} of {$total} matches still need a result.",
+      'round_robin' => compact('total', 'completed', 'remaining'),
+    ];
+  }
+
+  private function roundRobinProgressReview(Draw $draw): array
+  {
+    $hub = $this->builder->loadRoundRobinHub($draw);
+    $standings = $hub['standings'] ?? [];
+    $groups = $draw->groups
+      ->sort(fn ($left, $right) => strnatcasecmp((string) $left->name, (string) $right->name))
+      ->values()
+      ->map(function ($group) use ($standings) {
+        $rows = collect($standings[$group->id] ?? [])->values()->map(function ($row, $index) {
+          return [
+            'position' => $index + 1,
+            'registration_id' => (int) $row['reg_id'],
+            'player' => (string) $row['player'],
+            'played' => (int) $row['wins'] + (int) $row['losses'],
+            'wins' => (int) $row['wins'],
+            'losses' => (int) $row['losses'],
+            'sets_won' => (int) $row['sets_won'],
+            'sets_lost' => (int) $row['sets_lost'],
+            'games_won' => (int) $row['games_won'],
+            'games_lost' => (int) $row['games_lost'],
+            'tiebreak' => (string) ($row['tiebreak'] ?? ''),
+          ];
+        })->all();
+
+        return [
+          'id' => (int) $group->id,
+          'name' => (string) $group->name,
+          'standings' => $rows,
+        ];
+      })->all();
+
+    $snapshot = hash('sha256', json_encode($groups, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+    return compact('groups', 'snapshot');
   }
 
   /**

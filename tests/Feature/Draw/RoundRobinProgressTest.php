@@ -86,6 +86,18 @@ class RoundRobinProgressTest extends TestCase
         }
     }
 
+    private function progress(Draw $draw)
+    {
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))
+            ->assertOk()
+            ->json('review');
+
+        return $this->postJson(route('backend.draw.progress', $draw), [
+            'confirmed_group_ids' => collect($review['groups'])->pluck('id')->all(),
+            'standings_snapshot' => $review['snapshot'],
+        ]);
+    }
+
     public function test_progress_requires_every_round_robin_result(): void
     {
         [$draw] = $this->draw([[
@@ -111,9 +123,9 @@ class RoundRobinProgressTest extends TestCase
         $registrations = $this->entrants($category, 4);
         $this->completeGroup($draw, 'A', $registrations);
 
-        $this->postJson(route('backend.draw.progress', $draw))
+        $this->progress($draw)
             ->assertOk()->assertJsonPath('progress.created', 1);
-        $this->postJson(route('backend.draw.progress', $draw))
+        $this->progress($draw)
             ->assertOk()->assertJsonPath('progress.created', 0);
 
         $playoff = $draw->drawFixtures()->where('stage', 'MAIN')->sole();
@@ -132,7 +144,7 @@ class RoundRobinProgressTest extends TestCase
         $this->completeGroup($draw, 'A', array_slice($registrations, 0, 2));
         $this->completeGroup($draw, 'B', array_slice($registrations, 2, 2));
 
-        $first = $this->postJson(route('backend.draw.progress', $draw))
+        $first = $this->progress($draw)
             ->assertOk()->assertJsonPath('progress.created', 4);
         $firstRound = $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 1)->orderBy('match_nr')->get();
         $final = $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 2)->where('position', 1)->sole();
@@ -146,7 +158,7 @@ class RoundRobinProgressTest extends TestCase
             ]);
         }
 
-        $this->postJson(route('backend.draw.progress', $draw))
+        $this->progress($draw)
             ->assertOk()->assertJsonPath('progress.advancedSlots', 4);
 
         $final->refresh();
@@ -165,6 +177,60 @@ class RoundRobinProgressTest extends TestCase
         $draw->update(['locked' => true]);
 
         $this->postJson(route('backend.draw.progress', $draw))->assertForbidden();
+    }
+
+    public function test_progress_review_returns_each_group_in_natural_order_with_full_standings(): void
+    {
+        [$draw, $category] = $this->draw([[
+            'name' => 'Main Draw', 'slug' => 'main', 'size' => 4,
+            'positions' => [1, 2], 'enabled' => true,
+        ]]);
+        $registrations = $this->entrants($category, 4);
+        $this->completeGroup($draw, 'Group 10', array_slice($registrations, 0, 2));
+        $this->completeGroup($draw, 'Group 2', array_slice($registrations, 2, 2));
+
+        $response = $this->getJson(route('backend.draw.progress-review', $draw))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('review.groups.0.name', 'Group 2')
+            ->assertJsonPath('review.groups.1.name', 'Group 10')
+            ->assertJsonCount(2, 'review.groups.0.standings')
+            ->assertJsonStructure(['review' => ['snapshot', 'groups' => [[
+                'id', 'name', 'standings' => [[
+                    'position', 'registration_id', 'player', 'played', 'wins', 'losses',
+                    'sets_won', 'sets_lost', 'games_won', 'games_lost', 'tiebreak',
+                ]],
+            ]]]]);
+
+        $this->assertSame(64, strlen($response->json('review.snapshot')));
+    }
+
+    public function test_progress_requires_every_group_confirmation_and_current_standings_snapshot(): void
+    {
+        [$draw, $category] = $this->draw([[
+            'name' => 'Main', 'slug' => 'main', 'size' => 2,
+            'positions' => [1, 2], 'enabled' => true,
+        ]]);
+        $this->completeGroup($draw, 'A', $this->entrants($category, 2));
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+
+        $this->postJson(route('backend.draw.progress', $draw), [
+            'confirmed_group_ids' => [],
+            'standings_snapshot' => $review['snapshot'],
+        ])->assertUnprocessable()->assertJsonPath(
+            'message',
+            'Review and confirm every round-robin group before progressing to the playoffs.'
+        );
+
+        $this->postJson(route('backend.draw.progress', $draw), [
+            'confirmed_group_ids' => collect($review['groups'])->pluck('id')->all(),
+            'standings_snapshot' => str_repeat('0', 64),
+        ])->assertStatus(409)->assertJsonPath(
+            'message',
+            'The round-robin standings changed during review. Please review every group again.'
+        );
+
+        $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
     }
 
     public function test_correcting_a_bracket_winner_replaces_winner_and_loser_in_downstream_fixtures(): void
