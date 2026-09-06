@@ -77,4 +77,5 @@
 </text>
 
 </svg>
+@include('draw.partials.final-positions', ['draw' => $draw])
 </div>

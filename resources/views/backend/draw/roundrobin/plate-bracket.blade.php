@@ -252,3 +252,4 @@
 
   </g>
 </svg>
+@include('draw.partials.final-positions', ['draw' => $draw])

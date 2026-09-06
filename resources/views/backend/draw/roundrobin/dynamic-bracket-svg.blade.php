@@ -474,3 +474,4 @@
         @endif
     @endforeach
 </svg>
+@include('draw.partials.final-positions', ['draw' => $draw])
