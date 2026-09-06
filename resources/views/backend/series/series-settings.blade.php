@@ -244,7 +244,7 @@
             <div class="toggle-row mt-2">
               <div class="toggle-info">
                 <strong>2. Use Latest Head-to-Head</strong>
-                <small>If two players are still tied, use the winner of their most recent recorded match in a linked series event.</small>
+                <small>If two players are still tied, use their most recent eligible match in a linked series event. Only playoff matches count when a round robin continues to playoffs; group matches count when round robin is the only phase.</small>
               </div>
               <div class="form-check form-switch mt-1">
                 <input class="form-check-input" type="checkbox" name="use_head_to_head_tiebreak" id="use_head_to_head_tiebreak"

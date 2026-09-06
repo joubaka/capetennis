@@ -568,6 +568,7 @@ final class RankingCalculationService
         $categoryEventIds = $this->listCategoryEventIds($list);
         $fixtures = \DB::table('fixtures as ranking_fixtures')
             ->join('draws as ranking_draws', 'ranking_draws.id', '=', 'ranking_fixtures.draw_id')
+            ->leftJoin('draw_settings as ranking_draw_settings', 'ranking_draw_settings.draw_id', '=', 'ranking_draws.id')
             ->join('events as ranking_events', 'ranking_events.id', '=', 'ranking_draws.event_id')
             ->join('player_registrations as ranking_pr1', 'ranking_pr1.registration_id', '=', 'ranking_fixtures.registration1_id')
             ->join('player_registrations as ranking_pr2', 'ranking_pr2.registration_id', '=', 'ranking_fixtures.registration2_id')
@@ -586,6 +587,25 @@ final class RankingCalculationService
             })
             ->whereIn('ranking_pr1.player_id', $playerIds)
             ->whereIn('ranking_pr2.player_id', $playerIds)
+            ->where(function ($eligibleStage) {
+                $eligibleStage
+                    // A fixture outside a round-robin group is a playoff/bracket match.
+                    ->whereNull('ranking_fixtures.draw_group_id')
+                    // Group matches count only when round robin is the draw's sole phase.
+                    ->orWhere('ranking_draw_settings.workflow', 'round_robin')
+                    // Historical draws may predate workflow settings. Treat them as
+                    // single-phase only when the draw contains no playoff fixtures.
+                    ->orWhere(function ($legacySinglePhase) {
+                        $legacySinglePhase
+                            ->whereNull('ranking_draw_settings.workflow')
+                            ->whereNotExists(function ($playoffFixture) {
+                                $playoffFixture->selectRaw('1')
+                                    ->from('fixtures as ranking_playoff_fixtures')
+                                    ->whereColumn('ranking_playoff_fixtures.draw_id', 'ranking_fixtures.draw_id')
+                                    ->whereNull('ranking_playoff_fixtures.draw_group_id');
+                            });
+                    });
+            })
             ->orderByDesc('ranking_events.start_date')
             ->orderByDesc('ranking_fixtures.id')
             ->get([

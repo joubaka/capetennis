@@ -306,6 +306,96 @@ class RankingCalculationServiceTest extends TestCase
         );
     }
 
+    public function test_head_to_head_ignores_initial_round_robin_phase_when_playoffs_follow(): void
+    {
+        $this->series->update(['auto_award_rule' => false]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 3], [2, 102, 1],
+        ]);
+
+        $categoryEvent = DB::table('category_events')->where('id', 102)->first();
+        $draw = Draw::factory()->create([
+            'event_id' => $categoryEvent->event_id,
+            'category_event_id' => 102,
+        ]);
+        DB::table('draw_settings')->insert([
+            'draw_id' => $draw->id,
+            'workflow' => 'round_robin_playoffs',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $groupId = DB::table('draw_groups')->insertGetId([
+            'draw_id' => $draw->id,
+            'name' => 'Group A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // The playoff result favours player 1. The later-created group result
+        // favours player 2 and must not supersede the playoff head-to-head.
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => null,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['1:102'],
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $groupId,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['2:102'],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
+        $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
+        $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 1)->tiebreakNotes[0]);
+    }
+
+    public function test_head_to_head_accepts_group_match_when_round_robin_is_the_only_phase(): void
+    {
+        $this->series->update(['auto_award_rule' => false]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 3], [2, 102, 1],
+        ]);
+
+        $categoryEvent = DB::table('category_events')->where('id', 102)->first();
+        $draw = Draw::factory()->create([
+            'event_id' => $categoryEvent->event_id,
+            'category_event_id' => 102,
+        ]);
+        DB::table('draw_settings')->insert([
+            'draw_id' => $draw->id,
+            'workflow' => 'round_robin',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $groupId = DB::table('draw_groups')->insertGetId([
+            'draw_id' => $draw->id,
+            'name' => 'Group A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $groupId,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['2:102'],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertEquals(1, $this->rowFor($result, 2)->rankPosition);
+        $this->assertEquals(2, $this->rowFor($result, 1)->rankPosition);
+        $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
+    }
+
     // ------------------------------------------------------------------
     // 5. Tiebreak — lowest positions sum
     // ------------------------------------------------------------------
