@@ -54,6 +54,11 @@ class TeamDrawPolicy
         return $draw->relationLoaded('event') ? $draw->event : $draw->event()->first();
     }
 
+    private function isTeamDraw(Draw $draw): bool
+    {
+        return $draw->isTeamDraw();
+    }
+
     /**
      * Resolve the parent event from a tie (via its draw).
      */
@@ -106,7 +111,7 @@ class TeamDrawPolicy
 
         $event = $this->resolveEventFromDraw($draw);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -124,7 +129,7 @@ class TeamDrawPolicy
 
         $event = $this->resolveEventFromDraw($draw);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -142,7 +147,7 @@ class TeamDrawPolicy
 
         $event = $this->resolveEventFromDraw($draw);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -160,7 +165,7 @@ class TeamDrawPolicy
 
         $event = $this->resolveEventFromDraw($draw);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -183,7 +188,7 @@ class TeamDrawPolicy
 
         $event = $this->resolveEventFromTie($tie);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -195,9 +200,10 @@ class TeamDrawPolicy
      */
     public function validateTie(User $user, TeamTie $tie): bool
     {
+        $draw = $tie->relationLoaded('draw') ? $tie->draw : $tie->draw()->first();
         $event = $this->resolveEventFromTie($tie);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$draw || !$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 
@@ -209,9 +215,10 @@ class TeamDrawPolicy
      */
     public function publishTie(User $user, TeamTie $tie): bool
     {
+        $draw = $tie->relationLoaded('draw') ? $tie->draw : $tie->draw()->first();
         $event = $this->resolveEventFromTie($tie);
 
-        if (!$event || !$this->isTeamEvent($event)) {
+        if (!$draw || !$this->isTeamDraw($draw) || !$event || !$this->isTeamEvent($event)) {
             return false;
         }
 

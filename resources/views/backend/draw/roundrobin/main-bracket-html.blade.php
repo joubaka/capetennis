@@ -287,8 +287,8 @@
         {{-- No fixtures yet --}}
         <div class="bracket-empty">
             <i class="ti ti-tournament"></i>
-            <h5>No Playoff Brackets Generated</h5>
-            <p class="text-muted mb-3">Click "Generate All Playoffs" to create the bracket from round-robin standings.</p>
+            <h5>Playoff Brackets Not Ready Yet</h5>
+            <p class="text-muted mb-3">Complete the round-robin matches, review every group’s final standings, and then progress the draw to create its playoff brackets.</p>
         </div>
     @else
         {{-- MAIN BRACKET --}}

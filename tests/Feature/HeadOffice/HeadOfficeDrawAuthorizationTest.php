@@ -44,6 +44,7 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
     private Event $otherEvent;
 
     private int $drawTypeId;
+    private int $individualDrawTypeId;
     private int $categoryEventId;
 
     protected function setUp(): void
@@ -64,6 +65,11 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
             'drawTypeName' => 'Round Robin',
             'btn_color'    => 'primary',
             'type'         => 'team',
+        ]);
+        $this->individualDrawTypeId = DB::table('draw_types')->insertGetId([
+            'drawTypeName' => 'Singles',
+            'btn_color'    => 'primary',
+            'type'         => 'individual',
         ]);
 
         // Events
@@ -205,6 +211,8 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
 
         $draw = Draw::where('event_id', $this->individualEvent->id)->where('drawName', 'Test Draw')->firstOrFail();
         $this->assertSame($category->id, $draw->category_event_id);
+        $this->assertSame($this->individualDrawTypeId, $draw->drawType_id);
+        $this->assertFalse($draw->isTeamDraw());
         $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
     }
 
@@ -220,6 +228,21 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
             ->assertUnprocessable();
 
         $this->assertDatabaseMissing('draws', ['event_id' => $this->individualEvent->id, 'drawName' => 'Wrong category']);
+    }
+
+    public function test_individual_draw_rejects_a_team_draw_type(): void
+    {
+        $category = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson($this->individualDrawUrl(), [
+                'drawName' => 'Wrong draw type',
+                'draw_type_id' => $this->drawTypeId,
+                'category_event_id' => $category->id,
+            ])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseMissing('draws', ['event_id' => $this->individualEvent->id, 'drawName' => 'Wrong draw type']);
     }
 
     public function test_individual_draw_overview_explains_the_guided_creation_flow(): void

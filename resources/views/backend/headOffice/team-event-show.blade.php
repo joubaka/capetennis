@@ -41,6 +41,8 @@
     venues: @json($allVenues),
     previewUrl: "{{ route('headoffice.previewTeamDraw', $event) }}",
     createUrl: "{{ route('headoffice.createSingleDraw.team', $event) }}",
+    individualCreateUrl: "{{ route('headoffice.createSingleDraw', $event) }}",
+    individualDrawTypeId: @json(($individualDrawTypes->firstWhere('drawTypeName', 'Singles') ?? $individualDrawTypes->first())?->id),
     backendDrawVenuesStoreTemplate: @json(route('backend.draw.venues.store', ['draw' => '__ID__'])),
     backendDrawVenuesJsonTemplate: @json(route('backend.draw.venues.json', ['draw' => '__ID__'])),
     // v2 endpoints
@@ -60,6 +62,7 @@
 </script>
 
 <script src="{{ asset(mix('js/headOffice.js')) }}"></script>
+<script src="{{ asset('js/team-draw-mode.js') }}?v={{ filemtime(public_path('js/team-draw-mode.js')) }}"></script>
 @endsection
 
 
@@ -68,10 +71,10 @@
 @include('backend.event.partials.header', [
   'eventWorkspaceActive' => 'draws',
   'eventWorkspaceIcon' => 'ti-tournament',
-  'eventWorkspaceSubtitle' => 'Team draws, fixtures and venues',
+  'eventWorkspaceSubtitle' => 'Team and individual draws, fixtures and venues',
 ])
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-  <div><h2 class="h4 mb-1">Team draws</h2><p class="text-muted mb-0">Create draws, allocate venues and manage fixtures.</p></div>
+  <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Create team ties or individual singles draws, allocate venues and manage fixtures.</p></div>
   <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
   </button>
@@ -219,9 +222,34 @@
                    placeholder="e.g. U14 Boys – Round Robin" required>
           </div>
 
+          <fieldset class="mb-3">
+            <legend class="form-label fw-bold mb-2">Competition</legend>
+            <div class="row g-2">
+              <div class="col-sm-6">
+                <label class="form-check border rounded p-3 m-0 h-100" for="drawModeIndividual">
+                  <input class="form-check-input" type="radio" name="draw_mode" id="drawModeIndividual" value="individual">
+                  <span class="form-check-label ms-1">
+                    <span class="fw-semibold d-block">Individual singles</span>
+                    <span class="text-muted small">One player competes directly against another.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-check border rounded p-3 m-0 h-100" for="drawModeTeam">
+                  <input class="form-check-input" type="radio" name="draw_mode" id="drawModeTeam" value="team">
+                  <span class="form-check-label ms-1">
+                    <span class="fw-semibold d-block">Team tie</span>
+                    <span class="text-muted small">Teams compete through singles or doubles rubbers.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <div class="form-text">Choose individual singles for a normal player draw.</div>
+          </fieldset>
+
           {{-- Draw Type --}}
-          <div class="mb-3">
-            <label class="form-label fw-bold">Draw Type</label>
+          <div class="mb-3 d-none" id="teamDrawTypeSection">
+            <label class="form-label fw-bold">Team Draw Type</label>
             <div class="d-flex flex-wrap gap-2">
               @foreach($teamDrawTypes as $drawType)
                 <div class="form-check form-check-inline">
@@ -263,7 +291,7 @@
           @endphp
 
           {{-- Category --}}
-          <div class="mb-3" id="categorySection">
+          <div class="mb-3 d-none" id="categorySection">
             <label class="form-label fw-bold">Category</label>
             <div class="d-flex flex-wrap gap-2">
               @foreach($standardCategories as $cat)
@@ -352,7 +380,7 @@
 
           {{-- Format selection (v2 only, loaded async) --}}
           @if($teamDrawV2Enabled ?? false)
-          <div class="mb-3" id="formatSelectGroup">
+          <div class="mb-3 d-none" id="formatSelectGroup">
             <label for="format_id" class="form-label fw-bold">Tie Format <span class="text-muted fw-normal">(optional – attach later)</span></label>
             <select id="format_id" name="format_id" class="form-select">
               <option value="">— Select format —</option>

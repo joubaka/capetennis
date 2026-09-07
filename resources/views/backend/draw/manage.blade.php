@@ -83,7 +83,7 @@ $(function () {
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
-  @if(! $draw->team_category_id && ! $draw->event?->isTeam())
+  @if(! $draw->isTeamDraw())
   <div class="alert alert-info d-flex flex-wrap align-items-center gap-2">
     <span>Choose how the draw starts, then set up groups or place players directly in a bracket.</span>
     <a class="btn btn-primary btn-sm" href="{{ route('draw.setup.show', $draw) }}">Choose draw format</a>

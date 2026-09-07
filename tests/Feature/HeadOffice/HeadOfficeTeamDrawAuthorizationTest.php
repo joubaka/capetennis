@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\FeatureFlags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -46,6 +47,7 @@ class HeadOfficeTeamDrawAuthorizationTest extends TestCase
     private Event $otherTeamEvent;
 
     private int $drawTypeId;
+    private int $individualDrawTypeId;
     private int $categoryEventId;
 
     protected function setUp(): void
@@ -66,6 +68,11 @@ class HeadOfficeTeamDrawAuthorizationTest extends TestCase
             'drawTypeName' => 'Round Robin',
             'btn_color'    => 'primary',
             'type'         => 'team',
+        ]);
+        $this->individualDrawTypeId = DB::table('draw_types')->insertGetId([
+            'drawTypeName' => 'Singles',
+            'btn_color'    => 'primary',
+            'type'         => 'individual',
         ]);
 
         // Events
@@ -185,6 +192,41 @@ class HeadOfficeTeamDrawAuthorizationTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['draw' => ['id', 'name']]);
+    }
+
+    public function test_event_admin_can_create_a_normal_singles_draw_inside_a_team_event(): void
+    {
+        $response = $this->actingAs($this->admin)
+            ->postJson(route('headoffice.createSingleDraw', $this->teamEvent), [
+                'drawName' => 'U14 Boys Singles',
+                'draw_type_id' => $this->individualDrawTypeId,
+                'category_event_id' => $this->categoryEventId,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $draw = Draw::where('event_id', $this->teamEvent->id)
+            ->where('drawName', 'U14 Boys Singles')
+            ->firstOrFail();
+
+        $this->assertSame($this->individualDrawTypeId, $draw->drawType_id);
+        $this->assertSame($this->categoryEventId, $draw->category_event_id);
+        $this->assertFalse($draw->isTeamDraw());
+        $this->assertTrue($draw->needsWorkflowChoice());
+        $this->assertFalse(Gate::forUser($this->admin)->allows('team-draw.generateTies', $draw));
+
+        $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
+        $this->actingAs($this->admin)->get(route('draw.setup.show', $draw))->assertOk();
+    }
+
+    public function test_team_event_draw_dialog_explains_individual_singles_choice(): void
+    {
+        $template = file_get_contents(resource_path('views/backend/headOffice/team-event-show.blade.php'));
+
+        $this->assertStringContainsString('Individual singles', $template);
+        $this->assertStringContainsString('One player competes directly against another.', $template);
+        $this->assertStringContainsString('Team tie', $template);
+        $this->assertStringContainsString("route('headoffice.createSingleDraw', \$event)", $template);
     }
 
     public function test_event_admin_can_preview_team_draw(): void

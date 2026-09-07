@@ -9,11 +9,16 @@
         </h6>
 
         @php
-          $isTeamEvent = optional($draw->event)->eventType == 3;
+          $isTeamDraw = $draw->isTeamDraw();
           $typeName    = optional($draw->draw_types)->drawTypeName ?? 'Type';
           $fixtureCount = $draw->fixtures_count ?? $draw->fixtures()->count();
           $isLocked    = (bool) $draw->locked;
           $isPublished = (bool) $draw->published;
+          $individualWorkspaceUrl = $draw->needsWorkflowChoice()
+            ? route('draw.setup.show', $draw)
+            : route('backend.draw.roundrobin.show', $draw);
+          $individualScheduleUrl = $draw->needsWorkflowChoice() ? $individualWorkspaceUrl : $individualWorkspaceUrl.'#schedule';
+          $individualSettingsUrl = $draw->needsWorkflowChoice() ? $individualWorkspaceUrl : $individualWorkspaceUrl.'#settings';
 
           // #5 — Draw type color mapping
           $typeColor = match(strtolower($typeName)) {
@@ -39,20 +44,20 @@
         <div class="btn-group btn-group-sm flex-wrap" role="group">
           {{-- Show Fixtures / Team Fixtures --}}
           <a class="btn btn-warning"
-             href="{{ $isTeamEvent
+             href="{{ $isTeamDraw
                       ? route('backend.team-fixtures.index', ['draw_id' => $draw->id])
-                      : route('draw.show', $draw->id) }}">
-            {{ $isTeamEvent ? 'Show Team Fixtures' : 'Show Fixtures' }}
+                      : $individualWorkspaceUrl }}">
+            {{ $isTeamDraw ? 'Show Team Fixtures' : 'Open Singles Draw' }}
           </a>
 
           <a class="btn btn-sm btn-info"
-             href="{{ route('backend.team-schedule.page', $draw->id) }}">
+             href="{{ $isTeamDraw ? route('backend.team-schedule.page', $draw->id) : $individualScheduleUrl }}">
             <i class="ti ti-calendar me-1"></i>
             Schedule
           </a>
 
           <a class="btn btn-sm btn-outline-primary"
-             href="{{ route('draws.manage', $draw->id) }}">
+             href="{{ $isTeamDraw ? route('draws.manage', $draw->id) : $individualSettingsUrl }}">
             <i class="ti ti-edit me-1"></i>
             Edit draw
           </a>
@@ -78,7 +83,8 @@
             Assign Venues to draw
           </button>
 
-          {{-- Recreate Fixtures (disabled if locked) --}}
+          @if($isTeamDraw)
+          {{-- Recreate team fixtures (disabled if locked) --}}
           <button type="button"
                   class="btn btn-sm btn-outline-secondary btn-recreate-fixtures {{ $isLocked ? 'disabled' : '' }}"
                   data-url="{{ route('headoffice.recreateFixturesForDraw', $draw->id) }}"
@@ -91,6 +97,7 @@
               <small class="text-muted ms-1">(locked)</small>
             @endif
           </button>
+          @endif
 
           {{-- Delete Draw (disabled if locked) --}}
           <button type="button"

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\Draw;
+use App\Models\DrawType;
 
 use App\Models\DrawFormats;
 use App\Models\Event;
@@ -604,6 +605,11 @@ class EventAdminController extends Controller
     // Only requirement for individual
     $validated = $request->validate([
       'drawName' => 'required|string|max:255',
+      'draw_type_id' => [
+        'nullable',
+        'integer',
+        \Illuminate\Validation\Rule::exists('draw_types', 'id')->where('type', 'individual'),
+      ],
       'category_event_id' => [
         'nullable',
         'integer',
@@ -611,8 +617,11 @@ class EventAdminController extends Controller
       ],
     ]);
 
-    // DrawType_id is ALWAYS 1 for individual (Singles)
-    $drawTypeId = 1;
+    $individualDrawTypes = DrawType::query()->where('type', 'individual')->orderBy('id')->get();
+    $drawTypeId = $validated['draw_type_id']
+      ?? ($individualDrawTypes->firstWhere('drawTypeName', 'Singles') ?? $individualDrawTypes->first())?->id;
+
+    abort_unless($drawTypeId, 422, 'Configure an individual Singles draw type first.');
 
     // A category-scoped draw is the safe default. Null remains supported for
     // explicitly event-wide draws and older integrations.

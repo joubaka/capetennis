@@ -579,14 +579,7 @@
 
 @unless($roundRobinOnly)
 <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel">
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2 mb-3">
-        <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Brackets</h5>
-        <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-success" id="btn-generate-main-bracket" data-rr-destructive>
-              <i class="ti ti-refresh me-1"></i> Generate All Playoffs
-          </button>
-        </div>
-    </div>
+    <h5 class="mb-3"><i class="ti ti-tournament me-1"></i> Playoff Brackets</h5>
 
     {{-- Zoom Controls --}}
     <div class="bracket-zoom-controls mb-2" id="bracket-zoom-bar">

@@ -95,7 +95,7 @@ class DrawController extends Controller
     if ($showDraw->needsWorkflowChoice()) {
       return redirect()->route('draw.setup.show', $showDraw);
     }
-    if (! $showDraw->event->isTeam() && ! $showDraw->team_category_id) {
+    if (! $showDraw->isTeamDraw()) {
       return redirect()->route('backend.draw.roundrobin.show', $showDraw);
     }
 
@@ -630,7 +630,7 @@ class DrawController extends Controller
     ])->findOrFail($id);
     $this->authorize('view', $draw);
 
-    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+    if (! $draw->isTeamDraw()) {
       return redirect(route('backend.draw.roundrobin.show', $draw).'#settings');
     }
 
@@ -652,7 +652,7 @@ class DrawController extends Controller
     $draw = Draw::with(['categoryEvent.category', 'registrations.players'])->findOrFail($id);
     $this->authorize('view', $draw);
 
-    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+    if (! $draw->isTeamDraw()) {
       return redirect(route('backend.draw.roundrobin.show', $draw).'#groups');
     }
 
@@ -675,7 +675,7 @@ class DrawController extends Controller
     ])->findOrFail($id);
     $this->authorize('view', $draw);
 
-    if (! $draw->event->isTeam() && ! $draw->team_category_id) {
+    if (! $draw->isTeamDraw()) {
       return redirect(route('backend.draw.roundrobin.show', $draw).'#settings');
     }
 

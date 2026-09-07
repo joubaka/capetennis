@@ -65,7 +65,7 @@ class DrawSetupController extends Controller
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked || $draw->published || $draw->oop_published, 409,
                 'Unlock and unpublish the draw and its schedule before choosing a format.');
-            abort_if($draw->team_category_id || $draw->event?->isTeam(), 422, 'Use the team draw setup for team fixtures.');
+            abort_if($draw->isTeamDraw(), 422, 'Use the team draw setup for team fixtures.');
             if ($draw->settings?->workflow === $data['workflow']) return;
             $isRoundRobinPlayoffUpgrade = in_array($draw->settings?->workflow, [null, 'round_robin'], true)
                 && $data['workflow'] === 'round_robin_playoffs'

@@ -78,10 +78,35 @@ class Draw extends Model
 
     public function needsWorkflowChoice(): bool
     {
-        return ! $this->team_category_id && ! $this->event?->isTeam()
+        return ! $this->isTeamDraw()
             && ! $this->locked && ! $this->published
             && ! $this->settings?->workflow && ! $this->usesFlexibleMonrad()
             && ! $this->groups()->exists() && ! $this->drawFixtures()->exists();
+    }
+
+    /**
+     * Draw behaviour is determined by the selected draw type, not only by the
+     * parent event. This lets a team tournament also contain a normal singles
+     * draw while retaining the event-level team registration workflow.
+     */
+    public function isTeamDraw(): bool
+    {
+        if ($this->team_category_id || $this->team_event_format_id) {
+            return true;
+        }
+
+        $drawType = $this->relationLoaded('draw_types')
+            ? $this->draw_types
+            : $this->draw_types()->first();
+
+        if (filled($drawType?->type)) {
+            return strtolower(trim($drawType->type)) === 'team';
+        }
+
+        // Preserve legacy draws whose draw type did not record its scope.
+        $event = $this->relationLoaded('event') ? $this->event : $this->event()->first();
+
+        return (bool) $event?->isTeam();
     }
     public function draw_types()
     {
