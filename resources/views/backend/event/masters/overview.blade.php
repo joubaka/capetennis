@@ -25,6 +25,13 @@
   .masters-page .panel-icon { font-size:1.15rem; }
   .masters-page .management-panel .card-header .panel-icon { color:#7651e8; }
   .masters-page .setup-panel .dashboard-action { justify-content:flex-start; }
+  .masters-page .setup-link { display:flex; align-items:flex-start; gap:.75rem; padding:.8rem; color:#4b465c; border:1px solid #e3e1e8; border-radius:.5rem; background:#fff; transition:border-color .15s ease, background-color .15s ease, transform .15s ease; }
+  .masters-page .setup-link:hover, .masters-page .setup-link:focus { color:#4b465c; border-color:#7367f0; background:#f8f7ff; transform:translateY(-1px); }
+  .masters-page .setup-link__icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 2rem; width:2rem; height:2rem; color:#7367f0; border-radius:.4rem; background:rgba(115,103,240,.12); }
+  .masters-page .setup-link__copy { min-width:0; }
+  .masters-page .setup-link__title { display:block; font-size:.9rem; font-weight:600; line-height:1.25; }
+  .masters-page .setup-link__description { display:block; margin-top:.2rem; color:#7b7882; font-size:.78rem; line-height:1.35; }
+  .masters-page .setup-link__arrow { margin-left:auto; color:#a8a5ad; line-height:2rem; }
   .masters-page .stats-panel .card-body { padding-top:.9rem; }
   .masters-page .stats-panel li { color:#625f6d; font-size:.9rem; }
   .masters-page .stats-panel li + li { margin-top:.35rem; }
@@ -58,7 +65,57 @@
   @php($sendLabel = $canPublishInvitations ? ($mastersBatch->public_list_published ? 'Send Invitations' : 'Send & Publish Invitations') : 'Prepare invitations')
   <div class="row g-3 mb-4">
     <div class="col-xl-4 col-md-6"><div class="card h-100 management-panel"><div class="card-header d-flex align-items-center gap-2"><i class="ti ti-settings ti-md text-primary"></i><h5 class="mb-0">Masters Management</h5></div><div class="card-body d-grid gap-2"><a href="{{ $mastersBatch ? route('backend.masters.show', $mastersBatch) : '#masters-setup' }}" class="btn btn-primary dashboard-action"><i class="ti ti-users me-1"></i>Manage Invitations</a>@if($mastersBatch && $mastersBatch->status !== 'sent')<a href="{{ $canPublishInvitations ? route('backend.masters.review', $mastersBatch) : route('backend.masters.show', $mastersBatch) }}" class="btn btn-outline-success dashboard-action"><i class="ti ti-send me-1"></i>{{ $canPublishInvitations ? 'Publish invitations' : 'Prepare invitations' }}</a>@elseif($mastersBatch && $mastersBatch->status === 'sent')<form method="POST" action="{{ route('backend.masters.registration.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->registration_open ? 'Close Masters registration now?' : 'Open Masters registration now?' }}');">@csrf<input type="hidden" name="open" value="{{ $mastersBatch->registration_open ? 0 : 1 }}"><button class="btn {{ $mastersBatch->registration_open ? 'btn-outline-danger' : 'btn-outline-success' }} dashboard-action"><i class="ti ti-lock{{ $mastersBatch->registration_open ? '-open' : '' }} me-1"></i>{{ $mastersBatch->registration_open ? 'Close Masters registration' : 'Open Masters registration' }}<span class="text-info ms-auto" title="Controls whether invited players may register and pay." data-bs-toggle="tooltip"><i class="ti ti-info-circle"></i></span></button></form>@endif</div></div></div>
-    <div class="col-xl-4 col-md-6"><div class="card h-100 border-start border-warning border-3 setup-panel"><div class="card-header d-flex align-items-center gap-2"><i class="ti ti-adjustments ti-md text-warning"></i><h5 class="mb-0">Masters Setup</h5></div><div class="card-body d-grid gap-2"><a href="{{ route('backend.masters.setup', $event) }}" class="btn btn-outline-primary dashboard-action"><i class="ti ti-list-details me-1"></i>Configure Masters categories</a></div></div></div>
+    <div class="col-xl-4 col-md-6">
+      <div class="card h-100 border-start border-warning border-3 setup-panel">
+        <div class="card-header d-flex align-items-center gap-2">
+          <i class="ti ti-adjustments ti-md text-warning"></i>
+          <div>
+            <h5 class="mb-0">Event setup</h5>
+            <div class="small text-muted mt-1">Quick access to event and Masters configuration.</div>
+          </div>
+        </div>
+        <div class="card-body d-grid gap-2">
+          @can('event.settings.manage', $event)
+            <a href="{{ route('admin.events.settings', $event) }}" class="setup-link">
+              <span class="setup-link__icon"><i class="ti ti-settings"></i></span>
+              <span class="setup-link__copy">
+                <span class="setup-link__title">Event settings</span>
+                <span class="setup-link__description">Visibility, dates, registration, fees and access.</span>
+              </span>
+              <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
+            </a>
+          @endcan
+          @can('event-category.manage', $event)
+            <a href="{{ route('admin.events.categories', $event) }}" class="setup-link">
+              <span class="setup-link__icon"><i class="ti ti-category"></i></span>
+              <span class="setup-link__copy">
+                <span class="setup-link__title">Event categories &amp; fees</span>
+                <span class="setup-link__description">Manage attached categories and fee overrides.</span>
+              </span>
+              <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
+            </a>
+          @endcan
+          <a href="{{ route('backend.masters.setup', $event) }}" class="setup-link">
+            <span class="setup-link__icon"><i class="ti ti-list-details"></i></span>
+            <span class="setup-link__copy">
+              <span class="setup-link__title">Masters selection setup</span>
+              <span class="setup-link__description">Map series rankings and set invite limits.</span>
+            </span>
+            <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
+          </a>
+          @if($event->series)
+            <a href="{{ route('series.show', $event->series) }}" class="setup-link">
+              <span class="setup-link__icon"><i class="ti ti-layers"></i></span>
+              <span class="setup-link__copy">
+                <span class="setup-link__title">Source series &amp; rankings</span>
+                <span class="setup-link__description">Review the ranking source used for selection.</span>
+              </span>
+              <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
+            </a>
+          @endif
+        </div>
+      </div>
+    </div>
     <div class="col-xl-4 col-md-12"><div class="card h-100 stats-panel"><div class="card-header d-flex align-items-center gap-2"><i class="ti ti-chart-bar ti-md text-info"></i><h5 class="mb-0">Quick Stats</h5></div><div class="card-body"><ul class="list-unstyled mb-0 d-grid gap-1"><li>Categories: <span class="fw-semibold float-end">{{ $rankingCategoryLinks->where('enabled', true)->count() }}</span></li><li>Invitees: <span class="fw-semibold float-end">{{ $mastersBatch?->invitations()->where('status','invited')->count() ?? 0 }}</span></li><li>Paid confirmations: <span class="fw-semibold float-end">{{ $mastersBatch?->invitations()->where('status','paid_confirmed')->count() ?? 0 }}</span></li><li>Payment pending: <span class="fw-semibold float-end">{{ $mastersBatch?->invitations()->where('status','accepted_pending_payment')->count() ?? 0 }}</span></li><li>Reserves: <span class="fw-semibold float-end">{{ $mastersBatch?->invitations()->where('status','reserve')->count() ?? 0 }}</span></li><li>Declined / withdrawn: <span class="fw-semibold float-end">{{ $mastersBatch?->invitations()->whereIn('status',['declined','withdrawn'])->count() ?? 0 }}</span></li><li>Player list: <span class="fw-semibold float-end">{{ $mastersBatch?->public_list_published ? 'Published' : 'Unpublished' }}</span></li><li>Registration: <span class="fw-semibold float-end">{{ $mastersBatch?->registration_open ? 'Open' : 'Closed' }}</span></li></ul></div></div></div>
   </div>
 

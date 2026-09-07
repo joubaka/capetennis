@@ -81,4 +81,23 @@ class EventCategoryAccessTest extends TestCase
             ->assertSee('Categories')
             ->assertDontSee('Category setup: event admins and super users only');
     }
+
+    public function test_masters_overview_exposes_the_event_setup_shortcuts(): void
+    {
+        $superUser = User::factory()->create()->assignRole('super-user');
+        $mastersTypeId = DB::table('eventtypes')->where('code', 'masters')->value('id');
+        $event = Event::factory()->create(['eventType' => $mastersTypeId]);
+
+        $this->actingAs($superUser)
+            ->get(route('admin.events.overview', $event))
+            ->assertOk()
+            ->assertSee('Event setup')
+            ->assertSee('Event settings')
+            ->assertSee('Event categories &amp; fees', false)
+            ->assertSee('Masters selection setup')
+            ->assertSee(route('admin.events.settings', $event), false)
+            ->assertSee(route('admin.events.categories', $event), false)
+            ->assertSee(route('backend.masters.setup', $event), false)
+            ->assertDontSee('Configure Masters categories');
+    }
 }
