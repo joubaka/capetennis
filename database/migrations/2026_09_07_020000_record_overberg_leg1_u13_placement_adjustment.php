@@ -140,29 +140,57 @@ return new class extends Migration
 
     private function assertPlayerName(int $registrationId, string $expected): void
     {
-        $actual = DB::table('player_registrations')
+        $player = DB::table('player_registrations')
             ->join('players', 'players.id', '=', 'player_registrations.player_id')
             ->where('player_registrations.registration_id', $registrationId)
-            ->selectRaw("TRIM(CONCAT(COALESCE(players.name, ''), ' ', COALESCE(players.surname, ''))) as full_name")
-            ->value('full_name');
+            ->first(['players.name', 'players.surname']);
+        $actual = trim(implode(' ', array_filter([
+            $player?->name,
+            $player?->surname,
+        ], fn ($part): bool => filled($part))));
 
-        if (mb_strtolower(trim((string) $actual)) !== mb_strtolower($expected)) {
+        if (mb_strtolower($actual) !== mb_strtolower($expected)) {
             throw new RuntimeException("Expected {$expected} for registration {$registrationId}; found {$actual}. No adjustment was recorded.");
         }
     }
 
     private function ensurePublishedPositions(object $draw, int $gerhardRegistrationId, int $romeRegistrationId): void
     {
-        if (! $draw->category_event_id || ! Schema::hasTable('category_events') || ! Schema::hasTable('category_results')) {
-            throw new RuntimeException('The U/13 Boys category link or results table is unavailable.');
+        if (! Schema::hasTable('category_events') || ! Schema::hasTable('category_results')) {
+            throw new RuntimeException('The category event or results table is unavailable.');
         }
 
-        $categoryId = DB::table('category_events')
-            ->where('id', $draw->category_event_id)
-            ->where('event_id', 231)
-            ->value('category_id');
-        if (! $categoryId) {
-            throw new RuntimeException('The U/13 Boys category link does not belong to event 231.');
+        $categoryId = null;
+        if ($draw->category_event_id) {
+            $categoryId = DB::table('category_events')
+                ->where('id', $draw->category_event_id)
+                ->where('event_id', 231)
+                ->value('category_id');
+
+            if (! $categoryId) {
+                throw new RuntimeException('The U/13 Boys category link does not belong to event 231.');
+            }
+        } else {
+            $categoryIds = DB::table('category_results')
+                ->join('category_events', function ($join): void {
+                    $join->on('category_events.event_id', '=', 'category_results.event_id')
+                        ->on('category_events.category_id', '=', 'category_results.category_id');
+                })
+                ->where('category_results.event_id', 231)
+                ->whereIn('category_results.registration_id', [$gerhardRegistrationId, $romeRegistrationId])
+                ->get(['category_results.category_id', 'category_results.registration_id'])
+                ->groupBy('category_id')
+                ->filter(fn ($rows): bool => $rows->pluck('registration_id')->unique()->count() === 2)
+                ->keys()
+                ->map(fn ($id): int => (int) $id)
+                ->unique()
+                ->values();
+
+            if ($categoryIds->count() !== 1) {
+                throw new RuntimeException('The legacy U/13 Boys draw has no category link and Gerhard/Rome could not be matched to exactly one event 231 result category.');
+            }
+
+            $categoryId = $categoryIds->first();
         }
 
         foreach ([
@@ -185,4 +213,5 @@ return new class extends Migration
             ]);
         }
     }
+
 };
