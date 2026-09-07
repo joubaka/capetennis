@@ -395,7 +395,18 @@ class SuperAdminFinanceController extends Controller
         if (!empty($pfPaymentId)) {
             try {
                 $payfast = new \App\Services\Payfast();
-                $result  = $payfast->refund($pfPaymentId, $net, "{$refundLabel} (admin)");
+                $result = $payfast->refundUsingAvailableMethod(
+                    $pfPaymentId,
+                    $net,
+                    "{$refundLabel} (admin)",
+                    [
+                        'account_holder' => $registration->refund_account_name,
+                        'bank_name' => $registration->refund_bank_name,
+                        'branch_code' => $registration->refund_branch_code,
+                        'account_number' => $registration->refund_account_number,
+                        'account_type' => $registration->refund_account_type,
+                    ]
+                );
 
                 if ($result['success']) {
                     $refundService->executeBankRefund($registration, array_merge($statusOverrides, [
@@ -532,7 +543,18 @@ class SuperAdminFinanceController extends Controller
         if (!empty($pfPaymentId)) {
             try {
                 $payfast = new \App\Services\Payfast();
-                $result  = $payfast->refund($pfPaymentId, $net, "{$refundLabel} team (admin)");
+                $result = $payfast->refundUsingAvailableMethod(
+                    $pfPaymentId,
+                    $net,
+                    "{$refundLabel} team (admin)",
+                    [
+                        'account_holder' => $order->refund_account_name,
+                        'bank_name' => $order->refund_bank_name,
+                        'branch_code' => $order->refund_branch_code,
+                        'account_number' => $order->refund_account_number,
+                        'account_type' => $order->refund_account_type,
+                    ]
+                );
 
                 if ($result['success']) {
                     $refundService->executeBankRefund($order, array_merge($statusOverrides, [

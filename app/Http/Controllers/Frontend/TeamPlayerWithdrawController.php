@@ -161,7 +161,9 @@ class TeamPlayerWithdrawController extends Controller
 
     ['gross' => $gross, 'fee' => $fee, 'net' => $net, 'payfastGross' => $payfastGross, 'payfastNet' => $payfastNet] = app(TeamRefundCalculator::class)->calculate($order);
 
-    return view('frontend.team.choose-refund', compact('team', 'player', 'eventId', 'order', 'gross', 'fee', 'net', 'payfastGross', 'payfastNet'));
+    $bankNames = BankDetailsController::BANK_NAMES;
+
+    return view('frontend.team.choose-refund', compact('team', 'player', 'eventId', 'order', 'gross', 'fee', 'net', 'payfastGross', 'payfastNet', 'bankNames'));
   }
 
   public function storeRefund(Request $request, Team $team, Player $player, $eventId)
@@ -225,9 +227,9 @@ class TeamPlayerWithdrawController extends Controller
       'method' => 'required|in:wallet,bank',
       'account_name' => 'required_if:method,bank|string|max:255',
       'bank_name' => 'required_if:method,bank|string|max:255',
-      'account_number' => 'required_if:method,bank|string|max:50',
-      'branch_code' => 'required_if:method,bank|string|max:20',
-      'account_type' => 'required_if:method,bank|in:cheque,savings,business',
+      'account_number' => 'required_if:method,bank|digits_between:5,12',
+      'branch_code' => 'required_if:method,bank|digits_between:4,6',
+      'account_type' => 'required_if:method,bank|in:current,savings',
     ]);
 
     [
@@ -364,7 +366,18 @@ class TeamPlayerWithdrawController extends Controller
     if (!empty($pfPaymentId)) {
       try {
         $payfast = new \App\Services\Payfast();
-        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Team withdrawal refund');
+        $result = $payfast->refundUsingAvailableMethod(
+          $pfPaymentId,
+          $payfastNet,
+          'Team withdrawal refund',
+          [
+            'account_holder' => $request->account_name,
+            'bank_name' => $request->bank_name,
+            'branch_code' => $request->branch_code,
+            'account_number' => $request->account_number,
+            'account_type' => $request->account_type,
+          ]
+        );
 
         Log::info('TEAM PAYFAST AUTO REFUND ATTEMPT', [
           'order_id' => $order->id,

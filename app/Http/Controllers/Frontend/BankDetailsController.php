@@ -64,8 +64,8 @@ class BankDetailsController extends Controller
         $validated = $request->validate([
             'refund_account_name'   => ['required', 'string', 'max:255'],
             'refund_bank_name'      => ['required', 'string', 'max:255'],
-            'refund_account_number' => ['required', 'string', 'max:20'],
-            'refund_branch_code'    => ['required', 'digits_between:4,10'],
+            'refund_account_number' => ['required', 'digits_between:5,12'],
+            'refund_branch_code'    => ['required', 'digits_between:4,6'],
             'refund_account_type'   => ['required', 'in:current,savings'],
         ]);
 

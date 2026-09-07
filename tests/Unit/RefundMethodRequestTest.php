@@ -102,13 +102,13 @@ class RefundMethodRequestTest extends TestCase
             'bank_name' => 'Test Bank',
             'account_number' => '123456789',
             'branch_code' => '632005',
-            'account_type' => 'current', // invalid
+            'account_type' => 'business',
         ]);
         $this->assertTrue($v->fails());
         $this->assertArrayHasKey('account_type', $v->errors()->toArray());
     }
 
-    public function test_account_type_accepts_cheque(): void
+    public function test_account_type_accepts_current(): void
     {
         $v = $this->validate([
             'method' => 'bank',
@@ -116,7 +116,7 @@ class RefundMethodRequestTest extends TestCase
             'bank_name' => 'Test Bank',
             'account_number' => '123456789',
             'branch_code' => '632005',
-            'account_type' => 'cheque',
+            'account_type' => 'current',
         ]);
         $this->assertFalse($v->fails());
     }

@@ -306,8 +306,6 @@ class Payfast
       'merchant_id'      => $this->id,
       'passphrase_set'   => !empty($passphrase),
       'timestamp'        => $timestamp,
-      'signature_string' => $signatureString,
-      'signature'        => $signature,
     ]);
 
     return [
@@ -339,7 +337,7 @@ class Payfast
         'merchant-id' => $headers['merchant-id'],
         'version'     => $headers['version'],
         'timestamp'   => $headers['timestamp'],
-        'signature'   => $headers['signature'],
+        'signature_set' => !empty($headers['signature']),
       ],
     ]);
 
@@ -384,6 +382,165 @@ class Payfast
         'error'   => $e->getMessage(),
       ];
     }
+  }
+
+  /**
+   * Query PayFast for the refund route and issue the refund using that route.
+   *
+   * Partial refunds can require a BANK_PAYOUT even when a full refund can be
+   * returned to the original payment source. PayFast therefore requires the
+   * query immediately before the refund and, for bank payouts, the buyer's
+   * bank details in the signed request body.
+   *
+   * @param array<string, mixed> $bankDetails
+   * @return array{success: bool, data: array|null, error: string|null}
+   */
+  public function refundUsingAvailableMethod(
+    string $pf_payment_id,
+    $amount,
+    string $reason = 'Event withdrawal refund',
+    array $bankDetails = []
+  ): array {
+    $amountCents = (int) round((float) $amount * 100);
+
+    if ($amountCents <= 0) {
+      return $this->refundFailure('Refund amount must be greater than zero.');
+    }
+
+    $query = $this->refundQuery($pf_payment_id);
+    if (!$query['success']) {
+      return $this->refundFailure('PayFast refund query failed: ' . ($query['error'] ?? 'Unknown error.'), $query['data']);
+    }
+
+    $queryData = $this->refundQueryData($query['data'] ?? []);
+    $status = strtoupper((string) ($queryData['status'] ?? 'NOT_AVAILABLE'));
+
+    if ($status !== 'REFUNDABLE') {
+      $errors = array_filter((array) ($queryData['errors'] ?? []), 'is_string');
+      $detail = $errors !== [] ? ' ' . implode(' ', $errors) : '';
+
+      return $this->refundFailure("PayFast refund status is {$status}.{$detail}", $query['data']);
+    }
+
+    $availableCents = (int) ($queryData['amount_available_for_refund'] ?? 0);
+    if ($availableCents <= 0 || $amountCents > $availableCents) {
+      return $this->refundFailure('The requested refund exceeds the amount PayFast reports as available.', $query['data']);
+    }
+
+    $methodKey = $amountCents === $availableCents ? 'refund_full' : 'refund_partial';
+    $method = strtoupper((string) ($queryData[$methodKey]['method'] ?? 'NOT_AVAILABLE'));
+
+    if ($method === 'NOT_AVAILABLE') {
+      return $this->refundFailure('PayFast does not offer a refund method for the requested amount.', $query['data']);
+    }
+
+    $extraBody = [];
+    if ($method === 'BANK_PAYOUT') {
+      $extraBody = $this->payfastBankBody($bankDetails, (array) ($queryData['bank_names'] ?? []));
+      if (isset($extraBody['error'])) {
+        return $this->refundFailure((string) $extraBody['error'], $query['data']);
+      }
+    } elseif ($method !== 'PAYMENT_SOURCE') {
+      return $this->refundFailure("Unsupported PayFast refund method: {$method}.", $query['data']);
+    }
+
+    return $this->refund($pf_payment_id, $amount, $reason, $extraBody);
+  }
+
+  /** @param array<string, mixed> $data */
+  private function refundQueryData(array $data): array
+  {
+    $candidate = $data['data']['response'] ?? $data['data'] ?? $data['response'] ?? $data;
+
+    return is_array($candidate) ? $candidate : [];
+  }
+
+  /**
+   * @param array<string, mixed> $bankDetails
+   * @param array<int, mixed> $availableBanks
+   * @return array<string, mixed>
+   */
+  private function payfastBankBody(array $bankDetails, array $availableBanks): array
+  {
+    $holder = trim((string) ($bankDetails['bank_account_holder'] ?? $bankDetails['account_holder'] ?? ''));
+    $bankInput = trim((string) ($bankDetails['bank_name'] ?? ''));
+    $branchCode = trim((string) ($bankDetails['bank_branch_code'] ?? $bankDetails['branch_code'] ?? ''));
+    $accountNumber = trim((string) ($bankDetails['bank_account_number'] ?? $bankDetails['account_number'] ?? ''));
+    $accountType = strtolower(trim((string) ($bankDetails['bank_account_type'] ?? $bankDetails['account_type'] ?? '')));
+
+    if ($holder === '' || $bankInput === '' || $branchCode === '' || $accountNumber === '' || $accountType === '') {
+      return ['error' => 'PayFast requires complete bank details for this refund.'];
+    }
+
+    if (!preg_match('/^\d{4,6}$/', $branchCode)) {
+      return ['error' => 'The bank branch code must contain 4 to 6 digits.'];
+    }
+
+    if (!preg_match('/^\d{5,12}$/', $accountNumber)) {
+      return ['error' => 'The bank account number must contain 5 to 12 digits.'];
+    }
+
+    $accountType = match ($accountType) {
+      'current', 'cheque', 'business' => 'current',
+      'savings' => 'savings',
+      default => '',
+    };
+
+    if ($accountType === '') {
+      return ['error' => 'PayFast supports only current or savings bank accounts.'];
+    }
+
+    $bankName = $this->payfastBankName($bankInput, $availableBanks);
+    if ($bankName === null) {
+      return ['error' => 'The selected bank is not available for this PayFast refund.'];
+    }
+
+    return [
+      'bank_account_holder' => $holder,
+      'bank_name' => $bankName,
+      // Keep these as digit strings so leading zeroes are not discarded.
+      'bank_branch_code' => $branchCode,
+      'bank_account_number' => $accountNumber,
+      'bank_account_type' => $accountType,
+    ];
+  }
+
+  /** @param array<int, mixed> $availableBanks */
+  private function payfastBankName(string $bankInput, array $availableBanks): ?string
+  {
+    $normalise = static fn (string $value): string => preg_replace('/[^A-Z0-9]/', '', strtoupper($value)) ?? '';
+    $needle = $normalise($bankInput);
+
+    $aliases = [
+      'FIRSTNATIONALBANK' => 'FNB',
+      'STANDARD BANK' => 'STANDARD',
+      'CAPITEC BANK' => 'CAPITEC',
+      'AFRICAN BANK' => 'AFRICAN',
+      'TYME BANK' => 'TYME',
+      'DISCOVERY BANK' => 'DISCOVERY',
+      'BIDVEST BANK' => 'BIDVEST',
+    ];
+    $needle = $normalise($aliases[strtoupper($bankInput)] ?? $bankInput);
+
+    foreach ($availableBanks as $bank) {
+      if (!is_array($bank)) {
+        continue;
+      }
+
+      $code = trim((string) ($bank['bank_name'] ?? ''));
+      $label = trim((string) ($bank['label'] ?? ''));
+      if ($code !== '' && in_array($needle, [$normalise($code), $normalise($label)], true)) {
+        return $code;
+      }
+    }
+
+    return null;
+  }
+
+  /** @param array<string, mixed>|null $data */
+  private function refundFailure(string $error, ?array $data = null): array
+  {
+    return ['success' => false, 'data' => $data, 'error' => $error];
   }
 
   /**

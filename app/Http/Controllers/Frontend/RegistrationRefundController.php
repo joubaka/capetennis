@@ -49,6 +49,7 @@ class RegistrationRefundController extends Controller
     $gross        = round($payfastGross + $walletPaid, 2);
     $fee          = SiteSetting::calculateWithdrawalFee($gross); // fixed 10% of gross
     $net          = round($gross - $fee, 2);
+    $bankNames    = BankDetailsController::BANK_NAMES;
 
     return view('frontend.registrations.choose-refund', compact(
       'registration',
@@ -56,7 +57,8 @@ class RegistrationRefundController extends Controller
       'fee',
       'net',
       'walletPaid',
-      'payfastGross'
+      'payfastGross',
+      'bankNames'
     ));
   }
 
@@ -278,7 +280,18 @@ class RegistrationRefundController extends Controller
     if (!empty($pfPaymentId) && $payfastGross > 0) {
       try {
         $payfast = new \App\Services\Payfast();
-        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
+        $result = $payfast->refundUsingAvailableMethod(
+          $pfPaymentId,
+          $payfastNet,
+          'Event withdrawal refund',
+          [
+            'account_holder' => $request->account_name,
+            'bank_name' => $request->bank_name,
+            'branch_code' => $request->branch_code,
+            'account_number' => $request->account_number,
+            'account_type' => $request->account_type,
+          ]
+        );
 
         Log::info('PAYFAST AUTO REFUND ATTEMPT', [
           'registration_id' => $registration->id,
@@ -544,7 +557,18 @@ class RegistrationRefundController extends Controller
           return back()->withErrors('No PayFast-funded amount is available to refund. Please process manually.');
         }
 
-        $result = $payfast->refund($pfPaymentId, $amount, 'Team withdrawal refund');
+        $result = $payfast->refundUsingAvailableMethod(
+          $pfPaymentId,
+          $amount,
+          'Team withdrawal refund',
+          [
+            'account_holder' => $order->refund_account_name,
+            'bank_name' => $order->refund_bank_name,
+            'branch_code' => $order->refund_branch_code,
+            'account_number' => $order->refund_account_number,
+            'account_type' => $order->refund_account_type,
+          ]
+        );
 
         Log::info('PAYFAST REFUND ATTEMPT (team)', [
           'order_id' => $order->id,
@@ -659,7 +683,18 @@ class RegistrationRefundController extends Controller
       try {
         $payfast = new \App\Services\Payfast();
 
-        $result = $payfast->refund($pfPaymentId, $payfastNet, 'Event withdrawal refund');
+        $result = $payfast->refundUsingAvailableMethod(
+          $pfPaymentId,
+          $payfastNet,
+          'Event withdrawal refund',
+          [
+            'account_holder' => $registration->refund_account_name,
+            'bank_name' => $registration->refund_bank_name,
+            'branch_code' => $registration->refund_branch_code,
+            'account_number' => $registration->refund_account_number,
+            'account_type' => $registration->refund_account_type,
+          ]
+        );
 
         Log::info('PAYFAST REFUND ATTEMPT (registration)', [
           'registration_id' => $registration->id,

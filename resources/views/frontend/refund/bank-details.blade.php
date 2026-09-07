@@ -80,7 +80,7 @@
               <label class="form-label fw-semibold">Account Number <span class="text-danger">*</span></label>
               <input type="text" name="refund_account_number" class="form-control @error('refund_account_number') is-invalid @enderror"
                      value="{{ old('refund_account_number', $registrations->first()->refund_account_number) }}"
-                     placeholder="e.g. 1234567890" required maxlength="20">
+                     placeholder="e.g. 1234567890" required maxlength="12" inputmode="numeric">
               @error('refund_account_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
@@ -88,7 +88,7 @@
               <label class="form-label fw-semibold">Branch Code <span class="text-danger">*</span></label>
               <input type="text" name="refund_branch_code" class="form-control @error('refund_branch_code') is-invalid @enderror"
                      value="{{ old('refund_branch_code', $registrations->first()->refund_branch_code) }}"
-                     placeholder="e.g. 632005" required maxlength="10" inputmode="numeric">
+                     placeholder="e.g. 632005" required maxlength="6" inputmode="numeric">
               @error('refund_branch_code')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 

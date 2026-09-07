@@ -139,10 +139,12 @@
 
           <div class="mb-3">
             <label class="form-label">Bank Name</label>
-            <input type="text"
-                   name="bank_name"
-                   class="form-control"
-                   required>
+            <select name="bank_name" class="form-select" required>
+              <option value="">Select bank</option>
+              @foreach($bankNames as $value => $label)
+                <option value="{{ $value }}">{{ $label }}</option>
+              @endforeach
+            </select>
           </div>
 
           <div class="mb-3">
@@ -150,6 +152,8 @@
             <input type="text"
                    name="account_number"
                    class="form-control"
+                   inputmode="numeric"
+                   maxlength="12"
                    required>
           </div>
 
@@ -158,6 +162,8 @@
             <input type="text"
                    name="branch_code"
                    class="form-control"
+                   inputmode="numeric"
+                   maxlength="6"
                    required>
           </div>
 
@@ -167,9 +173,8 @@
                     class="form-select"
                     required>
               <option value="">Select</option>
-              <option value="cheque">Cheque</option>
+              <option value="current">Current / Cheque</option>
               <option value="savings">Savings</option>
-              <option value="business">Business</option>
             </select>
           </div>
 

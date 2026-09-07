@@ -195,4 +195,108 @@ class PayfastServiceTest extends TestCase
                 && $request->hasHeader('version');
         });
     }
+
+    public function test_partial_bank_payout_refund_includes_complete_bank_details(): void
+    {
+        Http::fake([
+            'api.payfast.co.za/refunds/query/PF-BANK' => Http::response([
+                'status' => 'REFUNDABLE',
+                'amount_available_for_refund' => 28500,
+                'refund_full' => ['method' => 'PAYMENT_SOURCE'],
+                'refund_partial' => ['method' => 'BANK_PAYOUT'],
+                'bank_names' => [
+                    ['bank_name' => 'STANDARD', 'label' => 'Standard Bank'],
+                ],
+            ]),
+            'api.payfast.co.za/refunds/PF-BANK' => Http::response(['status' => 'success']),
+        ]);
+
+        $result = $this->makePayfast()->refundUsingAvailableMethod(
+            'PF-BANK',
+            256.50,
+            'Event withdrawal refund',
+            [
+                'account_holder' => 'Test Player',
+                'bank_name' => 'Standard Bank',
+                'branch_code' => '051001',
+                'account_number' => '0123456789',
+                'account_type' => 'current',
+            ]
+        );
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            if (!str_contains($request->url(), '/refunds/PF-BANK')) {
+                return false;
+            }
+
+            return $request['amount'] === 25650
+                && $request['bank_account_holder'] === 'Test Player'
+                && $request['bank_name'] === 'STANDARD'
+                && $request['bank_branch_code'] === '051001'
+                && $request['bank_account_number'] === '0123456789'
+                && $request['bank_account_type'] === 'current';
+        });
+    }
+
+    public function test_payment_source_refund_does_not_send_bank_details(): void
+    {
+        Http::fake([
+            'api.payfast.co.za/refunds/query/PF-SOURCE' => Http::response([
+                'status' => 'REFUNDABLE',
+                'amount_available_for_refund' => 10000,
+                'refund_full' => ['method' => 'PAYMENT_SOURCE'],
+                'refund_partial' => ['method' => 'PAYMENT_SOURCE'],
+                'bank_names' => [],
+            ]),
+            'api.payfast.co.za/refunds/PF-SOURCE' => Http::response(['status' => 'success']),
+        ]);
+
+        $result = $this->makePayfast()->refundUsingAvailableMethod('PF-SOURCE', 100.00);
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/refunds/PF-SOURCE')
+                && !isset($request['bank_account_number']);
+        });
+    }
+
+    public function test_bank_payout_stops_before_refund_when_details_are_incomplete(): void
+    {
+        Http::fake([
+            'api.payfast.co.za/refunds/query/PF-MISSING' => Http::response([
+                'status' => 'REFUNDABLE',
+                'amount_available_for_refund' => 10000,
+                'refund_full' => ['method' => 'BANK_PAYOUT'],
+                'refund_partial' => ['method' => 'BANK_PAYOUT'],
+                'bank_names' => [['bank_name' => 'FNB', 'label' => 'FNB']],
+            ]),
+        ]);
+
+        $result = $this->makePayfast()->refundUsingAvailableMethod('PF-MISSING', 100.00, bankDetails: [
+            'bank_name' => 'FNB',
+        ]);
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('complete bank details', $result['error']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_refund_rejects_amount_above_payfast_available_balance(): void
+    {
+        Http::fake([
+            'api.payfast.co.za/refunds/query/PF-LIMIT' => Http::response([
+                'status' => 'REFUNDABLE',
+                'amount_available_for_refund' => 5000,
+                'refund_full' => ['method' => 'PAYMENT_SOURCE'],
+                'refund_partial' => ['method' => 'PAYMENT_SOURCE'],
+            ]),
+        ]);
+
+        $result = $this->makePayfast()->refundUsingAvailableMethod('PF-LIMIT', 50.01);
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('exceeds', $result['error']);
+        Http::assertSentCount(1);
+    }
 }

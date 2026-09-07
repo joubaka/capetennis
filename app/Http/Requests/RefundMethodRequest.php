@@ -17,9 +17,9 @@ class RefundMethodRequest extends FormRequest
             'method' => ['required', 'in:wallet,bank'],
             'account_name' => ['required_if:method,bank', 'nullable', 'string', 'max:255'],
             'bank_name' => ['required_if:method,bank', 'nullable', 'string', 'max:255'],
-            'account_number' => ['required_if:method,bank', 'nullable', 'string', 'max:50'],
-            'branch_code' => ['required_if:method,bank', 'nullable', 'string', 'max:20'],
-            'account_type' => ['required_if:method,bank', 'nullable', 'in:cheque,savings,business'],
+            'account_number' => ['required_if:method,bank', 'nullable', 'digits_between:5,12'],
+            'branch_code' => ['required_if:method,bank', 'nullable', 'digits_between:4,6'],
+            'account_type' => ['required_if:method,bank', 'nullable', 'in:current,savings'],
         ];
     }
 

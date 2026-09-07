@@ -243,7 +243,18 @@ class AdminRegistrationRefundController extends Controller
 
       try {
         $payfast = new \App\Services\Payfast();
-        $result  = $payfast->refund($pfPaymentId, $payfastNet, 'Admin withdrawal refund');
+        $result = $payfast->refundUsingAvailableMethod(
+          $pfPaymentId,
+          $payfastNet,
+          'Admin withdrawal refund',
+          [
+            'account_holder' => $registration->refund_account_name,
+            'bank_name' => $registration->refund_bank_name,
+            'branch_code' => $registration->refund_branch_code,
+            'account_number' => $registration->refund_account_number,
+            'account_type' => $registration->refund_account_type,
+          ]
+        );
 
         Log::info('ADMIN PAYFAST REFUND ATTEMPT', [
           'registration_id' => $registration->id,
