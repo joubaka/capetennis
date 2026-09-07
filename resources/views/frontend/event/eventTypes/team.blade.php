@@ -32,31 +32,8 @@
     <!-- ================= LEFT COLUMN ================= -->
     <div class="col-xl-8 col-lg-7 col-md-7">
 
-      {{-- 🔹 Announcements --}}
-      <div class="card p-4 mb-4">
-        <h5 class="pb-4 mb-4 border-bottom">Announcements</h5>
-
-        @forelse($event->announcements as $a)
-          <div class="card shadow-none bg-transparent border border-primary mb-4">
-            <div class="card-body">
-              <p class="card-text">{!! $a->message !!}</p>
-              <small class="text-muted">
-                <mark>
-                  Announcement @ {{ optional($a->created_at)->timezone(config('app.timezone'))->format('d M Y, H:i') }}
-                </mark>
-              </small>
-            </div>
-          </div>
-        @empty
-          <div class="alert alert-info mb-0">No announcements yet.</div>
-        @endforelse
-      </div>
-
-      {{-- 🔹 Information --}}
-      <div class="card p-4 mb-4">
-        <h5 class="pb-1 mb-4 border-bottom">Information</h5>
-        {!! $event->information ?: '<div class="text-muted">No additional information provided.</div>' !!}
-      </div>
+      @include('frontend.event.partials.event-information')
+      @include('frontend.event.partials.event-announcements')
 
       {{-- 🔹 Draws and Order of Play (Mobile / Tablet only) --}}
       <div class="card d-block d-md-none mb-4">
@@ -129,41 +106,7 @@
     <!-- ================= RIGHT COLUMN ================= -->
     <div class="col-xl-4 col-lg-5 col-md-5">
 
-      {{-- 🔹 About --}}
-      <div class="card mb-4">
-        <div class="card-body">
-          <small class="text-uppercase">About</small>
-
-          <ul class="list-unstyled mb-4 mt-3">
-            <li class="d-flex align-items-center mb-3">
-              <span class="fw-bold me-2">Start Date:</span>
-              <span class="badge bg-label-success">{{ $sDate }}</span>
-            </li>
-
-            <li class="d-flex align-items-center mb-3">
-              <span class="fw-bold me-2">End Date:</span>
-              <span class="badge bg-label-success">{{ $eDate }}</span>
-            </li>
-
-         
-          </ul>
-
-          <small class="text-uppercase">Contact</small>
-          <ul class="list-unstyled mt-3 mb-0">
-            <li class="mb-2">
-              <strong>Organizer:</strong> {{ $event->organizer }}
-            </li>
-            <li>
-              <strong>Email:</strong>
-              @if($event->email)
-                <a href="mailto:{{ $event->email }}">{{ $event->email }}</a>
-              @else
-                <span class="text-muted">Not provided</span>
-              @endif
-            </li>
-          </ul>
-        </div>
-      </div>
+      @include('frontend.event.partials.event-about')
 
       {{-- 🔹 Documents --}}
       <div class="card mb-4 shadow-sm">

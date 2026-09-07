@@ -14,35 +14,8 @@ $nominations = EventNomination::all();
         <div class="row">
             <!-- Connections -->
             <div class="col-lg-12 col-xl-12 ">
-                <div class="card p-4">
-                    <h5 class="pb-4  mb-4">Announcements</h5>
-
-                    @foreach($event->announcements as $a)
-                    <div class="card shadow-none bg-transparent border border-primary m-4">
-                        <div class="card-body">
-                            @if(filled($a->title))
-                            <h5 class="card-title">{{ $a->title }}</h5>
-                            @endif
-                            <p class="card-text">
-                                {!!$a->message!!}
-                            </p>
-                            <p class="card-text"><small class="text-muted"><mark>Announcement @ {{$a->created_at}}</mark></small></p>
-                        </div>
-                    </div>
-
-
-
-
-
-
-                    @endforeach
-
-                </div>
-
-                <div class="card p-4 mt-4 ">
-                    <h5 class="pb-1 mb-4">Information</h5>
-                    {!!$event->information!!}
-                </div>
+                @include('frontend.event.partials.event-information')
+                @include('frontend.event.partials.event-announcements')
 
                 <div class="card p-4 mt-4 ">
                     <h5 class="pb-1 mb-4">Nominations</h5>
@@ -137,51 +110,7 @@ $nominations = EventNomination::all();
   $formatWithdrawalDeadline = optional($event->withdrawal_deadline)->format('d M Y');
 @endphp
 
-        <!-- About User -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <small class="card-text text-uppercase">About</small>
-                <ul class="list-unstyled mb-4 mt-3">
-                    <li class="d-flex align-items-center mb-3"><i class="fa-regular fa-calendar"></i><span class="fw-bold mx-2">Start Date:</span> <span class="badge bg-label-success">{{$sDate}}</span></li>
-                    <li class="d-flex align-items-center mb-3"><i class="fa-regular fa-calendar"></i><span class="fw-bold mx-2">End Date:</span> <span class="badge bg-label-success">{{$eDate}}</span></li>
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-check"></i><span class="fw-bold mx-2">Entry deadline :</span> <span class="badge bg-label-warning">{{ $formatEntryLine }}</span></li>
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-x"></i><span class="fw-bold mx-2">Withdrawal deadline :</span> <span class="badge bg-label-danger">{{ $formatWithdrawalLine }}</span></li>
-
-
-
-
-                    @if($event->entry_fee2 == null)
-                    <li class="d-flex align-items-center mb-3">
-                        <i class="ti ti-flag"></i><span class="fw-bold mx-2">Entry Fee:</span> <span>R{{$event->entryFee}}</span>
-                    </li>
-                    @else
-
-
-                    @if(isset($event->eventCategories))
-                    @foreach($event->eventCategories as $ce)
-                    <li class="d-flex align-items-center mb-3">
-                        <i class="ti ti-flag"></i><span class="fw-bold mx-2">{{$ce->category->name}}</span> <span>R{{$ce->entry_fee}}</span>
-                    </li>
-
-                    @endforeach
-                    @endif
-
-                    @endif
-
-
-
-
-                </ul>
-                <small class="card-text text-uppercase">Contact</small>
-                <ul class="list-unstyled mb-4 mt-3">
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-phone-call"></i><span class="fw-bold mx-2">Organizer:</span> <span>{{$event->organizer}}</span></li>
-
-                    <li class="d-flex align-items-center mb-3"><i class="ti ti-mail"></i><span class="fw-bold mx-2">Email:</span> <a href="mailto:{{$event->email}}">{{$event->email}}</a></li>
-                </ul>
-
-            </div>
-        </div>
-        <!--/ About User -->
+        @include('frontend.event.partials.event-about')
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <small class="card-text text-uppercase">Documents</small>

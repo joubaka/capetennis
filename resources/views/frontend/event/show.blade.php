@@ -20,7 +20,7 @@
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-profile.css') }}">
 <style>
-  .individual-event-view .event-section-card {
+  .public-event-view .event-section-card {
     border: 1px solid #e1e8ee;
     box-shadow: 0 .25rem 1rem rgba(23, 46, 69, .06);
   }
@@ -38,13 +38,13 @@
     font-weight: 650;
   }
 
-  .individual-event-view .event-section-heading {
+  .public-event-view .event-section-heading {
     display: flex;
     align-items: flex-start;
     gap: .75rem;
   }
 
-  .individual-event-view .event-section-icon {
+  .public-event-view .event-section-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -56,7 +56,7 @@
     color: #14796e;
   }
 
-  .individual-event-view .event-section-icon-svg {
+  .public-event-view .event-section-icon-svg {
     fill: none;
     height: 1.35rem;
     stroke: currentColor;
@@ -66,27 +66,27 @@
     width: 1.35rem;
   }
 
-  .individual-event-view .event-information-content {
+  .public-event-view .event-information-content {
     color: #4b465c;
     font-size: .975rem;
     line-height: 1.75;
     overflow-wrap: anywhere;
   }
 
-  .individual-event-view .event-information-content > :last-child {
+  .public-event-view .event-information-content > :last-child {
     margin-bottom: 0;
   }
 
-  .individual-event-view .event-information-content p {
+  .public-event-view .event-information-content p {
     margin-bottom: 1rem;
   }
 
-  .individual-event-view .event-information-content h1,
-  .individual-event-view .event-information-content h2,
-  .individual-event-view .event-information-content h3,
-  .individual-event-view .event-information-content h4,
-  .individual-event-view .event-information-content h5,
-  .individual-event-view .event-information-content h6 {
+  .public-event-view .event-information-content h1,
+  .public-event-view .event-information-content h2,
+  .public-event-view .event-information-content h3,
+  .public-event-view .event-information-content h4,
+  .public-event-view .event-information-content h5,
+  .public-event-view .event-information-content h6 {
     margin-top: 1.75rem;
     margin-bottom: .65rem;
     color: #2f2b3d;
@@ -94,28 +94,28 @@
     font-weight: 600;
   }
 
-  .individual-event-view .event-information-content ul,
-  .individual-event-view .event-information-content ol {
+  .public-event-view .event-information-content ul,
+  .public-event-view .event-information-content ol {
     padding-left: 1.3rem;
     margin-bottom: 1rem;
   }
 
-  .individual-event-view .event-information-content li + li {
+  .public-event-view .event-information-content li + li {
     margin-top: .35rem;
   }
 
-  .individual-event-view .event-document {
+  .public-event-view .event-document {
     padding: .75rem;
     border: 1px solid rgba(75, 70, 92, .12);
     border-radius: .5rem;
   }
 
-  .individual-event-view .event-category {
+  .public-event-view .event-category {
     border-color: #e1e8ee !important;
     overflow: hidden;
   }
 
-  .individual-event-view .event-category .list-group-item {
+  .public-event-view .event-category .list-group-item {
     gap: .75rem;
     padding-inline: .75rem;
   }
@@ -229,12 +229,12 @@
   }
 
   @media (max-width: 767.98px) {
-    .individual-event-view .card-body,
-    .individual-event-view .event-card-padding {
+    .public-event-view .card-body,
+    .public-event-view .event-card-padding {
       padding: 1.1rem !important;
     }
 
-    .individual-event-view .event-information-content {
+    .public-event-view .event-information-content {
       font-size: .925rem;
       line-height: 1.65;
     }
@@ -244,7 +244,7 @@
     .user-profile-header .user-profile-img { height: 76px; max-width: 76px; width: 76px; }
     .user-profile-header .flex-grow-1 { margin-top: .75rem !important; }
     .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
-    .individual-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
+    .public-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
     .individual-event-view .event-draw-card { padding: .9rem; }
     .individual-event-view .event-draw-actions .btn:not(.event-draw-score) { flex-basis: 100%; }
   }
@@ -420,7 +420,9 @@
 </div>
 
 {{-- ================= EVENT CONTENT ================= --}}
-@include('frontend.event.partials._type-content')
+<div class="public-event-view">
+  @include('frontend.event.partials._type-content')
+</div>
 
 @endsection
 

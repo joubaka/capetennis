@@ -5,6 +5,9 @@
   $formatWithdrawalLine ||
   $event->entryFee !== null ||
   $event->eventCategories->isNotEmpty() ||
+  $event->venue_notes ||
+  (isset($mastersBatch) && $mastersBatch->response_deadline) ||
+  (isset($mastersBatch) && $mastersBatch->payment_deadline) ||
   $event->organizer ||
   $event->email
 )
@@ -32,7 +35,7 @@
         <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
           <i class="ti ti-users" aria-hidden="true"></i>
           <span class="fw-bold">Confirmed entries:</span>
-          <span class="badge bg-label-info">{{ number_format($entryCount) }}</span>
+          <span class="badge bg-label-info">{{ number_format($entryCount ?? 0) }}</span>
         </li>
 
         @if($formatEntryLine)
@@ -48,6 +51,29 @@
             <i class="ti ti-x" aria-hidden="true"></i>
             <span class="fw-bold">Withdrawal deadline:</span>
             <span class="badge bg-label-danger">{{ $formatWithdrawalLine }}</span>
+          </li>
+        @endif
+
+        @if(isset($mastersBatch) && $mastersBatch->response_deadline)
+          <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="ti ti-mail-forward" aria-hidden="true"></i>
+            <span class="fw-bold">Response deadline:</span>
+            <span class="badge bg-label-warning">{{ $mastersBatch->response_deadline->format('d M Y H:i') }}</span>
+          </li>
+        @endif
+
+        @if(isset($mastersBatch) && $mastersBatch->payment_deadline)
+          <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="ti ti-credit-card" aria-hidden="true"></i>
+            <span class="fw-bold">Payment deadline:</span>
+            <span class="badge bg-label-warning">{{ $mastersBatch->payment_deadline->format('d M Y H:i') }}</span>
+          </li>
+        @endif
+
+        @if($event->venue_notes)
+          <li class="d-flex align-items-start gap-2 mb-3">
+            <i class="ti ti-map-pin mt-1" aria-hidden="true"></i>
+            <span><strong>Venue:</strong> {{ $event->venue_notes }}</span>
           </li>
         @endif
 
