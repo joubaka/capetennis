@@ -18,7 +18,10 @@ return new class extends Migration
             Schema::create('ranking_review_campaigns', function (Blueprint $table): void {
                 $table->id();
                 $table->uuid('uuid')->unique();
-                $table->foreignId('series_id')->constrained('series')->cascadeOnDelete();
+                // Some long-lived installations still have the original signed INT
+                // series primary key. Keep this relation application-enforced so the
+                // migration works with both that legacy schema and newer BIGINT IDs.
+                $table->unsignedBigInteger('series_id');
                 $table->string('run_id', 100);
                 $table->string('snapshot_hash', 64);
                 $table->string('status', 32)->default('queued')->index();
