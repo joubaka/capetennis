@@ -1370,33 +1370,7 @@ class DrawService
    */
   private function assertDownstreamFixturesAreUnscored(Fixture $fixture): void
   {
-    $targetIds = collect([
-      $fixture->parent_fixture_id,
-      $fixture->loser_parent_fixture_id,
-    ])->filter()->unique()->values();
-
-    if ($targetIds->isEmpty()) {
-      return;
-    }
-
-    $scoredTarget = Fixture::query()
-      ->whereIn('id', $targetIds)
-      ->withCount('fixtureResults')
-      ->lockForUpdate()
-      ->get()
-      ->first(fn(Fixture $target) =>
-        $target->fixture_results_count > 0
-        || $target->winner_registration !== null
-        || (int) $target->match_status > 0
-      );
-
-    abort_if(
-      $scoredTarget !== null,
-      409,
-      'This correction changes the winner, but downstream match '
-        . ($scoredTarget?->match_nr ?? $scoredTarget?->id)
-        . ' already has a result. Delete that downstream result first, then correct this score.'
-    );
+    app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
   }
 
 

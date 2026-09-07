@@ -147,6 +147,18 @@
               </div>
             </div>
 
+            <div class="settings-section-title">Participant Ranking Review</div>
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small mb-1">Default Reply Window</label>
+                <div class="input-group">
+                  <input type="number" name="ranking_review_default_hours" class="form-control" min="1" max="720" value="{{ $series->ranking_review_default_hours ?: 24 }}">
+                  <span class="input-group-text">hours</span>
+                </div>
+                <div class="form-text">Prefills the optional Share Rankings modal. The exact cutoff remains editable before sending.</div>
+              </div>
+            </div>
+
             <div class="settings-section-title">Visibility & Rules</div>
 
             <div class="toggle-row ranking-publication-row">
@@ -178,8 +190,8 @@
                 <button type="button"
                         class="btn btn-success btn-sm ranking-publication-action ranking-lifecycle-action"
                         data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                        data-confirm="Publish this reviewed ranking to the public leaderboard?">
-                  <i class="ti ti-world-upload me-1"></i>Publish Rankings
+                        data-confirm="{{ $reviewCampaign ? 'Finalize and publish the ranking circulated to participants?' : 'Publish this reviewed ranking directly to the public leaderboard?' }}">
+                  <i class="ti ti-world-upload me-1"></i>{{ $reviewCampaign ? 'Finalize & Publish' : 'Publish Rankings' }}
                 </button>
               @elseif($activeRankingStatus === 'calculated')
                 <button type="button"
@@ -373,6 +385,7 @@
       auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
       use_third_score_tiebreak: document.getElementById('use_third_score_tiebreak').checked ? 1 : 0,
       use_head_to_head_tiebreak: document.getElementById('use_head_to_head_tiebreak').checked ? 1 : 0,
+      ranking_review_default_hours: document.querySelector('[name="ranking_review_default_hours"]').value,
     };
 
     if (!leaderboardToggle.disabled) {

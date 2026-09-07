@@ -100,6 +100,7 @@ class SendBulkEmailJob implements ShouldQueue
 
             if (!$mailable) {
                 $log->markAsSkipped('Unknown mail type: ' . $log->mail_type);
+                $this->syncRankingReviewRecipient($log, 'skipped', 'The ranking review circulation is no longer available.');
                 return;
             }
 
@@ -108,6 +109,7 @@ class SendBulkEmailJob implements ShouldQueue
 
             // Mark as sent
             $log->markAsSent();
+            $this->syncRankingReviewRecipient($log, 'sent');
 
             Log::info('[SendBulkEmailJob] Email sent successfully', [
                 'log_id' => $log->id,
@@ -126,6 +128,7 @@ class SendBulkEmailJob implements ShouldQueue
             // Mark as failed if this is the last attempt
             if ($this->attempts() >= $this->tries) {
                 $log->markAsFailed($e->getMessage());
+                $this->syncRankingReviewRecipient($log, 'failed', $e->getMessage());
             }
 
             // Re-throw to trigger retry
@@ -183,6 +186,20 @@ class SendBulkEmailJob implements ShouldQueue
                     ? \App\Models\MastersInvitation::with(['batch.event', 'categoryEvent.category', 'player'])->find($payload['invitation_id'])
                     : null;
                 return $invitation ? new \App\Mail\MastersInvitationMail($invitation, $payload['kind'] ?? 'invitation') : null;
+
+            case 'ranking_review':
+                $campaign = !empty($payload['campaign_id'])
+                    ? \App\Models\RankingReviewCampaign::with('series')->find($payload['campaign_id'])
+                    : null;
+                if (!$campaign || in_array($campaign->status, ['superseded'], true)) {
+                    return null;
+                }
+                if (!app(\App\Domain\Ranking\Services\RankingReviewCirculationService::class)->snapshotMatches($campaign)) {
+                    $campaign->update(['status' => 'superseded']);
+                    return null;
+                }
+                $recipient = \App\Models\RankingReviewRecipient::where('bulk_email_log_id', $log->id)->first();
+                return new \App\Mail\RankingReviewMail($campaign, $recipient?->player_names ?? []);
 
             case 'violation_notification':
                 // Load fresh data
@@ -253,6 +270,20 @@ class SendBulkEmailJob implements ShouldQueue
         $log = BulkEmailLog::find($this->logId);
         if ($log && $log->status !== 'failed') {
             $log->markAsFailed($exception->getMessage());
+            $this->syncRankingReviewRecipient($log, 'failed', $exception->getMessage());
         }
+    }
+
+    private function syncRankingReviewRecipient(BulkEmailLog $log, string $status, ?string $error = null): void
+    {
+        if ($log->mail_type !== 'ranking_review') {
+            return;
+        }
+
+        \App\Models\RankingReviewRecipient::where('bulk_email_log_id', $log->id)->update([
+            'status' => $status,
+            'error_message' => $error,
+            'updated_at' => now(),
+        ]);
     }
 }

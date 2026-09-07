@@ -10,6 +10,8 @@ use Illuminate\Support\Collection;
 /** Read-only final-position projection from the draw's placement fixtures. */
 final class DrawFinalPlacementService
 {
+    public const ADJUSTMENT_STAGE = 'PLACEMENT_ADJUSTMENT';
+
     public function forDraw(Draw $draw): Collection
     {
         $draw->loadMissing([
@@ -18,21 +20,46 @@ final class DrawFinalPlacementService
             'drawFixtures.registration2.players',
         ]);
 
-        $fixtures = $draw->drawFixtures->where('stage', '!=', 'RR')->values();
+        $adjustments = $this->adjustmentsForDraw($draw);
+        $fixtures = $draw->drawFixtures
+            ->where('stage', '!=', 'RR')
+            ->where('stage', '!=', self::ADJUSTMENT_STAGE)
+            ->values();
         if ($fixtures->isEmpty()) {
-            return collect();
+            return $this->applyAdjustments(collect(), $adjustments);
         }
 
         if ($fixtures->contains(fn (Fixture $fixture) => in_array(strtoupper((string) $fixture->stage), ['F', '3/4', 'C-F', '7/8'], true))) {
-            return $this->legacyEightPlayerPlacements($fixtures);
+            $placements = $this->legacyEightPlayerPlacements($fixtures);
+        } else {
+            $config = collect($draw->settings?->playoff_config ?? [])->where('enabled', true)->values();
+            $placements = $config->isNotEmpty()
+                ? $this->configuredPlacements($fixtures, $config)
+                : $this->terminalPlacements($fixtures);
         }
 
-        $config = collect($draw->settings?->playoff_config ?? [])->where('enabled', true)->values();
-        if ($config->isNotEmpty()) {
-            return $this->configuredPlacements($fixtures, $config);
+        return $this->applyAdjustments($placements, $adjustments);
+    }
+
+    /** Completed supplementary matches that explicitly change adjacent final positions. */
+    public function adjustmentsForDraw(Draw $draw): Collection
+    {
+        if (! $draw->relationLoaded('drawFixtures')) {
+            $draw->load([
+                'drawFixtures.registration1.players',
+                'drawFixtures.registration2.players',
+                'drawFixtures.fixtureResults',
+            ]);
         }
 
-        return $this->terminalPlacements($fixtures);
+        return $draw->drawFixtures
+            ->filter(fn (Fixture $fixture) => strtoupper((string) $fixture->stage) === self::ADJUSTMENT_STAGE)
+            ->filter(fn (Fixture $fixture) => $fixture->winner_registration
+                && $fixture->registration1_id
+                && $fixture->registration2_id
+                && $fixture->fixtureResults->isNotEmpty())
+            ->sortBy(fn (Fixture $fixture) => sprintf('%04d_%010d', (int) $fixture->position, (int) $fixture->id))
+            ->values();
     }
 
     private function configuredPlacements(Collection $fixtures, Collection $config): Collection
@@ -155,6 +182,30 @@ final class DrawFinalPlacementService
         $rows->put($start + 1, $loser
             ? $this->resolved($start + 1, $loser)
             : $this->bye($start + 1));
+    }
+
+    private function applyAdjustments(Collection $placements, Collection $adjustments): Collection
+    {
+        if ($adjustments->isEmpty()) {
+            return $placements;
+        }
+
+        $rows = $placements->keyBy(fn (array $placement) => (int) $placement['position']);
+
+        foreach ($adjustments as $fixture) {
+            $start = (int) $fixture->position;
+            if ($start > 0 && $fixture->winner_registration) {
+                $this->applyPair($rows, $fixture, $start);
+            }
+        }
+
+        // A bye is not a finishing position. Historical bracket projections
+        // retain the placeholder, but an explicit correction should publish
+        // only the competitors who actually received a final position.
+        return $rows
+            ->reject(fn (array $placement) => $placement['status'] === 'bye')
+            ->sortKeys()
+            ->values();
     }
 
     private function resolved(int $position, Registration $registration): array

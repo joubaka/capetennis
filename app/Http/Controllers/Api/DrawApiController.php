@@ -80,6 +80,22 @@ class DrawApiController extends Controller
             [$a, $b] = array_map('intval', explode('-', $set));
             return [$a, $b];
         }, $validated['sets']);
+        $previousSets = $fixture->fixtureResults()->orderBy('set_nr')->get()->map(fn ($result) => [
+            (int) $result->registration1_score,
+            (int) $result->registration2_score,
+        ])->values()->all();
+
+        $scoreValidation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
+            ->validate($fixture, $validSets);
+        if (! $scoreValidation['valid']) {
+            return response()->json(['success' => false, 'message' => $scoreValidation['message']], 422);
+        }
+        $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
+        $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
+        $newWinner = $wins1 > $wins2 ? $fixture->registration1_id : $fixture->registration2_id;
+        if ($fixture->winner_registration && (int) $fixture->winner_registration !== (int) $newWinner) {
+            app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+        }
 
         $response = DB::transaction(function () use ($draw, $fixture, $validSets) {
             if ($fixture->stage === 'RR') {
@@ -95,8 +111,9 @@ class DrawApiController extends Controller
             return $this->service->saveBracketScore($fixture, $validSets);
         });
 
-        DrawAuditLog::record($draw->id, 'score_saved', $fixture->id, [
+        DrawAuditLog::record($draw->id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [
             'stage' => $fixture->stage,
+            'previous_sets' => $previousSets,
             'sets'  => $validSets,
         ]);
 
@@ -126,6 +143,11 @@ class DrawApiController extends Controller
 
         // Load results before the transaction clears them
         $fixture->loadMissing('fixtureResults');
+        $previousSets = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($result) => [
+            (int) $result->registration1_score,
+            (int) $result->registration2_score,
+        ])->values()->all();
+        app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
 
         DB::transaction(function () use ($draw, $fixture) {
             // Route rollback through EngineRouter (canonical or legacy depending on draw mode)
@@ -137,6 +159,7 @@ class DrawApiController extends Controller
 
         DrawAuditLog::record($draw->id, 'score_deleted', $fixture->id, [
             'stage' => $fixture->stage,
+            'previous_sets' => $previousSets,
         ]);
 
         // Return fresh hub data so RR state updates correctly

@@ -46,11 +46,14 @@
               View Published Rankings
             </a>
           @elseif($activeRankingStatus === 'reviewed')
+            <a href="{{ route('ranking.series.list', $series) }}" class="btn btn-outline-success">
+              <i class="ti ti-mail-forward me-1"></i>{{ $reviewCampaign ? 'View Participant Review' : 'Share Rankings for Review' }}
+            </a>
             <button type="button"
                     class="btn btn-success ranking-lifecycle-action"
                     data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                    data-confirm="Publish this reviewed ranking to the public leaderboard?">
-              <i class="ti ti-world-upload me-1"></i>Publish Rankings
+                    data-confirm="{{ $reviewCampaign ? 'Finalize and publish the ranking circulated to participants?' : 'Publish this reviewed ranking directly to the public leaderboard?' }}">
+              <i class="ti ti-world-upload me-1"></i>{{ $reviewCampaign ? 'Finalize & Publish Rankings' : 'Publish Rankings' }}
             </button>
           @elseif($activeRankingStatus === 'calculated')
             <button type="button"

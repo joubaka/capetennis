@@ -11,6 +11,7 @@ use App\Models\Series;
 use App\Models\Player;
 use App\Models\RankingList;
 use App\Models\SeriesRanking;
+use App\Models\RankingReviewCampaign;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -87,7 +88,12 @@ class SeriesController extends Controller
       'rank_type' => optional($series->rankType)->name ?? $series->rank_type,
     ];
 
-    return view('backend.series.series-home', compact('series', 'stats', 'activeRankingStatus'));
+    $reviewCampaign = RankingReviewCampaign::where('series_id', $series->id)
+      ->when($activeRankingStatus === RankingStatus::Reviewed->value, fn ($query) => $query->whereIn('status', ['queued', 'sent']))
+      ->latest()
+      ->first();
+
+    return view('backend.series.series-home', compact('series', 'stats', 'activeRankingStatus', 'reviewCampaign'));
   }
 
   public function destroy(int $id)
@@ -256,12 +262,17 @@ class SeriesController extends Controller
       $activeRankingStatus = RankingStatus::Published->value;
     }
 
+    $reviewCampaign = $activeRankingStatus === RankingStatus::Reviewed->value
+      ? RankingReviewCampaign::where('series_id', $series->id)->whereIn('status', ['queued', 'sent'])->latest()->first()
+      : null;
+
     return view('backend.series.series-settings', compact(
       'series',
       'positions',
       'rankTypes',
       'activeRankingStatus',
-      'hasPublishedRanking'
+      'hasPublishedRanking',
+      'reviewCampaign'
     ));
   }
 
@@ -299,6 +310,7 @@ class SeriesController extends Controller
       'auto_award_rule' => ['sometimes', 'integer', 'in:0,1'],
       'use_third_score_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
       'use_head_to_head_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
+      'ranking_review_default_hours' => ['sometimes', 'integer', 'min:1', 'max:720'],
     ]);
 
     // Prevent rank_type change if points template already created

@@ -57,7 +57,7 @@
 
   {{-- HEADER --}}
   <div class="card mb-4 no-print">
-    <div class="card-body d-flex justify-content-between align-items-center">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
         <h4 class="mb-1">Ranking List</h4>
         <div class="text-muted">
@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap">
         <a href="{{ route('series.show', $series) }}" class="btn btn-outline-secondary">
           <i class="ti ti-arrow-left me-1"></i> Back to Series
         </a>
@@ -97,10 +97,15 @@
             <i class="ti ti-check me-1"></i> Mark Reviewed
           </button>
         @elseif($activeStatus === 'reviewed')
+          @if(!$reviewCampaign)
+            <button id="share-ranking-review" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#rankingReviewModal">
+              <i class="ti ti-mail-forward me-1"></i> Share for Review
+            </button>
+          @endif
           <button class="btn btn-success ranking-lifecycle-action"
                   data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                  data-confirm="Publish this reviewed run to the public leaderboard?">
-            <i class="ti ti-world-upload me-1"></i> Publish
+                  data-confirm="{{ $reviewCampaign ? 'Finalize and publish the exact ranking circulated to participants?' : 'Publish this reviewed run directly to the public leaderboard?' }}">
+            <i class="ti ti-world-upload me-1"></i> {{ $reviewCampaign ? 'Finalize & Publish' : 'Publish' }}
           </button>
         @elseif($activeStatus === 'published' && $hasArchivedSnapshot)
           <button class="btn btn-outline-danger ranking-lifecycle-action"
@@ -112,6 +117,58 @@
       </div>
     </div>
   </div>
+
+  @if($reviewCampaign && $reviewCampaignReport)
+    <div class="card mb-4 no-print border-start border-info border-3" id="ranking-review-status-card">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
+          <div>
+            <h5 class="mb-1">Participant ranking review</h5>
+            <div class="text-muted">Run {{ $reviewCampaign->run_id }} · cutoff {{ $reviewCampaignReport['cutoff_display'] }}</div>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <span class="badge bg-label-primary">{{ $reviewCampaignReport['player_count'] }} players</span>
+              <span class="badge bg-label-info">{{ $reviewCampaignReport['recipient_count'] }} recipients</span>
+              <span class="badge bg-label-success">{{ $reviewCampaignReport['delivery']['sent'] }} sent</span>
+              <span class="badge bg-label-warning">{{ $reviewCampaignReport['delivery']['queued'] }} queued</span>
+              <span class="badge bg-label-danger">{{ $reviewCampaignReport['delivery']['failed'] }} failed</span>
+              @if($reviewCampaignReport['missing_email_count'])
+                <span class="badge bg-label-secondary">{{ $reviewCampaignReport['missing_email_count'] }} missing email</span>
+              @endif
+            </div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-primary btn-sm" href="{{ app(\App\Domain\Ranking\Services\RankingReviewCirculationService::class)->signedPublicUrl($reviewCampaign) }}" target="_blank" rel="noopener">
+              Preview shared ranking
+            </a>
+            @if($reviewCampaignReport['delivery']['failed'] > 0 && !in_array($reviewCampaign->status, ['finalized', 'superseded']))
+              <button class="btn btn-outline-danger btn-sm" id="retry-ranking-review" data-url="{{ route('ranking.series.review-circulation.retry', [$series, $reviewCampaign]) }}">
+                Retry failed emails
+              </button>
+            @endif
+          </div>
+        </div>
+        @if($reviewCampaignReport['missing_email_count'])
+          <details class="mt-3">
+            <summary class="small fw-semibold">Players without a usable email address</summary>
+            <ul class="small mt-2 mb-0">
+              @foreach($reviewCampaignReport['missing'] as $missing)
+                <li>{{ $missing['name'] }}@if($missing['categories']) — {{ implode(', ', $missing['categories']) }}@endif</li>
+              @endforeach
+            </ul>
+          </details>
+        @endif
+      </div>
+    </div>
+  @endif
+
+  @if($activeStatus === 'published' && $nextMastersEvent)
+    <div class="alert alert-success no-print d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div><strong>Rankings finalized.</strong> The next invitation workflow remains separately reviewable and confirmed.</div>
+      <a href="{{ route('backend.masters.setup', $nextMastersEvent) }}" class="btn btn-success btn-sm">
+        Prepare invitations for {{ $nextMastersEvent->name }}
+      </a>
+    </div>
+  @endif
 
   {{-- PRINT HEADER (only shown when printing) --}}
   <div class="d-none d-print-block mb-4">
@@ -271,6 +328,80 @@
     @endif
   @endforeach
 
+  <div class="modal fade no-print" id="rankingReviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title">Share provisional rankings for participant review</h5>
+            <div class="small text-muted" id="ranking-review-run">Loading reviewed ranking…</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="ranking-review-error" class="alert alert-danger d-none"></div>
+          <div class="row g-3">
+            <div class="col-lg-5">
+              <div class="alert alert-info py-2">
+                <div class="d-flex flex-wrap gap-2" id="ranking-review-counts"></div>
+                <div class="small mt-2">Only players on this exact reviewed ranking run are included. Shared family addresses receive one email.</div>
+              </div>
+              <details class="mb-3">
+                <summary class="small fw-semibold">Review exact recipient list</summary>
+                <div class="table-responsive mt-2" style="max-height:220px">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Player(s)</th><th>Email</th><th>Category</th></tr></thead>
+                    <tbody id="ranking-review-recipients"></tbody>
+                  </table>
+                </div>
+              </details>
+              <input type="hidden" id="ranking-review-uuid">
+              <div class="mb-3">
+                <label class="form-label">Reply cutoff <span class="text-danger">*</span></label>
+                <input type="datetime-local" class="form-control" id="ranking-review-cutoff" required>
+                <div class="form-text">Africa/Johannesburg time. This cannot be silently changed after sending.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Reply-to address <span class="text-danger">*</span></label>
+                <input type="email" class="form-control" id="ranking-review-reply-to" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Subject <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="ranking-review-subject" maxlength="255" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Message <span class="text-danger">*</span></label>
+                <textarea class="form-control" id="ranking-review-message" rows="11" maxlength="10000" required></textarea>
+              </div>
+              <details id="ranking-review-missing-wrap" class="mb-3 d-none">
+                <summary class="small fw-semibold text-warning">Players without a valid email</summary>
+                <ul class="small mt-2" id="ranking-review-missing"></ul>
+              </details>
+              <button type="button" class="btn btn-outline-primary" id="refresh-ranking-email-preview">
+                <i class="ti ti-eye me-1"></i> Refresh email preview
+              </button>
+            </div>
+            <div class="col-lg-7">
+              <label class="form-label fw-semibold">Email preview</label>
+              <div class="small text-muted mb-2" id="ranking-email-preview-recipient">Personalized preview</div>
+              <iframe id="ranking-email-preview" title="Ranking review email preview" class="w-100 border rounded bg-white" style="min-height:620px"></iframe>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
+          <div class="form-check me-auto">
+            <input class="form-check-input" type="checkbox" id="ranking-review-confirm">
+            <label class="form-check-label" for="ranking-review-confirm">I reviewed the recipients, cutoff and email above.</label>
+          </div>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success" id="send-ranking-review" disabled>
+            <i class="ti ti-send me-1"></i> Queue review emails
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 @endsection
 
@@ -332,6 +463,135 @@ document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
       button.disabled = false;
     }
   });
+});
+
+const reviewModal = document.getElementById('rankingReviewModal');
+const reviewConfirm = document.getElementById('ranking-review-confirm');
+const reviewSendButton = document.getElementById('send-ranking-review');
+const reviewError = document.getElementById('ranking-review-error');
+
+function rankingReviewPayload() {
+  return {
+    uuid: document.getElementById('ranking-review-uuid').value,
+    cutoff_at: document.getElementById('ranking-review-cutoff').value,
+    reply_to: document.getElementById('ranking-review-reply-to').value.trim(),
+    subject: document.getElementById('ranking-review-subject').value.trim(),
+    message: document.getElementById('ranking-review-message').value.trim(),
+  };
+}
+
+async function responsePayload(response) {
+  const payload = await response.json();
+  if (!response.ok) {
+    const firstError = payload.errors ? Object.values(payload.errors).flat()[0] : null;
+    throw new Error(firstError || payload.message || 'Request failed.');
+  }
+  return payload;
+}
+
+async function refreshRankingEmailPreview() {
+  const iframe = document.getElementById('ranking-email-preview');
+  iframe.srcdoc = '<p style="font-family:Arial;padding:20px">Loading preview…</p>';
+  const response = await fetch('{{ route('ranking.series.review-circulation.email-preview', $series) }}', {
+    method: 'POST',
+    headers: {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}'},
+    body: JSON.stringify(rankingReviewPayload()),
+  });
+  const payload = await responsePayload(response);
+  iframe.srcdoc = payload.html;
+  document.getElementById('ranking-email-preview-recipient').textContent = `Personalized preview for ${payload.preview_recipient}`;
+}
+
+reviewModal?.addEventListener('show.bs.modal', async () => {
+  reviewError.classList.add('d-none');
+  reviewConfirm.checked = false;
+  reviewSendButton.disabled = true;
+  try {
+    const response = await fetch('{{ route('ranking.series.review-circulation.preview', $series) }}', {headers: {'Accept': 'application/json'}});
+    const payload = await responsePayload(response);
+    document.getElementById('ranking-review-run').textContent = `Reviewed run ${payload.run_id}`;
+    document.getElementById('ranking-review-uuid').value = payload.defaults.uuid;
+    document.getElementById('ranking-review-cutoff').value = payload.defaults.cutoff_input;
+    document.getElementById('ranking-review-reply-to').value = payload.defaults.reply_to;
+    document.getElementById('ranking-review-subject').value = payload.defaults.subject;
+    document.getElementById('ranking-review-message').value = payload.defaults.message;
+    document.getElementById('ranking-review-counts').innerHTML =
+      `<span class="badge bg-primary">${payload.audience.player_count} ranked players</span>` +
+      `<span class="badge bg-info">${payload.audience.recipient_count} unique emails</span>` +
+      `<span class="badge bg-secondary">${payload.audience.shared_email_count} shared emails</span>` +
+      `<span class="badge bg-warning text-dark">${payload.audience.missing_email_count} missing</span>`;
+    const recipientRows = document.getElementById('ranking-review-recipients');
+    recipientRows.innerHTML = '';
+    payload.audience.recipients.forEach(item => {
+      const row = document.createElement('tr');
+      [item.player_names.join(' / '), item.email, item.category_names.join(', ')].forEach(value => {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      recipientRows.appendChild(row);
+    });
+    const missingWrap = document.getElementById('ranking-review-missing-wrap');
+    const missingList = document.getElementById('ranking-review-missing');
+    missingList.innerHTML = '';
+    payload.audience.missing.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = `${item.name}${item.categories.length ? ' — ' + item.categories.join(', ') : ''}`;
+      missingList.appendChild(li);
+    });
+    missingWrap.classList.toggle('d-none', payload.audience.missing.length === 0);
+    await refreshRankingEmailPreview();
+  } catch (error) {
+    reviewError.textContent = error.message;
+    reviewError.classList.remove('d-none');
+  }
+});
+
+reviewConfirm?.addEventListener('change', () => {
+  reviewSendButton.disabled = !reviewConfirm.checked;
+});
+
+document.getElementById('refresh-ranking-email-preview')?.addEventListener('click', async () => {
+  try {
+    await refreshRankingEmailPreview();
+    toastr.success('Email preview refreshed.');
+  } catch (error) {
+    toastr.error(error.message);
+  }
+});
+
+reviewSendButton?.addEventListener('click', async () => {
+  reviewSendButton.disabled = true;
+  try {
+    const response = await fetch('{{ route('ranking.series.review-circulation.send', $series) }}', {
+      method: 'POST',
+      headers: {'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}'},
+      body: JSON.stringify(rankingReviewPayload()),
+    });
+    const payload = await responsePayload(response);
+    toastr.success(payload.message);
+    location.reload();
+  } catch (error) {
+    toastr.error(error.message);
+    reviewSendButton.disabled = false;
+  }
+});
+
+document.getElementById('retry-ranking-review')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch(button.dataset.url, {
+      method: 'POST',
+      headers: {'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}'},
+    });
+    const payload = await responsePayload(response);
+    toastr.success(payload.message);
+    location.reload();
+  } catch (error) {
+    toastr.error(error.message);
+    button.disabled = false;
+  }
 });
 
 document.addEventListener('DOMContentLoaded', () => {

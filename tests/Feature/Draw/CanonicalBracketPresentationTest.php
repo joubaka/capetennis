@@ -163,4 +163,73 @@ class CanonicalBracketPresentationTest extends TestCase
         $this->assertSame($registrations->pluck('id')->all(), $placements->pluck('registration_id')->all());
         $this->assertTrue($placements->every(fn (array $placement) => $placement['status'] === 'resolved'));
     }
+
+    public function test_additional_placement_result_overrides_original_order_and_is_explained(): void
+    {
+        $draw = new Draw(['id' => 1398]);
+        $draw->setRelation('settings', new DrawSetting(['playoff_config' => [
+            ['name' => '1st/2nd', 'slug' => 'main', 'size' => 2, 'enabled' => true],
+            ['name' => '3rd/4th', 'slug' => 'plate', 'size' => 2, 'enabled' => true],
+            ['name' => '5th/6th', 'slug' => 'cons', 'size' => 2, 'enabled' => true],
+        ]]));
+
+        $registrations = collect(['Nico Stoltz', 'Rome Sargeant', 'Gerhard Bruwer', 'Jeremiah Hogervorst', 'Frederick Van Coller'])
+            ->map(function (string $fullName, int $index) {
+                [$name, $surname] = explode(' ', $fullName, 2);
+                $player = new Player(['name' => $name, 'surname' => $surname]);
+                $registration = new Registration(['id' => 500 + $index]);
+                $registration->setRelation('players', collect([$player]));
+                return $registration;
+            });
+
+        $makeFixture = function (array $attributes, Registration $first, ?Registration $second): Fixture {
+            $fixture = new Fixture($attributes + [
+                'registration1_id' => $first->id,
+                'registration2_id' => $second?->id,
+            ]);
+            $fixture->setRelation('registration1', $first);
+            $fixture->setRelation('registration2', $second);
+            $fixture->setRelation('fixtureResults', collect());
+            return $fixture;
+        };
+
+        $fixtures = collect([
+            $makeFixture(['id' => 1, 'stage' => 'MAIN', 'position' => 1, 'winner_registration' => $registrations[0]->id], $registrations[0], $registrations[1]),
+            $makeFixture(['id' => 2, 'stage' => 'PLATE', 'position' => 3, 'winner_registration' => $registrations[2]->id], $registrations[3], $registrations[2]),
+            $makeFixture(['id' => 3, 'stage' => 'CONS', 'position' => 5, 'winner_registration' => $registrations[4]->id], $registrations[4], null),
+        ]);
+
+        $adjustment = $makeFixture([
+            'id' => 4,
+            'stage' => DrawFinalPlacementService::ADJUSTMENT_STAGE,
+            'position' => 2,
+            'playoff_type' => 'Additional 2nd/3rd placement match',
+            'winner_registration' => $registrations[2]->id,
+        ], $registrations[2], $registrations[1]);
+        $adjustment->setRelation('fixtureResults', collect([new \App\Models\FixtureResult([
+            'set_nr' => 1,
+            'registration1_score' => 7,
+            'registration2_score' => 5,
+        ])]));
+        $draw->setRelation('drawFixtures', $fixtures->push($adjustment));
+
+        $placements = app(DrawFinalPlacementService::class)->forDraw($draw);
+
+        $this->assertSame([1, 2, 3, 4, 5], $placements->pluck('position')->all());
+        $this->assertSame(
+            ['Nico Stoltz', 'Gerhard Bruwer', 'Rome Sargeant', 'Jeremiah Hogervorst', 'Frederick Van Coller'],
+            $placements->pluck('name')->all(),
+        );
+
+        $html = view('draw.partials.final-positions', [
+            'draw' => $draw,
+            'placements' => $placements,
+            'adjustments' => collect([$adjustment]),
+        ])->render();
+
+        $this->assertStringContainsString('Additional 2nd/3rd placement match', $html);
+        $this->assertStringContainsString('Gerhard Bruwer', $html);
+        $this->assertStringContainsString('Rome Sargeant', $html);
+        $this->assertStringContainsString('7-5', $html);
+    }
 }

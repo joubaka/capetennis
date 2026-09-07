@@ -11,6 +11,8 @@
   var $form        = $('#rr-score-modal-form');
   var $fixtureId   = $('#rrm-fixture-id');
   var $matchLabel  = $('#rrm-match-label');
+  var recoverySets = null;
+  var recoveryPreview = null;
 
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
@@ -91,6 +93,10 @@
       })
       .catch(function (err) {
         AdminToast.error(err.message || 'Error saving score');
+        if (err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
+          recoverySets = sets.map(function (set) { return set.split('-').map(Number); });
+          $('#rrm-open-recovery').removeClass('d-none');
+        }
       })
       .then(function () { restore(); });
   }
@@ -114,6 +120,9 @@
       })
       .catch(function (err) {
         AdminToast.error(err.message || 'Error deleting score');
+        if (err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
+          $('#rrm-open-recovery').removeClass('d-none');
+        }
       })
       .then(function () { restore(); });
   }
@@ -161,6 +170,94 @@
     $('#set1-p1,#set1-p2,#set2-p1,#set2-p2,#set3-p1,#set3-p2').val('');
     $fixtureId.val('');
     $matchLabel.html('');
+    $('#rrm-open-recovery').addClass('d-none');
+  }
+
+  function _escape(value) {
+    return $('<div>').text(value == null ? '' : String(value)).html();
+  }
+
+  function _openRecovery() {
+    var fixtureId = $fixtureId.val();
+    var sets = _readSets();
+    if (!fixtureId || sets === null || !sets.length) {
+      AdminToast.error('Enter the corrected completed result before opening recovery.');
+      return;
+    }
+    recoverySets = sets.map(function (set) { return set.split('-').map(Number); });
+    var restore = AdminLoading.button($('#rrm-open-recovery'), 'Checking…');
+    AdminApi.postJson(root.RR_RECOVERY.preview, { fixture_id: Number(fixtureId) })
+      .then(function (response) {
+        recoveryPreview = response;
+        var impact = response.impact;
+        $('#rr-recovery-impact').html(
+          '<p class="mb-2"><strong>' + _escape(impact.effect) + '</strong></p>' +
+          '<ul class="mb-0">' +
+          '<li>Playoff fixtures reset: ' + impact.playoff_fixtures + '</li>' +
+          '<li>Played playoff results reset: ' + impact.scored_playoff_fixtures + '</li>' +
+          '<li>Scheduled playoff matches removed for review: ' + impact.scheduled_playoff_fixtures + '</li>' +
+          '</ul>' +
+          (impact.requires_super_user ? '<p class="text-danger fw-bold mt-2 mb-0">A super-user must apply this recovery because playoff results already exist.</p>' : '')
+        );
+        $('#rr-recovery-error, #rr-recovery-reason, #rr-recovery-confirmation').val('').text('');
+        var scoreModal = bootstrap.Modal.getInstance(document.getElementById('rrScoreModal'));
+        if (scoreModal) scoreModal.hide();
+        new bootstrap.Modal(document.getElementById('rrRecoveryModal')).show();
+      })
+      .catch(function (err) { AdminToast.error(err.message || 'Could not preview recovery.'); })
+      .then(function () { restore(); });
+  }
+
+  function _applyRecovery(event) {
+    event.preventDefault();
+    if (!recoveryPreview || !recoverySets) return;
+    var reason = $('#rr-recovery-reason').val().trim();
+    var confirmation = $('#rr-recovery-confirmation').val().trim();
+    if (reason.length < 10 || confirmation !== root.RR_RECOVERY.confirmation) {
+      $('#rr-recovery-error').text('Provide a detailed reason and type the exact confirmation text.');
+      return;
+    }
+    var restore = AdminLoading.button($('#rr-recovery-apply'), 'Applying recovery…');
+    AdminApi.postJson(root.RR_RECOVERY.apply, {
+      fixture_id: Number($fixtureId.val()),
+      sets: recoverySets,
+      reason: reason,
+      fingerprint: recoveryPreview.fingerprint,
+      confirmation: confirmation
+    }).then(function (response) {
+      AdminToast.success(response.message);
+      window.location.reload();
+    }).catch(function (err) {
+      $('#rr-recovery-error').text(err.message || 'Recovery failed without changing the draw.');
+      restore();
+    });
+  }
+
+  function _restoreRecovery() {
+    var button = $(this);
+    var expected = String(button.data('confirmation') || '');
+    var reason = window.prompt('Why must this recovery be reversed? Enter at least 10 characters.');
+    if (reason === null) return;
+    reason = reason.trim();
+    if (reason.length < 10) {
+      AdminToast.error('A detailed restore reason of at least 10 characters is required.');
+      return;
+    }
+    var confirmation = window.prompt('Type ' + expected + ' exactly to restore the before snapshot.');
+    if (confirmation !== expected) {
+      AdminToast.error('The restore confirmation did not match. Nothing was changed.');
+      return;
+    }
+    var restore = AdminLoading.button(button, 'Restoring…');
+    AdminApi.postJson(button.data('url'), { reason: reason, confirmation: confirmation })
+      .then(function (response) {
+        AdminToast.success(response.message);
+        window.location.reload();
+      })
+      .catch(function (err) {
+        AdminToast.error(err.message || 'The snapshot could not be restored.');
+        restore();
+      });
   }
 
   // ─── Bind DOM events ─────────────────────────────────────────────
@@ -186,6 +283,9 @@
 
     // Delete button
     $(document).on('click', '#rrm-delete-score', _delete);
+    $(document).on('click', '#rrm-open-recovery', _openRecovery);
+    $(document).on('click', '.rr-restore-recovery', _restoreRecovery);
+    $('#rr-recovery-form').on('submit', _applyRecovery);
   }
 
   // ─── Public API ───────────────────────────────────────────────────

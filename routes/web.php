@@ -80,6 +80,7 @@ use App\Models\Player;
 use App\Http\Controllers\Backend\EventController as BackendEventController;
 use App\Http\Controllers\Backend\EventTransactionController;
 use App\Http\Controllers\Backend\SeriesRankingController;
+use App\Http\Controllers\Backend\RankingReviewCirculationController;
 // ✅ NEW: Region Clothing admin controller
 use App\Http\Controllers\Backend\RegionClothingController;
 use App\Http\Controllers\Frontend\TeamFixtureFrontendController;
@@ -1110,6 +1111,13 @@ Route::delete(
   Route::get('draw/{draw}/progress-review', [RoundRobinController::class, 'progressReview'])
     ->name('backend.draw.progress-review');
 
+  Route::post('draw/{draw}/recovery/preview', [\App\Http\Controllers\Backend\DrawRecoveryController::class, 'preview'])
+    ->name('backend.draw.recovery.preview');
+  Route::post('draw/{draw}/recovery/apply', [\App\Http\Controllers\Backend\DrawRecoveryController::class, 'apply'])
+    ->name('backend.draw.recovery.apply');
+  Route::post('draw/{draw}/recovery/{recoveryCase}/restore', [\App\Http\Controllers\Backend\DrawRecoveryController::class, 'restore'])
+    ->name('backend.draw.recovery.restore');
+
   Route::get('draw/{draw}/plate-bracket', [RoundRobinController::class, 'plateBracket'])
     ->name('backend.draw.plate-bracket');
 
@@ -1496,6 +1504,17 @@ Route::delete(
 
     Route::post('series/{series}/rollback', [SeriesRankingController::class, 'rollback'])
       ->name('series.ranking.rollback');
+
+    Route::get('series/{series}/review-circulation/preview', [RankingReviewCirculationController::class, 'preview'])
+      ->name('series.review-circulation.preview');
+    Route::post('series/{series}/review-circulation/email-preview', [RankingReviewCirculationController::class, 'emailPreview'])
+      ->name('series.review-circulation.email-preview');
+    Route::post('series/{series}/review-circulation/send', [RankingReviewCirculationController::class, 'send'])
+      ->name('series.review-circulation.send');
+    Route::get('series/{series}/review-circulation/{campaign}/status', [RankingReviewCirculationController::class, 'status'])
+      ->name('series.review-circulation.status');
+    Route::post('series/{series}/review-circulation/{campaign}/retry', [RankingReviewCirculationController::class, 'retry'])
+      ->name('series.review-circulation.retry');
 
 
     /*
@@ -2030,6 +2049,10 @@ Route::get('ranking/{series}', [\App\Http\Controllers\Backend\RankingController:
 // Public player ranking detail view
 Route::get('ranking/{series}/player/{player}', [\App\Http\Controllers\Backend\RankingController::class, 'playerDetail'])
   ->name('frontend.ranking.player-detail');
+
+Route::get('ranking-review/{campaign}', [\App\Http\Controllers\Frontend\RankingReviewController::class, 'show'])
+  ->middleware(['signed', 'throttle:60,1'])
+  ->name('ranking.review.public');
 
 // Public round-robin draw view
 Route::get('flexible-monrad/demo', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demo'])->name('flexible-monrad.demo');

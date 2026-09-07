@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
+use App\Models\DrawRecoveryCase;
 use App\Models\Fixture;
 use App\Models\CategoryEvent;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ use App\Domain\Draws\Guards\DrawGuard;
 use App\Domain\Draws\Exceptions\DrawMutationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\DrawSetting;
 use App\Models\Venue;
 use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
@@ -78,6 +80,9 @@ class RoundRobinController extends Controller
       'groups.groupRegistrations.registration.players',
       'event.draws.groups'  // Load all draws in the event for the draw switcher
     ]);
+    $recoveryCases = Schema::hasTable('draw_recovery_cases')
+      ? DrawRecoveryCase::where('draw_id', $draw->id)->latest()->limit(10)->get()
+      : collect();
 
     // -------------------------------------------------------------
     // CREATE RR FIXTURES IF NONE EXIST
@@ -235,6 +240,7 @@ class RoundRobinController extends Controller
         'standings' => $hub['standings'],
         'readiness' => app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw),
         'venues' => Venue::orderBy('name')->get(),
+        'recoveryCases' => $recoveryCases,
       ]);
 
     }
@@ -296,6 +302,7 @@ class RoundRobinController extends Controller
       'standings' => $hub['standings'] ?? [],
       'readiness' => app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw),
       'venues' => Venue::orderBy('name')->get(),
+      'recoveryCases' => $recoveryCases,
     ]);
   }
 
@@ -448,6 +455,13 @@ class RoundRobinController extends Controller
         return response()->json(['success' => false, 'message' => $scoreValidation['message']], 422);
       }
 
+      $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
+      $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
+      $newWinner = $wins1 > $wins2 ? $fixture->registration1_id : $fixture->registration2_id;
+      if ($fixture->winner_registration && (int) $fixture->winner_registration !== (int) $newWinner) {
+        app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+      }
+
       // ------------------------
       // SELECT MODE (RR / BRACKET)
       // ------------------------
@@ -510,6 +524,8 @@ class RoundRobinController extends Controller
       abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
     }
 
+    app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+
     // Route rollback through EngineRouter wrapped in a transaction
     DB::transaction(function () use ($draw, $fixture) {
       $this->engine->forDraw($draw)->rollbackFixture($fixture, function (Fixture $fx) {
@@ -564,7 +580,13 @@ class RoundRobinController extends Controller
     });
     });
 
-    DrawAuditLog::record($draw->id, 'score_deleted', $fixture->id);
+    DrawAuditLog::record($draw->id, 'score_deleted', $fixture->id, [
+      'stage' => $fixture->stage,
+      'previous_sets' => $fixture->fixtureResults->sortBy('set_nr')->map(fn ($result) => [
+        (int) $result->registration1_score,
+        (int) $result->registration2_score,
+      ])->values()->all(),
+    ]);
 
     // Reload full OOP for the draw so the front-end table refreshes
     $draw->refresh();

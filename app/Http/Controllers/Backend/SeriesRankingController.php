@@ -6,12 +6,14 @@ use App\Domain\Ranking\Services\RankingAuditService;
 use App\Domain\Ranking\Services\RankingListDetailService;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Domain\Ranking\Services\RankingRebuildService;
+use App\Domain\Ranking\Services\RankingReviewCirculationService;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryResult;
 use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
+use App\Models\RankingReviewCampaign;
 use App\Services\Ranking\RankingEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -60,6 +62,15 @@ class SeriesRankingController extends Controller
       ->whereNotNull('run_id')
       ->exists();
     $detailService = app(RankingListDetailService::class);
+    $reviewCampaign = $activeRunId
+      ? RankingReviewCampaign::where('series_id', $series->id)->where('run_id', $activeRunId)->latest()->first()
+      : null;
+    $reviewCampaignReport = $reviewCampaign
+      ? app(RankingReviewCirculationService::class)->deliveryReport($reviewCampaign)
+      : null;
+    $nextMastersEvent = $series->events
+      ->sortBy('start_date')
+      ->first(fn ($event) => $event->isMasters() && (!$event->start_date || $event->start_date->endOfDay()->gte(now())));
 
     return view('backend.ranking.series.list', [
       'series' => $series,
@@ -70,6 +81,9 @@ class SeriesRankingController extends Controller
       'hasArchivedSnapshot' => $hasArchivedSnapshot,
       'scoreDetails' => $detailService->scoreDetails($series, $rankings),
       'headToHeadAdvisories' => $detailService->headToHeadAdvisories($series, $rankings),
+      'reviewCampaign' => $reviewCampaign,
+      'reviewCampaignReport' => $reviewCampaignReport,
+      'nextMastersEvent' => $nextMastersEvent,
     ]);
   }
 
@@ -109,6 +123,10 @@ class SeriesRankingController extends Controller
       ], 422);
     }
 
+    if (!$options['dryRun'] && $report['persisted']) {
+      app(RankingReviewCirculationService::class)->supersedeOpenCampaigns($series);
+    }
+
     return response()->json([
       'message' => $options['dryRun']
         ? 'Dry-run complete (no rows written).'
@@ -136,9 +154,18 @@ class SeriesRankingController extends Controller
   {
     $this->authorize('update', $series);
 
-    app(RankingPublicationService::class)->publish($series, auth()->id());
+    $circulation = app(RankingReviewCirculationService::class);
+    $campaign = null;
+    DB::transaction(function () use ($series, $request, $circulation, &$campaign): void {
+      DB::table('series')->where('id', $series->id)->lockForUpdate()->first();
+      $campaign = $circulation->assertReadyToFinalize($series);
+      app(RankingPublicationService::class)->publish($series, auth()->id());
+      $circulation->markFinalized($campaign, $request->user());
+    });
 
-    return response()->json(['message' => 'Ranking published.']);
+    return response()->json(['message' => $campaign
+      ? 'Participant review closed. Rankings finalized and published.'
+      : 'Ranking published.']);
   }
 
   /**

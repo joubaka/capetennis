@@ -960,6 +960,47 @@
 </div>
 
   </div> {{-- END TABS --}}
+
+  @if(($recoveryCases ?? collect())->isNotEmpty())
+    <div class="card border-danger mt-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="ti ti-history me-1 text-danger"></i>Recovery history</h5>
+        <span class="badge bg-label-danger">Permanent audit record</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Case</th><th>Status</th><th>Impact</th><th>Reason</th><th>When</th><th></th></tr></thead>
+          <tbody>
+          @foreach($recoveryCases as $case)
+            @php($impact = $case->impact ?? [])
+            <tr>
+              <td>#{{ $case->id }}</td>
+              <td><span class="badge {{ $case->status === 'applied' ? 'bg-label-warning' : 'bg-label-secondary' }}">{{ ucfirst($case->status) }}</span></td>
+              <td class="small">
+                {{ $impact['playoff_fixtures'] ?? 0 }} playoff fixtures,
+                {{ $impact['scored_playoff_fixtures'] ?? 0 }} played
+              </td>
+              <td class="small" style="min-width: 16rem">{{ $case->reason }}</td>
+              <td class="small text-nowrap">{{ optional($case->applied_at)->format('Y-m-d H:i') }}</td>
+              <td class="text-end">
+                @if($case->status === 'applied' && auth()->user()->hasRole('super-user'))
+                  <button type="button" class="btn btn-sm btn-outline-danger rr-restore-recovery"
+                    data-url="{{ route('backend.draw.recovery.restore', [$draw, $case]) }}"
+                    data-confirmation="RESTORE #{{ $case->id }}">
+                    Restore before snapshot
+                  </button>
+                @endif
+              </td>
+            </tr>
+          @endforeach
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer small text-muted">
+        Restores are super-user only, require a new reason and exact typed confirmation, and leave the draw locked and unpublished.
+      </div>
+    </div>
+  @endif
 </div> {{-- END APP --}}
 <!-- =========================================
       SCORE ENTRY MODAL
@@ -1021,15 +1062,46 @@
       </div>
 
       <div class="modal-footer justify-content-between">
-        <button type="button" class="btn btn-outline-danger" id="rrm-delete-score">
-          <i class="ti ti-trash me-1"></i> Delete Score
-        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-danger" id="rrm-delete-score">
+            <i class="ti ti-trash me-1"></i> Delete Score
+          </button>
+          <button type="button" class="btn btn-danger d-none" id="rrm-open-recovery">
+            <i class="ti ti-history me-1"></i> Tournament recovery
+          </button>
+        </div>
         <div>
           <button type="submit" class="btn btn-primary">Save Score</button>
           <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
         </div>
       </div>
 
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="rrRecoveryModal" tabindex="-1" aria-labelledby="rr-recovery-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form id="rr-recovery-form" class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title text-white" id="rr-recovery-title"><i class="ti ti-alert-triangle me-1"></i>Tournament recovery</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger">
+          This is a controlled rollback. A before-and-after snapshot will be retained. All playoff fixtures in this draw will be removed, and the draw will finish locked and unpublished for review.
+        </div>
+        <div id="rr-recovery-impact" class="mb-3"></div>
+        <label class="form-label" for="rr-recovery-reason">Correction reason</label>
+        <textarea class="form-control mb-3" id="rr-recovery-reason" rows="3" minlength="10" maxlength="2000" required></textarea>
+        <label class="form-label" for="rr-recovery-confirmation">Type <code>RECOVER #{{ $draw->id }}</code> exactly</label>
+        <input class="form-control" id="rr-recovery-confirmation" autocomplete="off" required>
+        <div class="invalid-feedback d-block" id="rr-recovery-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger" id="rr-recovery-apply"><i class="ti ti-history me-1"></i>Apply correction and reset playoffs</button>
+      </div>
     </form>
   </div>
 </div>
@@ -1073,6 +1145,11 @@
 
     window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
+    window.RR_RECOVERY = {
+      preview: @json(route('backend.draw.recovery.preview', $draw)),
+      apply: @json(route('backend.draw.recovery.apply', $draw)),
+      confirmation: @json('RECOVER #'.$draw->id)
+    };
 
     // Canonical RR API routes
     window.RR_ROUTES = {

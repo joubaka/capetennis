@@ -20,6 +20,7 @@ class Series extends Model
     'auto_award_rule',
     'use_third_score_tiebreak',
     'use_head_to_head_tiebreak',
+    'ranking_review_default_hours',
   ];
   protected $casts = [
     'year' => 'integer',
@@ -29,6 +30,7 @@ class Series extends Model
     'auto_award_rule' => 'boolean',
     'use_third_score_tiebreak' => 'boolean',
     'use_head_to_head_tiebreak' => 'boolean',
+    'ranking_review_default_hours' => 'integer',
   ];
 
   //used
