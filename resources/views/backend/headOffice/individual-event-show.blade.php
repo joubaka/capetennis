@@ -494,16 +494,10 @@ $(document).ready(function () {
     ? $eventScheduleVisibilities->first()
     : 'mixed';
   $eventSetFormats = $event->draws
-    ->map(fn ($draw) => (int) ($draw->settings?->num_sets ?: 3))
+    ->map(fn ($draw) => $draw->settings?->score_format ?: 'legacy')
     ->unique();
   $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
-  $supportedEventSetFormats = [1, 2, 3, 5];
-  $eventFullSetRules = $event->draws
-    ->map(fn ($draw) => $draw->settings?->requiresFullSets() ?? true)
-    ->unique();
-  $eventRequiresFullSets = $eventFullSetRules->count() === 1
-    ? $eventFullSetRules->first()
-    : true;
+  $supportedEventSetFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
   $eventScoringSettingsLocked = $event->draws->contains(fn ($draw) => (bool) $draw->locked)
     || $event->hasRecordedResults();
 @endphp
@@ -523,30 +517,27 @@ $(document).ready(function () {
         <div class="modal-body">
           <fieldset class="mb-4">
             <legend class="h6 mb-1">Match scoring</legend>
-            <p class="text-muted small">Apply the existing Sets per Match setting to every draw. Individual draw pages use this same setting.</p>
+            <p class="text-muted small">Choose one enforceable scoring preset for every draw. Score entry, validation and printed format guidance use the same selection.</p>
             @if($eventScoringSettingsLocked)
               <div class="alert alert-warning py-2 small" role="status">Match format is locked because a draw is locked or the tournament already has a recorded result.</div>
             @elseif($event->draws->contains(fn ($draw) => (bool) $draw->published))
               <div class="alert alert-info py-2 small" role="status">This tournament is published, but match format can still be changed until the first result is recorded.</div>
             @endif
-            <label class="form-label fw-semibold" for="event-num-sets">Sets per match</label>
-            <select class="form-select" id="event-num-sets" name="num_sets" @disabled($eventScoringSettingsLocked)>
-              @if($eventSetFormat === 'mixed' || ! in_array($eventSetFormat, $supportedEventSetFormats, true))
+            <label class="form-label fw-semibold" for="event-score-format">Match scoring format</label>
+            <select class="form-select" id="event-score-format" name="score_format" @disabled($eventScoringSettingsLocked)>
+              @if($eventSetFormat === 'mixed' || $eventSetFormat === 'legacy' || ! isset($supportedEventSetFormats[$eventSetFormat]))
                 <option value="" selected>Keep current per-draw formats</option>
               @endif
-              @foreach($supportedEventSetFormats as $sets)
-                <option value="{{ $sets }}" @selected($eventSetFormat === $sets)>Best of {{ $sets }}</option>
+              @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
+                <optgroup label="{{ $groupLabel }}">
+                  @foreach($formats as $key => $format)
+                    <option value="{{ $key }}" @selected($eventSetFormat === $key)>{{ $format['label'] }}</option>
+                  @endforeach
+                </optgroup>
               @endforeach
             </select>
             <div class="form-text">This changes scoring across all {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }} for the day.</div>
-            <div class="form-check border rounded p-3 ps-5 mt-3">
-              <input type="hidden" name="require_full_sets" value="0" @disabled($eventScoringSettingsLocked)>
-              <input class="form-check-input" type="checkbox" id="event-require-full-sets"
-                     name="require_full_sets" value="1" @checked($eventRequiresFullSets)
-                     @disabled($eventScoringSettingsLocked)>
-              <label class="form-check-label fw-semibold" for="event-require-full-sets">Require full tennis sets</label>
-              <div class="form-text">Untick this to accept custom completed set scores such as 1–4 or 3–5. Every set must still have a winner, and the match must reach the selected best-of result.</div>
-            </div>
+            <div class="form-text mt-2">Use a Custom scoring preset when non-standard completed set scores must be accepted.</div>
           </fieldset>
 
           <fieldset>

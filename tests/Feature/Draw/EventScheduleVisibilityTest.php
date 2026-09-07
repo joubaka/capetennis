@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\Draw;
 use App\Models\DrawSetting;
 use App\Models\Event;
@@ -77,15 +78,19 @@ class EventScheduleVisibilityTest extends TestCase
         $this->actingAs($this->admin)
             ->postJson(route('backend.events.schedule-visibility', $this->event), [
                 'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
-                'num_sets' => 3,
+                'score_format' => TennisScoreFormat::BEST_OF_3_TO_5,
             ])
             ->assertOk()
             ->assertJsonPath('num_sets', 3)
+            ->assertJsonPath('score_format', TennisScoreFormat::BEST_OF_3_TO_5)
             ->assertJsonPath('updated_draws', 2);
 
         $this->assertSame(3, $existing->fresh()->settings->num_sets);
         $this->assertSame(3, $withoutSettings->fresh()->settings->num_sets);
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_TO_5, $existing->fresh()->settings->score_format);
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_TO_5, $withoutSettings->fresh()->settings->score_format);
         $this->assertSame(1, $foreign->fresh()->settings->num_sets);
+        $this->assertNull($foreign->fresh()->settings->score_format);
         $this->assertSame(1, $existing->settings()->count());
         $this->assertSame(1, $withoutSettings->settings()->count());
     }

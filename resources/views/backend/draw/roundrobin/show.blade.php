@@ -207,17 +207,29 @@
             <div class="row g-3">
               <input type="hidden" id="settings-boxes" value="{{ $currentBoxes }}">
               <div class="col-md-4"><label class="form-label fw-bold">Groups</label><p class="mb-0">Manage group sizes and players in <button type="button" class="btn btn-link p-0" data-open-workspace="players">Players &amp; Groups</button>.</p></div>
-              {{-- Number of Sets --}}
-              <div class="col-md-3">
-                <label class="form-label fw-bold">Sets per Match</label>
-                <select name="num_sets" class="form-select">
-                  @php $currentSets = optional($draw->settings)->num_sets ?? 3; @endphp
-                  @foreach([1, 2, 3, 5] as $n)
-                    <option value="{{ $n }}" {{ $currentSets == $n ? 'selected' : '' }}>
-                      Best of {{ $n }}
-                    </option>
+              @php
+                $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
+                $currentScoreFormat = optional($draw->settings)->score_format;
+                $legacySets = max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3)));
+              @endphp
+              <div class="col-md-5">
+                <label class="form-label fw-bold" for="score-format">Match Scoring Format</label>
+                <select name="score_format" id="score-format" class="form-select" required>
+                  @if(!$currentScoreFormat)
+                    <option value="" selected disabled>Legacy: maximum {{ $legacySets }} sets — choose a format</option>
+                  @endif
+                  @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
+                    <optgroup label="{{ $groupLabel }}">
+                      @foreach($formats as $key => $format)
+                        <option value="{{ $key }}" data-description="{{ $format['description'] }}" data-max-sets="{{ $format['max_sets'] }}"
+                          @selected($currentScoreFormat === $key)>{{ $format['label'] }}</option>
+                      @endforeach
+                    </optgroup>
                   @endforeach
                 </select>
+                <div class="form-text" id="score-format-help">
+                  {{ $currentScoreFormat ? $scoreFormats[$currentScoreFormat]['description'] : 'Choose a preset so score entry and validation use the same rules.' }}
+                </div>
               </div>
 
               {{-- Save Button --}}
@@ -814,12 +826,17 @@
 <div class="tab-pane fade" id="notes-pane" role="tabpanel">
   @php
     $drawNotes = optional($draw->settings)->notes ?? [];
+    $notesPrint = optional($draw->settings)->notes_print ?? [];
     $playoffConfig = optional($draw->settings)->playoff_config ?? [];
     $enabledBrackets = collect($playoffConfig)->where('enabled', true)->values();
     $defaultGeneralNotes = "General Rules\n\nPlayers must be ready to play at their scheduled time.\nA 5-minute warm-up is allowed before the match starts.\nStandard ITF tennis rules apply unless otherwise specified by the tournament organizer.\nThe tournament referee's decision is final in all disputes.";
-    $defaultRRNotes = "Round Robin Match Format\n\nMatches consist of 1 set starting from 0–0.\nThe first player/team to 4 games wins the set.\nAt 3–3, a tiebreaker is played.\nAdvantage scoring applies in all games.";
-    $defaultPlayoffNotes = "Top Bracket Match Format\n\nMatches are played as Best of 3 sets.\nEach set starts at 2–2.\nAdvantage scoring applies in all games.\nIf a third set is required, it is played as a 10-point match tiebreak.";
-    $defaultBracketNotes = "Other Brackets Match Format\n\nMatches consist of 1 full set starting from 0–0.\nThe first player/team to 6 games wins the set.\nAt 6–6, a tiebreaker is played.\nAdvantage scoring applies in all games.";
+    $selectedScoreFormat = optional($draw->settings)->score_format;
+    $formatRules = $selectedScoreFormat
+      ? \App\Domain\Draws\Services\TennisScoreFormat::rules($selectedScoreFormat)
+      : 'Legacy scoring is active. Select an enforceable Match Scoring Format in Settings before publishing these rules.';
+    $defaultRRNotes = "Round Robin Match Format\n\n{$formatRules}";
+    $defaultPlayoffNotes = "Playoff Match Format\n\n{$formatRules}";
+    $defaultBracketNotes = "Bracket Match Format\n\n{$formatRules}";
   @endphp
   @if(!$competitionRulesEditable)
     <div class="alert alert-warning" role="status">Tournament rules are locked because this draw is locked or its first result has been recorded.</div>
@@ -837,6 +854,16 @@
       </button>
     </div>
     <div class="card-body">
+      <div class="alert alert-primary d-flex align-items-start gap-2" role="status">
+        <i class="ti ti-scoreboard fs-5 mt-1" aria-hidden="true"></i>
+        <div>
+          <strong>Enforced match format:</strong>
+          {{ $selectedScoreFormat
+            ? \App\Domain\Draws\Services\TennisScoreFormat::get($selectedScoreFormat)['label']
+            : 'Legacy scoring — choose a preset in Settings' }}
+          <div class="small mt-1">{{ $formatRules }}</div>
+        </div>
+      </div>
       <div class="row g-4">
 
         <div class="col-12">
@@ -880,8 +907,8 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-info-circle me-1 text-primary"></i> General Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
-                <label class="form-check-label small text-muted">Print</label>
+                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-general" data-key="general" @checked($notesPrint['general'] ?? true)>
+                <label class="form-check-label small text-muted" for="print-note-general">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
@@ -896,8 +923,8 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-tournament me-1 text-success"></i> Round Robin Scoring Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
-                <label class="form-check-label small text-muted">Print</label>
+                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-round-robin" data-key="round_robin" @checked($notesPrint['round_robin'] ?? true)>
+                <label class="form-check-label small text-muted" for="print-note-round-robin">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
@@ -913,8 +940,8 @@
             <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
               <h6 class="mb-0"><i class="ti ti-trophy me-1 text-warning"></i> Playoff Rules</h6>
               <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" checked>
-                <label class="form-check-label small text-muted">Print</label>
+                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-playoffs" data-key="playoffs" @checked($notesPrint['playoffs'] ?? true)>
+                <label class="form-check-label small text-muted" for="print-note-playoffs">Print</label>
               </div>
             </div>
             <div class="card-body p-2">
@@ -934,8 +961,8 @@
                   <span class="badge bg-secondary ms-1" style="font-size: 10px;">{{ $bracket['slug'] }}</span>
                 </h6>
                 <div class="form-check form-switch mb-0">
-                  <input class="form-check-input notes-enabled" type="checkbox" checked>
-                  <label class="form-check-label small text-muted">Print</label>
+                  <input class="form-check-input notes-enabled" type="checkbox" id="print-note-bracket-{{ $bracket['slug'] }}" data-key="bracket_{{ $bracket['slug'] }}" @checked($notesPrint['bracket_' . $bracket['slug']] ?? true)>
+                  <label class="form-check-label small text-muted" for="print-note-bracket-{{ $bracket['slug'] }}">Print</label>
                 </div>
               </div>
               <div class="card-body p-2">
@@ -1011,46 +1038,26 @@
 
         <input type="hidden" id="rrm-fixture-id">
 
-        <label class="form-label fw-bold mb-2">Set Scores</label>
+        <label class="form-label fw-bold mb-1">Set Scores</label>
+        <p class="small text-muted mb-3">
+          {{ optional($draw->settings)->score_format
+            ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
+            : 'Legacy scoring: enter a decisive result within the configured set limit.' }}
+        </p>
 
-        <!-- SET 1 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 1</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set1-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set1-p1">
+        @for($setNumber = 1; $setNumber <= 5; $setNumber++)
+          <div class="row g-2 mb-2 score-set-row" data-set-row="{{ $setNumber }}">
+            <div class="col-12 fw-bold">Set {{ $setNumber }}</div>
+            <div class="col-6">
+              <label class="form-label"><span id="set{{ $setNumber }}-p1-label">Player 1</span></label>
+              <input type="number" min="0" max="999" inputmode="numeric" class="form-control" id="set{{ $setNumber }}-p1">
+            </div>
+            <div class="col-6">
+              <label class="form-label"><span id="set{{ $setNumber }}-p2-label">Player 2</span></label>
+              <input type="number" min="0" max="999" inputmode="numeric" class="form-control" id="set{{ $setNumber }}-p2">
+            </div>
           </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set1-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set1-p2">
-          </div>
-        </div>
-
-        <!-- SET 2 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 2</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set2-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set2-p1">
-          </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set2-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set2-p2">
-          </div>
-        </div>
-
-        <!-- SET 3 -->
-        <div class="row g-2 mb-2">
-          <div class="col-12 fw-bold">Set 3</div>
-          <div class="col-6">
-            <label class="form-label"><span id="set3-p1-label">Player 1</span></label>
-            <input type="number" min="0" class="form-control" id="set3-p1">
-          </div>
-          <div class="col-6">
-            <label class="form-label"><span id="set3-p2-label">Player 2</span></label>
-            <input type="number" min="0" class="form-control" id="set3-p2">
-          </div>
-        </div>
+        @endfor
 
       </div>
 
@@ -1138,6 +1145,9 @@
 
     window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
+    window.RR_SCORE_MAX_SETS = {{ optional($draw->settings)->score_format
+      ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format)
+      : max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3))) }};
     window.RR_RECOVERY = {
       preview: @json(route('backend.draw.recovery.preview', $draw)),
       apply: @json(route('backend.draw.recovery.apply', $draw)),
@@ -1246,11 +1256,16 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
     $('#btn-save-notes').on('click', function() {
       var $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving…');
       var notes = {};
+      var notesPrint = {};
       $('.notes-field').each(function() {
         notes[$(this).data('key')] = $(this).val();
       });
+      $('.notes-enabled').each(function() {
+        notesPrint[$(this).data('key')] = $(this).is(':checked') ? 1 : 0;
+      });
       $.post(APP_URL + '/backend/draw/' + DRAW_ID + '/notes', {
         notes: notes,
+        notes_print: notesPrint,
         schedule_visibility: $('.schedule-visibility:checked').val()
       })
         .done(function(res) {

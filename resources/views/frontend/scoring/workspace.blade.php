@@ -394,6 +394,9 @@
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
                       data-num-sets="{{ max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
+                      data-score-guidance="{{ $draw->settings?->score_format
+                        ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
+                        : 'Enter completed sets' }}"
                       data-require-full-sets="{{ $isFlexible && ($draw->settings?->requiresFullSets() ?? true) ? '1' : '0' }}"
                       data-scores='@json($sets)'>
                   {{ $hasScore ? 'Correct score' : 'Enter score' }}
@@ -599,7 +602,7 @@ document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('score-entry-guidance').textContent =
         active.engine === 'flexible' && active.requireFullSets === '0'
           ? 'Custom set scores allowed'
-          : 'Enter completed sets';
+          : (active.scoreGuidance || 'Enter completed sets');
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       document.getElementById('score-home-label').textContent = active.home;
       document.getElementById('score-away-label').textContent = active.away;

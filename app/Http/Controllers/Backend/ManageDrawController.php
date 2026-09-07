@@ -10,8 +10,10 @@ use App\Models\DrawFormats;
 use App\Models\DrawSetting;
 use App\Models\Player;
 use App\Models\Registration;
+use App\Domain\Draws\Services\TennisScoreFormat;
 use Illuminate\Http\Request;
 use App\Services\FeedInDrawService;
+use Illuminate\Validation\Rule;
 
 class ManageDrawController extends Controller
 {
@@ -69,7 +71,8 @@ class ManageDrawController extends Controller
             'draw_type_id' => 'nullable|exists:draw_types,id',
             'boxes' => 'nullable|integer|min:1|max:26',
             'playoff_size' => 'nullable|integer',
-            'num_sets' => 'nullable|integer',
+            'num_sets' => ['nullable', 'integer', Rule::in([1, 2, 3, 5])],
+            'score_format' => ['nullable', 'string', Rule::in(TennisScoreFormat::keys())],
             'move_to_group_id' => 'nullable|integer',
         ]);
 
@@ -84,7 +87,10 @@ class ManageDrawController extends Controller
             'draw_type_id' => $data['draw_type_id'] ?? ($data['draw_type'] ?? null),
             'boxes' => $data['boxes'] ?? null,
             'playoff_size' => $data['playoff_size'] ?? null,
-            'num_sets' => $data['num_sets'] ?? null,
+            'num_sets' => isset($data['score_format'])
+                ? TennisScoreFormat::maxSets($data['score_format'])
+                : ($data['num_sets'] ?? null),
+            'score_format' => $data['score_format'] ?? null,
         ], fn($v) => !is_null($v) && $v !== '');
 
         if (empty($drawData) && empty($updateData)) {
@@ -232,6 +238,8 @@ class ManageDrawController extends Controller
     $validated = $request->validate([
       'notes' => 'required|array',
       'notes.*' => 'nullable|string|max:5000',
+      'notes_print' => 'sometimes|array',
+      'notes_print.*' => 'boolean',
       'schedule_visibility' => 'sometimes|required|in:' . DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH . ',' . DrawSetting::SCHEDULE_VISIBILITY_FULL,
     ]);
 
@@ -247,6 +255,7 @@ class ManageDrawController extends Controller
         ['draw_id' => $lockedDraw->id],
         [
           'notes' => $validated['notes'],
+          'notes_print' => $validated['notes_print'] ?? $lockedDraw->settings?->notes_print,
           'schedule_visibility' => $validated['schedule_visibility']
             ?? $lockedDraw->settings?->schedule_visibility
             ?? DrawSetting::SCHEDULE_VISIBILITY_FULL,

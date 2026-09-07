@@ -213,11 +213,23 @@ final class FlexibleMonradService
             }
             if ($sets !== null) {
                 $settings = $draw->settings;
-                app(FlexibleMonradScoreValidator::class)->validate(
-                    $sets,
-                    (int) ($settings?->num_sets ?: 1),
-                    $settings?->requiresFullSets() ?? true,
-                );
+                if ($settings?->score_format) {
+                    $draw->setRelation('settings', $settings);
+                    $fixture->setRelation('draw', $draw);
+                    $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
+                        ->validate($fixture, $sets);
+                    if (! $validation['valid']) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'sets' => $validation['message'],
+                        ]);
+                    }
+                } else {
+                    app(FlexibleMonradScoreValidator::class)->validate(
+                        $sets,
+                        (int) ($settings?->num_sets ?: 1),
+                        $settings?->requiresFullSets() ?? true,
+                    );
+                }
             }
             $old = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($r) => [(int) $r->registration1_score, (int) $r->registration2_score])->values()->all();
             if ($old === ($sets ?? [])) {

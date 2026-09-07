@@ -223,6 +223,11 @@ class DrawWorkspaceTest extends TestCase
             $response->assertSee('id="'.$id.'"', false);
         }
         $response->assertSee('name="scheduled_at"', false)
+            ->assertSee('name="score_format"', false)
+            ->assertSee('One set · first to 3 games')
+            ->assertSee('Best of 3 sets · first to 6 games')
+            ->assertSee('Best of 5 sets · first to 5 games')
+            ->assertSee('data-set-row="5"', false)
             ->assertSee('court_label:', false)
             ->assertSee('duration_minutes:', false)
             ->assertSee("start:    $('#autoStart').val()", false)

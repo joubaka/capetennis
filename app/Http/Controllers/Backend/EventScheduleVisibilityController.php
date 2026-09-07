@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\DrawSetting;
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,8 @@ final class EventScheduleVisibilityController extends Controller
     {
         Gate::authorize('event.manage', $event);
 
-        $applyNumSets = $request->filled('num_sets');
+        $applyScoreFormat = $request->filled('score_format');
+        $applyNumSets = $request->filled('num_sets') || $applyScoreFormat;
         $applyFullSetRule = $request->has('require_full_sets');
         $applyScoringRules = $applyNumSets || $applyFullSetRule;
         $data = $request->validate([
@@ -25,6 +27,7 @@ final class EventScheduleVisibilityController extends Controller
                 DrawSetting::SCHEDULE_VISIBILITY_FULL,
             ])],
             'num_sets' => ['sometimes', 'nullable', 'integer', Rule::in([1, 2, 3, 5])],
+            'score_format' => ['sometimes', 'nullable', 'string', Rule::in(TennisScoreFormat::keys())],
             'require_full_sets' => ['sometimes', 'boolean'],
         ]);
 
@@ -39,7 +42,7 @@ final class EventScheduleVisibilityController extends Controller
             }
         }
 
-        DB::transaction(function () use ($event, $draws, $data, $applyNumSets, $applyFullSetRule, $applyScoringRules): void {
+        DB::transaction(function () use ($event, $draws, $data, $applyScoreFormat, $applyNumSets, $applyFullSetRule, $applyScoringRules): void {
             if ($applyScoringRules) {
                 $lockedDraws = \App\Models\Draw::query()
                     ->whereIn('id', $draws->pluck('id'))
@@ -59,7 +62,10 @@ final class EventScheduleVisibilityController extends Controller
                 ];
 
                 if ($applyNumSets) {
-                    $settings['num_sets'] = $data['num_sets'];
+                    $settings['num_sets'] = $applyScoreFormat
+                        ? TennisScoreFormat::maxSets($data['score_format'])
+                        : $data['num_sets'];
+                    $settings['score_format'] = $applyScoreFormat ? $data['score_format'] : null;
                 }
                 if ($applyFullSetRule) {
                     $settings['require_full_sets'] = $data['require_full_sets'];
@@ -80,7 +86,10 @@ final class EventScheduleVisibilityController extends Controller
             'success' => true,
             'message' => $message,
             'schedule_visibility' => $data['schedule_visibility'],
-            'num_sets' => $applyNumSets ? $data['num_sets'] : null,
+            'num_sets' => $applyNumSets
+                ? ($applyScoreFormat ? TennisScoreFormat::maxSets($data['score_format']) : $data['num_sets'])
+                : null,
+            'score_format' => $applyScoreFormat ? $data['score_format'] : null,
             'require_full_sets' => $applyFullSetRule ? $data['require_full_sets'] : null,
             'updated_draws' => $draws->count(),
         ]);

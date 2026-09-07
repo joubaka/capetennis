@@ -1473,7 +1473,9 @@ class HeadOfficeController extends Controller
       })->values()->toArray();
 
     $standings = app(StandingsService::class)->forDraw($draw);
+    $notesPrint = $draw->settings?->notes_print ?? [];
     $notes = collect($draw->settings?->notes ?? [])
+      ->filter(fn ($note, $key) => (bool) ($notesPrint[(string) $key] ?? true))
       ->filter(fn ($note) => is_string($note) && trim($note) !== '')
       ->mapWithKeys(function (string $note, $key) use ($draw) {
         $key = (string) $key;
@@ -1495,6 +1497,11 @@ class HeadOfficeController extends Controller
         return [$label => trim($note)];
       })
       ->all();
+
+    if ($draw->settings?->score_format) {
+      $format = \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format);
+      $notes = ['Configured match format' => $format['label']."\n\n".$format['rules']] + $notes;
+    }
 
     return [
       'id'         => $draw->id,

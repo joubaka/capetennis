@@ -3,6 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Domain\Entries\Services\EntryService;
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\{Category, CategoryEvent, CategoryEventRegistration, Draw, DrawAuditLog, Event, Fixture, FlexibleMonradDraw, Player, RankingList, Registration, Series, SeriesRanking, User};
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1212,6 +1213,28 @@ class FlexibleMonradTest extends TestCase
                 ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])
                 ->all(),
         );
+    }
+
+    public function test_monrad_scoring_enforces_the_selected_short_set_format(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings()->update([
+            'num_sets' => 3,
+            'score_format' => TennisScoreFormat::BEST_OF_3_TO_4,
+        ]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $url = route('flexible-monrad.score', [$draw, $record->fixture_map['main_a']]);
+
+        $this->putJson($url, ['revision' => 2, 'sets' => [[4, 2]]])
+            ->assertUnprocessable();
+        $this->putJson($url, ['revision' => 2, 'sets' => [[4, 2], [1, 4], [4, 3]]])
+            ->assertOk();
+
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $this->assertSame($fixture->registration1_id, $fixture->winner_registration);
+        $this->assertSame(3, $fixture->fixtureResults()->count());
     }
 
     public function test_custom_set_scores_still_require_a_decisive_completed_match(): void

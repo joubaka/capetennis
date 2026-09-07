@@ -1,5 +1,10 @@
 <script>
 (function($) {
+$('#score-format').on('change', function() {
+    const option = this.options[this.selectedIndex];
+    $('#score-format-help').text(option.dataset.description || '');
+});
+
 // Save Draw Settings (AJAX)
 $('#drawSettingsForm').on('submit', function(e) {
     e.preventDefault();
@@ -15,6 +20,11 @@ $('#drawSettingsForm').on('submit', function(e) {
         success: function(response) {
             if (response.success) {
                 toastr.success(response.message || 'Settings saved successfully!');
+
+                if (response.settings && response.settings.score_format) {
+                    window.location.reload();
+                    return;
+                }
 
                 // Update group count label
                 const newBoxes = response.settings ? response.settings.boxes : null;

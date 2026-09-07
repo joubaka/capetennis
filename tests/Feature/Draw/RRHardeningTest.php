@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use App\Models\DrawGroup;
@@ -160,6 +161,29 @@ class RRHardeningTest extends TestCase
         )->assertOk();
 
         $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id]);
+    }
+
+    public function test_round_robin_score_entry_accepts_selected_short_and_custom_formats(): void
+    {
+        $shortDraw = $this->makeDraw(['published' => true]);
+        $shortDraw->settings()->update([
+            'num_sets' => 1,
+            'score_format' => TennisScoreFormat::ONE_SET_TO_3,
+        ]);
+        $this->actingAs($this->adminUser($shortDraw))->postJson(
+            route('backend.roundrobin.score.store', $this->makeRRFixture($shortDraw)),
+            ['sets' => ['3-2']],
+        )->assertOk();
+
+        $customDraw = $this->makeDraw(['published' => true]);
+        $customDraw->settings()->update([
+            'num_sets' => 1,
+            'score_format' => TennisScoreFormat::CUSTOM_1,
+        ]);
+        $this->actingAs($this->adminUser($customDraw))->postJson(
+            route('backend.roundrobin.score.store', $this->makeRRFixture($customDraw)),
+            ['sets' => ['123-121']],
+        )->assertOk();
     }
 
     // ─────────────────────────────────────────────

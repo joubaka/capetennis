@@ -19,8 +19,14 @@
     $fixtureId.val(id);
     $matchLabel.html('<b>' + home + '</b> vs <b>' + away + '</b>');
 
-    $('#set1-p1-label, #set2-p1-label, #set3-p1-label').text(home);
-    $('#set1-p2-label, #set2-p2-label, #set3-p2-label').text(away);
+    $('[id$="-p1-label"]').text(home);
+    $('[id$="-p2-label"]').text(away);
+
+    $('.score-set-row').each(function () {
+      var setNumber = Number($(this).data('set-row'));
+      var hidden = setNumber > Number(root.RR_SCORE_MAX_SETS || 3);
+      $(this).toggleClass('d-none', hidden).find(':input').prop('disabled', hidden);
+    });
 
     // Pre-fill existing score if available
     _prefillScore(id);
@@ -30,7 +36,7 @@
 
   function _prefillScore(id) {
     // Clear all inputs first
-    $('#set1-p1,#set1-p2,#set2-p1,#set2-p2,#set3-p1,#set3-p2').val('');
+    $('.score-set-row :input').val('');
 
     var fixtures = AdminState.getFixtures();
     var fx = null;
@@ -44,7 +50,7 @@
       var parts = String(s).split('-').map(Number);
       var p1 = parts[0], p2 = parts[1];
       var setNum = i + 1;
-      if (setNum > 3) return;
+      if (setNum > Number(root.RR_SCORE_MAX_SETS || 3)) return;
       $('#set' + setNum + '-p1').val(p1);
       $('#set' + setNum + '-p2').val(p2);
     });
@@ -55,17 +61,17 @@
     var sets = [];
     var err  = false;
 
-    [1, 2, 3].forEach(function (n) {
+    for (var n = 1; n <= Number(root.RR_SCORE_MAX_SETS || 3); n++) {
       var v1 = $('#set' + n + '-p1').val().trim();
       var v2 = $('#set' + n + '-p2').val().trim();
-      if (v1 === '' && v2 === '') return; // blank set — skip
+      if (v1 === '' && v2 === '') continue; // blank set — skip
       if (v1 === '' || v2 === '') {
         AdminToast.error('Please complete both values for Set ' + n + '.');
         err = true;
-        return;
+        continue;
       }
       sets.push(v1 + '-' + v2);
-    });
+    }
 
     if (err) return null;
     return sets;
@@ -167,7 +173,7 @@
     var el  = document.getElementById('rrScoreModal');
     var bsm = el ? bootstrap.Modal.getInstance(el) : null;
     if (bsm) bsm.hide();
-    $('#set1-p1,#set1-p2,#set2-p1,#set2-p2,#set3-p1,#set3-p2').val('');
+    $('.score-set-row :input').val('');
     $fixtureId.val('');
     $matchLabel.html('');
     $('#rrm-open-recovery').addClass('d-none');

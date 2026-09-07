@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\HeadOffice;
 
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\CategoryEvent;
 use App\Models\Draw;
 use App\Models\Event;
@@ -304,6 +305,32 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
             ->getJson($this->printDataUrl())
             ->assertOk()
             ->assertJsonStructure(['draw']);
+    }
+
+    public function test_print_draws_data_respects_note_switches_and_includes_the_enforced_format(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->individualEvent->id]);
+        $draw->settings()->create([
+            'num_sets' => 3,
+            'score_format' => TennisScoreFormat::BEST_OF_3_TO_4,
+            'notes' => [
+                'general' => 'Do not print this section.',
+                'round_robin' => 'Print this section.',
+            ],
+            'notes_print' => [
+                'general' => false,
+                'round_robin' => true,
+            ],
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson($this->printDataUrl().'?draw_id='.$draw->id)
+            ->assertOk();
+
+        $notes = $response->json('draw.notes');
+        $this->assertArrayNotHasKey('General rules', $notes);
+        $this->assertSame('Print this section.', $notes['Round Robin scoring rules']);
+        $this->assertStringContainsString('Best of 3 sets', $notes['Configured match format']);
     }
 
     public function test_convenor_can_access_print_draws_data(): void

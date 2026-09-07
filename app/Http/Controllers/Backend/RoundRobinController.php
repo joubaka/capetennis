@@ -437,7 +437,7 @@ class RoundRobinController extends Controller
       foreach ($sets as $set) {
         $set = trim($set);
 
-        if ($set !== '' && preg_match('/^\d{1,2}\s*-\s*\d{1,2}$/', $set)) {
+        if ($set !== '' && preg_match('/^\d{1,3}\s*-\s*\d{1,3}$/', $set)) {
           [$a, $b] = array_map('intval', preg_split('/\s*-\s*/', $set));
           $validSets[] = [$a, $b];
         }

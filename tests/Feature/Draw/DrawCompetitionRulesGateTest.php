@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
+use App\Domain\Draws\Services\TennisScoreFormat;
 use App\Models\Draw;
 use App\Models\DrawSetting;
 use App\Models\Event;
@@ -44,10 +45,13 @@ class DrawCompetitionRulesGateTest extends TestCase
 
     public function test_published_draw_allows_match_format_and_rules_before_any_result(): void
     {
-        $this->postJson(route('backend.draw.update-settings', $this->draw), ['num_sets' => 3])
+        $this->postJson(route('backend.draw.update-settings', $this->draw), [
+            'score_format' => TennisScoreFormat::BEST_OF_3_TO_4,
+        ])
             ->assertOk();
         $this->postJson(route('backend.draw.update-notes', $this->draw), [
             'notes' => ['round_robin' => 'Sudden death at deuce'],
+            'notes_print' => ['round_robin' => false],
             'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL,
         ])->assertOk();
         $this->postJson(route('backend.draw.update-playoff-config', $this->draw), [
@@ -62,7 +66,9 @@ class DrawCompetitionRulesGateTest extends TestCase
 
         $settings = $this->draw->fresh()->settings;
         $this->assertSame(3, $settings->num_sets);
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_TO_4, $settings->score_format);
         $this->assertSame('Sudden death at deuce', $settings->notes['round_robin']);
+        $this->assertFalse($settings->notes_print['round_robin']);
         $this->assertSame('main', $settings->playoff_config[0]['slug']);
     }
 
@@ -72,7 +78,9 @@ class DrawCompetitionRulesGateTest extends TestCase
         $fixture = Fixture::factory()->create(['draw_id' => $otherDraw->id]);
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
-        $this->postJson(route('backend.draw.update-settings', $this->draw), ['num_sets' => 3])
+        $this->postJson(route('backend.draw.update-settings', $this->draw), [
+            'score_format' => TennisScoreFormat::BEST_OF_3_TO_4,
+        ])
             ->assertForbidden();
         $this->postJson(route('backend.draw.update-notes', $this->draw), [
             'notes' => ['round_robin' => 'Changed rules'],
@@ -90,7 +98,11 @@ class DrawCompetitionRulesGateTest extends TestCase
 
         $settings = $this->draw->fresh()->settings;
         $this->assertSame(1, $settings->num_sets);
+        $this->assertNull($settings->score_format);
         $this->assertSame('Original rules', $settings->notes['round_robin']);
-        $this->assertNull($settings->playoff_config);
+        $this->assertDatabaseHas('draw_settings', [
+            'draw_id' => $this->draw->id,
+            'playoff_config' => null,
+        ]);
     }
 }
