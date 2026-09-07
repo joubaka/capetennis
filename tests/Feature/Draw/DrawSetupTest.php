@@ -45,7 +45,8 @@ class DrawSetupTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
         $response = $this->get(route('draw.setup.show', $draw))->assertOk()
             ->assertSee('How should this draw start?')->assertSee('Round robin only')->assertSee('Round robin → playoffs')
-            ->assertSee('Playoffs only')->assertSee('Monrad only')->assertSee('Custom Monrad');
+            ->assertSee('Playoffs only')->assertSee('Monrad only')->assertSee('Custom Monrad')
+            ->assertSee('Help me choose a format')->assertSee('Recommended')->assertSee('Advanced');
         if (getenv('DRAW_SETUP_SNAPSHOT')) {
             \Illuminate\Support\Facades\Storage::disk('local')->put('testing/draw-setup.html', $response->getContent());
         }
@@ -124,6 +125,22 @@ class DrawSetupTest extends TestCase
             if ($workflow === 'custom_monrad') $response->assertOk();
             else $response->assertUnprocessable();
         }
+    }
+
+    public function test_direct_format_suggests_the_smallest_bracket_that_fits_the_category(): void
+    {
+        $draw = $this->draw();
+        foreach (range(1, 5) as $unused) {
+            $registration = Registration::factory()->create();
+            $registration->categoryEvents()->attach($draw->category_event_id, [
+                'status' => 'registered',
+                'payment_status_id' => 1,
+            ]);
+        }
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'monrad'])->assertRedirect();
+
+        $this->assertSame(8, $draw->fresh()->flexibleMonrad->draft['size']);
     }
 
     public function test_selection_is_authorized_validated_and_locked_draws_are_protected(): void

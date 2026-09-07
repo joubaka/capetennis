@@ -52,7 +52,13 @@ class DrawSetupController extends Controller
         if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true) && empty($data['category_event_id'])) {
             return view('backend.draw.setup-category', [
                 'draw' => $draw, 'workflow' => $data['workflow'], 'label' => self::OPTIONS[$data['workflow']][0],
-                'categories' => \App\Models\CategoryEvent::where('event_id', $draw->event_id)->with('category')->get(),
+                'categories' => \App\Models\CategoryEvent::where('event_id', $draw->event_id)
+                    ->with('category')
+                    ->withCount(['categoryEventRegistrations as eligible_draw_entries_count' => fn ($entries) => $entries
+                        ->where('payment_status_id', 1)->whereNull('withdrawn_at')
+                        ->where(fn ($status) => $status->whereNull('status')->orWhere('status', 'not like', '%withdrawn%'))
+                        ->whereHas('registration.players')])
+                    ->orderBy('ordering')->get(),
             ]);
         }
         DB::transaction(function () use ($draw, $data, $resetter) {
@@ -88,7 +94,9 @@ class DrawSetupController extends Controller
                 $draw->flexibleMonrad()->delete(); // Only an empty, ungenerated draft can reach here.
                 $draw->settings()->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id')]);
             } else {
-                app(FlexibleMonradService::class)->save($draw->fresh(), ['size' => 32, 'slots' => []], $draw->flexibleMonrad?->revision ?? 0);
+                $eligibleCount = app(FlexibleMonradService::class)->eligible($draw->fresh())->count();
+                $suggestedSize = collect([4, 8, 16, 32, 64])->first(fn ($size) => $size >= max(2, $eligibleCount)) ?? 64;
+                app(FlexibleMonradService::class)->save($draw->fresh(), ['size' => $suggestedSize, 'slots' => []], $draw->flexibleMonrad?->revision ?? 0);
             }
             DrawAuditLog::record($draw->id, 'workflow_selected', null, $data + ['reset_counts' => $resetCounts]);
         });

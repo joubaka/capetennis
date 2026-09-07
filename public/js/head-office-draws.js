@@ -124,11 +124,26 @@ $(function () {
   $('#createDrawForm').on('submit', function (event) {
     event.preventDefault();
     if (!$('#drawName').val().trim()) { toastr.error('Please enter a draw name.'); return; }
+    if ($('#drawCategory').length && !$('#eventWideDraw').is(':checked') && !$('#drawCategory').val()) {
+      toastr.error('Choose a player category, or confirm that this draw combines categories.');
+      $('#drawCategory').trigger('focus');
+      return;
+    }
     const $submit = $(this).find('[type="submit"]').prop('disabled', true);
     $.post(config.createUrl, $(this).serialize())
-      .done(() => location.reload())
+      .done(response => location.assign(response.setup_url || location.href))
       .fail(xhr => error(xhr, 'Could not create draw.'))
       .always(() => $submit.prop('disabled', false));
+  });
+
+  $('#drawCategory').on('change', function () {
+    const suggestion = this.selectedOptions[0]?.dataset.suggestedName;
+    const $name = $('#drawName');
+    if (suggestion && !$name.val().trim()) $name.val(suggestion);
+  });
+  $('#eventWideDraw').on('change', function () {
+    const combined = this.checked;
+    $('#drawCategory').prop('disabled', combined).prop('required', !combined);
   });
 
   $(document).on('click', '.toggle-publish', function () {

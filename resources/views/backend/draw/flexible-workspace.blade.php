@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="{{ asset('css/flexible-monrad.css') }}?v={{ filemtime(public_path('css/flexible-monrad.css')) }}">
 <link rel="stylesheet" href="{{ asset('css/flexible-workspace.css') }}?v={{ filemtime(public_path('css/flexible-workspace.css')) }}">
 @include('backend.draw.partials.workspace-header')
-<div id="flexible-draw-workspace">
+<div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
   <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
     <button type="button" data-flexible-tab="groups">Players &amp; Positions</button>
     <button type="button" data-flexible-tab="matrix">Draw &amp; Results</button>

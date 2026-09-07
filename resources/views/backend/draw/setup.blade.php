@@ -7,6 +7,15 @@
   <p class="text-primary mb-1">Step 1 · Draw format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>
+  <details class="alert alert-info mb-4">
+    <summary class="fw-semibold" style="cursor:pointer">Help me choose a format</summary>
+    <div class="small mt-3">
+      <p class="mb-2"><strong>Most tournaments:</strong> choose Round robin → playoffs so everyone plays a group stage before the knockout rounds.</p>
+      <p class="mb-2"><strong>Small field or league:</strong> choose Round robin only when final standings should decide the result.</p>
+      <p class="mb-2"><strong>Fast knockout:</strong> choose Playoffs only; a player may have only one match.</p>
+      <p class="mb-0"><strong>Placement matches:</strong> choose Monrad. Custom Monrad is an advanced option for placing players into different starting rounds.</p>
+    </div>
+  </details>
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @if($draw->locked || $draw->published || $draw->oop_published)
     <div class="alert alert-warning" role="alert">
@@ -35,7 +44,22 @@
             <label class="card h-100 p-4 d-flex flex-row gap-3" style="cursor:pointer">
               <input type="radio" name="workflow" value="{{ $value }}" class="form-check-input flex-shrink-0" required
                 @checked(old('workflow', $draw->settings?->workflow) === $value)>
-              <span><strong class="d-block mb-2">{{ $label }}</strong><span class="text-muted">{{ $description }}</span></span>
+              <span>
+                <strong class="d-flex align-items-center gap-2 mb-2">
+                  {{ $label }}
+                  @if($value === 'round_robin_playoffs')<span class="badge bg-label-primary">Recommended</span>@endif
+                  @if($value === 'custom_monrad')<span class="badge bg-label-secondary">Advanced</span>@endif
+                </strong>
+                <span class="text-muted d-block">{{ $description }}</span>
+                <small class="d-block mt-2">
+                  @if($value === 'round_robin') Best when every player should meet everyone in their group.
+                  @elseif($value === 'round_robin_playoffs') Best for a full tournament with group play and a championship finish.
+                  @elseif($value === 'playoffs') Fastest format, but eliminated players do not continue.
+                  @elseif($value === 'monrad') Best when finishing positions and additional matches matter.
+                  @else Use when seeded players must enter in different rounds.
+                  @endif
+                </small>
+              </span>
             </label>
           </div>
         @endforeach

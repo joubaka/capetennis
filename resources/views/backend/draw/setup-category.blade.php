@@ -13,8 +13,13 @@
     <label for="setup-category" class="form-label">Player category</label>
     <select id="setup-category" name="category_event_id" class="form-select mb-3" required>
       <option value="">Choose a category</option>
-      @foreach($categories as $category)<option value="{{ $category->id }}">{{ $category->category?->name ?? 'Category #'.$category->id }}</option>@endforeach
+      @foreach($categories as $category)
+        <option value="{{ $category->id }}">
+          {{ $category->category?->name ?? 'Category #'.$category->id }} · {{ $category->eligible_draw_entries_count }} paid active {{ Str::plural('player', $category->eligible_draw_entries_count) }}
+        </option>
+      @endforeach
     </select>
+    <p class="form-text">Player placement starts with paid, active entries in the selected category.</p>
     @if($categories->isEmpty())<p class="alert alert-warning">Add a player category to the event first.</p>@endif
     <button class="btn btn-primary" @disabled($categories->isEmpty())>Continue to player placement →</button>
   </form>

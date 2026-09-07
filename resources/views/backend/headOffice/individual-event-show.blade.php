@@ -595,18 +595,51 @@ $(document).ready(function () {
 
         <div class="modal-body">
 
-          {{-- Only draw name required --}}
+          <ol class="small text-muted ps-3 mb-4" aria-label="Draw setup steps">
+            <li><strong>Name and category</strong></li>
+            <li>Choose the draw format</li>
+            <li>Place players and generate fixtures</li>
+          </ol>
+
           <div class="mb-3">
             <label for="drawName" class="form-label fw-bold">Draw Name</label>
             <input type="text" id="drawName" name="drawName" class="form-control"
                    placeholder="e.g. Boys U14 Main Draw" required>
+            <div class="form-text">Use a name parents and players will recognise when the draw is published.</div>
           </div>
+
+          @if($event->categoryEvents->isNotEmpty())
+            <div class="mb-3">
+              <label for="drawCategory" class="form-label fw-bold">Player category</label>
+              <select id="drawCategory" name="category_event_id" class="form-select" required>
+                <option value="">Choose a category</option>
+                @foreach($event->categoryEvents as $categoryEvent)
+                  @php($categoryName = $categoryEvent->category?->name ?? 'Category #'.$categoryEvent->id)
+                  <option value="{{ $categoryEvent->id }}" data-suggested-name="{{ $categoryName }} Draw">
+                    {{ $categoryName }} · {{ $categoryEvent->eligible_draw_entries_count }} paid active {{ Str::plural('player', $categoryEvent->eligible_draw_entries_count) }}
+                  </option>
+                @endforeach
+              </select>
+              <div class="form-text">Player placement starts with paid, active entries in this category.</div>
+            </div>
+            <div class="form-check border rounded p-3 ps-5 mb-0">
+              <input class="form-check-input" type="checkbox" id="eventWideDraw">
+              <label class="form-check-label" for="eventWideDraw">
+                <strong>Combine players from different categories</strong>
+                <span class="d-block small text-muted">Advanced: use this only when the competition intentionally mixes categories.</span>
+              </label>
+            </div>
+          @else
+            <div class="alert alert-warning mb-0" role="alert">
+              No player categories are configured yet. You can create the draw now, but add event categories and entries before placing players.
+            </div>
+          @endif
 
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="submit" class="btn btn-primary">Create &amp; choose format →</button>
         </div>
 
       </form>

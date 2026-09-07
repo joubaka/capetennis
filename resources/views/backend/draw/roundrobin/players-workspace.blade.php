@@ -15,6 +15,11 @@
       <button type="button" id="rr-apply-group-count" class="btn btn-sm btn-outline-primary">Apply</button>
     </div>
   </div>
+  <details class="alert alert-info py-2 mb-3">
+    <summary class="small fw-semibold" style="cursor:pointer">How do groups and seeds work?</summary>
+    <p class="small mb-1 mt-2">Each player meets everyone in their group. More players in one group create more matches.</p>
+    <p class="small mb-0">The order inside a group is the seed order. Save assignments, then use <strong>Save &amp; preview fixtures</strong> to check the matches before generating them.</p>
+  </details>
   <div class="alert alert-warning rr-locked-overlay {{ ($draw->locked || $draw->published) ? '' : 'd-none' }}">Assignments are read-only while the draw is published or locked.</div>
   <div class="rr-player-layout">
     <aside class="rr-player-picker">

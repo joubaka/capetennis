@@ -71,7 +71,8 @@
   const aliases = { standings: 'matrix', 'main-bracket': 'matrix', oop: 'schedule', notes: 'settings' };
   function open() {
     const hash = location.hash.slice(1).replace(/-(tab|pane)$/, '');
-    const tab = aliases[hash] || (['groups', 'matrix', 'schedule', 'settings', 'print'].includes(hash) ? hash : 'matrix');
+    const defaultTab = workspace.dataset.hasGeneratedDraw === '1' ? 'matrix' : 'groups';
+    const tab = aliases[hash] || (['groups', 'matrix', 'schedule', 'settings', 'print'].includes(hash) ? hash : defaultTab);
     const panel = ['groups', 'matrix'].includes(tab) ? 'editor' : tab;
     workspace.querySelectorAll('[data-flexible-panel]').forEach(element => { element.hidden = element.dataset.flexiblePanel !== panel; });
     workspace.querySelectorAll('[data-flexible-tab]').forEach(button => {

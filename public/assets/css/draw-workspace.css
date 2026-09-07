@@ -218,6 +218,7 @@
     flex-direction: column;
   }
   #round-robin-app .rr-assignment-savebar {
+    position: static;
     bottom: 0;
     padding: 10px;
     gap: 8px;
@@ -227,6 +228,7 @@
   }
   #round-robin-app .rr-assignment-savebar .btn {
     flex: 1;
+    min-height: 44px;
     white-space: normal;
   }
   #round-robin-app #available-players-list {

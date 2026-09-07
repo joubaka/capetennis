@@ -604,20 +604,26 @@ class EventAdminController extends Controller
     // Only requirement for individual
     $validated = $request->validate([
       'drawName' => 'required|string|max:255',
+      'category_event_id' => [
+        'nullable',
+        'integer',
+        \Illuminate\Validation\Rule::exists('category_events', 'id')->where('event_id', $event->id),
+      ],
     ]);
 
     // DrawType_id is ALWAYS 1 for individual (Singles)
     $drawTypeId = 1;
 
-    // No category attached for individuals
-    $categoryId = null;
+    // A category-scoped draw is the safe default. Null remains supported for
+    // explicitly event-wide draws and older integrations.
+    $categoryId = $validated['category_event_id'] ?? null;
 
     // Create the draw
     $draw = Draw::create([
       'event_id' => $event->id,
       'drawName' => $validated['drawName'],
       'drawType_id' => $drawTypeId,
-      'category_id' => $categoryId,
+      'category_event_id' => $categoryId,
       'rounds' => 0,
     ]);
 
@@ -630,6 +636,7 @@ class EventAdminController extends Controller
       'success' => true,
       'message' => 'Draw created successfully',
       'draw' => $draw,
+      'setup_url' => route('draw.setup.show', $draw),
     ]);
   }
 

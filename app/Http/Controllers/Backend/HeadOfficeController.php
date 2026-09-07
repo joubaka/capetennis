@@ -58,10 +58,20 @@ class HeadOfficeController extends Controller
 
     // The individual draw overview needs neither team fixtures nor team formats.
     if ((int) $event->eventType === 6) {
-      $event->load(['draws' => fn ($query) => $query
-        ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
-        ->withCount(['drawFixtures', 'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time')])
-        ->orderBy('drawName')]);
+      $event->load([
+        'draws' => fn ($query) => $query
+          ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
+          ->withCount(['drawFixtures', 'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time')])
+          ->orderBy('drawName'),
+        'categoryEvents' => fn ($query) => $query
+          ->with('category')
+          ->withCount(['categoryEventRegistrations as eligible_draw_entries_count' => fn ($entries) => $entries
+            ->where('payment_status_id', 1)
+            ->whereNull('withdrawn_at')
+            ->where(fn ($status) => $status->whereNull('status')->orWhere('status', 'not like', '%withdrawn%'))
+            ->whereHas('registration.players')])
+          ->orderBy('ordering'),
+      ]);
 
       $flexibleFormatIds = \App\Models\DrawFormats::where('name', 'Flexible Monrad')->pluck('id');
       foreach ($event->draws as $draw) {

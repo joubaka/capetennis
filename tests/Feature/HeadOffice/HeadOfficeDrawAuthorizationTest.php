@@ -193,10 +193,48 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
 
     public function test_event_admin_can_create_individual_draw(): void
     {
-        $this->actingAs($this->admin)
-            ->postJson($this->individualDrawUrl(), ['drawName' => 'Test Draw'])
+        $category = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id]);
+
+        $response = $this->actingAs($this->admin)
+            ->postJson($this->individualDrawUrl(), [
+                'drawName' => 'Test Draw',
+                'category_event_id' => $category->id,
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
+
+        $draw = Draw::where('event_id', $this->individualEvent->id)->where('drawName', 'Test Draw')->firstOrFail();
+        $this->assertSame($category->id, $draw->category_event_id);
+        $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
+    }
+
+    public function test_individual_draw_rejects_a_category_from_another_event(): void
+    {
+        $foreignCategory = CategoryEvent::factory()->create(['event_id' => $this->otherEvent->id]);
+
+        $this->actingAs($this->admin)
+            ->postJson($this->individualDrawUrl(), [
+                'drawName' => 'Wrong category',
+                'category_event_id' => $foreignCategory->id,
+            ])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseMissing('draws', ['event_id' => $this->individualEvent->id, 'drawName' => 'Wrong category']);
+    }
+
+    public function test_individual_draw_overview_explains_the_guided_creation_flow(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $this->admin->id]);
+        CategoryEvent::factory()->create(['event_id' => $event->id]);
+
+        $this->actingAs($this->admin)
+            ->get(route('headOffice.show', $event))
+            ->assertOk()
+            ->assertSee('Name and category')
+            ->assertSee('Choose the draw format')
+            ->assertSee('Create &amp; choose format', false)
+            ->assertSee('Combine players from different categories');
     }
 
     public function test_convenor_can_create_individual_draw(): void

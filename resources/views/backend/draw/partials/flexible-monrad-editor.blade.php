@@ -7,13 +7,14 @@
   <div id="fm-message" role="status" aria-live="polite"></div>
   <p id="fm-withdrawn" class="fm-rule" hidden></p>
   <div class="fm-toolbar" id="fm-toolbar">
-    <label>Starting bracket <select id="fm-size"><option>4</option><option>8</option><option>16</option><option selected>32</option><option>64</option></select></label>
+    <label>Starting bracket <select id="fm-size"><option>4</option><option>8</option><option>16</option><option>32</option><option>64</option></select></label>
+    <span class="fm-help" title="The suggested size is the smallest bracket that fits the eligible players. Empty opening paths can be marked as byes.">Choose the smallest bracket that fits all players.</span>
     <button type="button" id="fm-undo">Undo</button>
     <button type="button" id="fm-byes">Mark remaining empty paths as byes</button>
     <button type="button" id="fm-example" hidden>Load 22-player example</button>
     <span class="fm-spacer"></span>
-    <button type="button" id="fm-save">Save draft</button>
-    <button type="button" id="fm-generate" class="fm-primary">Generate fixtures</button>
+    <button type="button" id="fm-save" title="Keeps player positions editable and does not create matches.">Save draft</button>
+    <button type="button" id="fm-generate" class="fm-primary" title="Creates the matches and freezes starting positions until the draw is reopened.">Generate fixtures</button>
     <button type="button" id="fm-publish" class="fm-primary" hidden>Publish draw</button>
     <button type="button" id="fm-reopen" hidden>Edit starting positions</button>
     <button type="button" id="fm-withdrawals" hidden>Continue as late withdrawal</button>
