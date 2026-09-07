@@ -15,13 +15,13 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('ranking_review_campaigns')) {
-            Schema::create('ranking_review_campaigns', function (Blueprint $table): void {
+            $seriesIdType = strtolower(Schema::getColumnType('series', 'id', true));
+
+            Schema::create('ranking_review_campaigns', function (Blueprint $table) use ($seriesIdType): void {
                 $table->id();
                 $table->uuid('uuid')->unique();
-                // Some long-lived installations still have the original signed INT
-                // series primary key. Keep this relation application-enforced so the
-                // migration works with both that legacy schema and newer BIGINT IDs.
-                $table->unsignedBigInteger('series_id');
+                $this->addMatchingSeriesId($table, $seriesIdType);
+                $table->foreign('series_id')->references('id')->on('series')->cascadeOnDelete();
                 $table->string('run_id', 100);
                 $table->string('snapshot_hash', 64);
                 $table->string('status', 32)->default('queued')->index();
@@ -73,5 +73,30 @@ return new class extends Migration
                 $table->dropColumn('ranking_review_default_hours');
             }
         });
+    }
+
+    private function addMatchingSeriesId(Blueprint $table, string $seriesIdType): void
+    {
+        $unsigned = str_contains($seriesIdType, 'unsigned');
+
+        if (str_contains($seriesIdType, 'bigint')) {
+            $table->bigInteger('series_id', false, $unsigned);
+
+            return;
+        }
+
+        if (str_contains($seriesIdType, 'smallint')) {
+            $table->smallInteger('series_id', false, $unsigned);
+
+            return;
+        }
+
+        if (str_contains($seriesIdType, 'mediumint')) {
+            $table->mediumInteger('series_id', false, $unsigned);
+
+            return;
+        }
+
+        $table->integer('series_id', false, $unsigned);
     }
 };
