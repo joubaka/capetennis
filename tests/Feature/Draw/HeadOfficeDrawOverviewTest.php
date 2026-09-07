@@ -18,6 +18,9 @@ class HeadOfficeDrawOverviewTest extends TestCase
             'id' => 42, 'event_id' => 233, 'drawName' => 'U/10 Boys',
             'published' => false, 'locked' => false, 'is_flexible' => $flexible,
             'draw_fixtures_count' => 12,
+            'round_robin_fixture_count' => 12,
+            'round_robin_completed_count' => 0,
+            'playoff_fixture_count' => 0,
         ]);
         $draw->setRelation('settings', (new DrawSetting)->forceFill([
             'workflow' => $flexible ? 'custom_monrad' : 'round_robin_playoffs',
@@ -58,6 +61,36 @@ class HeadOfficeDrawOverviewTest extends TestCase
         }
         $this->assertStringNotContainsString('btn-add-venues', $html);
         $this->assertStringContainsString('aria-label="Publish U/10 Boys"', $html);
+        $this->assertStringContainsString('12 results left', $html);
+        $this->assertStringContainsString('data-progress-ready="0"', $html);
+        $this->assertMatchesRegularExpression('/class="btn draws-button draws-button-primary progress-draw"[^>]*disabled/', $html);
+    }
+
+    public function test_progress_action_enables_automatically_when_the_last_round_robin_result_exists(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $draw = $this->draw();
+        $draw->round_robin_completed_count = 12;
+
+        $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+
+        $this->assertStringContainsString('Review &amp; progress', $html);
+        $this->assertStringContainsString('data-progress-ready="1"', $html);
+        $this->assertStringNotContainsString('progress-draw" disabled', $html);
+        $this->assertStringContainsString('12/12 RR results', $html);
+    }
+
+    public function test_completed_locked_draw_does_not_offer_a_misleading_progress_action(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $draw = $this->draw();
+        $draw->round_robin_completed_count = 12;
+        $draw->locked = true;
+
+        $html = view('backend.headOffice.partials.individual-draw-row', compact('draw'))->render();
+
+        $this->assertStringContainsString('<span>Locked</span>', $html);
+        $this->assertStringContainsString('data-progress-ready="0"', $html);
     }
 
     public function test_pending_late_withdrawal_displays_an_alarm_badge_on_the_draw(): void

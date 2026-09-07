@@ -13,6 +13,25 @@
       array_map('intval', array_keys($flexibleGraph['late_withdrawals'] ?? [])),
       array_map('intval', $flexibleGraph['withdrawn'] ?? [])
     ));
+  $roundRobinTotal = (int) ($draw->getAttribute('round_robin_fixture_count') ?? 0);
+  $roundRobinCompleted = (int) ($draw->getAttribute('round_robin_completed_count') ?? 0);
+  $roundRobinRemaining = max(0, $roundRobinTotal - $roundRobinCompleted);
+  $playoffFixtureCount = (int) ($draw->getAttribute('playoff_fixture_count') ?? 0);
+  $progressReady = $roundRobinTotal > 0 && $roundRobinRemaining === 0 && ! $draw->locked;
+  $progressLabel = $draw->locked
+    ? 'Locked'
+    : ($roundRobinTotal === 0
+      ? 'Awaiting fixtures'
+      : ($roundRobinRemaining > 0
+        ? $roundRobinRemaining.' '.Str::plural('result', $roundRobinRemaining).' left'
+        : ($playoffFixtureCount > 0 ? 'Refresh playoffs' : 'Review & progress')));
+  $progressHelp = $draw->locked
+    ? 'Unlock this draw before progressing it.'
+    : ($roundRobinTotal === 0
+      ? 'Create the round-robin fixtures before progressing this draw.'
+      : ($roundRobinRemaining > 0
+        ? 'Complete all round-robin results first. '.$roundRobinRemaining.' of '.$roundRobinTotal.' matches still need a result.'
+        : 'Review and confirm the final standings before creating the playoffs.'));
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
@@ -42,7 +61,11 @@
     </div>
   </div>
   <div class="draw-format-cell"><span class="draw-column-label">Format</span><span class="{{ $format ? 'draw-format-name' : 'draw-format-unset' }}">{{ $format ?? 'Not specified' }}</span></div>
-  <div class="draw-match-cell"><span class="draw-column-label">Matches</span><span class="draw-match-count" aria-label="{{ $draw->draw_fixtures_count }} {{ Str::plural('match', $draw->draw_fixtures_count) }}">{{ $draw->draw_fixtures_count }}</span></div>
+  <div class="draw-match-cell"><span class="draw-column-label">Matches</span><span class="draw-match-count" aria-label="{{ $draw->draw_fixtures_count }} {{ Str::plural('match', $draw->draw_fixtures_count) }}">{{ $draw->draw_fixtures_count }}</span>
+    @if($draw->settings?->workflow === 'round_robin_playoffs' && $roundRobinTotal > 0)
+      <span class="d-block small text-muted">{{ $roundRobinCompleted }}/{{ $roundRobinTotal }} RR results</span>
+    @endif
+  </div>
   <div class="draw-venue-cell">
       <span class="draw-column-label">Venue</span>
       <span class="draw-venues" data-draw-id="{{ $draw->id }}">
@@ -62,9 +85,12 @@
                 data-url="{{ route('backend.draw.progress', $draw) }}"
                 data-review-url="{{ route('backend.draw.progress-review', $draw) }}"
                 data-draw-name="{{ $draw->drawName }}"
-                aria-label="Progress {{ $draw->drawName }} to its playoffs">
+                data-progress-ready="{{ $progressReady ? '1' : '0' }}"
+                @disabled(! $progressReady)
+                title="{{ $progressHelp }}"
+                aria-label="{{ $progressReady ? 'Review and progress' : 'Cannot progress' }} {{ $draw->drawName }}: {{ $progressHelp }}">
           <i class="ti ti-player-track-next" aria-hidden="true"></i>
-          <span>Progress</span>
+          <span>{{ $progressLabel }}</span>
         </button>
       @endcan
     @endif

@@ -61,7 +61,15 @@ class HeadOfficeController extends Controller
       $event->load([
         'draws' => fn ($query) => $query
           ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
-          ->withCount(['drawFixtures', 'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time')])
+          ->withCount([
+            'drawFixtures',
+            'drawFixtures as round_robin_fixture_count' => fn ($fixtures) => $fixtures->where('stage', 'RR'),
+            'drawFixtures as round_robin_completed_count' => fn ($fixtures) => $fixtures
+              ->where('stage', 'RR')
+              ->whereHas('fixtureResults'),
+            'drawFixtures as playoff_fixture_count' => fn ($fixtures) => $fixtures->where('stage', '!=', 'RR'),
+            'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time'),
+          ])
           ->orderBy('drawName'),
         'categoryEvents' => fn ($query) => $query
           ->with('category')

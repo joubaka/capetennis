@@ -114,6 +114,32 @@ class RoundRobinProgressTest extends TestCase
         $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
     }
 
+    public function test_event_overview_enables_progress_only_after_the_last_round_robin_result(): void
+    {
+        [$draw] = $this->draw([[
+            'name' => 'Main', 'slug' => 'main', 'size' => 2,
+            'positions' => [1, 2], 'enabled' => true,
+        ]]);
+        $group = $draw->groups()->create(['name' => 'A']);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $group->id,
+            'stage' => 'RR',
+        ]);
+
+        $this->get(route('headOffice.show', $draw->event_id))
+            ->assertOk()
+            ->assertSee('1 result left')
+            ->assertSee('data-progress-ready="0"', false);
+
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+
+        $this->get(route('headOffice.show', $draw->event_id))
+            ->assertOk()
+            ->assertSee('Review &amp; progress', false)
+            ->assertSee('data-progress-ready="1"', false);
+    }
+
     public function test_published_position_pair_draw_progresses_without_duplicate_fixtures(): void
     {
         [$draw, $category] = $this->draw([[
