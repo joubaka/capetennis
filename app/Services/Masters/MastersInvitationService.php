@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Masters;
 
+use App\Domain\Payments\Services\PaymentOrchestrator;
 use App\Models\CategoryEvent;
+use App\Models\CategoryEventRegistration;
 use App\Models\MastersInvitation;
 use App\Models\MastersInvitationBatch;
 use App\Models\Player;
@@ -257,6 +259,7 @@ final class MastersInvitationService
                 ->where('status', MastersInvitation::ACCEPTED_PENDING_PAYMENT)
                 ->first();
             if (!$invitation) return;
+            $this->softDeleteUnpaidDraftEntry($invitation->registration_id, $invitation->category_event_id);
             $invitation->update(['status' => MastersInvitation::INVITED, 'order_id' => null, 'registration_id' => null, 'accepted_at' => null]);
             $this->recordActor($invitation, $actor, 'cancelled PayFast payment and returned invitation to register');
         });
@@ -484,8 +487,15 @@ final class MastersInvitationService
 
     public function accept(MastersInvitation $invitation, User $user): RegistrationOrder
     {
+        if ($paidItem = $this->paidOrderItemFor($invitation)) {
+            $this->reconcilePaidInvitation($invitation);
+
+            return RegistrationOrder::findOrFail($paidItem->order_id);
+        }
+
         return DB::transaction(function () use ($invitation, $user) {
             $locked = MastersInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+
             $this->recordActor($locked, $user, 'accepted invitation and started PayFast registration');
             if ($locked->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
                 return RegistrationOrder::findOrFail($locked->order_id);
@@ -508,15 +518,13 @@ final class MastersInvitationService
 
             $registration = Registration::create([]);
             $registration->players()->sync([$locked->player_id]);
-            $registration->categoryEvents()->sync([$locked->category_event_id => [
-                'payment_status_id' => 0, 'user_id' => $user->id, 'status' => 'active',
-            ]]);
 
             $fee = (float) ($locked->categoryEvent?->entry_fee ?? 0);
             $order = RegistrationOrder::create([
                 'user_id' => $user->id, 'payfast_amount_due' => $fee, 'total_fee' => $fee,
                 'wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_paid' => false,
                 'pay_status' => false, 'payment_method' => 'payfast',
+                'status' => 'pending',
             ]);
             $item = new RegistrationOrderItems();
             $item->order_id = $order->id;
@@ -607,6 +615,189 @@ final class MastersInvitationService
             $invitation->update(['status' => MastersInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
             DB::afterCommit(fn () => $this->queuePlayerMail($invitation->fresh(), 'confirmed'));
         });
+    }
+
+    /**
+     * Reconcile Masters invitation state against canonical paid orders and
+     * release abandoned unpaid checkouts. Preview is the default so this can
+     * be run safely on production before applying changes.
+     */
+    public function reconcilePaymentStates(?int $eventId, int $pendingMinutes, bool $apply = false): array
+    {
+        $pendingMinutes = max(1, $pendingMinutes);
+        $cutoff = now()->subMinutes($pendingMinutes);
+        $rows = [];
+
+        $query = MastersInvitation::query()
+            ->with('player')
+            ->whereIn('status', [
+                MastersInvitation::INVITED,
+                MastersInvitation::ACCEPTED_PENDING_PAYMENT,
+            ])
+            ->whereHas('batch', fn ($batch) => $batch->where('status', 'sent'))
+            ->orderBy('id');
+
+        if ($eventId !== null) {
+            $query->where('event_id', $eventId);
+        }
+
+        $query->chunkById(200, function ($invitations) use (&$rows, $apply, $cutoff) {
+            foreach ($invitations as $invitation) {
+                $paidItem = $this->paidOrderItemFor($invitation);
+
+                if ($paidItem) {
+                    $rows[] = [
+                        'invitation_id' => $invitation->id,
+                        'player' => $invitation->player?->full_name ?? "Player {$invitation->player_id}",
+                        'action' => 'link_paid_registration',
+                        'order_id' => $paidItem->order_id,
+                        'registration_id' => $paidItem->registration_id,
+                    ];
+                    if ($apply) {
+                        $this->reconcilePaidInvitation($invitation);
+                    }
+                    continue;
+                }
+
+                if ($invitation->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT
+                    && $invitation->accepted_at
+                    && $invitation->accepted_at->lte($cutoff)) {
+                    $rows[] = [
+                        'invitation_id' => $invitation->id,
+                        'player' => $invitation->player?->full_name ?? "Player {$invitation->player_id}",
+                        'action' => 'return_to_register',
+                        'order_id' => $invitation->order_id,
+                        'registration_id' => $invitation->registration_id,
+                    ];
+                    if ($apply) {
+                        $this->expireUnpaidCheckout($invitation, $cutoff);
+                    }
+                }
+            }
+        });
+
+        return $rows;
+    }
+
+    private function reconcilePaidInvitation(MastersInvitation $invitation): void
+    {
+        $candidate = $this->paidOrderItemFor($invitation);
+        if (!$candidate) return;
+
+        DB::transaction(function () use ($invitation, $candidate) {
+            $paidOrder = RegistrationOrder::query()->lockForUpdate()->find($candidate->order_id);
+            if (!$paidOrder || (!$paidOrder->pay_status && !$paidOrder->payfast_paid)) return;
+
+            $locked = MastersInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+            $paidItem = $this->paidOrderItemFor($locked);
+            if (!$paidItem || (int) $paidItem->order_id !== (int) $paidOrder->id) return;
+
+            $duplicateItems = RegistrationOrderItems::query()
+                ->where('player_id', $locked->player_id)
+                ->where('category_event_id', $locked->category_event_id)
+                ->where('registration_id', '!=', $paidItem->registration_id)
+                ->get();
+
+            foreach ($duplicateItems as $duplicateItem) {
+                $duplicateOrder = RegistrationOrder::query()->lockForUpdate()->find($duplicateItem->order_id);
+                if ($duplicateOrder && !$duplicateOrder->pay_status && !$duplicateOrder->payfast_paid) {
+                    app(PaymentOrchestrator::class)->cancelPayment($duplicateOrder);
+                    $this->softDeleteUnpaidDraftEntry($duplicateItem->registration_id, $duplicateItem->category_event_id);
+                }
+            }
+
+            $locked->update([
+                'registration_id' => $paidItem->registration_id,
+                'order_id' => $paidItem->order_id,
+                'status' => MastersInvitation::PAID_CONFIRMED,
+                'accepted_at' => $locked->accepted_at ?? $paidItem->created_at,
+                'paid_at' => $paidItem->order_updated_at ?? $paidItem->created_at ?? now(),
+            ]);
+
+            activity('masters')->performedOn($locked)
+                ->withProperties([
+                    'invitation_id' => $locked->id,
+                    'player_id' => $locked->player_id,
+                    'order_id' => $paidItem->order_id,
+                    'registration_id' => $paidItem->registration_id,
+                ])->log('reconciled Masters invitation to existing paid registration');
+        });
+    }
+
+    private function expireUnpaidCheckout(MastersInvitation $invitation, $cutoff): void
+    {
+        if (!$invitation->order_id) return;
+
+        DB::transaction(function () use ($invitation, $cutoff) {
+            $order = RegistrationOrder::query()->lockForUpdate()->find($invitation->order_id);
+            if (!$order || $order->pay_status || $order->payfast_paid) return;
+
+            $locked = MastersInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+            if ($locked->status !== MastersInvitation::ACCEPTED_PENDING_PAYMENT
+                || !$locked->accepted_at
+                || $locked->accepted_at->gt($cutoff)
+                || (int) $locked->order_id !== (int) $order->id) {
+                return;
+            }
+
+            app(PaymentOrchestrator::class)->cancelPayment($order);
+            $this->softDeleteUnpaidDraftEntry($locked->registration_id, $locked->category_event_id);
+            $oldOrderId = $locked->order_id;
+            $oldRegistrationId = $locked->registration_id;
+            $locked->update([
+                'status' => MastersInvitation::INVITED,
+                'order_id' => null,
+                'registration_id' => null,
+                'accepted_at' => null,
+            ]);
+
+            activity('masters')->performedOn($locked)
+                ->withProperties([
+                    'invitation_id' => $locked->id,
+                    'player_id' => $locked->player_id,
+                    'order_id' => $oldOrderId,
+                    'registration_id' => $oldRegistrationId,
+                ])->log('expired unpaid Masters checkout and returned invitation to register');
+        });
+    }
+
+    private function paidOrderItemFor(MastersInvitation $invitation): ?object
+    {
+        return RegistrationOrderItems::query()
+            ->from('registration_order_items as item')
+            ->join('registration_orders as orders', 'orders.id', '=', 'item.order_id')
+            ->join('category_event_registrations as entry', function ($join) {
+                $join->on('entry.registration_id', '=', 'item.registration_id')
+                    ->on('entry.category_event_id', '=', 'item.category_event_id');
+            })
+            ->where('item.player_id', $invitation->player_id)
+            ->where('item.category_event_id', $invitation->category_event_id)
+            ->whereNull('entry.deleted_at')
+            ->where('entry.status', 'active')
+            ->where('entry.payment_status_id', 1)
+            ->where(fn ($query) => $query->where('orders.pay_status', 1)->orWhere('orders.payfast_paid', 1))
+            ->orderByDesc('orders.updated_at')
+            ->select([
+                'item.order_id',
+                'item.registration_id',
+                'item.created_at',
+                'orders.updated_at as order_updated_at',
+            ])
+            ->first();
+    }
+
+    private function softDeleteUnpaidDraftEntry(?int $registrationId, int $categoryEventId): void
+    {
+        if (!$registrationId) return;
+
+        CategoryEventRegistration::query()
+            ->where('registration_id', $registrationId)
+            ->where('category_event_id', $categoryEventId)
+            ->where(fn ($query) => $query->whereNull('payment_status_id')->orWhere('payment_status_id', 0))
+            ->whereNull('pf_transaction_id')
+            ->where(fn ($query) => $query->whereNull('refund_gross')->orWhere('refund_gross', 0))
+            ->get()
+            ->each->delete();
     }
 
     public function handlePaidWithdrawal(int $registrationId, ?User $actor = null): ?MastersInvitation

@@ -20,6 +20,7 @@ class RegistrationOrder extends Model
     'payment_method',
     'wallet_transaction_id',
     'total_fee',
+    'status',
   ];
 
   protected $casts = [

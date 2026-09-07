@@ -38,6 +38,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('audit:prune --apply')
             ->dailyAt('02:30')
             ->withoutOverlapping();
+
+        // A Masters player is only registered after verified payment. Release
+        // abandoned PayFast checkouts so the invitation returns to Register.
+        $schedule->command('masters:reconcile-payments --apply')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     }
 
     /**

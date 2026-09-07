@@ -28,9 +28,16 @@ class PaymentOrchestrator
                     return $locked;
                 }
 
+                if (($locked->status ?? null) === 'cancelled') {
+                    throw new \RuntimeException('This payment order has been cancelled. Start registration again.');
+                }
+
                 $locked->wallet_reserved = round($walletApplied, 2);
                 $locked->payfast_amount_due = round($remainingAmount, 2);
                 $locked->wallet_debited = false;
+                if (array_key_exists('status', $locked->getAttributes())) {
+                    $locked->status = 'pending';
+                }
                 $locked->save();
 
                 return $locked;
@@ -51,6 +58,10 @@ class PaymentOrchestrator
 
                     if ((int) ($locked->pay_status ?? 0) === 1 || (bool) ($locked->payfast_paid ?? false)) {
                         return $locked;
+                    }
+
+                    if (($locked->status ?? null) === 'cancelled') {
+                        throw new \RuntimeException('This payment order has been cancelled. Start registration again.');
                     }
 
                     $walletReserved = (float) ($locked->wallet_reserved ?? 0);
@@ -74,6 +85,9 @@ class PaymentOrchestrator
 
                     $locked->pay_status = 1;
                     $locked->payfast_paid = true;
+                    if (array_key_exists('status', $locked->getAttributes())) {
+                        $locked->status = 'completed';
+                    }
 
                     if (array_key_exists('pf_payment_id', $context)) {
                         $locked->payfast_pf_payment_id = $context['pf_payment_id'];
@@ -124,6 +138,9 @@ class PaymentOrchestrator
                 $locked = $orderClass::query()->lockForUpdate()->findOrFail($order->getKey());
                 $locked->wallet_reserved = 0;
                 $locked->payfast_amount_due = 0;
+                if (array_key_exists('status', $locked->getAttributes())) {
+                    $locked->status = 'cancelled';
+                }
                 $locked->save();
 
                 return $locked;
