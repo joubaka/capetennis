@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\HeadOffice;
 
+use App\Exports\EventEntriesExport;
 use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -98,6 +100,21 @@ class EventEntryAuthorizationTest extends TestCase
 
         $this->assertNotEquals(403, $response->status());
         $this->assertNotEquals(401, $response->status());
+    }
+
+    public function test_admin_can_export_event_entries(): void
+    {
+        Excel::fake();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.events.entries.export', $this->event))
+            ->assertOk();
+
+        Excel::assertDownloaded(
+            "event_{$this->event->id}_entries.xlsx",
+            fn ($export) => $export instanceof EventEntriesExport
+                && $export->event->is($this->event)
+        );
     }
 
     // ── lock ─────────────────────────────────────────────────────────────────

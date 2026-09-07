@@ -149,6 +149,7 @@ class EventEntryController extends Controller
     $this->authorize('event-draw.view', $event);
 
     return Excel::download(
+      new EventEntriesExport($event),
       "event_{$event->id}_entries.xlsx"
     );
   }
