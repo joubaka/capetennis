@@ -7,8 +7,11 @@ use App\Jobs\SendMastersInvitationEmailJob;
 use App\Mail\MastersInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\MastersInvitation;
+use App\Models\User;
 use App\Services\MailAccountManager;
+use App\Services\Masters\MastersInvitationService;
 use App\Services\Masters\RetryMastersInvitationEmails;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Queue\Jobs\FakeJob;
@@ -66,6 +69,24 @@ class MastersInvitationEmailTest extends TestCase
             $table->dateTime('replacement_sent_at')->nullable();
             $table->timestamps();
         });
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('email')->nullable();
+            $table->string('password')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('players', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('userId')->nullable();
+            $table->string('name')->nullable();
+            $table->string('surname')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('user_players', function (Blueprint $table) {
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('player_id');
+        });
         Schema::create('bulk_email_logs', function (Blueprint $table) {
             $table->id();
             $table->string('mail_type');
@@ -108,6 +129,41 @@ class MastersInvitationEmailTest extends TestCase
             'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => $kind],
             'queued_at' => now(),
         ]);
+    }
+
+    public function test_invitation_email_offers_event_register_and_decline_choices_without_mutating_state(): void
+    {
+        $log = $this->email();
+        $invitation = MastersInvitation::with('batch.event')->findOrFail($log->related_id);
+
+        $html = (new MastersInvitationMail($invitation))->render();
+        $responseUrl = route('masters.invitations.show', $invitation);
+
+        $this->assertStringContainsString('>View event</a>', $html);
+        $this->assertStringContainsString('>Register</a>', $html);
+        $this->assertStringContainsString('>Decline</a>', $html);
+        $this->assertStringContainsString(route('events.show', $invitation->batch->event), $html);
+        $this->assertSame(2, substr_count($html, 'href="'.$responseUrl.'"'));
+        $this->assertSame(MastersInvitation::INVITED, $invitation->fresh()->status);
+    }
+
+    public function test_invitation_response_authorization_accepts_direct_and_parent_links_but_rejects_other_users(): void
+    {
+        DB::table('users')->insert([
+            ['id' => 10, 'name' => 'Player account', 'email' => 'player@example.test'],
+            ['id' => 11, 'name' => 'Parent account', 'email' => 'parent@example.test'],
+            ['id' => 12, 'name' => 'Other account', 'email' => 'other@example.test'],
+        ]);
+        DB::table('players')->insert(['id' => 20, 'userId' => 10, 'name' => 'Invited', 'surname' => 'Player']);
+        DB::table('user_players')->insert(['user_id' => 11, 'player_id' => 20]);
+        $invitation = MastersInvitation::create(['batch_id' => 1, 'player_id' => 20, 'status' => MastersInvitation::INVITED]);
+        $service = app(MastersInvitationService::class);
+
+        $service->authorizePlayerAccount($invitation, User::findOrFail(10));
+        $service->authorizePlayerAccount($invitation, User::findOrFail(11));
+
+        $this->expectException(AuthorizationException::class);
+        $service->authorizePlayerAccount($invitation, User::findOrFail(12));
     }
 
     public function test_it_sends_once_inside_the_job_and_only_then_records_success(): void

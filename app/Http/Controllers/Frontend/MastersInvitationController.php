@@ -9,9 +9,11 @@ use Illuminate\Http\Request;
 
 class MastersInvitationController extends Controller
 {
-    public function show(MastersInvitation $invitation, Request $request)
+    public function show(MastersInvitation $invitation, Request $request, MastersInvitationService $service)
     {
         $invitation->load(['batch.event', 'categoryEvent.category', 'player']);
+        $service->authorizePlayerAccount($invitation, $request->user());
+
         return view('frontend.masters.show', compact('invitation'));
     }
 

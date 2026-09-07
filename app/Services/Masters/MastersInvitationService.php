@@ -20,6 +20,7 @@ use App\Models\Category;
 use App\Models\MastersRankingCategoryLink;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +29,21 @@ use App\Jobs\SendMastersInvitationEmailJob;
 
 final class MastersInvitationService
 {
+    public function authorizePlayerAccount(MastersInvitation $invitation, User $user): void
+    {
+        $player = $invitation->relationLoaded('player')
+            ? $invitation->player
+            : $invitation->player()->first();
+
+        $ownsInvitation = $player
+            && ((int) $player->userId === (int) $user->id
+                || $player->users()->whereKey($user->id)->exists());
+
+        if (!$ownsInvitation) {
+            throw new AuthorizationException('This Masters invitation is not linked to your account.');
+        }
+    }
+
     public function syncRankingCategories(Event $event): array
     {
         Log::info('Masters ranking category sync started', [
@@ -487,6 +503,8 @@ final class MastersInvitationService
 
     public function accept(MastersInvitation $invitation, User $user): RegistrationOrder
     {
+        $this->authorizePlayerAccount($invitation, $user);
+
         if ($paidItem = $this->paidOrderItemFor($invitation)) {
             $this->reconcilePaidInvitation($invitation);
 
@@ -543,6 +561,8 @@ final class MastersInvitationService
 
     public function decline(MastersInvitation $invitation, User $user, ?string $reason = null): ?MastersInvitation
     {
+        $this->authorizePlayerAccount($invitation, $user);
+
         return DB::transaction(function () use ($invitation, $user, $reason) {
             $locked = MastersInvitation::query()->lockForUpdate()->with('batch')->findOrFail($invitation->id);
             $this->recordActor($locked, $user, 'declined invitation');

@@ -20,6 +20,28 @@ class MastersPaymentReconciliationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_only_an_account_linked_to_the_invited_player_can_view_or_respond(): void
+    {
+        [$invitation, $owner] = $this->invitationScenario();
+        $otherUser = User::factory()->create();
+
+        $this->actingAs($otherUser)
+            ->get(route('masters.invitations.show', $invitation))
+            ->assertForbidden();
+        $this->actingAs($otherUser)
+            ->post(route('masters.invitations.accept', $invitation))
+            ->assertForbidden();
+        $this->actingAs($otherUser)
+            ->post(route('masters.invitations.decline', $invitation))
+            ->assertForbidden();
+
+        $this->assertSame(MastersInvitation::INVITED, $invitation->fresh()->status);
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->actingAs($owner)
+            ->get(route('masters.invitations.show', $invitation))
+            ->assertOk();
+    }
+
     public function test_accepting_an_invitation_does_not_create_an_active_entry_before_payment(): void
     {
         [$invitation, $user] = $this->invitationScenario();
