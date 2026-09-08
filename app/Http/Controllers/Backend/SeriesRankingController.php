@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Domain\Ranking\Services\RankingAuditService;
 use App\Domain\Ranking\Services\RankingListDetailService;
 use App\Domain\Ranking\Services\RankingHeadToHeadConfirmationService;
+use App\Domain\Ranking\Services\RankingTieDecisionService;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
@@ -81,7 +82,7 @@ class SeriesRankingController extends Controller
       'activeStatus' => $activeStatus,
       'hasArchivedSnapshot' => $hasArchivedSnapshot,
       'scoreDetails' => $detailService->scoreDetails($series, $rankings),
-      'headToHeadAdvisories' => $detailService->headToHeadAdvisories($series, $rankings),
+      'tieDecisionAdvisories' => $detailService->tieDecisionAdvisories($series, $rankings),
       'reviewCampaign' => $reviewCampaign,
       'reviewCampaignReport' => $reviewCampaignReport,
       'nextMastersEvent' => $nextMastersEvent,
@@ -190,6 +191,41 @@ class SeriesRankingController extends Controller
 
     return response()->json([
       'message' => 'Head-to-head confirmed for this ranking run.',
+      'decision' => $decision,
+    ]);
+  }
+
+  /** Confirm the final order and reason for any equal-points ranking group. */
+  public function confirmTieDecision(
+    Request $request,
+    Series $series,
+    string $tieKey,
+    RankingTieDecisionService $service
+  ) {
+    $this->authorize('update', $series);
+
+    $validated = $request->validate([
+      'ordered_player_ids' => ['required', 'array', 'min:2'],
+      'ordered_player_ids.*' => ['required', 'integer', 'distinct'],
+      'reason' => ['required', \Illuminate\Validation\Rule::in(RankingTieDecisionService::REASONS)],
+      'note' => ['nullable', 'string', 'max:1000'],
+    ]);
+
+    try {
+      $decision = $service->confirm(
+        $series,
+        $tieKey,
+        $validated['ordered_player_ids'],
+        $validated['reason'],
+        $validated['note'] ?? null,
+        $request->user(),
+      );
+    } catch (\RuntimeException $exception) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
+
+    return response()->json([
+      'message' => 'Tie decision confirmed for this ranking run.',
       'decision' => $decision,
     ]);
   }

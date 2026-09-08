@@ -156,6 +156,10 @@ final class RankingCalculationService
         // Assign rank positions (shared rank for equal totals only when truly unresolvable)
         $this->assignRankPositions($rows, $appliedHeadToHeadPairs, $useThirdScoreTiebreak);
 
+        // Every equal-points group requires a run-scoped administrator decision.
+        // Automatic rules provide a suggested order only; they never finalize a tie.
+        $this->attachTieDecisions($rows, (int) $list->id, $useThirdScoreTiebreak);
+
         // Build audit trail
         $audit = $this->buildAudit($rows, $byPlayer, $catEventIds, $bestN, $pointsMap);
 
@@ -558,6 +562,62 @@ final class RankingCalculationService
     private function nextBestScore(RankingRow $row): int
     {
         return empty($row->droppedLegs) ? 0 : max(array_column($row->droppedLegs, 'points'));
+    }
+
+    /**
+     * Attach one identical pending decision snapshot to every row in an
+     * equal-points group. The administrator confirms or replaces this order
+     * before the calculated run may advance to Reviewed.
+     */
+    private function attachTieDecisions(
+        Collection $rows,
+        int $rankingListId,
+        bool $useThirdScoreTiebreak,
+    ): void {
+        $rows->groupBy(fn (RankingRow $row) => $row->totalPoints)
+            ->filter(fn (Collection $group) => $group->count() > 1)
+            ->each(function (Collection $group) use ($rankingListId, $useThirdScoreTiebreak): void {
+                $orderedRows = $group->values();
+                $playerIds = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->sort()->values();
+                $suggestedOrder = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->values();
+                $headToHead = $orderedRows
+                    ->map(fn (RankingRow $row) => $row->headToHeadDecision)
+                    ->filter()
+                    ->first();
+                $hasUniqueSuggestedRanks = $orderedRows->pluck('rankPosition')->unique()->count() === $orderedRows->count();
+                $thirdScores = $orderedRows->map(fn (RankingRow $row) => $this->nextBestScore($row))->unique();
+
+                $suggestedMethod = 'manual';
+                if ($hasUniqueSuggestedRanks && $headToHead && $orderedRows->count() === 2) {
+                    $suggestedMethod = 'head_to_head';
+                } elseif ($hasUniqueSuggestedRanks && $useThirdScoreTiebreak && $thirdScores->count() > 1) {
+                    $suggestedMethod = 'third_event_score';
+                }
+
+                $tieKey = hash('sha256', implode(':', [
+                    $rankingListId,
+                    (int) $orderedRows->first()->totalPoints,
+                    $playerIds->implode(','),
+                ]));
+                $decision = [
+                    'tie_key' => $tieKey,
+                    'ranking_list_id' => $rankingListId,
+                    'total_points' => (int) $orderedRows->first()->totalPoints,
+                    'player_ids' => $playerIds->all(),
+                    'suggested_order' => $suggestedOrder->all(),
+                    'suggested_method' => $suggestedMethod,
+                    'head_to_head_decision' => $headToHead,
+                    'confirmed_order' => null,
+                    'reason' => null,
+                    'note' => null,
+                    'confirmed_by' => null,
+                    'confirmed_at' => null,
+                ];
+
+                $orderedRows->each(function (RankingRow $row) use ($decision): void {
+                    $row->tieDecision = $decision;
+                });
+            });
     }
 
     /**

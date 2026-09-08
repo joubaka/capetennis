@@ -301,6 +301,65 @@ class RankingListDetailService
         return $advisories;
     }
 
+    /**
+     * Build one admin decision card for every equal-points group, including
+     * groups with no qualifying head-to-head evidence.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function tieDecisionAdvisories(Series $series, Collection $rankings): array
+    {
+        $headToHead = $this->headToHeadAdvisories($series, $rankings);
+        $groups = $rankings
+            ->groupBy(fn ($ranking) => $this->tieKey((int) $ranking->ranking_list_id, (int) $ranking->total_points))
+            ->filter(fn (Collection $group) => $group->count() > 1);
+
+        return $groups->mapWithKeys(function (Collection $group, string $key) use ($headToHead): array {
+            $orderedRows = $group->sortBy([
+                ['rank_position', 'asc'],
+                ['id', 'asc'],
+            ])->values();
+            $decision = $orderedRows
+                ->map(fn ($ranking) => $ranking->meta_json['tie_decision'] ?? null)
+                ->filter()
+                ->first();
+            $legacyHeadToHead = $orderedRows
+                ->map(fn ($ranking) => $ranking->meta_json['head_to_head_decision'] ?? null)
+                ->filter()
+                ->first();
+            $evidenceKey = $this->tieKey(
+                (int) $orderedRows->first()->category_id,
+                (int) $orderedRows->first()->total_points
+            );
+            $evidence = $headToHead[$evidenceKey] ?? null;
+            $players = $orderedRows->map(fn ($ranking) => [
+                'id' => (int) $ranking->player_id,
+                'name' => $ranking->player?->full_name
+                    ?? $ranking->player?->name
+                    ?? 'Unknown Player',
+                'rank_position' => (int) $ranking->rank_position,
+            ])->values()->all();
+
+            return [$key => [
+                'tie_key' => $decision['tie_key'] ?? null,
+                'points' => (int) $orderedRows->first()->total_points,
+                'players' => $players,
+                'suggested_order' => $decision['suggested_order']
+                    ?? $orderedRows->pluck('player_id')->map(fn ($id) => (int) $id)->values()->all(),
+                'suggested_method' => $decision['suggested_method'] ?? ($legacyHeadToHead ? 'head_to_head' : 'manual'),
+                'reason' => $decision['reason'] ?? ($legacyHeadToHead ? 'head_to_head' : null),
+                'note' => $decision['note'] ?? null,
+                'confirmed_order' => $decision['confirmed_order'] ?? null,
+                'confirmed' => ! empty($decision['confirmed_at']) || ! empty($legacyHeadToHead['confirmed_at']),
+                'confirmed_by' => $decision['confirmed_by'] ?? $legacyHeadToHead['confirmed_by'] ?? null,
+                'confirmed_at' => $decision['confirmed_at'] ?? $legacyHeadToHead['confirmed_at'] ?? null,
+                'matches' => $evidence['matches'] ?? [],
+                'head_to_head_decision' => $decision['head_to_head_decision'] ?? $legacyHeadToHead,
+                'requires_rebuild' => ! $decision && ! $legacyHeadToHead,
+            ]];
+        })->all();
+    }
+
     /** @return array<int, array<string, mixed>> */
     private function rankingLegs(array $meta): array
     {

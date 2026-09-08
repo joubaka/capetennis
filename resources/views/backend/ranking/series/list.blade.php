@@ -31,8 +31,26 @@
   .ranking-event-score--dropped { border-left-color: var(--bs-danger); opacity: .82; }
   .ranking-event-score--automatic { border-left-color: var(--bs-warning); background: rgba(var(--bs-warning-rgb), .08); }
   .ranking-event-name { max-width: 220px; }
-  .head-to-head-note { background: rgba(var(--bs-info-rgb), .08) !important; }
+  .tie-decision-note { background: rgba(var(--bs-warning-rgb), .08) !important; }
+  .tie-order-grid { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: .5rem; align-items: center; }
+  @media (max-width: 575.98px) { .tie-order-grid { grid-template-columns: minmax(0, 1fr) 88px; } }
   .tiebreak-note { font-size: .75rem; }
+  .ranking-process-step { border-left: 3px solid var(--bs-border-color); padding-left: .85rem; }
+  .ranking-process-step.is-current { border-left-color: var(--bs-primary); }
+  .ranking-process-step.is-complete { border-left-color: var(--bs-success); }
+  .ranking-process-number {
+    align-items: center;
+    background: var(--bs-secondary-bg);
+    border-radius: 50%;
+    display: inline-flex;
+    font-size: .75rem;
+    font-weight: 700;
+    height: 1.5rem;
+    justify-content: center;
+    width: 1.5rem;
+  }
+  .ranking-process-step.is-current .ranking-process-number { background: var(--bs-primary); color: #fff; }
+  .ranking-process-step.is-complete .ranking-process-number { background: var(--bs-success); color: #fff; }
 
   @media print {
     body * { visibility: hidden; }
@@ -113,6 +131,76 @@
                   data-confirm="Roll back to the previous published snapshot?">
             <i class="ti ti-history me-1"></i> Roll Back
           </button>
+        @endif
+      </div>
+    </div>
+  </div>
+
+  @php
+    $pendingTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
+      fn ($decision) => empty($decision['confirmed'])
+    )->count();
+    $legacyTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
+      fn ($decision) => !empty($decision['requires_rebuild'])
+    )->count();
+    $workflowStep = match (true) {
+      !$activeStatus => 1,
+      $activeStatus === 'calculated' && $pendingTieDecisions > 0 => 2,
+      $activeStatus === 'calculated' => 3,
+      $activeStatus === 'reviewed' && !$reviewCampaign => 4,
+      $activeStatus === 'reviewed' => 5,
+      $activeStatus === 'published' => 6,
+      default => 1,
+    };
+  @endphp
+
+  <div class="card mb-4 no-print border-start border-primary border-3" id="ranking-process-guide">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h5 class="mb-1">How to complete this ranking</h5>
+        <div class="small text-muted">Work through these checks in order. Nothing is shown publicly until a reviewed run is published and leaderboard visibility is enabled.</div>
+      </div>
+      <span class="badge bg-label-primary">{{ $workflowStep > 5 ? 'Complete' : 'Step '.$workflowStep.' of 5' }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        @foreach([
+          1 => ['Build the ranking', 'Use Rebuild Rankings after all official event results and ranking categories are ready.'],
+          2 => ['Check scores and ties', 'Open event scores, use Audit Rankings, and confirm the final order and reason for every highlighted tie.'],
+          3 => ['Mark it reviewed', 'Only mark the run reviewed after the totals, counted scores, dropped scores and tie decisions are correct.'],
+          4 => ['Share with participants', 'Review the exact recipients, email and reply cutoff, then send the provisional ranking for feedback.'],
+          5 => ['Finalize and publish', 'After the review window and any corrections, publish this exact reviewed run. Public leaderboard visibility remains a separate setting.'],
+        ] as $stepNumber => [$stepTitle, $stepHelp])
+          @php
+            $stepClass = $workflowStep > $stepNumber ? 'is-complete' : ($workflowStep === $stepNumber ? 'is-current' : '');
+          @endphp
+          <div class="col-lg col-md-6">
+            <div class="ranking-process-step {{ $stepClass }} h-100">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="ranking-process-number">{{ $workflowStep > $stepNumber ? '✓' : $stepNumber }}</span>
+                <strong class="small">{{ $stepTitle }}</strong>
+              </div>
+              <div class="small text-muted">{{ $stepHelp }}</div>
+            </div>
+          </div>
+        @endforeach
+      </div>
+
+      <div class="alert {{ $activeStatus === 'published' ? 'alert-success' : ($legacyTieDecisions > 0 ? 'alert-warning' : 'alert-info') }} mt-3 mb-0 py-2" role="status">
+        @if(!$activeStatus)
+          <strong>Next:</strong> Build the ranking once the official results and category links are ready.
+        @elseif($activeStatus === 'calculated' && $legacyTieDecisions > 0)
+          <strong>Next:</strong> Rebuild this legacy calculated run so its {{ $legacyTieDecisions }} tie {{ Str::plural('decision', $legacyTieDecisions) }} can be recorded safely.
+        @elseif($activeStatus === 'calculated' && $pendingTieDecisions > 0)
+          <strong>Next:</strong> Review the ranking and confirm {{ $pendingTieDecisions }} highlighted tie {{ Str::plural('decision', $pendingTieDecisions) }} below. You cannot mark the ranking reviewed until all are confirmed.
+        @elseif($activeStatus === 'calculated')
+          <strong>Next:</strong> Check the totals and event scores below, use Audit Rankings if needed, then select <strong>Mark Reviewed</strong>.
+        @elseif($activeStatus === 'reviewed' && !$reviewCampaign)
+          <strong>Next:</strong> Select <strong>Share for Review</strong> to check recipients, the message and cutoff before emailing participants.
+        @elseif($activeStatus === 'reviewed')
+          <strong>Next:</strong> Monitor delivery and participant feedback. Correct source results and rebuild if necessary; otherwise wait for the review to finish and select <strong>Finalize &amp; Publish</strong>.
+        @elseif($activeStatus === 'published')
+          <strong>Complete:</strong> This run is published. Use Series Settings to control public leaderboard visibility. Rebuild only when you intend to create and review a replacement run.
         @endif
       </div>
     </div>
@@ -208,10 +296,10 @@
                 @php
                   $legs = collect($scoreDetails[$row->id] ?? []);
                   $meta = is_array($row->meta_json) ? $row->meta_json : [];
-                  $tieKey = $category->id.':'.$row->total_points;
+                  $tieKey = $row->ranking_list_id.':'.$row->total_points;
                   $nextRow = $rows->get($rowIndex + 1);
                   $isLastInTie = !$nextRow || (int) $nextRow->total_points !== (int) $row->total_points;
-                  $headToHead = $isLastInTie ? ($headToHeadAdvisories[$tieKey] ?? null) : null;
+                  $tieDecision = $isLastInTie ? ($tieDecisionAdvisories[$tieKey] ?? null) : null;
                 @endphp
 
                 <tr>
@@ -282,25 +370,38 @@
                   </td>
                 </tr>
 
-                @if($headToHead)
-                  <tr class="head-to-head-note">
+                @if($tieDecision)
+                  <tr class="tie-decision-note">
                     <td></td>
                     <td colspan="3">
-                      <div class="d-flex gap-2 align-items-start py-1">
-                        <span class="badge {{ $headToHead['confirmed'] ? 'bg-success' : ($headToHead['applied'] ? 'bg-warning text-dark' : 'bg-info') }} mt-1">
-                          {{ $headToHead['confirmed'] ? 'Head-to-head confirmed' : ($headToHead['applied'] ? 'Confirmation required' : 'Head-to-head review') }}
+                      <div class="d-flex gap-2 align-items-start py-2">
+                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} mt-1">
+                          {{ $tieDecision['confirmed'] ? 'Tie decision confirmed' : 'Confirmation required' }}
                         </span>
-                        <div>
+                        <div class="flex-grow-1">
                           <div class="fw-semibold">
-                            @if($headToHead['confirmed'])
-                              An administrator confirmed the qualifying head-to-head used by this canonical ranking run.
-                            @elseif($headToHead['applied'])
-                              The qualifying head-to-head resolves this tie, but an administrator must confirm it before the ranking can be reviewed or shared.
+                            @if($tieDecision['confirmed'])
+                              @php
+                                $reasonLabel = match($tieDecision['reason']) {
+                                  'head_to_head' => 'qualifying head-to-head',
+                                  'third_event_score' => 'third-event score',
+                                  'previous_ranking' => 'previous published ranking',
+                                  'shared_position' => 'shared position',
+                                  default => 'administrator decision',
+                                };
+                              @endphp
+                              Tie broken by {{ $reasonLabel }} — administrator confirmed.
+                              @if($tieDecision['note']) <span class="fw-normal">{{ $tieDecision['note'] }}</span> @endif
+                            @elseif($tieDecision['requires_rebuild'])
+                              This legacy calculated tie has no run-scoped decision record. Rebuild the ranking before review.
                             @else
-                              A recorded head-to-head is available, but it is not marked as applied in this ranking run.
+                              Every equal-points ranking requires an administrator’s final decision before review, sharing, or publication.
                             @endif
                           </div>
-                          @foreach($headToHead['matches'] as $match)
+                          @if($tieDecision['matches'])
+                            <div class="small fw-semibold mt-2">Head-to-head review</div>
+                          @endif
+                          @foreach($tieDecision['matches'] as $match)
                             @php
                               $matchEvent = $series->events->firstWhere('id', $match['event_id']);
                               $matchFragment = $match['category_event_id'] ? '#category-event-'.$match['category_event_id'] : '';
@@ -317,13 +418,66 @@
                               <span class="text-muted">· {{ $match['phase'] === 'playoff' ? 'Playoff phase' : 'Single-phase round robin' }} · qualifying full set {{ $match['qualifying_set']['score'] }}</span>
                             </div>
                           @endforeach
-                          <div class="small text-muted mt-1">Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.</div>
-                          @if($activeStatus === 'calculated' && $headToHead['applied'] && !$headToHead['confirmed'] && $headToHead['decision'])
+                          @if($tieDecision['matches'])
+                            <div class="small text-muted mt-1">Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.</div>
+                          @endif
+
+                          @if($activeStatus === 'calculated' && !$tieDecision['confirmed'] && !$tieDecision['requires_rebuild'] && $tieDecision['tie_key'])
+                            <form class="tie-decision-form border rounded p-3 mt-2 bg-white"
+                                  data-url="{{ route('ranking.series.ranking.tie-decision.confirm', [$series, $tieDecision['tie_key']]) }}">
+                              <div class="small text-muted mb-2">
+                                @if($tieDecision['suggested_method'] === 'head_to_head')
+                                  Suggested order uses the qualifying head-to-head shown above.
+                                @elseif($tieDecision['suggested_method'] === 'third_event_score')
+                                  Suggested order uses the configured third-event score.
+                                @else
+                                  No complete automatic rule resolved this tie. Select the final order and explain the decision.
+                                @endif
+                              </div>
+                              <div class="tie-order-grid mb-3">
+                                @foreach($tieDecision['players'] as $player)
+                                  <label for="tie-order-{{ $tieDecision['tie_key'] }}-{{ $player['id'] }}">{{ $player['name'] }}</label>
+                                  <select class="form-select form-select-sm tie-order-select"
+                                          id="tie-order-{{ $tieDecision['tie_key'] }}-{{ $player['id'] }}"
+                                          data-player-id="{{ $player['id'] }}">
+                                    @foreach($tieDecision['players'] as $positionIndex => $unusedPlayer)
+                                      <option value="{{ $positionIndex + 1 }}"
+                                        {{ array_search($player['id'], $tieDecision['suggested_order'], true) === $positionIndex ? 'selected' : '' }}>
+                                        {{ $positionIndex + 1 }}
+                                      </option>
+                                    @endforeach
+                                  </select>
+                                @endforeach
+                              </div>
+                              <div class="row g-2">
+                                <div class="col-md-5">
+                                  <label class="form-label small fw-semibold">Reason</label>
+                                  <select class="form-select form-select-sm tie-reason" required>
+                                    @if($tieDecision['head_to_head_decision'])
+                                      <option value="head_to_head" {{ $tieDecision['suggested_method'] === 'head_to_head' ? 'selected' : '' }}>Qualifying head-to-head</option>
+                                    @endif
+                                    @if($tieDecision['suggested_method'] === 'third_event_score')
+                                      <option value="third_event_score" selected>Third-event score</option>
+                                    @endif
+                                    <option value="previous_ranking" {{ $tieDecision['suggested_method'] === 'manual' ? 'selected' : '' }}>Previous published ranking</option>
+                                    <option value="shared_position">Keep a shared position</option>
+                                    <option value="other">Other administrator decision</option>
+                                  </select>
+                                </div>
+                                <div class="col-md-7">
+                                  <label class="form-label small fw-semibold">Decision note</label>
+                                  <textarea class="form-control form-control-sm tie-note" rows="2" maxlength="1000" placeholder="Add the reason or supporting context. Required when Other is selected."></textarea>
+                                </div>
+                              </div>
+                              <button type="submit" class="btn btn-sm btn-warning mt-2">
+                                <i class="ti ti-check me-1"></i>Confirm final tie decision
+                              </button>
+                            </form>
+                          @elseif($activeStatus === 'calculated' && !$tieDecision['confirmed'] && !$tieDecision['tie_key'] && !empty($tieDecision['head_to_head_decision']['fixture_id']))
                             <button type="button"
-                                    class="btn btn-sm btn-warning mt-2 ranking-lifecycle-action"
-                                    data-url="{{ route('ranking.series.ranking.head-to-head.confirm', [$series, $headToHead['decision']['fixture_id']]) }}"
-                                    data-confirm="Confirm this exact head-to-head result for the current ranking run?">
-                              <i class="ti ti-check me-1"></i>Confirm head-to-head
+                                    class="btn btn-sm btn-warning mt-2 legacy-head-to-head-confirm"
+                                    data-url="{{ route('ranking.series.ranking.head-to-head.confirm', [$series, $tieDecision['head_to_head_decision']['fixture_id']]) }}">
+                              <i class="ti ti-check me-1"></i>Confirm qualifying head-to-head
                             </button>
                           @endif
                         </div>
@@ -471,6 +625,68 @@ document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
       location.reload();
     } catch (error) {
       toastr.error(error.message || 'Ranking action failed');
+      button.disabled = false;
+    }
+  });
+});
+
+document.querySelectorAll('.tie-decision-form').forEach(form => {
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    const ordered = Array.from(form.querySelectorAll('.tie-order-select'))
+      .map(select => ({playerId: Number(select.dataset.playerId), position: Number(select.value)}))
+      .sort((a, b) => a.position - b.position);
+    if (new Set(ordered.map(item => item.position)).size !== ordered.length) {
+      toastr.error('Give every tied player a unique order position.');
+      return;
+    }
+    if (!window.confirm('Confirm this final tie order and reason for the current ranking run?')) return;
+
+    button.disabled = true;
+    try {
+      const response = await fetch(form.dataset.url, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+          ordered_player_ids: ordered.map(item => item.playerId),
+          reason: form.querySelector('.tie-reason').value,
+          note: form.querySelector('.tie-note').value.trim(),
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        const firstError = payload.errors ? Object.values(payload.errors).flat()[0] : null;
+        throw new Error(firstError || payload.message || 'Tie confirmation failed');
+      }
+      toastr.success(payload.message);
+      location.reload();
+    } catch (error) {
+      toastr.error(error.message || 'Tie confirmation failed');
+      button.disabled = false;
+    }
+  });
+});
+
+document.querySelectorAll('.legacy-head-to-head-confirm').forEach(button => {
+  button.addEventListener('click', async () => {
+    if (!window.confirm('Confirm this qualifying head-to-head for the current ranking run?')) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(button.dataset.url, {
+        method: 'POST',
+        headers: {'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}'},
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Head-to-head confirmation failed');
+      toastr.success(payload.message);
+      location.reload();
+    } catch (error) {
+      toastr.error(error.message || 'Head-to-head confirmation failed');
       button.disabled = false;
     }
   });

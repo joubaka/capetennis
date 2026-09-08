@@ -225,6 +225,8 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
         $this->assertStringContainsString('third-event score (600 points)', $this->rowFor($result, 1)->tiebreakNotes[0]);
+        $this->assertSame('third_event_score', $this->rowFor($result, 1)->tieDecision['suggested_method']);
+        $this->assertNull($this->rowFor($result, 1)->tieDecision['confirmed_at']);
     }
 
     public function test_third_event_tiebreak_can_be_disabled_for_a_series(): void
@@ -290,6 +292,11 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
         $this->assertSame($newFixture->id, $this->rowFor($result, 2)->headToHeadDecision['fixture_id']);
         $this->assertSame('6-4', $this->rowFor($result, 2)->headToHeadDecision['qualifying_set']['score']);
+        $this->assertSame('head_to_head', $this->rowFor($result, 2)->tieDecision['suggested_method']);
+        $this->assertSame(
+            $this->rowFor($result, 1)->tieDecision['tie_key'],
+            $this->rowFor($result, 2)->tieDecision['tie_key']
+        );
     }
 
     public function test_head_to_head_tiebreak_can_be_disabled_for_a_series(): void
@@ -540,6 +547,9 @@ class RankingCalculationServiceTest extends TestCase
         $r2 = $this->rowFor($result, 2);
 
         $this->assertEquals($r1->rankPosition, $r2->rankPosition);
+        $this->assertSame('manual', $r1->tieDecision['suggested_method']);
+        $this->assertNull($r1->tieDecision['confirmed_at']);
+        $this->assertSame($r1->tieDecision['tie_key'], $r2->tieDecision['tie_key']);
     }
 
     // ------------------------------------------------------------------

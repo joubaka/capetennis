@@ -85,6 +85,64 @@ class RankingHeadToHeadConfirmationTest extends TestCase
         $this->assertDatabaseMissing('ranking_head_to_head_confirmations', ['series_id' => $series->id]);
     }
 
+    public function test_general_tie_confirmation_requires_and_records_the_qualifying_head_to_head(): void
+    {
+        [$series, $event, $fixture] = $this->seedCalculatedDecision();
+        $admin = $this->authorizedAdmin($event);
+        $rows = SeriesRanking::where('series_id', $series->id)->orderBy('rank_position')->get();
+        $playerIds = $rows->pluck('player_id')->map(fn ($id) => (int) $id)->sort()->values();
+        $tieKey = hash('sha256', implode(':', [
+            $rows->first()->ranking_list_id,
+            $rows->first()->total_points,
+            $playerIds->implode(','),
+        ]));
+        $headToHead = $rows->first()->meta_json['head_to_head_decision'];
+        $decision = [
+            'tie_key' => $tieKey,
+            'ranking_list_id' => (int) $rows->first()->ranking_list_id,
+            'total_points' => (int) $rows->first()->total_points,
+            'player_ids' => $playerIds->all(),
+            'suggested_order' => $rows->pluck('player_id')->map(fn ($id) => (int) $id)->values()->all(),
+            'suggested_method' => 'head_to_head',
+            'head_to_head_decision' => $headToHead,
+            'confirmed_order' => null,
+            'reason' => null,
+            'note' => null,
+            'confirmed_by' => null,
+            'confirmed_at' => null,
+        ];
+        foreach ($rows as $row) {
+            $meta = $row->meta_json;
+            $meta['tie_decision'] = $decision;
+            $row->update(['meta_json' => $meta]);
+        }
+
+        $this->actingAs($admin)
+            ->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+                'ordered_player_ids' => $decision['suggested_order'],
+                'reason' => 'head_to_head',
+                'note' => 'Head-to-head result approved by the administrator.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('decision.reason', 'head_to_head')
+            ->assertJsonPath('decision.head_to_head_decision.fixture_id', $fixture->id);
+
+        $this->assertDatabaseHas('ranking_head_to_head_confirmations', [
+            'series_id' => $series->id,
+            'run_id' => 'h2h-run',
+            'fixture_id' => $fixture->id,
+        ]);
+        $this->assertDatabaseHas('ranking_tie_decisions', [
+            'series_id' => $series->id,
+            'run_id' => 'h2h-run',
+            'tie_key' => $tieKey,
+            'reason' => 'head_to_head',
+        ]);
+        $this->actingAs($admin)
+            ->postJson(route('ranking.series.ranking.review', $series))
+            ->assertOk();
+    }
+
     public function test_unauthorized_admin_cannot_confirm_another_series_decision(): void
     {
         [$series, , $fixture] = $this->seedCalculatedDecision();

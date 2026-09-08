@@ -1503,6 +1503,10 @@ Route::delete(
       ->whereNumber('fixture')
       ->name('series.ranking.head-to-head.confirm');
 
+    Route::post('series/{series}/ties/{tieKey}/confirm', [SeriesRankingController::class, 'confirmTieDecision'])
+      ->where('tieKey', '[a-f0-9]{64}')
+      ->name('series.ranking.tie-decision.confirm');
+
     Route::post('series/{series}/publish', [SeriesRankingController::class, 'publish'])
       ->name('series.ranking.publish');
 

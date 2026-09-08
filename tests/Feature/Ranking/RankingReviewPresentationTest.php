@@ -17,6 +17,11 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('ranking-review-confirm', $view);
         $this->assertStringContainsString('Retry failed emails', $view);
         $this->assertStringContainsString('Finalize & Publish', $view);
+        $this->assertStringContainsString('How to complete this ranking', $view);
+        $this->assertStringContainsString('Check scores and ties', $view);
+        $this->assertStringContainsString('Share with participants', $view);
+        $this->assertStringContainsString('Public leaderboard visibility remains a separate setting.', $view);
+        $this->assertStringContainsString('You cannot mark the ranking reviewed until all are confirmed.', $view);
     }
 
     public function test_series_surfaces_expose_the_default_window_and_optional_shortcut(): void

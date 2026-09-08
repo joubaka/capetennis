@@ -23,7 +23,7 @@ final class RankingPublicationService
 {
     public function __construct(
         private readonly RankingAuditService $auditor,
-        private readonly RankingHeadToHeadConfirmationService $headToHeadConfirmations,
+        private readonly RankingTieDecisionService $tieDecisions,
     ) {}
 
     // ------------------------------------------------------------------
@@ -62,7 +62,7 @@ final class RankingPublicationService
                 );
             }
 
-            $this->headToHeadConfirmations->assertAllConfirmed($series, (string) $runId);
+            $this->tieDecisions->assertAllConfirmed($series, (string) $runId);
 
             $updated = SeriesRanking::where('series_id', $series->id)
                 ->where('run_id', $runId)
