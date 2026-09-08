@@ -19,6 +19,7 @@ final class RankingRow
      * @param int          $positionsSum     Sum of positions (lower = better, used in tiebreak)
      * @param bool         $autoAward        Whether a synthetic leg was awarded
      * @param array        $tiebreakNotes    Human-readable tiebreak resolution notes
+     * @param array|null   $headToHeadDecision Structured canonical fixture decision
      */
     public function __construct(
         public readonly int   $playerId,
@@ -32,5 +33,6 @@ final class RankingRow
         public readonly int   $positionsSum,
         public readonly bool  $autoAward    = false,
         public array          $tiebreakNotes = [],
+        public ?array         $headToHeadDecision = null,
     ) {}
 }

@@ -1499,6 +1499,10 @@ Route::delete(
     Route::post('series/{series}/review', [SeriesRankingController::class, 'review'])
       ->name('series.ranking.review');
 
+    Route::post('series/{series}/head-to-head/{fixture}/confirm', [SeriesRankingController::class, 'confirmHeadToHead'])
+      ->whereNumber('fixture')
+      ->name('series.ranking.head-to-head.confirm');
+
     Route::post('series/{series}/publish', [SeriesRankingController::class, 'publish'])
       ->name('series.ranking.publish');
 

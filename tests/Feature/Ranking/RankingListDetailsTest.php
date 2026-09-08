@@ -46,6 +46,14 @@ class RankingListDetailsTest extends TestCase
             'event_id' => $event->id,
             'category_id' => $category->id,
         ]);
+        $rankingList = \App\Models\RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $rankingList->id,
+            'category_event_id' => $categoryEvent->id,
+        ]);
         $player = Player::factory()->create(['name' => 'Amy', 'surname' => 'Adams']);
         $registration = $this->registrationFor($player);
         CategoryResult::create([
@@ -56,6 +64,7 @@ class RankingListDetailsTest extends TestCase
         ]);
         SeriesRanking::create([
             'series_id' => $series->id,
+            'ranking_list_id' => $rankingList->id,
             'category_id' => $category->id,
             'player_id' => $player->id,
             'rank_position' => 1,
@@ -97,6 +106,14 @@ class RankingListDetailsTest extends TestCase
             'event_id' => $event->id,
             'category_id' => $category->id,
         ]);
+        $rankingList = \App\Models\RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $rankingList->id,
+            'category_event_id' => $categoryEvent->id,
+        ]);
         $winner = Player::factory()->create(['name' => 'Winner', 'surname' => 'Player']);
         $loser = Player::factory()->create(['name' => 'Other', 'surname' => 'Player']);
         $winnerRegistration = $this->registrationFor($winner);
@@ -105,8 +122,21 @@ class RankingListDetailsTest extends TestCase
             'event_id' => $event->id,
             'category_event_id' => $categoryEvent->id,
         ]);
+        DB::table('draw_settings')->insert([
+            'draw_id' => $draw->id,
+            'workflow' => 'round_robin_playoffs',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $groupId = DB::table('draw_groups')->insertGetId([
+            'draw_id' => $draw->id,
+            'name' => 'Group A',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $fixture = Fixture::factory()->create([
             'draw_id' => $draw->id,
+            'draw_group_id' => null,
             'registration1_id' => $winnerRegistration->id,
             'registration2_id' => $loserRegistration->id,
             'winner_registration' => $winnerRegistration->id,
@@ -118,10 +148,25 @@ class RankingListDetailsTest extends TestCase
             'registration1_score' => 6,
             'registration2_score' => 3,
         ]);
+        $ineligibleGroupFixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'draw_group_id' => $groupId,
+            'registration1_id' => $winnerRegistration->id,
+            'registration2_id' => $loserRegistration->id,
+            'winner_registration' => $loserRegistration->id,
+        ]);
+        FixtureResult::factory()->create([
+            'fixture_id' => $ineligibleGroupFixture->id,
+            'winner_registration' => $loserRegistration->id,
+            'loser_registration' => $winnerRegistration->id,
+            'registration1_score' => 4,
+            'registration2_score' => 6,
+        ]);
 
         foreach ([[$winner, 1], [$loser, 2]] as [$player, $rank]) {
             SeriesRanking::create([
                 'series_id' => $series->id,
+                'ranking_list_id' => $rankingList->id,
                 'category_id' => $category->id,
                 'player_id' => $player->id,
                 'rank_position' => $rank,
@@ -138,8 +183,9 @@ class RankingListDetailsTest extends TestCase
             ->assertSee('Head-to-head review')
             ->assertSee('Winner Player')
             ->assertSee('beat Other Player')
+            ->assertDontSee('Other Player</strong> beat Winner Player', false)
             ->assertSee('(6-3)')
-            ->assertSee('The most recent match is used only after the best-two total and third-event score remain tied.');
+            ->assertSee('Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.');
     }
 
     public function test_event_results_page_exposes_a_category_anchor(): void

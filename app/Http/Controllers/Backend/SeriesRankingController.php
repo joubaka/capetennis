@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Domain\Ranking\Services\RankingAuditService;
 use App\Domain\Ranking\Services\RankingListDetailService;
+use App\Domain\Ranking\Services\RankingHeadToHeadConfirmationService;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
@@ -142,7 +143,11 @@ class SeriesRankingController extends Controller
   {
     $this->authorize('update', $series);
 
-    app(RankingPublicationService::class)->markReviewed($series, auth()->id());
+    try {
+      app(RankingPublicationService::class)->markReviewed($series, auth()->id());
+    } catch (\RuntimeException $exception) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
 
     return response()->json(['message' => 'Ranking marked as reviewed.']);
   }
@@ -166,6 +171,27 @@ class SeriesRankingController extends Controller
     return response()->json(['message' => $campaign
       ? 'Participant review closed. Rankings finalized and published.'
       : 'Ranking published.']);
+  }
+
+  /** Confirm an applied H2H decision on the current calculated ranking run. */
+  public function confirmHeadToHead(
+    Request $request,
+    Series $series,
+    int $fixture,
+    RankingHeadToHeadConfirmationService $service
+  ) {
+    $this->authorize('update', $series);
+
+    try {
+      $decision = $service->confirm($series, $fixture, $request->user());
+    } catch (\RuntimeException $exception) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
+
+    return response()->json([
+      'message' => 'Head-to-head confirmed for this ranking run.',
+      'decision' => $decision,
+    ]);
   }
 
   /**

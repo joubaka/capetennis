@@ -27,6 +27,10 @@ use Illuminate\Support\Collection;
  */
 final class RankingCalculationService
 {
+    public function __construct(
+        private readonly RankingHeadToHeadEligibilityService $headToHeadEligibility,
+    ) {}
+
     // ------------------------------------------------------------------
     // Public API
     // ------------------------------------------------------------------
@@ -427,6 +431,9 @@ final class RankingCalculationService
                             $pairKey = $this->playerPairKey($rows[0]->playerId, $rows[1]->playerId);
                             if (isset($headToHeadWinners[$pairKey])) {
                                 $appliedHeadToHeadPairs[$pairKey] = $headToHeadWinners[$pairKey];
+                                foreach ($rows as $decisionRow) {
+                                    $decisionRow->headToHeadDecision = $headToHeadWinners[$pairKey];
+                                }
                             }
                             usort($rows, fn (RankingRow $a, RankingRow $b) => $this->compareTiedRows(
                                 $a,
@@ -557,7 +564,7 @@ final class RankingCalculationService
      * Resolve one winner per player pair from the latest recorded match in the
      * category events linked to this ranking list.
      *
-     * @return array<string, array{winner_player_id:int,event_id:int,event_name:string,fixture_id:int}>
+     * @return array<string, array<string, mixed>>
      */
     private function latestHeadToHeadWinners(RankingList $list, Collection $playerIds): array
     {
@@ -566,7 +573,7 @@ final class RankingCalculationService
         }
 
         $categoryEventIds = $this->listCategoryEventIds($list);
-        $fixtures = \DB::table('fixtures as ranking_fixtures')
+        $fixtureQuery = \DB::table('fixtures as ranking_fixtures')
             ->join('draws as ranking_draws', 'ranking_draws.id', '=', 'ranking_fixtures.draw_id')
             ->leftJoin('draw_settings as ranking_draw_settings', 'ranking_draw_settings.draw_id', '=', 'ranking_draws.id')
             ->join('events as ranking_events', 'ranking_events.id', '=', 'ranking_draws.event_id')
@@ -586,26 +593,9 @@ final class RankingCalculationService
                     });
             })
             ->whereIn('ranking_pr1.player_id', $playerIds)
-            ->whereIn('ranking_pr2.player_id', $playerIds)
-            ->where(function ($eligibleStage) {
-                $eligibleStage
-                    // A fixture outside a round-robin group is a playoff/bracket match.
-                    ->whereNull('ranking_fixtures.draw_group_id')
-                    // Group matches count only when round robin is the draw's sole phase.
-                    ->orWhere('ranking_draw_settings.workflow', 'round_robin')
-                    // Historical draws may predate workflow settings. Treat them as
-                    // single-phase only when the draw contains no playoff fixtures.
-                    ->orWhere(function ($legacySinglePhase) {
-                        $legacySinglePhase
-                            ->whereNull('ranking_draw_settings.workflow')
-                            ->whereNotExists(function ($playoffFixture) {
-                                $playoffFixture->selectRaw('1')
-                                    ->from('fixtures as ranking_playoff_fixtures')
-                                    ->whereColumn('ranking_playoff_fixtures.draw_id', 'ranking_fixtures.draw_id')
-                                    ->whereNull('ranking_playoff_fixtures.draw_group_id');
-                            });
-                    });
-            })
+            ->whereIn('ranking_pr2.player_id', $playerIds);
+        $fixtures = $this->headToHeadEligibility
+            ->applyPhaseScope($fixtureQuery)
             ->orderByDesc('ranking_events.start_date')
             ->orderByDesc('ranking_fixtures.id')
             ->get([
@@ -615,9 +605,13 @@ final class RankingCalculationService
                 'ranking_fixtures.winner_registration',
                 'ranking_pr1.player_id as player1_id',
                 'ranking_pr2.player_id as player2_id',
+                'ranking_fixtures.draw_group_id',
+                'ranking_draw_settings.workflow',
                 'ranking_events.id as event_id',
                 'ranking_events.name as event_name',
             ]);
+        $qualifyingFullSets = $this->headToHeadEligibility->qualifyingFullSets($fixtures->pluck('id'));
+        $fixtures = $fixtures->filter(fn ($fixture) => $qualifyingFullSets->has($fixture->id));
         $resultWinners = \DB::table('fixture_results')
             ->whereIn('fixture_id', $fixtures->pluck('id'))
             ->whereNotNull('winner_registration')
@@ -643,11 +637,21 @@ final class RankingCalculationService
                 continue;
             }
 
+            $qualifyingSet = $qualifyingFullSets->get($fixture->id);
+            $winnerIsFirst = $winnerRegistration === (int) $fixture->registration1_id;
+            $qualifyingSet['score'] = $winnerIsFirst
+                ? $qualifyingSet['registration1_score'].'-'.$qualifyingSet['registration2_score']
+                : $qualifyingSet['registration2_score'].'-'.$qualifyingSet['registration1_score'];
+
             $winners[$pairKey] = [
                 'winner_player_id' => $winnerPlayerId,
+                'player_ids' => array_map('intval', explode(':', $pairKey)),
+                'ranking_list_id' => (int) $list->id,
                 'event_id' => (int) $fixture->event_id,
                 'event_name' => (string) $fixture->event_name,
                 'fixture_id' => (int) $fixture->id,
+                'phase' => $fixture->draw_group_id === null ? 'playoff' : 'single_phase_round_robin',
+                'qualifying_set' => $qualifyingSet,
             ];
         }
 

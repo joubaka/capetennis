@@ -287,13 +287,15 @@
                     <td></td>
                     <td colspan="3">
                       <div class="d-flex gap-2 align-items-start py-1">
-                        <span class="badge {{ $headToHead['applied'] ? 'bg-success' : 'bg-info' }} mt-1">
-                          {{ $headToHead['applied'] ? 'Head-to-head used' : 'Head-to-head review' }}
+                        <span class="badge {{ $headToHead['confirmed'] ? 'bg-success' : ($headToHead['applied'] ? 'bg-warning text-dark' : 'bg-info') }} mt-1">
+                          {{ $headToHead['confirmed'] ? 'Head-to-head confirmed' : ($headToHead['applied'] ? 'Confirmation required' : 'Head-to-head review') }}
                         </span>
                         <div>
                           <div class="fw-semibold">
-                            @if($headToHead['applied'])
-                              The latest recorded head-to-head resolved players still tied after their third-event score.
+                            @if($headToHead['confirmed'])
+                              An administrator confirmed the qualifying head-to-head used by this canonical ranking run.
+                            @elseif($headToHead['applied'])
+                              The qualifying head-to-head resolves this tie, but an administrator must confirm it before the ranking can be reviewed or shared.
                             @else
                               A recorded head-to-head is available, but it is not marked as applied in this ranking run.
                             @endif
@@ -312,9 +314,18 @@
                               @else
                                 {{ $match['event_name'] }}
                               @endif
+                              <span class="text-muted">· {{ $match['phase'] === 'playoff' ? 'Playoff phase' : 'Single-phase round robin' }} · qualifying full set {{ $match['qualifying_set']['score'] }}</span>
                             </div>
                           @endforeach
-                          <div class="small text-muted mt-1">The most recent match is used only after the best-two total and third-event score remain tied.</div>
+                          <div class="small text-muted mt-1">Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.</div>
+                          @if($activeStatus === 'calculated' && $headToHead['applied'] && !$headToHead['confirmed'] && $headToHead['decision'])
+                            <button type="button"
+                                    class="btn btn-sm btn-warning mt-2 ranking-lifecycle-action"
+                                    data-url="{{ route('ranking.series.ranking.head-to-head.confirm', [$series, $headToHead['decision']['fixture_id']]) }}"
+                                    data-confirm="Confirm this exact head-to-head result for the current ranking run?">
+                              <i class="ti ti-check me-1"></i>Confirm head-to-head
+                            </button>
+                          @endif
                         </div>
                       </div>
                     </td>

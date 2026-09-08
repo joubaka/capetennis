@@ -23,6 +23,7 @@ final class RankingPublicationService
 {
     public function __construct(
         private readonly RankingAuditService $auditor,
+        private readonly RankingHeadToHeadConfirmationService $headToHeadConfirmations,
     ) {}
 
     // ------------------------------------------------------------------
@@ -60,6 +61,8 @@ final class RankingPublicationService
                     "Ranking run {$runId} is incomplete: {$runLists} of {$expectedLists} ranking lists contain rows."
                 );
             }
+
+            $this->headToHeadConfirmations->assertAllConfirmed($series, (string) $runId);
 
             $updated = SeriesRanking::where('series_id', $series->id)
                 ->where('run_id', $runId)

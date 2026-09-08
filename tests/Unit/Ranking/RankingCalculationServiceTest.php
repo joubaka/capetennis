@@ -12,6 +12,7 @@ use App\Models\Player;
 use App\Models\Registration;
 use App\Models\Draw;
 use App\Models\Fixture;
+use App\Models\FixtureResult;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -173,6 +174,17 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertEquals(2, $p2->rankPosition);
     }
 
+    private function recordSet(Fixture $fixture, int $winnerRegistration, int $firstScore, int $secondScore): void
+    {
+        FixtureResult::factory()->create([
+            'fixture_id' => $fixture->id,
+            'set_nr' => 1,
+            'registration1_score' => $firstScore,
+            'registration2_score' => $secondScore,
+            'winner_registration' => $winnerRegistration,
+        ]);
+    }
+
     // ------------------------------------------------------------------
     // 2. Best-N reduction
     // ------------------------------------------------------------------
@@ -256,24 +268,28 @@ class RankingCalculationServiceTest extends TestCase
         // category-event memberships still identify the match safely.
         $oldDraw = Draw::factory()->create(['event_id' => $oldCategoryEvent->event_id, 'category_event_id' => null]);
         $newDraw = Draw::factory()->create(['event_id' => $newCategoryEvent->event_id, 'category_event_id' => null]);
-        Fixture::factory()->create([
+        $oldFixture = Fixture::factory()->create([
             'draw_id' => $oldDraw->id,
             'registration1_id' => $this->resultRegistrationIds['1:101'],
             'registration2_id' => $this->resultRegistrationIds['2:101'],
             'winner_registration' => $this->resultRegistrationIds['1:101'],
         ]);
-        Fixture::factory()->create([
+        $newFixture = Fixture::factory()->create([
             'draw_id' => $newDraw->id,
             'registration1_id' => $this->resultRegistrationIds['1:102'],
             'registration2_id' => $this->resultRegistrationIds['2:102'],
             'winner_registration' => $this->resultRegistrationIds['2:102'],
         ]);
+        $this->recordSet($oldFixture, $this->resultRegistrationIds['1:101'], 6, 4);
+        $this->recordSet($newFixture, $this->resultRegistrationIds['2:102'], 4, 6);
 
         $result = $this->service()->calculate($this->list);
 
         $this->assertEquals(1, $this->rowFor($result, 2)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 1)->rankPosition);
         $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
+        $this->assertSame($newFixture->id, $this->rowFor($result, 2)->headToHeadDecision['fixture_id']);
+        $this->assertSame('6-4', $this->rowFor($result, 2)->headToHeadDecision['qualifying_set']['score']);
     }
 
     public function test_head_to_head_tiebreak_can_be_disabled_for_a_series(): void
@@ -291,12 +307,13 @@ class RankingCalculationServiceTest extends TestCase
             'event_id' => $categoryEvent->event_id,
             'category_event_id' => 102,
         ]);
-        Fixture::factory()->create([
+        $fixture = Fixture::factory()->create([
             'draw_id' => $draw->id,
             'registration1_id' => $this->resultRegistrationIds['1:102'],
             'registration2_id' => $this->resultRegistrationIds['2:102'],
             'winner_registration' => $this->resultRegistrationIds['2:102'],
         ]);
+        $this->recordSet($fixture, $this->resultRegistrationIds['2:102'], 4, 6);
 
         $result = $this->service()->calculate($this->list);
 
@@ -334,26 +351,29 @@ class RankingCalculationServiceTest extends TestCase
 
         // The playoff result favours player 1. The later-created group result
         // favours player 2 and must not supersede the playoff head-to-head.
-        Fixture::factory()->create([
+        $playoffFixture = Fixture::factory()->create([
             'draw_id' => $draw->id,
             'draw_group_id' => null,
             'registration1_id' => $this->resultRegistrationIds['1:102'],
             'registration2_id' => $this->resultRegistrationIds['2:102'],
             'winner_registration' => $this->resultRegistrationIds['1:102'],
         ]);
-        Fixture::factory()->create([
+        $groupFixture = Fixture::factory()->create([
             'draw_id' => $draw->id,
             'draw_group_id' => $groupId,
             'registration1_id' => $this->resultRegistrationIds['1:102'],
             'registration2_id' => $this->resultRegistrationIds['2:102'],
             'winner_registration' => $this->resultRegistrationIds['2:102'],
         ]);
+        $this->recordSet($playoffFixture, $this->resultRegistrationIds['1:102'], 7, 5);
+        $this->recordSet($groupFixture, $this->resultRegistrationIds['2:102'], 4, 6);
 
         $result = $this->service()->calculate($this->list);
 
         $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
         $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 1)->tiebreakNotes[0]);
+        $this->assertSame('playoff', $this->rowFor($result, 1)->headToHeadDecision['phase']);
     }
 
     public function test_head_to_head_accepts_group_match_when_round_robin_is_the_only_phase(): void
@@ -381,19 +401,52 @@ class RankingCalculationServiceTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        Fixture::factory()->create([
+        $fixture = Fixture::factory()->create([
             'draw_id' => $draw->id,
             'draw_group_id' => $groupId,
             'registration1_id' => $this->resultRegistrationIds['1:102'],
             'registration2_id' => $this->resultRegistrationIds['2:102'],
             'winner_registration' => $this->resultRegistrationIds['2:102'],
         ]);
+        $this->recordSet($fixture, $this->resultRegistrationIds['2:102'], 4, 6);
 
         $result = $this->service()->calculate($this->list);
 
         $this->assertEquals(1, $this->rowFor($result, 2)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 1)->rankPosition);
         $this->assertStringContainsString('latest head-to-head winner', $this->rowFor($result, 2)->tiebreakNotes[0]);
+    }
+
+    public function test_head_to_head_rejects_short_sets_and_match_tiebreaks(): void
+    {
+        $this->series->update(['auto_award_rule' => false]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 3], [2, 102, 1],
+        ]);
+
+        $categoryEvent = DB::table('category_events')->where('id', 102)->first();
+        foreach ([[4, 2], [10, 8]] as [$firstScore, $secondScore]) {
+            $draw = Draw::factory()->create([
+                'event_id' => $categoryEvent->event_id,
+                'category_event_id' => 102,
+            ]);
+            $fixture = Fixture::factory()->create([
+                'draw_id' => $draw->id,
+                'registration1_id' => $this->resultRegistrationIds['1:102'],
+                'registration2_id' => $this->resultRegistrationIds['2:102'],
+                'winner_registration' => $this->resultRegistrationIds['1:102'],
+            ]);
+            $this->recordSet($fixture, $this->resultRegistrationIds['1:102'], $firstScore, $secondScore);
+        }
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertSame(
+            $this->rowFor($result, 1)->rankPosition,
+            $this->rowFor($result, 2)->rankPosition
+        );
+        $this->assertNull($this->rowFor($result, 1)->headToHeadDecision);
     }
 
     // ------------------------------------------------------------------

@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\DB;
 
 class RankingListDetailService
 {
+    public function __construct(
+        private readonly RankingHeadToHeadEligibilityService $headToHeadEligibility,
+    ) {}
+
     /**
      * Build event-result details for every score shown in an active ranking run.
      *
@@ -104,6 +108,12 @@ class RankingListDetailService
             return [];
         }
 
+        $linkedCategoryEvents = DB::table('ranking_list_category_events')
+            ->whereIn('ranking_list_id', $tieGroups->flatten(1)->pluck('ranking_list_id')->filter()->unique())
+            ->get(['ranking_list_id', 'category_event_id'])
+            ->groupBy('ranking_list_id')
+            ->map(fn (Collection $links) => $links->pluck('category_event_id')->map(fn ($id) => (int) $id));
+
         $resultEvents = $series->events
             ->filter(fn ($event) => (bool) $event->results_published)
             ->sortBy(fn ($event) => sprintf('%s-%010d', optional($event->start_date)->format('Y-m-d') ?? '', $event->id))
@@ -115,8 +125,9 @@ class RankingListDetailService
         }
 
         $tiedPlayerIds = $tieGroups->flatten(1)->pluck('player_id')->unique()->values();
-        $fixtures = DB::table('fixtures as ranking_fixtures')
+        $fixtureQuery = DB::table('fixtures as ranking_fixtures')
             ->join('draws as ranking_draws', 'ranking_draws.id', '=', 'ranking_fixtures.draw_id')
+            ->leftJoin('draw_settings as ranking_draw_settings', 'ranking_draw_settings.draw_id', '=', 'ranking_draws.id')
             ->join('events as ranking_events', 'ranking_events.id', '=', 'ranking_draws.event_id')
             ->join('player_registrations as ranking_pr1', 'ranking_pr1.registration_id', '=', 'ranking_fixtures.registration1_id')
             ->join('player_registrations as ranking_pr2', 'ranking_pr2.registration_id', '=', 'ranking_fixtures.registration2_id')
@@ -124,7 +135,9 @@ class RankingListDetailService
             ->leftJoin('categories as ranking_categories', 'ranking_categories.id', '=', 'ranking_ce.category_id')
             ->whereIn('ranking_events.id', $resultEventIds)
             ->whereIn('ranking_pr1.player_id', $tiedPlayerIds)
-            ->whereIn('ranking_pr2.player_id', $tiedPlayerIds)
+            ->whereIn('ranking_pr2.player_id', $tiedPlayerIds);
+        $fixtures = $this->headToHeadEligibility
+            ->applyPhaseScope($fixtureQuery)
             ->orderByDesc('ranking_events.start_date')
             ->orderByDesc('ranking_fixtures.id')
             ->get([
@@ -132,6 +145,8 @@ class RankingListDetailService
                 'ranking_fixtures.registration1_id',
                 'ranking_fixtures.registration2_id',
                 'ranking_fixtures.winner_registration',
+                'ranking_fixtures.draw_group_id',
+                'ranking_draw_settings.workflow',
                 'ranking_pr1.player_id as player1_id',
                 'ranking_pr2.player_id as player2_id',
                 'ranking_events.id as event_id',
@@ -139,6 +154,9 @@ class RankingListDetailService
                 'ranking_draws.category_event_id',
                 'ranking_categories.name as category_name',
             ]);
+
+        $qualifyingFullSets = $this->headToHeadEligibility->qualifyingFullSets($fixtures->pluck('id'));
+        $fixtures = $fixtures->filter(fn ($fixture) => $qualifyingFullSets->has($fixture->id));
 
         if ($fixtures->isEmpty()) {
             return [];
@@ -176,6 +194,7 @@ class RankingListDetailService
 
         foreach ($tieGroups as $key => $group) {
             $categoryName = (string) ($group->first()?->category?->name ?? '');
+            $eligibleCategoryEventIds = $linkedCategoryEvents->get((int) $group->first()->ranking_list_id, collect());
             $advisoryKey = $this->tieKey((int) $group->first()->category_id, (int) $group->first()->total_points);
             $groupPlayerIds = $group->pluck('player_id')->map(fn ($id) => (int) $id);
             $matches = [];
@@ -204,7 +223,8 @@ class RankingListDetailService
 
                 if (! $groupPlayerIds->contains($player1Id)
                     || ! $groupPlayerIds->contains($player2Id)
-                    || $this->normalizeCategory($fixtureCategoryName) !== $this->normalizeCategory($categoryName)) {
+                    || $this->normalizeCategory($fixtureCategoryName) !== $this->normalizeCategory($categoryName)
+                    || ! $eligibleCategoryEventIds->contains($fixtureCategoryEventId)) {
                     continue;
                 }
 
@@ -232,6 +252,11 @@ class RankingListDetailService
                     return $winnerScore.'-'.$loserScore;
                 })->implode(', ');
 
+                $qualifyingSet = $qualifyingFullSets->get($fixture->id);
+                $qualifyingSet['score'] = $winnerIsFirst
+                    ? $qualifyingSet['registration1_score'].'-'.$qualifyingSet['registration2_score']
+                    : $qualifyingSet['registration2_score'].'-'.$qualifyingSet['registration1_score'];
+
                 $matches[] = [
                     'fixture_id' => (int) $fixture->id,
                     'winner_name' => $playerNames->get($winnerId, 'Unknown Player'),
@@ -240,28 +265,36 @@ class RankingListDetailService
                     'event_name' => (string) $fixture->event_name,
                     'category_event_id' => $fixtureCategoryEventId,
                     'score' => $score,
+                    'phase' => $fixture->draw_group_id === null ? 'playoff' : 'single_phase_round_robin',
+                    'qualifying_set' => $qualifyingSet,
                 ];
             }
 
             if ($matches !== []) {
+                $decision = $group
+                    ->map(fn ($ranking) => $ranking->meta_json['head_to_head_decision'] ?? null)
+                    ->filter()
+                    ->first();
                 $advisories[$advisoryKey] ??= [
                     'points' => (int) $group->first()->total_points,
                     'player_ids' => [],
                     'matches' => [],
                     'applied' => false,
+                    'confirmed' => false,
+                    'decision' => null,
                 ];
                 $advisories[$advisoryKey]['player_ids'] = array_values(array_unique(array_merge(
                     $advisories[$advisoryKey]['player_ids'],
                     $groupPlayerIds->all()
                 )));
                 $advisories[$advisoryKey]['matches'] = array_merge($advisories[$advisoryKey]['matches'], $matches);
-                $advisories[$advisoryKey]['applied'] = $advisories[$advisoryKey]['applied'] || (
-                    $group->count() === 2
-                    && $group->contains(fn ($ranking) => str_contains(
-                        (string) ($ranking->meta_json['tiebreak_notes'][0] ?? ''),
-                        'latest head-to-head winner'
-                    ))
-                );
+                $advisories[$advisoryKey]['decision'] ??= $decision;
+                $advisories[$advisoryKey]['applied'] = $advisories[$advisoryKey]['applied']
+                    || ($decision && collect($matches)->contains(
+                        fn (array $match) => (int) $match['fixture_id'] === (int) $decision['fixture_id']
+                    ));
+                $advisories[$advisoryKey]['confirmed'] = $advisories[$advisoryKey]['confirmed']
+                    || ! empty($decision['confirmed_at']);
             }
         }
 

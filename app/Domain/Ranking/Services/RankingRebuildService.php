@@ -430,6 +430,7 @@ final class RankingRebuildService
                 'event_date'        => $l->eventDate,
             ], $row->droppedLegs),
             'tiebreak_notes' => $row->tiebreakNotes,
+            'head_to_head_decision' => $row->headToHeadDecision,
         ];
     }
 
