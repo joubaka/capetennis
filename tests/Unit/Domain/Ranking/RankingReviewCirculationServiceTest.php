@@ -3,6 +3,8 @@
 namespace Tests\Unit\Domain\Ranking;
 
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
+use App\Jobs\SendBulkEmailJob;
+use App\Models\BulkEmailLog;
 use App\Models\RankingReviewCampaign;
 use App\Models\Series;
 use App\Models\User;
@@ -75,7 +77,7 @@ class RankingReviewCirculationServiceTest extends TestCase
         $service = app(RankingReviewCirculationService::class);
 
         $campaign = $service->send(
-            $this->series, $this->actor, $uuid, 'Check rankings', 'Please review.',
+            $this->series, $this->actor, $uuid, 'Check rankings', "First paragraph.\n\nSecond paragraph.",
             'reply@example.test', now()->addDay(),
         );
         $again = $service->send(
@@ -97,6 +99,32 @@ class RankingReviewCirculationServiceTest extends TestCase
         $this->assertStringContainsString('Nico Player', $html);
         $this->assertStringContainsString('View provisional rankings', $html);
         $this->assertStringContainsString('ranking-review/'.$campaign->uuid, $html);
+        $this->assertStringContainsString('Replies will go to', $html);
+        $this->assertStringContainsString('reply@example.test', $html);
+        $this->assertSame(2, substr_count($html, 'class="ranking-review-message-paragraph"'));
+        $this->assertStringNotContainsString('white-space:pre-line', $html);
+        $this->assertStringNotContainsString('This email covers:', $html);
+
+        $sharedHtml = (new RankingReviewMail($campaign, ['Nico Player', 'Rome Player']))->render();
+        $this->assertSame(2, substr_count($sharedHtml, 'class="ranking-review-message-paragraph"'));
+        $this->assertStringContainsString('Dear Player / Parent', $sharedHtml);
+        $this->assertStringContainsString('<strong>This email covers:</strong> Nico Player, Rome Player', $sharedHtml);
+
+        $log = BulkEmailLog::where('related_id', $campaign->id)->firstOrFail();
+        $job = new class($log->id) extends SendBulkEmailJob {
+            public function mailable(BulkEmailLog $log, string $fromAddress)
+            {
+                return $this->buildMailable($log, $fromAddress);
+            }
+        };
+        $queuedMailable = $job->mailable($log, 'noreply2@capetennis.co.za')->build();
+        $this->assertSame('noreply2@capetennis.co.za', $queuedMailable->from[0]['address']);
+        $this->assertSame('reply@example.test', $queuedMailable->replyTo[0]['address']);
+        $this->assertSame('Cape Tennis Rankings', $queuedMailable->replyTo[0]['name']);
+
+        $campaign->reply_to = 'not-an-email-address';
+        $this->expectException(\InvalidArgumentException::class);
+        (new RankingReviewMail($campaign, ['Nico Player']))->build();
     }
 
     public function test_cutoff_and_snapshot_guards_protect_finalization(): void

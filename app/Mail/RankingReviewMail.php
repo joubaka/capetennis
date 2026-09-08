@@ -15,15 +15,21 @@ class RankingReviewMail extends Mailable
     public function __construct(
         public RankingReviewCampaign $campaign,
         public array $playerNames = [],
+        public ?string $fromAddress = null,
     ) {}
 
     public function build()
     {
         $this->campaign->loadMissing('series');
+        $replyTo = trim((string) $this->campaign->reply_to);
+
+        if (filter_var($replyTo, FILTER_VALIDATE_EMAIL) === false) {
+            throw new \InvalidArgumentException('The ranking review reply-to address is invalid.');
+        }
 
         return $this
-            ->from(config('mail.from.address'), 'Cape Tennis')
-            ->replyTo($this->campaign->reply_to)
+            ->from($this->fromAddress ?: config('mail.from.address'), 'Cape Tennis')
+            ->replyTo($replyTo, 'Cape Tennis Rankings')
             ->subject($this->campaign->subject)
             ->view('emails.ranking-review')
             ->with([

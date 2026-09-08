@@ -60,5 +60,9 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('View provisional rankings', $email);
         $this->assertStringContainsString('Reply cutoff:', $email);
         $this->assertStringContainsString('$reviewUrl', $email);
+        $this->assertStringContainsString('Replies will go to', $email);
+        $this->assertStringContainsString('$campaign->reply_to', $email);
+        $this->assertStringContainsString('ranking-review-message-paragraph', $email);
+        $this->assertStringNotContainsString('white-space:pre-line', $email);
     }
 }

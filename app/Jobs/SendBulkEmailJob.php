@@ -199,7 +199,7 @@ class SendBulkEmailJob implements ShouldQueue
                     return null;
                 }
                 $recipient = \App\Models\RankingReviewRecipient::where('bulk_email_log_id', $log->id)->first();
-                return new \App\Mail\RankingReviewMail($campaign, $recipient?->player_names ?? []);
+                return new \App\Mail\RankingReviewMail($campaign, $recipient?->player_names ?? [], $fromAddress);
 
             case 'violation_notification':
                 // Load fresh data
