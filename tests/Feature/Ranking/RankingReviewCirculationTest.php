@@ -209,6 +209,9 @@ class RankingReviewCirculationTest extends TestCase
 
         $this->get(URL::signedRoute('ranking.review.public', ['campaign' => $campaign->uuid]))
             ->assertOk()
+            ->assertSee('ranking-review-list', false)
+            ->assertSee('Click to open')
+            ->assertSee('Filter players in this ranking list')
             ->assertSee('Scores per event')
             ->assertSee('Overberg Leg 1')
             ->assertSee('900 pts')

@@ -65,4 +65,18 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('ranking-review-message-paragraph', $email);
         $this->assertStringNotContainsString('white-space:pre-line', $email);
     }
+
+    public function test_public_review_lists_start_closed_and_have_independent_player_filters(): void
+    {
+        $view = file_get_contents(resource_path('views/frontend/ranking-review.blade.php'));
+
+        $this->assertStringContainsString('<details class="card mb-3 shadow-sm ranking-review-list"', $view);
+        $this->assertStringNotContainsString('<details open', $view);
+        $this->assertStringContainsString('ranking-filter-{{ $category->id }}', $view);
+        $this->assertStringContainsString('data-player-search=', $view);
+        $this->assertStringContainsString("querySelectorAll('.ranking-review-list')", $view);
+        $this->assertStringContainsString("list.querySelectorAll('.ranking-review-player-row')", $view);
+        $this->assertStringContainsString('No players match this filter.', $view);
+        $this->assertStringContainsString("list.open ? 'Click to close' : 'Click to open'", $view);
+    }
 }

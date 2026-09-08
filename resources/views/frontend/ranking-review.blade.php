@@ -22,6 +22,25 @@
   .ranking-review-event--automatic { border-left-color: var(--bs-warning); }
   .ranking-review-event-name { color: var(--bs-heading-color); font-weight: 600; overflow-wrap: anywhere; }
   .ranking-review-legend { display: flex; flex-wrap: wrap; gap: .75rem; padding: 0 1rem 1rem; color: var(--bs-secondary-color); font-size: .78rem; }
+  .ranking-review-list > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .ranking-review-list > summary::-webkit-details-marker { display: none; }
+  .ranking-review-list > summary:hover { background: var(--bs-tertiary-bg); }
+  .ranking-review-list > summary:focus-visible { outline: .2rem solid rgba(var(--bs-primary-rgb), .3); outline-offset: -.2rem; }
+  .ranking-review-toggle-icon { transition: transform .2s ease; }
+  .ranking-review-list[open] .ranking-review-toggle-icon { transform: rotate(180deg); }
+  .ranking-review-filter-wrap { border-top: 1px solid var(--bs-border-color); border-bottom: 1px solid var(--bs-border-color); padding: .85rem 1rem; background: var(--bs-tertiary-bg); }
+  .ranking-review-filter { max-width: 28rem; }
+  .ranking-review-player-row[hidden] { display: none !important; }
 
   @media (max-width: 767.98px) {
     .ranking-review-table thead { display: none; }
@@ -76,8 +95,27 @@
     @php
       $rows = $rankings->where('category_id', $category->id)->sortBy('rank_position');
     @endphp
-    <div class="card mb-4 shadow-sm">
-      <div class="card-header"><h5 class="mb-0">{{ $category->name }}</h5></div>
+    <details class="card mb-3 shadow-sm ranking-review-list" data-ranking-list="{{ $category->id }}">
+      <summary aria-label="Open or close {{ $category->name }} ranking list">
+        <span class="d-flex align-items-center gap-2">
+          <span class="h5 mb-0">{{ $category->name }}</span>
+          <span class="badge bg-label-secondary">{{ $rows->count() }} {{ Str::plural('player', $rows->count()) }}</span>
+        </span>
+        <span class="d-flex align-items-center gap-2 text-muted small">
+          <span class="ranking-review-toggle-label">Click to open</span>
+          <i class="ti ti-chevron-down ranking-review-toggle-icon" aria-hidden="true"></i>
+        </span>
+      </summary>
+      <div class="ranking-review-filter-wrap">
+        <label class="visually-hidden" for="ranking-filter-{{ $category->id }}">Filter players in {{ $category->name }}</label>
+        <div class="input-group ranking-review-filter">
+          <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
+          <input type="search" class="form-control ranking-review-filter-input" id="ranking-filter-{{ $category->id }}"
+            placeholder="Filter players in this ranking list…" autocomplete="off">
+          <button class="btn btn-outline-secondary ranking-review-filter-clear d-none" type="button">Clear</button>
+        </div>
+        <div class="small text-muted mt-2 ranking-review-filter-status" role="status" aria-live="polite">Showing all {{ $rows->count() }} players</div>
+      </div>
       <div class="table-responsive">
         <table class="table table-striped align-middle mb-0 ranking-review-table">
           <thead><tr><th>Rank</th><th>Player</th><th class="text-end">Total points</th><th>Scores per event</th></tr></thead>
@@ -86,7 +124,7 @@
               @php
                 $legs = collect($scoreDetails[$row->id] ?? []);
               @endphp
-              <tr>
+              <tr class="ranking-review-player-row" data-player-search="{{ Str::lower(($row->player?->full_name ?? 'Unknown player').' '.$row->rank_position) }}">
                 <td class="fw-bold ranking-review-rank">#{{ $row->rank_position }}</td>
                 <td class="ranking-review-player">{{ $row->player?->full_name ?? 'Unknown player' }}</td>
                 <td class="text-end fw-semibold ranking-review-total">{{ number_format($row->total_points, 0) }}</td>
@@ -136,12 +174,52 @@
           </tbody>
         </table>
       </div>
+      <div class="alert alert-secondary m-3 ranking-review-filter-empty d-none" role="status">No players match this filter.</div>
       <div class="ranking-review-legend">
         <span><span class="badge bg-label-success">Counted</span> contributes to the total</span>
         <span><span class="badge bg-label-danger">Not counted</span> shown for review only</span>
         <span><span class="badge bg-warning text-dark">Automatic award</span> system-applied score</span>
       </div>
-    </div>
+    </details>
   @endforeach
 </div>
+@endsection
+
+@section('page-script')
+<script>
+document.querySelectorAll('.ranking-review-list').forEach(function (list) {
+  var input = list.querySelector('.ranking-review-filter-input');
+  var clear = list.querySelector('.ranking-review-filter-clear');
+  var rows = Array.from(list.querySelectorAll('.ranking-review-player-row'));
+  var status = list.querySelector('.ranking-review-filter-status');
+  var empty = list.querySelector('.ranking-review-filter-empty');
+  var toggleLabel = list.querySelector('.ranking-review-toggle-label');
+
+  list.addEventListener('toggle', function () {
+    toggleLabel.textContent = list.open ? 'Click to close' : 'Click to open';
+  });
+
+  function applyFilter() {
+    var query = input.value.trim().toLocaleLowerCase();
+    var visible = 0;
+    rows.forEach(function (row) {
+      var matches = query === '' || (row.dataset.playerSearch || '').includes(query);
+      row.hidden = !matches;
+      if (matches) visible++;
+    });
+    clear.classList.toggle('d-none', query === '');
+    empty.classList.toggle('d-none', visible !== 0);
+    status.textContent = query === ''
+      ? 'Showing all ' + rows.length + ' players'
+      : 'Showing ' + visible + ' of ' + rows.length + ' players';
+  }
+
+  input.addEventListener('input', applyFilter);
+  clear.addEventListener('click', function () {
+    input.value = '';
+    applyFilter();
+    input.focus();
+  });
+});
+</script>
 @endsection
