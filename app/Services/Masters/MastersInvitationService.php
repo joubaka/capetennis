@@ -267,6 +267,69 @@ final class MastersInvitationService
         return $batch->fresh();
     }
 
+    public function extendBatchDeadlines(MastersInvitationBatch $batch, array $details, User $actor): MastersInvitationBatch
+    {
+        return DB::transaction(function () use ($batch, $details, $actor) {
+            $locked = MastersInvitationBatch::query()->lockForUpdate()->findOrFail($batch->id);
+            if ($locked->status !== 'sent') {
+                throw ValidationException::withMessages([
+                    'deadlines' => 'Only a sent invitation batch can use the deadline extension action.',
+                ]);
+            }
+
+            $response = isset($details['response_deadline']) ? now()->parse($details['response_deadline']) : null;
+            $payment = isset($details['payment_deadline']) ? now()->parse($details['payment_deadline']) : null;
+            $replacement = isset($details['replacement_payment_deadline']) ? now()->parse($details['replacement_payment_deadline']) : null;
+            if (!$response || !$payment || !$replacement) {
+                throw ValidationException::withMessages(['deadlines' => 'All Masters deadlines are required.']);
+            }
+            if (!$locked->response_deadline || !$locked->payment_deadline || !$locked->replacement_payment_deadline) {
+                throw ValidationException::withMessages(['deadlines' => 'The current invitation deadlines are incomplete and cannot be extended safely.']);
+            }
+            if ($response->isPast() || $payment->isPast() || $replacement->isPast()) {
+                throw ValidationException::withMessages(['deadlines' => 'Extended Masters deadlines must be in the future.']);
+            }
+            if ($response->lt($locked->response_deadline)
+                || $payment->lt($locked->payment_deadline)
+                || $replacement->lt($locked->replacement_payment_deadline)) {
+                throw ValidationException::withMessages(['deadlines' => 'Invitation deadlines may only be moved later, not shortened.']);
+            }
+            if ($payment->lt($response)) {
+                throw ValidationException::withMessages(['payment_deadline' => 'The payment deadline must be on or after the response deadline.']);
+            }
+            if ($replacement->lt($payment)) {
+                throw ValidationException::withMessages(['replacement_payment_deadline' => 'The replacement payment deadline must be on or after the payment deadline.']);
+            }
+            if ($response->equalTo($locked->response_deadline)
+                && $payment->equalTo($locked->payment_deadline)
+                && $replacement->equalTo($locked->replacement_payment_deadline)) {
+                throw ValidationException::withMessages(['deadlines' => 'Move at least one invitation deadline to a later date or time.']);
+            }
+
+            $before = [
+                'response_deadline' => $locked->response_deadline->toIso8601String(),
+                'payment_deadline' => $locked->payment_deadline->toIso8601String(),
+                'replacement_payment_deadline' => $locked->replacement_payment_deadline->toIso8601String(),
+            ];
+            $locked->update([
+                'response_deadline' => $response,
+                'payment_deadline' => $payment,
+                'replacement_payment_deadline' => $replacement,
+            ]);
+            activity('masters')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'before' => $before,
+                    'after' => [
+                        'response_deadline' => $response->toIso8601String(),
+                        'payment_deadline' => $payment->toIso8601String(),
+                        'replacement_payment_deadline' => $replacement->toIso8601String(),
+                    ],
+                ])->log('Masters invitation deadlines extended');
+
+            return $locked->fresh();
+        });
+    }
+
     public function resetCancelledPayment(RegistrationOrder $order, User $actor): void
     {
         DB::transaction(function () use ($order, $actor) {

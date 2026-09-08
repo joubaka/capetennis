@@ -47,6 +47,25 @@
     <div class="card mb-3"><div class="card-header"><h5 class="mb-1">Step 2: review and send invitations</h5><p class="text-muted small mb-0">Review the invitee names below, adjust the invitation wave if needed, then send all selected invitations.</p></div><div class="card-body"><form method="POST" action="{{ route('backend.masters.details.update', $batch) }}">@csrf @method('PATCH')<div class="row g-3"><div class="col-md-4"><label class="form-label">Response deadline</label><input name="response_deadline" type="datetime-local" class="form-control" value="{{ $batch->response_deadline?->format('Y-m-d\\TH:i') }}" required></div><div class="col-md-4"><label class="form-label">Payment deadline</label><input name="payment_deadline" type="datetime-local" class="form-control" value="{{ $batch->payment_deadline?->format('Y-m-d\\TH:i') }}" required></div><div class="col-md-4"><label class="form-label">Replacement payment deadline</label><input name="replacement_payment_deadline" type="datetime-local" class="form-control" value="{{ $batch->replacement_payment_deadline?->format('Y-m-d\\TH:i') }}" required></div></div><button class="btn btn-outline-primary mt-3">Save invitation details</button></form>@if($batch->response_deadline && $batch->payment_deadline && $batch->replacement_payment_deadline)<form method="POST" action="{{ route('backend.masters.send-invitations', $batch) }}" class="mt-3" onsubmit="return confirm('Send invitations to all selected invitees now?');">@csrf<button class="btn btn-primary">Send invitations to all invitees</button></form>@endif</div></div>
   @else
     <div class="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Invitations have been sent. The checked players below are now active invitees in their Masters categories.</span><form method="POST" action="{{ route('backend.masters.public-list.toggle', $batch) }}">@csrf<input type="hidden" name="published" value="{{ $batch->public_list_published ? 0 : 1 }}"><button class="btn btn-sm {{ $batch->public_list_published ? 'btn-outline-warning' : 'btn-outline-success' }}">{{ $batch->public_list_published ? 'Unpublish player list' : 'Publish player list' }}</button></form></div>
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-1">Extend invitation deadlines</h5>
+        <p class="text-muted small mb-0">Move one or more deadlines later without reopening or resending the invitation batch.</p>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-warning py-2 small">Deadlines can only be extended. The response deadline must not be after payment, and replacement payment must remain last. Existing invitation emails are not resent automatically.</div>
+        <form method="POST" action="{{ route('backend.masters.deadlines.extend', $batch) }}" onsubmit="return confirm('Extend these live invitation deadlines? Existing invitation emails will not be resent.');">
+          @csrf
+          @method('PATCH')
+          <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">Response deadline</label><input name="response_deadline" type="datetime-local" class="form-control" value="{{ old('response_deadline', $batch->response_deadline?->format('Y-m-d\\TH:i')) }}" required></div>
+            <div class="col-md-4"><label class="form-label">Payment deadline</label><input name="payment_deadline" type="datetime-local" class="form-control" value="{{ old('payment_deadline', $batch->payment_deadline?->format('Y-m-d\\TH:i')) }}" required></div>
+            <div class="col-md-4"><label class="form-label">Replacement payment deadline</label><input name="replacement_payment_deadline" type="datetime-local" class="form-control" value="{{ old('replacement_payment_deadline', $batch->replacement_payment_deadline?->format('Y-m-d\\TH:i')) }}" required></div>
+          </div>
+          <button class="btn btn-outline-primary mt-3"><i class="ti ti-calendar-plus me-1"></i>Extend deadlines</button>
+        </form>
+      </div>
+    </div>
   @endif
   @if($batch->status !== 'sent' && !$batch->public_list_published)
     <div class="alert alert-info d-flex justify-content-between align-items-center gap-2"><span>Publish the invited player names publicly before sending emails?</span><form method="POST" action="{{ route('backend.masters.publish-names', $batch) }}" onsubmit="return confirm('Publish the invitation list publicly without sending invitation emails?');">@csrf<button class="btn btn-sm btn-outline-info"><i class="ti ti-world me-1"></i>Publish invitation list</button></form></div>

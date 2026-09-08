@@ -417,6 +417,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('batches/{batch}/restart', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'restartPage'])->name('restart.page');
     Route::get('batches/{batch}/readiness', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'readiness'])->name('readiness');
     Route::patch('batches/{batch}/details', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateDetails'])->name('details.update');
+    Route::patch('batches/{batch}/deadlines/extend', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
     Route::post('batches/{batch}/send-invitations', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'sendInvitations'])->name('send-invitations');
     Route::post('batches/{batch}/publish-names', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'publishNamesOnly'])->name('publish-names');
     Route::post('batches/{batch}/public-list', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'togglePublicList'])->name('public-list.toggle');

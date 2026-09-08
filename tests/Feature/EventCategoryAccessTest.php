@@ -94,10 +94,11 @@ class EventCategoryAccessTest extends TestCase
             ->assertSee('Event setup')
             ->assertSee('Event settings')
             ->assertSee('Event categories &amp; fees', false)
-            ->assertSee('Masters selection setup')
+            ->assertSee('Invitation setup')
             ->assertSee(route('admin.events.settings', $event), false)
             ->assertSee(route('admin.events.categories', $event), false)
             ->assertSee(route('backend.masters.setup', $event), false)
+            ->assertDontSee('Masters selection setup')
             ->assertDontSee('Configure Masters categories');
     }
 }

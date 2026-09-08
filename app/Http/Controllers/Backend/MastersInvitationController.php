@@ -156,6 +156,20 @@ class MastersInvitationController extends Controller
         return redirect()->route('backend.masters.review', $batch)->with('success', 'Invitation details saved. Review the invitees, then send the invitations.');
     }
 
+    public function extendDeadlines(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($batch);
+        $data = $request->validate([
+            'response_deadline' => ['required', 'date'],
+            'payment_deadline' => ['required', 'date'],
+            'replacement_payment_deadline' => ['required', 'date'],
+        ]);
+
+        $service->extendBatchDeadlines($batch, $data, $request->user());
+
+        return back()->with('success', 'Invitation deadlines extended. The invitation batch remains live and no emails were resent.');
+    }
+
     public function sendInvitations(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);

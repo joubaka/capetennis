@@ -64,7 +64,27 @@
 
   @php($sendLabel = $canPublishInvitations ? ($mastersBatch->public_list_published ? 'Send Invitations' : 'Send & Publish Invitations') : 'Prepare invitations')
   <div class="row g-3 mb-4">
-    <div class="col-xl-4 col-md-6"><div class="card h-100 management-panel"><div class="card-header d-flex align-items-center gap-2"><i class="ti ti-settings ti-md text-primary"></i><h5 class="mb-0">Masters Management</h5></div><div class="card-body d-grid gap-2"><a href="{{ $mastersBatch ? route('backend.masters.show', $mastersBatch) : '#masters-setup' }}" class="btn btn-primary dashboard-action"><i class="ti ti-users me-1"></i>Manage Invitations</a>@if($mastersBatch && $mastersBatch->status !== 'sent')<a href="{{ $canPublishInvitations ? route('backend.masters.review', $mastersBatch) : route('backend.masters.show', $mastersBatch) }}" class="btn btn-outline-success dashboard-action"><i class="ti ti-send me-1"></i>{{ $canPublishInvitations ? 'Publish invitations' : 'Prepare invitations' }}</a>@elseif($mastersBatch && $mastersBatch->status === 'sent')<form method="POST" action="{{ route('backend.masters.registration.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->registration_open ? 'Close Masters registration now?' : 'Open Masters registration now?' }}');">@csrf<input type="hidden" name="open" value="{{ $mastersBatch->registration_open ? 0 : 1 }}"><button class="btn {{ $mastersBatch->registration_open ? 'btn-outline-danger' : 'btn-outline-success' }} dashboard-action"><i class="ti ti-lock{{ $mastersBatch->registration_open ? '-open' : '' }} me-1"></i>{{ $mastersBatch->registration_open ? 'Close Masters registration' : 'Open Masters registration' }}<span class="text-info ms-auto" title="Controls whether invited players may register and pay." data-bs-toggle="tooltip"><i class="ti ti-info-circle"></i></span></button></form>@endif</div></div></div>
+    <div class="col-xl-4 col-md-6">
+      <div class="card h-100 management-panel">
+        <div class="card-header d-flex align-items-center gap-2"><i class="ti ti-settings ti-md text-primary"></i><h5 class="mb-0">Masters Management</h5></div>
+        <div class="card-body d-grid gap-2">
+          <a href="{{ $mastersBatch ? route('backend.masters.show', $mastersBatch) : route('backend.masters.setup', $event) }}" class="btn btn-primary dashboard-action"><i class="ti ti-users me-1"></i>{{ $mastersBatch ? 'Manage Invitations' : 'Create Invitations' }}</a>
+          @if($mastersBatch && $mastersBatch->status !== 'sent')
+            <a href="{{ $canPublishInvitations ? route('backend.masters.review', $mastersBatch) : route('backend.masters.show', $mastersBatch) }}" class="btn btn-outline-success dashboard-action"><i class="ti ti-send me-1"></i>{{ $canPublishInvitations ? 'Publish invitations' : 'Prepare invitations' }}</a>
+            <form method="POST" action="{{ route('backend.masters.restart', $mastersBatch) }}" onsubmit="return confirm('Restart this invitation batch? All generated invitations will be removed so you can create a new batch. This cannot be undone.');">
+              @csrf
+              <button class="btn btn-outline-danger dashboard-action w-100"><i class="ti ti-refresh me-1"></i>Restart invitation batch</button>
+            </form>
+          @elseif($mastersBatch && $mastersBatch->status === 'sent')
+            <form method="POST" action="{{ route('backend.masters.registration.toggle', $mastersBatch) }}" onsubmit="return confirm('{{ $mastersBatch->registration_open ? 'Close Masters registration now?' : 'Open Masters registration now?' }}');">
+              @csrf
+              <input type="hidden" name="open" value="{{ $mastersBatch->registration_open ? 0 : 1 }}">
+              <button class="btn {{ $mastersBatch->registration_open ? 'btn-outline-danger' : 'btn-outline-success' }} dashboard-action"><i class="ti ti-lock{{ $mastersBatch->registration_open ? '-open' : '' }} me-1"></i>{{ $mastersBatch->registration_open ? 'Close Masters registration' : 'Open Masters registration' }}<span class="text-info ms-auto" title="Controls whether invited players may register and pay." data-bs-toggle="tooltip"><i class="ti ti-info-circle"></i></span></button>
+            </form>
+          @endif
+        </div>
+      </div>
+    </div>
     <div class="col-xl-4 col-md-6">
       <div class="card h-100 border-start border-warning border-3 setup-panel">
         <div class="card-header d-flex align-items-center gap-2">
@@ -98,8 +118,8 @@
           <a href="{{ route('backend.masters.setup', $event) }}" class="setup-link">
             <span class="setup-link__icon"><i class="ti ti-list-details"></i></span>
             <span class="setup-link__copy">
-              <span class="setup-link__title">Masters selection setup</span>
-              <span class="setup-link__description">Map series rankings and set invite limits.</span>
+              <span class="setup-link__title">Invitation setup</span>
+              <span class="setup-link__description">Create invitation batches from the Series rankings and set invite limits.</span>
             </span>
             <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
           </a>
