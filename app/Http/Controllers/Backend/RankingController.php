@@ -183,12 +183,18 @@ class RankingController extends Controller
 
       return [$ranking->id => $legs];
     });
+    $tieBreakDetailsByRanking = $rankings->mapWithKeys(function ($ranking) {
+      $detail = $this->publicTieBreakDetail($ranking);
+
+      return $detail ? [$ranking->id => $detail] : [];
+    });
 
     return view('frontend.ranking.show_ranking', compact(
       'series',
       'rankings',
       'categories',
-      'displayLegsByRanking'
+      'displayLegsByRanking',
+      'tieBreakDetailsByRanking'
     ));
   }
 
@@ -753,6 +759,102 @@ class RankingController extends Controller
       ->orderByDesc('published_at')
       ->orderByDesc('updated_at')
       ->value('run_id');
+  }
+
+  /** @return array{method: string, summary: string, facts: array<int, array{label: string, value: string}>}|null */
+  private function publicTieBreakDetail($ranking): ?array
+  {
+    $meta = $ranking->meta_json ?? [];
+    if (is_string($meta)) {
+      $meta = json_decode($meta, true) ?: [];
+    }
+
+    $notes = collect($meta['tiebreak_notes'] ?? [])
+      ->map(fn ($note) => trim((string) $note))
+      ->filter();
+    $decision = is_array($meta['tie_decision'] ?? null) ? $meta['tie_decision'] : [];
+    $headToHead = is_array($decision['head_to_head_decision'] ?? null)
+      ? $decision['head_to_head_decision']
+      : (is_array($meta['head_to_head_decision'] ?? null) ? $meta['head_to_head_decision'] : []);
+
+    if ($notes->isEmpty() && empty($decision['confirmed_at']) && empty($headToHead['confirmed_at'])) {
+      return null;
+    }
+
+    $total = rtrim(rtrim(number_format((float) $ranking->total_points, 2, '.', ''), '0'), '.');
+    $facts = [['label' => 'Equal ranking total', 'value' => $total.' points']];
+    $reason = $decision['reason'] ?? null;
+
+    if ($reason === 'head_to_head' || ! empty($headToHead)) {
+      $facts[] = ['label' => 'Method', 'value' => 'Qualifying head-to-head'];
+      if (! empty($headToHead['event_name'])) {
+        $facts[] = ['label' => 'Event', 'value' => (string) $headToHead['event_name']];
+      }
+      if (! empty($headToHead['qualifying_set']['score'])) {
+        $facts[] = ['label' => 'Qualifying set', 'value' => (string) $headToHead['qualifying_set']['score']];
+      }
+      if (! empty($headToHead['phase'])) {
+        $facts[] = [
+          'label' => 'Eligible phase',
+          'value' => $headToHead['phase'] === 'playoff' ? 'Playoff' : 'Single-phase round robin',
+        ];
+      }
+
+      $won = (int) ($headToHead['winner_player_id'] ?? 0) === (int) $ranking->player_id;
+
+      return [
+        'method' => 'Qualifying head-to-head',
+        'summary' => $won
+          ? 'The players remained equal after the third-event comparison. This player won the qualifying head-to-head, and the administrator confirmed the result.'
+          : 'The players remained equal after the third-event comparison. Their order was decided by the qualifying head-to-head and confirmed by the administrator.',
+        'facts' => $facts,
+      ];
+    }
+
+    if ($reason === 'previous_ranking') {
+      $facts[] = ['label' => 'Method', 'value' => 'Previous published ranking'];
+
+      return [
+        'method' => 'Previous published ranking',
+        'summary' => 'No automatic rule or qualifying head-to-head separated the players. The administrator confirmed their order using the previous published ranking.',
+        'facts' => $facts,
+      ];
+    }
+
+    if ($reason === 'shared_position') {
+      $facts[] = ['label' => 'Decision', 'value' => 'Shared position retained'];
+
+      return [
+        'method' => 'Shared position',
+        'summary' => 'No automatic rule or qualifying head-to-head separated the players. The administrator confirmed that they remain in a shared position.',
+        'facts' => $facts,
+      ];
+    }
+
+    $usedThirdEvent = $reason === 'third_event_score'
+      || $notes->contains(fn (string $note) => str_contains($note, 'third-event score'));
+    if ($usedThirdEvent) {
+      $thirdScore = collect($meta['dropped_legs'] ?? [])->max('points') ?? 0;
+      $facts[] = ['label' => 'Method', 'value' => 'Higher third-event score'];
+      $facts[] = [
+        'label' => 'This player’s comparison score',
+        'value' => rtrim(rtrim(number_format((float) $thirdScore, 2, '.', ''), '0'), '.').' points',
+      ];
+
+      return [
+        'method' => 'Third-event score',
+        'summary' => 'The players had equal counted totals, so their next-best event score was compared automatically. The higher third-event score determined the order.',
+        'facts' => $facts,
+      ];
+    }
+
+    $facts[] = ['label' => 'Method', 'value' => 'Administrator decision'];
+
+    return [
+      'method' => 'Administrator decision',
+      'summary' => 'No automatic rule or qualifying head-to-head separated the players. The administrator reviewed the available ranking evidence and confirmed the final order.',
+      'facts' => $facts,
+    ];
   }
 
   private function normalizeCategoryName(string $name): string

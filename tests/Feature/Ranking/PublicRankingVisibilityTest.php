@@ -157,6 +157,100 @@ class PublicRankingVisibilityTest extends TestCase
         }
     }
 
+    public function test_public_leaderboard_explains_an_automatic_third_event_tiebreak(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create(['name' => 'u/12 Boys']);
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $tiedPlayer = Player::factory()->create(['name' => 'Third', 'surname' => 'Score']);
+        $ordinaryPlayer = Player::factory()->create(['name' => 'No', 'surname' => 'Tie']);
+
+        $this->row(
+            $series,
+            $list,
+            $category,
+            $tiedPlayer,
+            RankingStatus::Published,
+            'run-live',
+            now(),
+            [
+                'tiebreak_notes' => ['Tied on 1800 points; compared by third-event score (600 points).'],
+                'counting_legs' => [
+                    ['position' => 1, 'points' => 1000],
+                    ['position' => 2, 'points' => 800],
+                ],
+                'dropped_legs' => [
+                    ['position' => 3, 'points' => 600],
+                ],
+            ]
+        );
+        $this->row($series, $list, $category, $ordinaryPlayer, RankingStatus::Published, 'run-live', now());
+
+        $tiedRow = SeriesRanking::where('player_id', $tiedPlayer->id)->firstOrFail();
+        $ordinaryRow = SeriesRanking::where('player_id', $ordinaryPlayer->id)->firstOrFail();
+
+        $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()
+            ->assertSee('How the tie was broken')
+            ->assertSee('Third-event score')
+            ->assertSee('The higher third-event score determined the order.')
+            ->assertSee('This player’s comparison score')
+            ->assertSee('600 points')
+            ->assertSee('data-bs-target="#tie-break-'.$tiedRow->id.'"', false)
+            ->assertDontSee('data-bs-target="#tie-break-'.$ordinaryRow->id.'"', false);
+    }
+
+    public function test_public_head_to_head_explanation_omits_private_admin_details(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create(['name' => 'u/14 Girls']);
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $winner = Player::factory()->create(['name' => 'Head', 'surname' => 'Winner']);
+        $loser = Player::factory()->create(['name' => 'Head', 'surname' => 'Runner-up']);
+        $decision = [
+            'reason' => 'head_to_head',
+            'note' => 'Internal seeding note that must stay private.',
+            'confirmed_by' => 987654,
+            'confirmed_at' => now()->toIso8601String(),
+            'head_to_head_decision' => [
+                'winner_player_id' => $winner->id,
+                'event_name' => 'Overberg Championship Final',
+                'phase' => 'playoff',
+                'qualifying_set' => ['score' => '7-5'],
+            ],
+        ];
+
+        foreach ([[$winner, 1], [$loser, 2]] as [$player, $rank]) {
+            $this->row(
+                $series,
+                $list,
+                $category,
+                $player,
+                RankingStatus::Published,
+                'run-live',
+                now(),
+                [
+                    'tiebreak_notes' => ['Tied on 1600 points and third-event score; ordered by latest head-to-head winner.'],
+                    'tie_decision' => $decision,
+                ]
+            );
+            SeriesRanking::where('player_id', $player->id)->update([
+                'rank_position' => $rank,
+                'total_points' => 1600,
+            ]);
+        }
+
+        $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()
+            ->assertSee('Qualifying head-to-head')
+            ->assertSee('Overberg Championship Final')
+            ->assertSee('7-5')
+            ->assertSee('Playoff')
+            ->assertSee('This player won the qualifying head-to-head')
+            ->assertDontSee('Internal seeding note that must stay private.')
+            ->assertDontSee('987654');
+    }
+
     public function test_player_event_names_prefer_published_draws_then_results_then_not_available(): void
     {
         $series = Series::factory()->create(['leaderboard_published' => true]);

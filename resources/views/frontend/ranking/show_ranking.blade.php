@@ -33,6 +33,15 @@
   .public-ranking-player a { display: inline-flex; align-items: center; gap: .5rem; color: var(--bs-heading-color) !important; font-weight: 600; }
   .public-ranking-player a:hover { color: #14796e !important; }
   .public-ranking-player__action { display: inline-flex; align-items: center; gap: .2rem; padding: .22rem .45rem; border: 1px solid rgba(20,121,110,.28); border-radius: 999px; color: #14796e; background: rgba(20,121,110,.08); font-size: .65rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .public-ranking-tiebreak { display: inline-flex; align-items: center; gap: .25rem; margin-top: .35rem; padding: .28rem .55rem; border: 1px solid rgba(255,159,67,.5); border-radius: 999px; color: #8a4b08; background: rgba(255,159,67,.13); font-size: .7rem; font-weight: 700; line-height: 1; }
+  .public-ranking-tiebreak:hover, .public-ranking-tiebreak:focus { color: #6f3a00; background: rgba(255,159,67,.22); }
+  .public-ranking-tiebreak-modal .modal-content { border: 0; border-radius: .8rem; box-shadow: 0 .5rem 2rem rgba(34,48,62,.2); }
+  .public-ranking-tiebreak-modal .modal-header { background: rgba(255,159,67,.1); }
+  .public-ranking-tiebreak-facts { margin: 0; }
+  .public-ranking-tiebreak-fact { display: grid; grid-template-columns: minmax(7rem, .8fr) minmax(0, 1.2fr); gap: .75rem; padding: .65rem 0; border-top: 1px solid var(--bs-border-color); }
+  .public-ranking-tiebreak-fact dt, .public-ranking-tiebreak-fact dd { margin: 0; }
+  .public-ranking-tiebreak-fact dt { color: var(--bs-secondary-color); font-size: .75rem; font-weight: 600; }
+  .public-ranking-tiebreak-fact dd { color: var(--bs-heading-color); font-size: .82rem; font-weight: 600; overflow-wrap: anywhere; }
   .public-ranking-total { width: 150px; font-weight: 700; white-space: nowrap; }
   .public-ranking-scores { display: flex; flex-wrap: wrap; gap: .3rem; }
   .public-ranking-score { display: inline-flex; align-items: center; min-height: 1.55rem; padding: .25rem .65rem; border-radius: .25rem; color: #fff; font-size: .75rem; font-weight: 700; line-height: 1; white-space: nowrap; }
@@ -69,6 +78,9 @@
     .public-ranking-legend { padding: 0 1rem 1rem; }
     .public-ranking-table { min-width: 0; }
     .public-ranking-player a { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+    .public-ranking-tiebreak { display: flex; width: fit-content; }
+    .public-ranking-tiebreak-modal .modal-dialog { margin: .75rem; }
+    .public-ranking-tiebreak-fact { grid-template-columns: 1fr; gap: .2rem; }
     .public-ranking-score { padding-inline: .5rem; font-size: .7rem; }
   }
 </style>
@@ -143,6 +155,7 @@
                 @foreach($rows as $row)
                   @php
                     $displayLegs = $displayLegsByRanking->get($row->id, collect());
+                    $tieBreakDetail = $tieBreakDetailsByRanking->get($row->id);
                   @endphp
                   <tr class="public-ranking-row" data-player-name="{{ strtolower($row->player?->full_name ?? $row->player?->name ?? 'Unknown Player') }}">
                     <td class="public-ranking-rank">#{{ $row->rank_position }}</td>
@@ -152,6 +165,15 @@
                           {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
                           <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
+                        @if($tieBreakDetail)
+                          <button type="button"
+                                  class="btn public-ranking-tiebreak"
+                                  data-bs-toggle="modal"
+                                  data-bs-target="#tie-break-{{ $row->id }}"
+                                  aria-label="See how {{ $row->player->full_name ?? ($row->player->name ?? 'this player') }}'s tie was broken">
+                            <i class="ti ti-scale" aria-hidden="true"></i> Tie-break
+                          </button>
+                        @endif
                       @else
                         Unknown Player
                       @endif
@@ -180,6 +202,7 @@
               </tbody>
             </table>
           </div>
+
         </section>
       @endif
     @empty
@@ -193,6 +216,43 @@
     </div>
   </div>
 </div>
+
+@foreach($rankings as $row)
+  @php
+    $tieBreakDetail = $tieBreakDetailsByRanking->get($row->id);
+    $playerName = $row->player?->full_name ?? $row->player?->name ?? 'Player';
+  @endphp
+  @if($tieBreakDetail)
+    <div class="modal fade public-ranking-tiebreak-modal" id="tie-break-{{ $row->id }}" tabindex="-1" aria-labelledby="tie-break-title-{{ $row->id }}" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <div class="small text-muted">How the tie was broken</div>
+              <h5 class="modal-title" id="tie-break-title-{{ $row->id }}">{{ $playerName }}</h5>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <span class="badge bg-label-warning text-dark mb-2">{{ $tieBreakDetail['method'] }}</span>
+            <p>{{ $tieBreakDetail['summary'] }}</p>
+            <dl class="public-ranking-tiebreak-facts">
+              @foreach($tieBreakDetail['facts'] as $fact)
+                <div class="public-ranking-tiebreak-fact">
+                  <dt>{{ $fact['label'] }}</dt>
+                  <dd>{{ $fact['value'] }}</dd>
+                </div>
+              @endforeach
+            </dl>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  @endif
+@endforeach
 
 @section('page-script')
 <script>
