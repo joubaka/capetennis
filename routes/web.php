@@ -896,6 +896,11 @@ Route::delete(
     [EventEntryController::class, 'addPlayer']
   )->name('admin.category.addPlayer');
 
+  Route::patch(
+    'event/entry/{entry}/admin-payment-status',
+    [EventEntryController::class, 'updateAdminPaymentStatus']
+  )->name('admin.entry.admin-payment-status');
+
   Route::delete(
     'event/category/{categoryEvent}/remove-player/{registration}',
     [EventEntryController::class, 'removePlayer']

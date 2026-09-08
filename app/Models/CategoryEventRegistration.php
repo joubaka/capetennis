@@ -45,6 +45,7 @@ class CategoryEventRegistration extends Model
     'pf_transaction_id',
     'payment_status_id',
     'payment_method',
+    'admin_payment_status',
     'wallet_transaction_id',
 
     // Withdrawal
@@ -524,6 +525,15 @@ class CategoryEventRegistration extends Model
   public function getIsPaidAttribute(): bool
   {
     return (int) $this->payment_status_id === 1;
+  }
+
+  /**
+   * Whether this paid entry was created by an admin for private collection.
+   * This note is intentionally separate from the canonical payment state.
+   */
+  public function isAdminEntry(): bool
+  {
+    return in_array($this->admin_payment_status, ['unpaid', 'paid'], true);
   }
 
   // --------------------------------------------------

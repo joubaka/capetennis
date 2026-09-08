@@ -565,6 +565,61 @@ class EntryServiceTest extends TestCase
         ]);
     }
 
+    public function test_admin_add_is_canonically_paid_but_private_collection_starts_unpaid(): void
+    {
+        $admin  = User::factory()->create();
+        $event  = Event::factory()->create();
+        $ce     = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+
+        $entry = app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+
+        $this->assertSame(1, (int) $entry->payment_status_id);
+        $this->assertTrue($entry->is_paid);
+        $this->assertSame('unpaid', $entry->admin_payment_status);
+        $this->assertTrue($entry->isAdminEntry());
+    }
+
+    public function test_admin_private_payment_note_does_not_change_canonical_paid_state(): void
+    {
+        $admin  = User::factory()->create();
+        $event  = Event::factory()->create();
+        $ce     = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $service = app(EntryService::class);
+        $entry = $service->addPlayerAsAdmin($ce, $player->id, $admin);
+
+        $updated = $service->setAdminPaymentStatus($entry, true, $admin);
+
+        $this->assertSame('paid', $updated->admin_payment_status);
+        $this->assertSame(1, (int) $updated->payment_status_id);
+        $this->assertTrue($updated->is_paid);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => CategoryEventRegistration::class,
+            'subject_id' => $entry->id,
+            'description' => 'Admin entry private payment marked paid',
+        ]);
+    }
+
+    public function test_admin_payment_note_migration_backfills_legacy_admin_entries_as_unpaid(): void
+    {
+        $admin  = User::factory()->create();
+        $event  = Event::factory()->create();
+        $ce     = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+
+        $entry->update(['admin_payment_status' => null]);
+
+        $migration = require database_path(
+            'migrations/2026_09_08_000002_add_admin_payment_note_to_category_event_registrations.php'
+        );
+        $migration->up();
+
+        $this->assertSame('unpaid', $entry->refresh()->admin_payment_status);
+        $this->assertSame(1, (int) $entry->payment_status_id);
+    }
+
     // -----------------------------------------------------------------------
     // P0 HOTFIX 4 — hybridCancel uses server-side wallet_reserved only
     // -----------------------------------------------------------------------

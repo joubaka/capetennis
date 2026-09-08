@@ -79,7 +79,7 @@ class EntryService
                 'user_id'           => $actingUser->id,
                 'status'            => 'active',
                 'payment_status_id' => 1,
-                'payfast_id'        => 'Admin',
+                'admin_payment_status' => 'unpaid',
             ]);
 
             DB::table('transactions_pf')->insert([
@@ -112,6 +112,51 @@ class EntryService
             DB::afterCommit(fn () => event(new EntryCreated($entry, $actingUser, 'admin')));
 
             return $entry;
+        });
+    }
+
+    /**
+     * Update only the private-collection note for an admin-created entry.
+     * The canonical paid state stays unchanged so draws and event eligibility
+     * continue to treat the registration as a normal paid entry.
+     */
+    public function setAdminPaymentStatus(
+        CategoryEventRegistration $entry,
+        bool $paid,
+        User $actingUser
+    ): CategoryEventRegistration {
+        if (! $entry->isAdminEntry()) {
+            throw new \RuntimeException('Only admin-created entries have a private payment note.');
+        }
+
+        $previousStatus = $entry->admin_payment_status;
+        $newStatus = $paid ? 'paid' : 'unpaid';
+
+        if ($previousStatus === $newStatus) {
+            return $entry;
+        }
+
+        return DB::transaction(function () use ($entry, $actingUser, $previousStatus, $newStatus) {
+            $entry->update(['admin_payment_status' => $newStatus]);
+
+            activity('registration')
+                ->performedOn($entry)
+                ->causedBy($actingUser)
+                ->withProperties([
+                    'admin_payment_status_from' => $previousStatus,
+                    'admin_payment_status_to' => $newStatus,
+                    'canonical_payment_status_id' => $entry->payment_status_id,
+                ])
+                ->log("Admin entry private payment marked {$newStatus}");
+
+            Log::info('[EntryService] Admin entry private payment note updated', [
+                'entry_id' => $entry->id,
+                'from' => $previousStatus,
+                'to' => $newStatus,
+                'actor' => $actingUser->id,
+            ]);
+
+            return $entry->refresh();
         });
     }
 

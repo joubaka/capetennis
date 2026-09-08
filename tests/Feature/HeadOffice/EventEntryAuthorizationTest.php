@@ -4,8 +4,12 @@ namespace Tests\Feature\HeadOffice;
 
 use App\Exports\EventEntriesExport;
 use App\Models\CategoryEvent;
+use App\Models\CategoryEventRegistration;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\Player;
+use App\Models\PlayerRegistration;
+use App\Models\Registration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -204,6 +208,60 @@ class EventEntryAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    // ── admin private payment note ──────────────────────────────────────────
+
+    public function test_event_admin_can_toggle_private_payment_note_without_changing_paid_entry(): void
+    {
+        $entry = $this->createEntryWithAdminPaymentStatus('unpaid');
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('admin.entry.admin-payment-status', $entry), ['paid' => true])
+            ->assertOk()
+            ->assertJsonPath('admin_payment_status', 'paid')
+            ->assertJsonPath('canonical_payment_status', 'paid');
+
+        $entry->refresh();
+        $this->assertSame('paid', $entry->admin_payment_status);
+        $this->assertSame(1, (int) $entry->payment_status_id);
+    }
+
+    public function test_ordinary_user_cannot_toggle_admin_private_payment_note(): void
+    {
+        $entry = $this->createEntryWithAdminPaymentStatus('unpaid');
+
+        $this->actingAs($this->ordinaryUser)
+            ->patchJson(route('admin.entry.admin-payment-status', $entry), ['paid' => true])
+            ->assertForbidden();
+
+        $this->assertSame('unpaid', $entry->refresh()->admin_payment_status);
+    }
+
+    public function test_event_admin_cannot_toggle_another_events_private_payment_note(): void
+    {
+        $otherEvent = Event::factory()->create(['eventType' => 1]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $entry = $this->createEntryWithAdminPaymentStatus('unpaid', $otherCategory);
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('admin.entry.admin-payment-status', $entry), ['paid' => true])
+            ->assertForbidden();
+
+        $this->assertSame('unpaid', $entry->refresh()->admin_payment_status);
+    }
+
+    public function test_non_admin_entry_cannot_receive_private_payment_note(): void
+    {
+        $entry = $this->createEntryWithAdminPaymentStatus(null);
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('admin.entry.admin-payment-status', $entry), ['paid' => true])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($entry->refresh()->admin_payment_status);
+        $this->assertSame(1, (int) $entry->payment_status_id);
+    }
+
     // ── removePlayer ─────────────────────────────────────────────────────────
 
     public function test_guest_is_redirected_from_remove_player(): void
@@ -225,5 +283,27 @@ class EventEntryAuthorizationTest extends TestCase
                 'categoryEvent' => $this->categoryEvent->id,
                 'registration'  => $registration->id,
             ]))->assertForbidden();
+    }
+
+    private function createEntryWithAdminPaymentStatus(
+        ?string $adminPaymentStatus,
+        ?CategoryEvent $categoryEvent = null
+    ): CategoryEventRegistration {
+        $registration = Registration::factory()->create();
+        $player = Player::factory()->create();
+
+        PlayerRegistration::create([
+            'registration_id' => $registration->id,
+            'player_id' => $player->id,
+        ]);
+
+        return CategoryEventRegistration::factory()->create([
+            'category_event_id' => ($categoryEvent ?? $this->categoryEvent)->id,
+            'registration_id' => $registration->id,
+            'user_id' => $this->admin->id,
+            'status' => 'active',
+            'payment_status_id' => 1,
+            'admin_payment_status' => $adminPaymentStatus,
+        ]);
     }
 }

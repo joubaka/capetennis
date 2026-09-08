@@ -112,6 +112,43 @@ class EventEntryController extends Controller
   }
 
   /**
+   * Toggle the private payment note on an admin-created entry.
+   * This never changes payment_status_id or any financial ledger record.
+   */
+  public function updateAdminPaymentStatus(Request $request, CategoryEventRegistration $entry)
+  {
+    $categoryEvent = $entry->categoryEvent;
+    abort_unless($categoryEvent, 404);
+    $this->authorize('event-draw.view', $categoryEvent->event);
+
+    $data = $request->validate([
+      'paid' => ['required', 'boolean'],
+    ]);
+
+    try {
+      $entry = $this->entryService->setAdminPaymentStatus(
+        $entry,
+        (bool) $data['paid'],
+        $request->user()
+      );
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+    }
+
+    $result = [
+      'success' => true,
+      'admin_payment_status' => $entry->admin_payment_status,
+      'canonical_payment_status' => $entry->is_paid ? 'paid' : 'unpaid',
+    ];
+
+    if (! $request->expectsJson()) {
+      return back()->with('success', "Admin entry marked {$entry->admin_payment_status}.");
+    }
+
+    return response()->json($result);
+  }
+
+  /**
    * Remove a registration from a category.
    */
   public function removePlayer(CategoryEvent $categoryEvent, Registration $registration)
@@ -491,6 +528,7 @@ class EventEntryController extends Controller
       'event'           => $event?->name ?? '—',
       'entry_status'    => $entry->status,
       'payment_status'  => $entry->payment_status_id == 1 ? 'Paid' : 'Unpaid',
+      'admin_payment_status' => $entry->admin_payment_status,
       'payment_method'  => $paymentMethod,
       'pf_transaction_id' => $entry->pf_transaction_id,
       'payfast_id'      => $entry->payfast_id,

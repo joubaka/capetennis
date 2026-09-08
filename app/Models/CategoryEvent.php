@@ -27,7 +27,19 @@ class CategoryEvent extends Model
     public function registrations()
     {
         return $this->belongsToMany(Registration::class, 'category_event_registrations', 'category_event_id', 'registration_id')
-            ->withPivot('id', 'status', 'withdrawn_at', 'user_id', 'refund_method', 'refund_status', 'refund_gross', 'refund_net', 'refunded_at');
+            ->withPivot(
+                'id',
+                'status',
+                'withdrawn_at',
+                'user_id',
+                'payment_status_id',
+                'admin_payment_status',
+                'refund_method',
+                'refund_status',
+                'refund_gross',
+                'refund_net',
+                'refunded_at'
+            );
     }
     public function withdrawals()
     {

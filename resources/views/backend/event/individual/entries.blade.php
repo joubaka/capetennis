@@ -345,12 +345,7 @@
                   @endif
                 </td>
                 <td>
-                  <span class="badge {{ $reg->payment_status_id == 1 ? 'bg-success' : 'bg-warning' }}">
-                    {{ $reg->payment_status_id == 1 ? 'Paid' : 'Unpaid' }}
-                  </span>
-                  @if($reg->payfast_id === 'Admin')
-                    <br><span class="badge bg-info text-dark mt-1" style="font-size:.65rem;">Admin Added</span>
-                  @endif
+                  @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
                 </td>
                <td class="col-actions text-end">
   <div class="dropdown">
@@ -1079,6 +1074,54 @@ if (addForm) {
         .catch(() => toastr.error('Add player failed. Please try again.'));
     });
 }
+
+    /* =====================
+   ADMIN PRIVATE PAYMENT NOTE
+===================== */
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.admin-payment-toggle-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+    if (btn.disabled) return;
+
+    const paid = btn.dataset.nextPaid === '1';
+    btn.disabled = true;
+
+    fetch(btn.dataset.url, {
+        method: 'PATCH',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ paid })
+    })
+    .then(async response => {
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Payment note could not be updated.');
+        }
+        return result;
+    })
+    .then(result => {
+        const isPaid = result.admin_payment_status === 'paid';
+        const container = btn.closest('[data-admin-payment-note]');
+        const badge = container?.querySelector('[data-admin-payment-badge]');
+
+        if (badge) {
+            badge.textContent = `Admin entry ${isPaid ? 'paid' : 'unpaid'}`;
+            badge.className = `badge ${isPaid ? 'bg-success' : 'bg-warning text-dark'}`;
+        }
+
+        btn.dataset.nextPaid = isPaid ? '0' : '1';
+        btn.textContent = isPaid ? 'Mark unpaid' : 'Mark paid';
+        btn.className = `btn btn-xs ${isPaid ? 'btn-outline-warning' : 'btn-outline-success'} admin-payment-toggle-btn`;
+        toastr.success(`Admin entry marked ${isPaid ? 'paid' : 'unpaid'}.`);
+    })
+    .catch(error => toastr.error(error.message || 'Payment note could not be updated.'))
+    .finally(() => { btn.disabled = false; });
+});
 
     /* =====================
    MOVE PLAYER
