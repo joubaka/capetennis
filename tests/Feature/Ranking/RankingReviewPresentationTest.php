@@ -35,6 +35,24 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('Finalize & Publish Rankings', $home);
     }
 
+    public function test_ranking_page_has_a_compact_mobile_admin_workflow(): void
+    {
+        $view = file_get_contents(resource_path('views/backend/ranking/series/list.blade.php'));
+
+        $this->assertStringContainsString('@media (max-width: 767.98px)', $view);
+        $this->assertStringContainsString('ranking-mobile-actions', $view);
+        $this->assertStringContainsString('ranking-primary-action', $view);
+        $this->assertStringContainsString('Review {{ $pendingTieDecisions }} pending', $view);
+        $this->assertStringContainsString('ranking-more-actions', $view);
+        $this->assertStringContainsString('ranking-process-step-column', $view);
+        $this->assertStringContainsString("'is-current-step'", $view);
+        $this->assertStringContainsString('ranking-table-wrap', $view);
+        $this->assertStringContainsString('ranking-player-row', $view);
+        $this->assertStringContainsString('data-label="Event scores"', $view);
+        $this->assertStringContainsString('querySelectorAll(\'.rebuild-ranking\')', $view);
+        $this->assertStringNotContainsString('id="rebuild-ranking"', $view);
+    }
+
     public function test_email_contains_the_signed_ranking_link_and_explicit_cutoff(): void
     {
         $email = file_get_contents(resource_path('views/emails/ranking-review.blade.php'));

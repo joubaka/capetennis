@@ -51,6 +51,71 @@
   }
   .ranking-process-step.is-current .ranking-process-number { background: var(--bs-primary); color: #fff; }
   .ranking-process-step.is-complete .ranking-process-number { background: var(--bs-success); color: #fff; }
+  .ranking-more-actions summary { list-style: none; }
+  .ranking-more-actions summary::-webkit-details-marker { display: none; }
+  .ranking-more-actions-menu { display: grid; gap: .5rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  @media (max-width: 767.98px) {
+    .ranking-header-card { margin-bottom: 1rem !important; }
+    .ranking-header-body { align-items: stretch !important; gap: .85rem !important; padding: 1rem; }
+    .ranking-header-copy { min-width: 0; width: 100%; }
+    .ranking-header-copy h4 { font-size: 1.35rem; }
+    .ranking-run-id {
+      display: block;
+      max-width: min(100%, 18rem);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ranking-primary-action { min-height: 2.75rem; }
+    .ranking-more-actions-menu .btn { align-items: center; display: inline-flex; justify-content: center; min-height: 2.65rem; }
+    #ranking-process-guide { margin-bottom: 1rem !important; }
+    #ranking-process-guide .card-header { padding: 1rem 1rem .5rem; }
+    #ranking-process-guide .card-header .small { display: none; }
+    #ranking-process-guide .card-body { padding: .75rem 1rem 1rem; }
+    .ranking-process-step-column { display: none; }
+    .ranking-process-step-column.is-current-step { display: block; }
+    #ranking-process-guide .alert { margin-top: .75rem !important; }
+    .ranking-table-wrap { overflow: visible !important; padding: .75rem !important; }
+    .ranking-table, .ranking-table tbody, .ranking-table tr, .ranking-table td { display: block; width: 100%; }
+    .ranking-table thead { display: none; }
+    .ranking-table .ranking-player-row {
+      background: var(--bs-body-bg);
+      border: 1px solid var(--bs-border-color);
+      border-radius: .75rem;
+      box-shadow: 0 .15rem .45rem rgba(47, 43, 61, .06);
+      margin-bottom: .75rem;
+      padding: .75rem;
+    }
+    .ranking-table .ranking-player-row > td { border: 0; padding: .2rem 0; }
+    .ranking-table.table-striped .ranking-player-row > td { background: transparent; box-shadow: none; }
+    .ranking-table .ranking-player-row > td[data-label]::before {
+      color: var(--bs-secondary-color);
+      content: attr(data-label);
+      display: inline-block;
+      font-size: .72rem;
+      font-weight: 600;
+      margin-right: .4rem;
+      text-transform: uppercase;
+    }
+    .ranking-table .ranking-player-name { font-size: 1rem; font-weight: 600; }
+    .ranking-table .ranking-player-scores { margin-top: .45rem; }
+    .ranking-event-list { display: grid !important; grid-template-columns: 1fr; }
+    .ranking-event-score { min-width: 0; width: 100%; }
+    .ranking-table .tie-decision-note {
+      background: rgba(var(--bs-warning-rgb), .08) !important;
+      border: 1px solid rgba(var(--bs-warning-rgb), .45);
+      border-radius: .75rem;
+      margin: -.35rem 0 1rem;
+      padding: .75rem;
+      scroll-margin-top: 1rem;
+    }
+    .ranking-table .tie-decision-note > td:first-child { display: none; }
+    .ranking-table .tie-decision-note > td { border: 0; padding: 0; }
+    .tie-decision-content { flex-direction: column; }
+    .tie-decision-content > .badge { align-self: flex-start; }
+    .tie-decision-form { padding: .75rem !important; }
+  }
 
   @media print {
     body * { visibility: hidden; }
@@ -73,10 +138,35 @@
 @section('content')
 <div class="container-xl print-area">
 
+  @php
+    $pendingTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
+      fn ($decision) => empty($decision['confirmed'])
+    )->count();
+    $legacyTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
+      fn ($decision) => !empty($decision['requires_rebuild'])
+    )->count();
+    $firstPendingTie = collect($tieDecisionAdvisories ?? [])->first(
+      fn ($decision) => empty($decision['confirmed'])
+    );
+    $firstPendingTieGroupKey = collect($tieDecisionAdvisories ?? [])->search(
+      fn ($decision) => empty($decision['confirmed'])
+    );
+    $firstPendingTieAnchor = $firstPendingTie['tie_key'] ?? $firstPendingTieGroupKey;
+    $workflowStep = match (true) {
+      !$activeStatus => 1,
+      $activeStatus === 'calculated' && $pendingTieDecisions > 0 => 2,
+      $activeStatus === 'calculated' => 3,
+      $activeStatus === 'reviewed' && !$reviewCampaign => 4,
+      $activeStatus === 'reviewed' => 5,
+      $activeStatus === 'published' => 6,
+      default => 1,
+    };
+  @endphp
+
   {{-- HEADER --}}
-  <div class="card mb-4 no-print">
-    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
-      <div>
+  <div class="card mb-4 no-print ranking-header-card">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3 ranking-header-body">
+      <div class="ranking-header-copy">
         <h4 class="mb-1">Ranking List</h4>
         <div class="text-muted">
           {{ $series->name }} ({{ $series->year }})
@@ -86,12 +176,12 @@
             {{ $activeStatus ? ucfirst($activeStatus) : 'No ranking run' }}
           </span>
           @if($activeRunId)
-            <small class="text-muted">Run {{ $activeRunId }}</small>
+            <small class="text-muted ranking-run-id" title="{{ $activeRunId }}">Run {{ $activeRunId }}</small>
           @endif
         </div>
       </div>
 
-      <div class="d-flex gap-2 flex-wrap">
+      <div class="d-none d-md-flex gap-2 flex-wrap ranking-header-actions">
         <a href="{{ route('series.show', $series) }}" class="btn btn-outline-secondary">
           <i class="ti ti-arrow-left me-1"></i> Back to Series
         </a>
@@ -104,7 +194,7 @@
           <i class="ti ti-printer me-1"></i> Print Rankings
         </button>
 
-        <button id="rebuild-ranking" class="btn btn-warning">
+        <button class="btn btn-warning rebuild-ranking">
           <i class="ti ti-refresh me-1"></i> Rebuild Rankings
         </button>
 
@@ -133,26 +223,72 @@
           </button>
         @endif
       </div>
+
+      <div class="d-md-none w-100 ranking-mobile-actions">
+        @if($activeStatus === 'calculated' && $legacyTieDecisions > 0)
+          <button class="btn btn-warning w-100 rebuild-ranking ranking-primary-action">
+            <i class="ti ti-refresh me-1"></i> Rebuild to review {{ $legacyTieDecisions }} {{ Str::plural('tie', $legacyTieDecisions) }}
+          </button>
+        @elseif($activeStatus === 'calculated' && $pendingTieDecisions > 0 && $firstPendingTieAnchor !== false)
+          <a href="#tie-decision-{{ $firstPendingTieAnchor }}" class="btn btn-warning w-100 ranking-primary-action">
+            <i class="ti ti-scale me-1"></i> Review {{ $pendingTieDecisions }} pending {{ Str::plural('tie', $pendingTieDecisions) }}
+          </a>
+        @elseif($activeStatus === 'calculated')
+          <button class="btn btn-info w-100 ranking-lifecycle-action ranking-primary-action"
+                  data-url="{{ route('ranking.series.ranking.review', $series) }}"
+                  data-confirm="Mark this complete run as reviewed?">
+            <i class="ti ti-check me-1"></i> Mark Reviewed
+          </button>
+        @elseif(!$activeStatus)
+          <button class="btn btn-warning w-100 rebuild-ranking ranking-primary-action">
+            <i class="ti ti-refresh me-1"></i> Build Rankings
+          </button>
+        @elseif($activeStatus === 'reviewed' && !$reviewCampaign)
+          <button class="btn btn-success w-100 ranking-primary-action" data-bs-toggle="modal" data-bs-target="#rankingReviewModal">
+            <i class="ti ti-mail-forward me-1"></i> Share for Review
+          </button>
+        @elseif($activeStatus === 'reviewed')
+          <button class="btn btn-success w-100 ranking-lifecycle-action ranking-primary-action"
+                  data-url="{{ route('ranking.series.ranking.publish', $series) }}"
+                  data-confirm="Finalize and publish the exact ranking circulated to participants?">
+            <i class="ti ti-world-upload me-1"></i> Finalize &amp; Publish
+          </button>
+        @endif
+
+        <details class="ranking-more-actions mt-2">
+          <summary class="btn btn-outline-secondary w-100">More actions</summary>
+          <div class="ranking-more-actions-menu mt-2">
+            <a href="{{ route('series.show', $series) }}" class="btn btn-outline-secondary">
+              <i class="ti ti-arrow-left me-1"></i> Back to Series
+            </a>
+            <a href="{{ route('ranking.series.audit', $series) }}" class="btn btn-outline-info">
+              <i class="ti ti-clipboard-check me-1"></i> Audit Rankings
+            </a>
+            <button class="btn btn-outline-dark" onclick="window.print()">
+              <i class="ti ti-printer me-1"></i> Print Rankings
+            </button>
+            <button class="btn btn-outline-warning rebuild-ranking">
+              <i class="ti ti-refresh me-1"></i> Rebuild Rankings
+            </button>
+            @if($activeStatus === 'reviewed' && !$reviewCampaign)
+              <button class="btn btn-outline-success ranking-lifecycle-action"
+                      data-url="{{ route('ranking.series.ranking.publish', $series) }}"
+                      data-confirm="Publish this reviewed run directly to the public leaderboard?">
+                <i class="ti ti-world-upload me-1"></i> Publish directly
+              </button>
+            @endif
+            @if($activeStatus === 'published' && $hasArchivedSnapshot)
+              <button class="btn btn-outline-danger ranking-lifecycle-action"
+                      data-url="{{ route('ranking.series.ranking.rollback', $series) }}"
+                      data-confirm="Roll back to the previous published snapshot?">
+                <i class="ti ti-history me-1"></i> Roll Back
+              </button>
+            @endif
+          </div>
+        </details>
+      </div>
     </div>
   </div>
-
-  @php
-    $pendingTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
-      fn ($decision) => empty($decision['confirmed'])
-    )->count();
-    $legacyTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
-      fn ($decision) => !empty($decision['requires_rebuild'])
-    )->count();
-    $workflowStep = match (true) {
-      !$activeStatus => 1,
-      $activeStatus === 'calculated' && $pendingTieDecisions > 0 => 2,
-      $activeStatus === 'calculated' => 3,
-      $activeStatus === 'reviewed' && !$reviewCampaign => 4,
-      $activeStatus === 'reviewed' => 5,
-      $activeStatus === 'published' => 6,
-      default => 1,
-    };
-  @endphp
 
   <div class="card mb-4 no-print border-start border-primary border-3" id="ranking-process-guide">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -174,7 +310,7 @@
           @php
             $stepClass = $workflowStep > $stepNumber ? 'is-complete' : ($workflowStep === $stepNumber ? 'is-current' : '');
           @endphp
-          <div class="col-lg col-md-6">
+          <div class="col-lg col-md-6 ranking-process-step-column {{ $workflowStep === $stepNumber ? 'is-current-step' : '' }}">
             <div class="ranking-process-step {{ $stepClass }} h-100">
               <div class="d-flex align-items-center gap-2 mb-1">
                 <span class="ranking-process-number">{{ $workflowStep > $stepNumber ? '✓' : $stepNumber }}</span>
@@ -280,8 +416,8 @@
           <h5 class="mb-0 category-title">{{ $category->name }}</h5>
         </div>
 
-        <div class="card-body table-responsive">
-          <table class="table table-striped align-middle mb-0">
+        <div class="card-body table-responsive ranking-table-wrap">
+          <table class="table table-striped align-middle mb-0 ranking-table">
             <thead class="table-light">
               <tr>
                 <th width="70">Rank</th>
@@ -302,19 +438,19 @@
                   $tieDecision = $isLastInTie ? ($tieDecisionAdvisories[$tieKey] ?? null) : null;
                 @endphp
 
-                <tr>
-                  <td class="rank-pos">#{{ $row->rank_position }}</td>
+                <tr class="ranking-player-row">
+                  <td class="rank-pos" data-label="Rank">#{{ $row->rank_position }}</td>
 
-                  <td>
+                  <td class="ranking-player-name" data-label="Player">
                     {{ $row->player->full_name
                       ?? $row->player->name
                       ?? 'Unknown Player' }}
                   </td>
 
-                  <td class="points">{{ $row->total_points }}</td>
+                  <td class="points" data-label="Points">{{ $row->total_points }}</td>
 
-                  <td>
-                    <div class="d-flex gap-2 flex-wrap">
+                  <td class="ranking-player-scores" data-label="Event scores">
+                    <div class="d-flex gap-2 flex-wrap ranking-event-list">
                       @foreach($legs as $leg)
                         @php
                           $event = $leg['event'];
@@ -371,10 +507,10 @@
                 </tr>
 
                 @if($tieDecision)
-                  <tr class="tie-decision-note">
+                  <tr class="tie-decision-note" id="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}">
                     <td></td>
                     <td colspan="3">
-                      <div class="d-flex gap-2 align-items-start py-2">
+                      <div class="d-flex gap-2 align-items-start py-2 tie-decision-content">
                         <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} mt-1">
                           {{ $tieDecision['confirmed'] ? 'Tie decision confirmed' : 'Confirmation required' }}
                         </span>
@@ -579,9 +715,8 @@ toastr.options = {
   timeOut: 2500
 };
 
-document.getElementById('rebuild-ranking')?.addEventListener('click', () => {
-  const btn = document.getElementById('rebuild-ranking');
-  btn.disabled = true;
+document.querySelectorAll('.rebuild-ranking').forEach(button => button.addEventListener('click', () => {
+  button.disabled = true;
 
   fetch('{{ route('ranking.series.rebuild', $series) }}', {
     method: 'POST',
@@ -602,9 +737,9 @@ document.getElementById('rebuild-ranking')?.addEventListener('click', () => {
   })
   .catch(error => {
     toastr.error(error.message || 'Failed to rebuild rankings');
-    btn.disabled = false;
+    button.disabled = false;
   });
-});
+}));
 
 document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
   button.addEventListener('click', async () => {
