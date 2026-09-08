@@ -225,7 +225,7 @@ class SeriesRankingController extends Controller
     }
 
     return response()->json([
-      'message' => 'Tie decision confirmed for this ranking run.',
+      'message' => 'Tie decision saved for this ranking run.',
       'decision' => $decision,
     ]);
   }

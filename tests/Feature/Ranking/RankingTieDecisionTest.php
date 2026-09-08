@@ -60,7 +60,7 @@ class RankingTieDecisionTest extends TestCase
         $this->actingAs($admin)->postJson(route('ranking.series.ranking.review', $series))->assertOk();
     }
 
-    public function test_confirmed_decision_is_final_for_the_run(): void
+    public function test_confirmed_decision_can_be_reordered_and_its_reason_changed_while_calculated(): void
     {
         [$series, $event, $players, $tieKey] = $this->seedTie();
         $admin = $this->authorizedAdmin($event);
@@ -71,12 +71,63 @@ class RankingTieDecisionTest extends TestCase
             'note' => 'Current order retained.',
         ])->assertOk();
 
+        $originalCreatedAt = DB::table('ranking_tie_decisions')
+            ->where('series_id', $series->id)
+            ->value('created_at');
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('Edit tie decision')
+            ->assertSee('Current order retained.');
+
         $this->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
             'ordered_player_ids' => [$players[1]->id, $players[0]->id],
             'reason' => 'other',
-            'note' => 'Attempt to replace the final decision.',
+            'note' => 'Tournament committee corrected the order after reviewing the records.',
+        ])->assertOk()
+            ->assertJsonPath('message', 'Tie decision saved for this ranking run.')
+            ->assertJsonPath('decision.reason', 'other')
+            ->assertJsonPath('decision.confirmed_order.0', $players[1]->id);
+
+        $this->assertSame(1, SeriesRanking::where('player_id', $players[1]->id)->value('rank_position'));
+        $this->assertSame(2, SeriesRanking::where('player_id', $players[0]->id)->value('rank_position'));
+        $this->assertDatabaseHas('ranking_tie_decisions', [
+            'series_id' => $series->id,
+            'tie_key' => $tieKey,
+            'reason' => 'other',
+            'note' => 'Tournament committee corrected the order after reviewing the records.',
+        ]);
+        $this->assertSame(
+            (string) $originalCreatedAt,
+            (string) DB::table('ranking_tie_decisions')->where('series_id', $series->id)->value('created_at')
+        );
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => Series::class,
+            'subject_id' => $series->id,
+            'causer_id' => $admin->id,
+            'description' => 'Ranking tie decision updated',
+        ]);
+    }
+
+    public function test_reviewed_decision_cannot_be_edited_without_a_new_calculated_run(): void
+    {
+        [$series, $event, $players, $tieKey] = $this->seedTie();
+        $admin = $this->authorizedAdmin($event);
+
+        $this->actingAs($admin)->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+            'ordered_player_ids' => [$players[0]->id, $players[1]->id],
+            'reason' => 'previous_ranking',
+            'note' => 'Current order retained.',
+        ])->assertOk();
+        $this->postJson(route('ranking.series.ranking.review', $series))->assertOk();
+
+        $this->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+            'ordered_player_ids' => [$players[1]->id, $players[0]->id],
+            'reason' => 'other',
+            'note' => 'Late change.',
         ])->assertUnprocessable()
-            ->assertJsonPath('message', 'This tie decision is already final for the current ranking run. Rebuild to replace it.');
+            ->assertJsonPath('message', "Expected exactly one calculated ranking run for series {$series->id}; found 0.");
     }
 
     public function test_existing_third_event_resolution_does_not_require_admin_approval(): void

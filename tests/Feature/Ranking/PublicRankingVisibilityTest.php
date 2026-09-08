@@ -251,6 +251,42 @@ class PublicRankingVisibilityTest extends TestCase
             ->assertDontSee('987654');
     }
 
+    public function test_public_explanation_uses_the_amended_admin_reason_instead_of_old_head_to_head_evidence(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create(['name' => 'u/14 Boys']);
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $player = Player::factory()->create();
+
+        $this->row(
+            $series,
+            $list,
+            $category,
+            $player,
+            RankingStatus::Published,
+            'run-live',
+            now(),
+            [
+                'tiebreak_notes' => ['Tie broken by previous published ranking — administrator confirmed.'],
+                'tie_decision' => [
+                    'reason' => 'previous_ranking',
+                    'confirmed_at' => now()->toIso8601String(),
+                    'head_to_head_decision' => [
+                        'winner_player_id' => $player->id,
+                        'event_name' => 'Earlier head-to-head evidence',
+                        'phase' => 'playoff',
+                        'qualifying_set' => ['score' => '6-4'],
+                    ],
+                ],
+            ]
+        );
+
+        $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()
+            ->assertSee('Previous published ranking')
+            ->assertDontSee('Earlier head-to-head evidence');
+    }
+
     public function test_player_event_names_prefer_published_draws_then_results_then_not_available(): void
     {
         $series = Series::factory()->create(['leaderboard_published' => true]);

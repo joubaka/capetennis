@@ -785,7 +785,7 @@ class RankingController extends Controller
     $facts = [['label' => 'Equal ranking total', 'value' => $total.' points']];
     $reason = $decision['reason'] ?? null;
 
-    if ($reason === 'head_to_head' || ! empty($headToHead)) {
+    if ($reason === 'head_to_head' || ($reason === null && ! empty($headToHead))) {
       $facts[] = ['label' => 'Method', 'value' => 'Qualifying head-to-head'];
       if (! empty($headToHead['event_name'])) {
         $facts[] = ['label' => 'Event', 'value' => (string) $headToHead['event_name']];

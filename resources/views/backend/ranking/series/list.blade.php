@@ -562,11 +562,25 @@
                             <div class="small text-muted mt-1">Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.</div>
                           @endif
 
-                          @if($activeStatus === 'calculated' && !$tieDecision['confirmed'] && !$tieDecision['requires_rebuild'] && $tieDecision['tie_key'])
+                          @if($activeStatus === 'calculated' && !$tieDecision['requires_rebuild'] && $tieDecision['tie_key'])
+                            @php
+                              $selectedTieOrder = $tieDecision['confirmed_order'] ?: $tieDecision['suggested_order'];
+                              $selectedTieReason = $tieDecision['reason']
+                                ?: ($tieDecision['suggested_method'] === 'head_to_head' ? 'head_to_head' : 'previous_ranking');
+                            @endphp
+                            @if($tieDecision['confirmed'])
+                              <details class="mt-2">
+                                <summary class="btn btn-sm btn-outline-warning">
+                                  <i class="ti ti-edit me-1"></i>Edit tie decision
+                                </summary>
+                            @endif
                             <form class="tie-decision-form border rounded p-3 mt-2 bg-white"
+                                  data-is-edit="{{ $tieDecision['confirmed'] ? '1' : '0' }}"
                                   data-url="{{ route('ranking.series.ranking.tie-decision.confirm', [$series, $tieDecision['tie_key']]) }}">
                               <div class="small text-muted mb-2">
-                                @if($tieDecision['suggested_method'] === 'head_to_head')
+                                @if($tieDecision['confirmed'])
+                                  Change the final order, reason, or note below. This update will be recorded in the ranking audit history.
+                                @elseif($tieDecision['suggested_method'] === 'head_to_head')
                                   Suggested order uses the qualifying head-to-head shown above.
                                 @else
                                   No complete automatic rule resolved this tie. Select the final order and explain the decision.
@@ -580,7 +594,7 @@
                                           data-player-id="{{ $player['id'] }}">
                                     @foreach($tieDecision['players'] as $positionIndex => $unusedPlayer)
                                       <option value="{{ $positionIndex + 1 }}"
-                                        {{ array_search($player['id'], $tieDecision['suggested_order'], true) === $positionIndex ? 'selected' : '' }}>
+                                        {{ array_search($player['id'], $selectedTieOrder, true) === $positionIndex ? 'selected' : '' }}>
                                         {{ $positionIndex + 1 }}
                                       </option>
                                     @endforeach
@@ -592,22 +606,25 @@
                                   <label class="form-label small fw-semibold">Reason</label>
                                   <select class="form-select form-select-sm tie-reason" required>
                                     @if($tieDecision['head_to_head_decision'])
-                                      <option value="head_to_head" {{ $tieDecision['suggested_method'] === 'head_to_head' ? 'selected' : '' }}>Qualifying head-to-head</option>
+                                      <option value="head_to_head" {{ $selectedTieReason === 'head_to_head' ? 'selected' : '' }}>Qualifying head-to-head</option>
                                     @endif
-                                    <option value="previous_ranking" {{ $tieDecision['suggested_method'] === 'manual' ? 'selected' : '' }}>Previous published ranking</option>
-                                    <option value="shared_position">Keep a shared position</option>
-                                    <option value="other">Other administrator decision</option>
+                                    <option value="previous_ranking" {{ $selectedTieReason === 'previous_ranking' ? 'selected' : '' }}>Previous published ranking</option>
+                                    <option value="shared_position" {{ $selectedTieReason === 'shared_position' ? 'selected' : '' }}>Keep a shared position</option>
+                                    <option value="other" {{ $selectedTieReason === 'other' ? 'selected' : '' }}>Other administrator decision</option>
                                   </select>
                                 </div>
                                 <div class="col-md-7">
                                   <label class="form-label small fw-semibold">Decision note</label>
-                                  <textarea class="form-control form-control-sm tie-note" rows="2" maxlength="1000" placeholder="Add the reason or supporting context. Required when Other is selected."></textarea>
+                                  <textarea class="form-control form-control-sm tie-note" rows="2" maxlength="1000" placeholder="Add the reason or supporting context. Required when Other is selected.">{{ $tieDecision['note'] }}</textarea>
                                 </div>
                               </div>
                               <button type="submit" class="btn btn-sm btn-warning mt-2">
-                                <i class="ti ti-check me-1"></i>Confirm final tie decision
+                                <i class="ti ti-check me-1"></i>{{ $tieDecision['confirmed'] ? 'Save tie decision changes' : 'Confirm final tie decision' }}
                               </button>
                             </form>
+                            @if($tieDecision['confirmed'])
+                              </details>
+                            @endif
                           @elseif($activeStatus === 'calculated' && !$tieDecision['confirmed'] && !$tieDecision['tie_key'] && !empty($tieDecision['head_to_head_decision']['fixture_id']))
                             <button type="button"
                                     class="btn btn-sm btn-warning mt-2 legacy-head-to-head-confirm"
@@ -775,7 +792,11 @@ document.querySelectorAll('.tie-decision-form').forEach(form => {
       toastr.error('Give every tied player a unique order position.');
       return;
     }
-    if (!window.confirm('Confirm this final tie order and reason for the current ranking run?')) return;
+    const isEdit = form.dataset.isEdit === '1';
+    const confirmationMessage = isEdit
+      ? 'Save these changes to the confirmed tie order or reason? The update will be recorded in the audit history.'
+      : 'Confirm this final tie order and reason for the current ranking run?';
+    if (!window.confirm(confirmationMessage)) return;
 
     button.disabled = true;
     try {
@@ -795,12 +816,12 @@ document.querySelectorAll('.tie-decision-form').forEach(form => {
       const payload = await response.json();
       if (!response.ok) {
         const firstError = payload.errors ? Object.values(payload.errors).flat()[0] : null;
-        throw new Error(firstError || payload.message || 'Tie confirmation failed');
+        throw new Error(firstError || payload.message || (isEdit ? 'Tie decision update failed' : 'Tie confirmation failed'));
       }
       toastr.success(payload.message);
       location.reload();
     } catch (error) {
-      toastr.error(error.message || 'Tie confirmation failed');
+      toastr.error(error.message || (isEdit ? 'Tie decision update failed' : 'Tie confirmation failed'));
       button.disabled = false;
     }
   });

@@ -79,15 +79,25 @@ final class RankingTieDecisionService
                 throw new \RuntimeException('A custom note is required when Other is selected.');
             }
 
-            if (! empty($decision['confirmed_at'])) {
+            $wasConfirmed = ! empty($decision['confirmed_at']);
+            $previousDecision = $wasConfirmed ? $decision : null;
+            if ($wasConfirmed) {
                 $sameDecision = ($decision['confirmed_order'] ?? []) === $submittedOrder->all()
                     && ($decision['reason'] ?? null) === $reason
                     && trim((string) ($decision['note'] ?? '')) === $note;
-                if (! $sameDecision) {
-                    throw new \RuntimeException('This tie decision is already final for the current ranking run. Rebuild to replace it.');
+                if ($sameDecision) {
+                    return $decision;
                 }
 
-                return $decision;
+                $hasAuditRecord = DB::table('ranking_tie_decisions')
+                    ->where('series_id', $series->id)
+                    ->where('run_id', $runId)
+                    ->where('ranking_list_id', (int) ($decision['ranking_list_id'] ?? 0))
+                    ->where('tie_key', $tieKey)
+                    ->exists();
+                if (! $hasAuditRecord) {
+                    throw new \RuntimeException('The existing tie decision audit record is missing. Rebuild the ranking before changing it.');
+                }
             }
 
             $headToHead = $decision['head_to_head_decision'] ?? null;
@@ -141,26 +151,31 @@ final class RankingTieDecisionService
                 $row->forceFill(['rank_position' => $rank, 'meta_json' => $freshMeta])->save();
             }
 
+            $auditIdentity = [
+                'series_id' => (int) $series->id,
+                'run_id' => $runId,
+                'ranking_list_id' => (int) $decision['ranking_list_id'],
+                'tie_key' => $tieKey,
+            ];
+            $auditValues = [
+                'total_points' => (int) $decision['total_points'],
+                'player_ids' => json_encode($expectedPlayers->all(), JSON_THROW_ON_ERROR),
+                'ordered_player_ids' => json_encode($submittedOrder->all(), JSON_THROW_ON_ERROR),
+                'reason' => $reason,
+                'note' => $note !== '' ? $note : null,
+                'fixture_id' => $headToHead['fixture_id'] ?? null,
+                'confirmed_by' => (int) $actor->id,
+                'confirmed_at' => $confirmedAt,
+                'decision_snapshot' => json_encode($confirmedDecision, JSON_THROW_ON_ERROR),
+                'updated_at' => $confirmedAt,
+            ];
+            if (! $wasConfirmed) {
+                $auditValues['created_at'] = $confirmedAt;
+            }
+
             DB::table('ranking_tie_decisions')->updateOrInsert(
-                [
-                    'series_id' => (int) $series->id,
-                    'run_id' => $runId,
-                    'ranking_list_id' => (int) $decision['ranking_list_id'],
-                    'tie_key' => $tieKey,
-                ],
-                [
-                    'total_points' => (int) $decision['total_points'],
-                    'player_ids' => json_encode($expectedPlayers->all(), JSON_THROW_ON_ERROR),
-                    'ordered_player_ids' => json_encode($submittedOrder->all(), JSON_THROW_ON_ERROR),
-                    'reason' => $reason,
-                    'note' => $note !== '' ? $note : null,
-                    'fixture_id' => $headToHead['fixture_id'] ?? null,
-                    'confirmed_by' => (int) $actor->id,
-                    'confirmed_at' => $confirmedAt,
-                    'decision_snapshot' => json_encode($confirmedDecision, JSON_THROW_ON_ERROR),
-                    'created_at' => $confirmedAt,
-                    'updated_at' => $confirmedAt,
-                ]
+                $auditIdentity,
+                $auditValues,
             );
 
             activity('ranking')
@@ -176,8 +191,9 @@ final class RankingTieDecisionService
                     'reason' => $reason,
                     'note' => $note !== '' ? $note : null,
                     'fixture_id' => $headToHead['fixture_id'] ?? null,
+                    'previous_decision' => $previousDecision,
                 ])
-                ->log('Ranking tie decision confirmed');
+                ->log($wasConfirmed ? 'Ranking tie decision updated' : 'Ranking tie decision confirmed');
 
             return $confirmedDecision;
         });
