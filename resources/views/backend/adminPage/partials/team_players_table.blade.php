@@ -36,7 +36,7 @@
           </td>
         @endif
         <td class="email">{{ $profile?->email ?? $noProfile?->email ?? '—' }}</td>
-        <td class="cellNr">{{ $profile?->cellNr ?? $noProfile?->cellNr ?? '—' }}</td>
+        <td class="cellNr">{{ $profile?->cellNr ?? $noProfile?->cell_nr ?? '—' }}</td>
         <td class="payStatus">
           <span class="badge {{ $payStatus ? 'bg-label-success' : 'bg-label-danger' }}">
             {{ $payStatus ? 'Paid' : 'Not Paid' }}

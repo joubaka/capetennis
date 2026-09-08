@@ -31,7 +31,8 @@
                    Import file
                 </div>
                 <div class="card-body">
-                   <form action="{{ route('backend.team.import.no.profile') }}"
+                   <div class="alert alert-info">Open the event’s Regions &amp; Teams page and choose <strong>Import Roster</strong> on the exact team. Imports are now scoped to that event and team.</div>
+                   <form action="#"
       method="post"
       enctype="multipart/form-data">
   @csrf
@@ -48,7 +49,7 @@
 
   <div class="row mb-3">
     <div class="col-sm-9 offset-sm-3">
-      <button type="submit" class="btn btn-success">Submit</button>
+      <button type="submit" class="btn btn-success" disabled>Choose a team from the event page</button>
     </div>
   </div>
 </form>

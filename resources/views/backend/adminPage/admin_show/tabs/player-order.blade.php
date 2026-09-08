@@ -130,7 +130,7 @@
                           @endif
 
                           <td>{{ $profile?->email ?? $noProfile?->email ?? '—' }}</td>
-                          <td>{{ $profile?->cellNr ?? $noProfile?->cellNr ?? '—' }}</td>
+                          <td>{{ $profile?->cellNr ?? $noProfile?->cell_nr ?? '—' }}</td>
 
                           <td class="payStatus">
                             <span class="badge {{ $payStatus ? 'bg-label-success' : 'bg-label-danger' }}">

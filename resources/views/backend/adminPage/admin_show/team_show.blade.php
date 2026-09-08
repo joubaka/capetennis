@@ -260,6 +260,7 @@
           @csrf
           <input type="hidden" id="import-team-id" name="team_id">
           <input type="hidden" id="import-region-id" name="region_id">
+          <input type="hidden" id="import-confirmed" name="confirmed" value="0">
 
           <!-- Spinner & status (hidden initially) -->
           <div id="import-status" class="d-flex align-items-center mb-3" style="display:none;">
@@ -274,8 +275,11 @@
             <label for="import-file" class="form-label">Select Excel File</label>
             <input type="file" class="form-control" id="import-file" name="file" accept=".xlsx,.xls,.csv" required>
             <small class="text-muted d-block mt-2">
-              Format: team_id, rank, name, surname, paystatus (or pass team_id via the modal)
+              One team per file. Team ID and payment status are deliberately not imported.
             </small>
+            <a id="import-template-link" class="btn btn-sm btn-outline-secondary mt-2" href="#">
+              <i class="ti ti-download me-1"></i>Download this team’s template
+            </a>
           </div>
 
           <div class="card bg-light">
@@ -284,38 +288,48 @@
               <table class="table table-sm table-borderless">
                 <thead>
                   <tr class="text-muted">
-                    <th>team_id</th>
                     <th>rank</th>
                     <th>name</th>
                     <th>surname</th>
-                    <th>paystatus</th>
+                    <th>dateOfBirth</th>
                   </tr>
                 </thead>
                 <tbody class="text-muted small">
                   <tr>
-                    <td>{{ $event->id }}</td>
                     <td>1</td>
                     <td>John</td>
                     <td>Doe</td>
-                    <td>0</td>
+                    <td>2013-05-20</td>
                   </tr>
                   <tr>
-                    <td>{{ $event->id }}</td>
                     <td>2</td>
                     <td>Jane</td>
                     <td>Smith</td>
-                    <td>1</td>
+                    <td></td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
+          <div id="import-preview" class="d-none mt-3">
+            <h6>Review before importing</h6>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Rank</th><th>Player</th><th>DOB</th><th>Existing matches</th></tr></thead>
+                <tbody id="import-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="alert alert-warning py-2 small mb-0">Confirm only after checking the names, ranks and possible existing-profile matches.</div>
+          </div>
+
+          <div id="import-errors" class="alert alert-danger d-none mt-3 mb-0"></div>
+
         </form>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="import-cancel-btn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="import-submit-btn">Import</button>
+        <button type="button" class="btn btn-primary" id="import-submit-btn">Preview roster</button>
       </div>
     </div>
   </div>
@@ -350,7 +364,7 @@
 <script>
   window.deleteCategoryUrl = "{{ url('backend/event/category') }}";
   window.eventAttachCategoryUrl = "{{ route('admin.categories.attach', $event->id) }}";
-  window.importNoProfileUrl = "{{ route('backend.team.import.no.profile') }}";
+  window.importNoProfileUrl = null;
 
   // Handle import noprofile button click
  

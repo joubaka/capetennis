@@ -58,7 +58,7 @@
 
                 {{-- Cell --}}
                 <td>
-                  {{ $profile->cellNr ?? $pivot?->cellNr ?? '' }}
+                  {{ $profile->cellNr ?? $pivot?->cell_nr ?? '' }}
                 </td>
                 {{-- Manual no-profile entry --}}
 {{-- No-Profile Name column --}}

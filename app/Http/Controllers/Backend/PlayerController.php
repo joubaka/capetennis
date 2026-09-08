@@ -22,6 +22,9 @@ use App\Models\User;
 use App\Models\UserPlayer;
 use App\Services\DisciplinaryService;
 use App\Services\PlayerIdentityService;
+use App\Domain\Teams\Services\ExternalTeamRosterService;
+use App\Models\Event;
+use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -30,6 +33,7 @@ class PlayerController extends Controller
     public function __construct(
       protected DisciplinaryService $disciplinaryService,
       protected PlayerIdentityService $playerIdentity,
+      protected ExternalTeamRosterService $externalRosters,
     ) {}
 
     /**
@@ -131,13 +135,19 @@ class PlayerController extends Controller
     $data = $request->all();
 
     if ($request->type === 'noProfile' && $request->filled('noProfile')) {
-      $noProfile = \App\Models\NoProfileTeamPlayer::find($request->noProfile);
+      $noProfile = NoProfileTeamPlayer::findOrFail($request->noProfile);
+      $team = Team::findOrFail($request->integer('team'));
+      $event = Event::findOrFail($request->integer('event'));
+      $this->externalRosters->assertClaimAvailable($event, $team, $noProfile);
 
-      if ($noProfile) {
-        $data['name'] = $noProfile->name ?? '';
-        $data['surname'] = $noProfile->surname ?? '';
-        $data['noProfileId'] = $noProfile->id;
-      }
+      $data['name'] = $noProfile->name ?? '';
+      $data['surname'] = $noProfile->surname ?? '';
+      $data['dob'] = $noProfile->date_of_birth?->format('Y-m-d') ?? '';
+      $data['email'] = $noProfile->email ?? '';
+      $data['cell_nr'] = $noProfile->cell_nr ?? '';
+      $data['noProfileId'] = $noProfile->id;
+      $data['team'] = $team->id;
+      $data['event'] = $event->id;
     }
 
     return view('frontend.player.create-player', $data);
@@ -163,6 +173,23 @@ class PlayerController extends Controller
       'email' => 'nullable|email'
     ]);
 
+    $claimContext = null;
+    if ($request->input('type') === 'noProfile') {
+      $claimIds = $request->validate([
+        'noProfile' => 'required|integer|exists:no_profile_team_players,id',
+        'team' => 'required|integer|exists:teams,id',
+        'event' => 'required|integer|exists:events,id',
+      ]);
+      $claimContext = [
+        'slot' => NoProfileTeamPlayer::findOrFail($claimIds['noProfile']),
+        'team' => Team::findOrFail($claimIds['team']),
+        'event' => Event::findOrFail($claimIds['event']),
+      ];
+      $this->externalRosters->assertClaimAvailable(
+        $claimContext['event'], $claimContext['team'], $claimContext['slot']
+      );
+    }
+
     $result = $this->playerIdentity->findOrCreate([
       'name' => $validated['player_name'],
       'surname' => $validated['player_surname'],
@@ -180,30 +207,16 @@ class PlayerController extends Controller
     ];
 
     // If this was triggered from a noProfile placeholder
-    if ($request->input('type') === 'noProfile' && $request->filled('noProfile')) {
-      $noProfile = NoProfileTeamPlayer::find($request->noProfile);
-
-      if ($noProfile) {
-        // Link the new Player to this placeholder
-        $noProfile->player_profile = $player->id;
-        $noProfile->save();
-
-        // Also update the real TeamPlayer slot if you keep a separate table
-        $teamPlayer = TeamPlayer::where('team_id', $request->team)
-          ->where('rank', $noProfile->rank)
-          ->first();
-
-        if ($teamPlayer) {
-          $teamPlayer->player_id = $player->id;
-          $teamPlayer->save();
-        }
-      }
+    if ($claimContext) {
+      $this->externalRosters->claim(
+        $request->user(), $claimContext['event'], $claimContext['team'], $claimContext['slot'], $player
+      );
 
       // Redirect to payment for this player
       return redirect()->route('team.payment.payfast', [
-        $request->team,
+        $claimContext['team']->id,
         $player->id,
-        $request->event
+        $claimContext['event']->id
       ])->with($notification);
     } else {
       // Return JSON response for AJAX requests
@@ -463,6 +476,12 @@ class PlayerController extends Controller
     $q = trim($request->get('q', ''));
 
     $players = Player::query()
+      ->when($request->input('scope') === 'owned', function ($query) use ($request) {
+        $query->where(function ($owned) use ($request) {
+          $owned->where('userId', $request->user()->id)
+            ->orWhereHas('users', fn ($users) => $users->whereKey($request->user()->id));
+        });
+      })
       ->when($q, function ($query) use ($q) {
         // Split into words: "John Smith" => ["John", "Smith"]
         $terms = preg_split('/\s+/', $q);
@@ -476,7 +495,7 @@ class PlayerController extends Controller
         }
       })
       ->limit(10)
-      ->get(['id', 'name', 'surname']);
+      ->get(['id', 'name', 'surname', 'dateOfBirth']);
 
     return response()->json($players);
   }
@@ -517,30 +536,22 @@ class PlayerController extends Controller
 
   public function attachNoProfile(Request $request)
   {
-    $playerId = $request->player_id;
-    $teamId = $request->team;
-    $eventId = $request->event;
-    $noProfileId = $request->noProfile;
+    $validated = $request->validate([
+      'player_id' => 'required|integer|exists:players,id',
+      'team' => 'required|integer|exists:teams,id',
+      'event' => 'required|integer|exists:events,id',
+      'noProfile' => 'required|integer|exists:no_profile_team_players,id',
+    ]);
 
-    $player = Player::findOrFail($playerId);
-    $noProfile = NoProfileTeamPlayer::findOrFail($noProfileId);
+    $player = Player::findOrFail($validated['player_id']);
+    $team = Team::findOrFail($validated['team']);
+    $event = Event::findOrFail($validated['event']);
+    $noProfile = NoProfileTeamPlayer::findOrFail($validated['noProfile']);
 
-    // Update the team player slot
-    $teamPlayer = TeamPlayer::where('team_id', $teamId)
-      ->where('rank', $noProfile->rank)
-      ->first();
-
-    if ($teamPlayer) {
-      $teamPlayer->player_id = $player->id;
-      $teamPlayer->save();
-    }
-
-    // ✅ Link noProfile to the real Player profile
-    $noProfile->player_profile = $player->id;
-    $noProfile->save();
+    $this->externalRosters->claim($request->user(), $event, $team, $noProfile, $player);
 
     // Redirect to payment
-    return redirect()->route('team.payment.payfast', [$teamId, $player->id, $eventId])
+    return redirect()->route('team.payment.payfast', [$team->id, $player->id, $event->id])
       ->with('message', 'Player attached successfully');
   }
 

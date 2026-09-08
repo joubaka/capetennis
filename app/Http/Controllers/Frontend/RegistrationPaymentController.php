@@ -582,6 +582,19 @@ class RegistrationPaymentController extends Controller
         ->with('success', 'Order already paid.');
     }
 
+    try {
+      app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertCanRegister(
+        $user,
+        \App\Models\Event::findOrFail($order->event_id),
+        \App\Models\Team::findOrFail($order->team_id),
+        \App\Models\Player::findOrFail($order->player_id)
+      );
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      return back()->withErrors($exception->errors());
+    } catch (\RuntimeException $exception) {
+      return back()->withErrors($exception->getMessage());
+    }
+
     $orderTotal = round((float) ($order->total_amount ?? 0), 2);
     $walletBalance = round((float) ($wallet->balance ?? 0), 2);
     $walletReserved = round(min($walletBalance, $orderTotal), 2);
@@ -628,6 +641,19 @@ class RegistrationPaymentController extends Controller
     if ((int) $order->pay_status === 1) {
       return redirect()->route('event.success', ['id' => $order->event_id])
         ->with('info', 'This order has already been paid.');
+    }
+
+    try {
+      app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertCanRegister(
+        $user,
+        \App\Models\Event::findOrFail($order->event_id),
+        \App\Models\Team::findOrFail($order->team_id),
+        \App\Models\Player::findOrFail($order->player_id)
+      );
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      return redirect()->route('events.index')->withErrors($exception->errors());
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('events.index')->withErrors($exception->getMessage());
     }
 
     app(\App\Domain\Payments\Services\TeamPaymentService::class)

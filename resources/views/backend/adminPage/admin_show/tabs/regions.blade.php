@@ -141,9 +141,11 @@
                                       data-region-id="{{ $region->id }}"
                                       data-team-id="{{ $team->id }}"
                                       data-team-name="{{ $team->name }}"
+                                      data-import-url="{{ route('backend.team.import.no.profile', [$event, $team]) }}"
+                                      data-template-url="{{ route('team.import.no.profile.template', [$event, $team]) }}"
                                       data-bs-toggle="modal"
                                       data-bs-target="#import-noprofile-modal">
-                                <i class="ti ti-download me-1"></i> Import Team
+                                <i class="ti ti-file-import me-1"></i> Import Roster
                               </button>
                             @endif
 

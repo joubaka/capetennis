@@ -2,78 +2,92 @@
 
 namespace App\Imports;
 
-use App\Models\NoProfileTeamPlayer;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class NoProfileTeamImport implements ToCollection, WithHeadingRow
 {
-  protected ?int $teamId;
-  protected int $importedCount = 0;
-  protected array $importedTeamIds = [];
+    private array $rows = [];
+    private array $errors = [];
 
-  public function __construct(?int $teamId = null)
-  {
-    $this->teamId = $teamId;
-  }
+    public function collection(Collection $rows): void
+    {
+        $seenRanks = [];
 
-  public function collection(Collection $rows)
-  {
-    foreach ($rows as $row) {
-      // prefer provided teamId, fallback to file column names (teamid or team_id)
-      $teamIdFromFile = (int) trim((string) ($row['teamid'] ?? $row['team_id'] ?? '0'));
-      $teamId = $this->teamId ?? $teamIdFromFile;
+        foreach ($rows as $index => $row) {
+            $rowNumber = $index + 2;
+            $rank = (int) trim((string) ($row['rank'] ?? 0));
+            $name = trim((string) ($row['name'] ?? $row['first_name'] ?? ''));
+            $surname = trim((string) ($row['surname'] ?? $row['last_name'] ?? ''));
+            $dateOfBirth = $this->normalizeDate($row['dateofbirth'] ?? $row['date_of_birth'] ?? $row['dob'] ?? null);
+            $email = trim((string) ($row['email'] ?? ''));
+            $cell = trim((string) ($row['cell'] ?? $row['cellnr'] ?? $row['cell_nr'] ?? ''));
 
-      $rank = (int) trim((string) ($row['rank'] ?? 0));
-      $name = trim((string) ($row['name'] ?? ''));
-      $surname = trim((string) ($row['surname'] ?? ''));
-      $payStatus = (int) trim((string) ($row['paystatus'] ?? $row['pay_status'] ?? 0));
-      $email = trim((string) ($row['email'] ?? ''));
-      $cell = trim((string) ($row['cell'] ?? $row['cellnr'] ?? ''));
+            if ($rank === 0 && $name === '' && $surname === '') {
+                continue;
+            }
 
-      // require team, rank, name + surname
-      if (!$teamId || !$rank || !$name || !$surname) {
-        continue;
-      }
+            if ($rank < 1) $this->errors[] = "Row {$rowNumber}: Rank must be a positive number.";
+            if ($name === '') $this->errors[] = "Row {$rowNumber}: Name is required.";
+            if ($surname === '') $this->errors[] = "Row {$rowNumber}: Surname is required.";
+            if ($rank > 0 && isset($seenRanks[$rank])) {
+                $this->errors[] = "Row {$rowNumber}: Rank {$rank} is duplicated (first used on row {$seenRanks[$rank]}).";
+            }
+            if ($dateOfBirth !== null && ! $this->validDate($dateOfBirth)) {
+                $this->errors[] = "Row {$rowNumber}: Date of birth must use YYYY-MM-DD.";
+            }
+            if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->errors[] = "Row {$rowNumber}: Email address is invalid.";
+            }
 
-      try {
-        NoProfileTeamPlayer::updateOrCreate(
-          [
-            'team_id' => $teamId,
-            'rank' => $rank,
-          ],
-          [
-            'name' => $name,
-            'surname' => $surname,
-            'pay_status' => $payStatus,
-            'email' => $email ?: null,
-            'cellNr' => $cell ?: null,
-            'player_profile' => null,
-          ]
-        );
+            if ($rank < 1 || $name === '' || $surname === '') continue;
 
-        $this->importedCount++;
-        $this->importedTeamIds[$teamId] = $teamId;
-      } catch (\Throwable $e) {
-        \Log::warning('NoProfileTeamImport row failed', [
-          'team_id' => $teamId,
-          'rank' => $rank,
-          'error' => $e->getMessage(),
-        ]);
-        // continue with next row
-      }
+            $seenRanks[$rank] = $rowNumber;
+            $this->rows[] = [
+                'row' => $rowNumber,
+                'rank' => $rank,
+                'name' => preg_replace('/\s+/u', ' ', $name) ?: $name,
+                'surname' => preg_replace('/\s+/u', ' ', $surname) ?: $surname,
+                'date_of_birth' => $dateOfBirth,
+                'email' => $email !== '' ? mb_strtolower($email) : null,
+                'cell_nr' => $cell !== '' ? $cell : null,
+            ];
+        }
+
+        usort($this->rows, fn (array $a, array $b): int => $a['rank'] <=> $b['rank']);
     }
-  }
 
-  public function getImportedCount(): int
-  {
-    return $this->importedCount;
-  }
+    public function rows(): array
+    {
+        return $this->rows;
+    }
 
-  public function getImportedTeamIds(): array
-  {
-    return array_values($this->importedTeamIds);
-  }
+    public function errors(): array
+    {
+        return array_values(array_unique($this->errors));
+    }
+
+    private function validDate(string $value): bool
+    {
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        return $date !== false && $date->format('Y-m-d') === $value;
+    }
+
+    private function normalizeDate(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') return null;
+
+        if (is_numeric($value)) {
+            try {
+                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value)->format('Y-m-d');
+            } catch (\Throwable) {
+                return (string) $value;
+            }
+        }
+
+        return trim((string) $value);
+    }
 }
 

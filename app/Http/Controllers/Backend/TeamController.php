@@ -28,6 +28,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\TeamPaymentOrder;
 use App\Domain\Payments\Services\TeamPaymentService;
+use App\Domain\Teams\Services\ExternalTeamRosterService;
+use App\Services\PlayerIdentityService;
 
 class TeamController extends Controller
 {
@@ -355,28 +357,17 @@ class TeamController extends Controller
         return redirect()->route('home')->withErrors('Please log in to continue.');
     }
 
-    // Verify authorization on the team
     $team = \App\Models\Team::findOrFail($teamId);
-    $this->authorize('team.players.manage', $team);
-
-    // ✅ Any authenticated user can register team players (same as individual registration)
-    // No role restriction needed - users can register any player
-
-    // load models (will 404 if missing)
     $player = \App\Models\Player::findOrFail($playerId);
     $event = \App\Models\Event::findOrFail($eventId);
 
     try {
-      app(\App\Services\PlayerEligibilityService::class)->assertEligible($player, $event);
+      app(ExternalTeamRosterService::class)->assertCanRegister($user, $event, $team, $player);
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      return redirect()->back()->withErrors($exception->errors());
     } catch (\RuntimeException $exception) {
       return redirect()->back()->withErrors($exception->getMessage());
     }
-
-    abort_unless((int) optional($team->category)->event_id === (int) $event->id, 404);
-    abort_unless(
-      TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->exists(),
-      404
-    );
 
     // compute fees (adapt the regionFee computation to your schema)
     $entryFee = (float) ($event->entryFee ?? 0);
@@ -487,23 +478,69 @@ class TeamController extends Controller
 
 
 
-  public function importNoProfile(Request $request)
+  public function importNoProfile(
+    Request $request,
+    Event $event,
+    Team $team,
+    ExternalTeamRosterService $rosters,
+    PlayerIdentityService $identities
+  )
   {
-    $this->authorize('team.admin', Event::class);
+    $this->authorize('event.manage', $event);
+    $rosters->assertTeamBelongsToEvent($team, $event);
 
     $request->validate([
-      'file' => 'required|file|mimes:xlsx,xls,csv',
+      'file' => 'required|file|mimes:xlsx,xls,csv|max:5120',
+      'confirmed' => 'nullable|boolean',
     ]);
 
     try {
-      $import = new \App\Imports\NoProfileTeamImport(); // ❌ no teamId here
-      \Maatwebsite\Excel\Facades\Excel::import($import, $request->file('file'));
+      $import = new NoProfileTeamImport();
+      Excel::import($import, $request->file('file'));
+      $rows = $import->rows();
+      $errors = array_merge($import->errors(), $rosters->validateImport($team, $rows));
+
+      $preview = collect($rows)->map(function (array $row) use ($identities): array {
+        $candidates = $row['date_of_birth']
+          ? collect([$identities->find($row['name'], $row['surname'], $row['date_of_birth'])])->filter()
+          : $identities->findNameCandidates($row['name'], $row['surname']);
+
+        return [
+          'rank' => $row['rank'],
+          'name' => $row['name'],
+          'surname' => $row['surname'],
+          'date_of_birth' => $row['date_of_birth'],
+          'candidate_count' => $candidates->count(),
+        ];
+      })->values();
+
+      if ($errors !== []) {
+        return response()->json([
+          'success' => false,
+          'message' => 'The roster has validation errors. Nothing was imported.',
+          'errors' => array_values(array_unique($errors)),
+          'preview' => $preview,
+        ], 422);
+      }
+
+      if (! $request->boolean('confirmed')) {
+        return response()->json([
+          'success' => true,
+          'requires_confirmation' => true,
+          'message' => 'Review the roster before confirming the import.',
+          'preview' => $preview,
+          'row_count' => count($rows),
+        ]);
+      }
+
+      $rosters->import($team, $rows, $request->user());
 
       return response()->json([
         'success' => true,
-        'message' => 'Import finished',
-        'imported_count' => $import->getImportedCount(),
-        'team_ids' => $import->getImportedTeamIds(),
+        'requires_confirmation' => false,
+        'message' => count($rows).' roster players imported into '.$team->name.'.',
+        'imported_count' => count($rows),
+        'team_id' => $team->id,
       ]);
     } catch (\Throwable $e) {
       \Log::error('NoProfile import failed', [
@@ -512,7 +549,7 @@ class TeamController extends Controller
 
       return response()->json([
         'success' => false,
-        'message' => 'Import failed: ' . $e->getMessage(),
+        'message' => 'The roster could not be read. Check the template and try again.',
       ], 422);
     }
   }
@@ -532,28 +569,27 @@ class TeamController extends Controller
 
 
 
-  public function downloadTemplate()
+  public function downloadTemplate(Event $event, Team $team, ExternalTeamRosterService $rosters)
   {
-    $this->authorize('team.admin', Event::class);
+    $this->authorize('event.manage', $event);
+    $rosters->assertTeamBelongsToEvent($team, $event);
 
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
 
     // Header row
-    $sheet->setCellValue('A1', 'Group');
-    $sheet->setCellValue('B1', 'Rank');
-    $sheet->setCellValue('C1', 'Name');
-    $sheet->setCellValue('D1', 'Surname');
-    $sheet->setCellValue('E1', 'PayStatus');
-    $sheet->setCellValue('F1', 'TeamID');
+    $sheet->setCellValue('A1', 'Rank');
+    $sheet->setCellValue('B1', 'Name');
+    $sheet->setCellValue('C1', 'Surname');
+    $sheet->setCellValue('D1', 'DateOfBirth');
+    $sheet->setCellValue('E1', 'Email');
+    $sheet->setCellValue('F1', 'Cell');
 
     // Example row
-    $sheet->setCellValue('A2', 'Dogters o/15');
-    $sheet->setCellValue('B2', '1');
-    $sheet->setCellValue('C2', 'Lisa');
-    $sheet->setCellValue('D2', 'van Zyl');
-    $sheet->setCellValue('E2', '0');
-    $sheet->setCellValue('F2', '721');
+    $sheet->setCellValue('A2', '1');
+    $sheet->setCellValue('B2', 'Lisa');
+    $sheet->setCellValue('C2', 'van Zyl');
+    $sheet->setCellValue('D2', '2013-05-20');
 
     // Autosize columns
     foreach (range('A', 'F') as $col) {
@@ -566,7 +602,7 @@ class TeamController extends Controller
       $writer->save('php://output');
     });
 
-    $fileName = 'no_profile_team_import_template.xlsx';
+    $fileName = 'external_roster_team_'.$team->id.'.xlsx';
     $response->headers->set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     $response->headers->set('Content-Disposition', 'attachment;filename="' . $fileName . '"');
     $response->headers->set('Cache-Control', 'max-age=0');
@@ -1008,14 +1044,16 @@ class TeamController extends Controller
     $order = \App\Models\TeamPaymentOrder::with('team', 'player', 'event', 'user')
       ->findOrFail($orderId);
 
-    // Verify the user is authorized for this team
-    if ($order->team_id) {
-      $team = Team::findOrFail($order->team_id);
-      $this->authorize('team.players.manage', $team);
+    if ((int) $order->user_id !== (int) auth()->id()) {
+      abort(403);
     }
 
     try {
-      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+      app(ExternalTeamRosterService::class)->assertCanRegister(
+        auth()->user(), $order->event, $order->team, $order->player
+      );
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      return redirect()->back()->withErrors($exception->errors());
     } catch (\RuntimeException $exception) {
       return redirect()->back()->withErrors($exception->getMessage());
     }

@@ -1234,8 +1234,8 @@ Route::delete(
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');
   Route::post('team/insertPlayer', [TeamController::class, 'insertPlayer'])->name('team.insert.player');
   Route::get('team/import/view', [TeamController::class, 'importView'])->name('team.import.view');
-  Route::post('team/import/action', [TeamController::class, 'importNoProfile'])->name('backend.team.import.no.profile');
-  Route::get('team/import/template', [TeamController::class, 'downloadTemplate'])
+  Route::post('event/{event}/team/{team}/external-roster/import', [TeamController::class, 'importNoProfile'])->name('backend.team.import.no.profile');
+  Route::get('event/{event}/team/{team}/external-roster/template', [TeamController::class, 'downloadTemplate'])
     ->name('team.import.no.profile.template');
   Route::get('team/{team}/players-table', [TeamController::class, 'teamPlayersTable']);
 

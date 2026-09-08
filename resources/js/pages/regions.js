@@ -27,8 +27,7 @@
   };
 
   // Provide import URL (matches routes/web.php)
-  window.importNoProfileUrl = `${APP_URL}/backend/team/import/action`;
-  console.log('🟢 Import URL:', window.importNoProfileUrl);
+window.importNoProfileUrl = window.importNoProfileUrl || null;
 
   // Timer state (optional small timer)
   let importTimerInterval = null;
@@ -83,6 +82,11 @@
     $('#import-team-id').val('');
     $('#import-region-id').val('');
     $('#import-team-name').text('');
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
     hideImportUI();
   });
 
@@ -470,7 +474,7 @@
     // Set region_id in the modal form
     $('#region_id').val(regionId);
     console.log('✅ [.addTeam] Set region_id to:', $('#region_id').val());
-    
+
     // Return true to allow Bootstrap to open the modal
     return true;
   });
@@ -579,15 +583,30 @@
     const regionId = $(this).data('region-id');
     const teamId = $(this).data('team-id');
     const teamName = $(this).data('team-name');
+    window.importNoProfileUrl = $(this).data('import-url');
     // Populate modal fields
     $('#import-team-id').val(teamId);
     $('#import-region-id').val(regionId);
     $('#import-team-name').text(teamName);
+    $('#import-template-link').attr('href', $(this).data('template-url'));
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
     $('#import-file').val(''); // Clear file input
     // Reset status
     $('#import-message').text('Ready to import. Choose a file.');
     $('#import-status').hide();
     stopImportTimer();
+  });
+
+  $('#import-file').on('change', function () {
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
   });
 
   // Handle import form submission - show spinner while importing
@@ -626,12 +645,25 @@
         $btn.prop('disabled', false);
         $file.prop('disabled', false);
         $cancel.prop('disabled', false);
+        if (response.requires_confirmation) {
+          const rows = response.preview || [];
+          $('#import-preview-body').html(rows.map(row => `
+            <tr>
+              <td>${row.rank}</td>
+              <td>${$('<div>').text(`${row.name} ${row.surname}`).html()}</td>
+              <td>${row.date_of_birth || '—'}</td>
+              <td><span class="badge ${row.candidate_count ? 'bg-label-warning' : 'bg-label-secondary'}">${row.candidate_count}</span></td>
+            </tr>
+          `).join(''));
+          $('#import-preview').removeClass('d-none');
+          $('#import-confirmed').val('1');
+          $btn.text(`Confirm import of ${response.row_count} players`);
+          toastr.info('Review the roster, then confirm the import.');
+          return;
+        }
+
         toastr.success(response.message || 'Import finished');
-        // hide modal after short delay
-        setTimeout(() => {
-          bootstrap.Modal.getInstance(document.getElementById('import-noprofile-modal'))?.hide();
-          location.reload();
-        }, 900);
+        setTimeout(() => location.reload(), 700);
       },
       error: function (xhr) {
         stopImportTimer();
@@ -639,8 +671,14 @@
         $btn.prop('disabled', false);
         $file.prop('disabled', false);
         $cancel.prop('disabled', false);
-        const msg = xhr.responseJSON?.message || 'Import failed. Please check the file format.';
+        const payload = xhr.responseJSON || {};
+        const msg = payload.message || 'Import failed. Please check the file format.';
         $('#import-message').text(msg);
+        const rawErrors = payload.errors || [];
+        const errors = Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat();
+        if (errors.length) {
+          $('#import-errors').removeClass('d-none').html(`<strong>Nothing was imported.</strong><ul class="mb-0 mt-1">${errors.map(error => `<li>${$('<div>').text(error).html()}</li>`).join('')}</ul>`);
+        }
         toastr.error(msg);
         console.error('Import failed', xhr);
       }
@@ -656,12 +694,3 @@
     return confirmationMessage;         // Gecko + WebKit browsers
   });
 })(jQuery, window, document);
-
-
-
-
-
-
-
-
-
