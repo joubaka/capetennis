@@ -185,27 +185,24 @@ final class RankingTieDecisionService
 
     public function assertAllConfirmed(Series $series, string $runId): void
     {
-        $tieGroups = SeriesRanking::where('series_id', $series->id)
+        $rows = SeriesRanking::where('series_id', $series->id)
             ->where('run_id', $runId)
             ->where('status', RankingStatus::Calculated->value)
-            ->get()
-            ->groupBy(fn (SeriesRanking $row) => $row->ranking_list_id.':'.$row->total_points)
-            ->filter(fn (Collection $group) => $group->count() > 1);
+            ->get();
+
+        $tieGroups = $rows
+            ->filter(fn (SeriesRanking $row) => ! empty($row->meta_json['tie_decision']['tie_key']))
+            ->groupBy(fn (SeriesRanking $row) => (string) $row->meta_json['tie_decision']['tie_key'])
+            ->filter(function (Collection $group): bool {
+                $decision = $group->first()->meta_json['tie_decision'] ?? [];
+
+                return ($decision['suggested_method'] ?? null) !== 'third_event_score'
+                    || $group->pluck('rank_position')->unique()->count() < $group->count();
+            });
 
         $pending = 0;
         foreach ($tieGroups as $group) {
             $decision = $group->map(fn (SeriesRanking $row) => $row->meta_json['tie_decision'] ?? null)->filter()->first();
-            if (! $decision) {
-                $legacyHeadToHead = $group
-                    ->map(fn (SeriesRanking $row) => $row->meta_json['head_to_head_decision'] ?? null)
-                    ->filter()
-                    ->first();
-                if ($legacyHeadToHead) {
-                    $this->headToHeadConfirmations->assertAllConfirmed($series, $runId);
-                    continue;
-                }
-                throw new \RuntimeException('This calculated ranking contains a tie without a decision record. Rebuild it before review.');
-            }
 
             $players = $group->pluck('player_id')->map(fn ($id) => (int) $id)->sort()->values();
             if ($players->all() !== collect($decision['player_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all()) {
@@ -226,6 +223,26 @@ final class RankingTieDecisionService
             if (! $exists) {
                 throw new \RuntimeException('A tie confirmation audit record is missing or does not match the ranking run.');
             }
+        }
+
+        $rowsWithoutDecision = $rows->filter(
+            fn (SeriesRanking $row) => empty($row->meta_json['tie_decision']['tie_key'])
+        );
+        if ($rowsWithoutDecision->contains(
+            fn (SeriesRanking $row) => ! empty($row->meta_json['head_to_head_decision'])
+        )) {
+            $this->headToHeadConfirmations->assertAllConfirmed($series, $runId);
+        }
+
+        $unresolvedLegacyGroups = $rowsWithoutDecision
+            ->groupBy(fn (SeriesRanking $row) => implode(':', [
+                $row->ranking_list_id,
+                $row->total_points,
+                $row->rank_position,
+            ]))
+            ->filter(fn (Collection $group) => $group->count() > 1);
+        if ($unresolvedLegacyGroups->isNotEmpty()) {
+            throw new \RuntimeException('This calculated ranking contains a tie without a decision record. Rebuild it before review.');
         }
 
         if ($pending > 0) {

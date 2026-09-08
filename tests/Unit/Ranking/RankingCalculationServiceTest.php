@@ -225,8 +225,8 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
         $this->assertStringContainsString('third-event score (600 points)', $this->rowFor($result, 1)->tiebreakNotes[0]);
-        $this->assertSame('third_event_score', $this->rowFor($result, 1)->tieDecision['suggested_method']);
-        $this->assertNull($this->rowFor($result, 1)->tieDecision['confirmed_at']);
+        $this->assertNull($this->rowFor($result, 1)->tieDecision);
+        $this->assertNull($this->rowFor($result, 2)->tieDecision);
     }
 
     public function test_third_event_tiebreak_can_be_disabled_for_a_series(): void
@@ -247,6 +247,28 @@ class RankingCalculationServiceTest extends TestCase
             $this->rowFor($result, 1)->rankPosition,
             $this->rowFor($result, 2)->rankPosition
         );
+    }
+
+    public function test_only_players_still_level_after_third_event_need_an_admin_decision(): void
+    {
+        $this->series->update(['auto_award_rule' => false]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 3], [2, 103, 1],
+            [3, 101, 4], [3, 102, 1], [3, 103, 2],
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+        $first = $this->rowFor($result, 1);
+        $second = $this->rowFor($result, 2);
+        $third = $this->rowFor($result, 3);
+
+        $this->assertSame($first->rankPosition, $second->rankPosition);
+        $this->assertNotSame($second->rankPosition, $third->rankPosition);
+        $this->assertSame('manual', $first->tieDecision['suggested_method']);
+        $this->assertSame([1, 2], $first->tieDecision['player_ids']);
+        $this->assertSame($first->tieDecision['tie_key'], $second->tieDecision['tie_key']);
+        $this->assertNull($third->tieDecision);
     }
 
     // ------------------------------------------------------------------

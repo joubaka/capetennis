@@ -302,17 +302,45 @@ class RankingListDetailService
     }
 
     /**
-     * Build one admin decision card for every equal-points group, including
-     * groups with no qualifying head-to-head evidence.
+     * Build admin decision cards only for groups still tied after the normal
+     * third-event comparison, including groups with no head-to-head evidence.
      *
      * @return array<string, array<string, mixed>>
      */
     public function tieDecisionAdvisories(Series $series, Collection $rankings): array
     {
         $headToHead = $this->headToHeadAdvisories($series, $rankings);
-        $groups = $rankings
+        $decisionGroups = $rankings
+            ->filter(fn ($ranking) => ! empty($ranking->meta_json['tie_decision']['tie_key']))
+            ->groupBy(fn ($ranking) => (string) $ranking->meta_json['tie_decision']['tie_key'])
+            ->filter(function (Collection $group): bool {
+                if ($group->count() <= 1) {
+                    return false;
+                }
+
+                $decision = $group->first()->meta_json['tie_decision'] ?? [];
+
+                return ($decision['suggested_method'] ?? null) !== 'third_event_score'
+                    || $group->pluck('rank_position')->unique()->count() < $group->count();
+            });
+        $legacyGroups = $rankings
+            ->filter(fn ($ranking) => empty($ranking->meta_json['tie_decision']['tie_key']))
             ->groupBy(fn ($ranking) => $this->tieKey((int) $ranking->ranking_list_id, (int) $ranking->total_points))
-            ->filter(fn (Collection $group) => $group->count() > 1);
+            ->filter(function (Collection $group) use ($headToHead): bool {
+                if ($group->count() <= 1) {
+                    return false;
+                }
+
+                $first = $group->first();
+                $evidenceKey = $this->tieKey((int) $first->category_id, (int) $first->total_points);
+                $hasHeadToHead = isset($headToHead[$evidenceKey]) || $group->contains(
+                    fn ($ranking) => ! empty($ranking->meta_json['head_to_head_decision'])
+                );
+                $hasSharedRank = $group->pluck('rank_position')->unique()->count() < $group->count();
+
+                return $hasHeadToHead || $hasSharedRank;
+            });
+        $groups = $decisionGroups->toBase()->merge($legacyGroups->toBase());
 
         return $groups->mapWithKeys(function (Collection $group, string $key) use ($headToHead): array {
             $orderedRows = $group->sortBy([

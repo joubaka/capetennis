@@ -18,7 +18,7 @@ class RankingTieDecisionTest extends TestCase
 {
     use DatabaseTransactions;
 
-    public function test_every_equal_points_group_requires_an_admin_decision_before_review(): void
+    public function test_unresolved_equal_points_group_requires_an_admin_decision_before_review(): void
     {
         [$series, $event, $players, $tieKey] = $this->seedTie();
         $admin = $this->authorizedAdmin($event);
@@ -77,6 +77,33 @@ class RankingTieDecisionTest extends TestCase
             'note' => 'Attempt to replace the final decision.',
         ])->assertUnprocessable()
             ->assertJsonPath('message', 'This tie decision is already final for the current ranking run. Rebuild to replace it.');
+    }
+
+    public function test_existing_third_event_resolution_does_not_require_admin_approval(): void
+    {
+        [$series, $event, $players] = $this->seedTie();
+        $admin = $this->authorizedAdmin($event);
+        $rows = SeriesRanking::where('series_id', $series->id)->orderBy('id')->get();
+
+        foreach ($rows as $index => $row) {
+            $meta = $row->meta_json;
+            $meta['tie_decision']['suggested_method'] = 'third_event_score';
+            $meta['tie_decision']['suggested_order'] = collect($players)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $row->update([
+                'rank_position' => $index + 1,
+                'meta_json' => $meta,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertDontSee('Confirmation required');
+
+        $this->postJson(route('ranking.series.ranking.review', $series))->assertOk();
     }
 
     public function test_multi_player_tie_supports_a_confirmed_shared_position(): void

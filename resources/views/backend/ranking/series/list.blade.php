@@ -432,9 +432,13 @@
                 @php
                   $legs = collect($scoreDetails[$row->id] ?? []);
                   $meta = is_array($row->meta_json) ? $row->meta_json : [];
-                  $tieKey = $row->ranking_list_id.':'.$row->total_points;
+                  $tieKey = $meta['tie_decision']['tie_key'] ?? ($row->ranking_list_id.':'.$row->total_points);
                   $nextRow = $rows->get($rowIndex + 1);
-                  $isLastInTie = !$nextRow || (int) $nextRow->total_points !== (int) $row->total_points;
+                  $nextMeta = $nextRow && is_array($nextRow->meta_json) ? $nextRow->meta_json : [];
+                  $nextTieKey = $nextRow
+                    ? ($nextMeta['tie_decision']['tie_key'] ?? ($nextRow->ranking_list_id.':'.$nextRow->total_points))
+                    : null;
+                  $isLastInTie = !$nextRow || $nextTieKey !== $tieKey;
                   $tieDecision = $isLastInTie ? ($tieDecisionAdvisories[$tieKey] ?? null) : null;
                 @endphp
 
@@ -531,7 +535,7 @@
                             @elseif($tieDecision['requires_rebuild'])
                               This legacy calculated tie has no run-scoped decision record. Rebuild the ranking before review.
                             @else
-                              Every equal-points ranking requires an administrator’s final decision before review, sharing, or publication.
+                              This group is still tied after the normal third-event comparison and requires an administrator’s final decision before review, sharing, or publication.
                             @endif
                           </div>
                           @if($tieDecision['matches'])
@@ -564,8 +568,6 @@
                               <div class="small text-muted mb-2">
                                 @if($tieDecision['suggested_method'] === 'head_to_head')
                                   Suggested order uses the qualifying head-to-head shown above.
-                                @elseif($tieDecision['suggested_method'] === 'third_event_score')
-                                  Suggested order uses the configured third-event score.
                                 @else
                                   No complete automatic rule resolved this tie. Select the final order and explain the decision.
                                 @endif
@@ -591,9 +593,6 @@
                                   <select class="form-select form-select-sm tie-reason" required>
                                     @if($tieDecision['head_to_head_decision'])
                                       <option value="head_to_head" {{ $tieDecision['suggested_method'] === 'head_to_head' ? 'selected' : '' }}>Qualifying head-to-head</option>
-                                    @endif
-                                    @if($tieDecision['suggested_method'] === 'third_event_score')
-                                      <option value="third_event_score" selected>Third-event score</option>
                                     @endif
                                     <option value="previous_ranking" {{ $tieDecision['suggested_method'] === 'manual' ? 'selected' : '' }}>Previous published ranking</option>
                                     <option value="shared_position">Keep a shared position</option>
