@@ -5,6 +5,8 @@ namespace Tests\Feature\Ranking;
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
 use App\Models\BulkEmailLog;
 use App\Models\Category;
+use App\Models\CategoryEvent;
+use App\Models\CategoryResult;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\RankingList;
@@ -15,6 +17,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -153,6 +156,67 @@ class RankingReviewCirculationTest extends TestCase
 
         $campaign->update(['status' => 'superseded']);
         $this->get($url)->assertStatus(410);
+    }
+
+    public function test_signed_provisional_page_shows_each_event_score_finish_and_counting_status(): void
+    {
+        Queue::fake();
+        $player = $this->rankedPlayer('Detail', 'detail@example.test', 1);
+        $events = Event::query()->where('series_id', $this->series->id)->get();
+        $countedEvent = $events->first();
+        $countedEvent->update(['name' => 'Overberg Leg 1', 'results_published' => true]);
+        $droppedEvent = Event::factory()->create([
+            'series_id' => $this->series->id,
+            'name' => 'Overberg Leg 2',
+            'results_published' => true,
+        ]);
+        $countedCategoryEvent = CategoryEvent::factory()->create(['event_id' => $countedEvent->id, 'category_id' => $this->category->id]);
+        $droppedCategoryEvent = CategoryEvent::factory()->create(['event_id' => $droppedEvent->id, 'category_id' => $this->category->id]);
+        $registration = \App\Models\Registration::factory()->create();
+        $registration->players()->attach($player->id);
+        CategoryResult::create([
+            'event_id' => $countedEvent->id,
+            'category_id' => $this->category->id,
+            'registration_id' => $registration->id,
+            'position' => 1,
+        ]);
+
+        SeriesRanking::where('player_id', $player->id)->update([
+            'total_points' => 900,
+            'meta_json' => [
+                'counting_legs' => [[
+                    'category_event_id' => $countedCategoryEvent->id,
+                    'position' => 2,
+                    'points' => 900,
+                ]],
+                'dropped_legs' => [[
+                    'category_event_id' => $droppedCategoryEvent->id,
+                    'position' => 4,
+                    'points' => 500,
+                ]],
+            ],
+        ]);
+
+        $campaign = app(RankingReviewCirculationService::class)->send(
+            $this->series,
+            $this->admin,
+            (string) Str::uuid(),
+            'Please check rankings',
+            'Review your ranking.',
+            'rankings@example.test',
+            now()->addHour(),
+        );
+
+        $this->get(URL::signedRoute('ranking.review.public', ['campaign' => $campaign->uuid]))
+            ->assertOk()
+            ->assertSee('Scores per event')
+            ->assertSee('Overberg Leg 1')
+            ->assertSee('900 pts')
+            ->assertSee('Finished #1')
+            ->assertSee('Ranking points position #2')
+            ->assertSee('Overberg Leg 2')
+            ->assertSee('500 pts')
+            ->assertSee('Not counted');
     }
 
     public function test_other_users_cannot_preview_or_send_a_series_circulation(): void
