@@ -242,29 +242,38 @@ final class MastersInvitationService
 
     public function updateBatchDetails(MastersInvitationBatch $batch, array $details): MastersInvitationBatch
     {
-        $response = isset($details['response_deadline']) ? now()->parse($details['response_deadline']) : null;
-        $payment = isset($details['payment_deadline']) ? now()->parse($details['payment_deadline']) : null;
-        $replacement = isset($details['replacement_payment_deadline']) ? now()->parse($details['replacement_payment_deadline']) : null;
-        if (!$response || !$payment || !$replacement) {
-            throw ValidationException::withMessages(['deadlines' => 'All Masters deadlines are required before invitations can be sent.']);
-        }
-        if ($response->isPast() || $payment->isPast() || $replacement->isPast()) {
-            throw ValidationException::withMessages(['deadlines' => 'Masters deadlines must be in the future.']);
-        }
-        if ($payment->lt($response)) {
-            throw ValidationException::withMessages(['payment_deadline' => 'The payment deadline must be after the response deadline.']);
-        }
-        if ($replacement->lt($payment)) {
-            throw ValidationException::withMessages(['replacement_payment_deadline' => 'The replacement payment deadline must be on or after the payment deadline.']);
-        }
-        $batch->update([
-            'response_deadline' => $response,
-            'payment_deadline' => $payment,
-            'replacement_payment_deadline' => $replacement,
-            'status' => 'ready_for_invitation',
-        ]);
+        return DB::transaction(function () use ($batch, $details) {
+            $locked = MastersInvitationBatch::query()->lockForUpdate()->findOrFail($batch->id);
+            if ($locked->status === 'sent') {
+                throw ValidationException::withMessages([
+                    'deadlines' => 'Sent invitation deadlines must be changed with the deadline extension action.',
+                ]);
+            }
 
-        return $batch->fresh();
+            $response = isset($details['response_deadline']) ? now()->parse($details['response_deadline']) : null;
+            $payment = isset($details['payment_deadline']) ? now()->parse($details['payment_deadline']) : null;
+            $replacement = isset($details['replacement_payment_deadline']) ? now()->parse($details['replacement_payment_deadline']) : null;
+            if (!$response || !$payment || !$replacement) {
+                throw ValidationException::withMessages(['deadlines' => 'All Masters deadlines are required before invitations can be sent.']);
+            }
+            if ($response->isPast() || $payment->isPast() || $replacement->isPast()) {
+                throw ValidationException::withMessages(['deadlines' => 'Masters deadlines must be in the future.']);
+            }
+            if ($payment->lt($response)) {
+                throw ValidationException::withMessages(['payment_deadline' => 'The payment deadline must be after the response deadline.']);
+            }
+            if ($replacement->lt($payment)) {
+                throw ValidationException::withMessages(['replacement_payment_deadline' => 'The replacement payment deadline must be on or after the payment deadline.']);
+            }
+            $locked->update([
+                'response_deadline' => $response,
+                'payment_deadline' => $payment,
+                'replacement_payment_deadline' => $replacement,
+                'status' => 'ready_for_invitation',
+            ]);
+
+            return $locked->fresh();
+        });
     }
 
     public function extendBatchDeadlines(MastersInvitationBatch $batch, array $details, User $actor): MastersInvitationBatch

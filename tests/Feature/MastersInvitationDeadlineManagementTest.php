@@ -110,6 +110,34 @@ class MastersInvitationDeadlineManagementTest extends TestCase
         $this->actingAs($ordinaryUser)
             ->patch(route('backend.masters.deadlines.extend', $batch), $deadlines)
             ->assertForbidden();
+
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $otherEventAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $otherEvent->id,
+            'user_id' => $otherEventAdmin->id,
+        ]);
+        $this->actingAs($otherEventAdmin)
+            ->patch(route('backend.masters.deadlines.extend', $batch), $deadlines)
+            ->assertForbidden();
+    }
+
+    public function test_original_details_endpoint_cannot_reopen_a_sent_batch(): void
+    {
+        $batch = $this->batch('sent');
+
+        $this->actingAs($this->superUser)
+            ->from(route('backend.masters.show', $batch))
+            ->patch(route('backend.masters.details.update', $batch), [
+                'response_deadline' => '2026-09-12 12:00:00',
+                'payment_deadline' => '2026-09-13 12:00:00',
+                'replacement_payment_deadline' => '2026-09-14 12:00:00',
+            ])
+            ->assertSessionHasErrors('deadlines');
+
+        $batch->refresh();
+        $this->assertSame('sent', $batch->status);
+        $this->assertSame('2026-09-10 12:00:00', $batch->response_deadline->format('Y-m-d H:i:s'));
     }
 
     public function test_dashboard_restores_invitation_setup_and_unsent_restart_actions(): void
