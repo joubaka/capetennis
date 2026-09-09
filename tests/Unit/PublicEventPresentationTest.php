@@ -53,4 +53,19 @@ class PublicEventPresentationTest extends TestCase
         $this->assertStringContainsString('frontend.event.partials.event-about', $html);
         $this->assertStringContainsString('Event documents', $html);
     }
+
+    public function test_team_region_picker_uses_wrapped_buttons_and_a_mobile_select_without_horizontal_scrolling(): void
+    {
+        foreach (['team.blade.php', 'interpro.blade.php'] as $template) {
+            $html = file_get_contents(resource_path('views/frontend/event/eventTypes/'.$template));
+            $this->assertStringContainsString('frontend.event.partials._region_team_picker', $html);
+            $this->assertStringNotContainsString('flex-nowrap overflow-auto', $html);
+        }
+
+        $picker = file_get_contents(resource_path('views/frontend/event/partials/_region_team_picker.blade.php'));
+        $this->assertStringContainsString('region-team-select', $picker);
+        $this->assertStringContainsString('region-tab-grid', $picker);
+        $this->assertStringContainsString('grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))', $picker);
+        $this->assertStringNotContainsString('overflow-auto', $picker);
+    }
 }

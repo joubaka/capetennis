@@ -51,50 +51,7 @@
         </div>
 
         @if($regions->isNotEmpty())
-          <div class="nav-align-top nav-tabs-shadow">
-
-            <ul class="nav nav-tabs flex-nowrap overflow-auto" role="tablist">
-              @foreach($regions as $idx => $region)
-                @php $tabId = 'team' . $region->id; @endphp
-                <li class="nav-item">
-                  <button class="nav-link {{ $idx === 0 ? 'active' : '' }}"
-                          data-bs-toggle="tab"
-                          data-bs-target="#{{ $tabId }}"
-                          aria-selected="{{ $idx === 0 ? 'true' : 'false' }}">
-                    {{ $region->region_name }}
-                  </button>
-                </li>
-              @endforeach
-            </ul>
-
-            <div class="tab-content pt-3">
-              @foreach($regions as $idx => $region)
-                @php $tabId = 'team' . $region->id; @endphp
-
-                <div class="tab-pane fade {{ $idx === 0 ? 'active show' : '' }}"
-                     id="{{ $tabId }}">
-                  <div class="row">
-
-                    @forelse($region->teams as $team)
-                      @if((int)($team->noProfile ?? 0) === 0)
-                        @include('frontend.event.partials.profile-team', ['team' => $team])
-                      @else
-                        @include('frontend.event.partials.no-profile-team', ['team' => $team])
-                      @endif
-                    @empty
-                      <div class="col-12">
-                        <div class="alert alert-secondary mb-0">
-                          No teams listed for this region yet.
-                        </div>
-                      </div>
-                    @endforelse
-
-                  </div>
-                </div>
-              @endforeach
-            </div>
-
-          </div>
+          @include('frontend.event.partials._region_team_picker', ['regions' => $regions])
         @else
           <div class="alert alert-secondary mt-3">
             Regions are not configured for this event.
