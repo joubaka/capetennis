@@ -43,6 +43,16 @@ final class RankingTeamEligibilityService
     }
 
     /** @param Collection<int, SeriesRanking> $rankings */
+    public function publiclyRanked(Collection $rankings, Series $series): Collection
+    {
+        if (max(1, (int) ($series->minimum_events_for_team_selection ?? 1)) === 1) {
+            return $rankings->values();
+        }
+
+        return $this->eligible($rankings, $series);
+    }
+
+    /** @param Collection<int, SeriesRanking> $rankings */
     public function eligible(Collection $rankings, Series $series): Collection
     {
         return $rankings

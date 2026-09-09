@@ -132,9 +132,9 @@
                 <div class="form-text">Series-wide default.</div>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold small mb-1">Events Required for Team Selection</label>
+                <label class="form-label fw-semibold small mb-1">Events Required for Public Ranking &amp; Team Selection</label>
                 <input type="number" name="minimum_events_for_team_selection" class="form-control" min="1" max="99" required value="{{ $series->minimum_events_for_team_selection ?? 1 }}">
-                <div class="form-text">Players remain ranked, but cannot be selected until they have this many actual results.</div>
+                <div class="form-text">Counts actual results from the events selected for each ranking list. Players below this number remain in the admin ranking but are omitted from the public ranking and team selection.</div>
               </div>
               <div class="col-md-4">
                 <label class="form-label fw-semibold small mb-1">Rank Type</label>
@@ -470,12 +470,24 @@
 
     fetch('{{ route('ranking.series.update', $series) }}', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+      },
       body: JSON.stringify(payload)
     })
     .then(async response => {
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Failed to save series settings');
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json')
+        ? await response.json()
+        : { message: `The server could not save the ranking settings (HTTP ${response.status}).` };
+      if (!response.ok) {
+        const validationMessage = payload.errors
+          ? Object.values(payload.errors).flat().find(Boolean)
+          : null;
+        throw new Error(validationMessage || payload.message || 'Failed to save series settings');
+      }
       return payload;
     })
     .then(r => {

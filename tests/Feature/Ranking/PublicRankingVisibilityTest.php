@@ -61,7 +61,7 @@ class PublicRankingVisibilityTest extends TestCase
             ->assertDontSee('Archived Player');
     }
 
-    public function test_public_leaderboard_marks_ranked_players_below_the_team_selection_minimum(): void
+    public function test_public_leaderboard_hides_players_below_the_selected_event_minimum_and_closes_rank_gaps(): void
     {
         $series = Series::factory()->create([
             'leaderboard_published' => true,
@@ -69,24 +69,41 @@ class PublicRankingVisibilityTest extends TestCase
         ]);
         $category = Category::factory()->create();
         $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
-        $player = Player::factory()->create(['name' => 'One Event Player']);
+        $first = Player::factory()->create(['name' => 'Eligible First']);
+        $hidden = Player::factory()->create(['name' => 'One Event Player']);
+        $next = Player::factory()->create(['name' => 'Eligible Next']);
 
-        $this->row(
-            $series,
-            $list,
-            $category,
-            $player,
-            RankingStatus::Published,
-            'run-live',
-            now(),
-            ['events_played' => 1],
-        );
+        foreach ([
+            [$first, 1, 2],
+            [$hidden, 2, 1],
+            [$next, 3, 2],
+        ] as [$player, $rank, $eventsPlayed]) {
+            $this->row(
+                $series,
+                $list,
+                $category,
+                $player,
+                RankingStatus::Published,
+                'run-live',
+                now(),
+                ['events_played' => $eventsPlayed],
+            );
+            SeriesRanking::where('series_id', $series->id)
+                ->where('player_id', $player->id)
+                ->update(['rank_position' => $rank]);
+        }
 
         $this->get(route('frontend.ranking.show', $series))
             ->assertOk()
-            ->assertSee('One Event Player')
-            ->assertSee('Not eligible for team selection')
-            ->assertSee('1 event played');
+            ->assertSee('Eligible First')
+            ->assertSee('Eligible Next')
+            ->assertDontSee('One Event Player')
+            ->assertSee('Players ranked</span></div>', false)
+            ->assertSee('public-ranking-stat__value">2</span><span class="public-ranking-stat__label">Players ranked', false)
+            ->assertSee('public-ranking-rank">#1</td>', false)
+            ->assertSee('public-ranking-rank">#2</td>', false)
+            ->assertDontSee('public-ranking-rank">#3</td>', false)
+            ->assertDontSee('Not eligible for team selection');
     }
 
     public function test_direct_leaderboard_url_returns_404_when_series_is_not_published(): void

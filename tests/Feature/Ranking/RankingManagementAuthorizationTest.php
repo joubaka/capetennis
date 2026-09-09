@@ -323,7 +323,9 @@ class RankingManagementAuthorizationTest extends TestCase
             ->assertSee('id="use_third_score_tiebreak"', false)
             ->assertSee('id="use_last_leg_position_tiebreak"', false)
             ->assertSee('id="use_head_to_head_tiebreak"', false)
-            ->assertSee('name="minimum_events_for_team_selection"', false);
+            ->assertSee('name="minimum_events_for_team_selection"', false)
+            ->assertSee('Events Required for Public Ranking &amp; Team Selection', false)
+            ->assertSee('events selected for each ranking list');
 
         $this->postJson(route('ranking.series.update', $series), [
             'best_num_of_scores' => 2,

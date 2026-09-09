@@ -156,21 +156,15 @@
                   @php
                     $displayLegs = $displayLegsByRanking->get($row->id, collect());
                     $tieBreakDetail = $tieBreakDetailsByRanking->get($row->id);
-                    $teamEligibility = $teamEligibilityByRanking->get($row->id, ['eligible' => true]);
                   @endphp
                   <tr class="public-ranking-row" data-player-name="{{ strtolower($row->player?->full_name ?? $row->player?->name ?? 'Unknown Player') }}">
-                    <td class="public-ranking-rank">#{{ $row->rank_position }}</td>
+                    <td class="public-ranking-rank">#{{ $loop->iteration }}</td>
                     <td class="public-ranking-player">
                       @if($row->player)
                         <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
                           {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
                           <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
-                        @if(!$teamEligibility['eligible'])
-                          <span class="badge bg-label-warning mt-1" title="{{ $teamEligibility['reason'] }}">
-                            Not eligible for team selection · {{ $teamEligibility['events_played'] }} event{{ $teamEligibility['events_played'] === 1 ? '' : 's' }} played
-                          </span>
-                        @endif
                         @if($tieBreakDetail)
                           <button type="button"
                                   class="btn public-ranking-tiebreak"

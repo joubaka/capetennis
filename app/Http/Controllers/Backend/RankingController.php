@@ -123,6 +123,8 @@ class RankingController extends Controller
       ->orderBy('rank_position')
       ->get();
 
+    $rankings = $teamEligibility->publiclyRanked($rankings, $series);
+
     $categories = $rankings->pluck('category')->filter()->unique('id')->sortBy(function ($category) {
       $name = (string) $category->name;
       preg_match('/u\s*\/\s*(\d+)/i', $name, $ageMatch);
@@ -189,17 +191,12 @@ class RankingController extends Controller
 
       return $detail ? [$ranking->id => $detail] : [];
     });
-    $teamEligibilityByRanking = $rankings->mapWithKeys(
-      fn ($ranking) => [$ranking->id => $teamEligibility->assess($ranking, $series)]
-    );
-
     return view('frontend.ranking.show_ranking', compact(
       'series',
       'rankings',
       'categories',
       'displayLegsByRanking',
-      'tieBreakDetailsByRanking',
-      'teamEligibilityByRanking'
+      'tieBreakDetailsByRanking'
     ));
   }
 
