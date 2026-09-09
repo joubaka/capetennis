@@ -30,7 +30,10 @@
   .ranking-event-score--counted { border-left-color: var(--bs-success); }
   .ranking-event-score--dropped { border-left-color: var(--bs-danger); opacity: .82; }
   .ranking-event-score--automatic { border-left-color: var(--bs-warning); background: rgba(var(--bs-warning-rgb), .08); }
-  .ranking-event-name { max-width: 220px; }
+  .ranking-event-name { overflow-wrap: anywhere; }
+  .ranking-event-leg { flex: 0 0 auto; }
+  .tie-event-summary { display: grid; gap: .5rem; }
+  .tie-event-summary-player { border-left: 3px solid var(--bs-border-color); padding-left: .65rem; }
   .tie-decision-note { background: rgba(var(--bs-warning-rgb), .08) !important; }
   .tie-order-grid { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: .5rem; align-items: center; }
   @media (max-width: 575.98px) { .tie-order-grid { grid-template-columns: minmax(0, 1fr) 88px; } }
@@ -472,9 +475,12 @@
                             title="Open {{ $event->name }} final positions"
                           >
                             <span class="d-flex justify-content-between gap-2 align-items-start">
-                              <span class="ranking-event-name small fw-semibold text-truncate">{{ $event->name }}</span>
+                              <span class="ranking-event-name small fw-semibold">{{ $event->name }}</span>
                               <i class="ti ti-external-link small" aria-hidden="true"></i>
                             </span>
+                            @if($leg['leg_label'])
+                              <span class="badge bg-label-primary ranking-event-leg mt-1">{{ $leg['leg_label'] }}</span>
+                            @endif
                             <span class="d-block mt-1">
                               <strong>{{ $leg['points'] }} pts</strong>
                               <span class="text-muted">·
@@ -560,6 +566,28 @@
                           @endforeach
                           @if($tieDecision['matches'])
                             <div class="small text-muted mt-1">Only a playoff match, or a sole-phase round-robin match, with a completed standard full set reaching six games can qualify.</div>
+                          @endif
+
+                          @if(collect($tieDecision['players'])->contains(fn ($player) => ! empty($player['event_scores'])))
+                            <div class="small fw-semibold mt-3">Event score summary</div>
+                            <div class="tie-event-summary mt-2">
+                              @foreach($tieDecision['players'] as $player)
+                                <div class="tie-event-summary-player small">
+                                  <div class="fw-semibold">{{ $player['name'] }}</div>
+                                  @forelse($player['event_scores'] as $eventScore)
+                                    <div class="mt-1">
+                                      @if($eventScore['leg_label'])
+                                        <span class="badge bg-label-primary me-1">{{ $eventScore['leg_label'] }}</span>
+                                      @endif
+                                      <span>{{ $eventScore['event_name'] }}</span>
+                                      <span class="text-muted">· {{ $eventScore['points'] }} pts · {{ $eventScore['status'] }}</span>
+                                    </div>
+                                  @empty
+                                    <div class="text-muted mt-1">No event score details available</div>
+                                  @endforelse
+                                </div>
+                              @endforeach
+                            </div>
                           @endif
 
                           @if($activeStatus === 'calculated' && !$tieDecision['requires_rebuild'] && $tieDecision['tie_key'])

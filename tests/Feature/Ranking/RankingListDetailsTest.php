@@ -38,7 +38,7 @@ class RankingListDetailsTest extends TestCase
         $category = Category::factory()->create(['name' => 'U/12 Girls']);
         $event = Event::factory()->create([
             'series_id' => $series->id,
-            'name' => 'Overberg Leg 3',
+            'name' => 'Primary Schools Witzenberg/Breede Valley Leg 3',
             'results_published' => true,
         ]);
         $this->authorizeEvent($event);
@@ -85,7 +85,8 @@ class RankingListDetailsTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('ranking.series.list', $series))
             ->assertOk()
-            ->assertSee('Overberg Leg 3')
+            ->assertSee('Primary Schools Witzenberg/Breede Valley Leg 3')
+            ->assertSee('<span class="badge bg-label-primary ranking-event-leg mt-1">Leg 3</span>', false)
             ->assertSee('Finished #1')
             ->assertSee('Ranking points position #2')
             ->assertSee(route('admin.events.results.individual', $event).'#category-event-'.$categoryEvent->id, false);

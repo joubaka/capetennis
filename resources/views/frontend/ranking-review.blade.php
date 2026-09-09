@@ -141,6 +141,9 @@
                       @endphp
                       <div class="ranking-review-event {{ $eventClass }}">
                         <div class="ranking-review-event-name">{{ $event?->name ?? 'Event unavailable' }}</div>
+                        @if($leg['leg_label'])
+                          <span class="badge bg-label-primary mt-1">{{ $leg['leg_label'] }}</span>
+                        @endif
                         <div class="mt-1">
                           <strong>{{ number_format($leg['points'], 0) }} pts</strong>
                           <span class="text-muted">·

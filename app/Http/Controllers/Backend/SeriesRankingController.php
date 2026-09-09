@@ -73,6 +73,7 @@ class SeriesRankingController extends Controller
     $nextMastersEvent = $series->events
       ->sortBy('start_date')
       ->first(fn ($event) => $event->isMasters() && (!$event->start_date || $event->start_date->endOfDay()->gte(now())));
+    $scoreDetails = $detailService->scoreDetails($series, $rankings);
 
     return view('backend.ranking.series.list', [
       'series' => $series,
@@ -81,8 +82,8 @@ class SeriesRankingController extends Controller
       'activeRunId' => $activeRunId,
       'activeStatus' => $activeStatus,
       'hasArchivedSnapshot' => $hasArchivedSnapshot,
-      'scoreDetails' => $detailService->scoreDetails($series, $rankings),
-      'tieDecisionAdvisories' => $detailService->tieDecisionAdvisories($series, $rankings),
+      'scoreDetails' => $scoreDetails,
+      'tieDecisionAdvisories' => $detailService->tieDecisionAdvisories($series, $rankings, $scoreDetails),
       'reviewCampaign' => $reviewCampaign,
       'reviewCampaignReport' => $reviewCampaignReport,
       'nextMastersEvent' => $nextMastersEvent,

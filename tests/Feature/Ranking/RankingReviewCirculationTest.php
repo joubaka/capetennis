@@ -214,6 +214,7 @@ class RankingReviewCirculationTest extends TestCase
             ->assertSee('Filter players in this ranking list')
             ->assertSee('Scores per event')
             ->assertSee('Overberg Leg 1')
+            ->assertSee('<span class="badge bg-label-primary mt-1">Leg 1</span>', false)
             ->assertSee('900 pts')
             ->assertSee('Finished #1')
             ->assertSee('Ranking points position #2')

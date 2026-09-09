@@ -76,6 +76,7 @@ class RankingListDetailService
                     'ranking_position' => $rankingPosition,
                     'actual_position' => $isSynthetic ? null : ($result ? (int) $result->position : null),
                     'event' => $event,
+                    'leg_label' => $this->legLabel((string) ($event?->name ?? '')),
                     'category_event_id' => $categoryEvent?->id,
                 ];
             })->values()->all();
@@ -307,7 +308,7 @@ class RankingListDetailService
      *
      * @return array<string, array<string, mixed>>
      */
-    public function tieDecisionAdvisories(Series $series, Collection $rankings): array
+    public function tieDecisionAdvisories(Series $series, Collection $rankings, array $scoreDetails = []): array
     {
         $headToHead = $this->headToHeadAdvisories($series, $rankings);
         $decisionGroups = $rankings
@@ -342,7 +343,7 @@ class RankingListDetailService
             });
         $groups = $decisionGroups->toBase()->merge($legacyGroups->toBase());
 
-        return $groups->mapWithKeys(function (Collection $group, string $key) use ($headToHead): array {
+        return $groups->mapWithKeys(function (Collection $group, string $key) use ($headToHead, $scoreDetails): array {
             $orderedRows = $group->sortBy([
                 ['rank_position', 'asc'],
                 ['id', 'asc'],
@@ -360,13 +361,25 @@ class RankingListDetailService
                 (int) $orderedRows->first()->total_points
             );
             $evidence = $headToHead[$evidenceKey] ?? null;
-            $players = $orderedRows->map(fn ($ranking) => [
-                'id' => (int) $ranking->player_id,
-                'name' => $ranking->player?->full_name
-                    ?? $ranking->player?->name
-                    ?? 'Unknown Player',
-                'rank_position' => (int) $ranking->rank_position,
-            ])->values()->all();
+            $players = $orderedRows->map(function ($ranking) use ($scoreDetails): array {
+                $eventScores = collect($scoreDetails[$ranking->id] ?? [])->map(fn (array $leg) => [
+                    'event_name' => (string) ($leg['event']?->name ?? 'Event unavailable'),
+                    'leg_label' => $leg['leg_label'] ?? null,
+                    'points' => (int) ($leg['points'] ?? 0),
+                    'status' => ! empty($leg['synthetic'])
+                        ? 'Automatic award'
+                        : (! empty($leg['counted']) ? 'Counted' : 'Third score'),
+                ])->values()->all();
+
+                return [
+                    'id' => (int) $ranking->player_id,
+                    'name' => $ranking->player?->full_name
+                        ?? $ranking->player?->name
+                        ?? 'Unknown Player',
+                    'rank_position' => (int) $ranking->rank_position,
+                    'event_scores' => $eventScores,
+                ];
+            })->values()->all();
 
             return [$key => [
                 'tie_key' => $decision['tie_key'] ?? null,
@@ -424,5 +437,21 @@ class RankingListDetailService
     private function normalizeCategory(string $name): string
     {
         return strtolower(preg_replace('/\s+/', ' ', trim($name)) ?? '');
+    }
+
+    private function legLabel(string $eventName): ?string
+    {
+        if (! preg_match('/\bleg\s*[-:]?\s*(\d+|[ivx]+|one|two|three)\b/i', $eventName, $matches)) {
+            return null;
+        }
+
+        $number = match (strtolower($matches[1])) {
+            'one' => '1',
+            'two' => '2',
+            'three' => '3',
+            default => strtoupper($matches[1]),
+        };
+
+        return 'Leg '.$number;
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ranking;
 
 use App\Models\Category;
+use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\RankingList;
@@ -22,6 +23,14 @@ class RankingTieDecisionTest extends TestCase
     {
         [$series, $event, $players, $tieKey] = $this->seedTie();
         $admin = $this->authorizedAdmin($event);
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('Event score summary')
+            ->assertSee('Primary Schools Witzenberg/Breede Valley Leg 2')
+            ->assertSee('Leg 2')
+            ->assertSee('1500 pts');
 
         $this->actingAs($admin)->postJson(route('ranking.series.ranking.review', $series))
             ->assertUnprocessable()
@@ -209,8 +218,20 @@ class RankingTieDecisionTest extends TestCase
     {
         $series = Series::factory()->create();
         $category = Category::factory()->create(['name' => 'U/13 Boys']);
-        $event = Event::factory()->create(['series_id' => $series->id, 'results_published' => true]);
+        $event = Event::factory()->create([
+            'series_id' => $series->id,
+            'name' => 'Primary Schools Witzenberg/Breede Valley Leg 2',
+            'results_published' => true,
+        ]);
         $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $categoryEvent = CategoryEvent::factory()->create([
+            'event_id' => $event->id,
+            'category_id' => $category->id,
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $list->id,
+            'category_event_id' => $categoryEvent->id,
+        ]);
         $players = Player::factory()->count($playerCount)->create()->values();
         $playerIds = $players->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
         $tieKey = hash('sha256', implode(':', [$list->id, 1500, $playerIds->implode(',')]));
@@ -240,6 +261,13 @@ class RankingTieDecisionTest extends TestCase
                 'status' => 'calculated',
                 'run_id' => 'tie-run',
                 'meta_json' => [
+                    'counting_legs' => [[
+                        'category_event_id' => $categoryEvent->id,
+                        'position' => 1,
+                        'points' => 1500,
+                        'synthetic' => false,
+                    ]],
+                    'dropped_legs' => [],
                     'tiebreak_notes' => ['Tied on 1500 points; no enabled tiebreak rule resolved the tie.'],
                     'head_to_head_decision' => null,
                     'tie_decision' => $decision,
