@@ -19,7 +19,11 @@
       </div>
     @else
     <div class="card-body p-0">
-      @php($registrationOpen = app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->registrationIsOpen($event))
+      @php
+        $registrationOpen = app(
+          \App\Domain\Teams\Services\ExternalTeamRosterService::class
+        )->registrationIsOpen($event);
+      @endphp
       <ul class="list-group list-group-flush m-0">
 
         @forelse($team->team_players_no_profile as $play)
