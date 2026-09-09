@@ -776,6 +776,9 @@ class RankingController extends Controller
     $headToHead = is_array($decision['head_to_head_decision'] ?? null)
       ? $decision['head_to_head_decision']
       : (is_array($meta['head_to_head_decision'] ?? null) ? $meta['head_to_head_decision'] : []);
+    $lastLeg = is_array($meta['last_leg_position_decision'] ?? null)
+      ? $meta['last_leg_position_decision']
+      : [];
 
     if ($notes->isEmpty() && empty($decision['confirmed_at']) && empty($headToHead['confirmed_at'])) {
       return null;
@@ -817,6 +820,27 @@ class RankingController extends Controller
       return [
         'method' => 'Previous published ranking',
         'summary' => 'No automatic rule or qualifying head-to-head separated the players. The administrator confirmed their order using the previous published ranking.',
+        'facts' => $facts,
+      ];
+    }
+
+    if (! empty($lastLeg)) {
+      $positions = is_array($lastLeg['positions'] ?? null) ? $lastLeg['positions'] : [];
+      $position = $positions[$ranking->player_id] ?? $positions[(string) $ranking->player_id] ?? null;
+      $facts[] = ['label' => 'Method', 'value' => 'Higher final-leg placing'];
+      if (! empty($lastLeg['event_name'])) {
+        $facts[] = ['label' => 'Final leg', 'value' => (string) $lastLeg['event_name']];
+      }
+      $facts[] = [
+        'label' => 'This player’s final-leg finish',
+        'value' => $position === null ? 'No recorded finish' : '#'.(int) $position,
+      ];
+
+      return [
+        'method' => 'Final-leg placing',
+        'summary' => ! empty($lastLeg['third_score_compared'])
+          ? 'The players remained equal on counted points and third-event score, so their actual finishing positions in the final leg were compared. The higher finish determined the order.'
+          : 'The players remained equal on counted points, so their actual finishing positions in the final leg were compared. The higher finish determined the order.',
         'facts' => $facts,
       ];
     }

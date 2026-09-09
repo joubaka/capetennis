@@ -44,10 +44,7 @@
   }
 
   // ─── Generate all playoffs ────────────────────────────────────────
-  async function generateMainBracket() {
-    if (root.RRGroups && (RRGroups.isDirty() || RRGroups.isBusy())) { AdminToast.warning('Save your assignments before generating playoffs.'); return; }
-    const confirmation = await Swal.fire({title:'Generate playoff brackets?',text:'Existing playoff fixtures will be replaced using the current standings and playoff settings. Recorded playoff scores cannot be replaced.',showCancelButton:true,confirmButtonText:'Generate brackets'});
-    if (!confirmation.isConfirmed) return;
+  function generateMainBracket() {
     var $btn    = $('#btn-generate-main-bracket');
     var restore = AdminLoading.button($btn, 'Generating…');
     $('#bracket-zoom-inner').html(SPINNER_LARGE);
@@ -57,7 +54,6 @@
         if (res.success) {
           AdminToast.success(res.message || 'Brackets generated');
           loadMainBracket();
-          if (root.RRWorkspace) RRWorkspace.refreshHub().catch(error => AdminToast.error(error.message));
         } else {
           AdminToast.error(res.message || 'Generation failed');
           $('#bracket-zoom-inner').html('<div class="alert alert-danger">Generation failed.</div>');

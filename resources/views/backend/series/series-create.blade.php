@@ -15,7 +15,14 @@
 @endsection
 
 @section('page-script')
-
+<script>
+document.getElementById('ranking-rule-preset')?.addEventListener('change', event => {
+    const selected = event.target.selectedOptions[0];
+    if (selected?.dataset.bestCount) {
+        document.getElementById('best-scores-count').value = selected.dataset.bestCount;
+    }
+});
+</script>
 
 @endsection
 
@@ -33,9 +40,23 @@
                     </div>
                 </div>
                 <div class="mb-3 row">
+                    <label for="ranking-rule-preset" class="col-md-4 col-form-label">Ranking Rules Preset</label>
+                    <div class="col-md-8">
+                        <select name="ranking_rule_preset_id" id="ranking-rule-preset" class="form-select">
+                            <option value="">Custom rules</option>
+                            @foreach($rankingRulePresets as $preset)
+                              <option value="{{ $preset->id }}" data-best-count="{{ $preset->rules['best_num_of_scores'] }}">
+                                {{ $preset->name }}{{ $preset->is_system ? ' (built-in)' : '' }}
+                              </option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">The preset supplies the best-results count and ranking tie-break rules.</div>
+                    </div>
+                </div>
+                <div class="mb-3 row">
                     <label for="html5-text-input" class="col-md-4 col-form-label">Best nr of Scores </label>
                     <div class="col-md-8">
-                        <select name="numScores" id="defaultSelect" class="form-select">
+                        <select name="numScores" id="best-scores-count" class="form-select">
                             <option>Please select</option>
                             <option value="1">1</option>
                             <option value="2">2</option>

@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\CssSelector\Node\FunctionNode;
 use App\Services\FixtureService;
 use App\Imports\NoProfileTeamImport;
+use App\Imports\ExternalTeamWorkbookParser;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -29,6 +30,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\TeamPaymentOrder;
 use App\Domain\Payments\Services\TeamPaymentService;
 use App\Domain\Teams\Services\ExternalTeamRosterService;
+use App\Domain\Teams\Services\ExternalTeamWorkbookService;
 use App\Services\PlayerIdentityService;
 
 class TeamController extends Controller
@@ -552,6 +554,103 @@ class TeamController extends Controller
         'message' => 'The roster could not be read. Check the template and try again.',
       ], 422);
     }
+  }
+
+  public function importNoProfileTeams(
+    Request $request,
+    Event $event,
+    TeamRegion $region,
+    ExternalTeamWorkbookParser $parser,
+    ExternalTeamWorkbookService $workbooks
+  ) {
+    $this->authorize('event.manage', $event);
+    $workbooks->assertRegionBelongsToEvent($event, $region);
+
+    $validated = $request->validate([
+      'file' => 'required|file|mimes:xlsx,xls,csv|max:5120',
+      'confirmed' => 'nullable|boolean',
+      'expected_players' => 'nullable|integer|min:1|max:50',
+      'team_prefix' => 'nullable|string|max:100',
+      'sheet_name' => 'nullable|string|max:255',
+      'selected_team_keys' => 'nullable|array',
+      'selected_team_keys.*' => ['string', 'regex:/^(boys|girls)-u\d{2}$/'],
+    ]);
+
+    $expectedPlayers = (int) ($validated['expected_players'] ?? 8);
+    $teamPrefix = trim((string) ($validated['team_prefix'] ?? $region->short_name ?? $region->region_name));
+    if ($teamPrefix === '') {
+      $teamPrefix = $region->region_name;
+    }
+
+    try {
+      $parsed = $parser->parse(
+        $request->file('file')->getRealPath(),
+        $expectedPlayers,
+        $validated['sheet_name'] ?? null
+      );
+    } catch (\Throwable $e) {
+      Log::error('External team workbook could not be read', [
+        'event_id' => $event->id,
+        'region_id' => $region->id,
+        'error' => $e->getMessage(),
+      ]);
+
+      return response()->json([
+        'success' => false,
+        'message' => 'The workbook could not be read. Check the file format and try again.',
+      ], 422);
+    }
+
+    if ($parsed['errors'] !== []) {
+      return response()->json([
+        'success' => false,
+        'message' => 'No importable team roster was found. Nothing was imported.',
+        'errors' => $parsed['errors'],
+        'sheets' => $parsed['sheets'],
+      ], 422);
+    }
+
+    $preview = $workbooks->preview(
+      $event,
+      $region,
+      $parsed['teams'],
+      $teamPrefix,
+      $expectedPlayers
+    );
+
+    if (! $request->boolean('confirmed')) {
+      $completeTeams = collect($preview)->where('selectable', true);
+
+      return response()->json([
+        'success' => true,
+        'requires_confirmation' => true,
+        'message' => 'Review the detected teams and select the complete rosters to import.',
+        'selected_sheet' => $parsed['selected_sheet'],
+        'sheets' => $parsed['sheets'],
+        'teams' => $preview,
+        'complete_team_count' => $completeTeams->count(),
+        'complete_player_count' => $completeTeams->sum('player_count'),
+      ]);
+    }
+
+    $imported = $workbooks->import(
+      $event,
+      $region,
+      $preview,
+      $validated['selected_team_keys'] ?? [],
+      $teamPrefix,
+      $expectedPlayers,
+      $request->user()
+    );
+
+    return response()->json([
+      'success' => true,
+      'requires_confirmation' => false,
+      'message' => count($imported).' no-profile teams imported into '.$region->region_name.'.',
+      'team_count' => count($imported),
+      'player_count' => array_sum(array_column($imported, 'player_count')),
+      'teams' => $imported,
+    ]);
   }
   public function teamPlayersTable($teamId)
   {

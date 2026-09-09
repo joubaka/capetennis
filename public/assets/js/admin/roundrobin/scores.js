@@ -16,14 +16,8 @@
 
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
-    if (!root.RR_CAN_SCORE || root.RR_DRAW_LOCKED) { AdminToast.warning('You cannot edit scores in this draw state.'); return; }
-    var match = AdminState.getOop().find(function(f) { return f.id == id; });
-    if (!match) {
-      Object.values(AdminState.getFixtures()).some(function(rows) { match = rows.find(function(f) { return f.id == id; }); return !!match; });
-    }
-    if (match) { home = match.home || match.name1 || home; away = match.away || match.name2 || away; }
     $fixtureId.val(id);
-    $matchLabel.text(home + ' vs ' + away);
+    $matchLabel.html('<b>' + home + '</b> vs <b>' + away + '</b>');
 
     $('[id$="-p1-label"]').text(home);
     $('[id$="-p2-label"]').text(away);
@@ -50,8 +44,6 @@
       fx = (fixtures[gid] || []).find(function (f) { return f && f.id == id; });
       if (fx) break;
     }
-    if (!fx) fx = AdminState.getOop().find(function(f) { return f.id == id; });
-    if (fx && !fx.all_sets) fx = Object.assign({}, fx, {all_sets: String(fx.score || '').split(', ').filter(Boolean)});
     if (!fx || !fx.all_sets || !fx.all_sets.length) return;
 
     fx.all_sets.forEach(function (s, i) {
@@ -161,8 +153,6 @@
         round:          fx.round   || fx.round_nr  || '',
         match_nr:       fx.match_nr || '',
         time:           fx.time    || '',
-        court: fx.court || '',
-        venue_name: fx.venue_name || '',
         home:           fx.home    || fx.home_name || fx.name1 || '',
         away:           fx.away    || fx.away_name || fx.name2 || '',
         score:          fx.score   || '',
@@ -277,10 +267,7 @@
   }
 
   // ─── Bind DOM events ─────────────────────────────────────────────
-  var bound = false;
   function bind() {
-    if (bound) return;
-    bound = true;
     // Matrix cell click
     $(document).on('click', '.rr-score-cell', function () {
       open($(this).data('fixture-id'), $(this).data('home'), $(this).data('away'));

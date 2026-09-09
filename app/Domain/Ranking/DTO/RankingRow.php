@@ -20,6 +20,7 @@ final class RankingRow
      * @param bool         $autoAward        Whether a synthetic leg was awarded
      * @param array        $tiebreakNotes    Human-readable tiebreak resolution notes
      * @param array|null   $headToHeadDecision Structured canonical fixture decision
+     * @param array|null   $lastLegPositionDecision Structured final-leg placement evidence
      * @param array|null   $tieDecision        Run-scoped decision required for every equal-points group
      */
     public function __construct(
@@ -35,6 +36,7 @@ final class RankingRow
         public readonly bool  $autoAward    = false,
         public array          $tiebreakNotes = [],
         public ?array         $headToHeadDecision = null,
+        public ?array         $lastLegPositionDecision = null,
         public ?array         $tieDecision = null,
     ) {}
 }

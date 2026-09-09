@@ -14,11 +14,13 @@ class Series extends Model
     'name',
     'year',
     'rank_type',
+    'ranking_rule_preset_id',
     'leaderboard_published',
     'best_num_of_scores',
     'points_template_created', // ✅ ADD THIS
     'auto_award_rule',
     'use_third_score_tiebreak',
+    'use_last_leg_position_tiebreak',
     'use_head_to_head_tiebreak',
     'ranking_review_default_hours',
   ];
@@ -29,6 +31,7 @@ class Series extends Model
     'leaderboard_published' => 'boolean',
     'auto_award_rule' => 'boolean',
     'use_third_score_tiebreak' => 'boolean',
+    'use_last_leg_position_tiebreak' => 'boolean',
     'use_head_to_head_tiebreak' => 'boolean',
     'ranking_review_default_hours' => 'integer',
   ];
@@ -41,6 +44,11 @@ class Series extends Model
   public function rankType()
   {
     return $this->belongsTo(RankType::class, 'rank_type', 'id');
+  }
+
+  public function rankingRulePreset()
+  {
+    return $this->belongsTo(RankingRulePreset::class, 'ranking_rule_preset_id');
   }
 
   //not used

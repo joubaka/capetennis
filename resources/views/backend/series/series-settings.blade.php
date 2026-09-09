@@ -159,6 +159,30 @@
               </div>
             </div>
 
+            <div class="settings-section-title">Ranking Rules Preset</div>
+            <div class="row g-3 mb-4">
+              <div class="col-md-7">
+                <label class="form-label fw-semibold small mb-1" for="ranking_rule_preset_id">Apply Preset</label>
+                <select class="form-select" id="ranking_rule_preset_id" name="ranking_rule_preset_id">
+                  <option value="">Custom rules</option>
+                  @foreach($rankingRulePresets as $preset)
+                    <option value="{{ $preset->id }}" {{ (int) $series->ranking_rule_preset_id === (int) $preset->id ? 'selected' : '' }}>
+                      {{ $preset->name }}{{ $preset->is_system ? ' (built-in)' : '' }}
+                    </option>
+                  @endforeach
+                </select>
+                <div class="form-text">Selecting a preset fills the ranking fields below. Save Settings to apply it to this series.</div>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label fw-semibold small mb-1" for="save_preset_name">Save Current Rules as Preset</label>
+                <div class="input-group">
+                  <input type="text" class="form-control" id="save_preset_name" maxlength="120" placeholder="Preset name">
+                  <button type="button" class="btn btn-outline-primary" id="save-preset-btn">Save</button>
+                </div>
+                <div class="form-text">Your saved presets can be reused on other series.</div>
+              </div>
+            </div>
+
             <div class="settings-section-title">Visibility & Rules</div>
 
             <div class="toggle-row ranking-publication-row">
@@ -255,7 +279,18 @@
 
             <div class="toggle-row mt-2">
               <div class="toggle-info">
-                <strong>2. Use Latest Head-to-Head</strong>
+                <strong>2. Use Final-Leg Finishing Position</strong>
+                <small>If totals and third-event scores are still equal, rank the player who actually finished higher in the latest played linked leg first. A recorded finish ranks ahead of no finish; automatic awards are not treated as actual finishes.</small>
+              </div>
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" name="use_last_leg_position_tiebreak" id="use_last_leg_position_tiebreak"
+                       {{ ($series->use_last_leg_position_tiebreak ?? false) ? 'checked' : '' }}>
+              </div>
+            </div>
+
+            <div class="toggle-row mt-2">
+              <div class="toggle-info">
+                <strong>3. Use Latest Head-to-Head</strong>
                 <small>If two players are still tied, use their most recent eligible match in a linked series event. Only playoff matches count when a round robin continues to playoffs; group matches count when round robin is the only phase. The match must include a completed standard full set reaching six games and an administrator must confirm the decision before review.</small>
               </div>
               <div class="form-check form-switch mt-1">
@@ -372,10 +407,39 @@
   };
 
   // ── General Settings ──────────────────────────────────
-  document.getElementById('save-series-btn').addEventListener('click', () => {
+  const rankingRulePresets = @json($rankingRulePresets->mapWithKeys(fn ($preset) => [
+    $preset->id => $preset->rules,
+  ]));
+  const presetSelect = document.getElementById('ranking_rule_preset_id');
+  const presetRuleInputs = [
+    document.querySelector('[name="best_num_of_scores"]'),
+    document.getElementById('auto_award_rule'),
+    document.getElementById('use_third_score_tiebreak'),
+    document.getElementById('use_last_leg_position_tiebreak'),
+    document.getElementById('use_head_to_head_tiebreak'),
+  ];
+
+  presetSelect.addEventListener('change', () => {
+    const rules = rankingRulePresets[presetSelect.value];
+    if (!rules) return;
+
+    document.querySelector('[name="best_num_of_scores"]').value = rules.best_num_of_scores;
+    document.getElementById('auto_award_rule').checked = Boolean(rules.auto_award_rule);
+    document.getElementById('use_third_score_tiebreak').checked = Boolean(rules.use_third_score_tiebreak);
+    document.getElementById('use_last_leg_position_tiebreak').checked = Boolean(rules.use_last_leg_position_tiebreak);
+    document.getElementById('use_head_to_head_tiebreak').checked = Boolean(rules.use_head_to_head_tiebreak);
+  });
+
+  presetRuleInputs.forEach(input => input.addEventListener('input', () => {
+    presetSelect.value = '';
+  }));
+
+  const saveSeriesSettings = (savePresetName = '') => {
     const btn = document.getElementById('save-series-btn');
+    const presetBtn = document.getElementById('save-preset-btn');
     const leaderboardToggle = document.getElementById('leaderboard_published');
     btn.disabled = true;
+    presetBtn.disabled = true;
 
     const payload = {
       name:                 document.querySelector('[name="name"]').value,
@@ -384,9 +448,13 @@
       rank_type:            document.querySelector('[name="rank_type"]:not([disabled])') ? document.querySelector('[name="rank_type"]').value : null,
       auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
       use_third_score_tiebreak: document.getElementById('use_third_score_tiebreak').checked ? 1 : 0,
+      use_last_leg_position_tiebreak: document.getElementById('use_last_leg_position_tiebreak').checked ? 1 : 0,
       use_head_to_head_tiebreak: document.getElementById('use_head_to_head_tiebreak').checked ? 1 : 0,
+      ranking_rule_preset_id: presetSelect.value || null,
       ranking_review_default_hours: document.querySelector('[name="ranking_review_default_hours"]').value,
     };
+
+    if (savePresetName) payload.save_preset_name = savePresetName;
 
     if (!leaderboardToggle.disabled) {
       payload.leaderboard_published = leaderboardToggle.checked ? 1 : 0;
@@ -402,9 +470,28 @@
       if (!response.ok) throw new Error(payload.message || 'Failed to save series settings');
       return payload;
     })
-    .then(r => toastr.success(r.message || 'Series settings saved'))
+    .then(r => {
+      toastr.success(r.message || 'Series settings saved');
+      if (savePresetName) window.location.reload();
+    })
     .catch(error => toastr.error(error.message || 'Failed to save series settings'))
-    .finally(() => btn.disabled = false);
+    .finally(() => {
+      btn.disabled = false;
+      presetBtn.disabled = false;
+    });
+  };
+
+  document.getElementById('save-series-btn').addEventListener('click', () => saveSeriesSettings());
+  document.getElementById('save-preset-btn').addEventListener('click', () => {
+    const input = document.getElementById('save_preset_name');
+    const name = input.value.trim();
+    if (!name) {
+      toastr.error('Enter a name for the ranking-rule preset.');
+      input.focus();
+      return;
+    }
+
+    saveSeriesSettings(name);
   });
 
   document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {

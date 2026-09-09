@@ -37,6 +37,19 @@
                 <span class="badge bg-{{ $s->active ? 'success' : 'secondary' }}">
                   {{ $s->active ? 'Active' : 'Inactive' }}
                 </span>
+                @php($rankingStatus = $s->ranking_status)
+                <span class="badge bg-label-{{ match($rankingStatus) {
+                  'published' => $s->leaderboard_published ? 'success' : 'secondary',
+                  'reviewed' => 'info',
+                  'calculated' => 'warning',
+                  default => 'secondary'
+                } }} ms-1">
+                  @if($rankingStatus === 'published' && !$s->leaderboard_published)
+                    Rankings hidden
+                  @else
+                    Rankings {{ $rankingStatus ? ucfirst($rankingStatus) : 'not built' }}
+                  @endif
+                </span>
               </td>
               <td class="text-end">
                 <a href="{{ route('series.show', $s) }}"
@@ -47,13 +60,35 @@
                    class="btn btn-sm btn-outline-secondary">
                   Events
                 </a>
-                <button
-                  class="btn btn-sm btn-outline-success ms-1 publish-toggle"
-                  data-series="{{ $s->id }}"
-                  data-published="{{ $s->leaderboard_published ? '1' : '0' }}"
-                >
-                  {{ $s->leaderboard_published ? 'Unpublish' : 'Publish' }}
-                </button>
+                <a href="{{ route('ranking.series.list', $s) }}"
+                   class="btn btn-sm btn-outline-primary ms-1">
+                  Rankings
+                </a>
+                @can('update', $s)
+                  @if($rankingStatus === 'calculated')
+                    <button type="button"
+                            class="btn btn-sm btn-info ms-1 ranking-action"
+                            data-url="{{ route('ranking.series.ranking.review', $s) }}"
+                            data-confirm="Mark the calculated rankings for {{ $s->name }} as reviewed?">
+                      Mark Reviewed
+                    </button>
+                  @elseif($rankingStatus === 'reviewed')
+                    <button type="button"
+                            class="btn btn-sm btn-success ms-1 ranking-action"
+                            data-url="{{ route('ranking.series.ranking.publish', $s) }}"
+                            data-confirm="Publish the reviewed rankings for {{ $s->name }}?">
+                      Publish Rankings
+                    </button>
+                  @elseif($rankingStatus === 'published')
+                    <button type="button"
+                            class="btn btn-sm {{ $s->leaderboard_published ? 'btn-outline-warning' : 'btn-outline-success' }} ms-1 ranking-action"
+                            data-url="{{ route('ranking.series.update', $s) }}"
+                            data-payload='@json(["best_num_of_scores" => $s->best_num_of_scores, "leaderboard_published" => $s->leaderboard_published ? 0 : 1])'
+                            data-confirm="{{ $s->leaderboard_published ? 'Hide' : 'Show' }} the published rankings for {{ $s->name }} on the public website?">
+                      {{ $s->leaderboard_published ? 'Hide Rankings' : 'Show Rankings' }}
+                    </button>
+                  @endif
+                @endcan
               </td>
             </tr>
           @empty
@@ -73,41 +108,38 @@
 
 @section('page-script')
 <script>
-document.querySelectorAll('.publish-toggle').forEach(btn => {
+document.querySelectorAll('.ranking-action').forEach(btn => {
   btn.addEventListener('click', async () => {
-    const seriesId = btn.dataset.series;
-    const isPublished = btn.dataset.published === '1';
+    if (!window.confirm(btn.dataset.confirm)) return;
+
     btn.disabled = true;
 
     try {
-      // Toggle between publish/unpublish endpoints
-      const action = isPublished ? 'unpublish' : 'publish';
-      const url = `{{ url('backend/series') }}/${seriesId}/${action}`;
-
-      const res = await fetch(url, {
-        method: 'PATCH',
+      const payload = btn.dataset.payload ? JSON.parse(btn.dataset.payload) : null;
+      const res = await fetch(btn.dataset.url, {
+        method: 'POST',
         headers: {
+          'Accept': 'application/json',
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        }
+        },
+        body: payload ? JSON.stringify(payload) : null
       });
 
-      if (!res.ok) throw new Error('Publish request failed');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Ranking action failed');
 
-      const data = await res.json();
-
-      // Toggle button label
-      const published = data.leaderboard_published;
-      btn.textContent = published ? 'Unpublish' : 'Publish';
-      btn.dataset.published = published ? '1' : '0';
-
-      // Optional: show toast if available
       if (window.toastr) {
-        toastr.success('Publish status updated');
+        toastr.success(data.message || 'Ranking status updated');
       }
+      window.location.reload();
     } catch (e) {
-      console.error('Publish toggle failed', e);
-      if (window.toastr) toastr.error('Failed to update publish status');
+      console.error('Ranking action failed', e);
+      if (window.toastr) {
+        toastr.error(e.message || 'Ranking action failed');
+      } else {
+        window.alert(e.message || 'Ranking action failed');
+      }
     } finally {
       btn.disabled = false;
     }

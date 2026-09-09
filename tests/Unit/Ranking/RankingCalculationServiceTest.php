@@ -150,6 +150,12 @@ class RankingCalculationServiceTest extends TestCase
         return $result->rows->first(fn(RankingRow $r) => $r->playerId === $playerId);
     }
 
+    private function dateCategoryEvent(int $categoryEventId, string $date): void
+    {
+        $eventId = DB::table('category_events')->where('id', $categoryEventId)->value('event_id');
+        DB::table('events')->where('id', $eventId)->update(['start_date' => $date]);
+    }
+
     // ------------------------------------------------------------------
     // 1. Normal points calculation
     // ------------------------------------------------------------------
@@ -247,6 +253,106 @@ class RankingCalculationServiceTest extends TestCase
             $this->rowFor($result, 1)->rankPosition,
             $this->rowFor($result, 2)->rankPosition
         );
+    }
+
+    public function test_final_leg_position_breaks_a_tie_after_equal_third_scores(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => true,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+        DB::table('points')->where('series_id', $this->series->id)->where('position', 4)->update(['score' => 600]);
+
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
+        ]);
+        $this->dateCategoryEvent(101, now()->subDays(30)->toDateString());
+        $this->dateCategoryEvent(102, now()->subDays(20)->toDateString());
+        $this->dateCategoryEvent(103, now()->subDays(10)->toDateString());
+        $futureEventId = DB::table('events')->insertGetId([
+            'name' => 'Unplayed Future Leg',
+            'start_date' => now()->addDays(10)->toDateString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('category_events')->insert([
+            'id' => 104,
+            'event_id' => $futureEventId,
+            'category_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('ranking_list_category_events')->insert([
+            'ranking_list_id' => $this->list->id,
+            'category_event_id' => 104,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->service()->calculate($this->list);
+        $first = $this->rowFor($result, 1);
+        $second = $this->rowFor($result, 2);
+
+        $this->assertSame(1800, $first->totalPoints);
+        $this->assertSame(1800, $second->totalPoints);
+        $this->assertSame(600, $first->droppedLegs[0]->points);
+        $this->assertSame(600, $second->droppedLegs[0]->points);
+        $this->assertSame(1, $first->rankPosition);
+        $this->assertSame(2, $second->rankPosition);
+        $this->assertStringContainsString('final-leg placing (3rd at Event 103)', $first->tiebreakNotes[0]);
+        $this->assertSame('Event 103', $first->lastLegPositionDecision['event_name']);
+        $this->assertSame(3, $first->lastLegPositionDecision['positions'][1]);
+        $this->assertSame(4, $first->lastLegPositionDecision['positions'][2]);
+        $this->assertNull($first->tieDecision);
+        $this->assertNull($second->tieDecision);
+    }
+
+    public function test_final_leg_position_rule_uses_actual_finish_and_ranks_it_above_an_absence(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => true,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 5],
+            [2, 101, 2], [2, 102, 1],
+        ]);
+        $this->dateCategoryEvent(101, now()->subDays(30)->toDateString());
+        $this->dateCategoryEvent(102, now()->subDays(20)->toDateString());
+        $this->dateCategoryEvent(103, now()->subDays(10)->toDateString());
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertSame(1, $this->rowFor($result, 1)->rankPosition);
+        $this->assertSame(2, $this->rowFor($result, 2)->rankPosition);
+        $this->assertSame(5, $this->rowFor($result, 1)->lastLegPositionDecision['positions'][1]);
+        $this->assertNull($this->rowFor($result, 1)->lastLegPositionDecision['positions'][2]);
+    }
+
+    public function test_final_leg_position_does_not_affect_series_where_the_rule_is_disabled(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => false,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+        DB::table('points')->where('series_id', $this->series->id)->where('position', 4)->update(['score' => 600]);
+
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
+        ]);
+        $this->dateCategoryEvent(103, now()->addDay()->toDateString());
+
+        $result = $this->service()->calculate($this->list);
+
+        $this->assertSame($this->rowFor($result, 1)->rankPosition, $this->rowFor($result, 2)->rankPosition);
+        $this->assertNull($this->rowFor($result, 1)->lastLegPositionDecision);
+        $this->assertNotNull($this->rowFor($result, 1)->tieDecision);
     }
 
     public function test_only_players_still_level_after_third_event_need_an_admin_decision(): void

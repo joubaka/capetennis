@@ -247,6 +247,91 @@
   </div>
 </div>
 
+<!-- Import all no-profile teams for one region -->
+<div class="modal fade" id="import-region-teams-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1">Import no-profile teams</h5>
+          <div class="small text-muted">Region: <span id="bulk-import-region-name"></span></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="bulk-team-import-form" enctype="multipart/form-data">
+          @csrf
+          <input type="hidden" id="bulk-import-confirmed" name="confirmed" value="0">
+
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <label for="bulk-import-file" class="form-label">Team workbook</label>
+              <input type="file" class="form-control" id="bulk-import-file" name="file" accept=".xlsx,.xls,.csv" required>
+              <div class="form-text">
+                Supports side-by-side headings such as Boys U10, Girls U10, Seuns o10 and Dogters 010, or a table with Category, Rank, Name and Surname columns.
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <label for="bulk-import-prefix" class="form-label">Team name prefix</label>
+              <input type="text" class="form-control" id="bulk-import-prefix" name="team_prefix" maxlength="100" required>
+              <div class="form-text">Example: ZFM creates ZFM Boys U10.</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <label for="bulk-import-expected" class="form-label">Players per team</label>
+              <input type="number" class="form-control" id="bulk-import-expected" name="expected_players" min="1" max="50" value="8" required>
+              <div class="form-text">Incomplete teams are shown but cannot be selected.</div>
+            </div>
+            <div class="col-lg-6 d-none" id="bulk-import-sheet-wrap">
+              <label for="bulk-import-sheet" class="form-label">Worksheet</label>
+              <select class="form-select" id="bulk-import-sheet" name="sheet_name">
+                <option value="">Auto-detect the best worksheet</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="bulk-import-status" class="alert alert-primary d-none mt-3 mb-0">
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            Reading workbook…
+          </div>
+          <div id="bulk-import-errors" class="alert alert-danger d-none mt-3 mb-0"></div>
+
+          <div id="bulk-import-preview" class="d-none mt-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div>
+                <h6 class="mb-0">Review teams before importing</h6>
+                <div id="bulk-import-summary" class="small text-muted"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-import-select-complete">Select all complete teams</button>
+            </div>
+            <div class="table-responsive border rounded">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th class="text-center">Import</th>
+                    <th>Detected category</th>
+                    <th>Team</th>
+                    <th class="text-center">Players</th>
+                    <th>Action</th>
+                    <th>Validation</th>
+                  </tr>
+                </thead>
+                <tbody id="bulk-import-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="alert alert-warning py-2 small mt-3 mb-0">
+              Importing creates unpublished no-profile teams and roster slots. Existing linked profiles are preserved; conflicting changes are blocked.
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="bulk-import-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="bulk-import-submit">Preview teams</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Import No-Profile Team Modal -->
 <div class="modal fade" id="import-noprofile-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">

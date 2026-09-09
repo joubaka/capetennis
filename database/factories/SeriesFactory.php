@@ -15,11 +15,13 @@ class SeriesFactory extends Factory
             'name'                   => $this->faker->words(3, true),
             'year'                   => $this->faker->year(),
             'rank_type'              => null,
+            'ranking_rule_preset_id' => null,
             'leaderboard_published'  => 0,
             'best_num_of_scores'     => 2,
             'points_template_created'=> 0,
             'auto_award_rule'        => true,
             'use_third_score_tiebreak' => true,
+            'use_last_leg_position_tiebreak' => false,
             'use_head_to_head_tiebreak' => true,
         ];
     }

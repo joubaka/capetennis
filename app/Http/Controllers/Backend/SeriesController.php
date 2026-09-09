@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\Ranking\Enums\RankingStatus;
+use App\Domain\Ranking\Services\RankingRulePresetService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Point;
@@ -15,6 +16,8 @@ use App\Models\RankingReviewCampaign;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SeriesController extends Controller
 {
@@ -28,31 +31,72 @@ class SeriesController extends Controller
       ->orderByDesc('created_at')
       ->get();
 
+    $activeRankingStatuses = SeriesRanking::query()
+      ->whereIn('series_id', $series->pluck('id'))
+      ->whereIn('status', [
+        RankingStatus::Calculated->value,
+        RankingStatus::Reviewed->value,
+        RankingStatus::Published->value,
+      ])
+      ->whereNotNull('run_id')
+      ->latest('updated_at')
+      ->latest('id')
+      ->get(['id', 'series_id', 'status', 'updated_at'])
+      ->groupBy('series_id')
+      ->map(fn (Collection $rows) => $rows->first()->status);
+
+    $legacyRankingSeriesIds = SeriesRanking::query()
+      ->whereIn('series_id', $series->pluck('id'))
+      ->whereNull('run_id')
+      ->distinct()
+      ->pluck('series_id')
+      ->flip();
+
+    $series->each(function (Series $item) use ($activeRankingStatuses, $legacyRankingSeriesIds): void {
+      $status = $activeRankingStatuses->get($item->id);
+
+      if ($status === null && $legacyRankingSeriesIds->has($item->id)) {
+        $status = RankingStatus::Published->value;
+      }
+
+      $item->setAttribute('ranking_status', $status);
+    });
+
     return view('backend.series.index', compact('series'));
   }
 
-  public function create()
+  public function create(RankingRulePresetService $presetService)
   {
     $rankingTypes = RankType::orderBy('type')->get();
+    $rankingRulePresets = $presetService->availableTo(request()->user());
 
-    return view('backend.series.series-create', compact('rankingTypes'));
+    return view('backend.series.series-create', compact('rankingTypes', 'rankingRulePresets'));
   }
 
-  public function store(Request $request)
+  public function store(Request $request, RankingRulePresetService $presetService)
   {
     $data = $request->validate([
       'name' => 'required|string|max:255',
       'rankType' => 'required|integer|exists:rank_types,id',
       'year' => 'nullable|integer',
       'numScores' => 'required|integer|min:1',
+      'ranking_rule_preset_id' => ['nullable', 'integer', 'exists:ranking_rule_presets,id'],
     ]);
 
-    Series::create([
+    $settings = [
       'name' => $data['name'],
       'rank_type' => $data['rankType'],
       'year' => $data['year'],
       'best_num_of_scores' => $data['numScores'],
-    ]);
+    ];
+    if (! empty($data['ranking_rule_preset_id'])) {
+      $preset = $presetService->findAvailable((int) $data['ranking_rule_preset_id'], $request->user());
+      $settings = array_merge($settings, $presetService->rulesFrom($preset->rules), [
+        'ranking_rule_preset_id' => $preset->id,
+      ]);
+    }
+
+    Series::create($settings);
 
     return redirect()
       ->route('series.index')
@@ -229,7 +273,7 @@ class SeriesController extends Controller
    |  SETTINGS
    ===================================================== */
 
-  public function settings(Series $series)
+  public function settings(Series $series, RankingRulePresetService $presetService)
   {
     $this->authorize('update', $series);
 
@@ -237,6 +281,7 @@ class SeriesController extends Controller
 
     $series->load(['points', 'ranking_lists.category']);
     $rankTypes = RankType::orderBy('type')->get();
+    $rankingRulePresets = $presetService->availableTo(request()->user());
 
     $activeRankingStatus = SeriesRanking::where('series_id', $series->id)
       ->whereIn('status', [
@@ -270,6 +315,7 @@ class SeriesController extends Controller
       'series',
       'positions',
       'rankTypes',
+      'rankingRulePresets',
       'activeRankingStatus',
       'hasPublishedRanking',
       'reviewCampaign'
@@ -297,7 +343,7 @@ class SeriesController extends Controller
     return response()->json(['status' => 'ok', 'message' => 'Category counts saved']);
   }
 
-  public function update(Request $request, Series $series)
+  public function update(Request $request, Series $series, RankingRulePresetService $presetService)
   {
     $this->authorize('update', $series);
 
@@ -309,7 +355,10 @@ class SeriesController extends Controller
       'leaderboard_published' => ['sometimes', 'integer', 'in:0,1'],
       'auto_award_rule' => ['sometimes', 'integer', 'in:0,1'],
       'use_third_score_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
+      'use_last_leg_position_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
       'use_head_to_head_tiebreak' => ['sometimes', 'integer', 'in:0,1'],
+      'ranking_rule_preset_id' => ['sometimes', 'nullable', 'integer', 'exists:ranking_rule_presets,id'],
+      'save_preset_name' => ['sometimes', 'nullable', 'string', 'max:120'],
       'ranking_review_default_hours' => ['sometimes', 'integer', 'min:1', 'max:720'],
     ]);
 
@@ -348,11 +397,38 @@ class SeriesController extends Controller
       ], 422);
     }
 
-    $series->update($data);
+    $savePresetName = trim((string) ($data['save_preset_name'] ?? ''));
+    $selectedPresetId = $data['ranking_rule_preset_id'] ?? null;
+    unset($data['save_preset_name'], $data['ranking_rule_preset_id']);
+
+    try {
+      $preset = DB::transaction(function () use ($presetService, $request, $series, &$data, $savePresetName, $selectedPresetId) {
+        if ($savePresetName !== '') {
+          $preset = $presetService->create($savePresetName, $data, $request->user());
+          $data = array_merge($data, $presetService->rulesFrom($preset->rules));
+        } elseif ($selectedPresetId !== null) {
+          $preset = $presetService->findAvailable((int) $selectedPresetId, $request->user());
+          $data = array_merge($data, $presetService->rulesFrom($preset->rules));
+        } else {
+          $preset = null;
+        }
+
+        $data['ranking_rule_preset_id'] = $preset?->id;
+        $series->update($data);
+
+        return $preset;
+      });
+    } catch (\InvalidArgumentException $exception) {
+      throw ValidationException::withMessages(['save_preset_name' => $exception->getMessage()]);
+    }
 
     return response()->json([
       'status' => 'ok',
-      'message' => 'Series settings saved',
+      'message' => $savePresetName !== ''
+        ? 'Series settings and ranking-rule preset saved'
+        : 'Series settings saved',
+      'ranking_rule_preset_id' => $preset?->id,
+      'ranking_rule_preset_name' => $preset?->name,
     ]);
   }
 

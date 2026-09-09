@@ -58,11 +58,21 @@
                 <div class="accordion-body pt-2">
 
                   {{-- 🔹 REGION ACTIONS --}}
-                  <div class="d-flex justify-content-end mb-2 gap-2">
+                  <div class="d-flex flex-wrap justify-content-end align-items-center mb-2 gap-2">
                     <a href="javascript:void(0)"
                        class="text-danger removeRegionEvent"
                        data-id="{{ $region->pivot->id }}">
                       <i class="ti ti-trash me-1"></i> Remove Region
+                    </a>
+
+                    <a href="javascript:void(0)"
+                       class="btn btn-sm btn-outline-primary import-region-teams-btn"
+                       data-region-name="{{ $region->region_name }}"
+                       data-team-prefix="{{ $region->short_name ?: $region->region_name }}"
+                       data-import-url="{{ route('backend.region.teams.import.no.profile', [$event, $region]) }}"
+                       data-bs-toggle="modal"
+                       data-bs-target="#import-region-teams-modal">
+                      <i class="ti ti-file-spreadsheet me-1"></i> Import Teams
                     </a>
 
                     <a href="javascript:void(0)"

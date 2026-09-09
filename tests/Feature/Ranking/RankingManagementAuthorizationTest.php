@@ -6,6 +6,8 @@ use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\RankingList;
+use App\Models\RankingRulePreset;
+use App\Models\RankType;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\User;
@@ -184,6 +186,51 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->patch("/backend/series/{$series->id}/unpublish")->assertNotFound();
     }
 
+    public function test_series_index_uses_canonical_ranking_actions_and_safe_public_visibility_controls(): void
+    {
+        [$calculatedList, $calculatedSeries] = $this->rankingListFixture();
+        [$reviewedList, $reviewedSeries] = $this->rankingListFixture();
+        [$publishedList, $publishedSeries] = $this->rankingListFixture();
+        [$hiddenList, $hiddenSeries] = $this->rankingListFixture();
+        $player = \App\Models\Player::factory()->create();
+
+        foreach ([
+            [$calculatedList, $calculatedSeries, 'calculated', 'run-index-calculated'],
+            [$reviewedList, $reviewedSeries, 'reviewed', 'run-index-reviewed'],
+            [$publishedList, $publishedSeries, 'published', 'run-index-published'],
+            [$hiddenList, $hiddenSeries, 'published', 'run-index-hidden'],
+        ] as [$list, $series, $status, $runId]) {
+            SeriesRanking::create([
+                'series_id' => $series->id,
+                'ranking_list_id' => $list->id,
+                'category_id' => $list->category_id,
+                'player_id' => $player->id,
+                'rank_position' => 1,
+                'total_points' => 1000,
+                'status' => $status,
+                'run_id' => $runId,
+                'meta_json' => [],
+            ]);
+        }
+
+        $publishedSeries->update(['leaderboard_published' => true]);
+        $hiddenSeries->update(['leaderboard_published' => false]);
+
+        $response = $this->actingAs($this->admin)->get(route('series.index'));
+
+        $response->assertOk()
+            ->assertSee(route('ranking.series.ranking.review', $calculatedSeries), false)
+            ->assertSee(route('ranking.series.ranking.publish', $reviewedSeries), false)
+            ->assertSee('Mark Reviewed')
+            ->assertSee('Publish Rankings')
+            ->assertSee('Hide Rankings')
+            ->assertSee('Show Rankings')
+            ->assertSee(route('ranking.series.update', $publishedSeries), false)
+            ->assertSee(route('ranking.series.update', $hiddenSeries), false)
+            ->assertDontSee("/backend/series/{$publishedSeries->id}/publish", false)
+            ->assertDontSee("/backend/series/{$publishedSeries->id}/unpublish", false);
+    }
+
     public function test_legacy_authenticated_ranking_pages_redirect_to_canonical_list(): void
     {
         [, $series] = $this->rankingListFixture();
@@ -266,7 +313,7 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertTrue($series->fresh()->leaderboard_published);
     }
 
-    public function test_series_settings_can_store_both_tiebreak_rules(): void
+    public function test_series_settings_can_store_all_tiebreak_rules(): void
     {
         [, $series] = $this->rankingListFixture();
 
@@ -274,17 +321,133 @@ class RankingManagementAuthorizationTest extends TestCase
             ->get(route('series.settings', $series))
             ->assertOk()
             ->assertSee('id="use_third_score_tiebreak"', false)
+            ->assertSee('id="use_last_leg_position_tiebreak"', false)
             ->assertSee('id="use_head_to_head_tiebreak"', false);
 
         $this->postJson(route('ranking.series.update', $series), [
             'best_num_of_scores' => 2,
             'use_third_score_tiebreak' => 0,
+            'use_last_leg_position_tiebreak' => 1,
             'use_head_to_head_tiebreak' => 0,
         ])->assertOk();
 
         $series->refresh();
         $this->assertFalse($series->use_third_score_tiebreak);
+        $this->assertTrue($series->use_last_leg_position_tiebreak);
         $this->assertFalse($series->use_head_to_head_tiebreak);
+    }
+
+    public function test_built_in_witzenberg_preset_applies_authoritative_rules(): void
+    {
+        [, $series] = $this->rankingListFixture();
+        $preset = RankingRulePreset::where('slug', 'witzenberg-winelands-rankings')->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertSee('Witzenberg Winelands Rankings')
+            ->assertSee('Overberg Rankings');
+
+        $this->postJson(route('ranking.series.update', $series), [
+            'best_num_of_scores' => 9,
+            'auto_award_rule' => 0,
+            'use_third_score_tiebreak' => 0,
+            'use_last_leg_position_tiebreak' => 0,
+            'use_head_to_head_tiebreak' => 1,
+            'ranking_rule_preset_id' => $preset->id,
+        ])->assertOk()->assertJsonPath('ranking_rule_preset_id', $preset->id);
+
+        $series->refresh();
+        $this->assertSame(2, $series->best_num_of_scores);
+        $this->assertTrue($series->auto_award_rule);
+        $this->assertTrue($series->use_third_score_tiebreak);
+        $this->assertTrue($series->use_last_leg_position_tiebreak);
+        $this->assertFalse($series->use_head_to_head_tiebreak);
+        $this->assertSame($preset->id, $series->ranking_rule_preset_id);
+    }
+
+    public function test_manager_can_save_and_reuse_a_private_ranking_rule_preset(): void
+    {
+        [, $series] = $this->rankingListFixture();
+
+        $response = $this->actingAs($this->admin)
+            ->postJson(route('ranking.series.update', $series), [
+                'best_num_of_scores' => 3,
+                'auto_award_rule' => 0,
+                'use_third_score_tiebreak' => 1,
+                'use_last_leg_position_tiebreak' => 1,
+                'use_head_to_head_tiebreak' => 0,
+                'save_preset_name' => 'Regional four-leg rules',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ranking_rule_preset_name', 'Regional four-leg rules');
+
+        $presetId = (int) $response->json('ranking_rule_preset_id');
+        $preset = RankingRulePreset::findOrFail($presetId);
+        $this->assertSame($this->admin->id, $preset->created_by);
+        $this->assertFalse($preset->is_system);
+        $this->assertSame(3, $preset->rules['best_num_of_scores']);
+        $this->assertTrue($preset->rules['use_last_leg_position_tiebreak']);
+        $this->assertSame($presetId, $series->fresh()->ranking_rule_preset_id);
+    }
+
+    public function test_new_series_can_start_from_a_saved_ranking_rule_preset(): void
+    {
+        $rankType = RankType::firstOrCreate(
+            ['type' => 'position'],
+            ['name' => 'Position', 'description' => 'Position based']
+        );
+        $preset = RankingRulePreset::where('slug', 'witzenberg-winelands-rankings')->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->get(route('series.create'))
+            ->assertOk()
+            ->assertSee('Witzenberg Winelands Rankings');
+
+        $this->post(route('series.store'), [
+            'name' => 'Witzenberg Future Series',
+            'year' => 2027,
+            'rankType' => $rankType->id,
+            'numScores' => 5,
+            'ranking_rule_preset_id' => $preset->id,
+        ])->assertRedirect(route('series.index'));
+
+        $series = Series::where('name', 'Witzenberg Future Series')->firstOrFail();
+        $this->assertSame(2, $series->best_num_of_scores);
+        $this->assertTrue($series->use_last_leg_position_tiebreak);
+        $this->assertFalse($series->use_head_to_head_tiebreak);
+        $this->assertSame($preset->id, $series->ranking_rule_preset_id);
+    }
+
+    public function test_manager_cannot_view_or_apply_another_managers_private_preset(): void
+    {
+        [, $series] = $this->rankingListFixture();
+        $otherManager = User::factory()->create()->assignRole('admin');
+        $privatePreset = RankingRulePreset::create([
+            'name' => 'Other manager private rules',
+            'rules' => [
+                'best_num_of_scores' => 5,
+                'auto_award_rule' => false,
+                'use_third_score_tiebreak' => false,
+                'use_last_leg_position_tiebreak' => true,
+                'use_head_to_head_tiebreak' => false,
+            ],
+            'is_system' => false,
+            'created_by' => $otherManager->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('series.settings', $series))
+            ->assertOk()
+            ->assertDontSee($privatePreset->name);
+
+        $this->postJson(route('ranking.series.update', $series), [
+            'best_num_of_scores' => 5,
+            'ranking_rule_preset_id' => $privatePreset->id,
+        ])->assertNotFound();
+
+        $this->assertNull($series->fresh()->ranking_rule_preset_id);
+        $this->assertSame(2, $series->fresh()->best_num_of_scores);
     }
 
     public function test_series_dashboard_exposes_the_safe_review_then_publish_flow(): void

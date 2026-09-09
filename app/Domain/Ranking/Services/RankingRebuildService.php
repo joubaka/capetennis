@@ -431,6 +431,7 @@ final class RankingRebuildService
             ], $row->droppedLegs),
             'tiebreak_notes' => $row->tiebreakNotes,
             'head_to_head_decision' => $row->headToHeadDecision,
+            'last_leg_position_decision' => $row->lastLegPositionDecision,
             'tie_decision' => $row->tieDecision,
         ];
     }

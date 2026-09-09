@@ -28,6 +28,7 @@
 
   // Provide import URL (matches routes/web.php)
 window.importNoProfileUrl = window.importNoProfileUrl || null;
+  let bulkTeamImportUrl = null;
 
   // Timer state (optional small timer)
   let importTimerInterval = null;
@@ -186,6 +187,16 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                class="text-danger removeRegionEvent"
                data-id="${res.pivot_id}">
               <i class="ti ti-trash me-1"></i> Remove Region
+            </a>
+
+            <a href="javascript:void(0)"
+               class="btn btn-sm btn-outline-primary import-region-teams-btn"
+               data-region-name="${escapeHtml(res.region_name)}"
+               data-team-prefix="${escapeHtml(res.region_name)}"
+               data-import-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/external-teams/import"
+               data-bs-toggle="modal"
+               data-bs-target="#import-region-teams-modal">
+              <i class="ti ti-file-spreadsheet me-1"></i> Import Teams
             </a>
 
             <a href="javascript:void(0)"
@@ -681,6 +692,182 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
         }
         toastr.error(msg);
         console.error('Import failed', xhr);
+      }
+    });
+  });
+
+  function escapeHtml(value) {
+    return $('<div>').text(value == null ? '' : String(value)).html();
+  }
+
+  function resetBulkImportPreview(clearSheets = false) {
+    $('#bulk-import-confirmed').val('0');
+    $('#bulk-import-preview').addClass('d-none');
+    $('#bulk-import-preview-body').empty();
+    $('#bulk-import-errors').addClass('d-none').empty();
+    $('#bulk-import-submit').text('Preview teams').prop('disabled', false);
+    if (clearSheets) {
+      $('#bulk-import-sheet').html('<option value="">Auto-detect the best worksheet</option>');
+      $('#bulk-import-sheet-wrap').addClass('d-none');
+    }
+  }
+
+  function setBulkImportBusy(busy) {
+    $('#bulk-import-status').toggleClass('d-none', !busy);
+    $('#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet')
+      .prop('disabled', busy);
+  }
+
+  function renderWorkbookSheets(sheets, selectedSheet) {
+    const $select = $('#bulk-import-sheet');
+    const currentValue = selectedSheet || $select.val() || '';
+    $select.html('<option value="">Auto-detect the best worksheet</option>');
+
+    (sheets || []).forEach(sheet => {
+      const label = `${sheet.name} — ${sheet.complete_team_count}/${sheet.team_count} complete teams`;
+      $('<option>').val(sheet.name).text(label).appendTo($select);
+    });
+
+    if ((sheets || []).length > 1) {
+      $('#bulk-import-sheet-wrap').removeClass('d-none');
+    }
+    if (selectedSheet) {
+      $select.val(currentValue);
+    }
+  }
+
+  function updateBulkImportConfirmButton() {
+    if ($('#bulk-import-confirmed').val() !== '1') return;
+    const selected = $('.bulk-team-select:checked').length;
+    $('#bulk-import-submit')
+      .text(selected ? `Confirm import of ${selected} team${selected === 1 ? '' : 's'}` : 'Select a complete team')
+      .prop('disabled', selected === 0);
+  }
+
+  function renderBulkImportTeams(response) {
+    const rows = (response.teams || []).map(team => {
+      const validation = team.errors.length
+        ? `<ul class="small text-danger mb-0 ps-3">${team.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>`
+        : '<span class="badge bg-label-success">Complete</span>';
+      const players = team.players.map(player =>
+        `<li><span class="text-muted">${player.rank}.</span> ${escapeHtml(player.name)} ${escapeHtml(player.surname)}</li>`
+      ).join('');
+
+      return `
+        <tr>
+          <td class="text-center">
+            <input class="form-check-input bulk-team-select" type="checkbox"
+                   name="selected_team_keys[]" value="${escapeHtml(team.key)}"
+                   ${team.selectable ? 'checked' : 'disabled'}>
+          </td>
+          <td>
+            <div class="fw-medium">${escapeHtml(team.category)}</div>
+            <div class="small text-muted">Source: ${escapeHtml(team.source_heading)}</div>
+          </td>
+          <td>${escapeHtml(team.team_name)}</td>
+          <td class="text-center">
+            <details>
+              <summary>${team.player_count}</summary>
+              <ol class="small text-start mb-0 mt-1 ps-3">${players}</ol>
+            </details>
+          </td>
+          <td>${escapeHtml(team.action)}</td>
+          <td>${validation}</td>
+        </tr>`;
+    }).join('');
+
+    $('#bulk-import-preview-body').html(rows);
+    $('#bulk-import-summary').text(
+      `${response.selected_sheet}: ${response.complete_team_count} complete teams, ${response.complete_player_count} players ready to import.`
+    );
+    $('#bulk-import-preview').removeClass('d-none');
+    $('#bulk-import-confirmed').val('1');
+    updateBulkImportConfirmButton();
+  }
+
+  $(document).on('click', '.import-region-teams-btn', function () {
+    bulkTeamImportUrl = $(this).data('import-url');
+    $('#bulk-import-region-name').text($(this).data('region-name'));
+    $('#bulk-import-prefix').val($(this).data('team-prefix'));
+    $('#bulk-import-expected').val('8');
+    $('#bulk-import-file').val('');
+    resetBulkImportPreview(true);
+  });
+
+  $('#import-region-teams-modal').on('hidden.bs.modal', function () {
+    bulkTeamImportUrl = null;
+    $('#bulk-team-import-form')[0]?.reset();
+    setBulkImportBusy(false);
+    resetBulkImportPreview(true);
+  });
+
+  $('#bulk-import-file, #bulk-import-prefix, #bulk-import-expected').on('change input', function () {
+    resetBulkImportPreview($(this).is('#bulk-import-file'));
+  });
+
+  $('#bulk-import-sheet').on('change', function () {
+    resetBulkImportPreview(false);
+  });
+
+  $(document).on('change', '.bulk-team-select', updateBulkImportConfirmButton);
+
+  $('#bulk-import-select-complete').on('click', function () {
+    $('.bulk-team-select:not(:disabled)').prop('checked', true);
+    updateBulkImportConfirmButton();
+  });
+
+  $('#bulk-import-submit').on('click', function () {
+    const form = document.getElementById('bulk-team-import-form');
+    const file = document.getElementById('bulk-import-file');
+
+    if (!bulkTeamImportUrl) {
+      toastr.error('Choose a region before importing teams.');
+      return;
+    }
+    if (!file?.files?.length) {
+      toastr.error('Choose a workbook to import.');
+      return;
+    }
+    if ($('#bulk-import-confirmed').val() === '1' && $('.bulk-team-select:checked').length === 0) {
+      toastr.error('Select at least one complete team.');
+      return;
+    }
+
+    setBulkImportBusy(true);
+    $('#bulk-import-errors').addClass('d-none').empty();
+
+    $.ajax({
+      url: bulkTeamImportUrl,
+      method: 'POST',
+      data: new FormData(form),
+      processData: false,
+      contentType: false,
+      headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+      success: function (response) {
+        renderWorkbookSheets(response.sheets, response.selected_sheet);
+        if (response.requires_confirmation) {
+          renderBulkImportTeams(response);
+          toastr.info(response.message);
+          return;
+        }
+
+        toastr.success(response.message || 'Teams imported.');
+        setTimeout(() => location.reload(), 700);
+      },
+      error: function (xhr) {
+        const payload = xhr.responseJSON || {};
+        renderWorkbookSheets(payload.sheets, null);
+        const rawErrors = payload.errors || [];
+        const errors = Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat();
+        $('#bulk-import-errors').removeClass('d-none').html(
+          `<strong>${escapeHtml(payload.message || 'Import failed. Nothing was imported.')}</strong>` +
+          (errors.length ? `<ul class="mb-0 mt-1">${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '')
+        );
+        toastr.error(payload.message || 'Import failed.');
+      },
+      complete: function () {
+        setBulkImportBusy(false);
+        updateBulkImportConfirmButton();
       }
     });
   });
