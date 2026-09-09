@@ -294,6 +294,52 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function replaceWithNextReserve(TeamSelectionInvitation $invitation, User $actor, string $reason): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor, $reason) {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
+            if (! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'Only an unpaid selected player can be replaced. Withdraw and process any paid player through the normal refund workflow.',
+                ]);
+            }
+            if ($locked->order_id) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
+                    throw ValidationException::withMessages(['replacement' => 'Payment has already been received; use the withdrawal and refund workflow.']);
+                }
+                if ($order) app(TeamPaymentService::class)->cancelPayment($order);
+            }
+
+            $rank = $locked->roster_rank;
+            $slot = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $locked->team_id)
+                ->where('rank', $rank)->where('player_id', $locked->player_id)->lockForUpdate()->first();
+            if ($slot) app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
+
+            $locked->update([
+                'status' => TeamSelectionInvitation::DECLINED,
+                'declined_at' => now(),
+                'decline_reason' => $reason,
+                'declined_by_user_id' => $actor->id,
+                'decline_method' => 'regional_manager_replacement',
+                'payment_started_at' => null,
+                'roster_rank' => null,
+            ]);
+            $replacement = $this->promoteNextReserve($locked, $rank);
+            if (! $replacement) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'No eligible reserve with a linked email account is available for this team.',
+                ]);
+            }
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties(['replacement_id' => $replacement->id, 'reason' => $reason])
+                ->log('regional manager replaced selected player with next reserve');
+
+            return $replacement->fresh();
+        });
+    }
+
     public function assertRosterEditable(Team $team): void
     {
         $managed = TeamSelectionInvitation::query()

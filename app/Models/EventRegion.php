@@ -21,6 +21,16 @@ class EventRegion extends Model
     {
         return $this->hasOne(EventRegionRankingSource::class, 'event_region_id');
     }
+
+    public function managerAssignment()
+    {
+        return $this->hasOne(EventRegionManager::class, 'event_region_id');
+    }
+
+    public function announcements()
+    {
+        return $this->hasMany(TeamSelectionRegionAnnouncement::class, 'event_region_id')->latest();
+    }
     
      
 }

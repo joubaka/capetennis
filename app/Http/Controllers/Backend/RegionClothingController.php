@@ -126,11 +126,25 @@ class RegionClothingController extends Controller
 
   private function sourceMatchScore(TeamRegion $target, TeamRegion $candidate): int
   {
+    $schoolLevel = static function (string $name): ?string {
+      $normalised = mb_strtolower($name);
+
+      if (preg_match('/\bprimary\b/u', $normalised)) return 'primary';
+      if (preg_match('/\b(?:high|secondary)\b/u', $normalised)) return 'secondary';
+
+      return null;
+    };
     $tokens = static function (string $name): array {
       $normalised = mb_strtolower(preg_replace('/\b20\d{2}\b/u', '', $name) ?? $name);
       $parts = preg_split('/[^\pL\pN]+/u', $normalised, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-      return array_values(array_diff(array_unique($parts), ['primary', 'schools', 'school', 'region']));
+      return array_values(array_diff(array_unique($parts), ['schools', 'school', 'region']));
     };
+    $targetSchoolLevel = $schoolLevel((string) $target->region_name);
+    $candidateSchoolLevel = $schoolLevel((string) $candidate->region_name);
+    if ($targetSchoolLevel !== null && $candidateSchoolLevel !== null && $targetSchoolLevel !== $candidateSchoolLevel) {
+      return 0;
+    }
+
     $targetTokens = $tokens((string) $target->region_name);
     $candidateTokens = $tokens((string) $candidate->region_name);
     preg_match('/\b(20\d{2})\b/u', (string) $target->region_name, $targetYearMatch);

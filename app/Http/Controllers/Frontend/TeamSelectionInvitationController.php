@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Frontend;
 use App\Http\Controllers\Controller;
 use App\Models\TeamSelectionInvitation;
 use App\Models\ClothingOrder;
+use App\Models\TeamSelectionRegionAnnouncement;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -38,8 +39,19 @@ class TeamSelectionInvitationController extends Controller
             ->where('player_id', $invitation->player_id)
             ->where('user_id', $request->user()->id)
             ->latest()->get();
+        $canSeeRegionAnnouncements = in_array($invitation->status, [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            TeamSelectionInvitation::PAID_CONFIRMED,
+        ], true);
+        $regionAnnouncements = $canSeeRegionAnnouncements
+            ? TeamSelectionRegionAnnouncement::query()
+                ->where('event_id', $invitation->event_id)
+                ->where('region_id', $invitation->region_id)
+                ->latest()->get()
+            : collect();
 
-        return view('frontend.team-selection.show', compact('invitation', 'canOrderClothing', 'clothingOrders'));
+        return view('frontend.team-selection.show', compact('invitation', 'canOrderClothing', 'clothingOrders', 'regionAnnouncements'));
     }
 
     public function accept(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)

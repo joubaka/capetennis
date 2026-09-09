@@ -10,6 +10,7 @@ use App\Models\ClothingItemType;
 use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventRegion;
+use App\Models\EventRegionRankingSource;
 use App\Models\Player;
 use App\Models\RankingList;
 use App\Models\Series;
@@ -19,9 +20,11 @@ use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
 use App\Models\TeamSelectionImport;
 use App\Models\TeamSelectionInvitation;
+use App\Models\TeamSelectionRegionAnnouncement;
 use App\Models\User;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
+use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Mail\TeamSelectionInvitationMail;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -178,6 +181,35 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('authenticated_invitation', $declining->fresh()->decline_method);
     }
 
+    public function test_regional_manager_replacement_promotes_next_reserve_and_records_reason(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], User::factory()->create());
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('queue_position')->firstOrFail();
+        $rank = $selected->roster_rank;
+        $manager = User::factory()->create();
+
+        $promoted = $service->replaceWithNextReserve($selected, $manager, 'Unavailable for the event weekend');
+
+        $this->assertSame($reserve->id, $promoted->id);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
+        $this->assertSame($rank, $reserve->fresh()->roster_rank);
+        $this->assertSame('regional_manager_replacement', $selected->fresh()->decline_method);
+        $this->assertSame($manager->id, $selected->fresh()->declined_by_user_id);
+        $this->assertSame('Unavailable for the event weekend', $selected->fresh()->decline_reason);
+        $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $rank)->value('player_id'));
+    }
+
     public function test_player_can_decline_after_starting_payment_and_unpaid_order_is_cancelled(): void
     {
         Queue::fake();
@@ -316,6 +348,178 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $otherAdmin = User::factory()->create()->assignRole('admin');
         $this->actingAs($otherAdmin)->get(route('backend.team-selection.index', $event))->assertForbidden();
+    }
+
+    public function test_account_without_player_profile_can_be_assigned_and_is_limited_to_its_region(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Regional manager test', 'type' => 2, 'code' => 'regional-manager-test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = Event::factory()->create(['eventType' => $teamType]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $manager = User::factory()->create(['email' => 'region.manager@example.test']);
+        $firstRegion = TeamRegion::create(['region_name' => 'Assigned Region']);
+        $secondRegion = TeamRegion::create(['region_name' => 'Private Other Region']);
+        $first = new EventRegion();
+        $first->event_id = $event->id; $first->region_id = $firstRegion->id; $first->ordering = 1;
+        $first->save();
+        $second = new EventRegion();
+        $second->event_id = $event->id; $second->region_id = $secondRegion->id; $second->ordering = 2;
+        $second->save();
+
+        $this->actingAs($admin)->put(route('backend.team-selection.manager.assign', [$event, $first]), [
+            'manager_email' => strtoupper($manager->email),
+        ])->assertRedirect();
+        $this->assertDatabaseHas('event_region_managers', [
+            'event_region_id' => $first->id, 'user_id' => $manager->id,
+        ]);
+        $this->assertSame([], $manager->ownedPlayerIds());
+
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
+            ->assertOk()->assertSee('Assigned Region')->assertDontSee('Private Other Region');
+        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [])
+            ->assertForbidden();
+        $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [
+            'title' => 'Assigned team update', 'message' => 'Practice starts at 08:00.', 'send_email' => 0,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('team_selection_region_announcements', [
+            'event_region_id' => $first->id, 'title' => 'Assigned team update',
+        ]);
+        $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $second]), [
+            'title' => 'Must be blocked', 'message' => 'Wrong region.',
+        ])->assertForbidden();
+        $this->assertDatabaseCount('team_selection_region_announcements', 1);
+
+        $categoryEvent = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $assignedTeam = new Team();
+        $assignedTeam->forceFill(['name' => 'Assigned team', 'region_id' => $firstRegion->id,
+            'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
+            'user_id' => $admin->id, 'personal_team' => false])->save();
+        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
+            'name' => 'Managed safely', 'published' => 1,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'published' => 1]);
+        $this->actingAs($manager)->get(route('backend.team.availablePlayers', ['team_id' => $assignedTeam->id]))
+            ->assertForbidden();
+    }
+
+    public function test_common_organizer_of_all_ranking_series_events_is_the_default_region_manager(): void
+    {
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Default organizer test', 'type' => 2, 'code' => 'default-organizer-test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $series = Series::factory()->create();
+        $organizer = User::factory()->create();
+        foreach (range(1, 3) as $leg) {
+            $legEvent = Event::factory()->create(['series_id' => $series->id, 'name' => "Ranking leg {$leg}"]);
+            DB::table('event_admins')->insert(['event_id' => $legEvent->id, 'user_id' => $organizer->id]);
+        }
+        $event = Event::factory()->create(['eventType' => $teamType]);
+        $region = TeamRegion::create(['region_name' => 'Default Manager Region']);
+        $eventRegion = new EventRegion();
+        $eventRegion->event_id = $event->id; $eventRegion->region_id = $region->id; $eventRegion->ordering = 1;
+        $eventRegion->save();
+        EventRegionRankingSource::create([
+            'event_id' => $event->id, 'event_region_id' => $eventRegion->id,
+            'region_id' => $region->id, 'series_id' => $series->id, 'reserve_count' => 2,
+        ]);
+
+        $access = app(RegionManagerAccessService::class);
+        $this->assertSame($organizer->id, $access->defaultManager($eventRegion)->id);
+        $this->assertTrue($access->canManage($organizer, $eventRegion));
+        $this->actingAs($organizer)->get(route('backend.team-selection.index', $event))
+            ->assertOk()->assertSee('Default Manager Region');
+    }
+
+    public function test_multiple_common_series_organizers_require_an_explicit_region_assignment(): void
+    {
+        $series = Series::factory()->create();
+        $organizers = User::factory()->count(2)->create();
+        foreach (range(1, 3) as $leg) {
+            $legEvent = Event::factory()->create(['series_id' => $series->id]);
+            foreach ($organizers as $organizer) {
+                DB::table('event_admins')->insert(['event_id' => $legEvent->id, 'user_id' => $organizer->id]);
+            }
+        }
+        $event = Event::factory()->create();
+        $region = TeamRegion::create(['region_name' => 'Ambiguous Organizer Region']);
+        $eventRegion = new EventRegion();
+        $eventRegion->event_id = $event->id; $eventRegion->region_id = $region->id; $eventRegion->ordering = 1;
+        $eventRegion->save();
+        EventRegionRankingSource::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id,
+            'region_id' => $region->id, 'series_id' => $series->id, 'reserve_count' => 2]);
+
+        $access = app(RegionManagerAccessService::class);
+        $this->assertCount(2, $access->defaultManagerCandidates($eventRegion));
+        $this->assertNull($access->defaultManager($eventRegion));
+        $this->assertFalse($access->canManage($organizers->first(), $eventRegion));
+    }
+
+    public function test_only_active_selected_players_can_read_regional_announcements(): void
+    {
+        [$source] = $this->selectionSource();
+        $import = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $eventRegion = EventRegion::where('event_id', $source->event_id)->where('region_id', $source->region_id)->firstOrFail();
+        TeamSelectionRegionAnnouncement::create(['event_id' => $source->event_id, 'event_region_id' => $eventRegion->id,
+            'region_id' => $source->region_id, 'created_by' => User::factory()->create()->id,
+            'title' => 'Private active-team notice', 'message' => 'Active players only.']);
+        $selected = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $reserve = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->firstOrFail();
+
+        $this->actingAs(User::findOrFail($selected->player->userId))
+            ->get(route('team-selection.invitations.show', $selected))->assertOk()->assertSee('Private active-team notice');
+        $this->actingAs(User::findOrFail($reserve->player->userId))
+            ->get(route('team-selection.invitations.show', $reserve))->assertOk()->assertDontSee('Private active-team notice');
+        $selected->update(['status' => TeamSelectionInvitation::DECLINED]);
+        $this->actingAs(User::findOrFail($selected->player->userId))
+            ->get(route('team-selection.invitations.show', $selected->fresh()))->assertOk()->assertDontSee('Private active-team notice');
+    }
+
+    public function test_regional_announcement_email_requires_exact_recipient_confirmation(): void
+    {
+        Queue::fake();
+        Role::findOrCreate('admin', 'web');
+        [$source] = $this->selectionSource();
+        $teamType = DB::table('eventtypes')->insertGetId(['name' => 'Announcement confirmation', 'type' => 2,
+            'code' => 'announcement-confirmation', 'created_at' => now(), 'updated_at' => now()]);
+        $event = $source->event;
+        $event->update(['eventType' => $teamType]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $admin);
+        app(TeamSelectionInvitationService::class)->send($import, [
+            'response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2),
+        ], $admin);
+        $eventRegion = EventRegion::where('event_id', $event->id)->where('region_id', $source->region_id)->firstOrFail();
+        $emails = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->with('player.user')->get()
+            ->pluck('player.user.email')->map(fn ($email) => strtolower($email))->sort()->values();
+        $payload = ['title' => 'Confirmed recipients', 'message' => 'Regional update.', 'send_email' => 1,
+            'recipient_hash' => hash('sha256', $emails->toJson())];
+
+        $this->actingAs($admin)->post(route('backend.team-selection.announcements.store', [$event, $eventRegion]), $payload)
+            ->assertSessionHasErrors('confirm_recipients');
+        $this->assertDatabaseMissing('team_selection_region_announcements', ['title' => 'Confirmed recipients']);
+        $this->actingAs($admin)->post(route('backend.team-selection.announcements.store', [$event, $eventRegion]), $payload + ['confirm_recipients' => 1])
+            ->assertRedirect();
+        $announcement = TeamSelectionRegionAnnouncement::where('title', 'Confirmed recipients')->firstOrFail();
+        $this->assertSame($emails->count(), BulkEmailLog::where('mail_type', 'event_announcement')
+            ->where('related_type', TeamSelectionRegionAnnouncement::class)->where('related_id', $announcement->id)->count());
+        $failed = BulkEmailLog::where('mail_type', 'event_announcement')->where('related_type', TeamSelectionRegionAnnouncement::class)
+            ->where('related_id', $announcement->id)->firstOrFail();
+        $failed->update(['status' => 'failed', 'failed_at' => now()]);
+        $this->actingAs($admin)->post(route('backend.team-selection.announcements.retry', [$event, $eventRegion, $announcement]))
+            ->assertRedirect();
+        $this->assertSame(2, BulkEmailLog::where('mail_type', 'event_announcement')
+            ->where('related_type', TeamSelectionRegionAnnouncement::class)->where('related_id', $announcement->id)
+            ->where('recipient_email', $failed->recipient_email)->count());
+        $this->assertSame(1, BulkEmailLog::where('mail_type', 'event_announcement')
+            ->where('related_type', TeamSelectionRegionAnnouncement::class)->where('related_id', $announcement->id)
+            ->where('recipient_email', $failed->recipient_email)
+            ->where('status', 'queued')->count());
     }
 
     public function test_missing_selected_player_email_blocks_the_whole_send_before_queueing(): void

@@ -114,6 +114,14 @@ class RegionClothingCopyWorkflowTest extends TestCase
             'item_type_name' => 'Overberg Hoodie', 'price' => 460,
             'region_id' => $source->id, 'ordering' => 1,
         ]);
+        $wrongSchoolLevel = TeamRegion::create(['region_name' => 'Overberg High Schools 2026']);
+        DB::table('event_regions')->insert([
+            'event_id' => $sourceEvent->id, 'region_id' => $wrongSchoolLevel->id, 'ordering' => 2,
+        ]);
+        ClothingItemType::create([
+            'item_type_name' => 'High Schools Shirt', 'price' => 390,
+            'region_id' => $wrongSchoolLevel->id, 'ordering' => 1,
+        ]);
 
         $this->actingAs($admin)->get(route('backend.event.clothing.index', $event))
             ->assertOk()
@@ -121,6 +129,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
             ->assertSee('Overberg Primary Schools 2027')
             ->assertSee('Recommended previous setup:')
             ->assertSee('Overberg Primary Schools 2026')
+            ->assertDontSee('Overberg High Schools 2026')
             ->assertSee(route('backend.region.clothing.edit', [
                 'region' => $target->id,
                 'source_region' => $source->id,

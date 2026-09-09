@@ -438,7 +438,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });
 
-  Route::middleware('role:super-user|admin|convenor')->prefix('team-selection')->name('backend.team-selection.')->group(function () {
+  Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
     Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
     Route::delete('events/{event}/sources/{source}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'unlink'])->name('unlink');
@@ -450,6 +450,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('events/{event}/imports/{selectionImport}/restart', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'restart'])->name('restart');
     Route::patch('events/{event}/imports/{selectionImport}/deadlines', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
     Route::post('events/{event}/imports/{selectionImport}/emails/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryFailed'])->name('emails.retry');
+    Route::put('events/{event}/regions/{eventRegion}/manager', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'assignManager'])->name('manager.assign');
+    Route::post('events/{event}/regions/{eventRegion}/announcements', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'storeAnnouncement'])->name('announcements.store');
+    Route::delete('events/{event}/regions/{eventRegion}/announcements/{announcement}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'destroyAnnouncement'])->name('announcements.destroy');
+    Route::post('events/{event}/regions/{eventRegion}/announcements/{announcement}/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryAnnouncement'])->name('announcements.retry');
+    Route::patch('events/{event}/regions/{eventRegion}/teams/{team}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateTeam'])->name('teams.update');
+    Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/replace', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'replace'])->name('invitations.replace');
   });
 
   // Add these inside the backend/authenticated group (apply same middleware as other admin routes)

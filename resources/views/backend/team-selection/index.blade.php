@@ -7,8 +7,10 @@
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
     <div><h4 class="mb-1">Team Selection & Invitations</h4><p class="text-muted mb-0">{{ $event->name }}</p></div>
     <div class="d-flex flex-wrap gap-2">
-      <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-      <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary">Back to event</a>
+      @if($isEventManager)
+        <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary">Back to event</a>
+      @endif
     </div>
   </div>
 
@@ -26,6 +28,9 @@
       @php($activeImport = $source?->imports?->whereIn('status', ['draft','sent'])->sortByDesc('id')->first())
       @php($recipientEmailFor = fn($invitation) => collect([$invitation->player?->user?->email])->merge($invitation->player?->users?->pluck('email') ?? collect())->first(fn($email) => filter_var($email, FILTER_VALIDATE_EMAIL)))
       @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $eventRegion->region?->clothingItems?->contains(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
+      @php($regionManager = $regionManagers->get($eventRegion->id))
+      @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
+      @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
       <div class="col-12">
         <div class="card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
@@ -35,23 +40,49 @@
             @elseif($source)
               <div class="d-flex flex-wrap align-items-center gap-2">
                 <span class="badge bg-label-primary">Series linked</span>
-                <form method="POST" action="{{ route('backend.team-selection.unlink', [$event, $source]) }}" onsubmit="return confirm('Unlink this ranking series? Existing event categories and teams will be kept.');">
+                @if($isEventManager)<form method="POST" action="{{ route('backend.team-selection.unlink', [$event, $source]) }}" onsubmit="return confirm('Unlink this ranking series? Existing event categories and teams will be kept.');">
                   @csrf @method('DELETE')
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-unlink me-1"></i>Unlink series</button>
-                </form>
+                </form>@endif
               </div>
             @else
               <span class="badge bg-label-secondary">Manual/imported or not linked</span>
             @endif
           </div>
           <div class="card-body">
-            <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+                <div><small class="text-muted d-block">Regional organizer</small><strong>{{ $regionManager?->name ?: trim(($regionManager?->userName ?? '').' '.($regionManager?->userSurname ?? '')) ?: $regionManager?->email ?: 'Not assigned' }}</strong>@if($regionManager?->email)<div class="small text-muted">{{ $regionManager->email }} · player profile not required</div>@endif</div>
+                @if($isEventManager && $eventRegion->managerAssignment)<span class="badge bg-label-primary">Custom assignment</span>@elseif($regionManager)<span class="badge bg-label-secondary">Series organizer default</span>@endif
+              </div>
+              @if($isEventManager)
+                <form method="POST" action="{{ route('backend.team-selection.manager.assign', [$event, $eventRegion]) }}" class="row g-2 align-items-end mt-1">@csrf @method('PUT')
+                  <div class="col-md-7"><label class="form-label">Assign a different user by account email</label><input type="email" name="manager_email" class="form-control" value="{{ $eventRegion->managerAssignment ? $regionManager?->email : '' }}" placeholder="organizer@example.com"></div>
+                  <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Assign to this region</button></div>
+                  <div class="col-md-2 d-grid"><button class="btn btn-outline-secondary" name="use_default" value="1" @disabled(!$defaultRegionManagers->get($eventRegion->id))>Use default</button></div>
+                </form>
+                <div class="form-text">This grants access to this region; it does not remove existing event-wide or other-region access. A player profile is not required.</div>
+                @if(!$eventRegion->managerAssignment && $defaultCandidates->count() > 1)<div class="alert alert-warning mt-2 mb-0">This series has multiple common event organizers. No default was selected automatically; assign the intended account explicitly.</div>@endif
+              @endif
+            </div>
+            @if($regionTeams->isNotEmpty())
+              <details class="mb-3"><summary class="fw-semibold">Manage regional team details</summary><div class="mt-2 d-flex flex-column gap-2">
+                @foreach($regionTeams as $regionTeam)
+                  <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end border rounded p-2">@csrf @method('PATCH')
+                    <div class="col-md-7"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
+                    <div class="col-md-3"><input type="hidden" name="published" value="0"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="published" value="1" id="published-team-{{ $regionTeam->id }}" @checked($regionTeam->published)><label class="form-check-label" for="published-team-{{ $regionTeam->id }}">Published for registration</label></div></div>
+                    <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Save team</button></div>
+                  </form>
+                @endforeach
+              </div></details>
+            @endif
+            @if($isEventManager)<form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
               <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" {{ $activeImport ? 'disabled' : '' }} required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}" @selected($source?->series_id === $item->id)>{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · latest ranking published' : ' · ranking not ready' }}</option>@endforeach</select></div>
               <div class="col-sm-5 col-lg-2"><label class="form-label">Reserves per team</label><input type="number" name="reserve_count" min="0" max="20" value="{{ $source?->reserve_count ?? 2 }}" class="form-control" {{ $activeImport ? 'disabled' : '' }} required></div>
               <div class="col-sm-7 col-lg-3 d-grid"><button class="btn btn-outline-primary" {{ $activeImport ? 'disabled' : '' }}>Link series</button></div>
-            </form>
+            </form>@endif
 
-            @if($source && !$activeImport)
+            @if($isEventManager && $source && !$activeImport)
               <div class="d-flex flex-wrap gap-2 mt-3">
                 <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#ranking-category-setup-{{ $source->id }}">
                   <i class="ti ti-category-plus me-1"></i>Set up categories &amp; teams
@@ -69,11 +100,15 @@
               <div class="table-responsive mt-3"><table class="table table-sm"><thead><tr><th>Selected</th><th>Reserves</th><th>Registered</th><th>Missing account/email</th><th>Ranking snapshot</th></tr></thead><tbody><tr><td>{{ $activeImport->invitations->whereIn('status',['invited','accepted_pending_payment','paid_confirmed'])->count() }}</td><td>{{ $activeImport->invitations->where('status','reserve')->count() }}</td><td>{{ $activeImport->invitations->where('status','paid_confirmed')->count() }}</td><td>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</td><td><code>{{ $activeImport->ranking_run_id }}</code></td></tr></tbody></table></div>
               <details class="mt-2">
                 <summary class="fw-semibold">Review selected players, reserves and email delivery</summary>
-                <div class="table-responsive mt-2"><table class="table table-sm align-middle"><thead><tr><th>Player</th><th>Team</th><th>Ranking</th><th>Selection</th><th>Recipient</th><th>Email</th></tr></thead><tbody>
+                <div class="table-responsive mt-2"><table class="table table-sm align-middle"><thead><tr><th>Player</th><th>Team</th><th>Ranking</th><th>Selection</th><th>Recipient</th><th>Email</th><th>Replacement</th></tr></thead><tbody>
                   @foreach($activeImport->invitations->sortBy([['team_id','asc'],['queue_position','asc']]) as $invitation)
                     @php($recipientEmail = $recipientEmailFor($invitation))
                     @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
-                    <tr><td>{{ $invitation->player?->full_name }}</td><td>{{ $invitation->team?->name }}</td><td>#{{ $invitation->ranking_position }}</td><td>{{ str($invitation->status)->replace('_',' ')->title() }}</td><td>{{ $recipientEmail ?: 'Account link required' }}</td><td>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</td></tr>
+                    <tr><td>{{ $invitation->player?->full_name }}</td><td>{{ $invitation->team?->name }}</td><td>#{{ $invitation->ranking_position }}</td><td>{{ str($invitation->status)->replace('_',' ')->title() }}</td><td>{{ $recipientEmail ?: 'Account link required' }}</td><td>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</td><td>
+                      @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $activeImport->invitations->where('team_id', $invitation->team_id)->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->isNotEmpty())
+                        <details><summary class="btn btn-sm btn-outline-warning">Use next reserve</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
+                      @else<span class="text-muted small">—</span>@endif
+                    </td></tr>
                   @endforeach
                 </tbody></table></div>
               </details>
@@ -99,6 +134,21 @@
                 <form method="POST" action="{{ route('backend.team-selection.restart', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Remove this unsent import and clear its generated roster places?');">@csrf<button class="btn btn-sm btn-outline-danger">Restart draft import</button></form>
               @endif
             @endif
+
+            <hr class="my-4">
+            <h6>Regional announcements</h6>
+            <p class="text-muted small">Visible only to this region’s invited players. Email, when selected, is sent only to active selected players in this region.</p>
+            @foreach($eventRegion->announcements as $announcement)
+              @php($announcementLogs = $announcement->emailLogs)
+              <div class="border rounded p-2 mb-2"><div class="d-flex justify-content-between gap-2"><strong>{{ $announcement->title }}</strong><form method="POST" action="{{ route('backend.team-selection.announcements.destroy', [$event, $eventRegion, $announcement]) }}" onsubmit="return confirm('Hide this announcement from the regional portal? Previously sent email cannot be recalled.');">@csrf @method('DELETE')<button class="btn btn-sm btn-outline-danger">Hide</button></form></div><div class="small mt-1">{!! $announcement->message !!}</div><div class="d-flex flex-wrap gap-2 align-items-center text-muted small mt-1"><span>{{ $announcement->created_at->format('d M Y H:i') }}{{ $announcement->emailed_at ? ' · email queued' : ' · portal only' }}</span>@if($announcementLogs->isNotEmpty())<span class="badge bg-label-secondary">Queued {{ $announcementLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Sent {{ $announcementLogs->where('status','sent')->count() }}</span><span class="badge bg-label-danger">Failed {{ $announcementLogs->where('status','failed')->count() }}</span>@if($announcementLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.announcements.retry', [$event, $eventRegion, $announcement]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry current recipients</button></form>@endif @endif</div></div>
+            @endforeach
+            <form method="POST" action="{{ route('backend.team-selection.announcements.store', [$event, $eventRegion]) }}" class="row g-2">@csrf
+              <div class="col-md-4"><label class="form-label">Title</label><input name="title" class="form-control" maxlength="255" required></div>
+              <div class="col-md-8"><label class="form-label">Message</label><textarea name="message" class="form-control" rows="2" maxlength="20000" required></textarea></div>
+              <input type="hidden" name="recipient_hash" value="{{ hash('sha256', $regionAnnouncementRecipients->toJson()) }}">
+              <div class="col-12"><details><summary>Review {{ $regionAnnouncementRecipients->count() }} exact email recipient(s)</summary><div class="small text-muted mt-1">@forelse($regionAnnouncementRecipients as $email)<div>{{ $email }}</div>@empty No active selected players currently have a valid email address. @endforelse</div></details></div>
+              <div class="col-12 d-flex flex-wrap gap-3 align-items-center"><div><div class="form-check"><input type="hidden" name="send_email" value="0"><input class="form-check-input" type="checkbox" name="send_email" value="1" id="send-region-announcement-{{ $eventRegion->id }}" @disabled($regionAnnouncementRecipients->isEmpty())><label class="form-check-label" for="send-region-announcement-{{ $eventRegion->id }}">Also email these {{ $regionAnnouncementRecipients->count() }} recipient(s)</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-region-announcement-{{ $eventRegion->id }}"><label class="form-check-label" for="confirm-region-announcement-{{ $eventRegion->id }}">I reviewed and confirm this exact recipient list</label></div></div><button class="btn btn-outline-primary ms-auto">Publish regional announcement</button></div>
+            </form>
           </div>
         </div>
       </div>
@@ -126,7 +176,7 @@
         </div>
       @endif
 
-      @if($source && !$activeImport && $categorySetup)
+      @if($isEventManager && $source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
         @php($missingSetupRows = $setupRows->reject(fn($row) => $row['ready']))
         <div class="modal fade" id="ranking-category-setup-{{ $source->id }}" tabindex="-1" aria-labelledby="ranking-category-setup-title-{{ $source->id }}" aria-hidden="true">

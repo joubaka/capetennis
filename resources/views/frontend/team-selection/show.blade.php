@@ -15,6 +15,9 @@
       @if($invitation->selectionImport?->payment_deadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Payment deadline</small><strong>{{ $invitation->selectionImport->payment_deadline->format('d M Y H:i') }}</strong></div></div>@endif
     </div>
     @if($invitation->selectionImport?->event_information)<div class="alert alert-warning"><strong>Event information</strong><div class="mt-1">{!! nl2br(e($invitation->selectionImport->event_information)) !!}</div></div>@endif
+    @if($regionAnnouncements->isNotEmpty())
+      <div class="mb-4"><h5>{{ $invitation->region?->region_name }} announcements</h5>@foreach($regionAnnouncements as $announcement)<div class="border rounded p-3 mb-2"><strong>{{ $announcement->title }}</strong><div class="mt-1">{!! $announcement->message !!}</div><small class="text-muted">{{ $announcement->created_at->format('d M Y H:i') }}</small></div>@endforeach</div>
+    @endif
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
     @if($invitation->status === \App\Models\TeamSelectionInvitation::INVITED)
       <p>Choose one option. Your team place is confirmed only after payment has been verified.</p><div class="d-flex flex-wrap gap-2"><form method="POST" action="{{ route('team-selection.invitations.accept', $invitation) }}">@csrf<button class="btn btn-success btn-lg"><i class="ti ti-credit-card me-1"></i>Accept and pay</button></form><button class="btn btn-outline-danger btn-lg" data-bs-toggle="modal" data-bs-target="#decline-team-invitation">Decline invitation</button></div>
