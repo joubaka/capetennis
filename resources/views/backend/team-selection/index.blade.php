@@ -6,7 +6,10 @@
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
     <div><h4 class="mb-1">Team Selection & Invitations</h4><p class="text-muted mb-0">{{ $event->name }}</p></div>
-    <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary">Back to event</a>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+      <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary">Back to event</a>
+    </div>
   </div>
 
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
@@ -55,6 +58,7 @@
                 @if($sourceReady && $regionTeams->isNotEmpty())
                   <a class="btn btn-primary" href="{{ route('backend.team-selection.preview', [$event, $source]) }}"><i class="ti ti-download me-1"></i>Import ranked players</a>
                 @endif
+                <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.edit', $eventRegion->region_id) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
               </div>
               <div class="form-text">Create the event teams from the ranking categories, then review the ranked-player import.</div>
               @if(!$sourceReady)

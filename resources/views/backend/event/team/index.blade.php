@@ -16,6 +16,11 @@
           Team Selection & Invitations
         </a>
 
+        <a class="btn btn-outline-primary" href="{{ route('backend.event.clothing.index', $event) }}">
+          <i class="ti ti-shirt me-1"></i>
+          Clothing Setup
+        </a>
+
         <button type="button"
                 class="btn btn-outline-success"
                 id="sync-team-categories-btn"

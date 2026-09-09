@@ -5,7 +5,6 @@ namespace App\Exports;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
-use Illuminate\Support\Collection;
 
 class ClothingOrdersExport implements FromCollection, WithHeadings, WithMapping
 {
@@ -14,7 +13,9 @@ class ClothingOrdersExport implements FromCollection, WithHeadings, WithMapping
     // Constructor to receive data
     public function __construct($clothings)
     {
-        $this->clothings = $clothings;
+        $this->clothings = $clothings->loadMissing(['items.itemType', 'items.size', 'player', 'team'])
+            ->flatMap(fn ($order) => $order->items->map(fn ($item) => compact('order', 'item')))
+            ->values();
     }
 
     // Return collection of orders
@@ -26,25 +27,28 @@ class ClothingOrdersExport implements FromCollection, WithHeadings, WithMapping
     // Excel headers
     public function headings(): array
     {
-        return ['Order #', 'Date', 'Player', 'Item', 'Size', 'Team', 'Payfast Id', 'Status'];
+        return ['Order #', 'Date', 'Player', 'Item', 'Size', 'Team', 'Qty', 'Unit Price', 'Line Total', 'PayFast Id', 'Status'];
     }
 
     // Mapping data for each row
-    public function map($order): array
+    public function map($row): array
     {
-        return $order->items->map(function ($item) use ($order) {
-            return [
-                $order->id,
-                $item->created_at ? $item->created_at->format('d M Y') : 'N/A',
-                optional($order->player)->getFullNameAttribute(),
-                optional($item->itemType)->item_type_name,
-                optional($item->size)->size,
-                optional($order->team)->name,
-                $order->pf_id,
-                $order->pay_status ? 'Paid' : 'Unpaid',
-            ];
-        })->toArray();
+        $order = $row['order'];
+        $item = $row['item'];
+
+        return [
+            $order->id,
+            $item->created_at ? $item->created_at->format('d M Y') : 'N/A',
+            optional($order->player)->getFullNameAttribute(),
+            $item->item_name ?: optional($item->itemType)->item_type_name,
+            $item->size_name ?: optional($item->size)->size,
+            optional($order->team)->name,
+            $item->qty ?: 1,
+            (float) $item->price,
+            (float) $item->line_total,
+            $order->pf_id,
+            $order->pay_status ? 'Paid' : 'Unpaid',
+        ];
     }
 }
-
 

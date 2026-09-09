@@ -425,6 +425,7 @@ class EventController extends Controller
         'team.regions',
       ])
         ->where('user_id', Auth::id())
+        ->where('event_id', $event->id)
         ->whereHas('team', fn($q) => $q->whereIn('region_id', $regionIds))
         ->latest()
         ->get();

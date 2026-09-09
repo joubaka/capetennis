@@ -12,6 +12,11 @@ class ClothingOrderItem extends Model
         'clothing_order_id',
         'clothing_order_item_id',
         'clothing_item_size',
+        'qty',
+        'price',
+        'line_total',
+        'item_name',
+        'size_name',
     ];
 
     public function order(){

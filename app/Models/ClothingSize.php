@@ -14,5 +14,9 @@ class ClothingSize extends Model
   {
     return $this->belongsTo(ClothingItemType::class, 'item_type', 'id');
   }
-}
 
+  public function orderItems()
+  {
+    return $this->hasMany(ClothingOrderItem::class, 'clothing_item_size');
+  }
+}

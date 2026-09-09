@@ -795,42 +795,37 @@ class RegisterController extends Controller
       ->withErrors('Payment cancelled.');
   }
 
-  public function notifyClothing(Request $request)
+  public function notifyClothing(Request $request, \App\Services\Clothing\ClothingPaymentService $payments)
   {
-    // Always respond 200 to PayFast
-    // (Laravel will do this automatically when returning a response)
-
-    // Log ITN for debugging (recommended)
-    Log::info('PayFast Clothing ITN', $request->all());
-
-    // 1. Only process completed payments
+    if (! $this->validatePayfastSignature($request)) {
+      Log::warning('Rejected clothing PayFast ITN with an invalid signature', [
+        'pf_payment_id' => $request->input('pf_payment_id'),
+      ]);
+      return response('Invalid signature', 400);
+    }
     if ($request->input('payment_status') !== 'COMPLETE') {
       return response('Ignored', 200);
     }
-
-    // 2. Find clothing order
     $orderId = (int) $request->input('custom_int5');
-    $order = ClothingOrder::find($orderId);
+    if ($orderId <= 0) return response('Order reference missing', 400);
 
-    if (!$order) {
-      Log::error('PayFast ITN: Clothing order not found', [
-        'order_id' => $orderId
+    try {
+      $payments->finalizePayfast(
+        $orderId,
+        trim((string) $request->input('pf_payment_id')),
+        (float) $request->input('amount_gross')
+      );
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+      Log::warning('Rejected clothing PayFast ITN for an unknown order', ['order_id' => $orderId]);
+      return response('Order not found', 404);
+    } catch (\Throwable $exception) {
+      Log::error('Rejected clothing PayFast ITN', [
+        'order_id' => $orderId,
+        'pf_payment_id' => $request->input('pf_payment_id'),
+        'reason' => $exception->getMessage(),
       ]);
-      return response('Order not found', 200);
+      return response('Payment verification failed', 400);
     }
-
-    // 3. Prevent double processing
-    if ((int) $order->pay_status === 1) {
-      return response('Already processed', 200);
-    }
-
-    // 4. Mark order as paid
-    $order->update([
-      'pay_status' => 1,
-      'pf_id' => $request->input('pf_payment_id'),
-      'paid_at' => now(),              // strongly recommended
-      'amount_paid' => $request->input('amount_gross'),
-    ]);
 
     return response('OK', 200);
   }

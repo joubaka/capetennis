@@ -94,10 +94,14 @@ class RegionController extends Controller
 
   public function getRegionClothingItems(Request $request)
   {
-    $regionId = $request->input('region');
+    $data = $request->validate(['region' => ['required', 'integer', 'exists:team_regions,id']]);
+    $region = \App\Models\TeamRegion::findOrFail($data['region']);
+    abort_unless((bool) $region->clothing_order, 404);
 
     $clothingItems = ClothingItemType::with('sizes')
-      ->where('region_id', $regionId)
+      ->where('region_id', $region->id)
+      ->where('price', '>', 0)
+      ->whereHas('sizes')
       ->orderBy('ordering')
       ->get();
 

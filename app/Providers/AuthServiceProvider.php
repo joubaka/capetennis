@@ -92,6 +92,12 @@ class AuthServiceProvider extends ServiceProvider
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
+        Gate::define('region-clothing.manage', function ($user, \App\Models\TeamRegion $region) {
+            return $region->events()->get(['events.id'])->contains(
+                fn ($event) => $user->is_event_admin($event->id) || $user->is_convenor($event->id)
+            );
+        });
+
         // A deliberately narrow ability for shared, telephone-based venue scoring.
         Gate::define('event.score', function ($user, \App\Models\Event $event) {
             if ($user->hasRole('score-keeper')) {

@@ -1189,15 +1189,19 @@ Route::delete(
   Route::patch('/region/{region}/clothing-order', [ClothingOrderController::class, 'toggleClothingOrder'])
     ->name('backend.region.clothing.toggle');
 
-  Route::resource('clothingOrder', ClothingOrderController::class);
+  Route::post('clothingOrder', [ClothingOrderController::class, 'store'])->name('clothingOrder.store');
 
   // region
   Route::post('region/getRegionClothingItems', [RegionController::class, 'getRegionClothingItems'])->name('get.region.clothing.items');
   Route::resource('region', RegionController::class);
 
   // ✅ Region Clothing Management (items, prices, sizes per region)
+  Route::get('event/{event}/clothing', [RegionClothingController::class, 'eventSetup'])
+    ->name('backend.event.clothing.index');
   Route::get('region/{region}/clothing', [RegionClothingController::class, 'edit'])
     ->name('backend.region.clothing.edit');
+  Route::post('region/{region}/clothing/copy', [RegionClothingController::class, 'copyFromRegion'])
+    ->name('backend.region.clothing.copy');
 
   // Items
   Route::post('region/{region}/clothing/items', [RegionClothingController::class, 'storeItem'])

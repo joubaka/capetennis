@@ -22,6 +22,9 @@
                 <th>Item</th>
                 <th>Size</th>
                 <th>Team</th>
+                <th>Qty</th>
+                <th>Unit</th>
+                <th>Total</th>
                 <th>Payfast Id</th>
                 <th>Status</th>
             </tr>
@@ -38,9 +41,12 @@
                               {{ optional($order->player)->getFullNameAttribute() }}
                           </span>
                       </td>
-                      <td>{{ optional($item->itemType)->item_type_name }}</td>
-                      <td>{{ optional($item->size)->size }}</td>
+                      <td>{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
+                      <td>{{ $item->size_name ?: optional($item->size)->size }}</td>
                       <td>{{ optional($order->team)->name }}</td>
+                      <td>{{ $item->qty ?: 1 }}</td>
+                      <td>R{{ number_format((float) $item->price, 2) }}</td>
+                      <td>R{{ number_format((float) $item->line_total, 2) }}</td>
                       <td>{{ $order->pf_id }}</td>
                       <td><span class="badge bg-label-success">Paid</span></td>
                   </tr>

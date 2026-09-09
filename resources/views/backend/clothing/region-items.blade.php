@@ -1,5 +1,5 @@
 @extends('layouts.backend')
-@section('title', 'Clothing — ' . $region->name)
+@section('title', 'Clothing — ' . $region->region_name)
 
 @section('vendor-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
@@ -10,11 +10,83 @@
 
 @section('content')
 <div class="container-xxl py-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">{{ $region->name }} — Clothing</h3>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddItem">
-      + Add Item
-    </button>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h3 class="mb-0">{{ $region->region_name }} — Clothing</h3>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', $region) }}">Paid orders</a>
+      @if($items->isNotEmpty())
+        <form method="POST" action="{{ route('backend.region.clothing.toggle', $region) }}">@csrf @method('PATCH')
+          <button class="btn btn-{{ $region->clothing_order ? 'outline-danger' : 'success' }}">{{ $region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
+        </form>
+      @endif
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAddItem">+ Add Item</button>
+    </div>
+  </div>
+
+  @if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+  @endif
+  @if($errors->any())
+    <div class="alert alert-danger"><strong>Clothing setup was not copied.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
+  @endif
+
+  <div class="card mb-4">
+    <div class="card-header">
+      <h5 class="mb-1">Copy and review last year’s clothing</h5>
+      <p class="text-muted mb-0">Load another region’s items and sizes, review every selling price, then copy only the selected items. Existing items are never overwritten.</p>
+    </div>
+    <div class="card-body">
+      <form method="GET" action="{{ route('backend.region.clothing.edit', $region) }}" class="row g-2 align-items-end mb-3">
+        <div class="col-lg-8">
+          <label class="form-label" for="source-region">Previous clothing setup</label>
+          <select class="form-select" name="source_region" id="source-region" required>
+            <option value="">Choose a region…</option>
+            @foreach($sourceRegions as $sourceRegion)
+              @php($sourceEvent = $sourceRegion->events->first())
+              <option value="{{ $sourceRegion->id }}" @selected($copySource?->id === $sourceRegion->id)>
+                {{ $sourceRegion->region_name }} · {{ $sourceRegion->clothing_items_count }} items{{ $sourceEvent ? ' · '.$sourceEvent->name : '' }}
+              </option>
+            @endforeach
+          </select>
+        </div>
+        <div class="col-lg-4 d-grid"><button class="btn btn-outline-primary">Preview clothing setup</button></div>
+      </form>
+
+      @if($copySource)
+        <div class="alert alert-warning">
+          <strong>Price review required:</strong> these are the saved prices from {{ $copySource->region_name }}. Edit the {{ $targetYear }} selling prices below before confirming. Clothing ordering will remain closed after copying.
+        </div>
+        <form method="POST" action="{{ route('backend.region.clothing.copy', $region) }}">
+          @csrf
+          <input type="hidden" name="source_region_id" value="{{ $copySource->id }}">
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:150px">{{ $targetYear }} price (R)</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
+              <tbody>
+                @foreach($copySource->clothingItems->sortBy([['ordering','asc'],['item_type_name','asc']])->values() as $rowIndex => $sourceItem)
+                  <tr>
+                    <td>
+                      <input type="hidden" name="items[{{ $rowIndex }}][selected]" value="0">
+                      <input class="form-check-input clothing-copy-toggle" type="checkbox" name="items[{{ $rowIndex }}][selected]" value="1" checked aria-label="Copy {{ $sourceItem->item_type_name }}">
+                      <input type="hidden" name="items[{{ $rowIndex }}][source_item_id]" value="{{ $sourceItem->id }}">
+                    </td>
+                    <td><input class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191"></td>
+                    <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", (int) $sourceItem->price) }}" min="0" required inputmode="numeric"></td>
+                    <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][ordering]" value="{{ old("items.$rowIndex.ordering", $rowIndex + 1) }}" min="1"></td>
+                    <td><div class="d-flex flex-wrap gap-1">@foreach($sourceItem->sizes->sortBy([['ordering','asc'],['id','asc']]) as $size)<span class="badge bg-label-primary">{{ $size->size }}</span>@endforeach</div></td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+          <div class="form-check border rounded p-3 ps-5 mb-3">
+            <input class="form-check-input" type="checkbox" name="confirm_prices" value="1" id="confirm-clothing-prices" required>
+            <label class="form-check-label" for="confirm-clothing-prices"><strong>I reviewed and approve these {{ $targetYear }} selling prices.</strong> Copy the selected items and sizes without changing the source setup.</label>
+          </div>
+          <button class="btn btn-primary">Copy approved clothing to {{ $region->region_name }}</button>
+        </form>
+      @endif
+    </div>
   </div>
 
   <div class="card">
@@ -121,6 +193,11 @@
     storeSize:   (itemId) => `${base}/${itemId}/sizes`,
     destroySize: (itemId, sizeId) => `${base}/${itemId}/sizes/${sizeId}`,
   };
+
+  $('.clothing-copy-toggle').on('change', function(){
+    const disabled = !this.checked;
+    $(this).closest('tr').find('input[name$="[item_type_name]"], input[name$="[price]"], input[name$="[ordering]"]').prop('disabled', disabled);
+  });
 
   function logClick(msg, extra={}) {
     if (!DEBUG) return;

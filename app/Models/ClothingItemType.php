@@ -20,5 +20,9 @@ class ClothingItemType extends Model
     return $this->hasMany(ClothingSize::class, 'item_type', 'id')
       ->orderBy('ordering')->orderBy('size');
   }
-}
 
+  public function orderItems()
+  {
+    return $this->hasMany(ClothingOrderItem::class, 'clothing_order_item_id');
+  }
+}

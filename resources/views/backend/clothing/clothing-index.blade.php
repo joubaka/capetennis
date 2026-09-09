@@ -30,16 +30,14 @@
             <th>Team</th>
             <th>Payfast ID</th>
             <th>Qty</th>
-            <th>Unit (Net)</th>
-            <th>Payfast Fee</th>
+            <th>Unit Price</th>
+            <th>Line Total</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           @php 
-            $unitPriceTotal = 0; 
-            $payfastTotal   = 0; 
-            $netTotal       = 0; 
+            $grandTotal = 0;
             $rowNum         = 1;
           @endphp
 
@@ -47,28 +45,26 @@
             @if($order->pay_status == 1)
               @foreach($order->items as $item)
                 @php
-                  $price   = optional($item->itemType)->price ?? 0;
-                  $unit    = $price * 0.95; // after Payfast deduction
-                  $payfast = $price * 0.05; // Payfast fee
+                  $price = (float) $item->price;
+                  $qty = (int) ($item->qty ?: 1);
+                  $lineTotal = (float) ($item->line_total ?: $price * $qty);
                 @endphp
                 <tr>
                   <td>{{ $rowNum++ }}</td>
                   <td>{{ $order->created_at->format('d-m-Y') }}</td>
                   <td>{{ optional($order->player)->name }}</td>
-                  <td>{{ optional($item->itemType)->item_type_name }}</td>
-                  <td>{{ optional($item->size)->size }}</td>
+                  <td>{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
+                  <td>{{ $item->size_name ?: optional($item->size)->size }}</td>
                   <td>{{ optional($order->team)->name }}</td>
                   <td>{{ $order->pf_id }}</td>
-                  <td>{{ $item->quantity }}</td>
-                  <td>R{{ number_format($unit, 2) }}</td>
-                  <td>R{{ number_format($payfast, 2) }}</td>
+                  <td>{{ $qty }}</td>
+                  <td>R{{ number_format($price, 2) }}</td>
+                  <td>R{{ number_format($lineTotal, 2) }}</td>
                   <td><span class="badge bg-label-success">Paid</span></td>
                 </tr>
 
                 @php
-                  $unitPriceTotal += $price;
-                  $payfastTotal   += $payfast;
-                  $netTotal       += $unit;
+                  $grandTotal += $lineTotal;
                 @endphp
               @endforeach
             @endif
@@ -83,8 +79,8 @@
           <tr>
             <td colspan="7" class="text-end fw-bold">Totals:</td>
             <td></td>
-            <td class="fw-bold text-success">R{{ number_format($netTotal, 2) }}</td>
-            <td class="fw-bold text-danger">R{{ number_format($payfastTotal, 2) }}</td>
+            <td></td>
+            <td class="fw-bold">R{{ number_format($grandTotal, 2) }}</td>
             <td></td>
           </tr>
         </tfoot>

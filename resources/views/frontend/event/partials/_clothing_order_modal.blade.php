@@ -44,6 +44,7 @@
         <input type="hidden" name="region_id" id="order_region_id">
         <input type="hidden" name="player_id" id="order_player_id">
         <input type="hidden" name="team_id" id="order_team_id">
+        <input type="hidden" name="request_token" id="clothing_request_token">
 
         <div class="modal-body">
 
@@ -84,7 +85,14 @@
 {{-- ROUTE --}}
 <script>
   window.CLOTHING_ITEMS_URL = @json(route('get.region.clothing.items'));
-  console.log('[ClothingModal] CLOTHING_ITEMS_URL:', window.CLOTHING_ITEMS_URL);
+  $(document).on('click', '.clothing-order', function () {
+    const token = window.crypto?.randomUUID?.()
+      || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (char) {
+        const random = Math.random() * 16 | 0;
+        return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+      });
+    $('#clothing_request_token').val(token);
+  });
 </script>
 
 

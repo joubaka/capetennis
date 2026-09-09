@@ -45,9 +45,9 @@
     </td>
 
     <td>
-      {{ $item->itemType->item_type_name }}
+      {{ $item->item_name ?: optional($item->itemType)->item_type_name }}
       <span class="badge bg-label-warning ms-1">
-        Size {{ $item->size->size }}
+        Size {{ $item->size_name ?: optional($item->size)->size }}
       </span>
     </td>
 
@@ -70,7 +70,7 @@
   <tr class="border-top">
     <td colspan="4" class="text-end fw-bold">Total</td>
     <td class="text-end fw-bold">
-      R{{ number_format($payfast->amount, 2) }}
+      R{{ number_format($total, 2) }}
     </td>
   </tr>
 </tfoot>
@@ -78,42 +78,8 @@
     </table>
     <br>
     <div class=" p-4">
-        <form action="{{$payfast->url}}" method="post">
-            <input type="hidden" name="merchant_id" value="{{$payfast->id}}">
-            <input type="hidden" name="merchant_key" value="{{$payfast->key}}">
-
-            <input type="hidden" name="return_url" value="{{$payfast->return_url}}">
-            <input type="hidden" name="cancel_url" value="{{$payfast->cancel_url}}">
-            <input type="hidden" name="notify_url" value="{{$payfast->notify_url}}">
-
-
-
-            <input type="hidden" id="amount" name="amount" value="{{$payfast->amount}}">
-            <input type="hidden" id="item_name" name="item_name" value="{{$payfast->item_name}}">
-
-            <!--  team  -->
-            <input type="hidden" name="custom_int1" value="{{$payfast->custom_int1}}">
-            <input type="hidden" name="custom_str1" value="Team">
-
-            <!-- Player -->
-            <input type="hidden" name="custom_int2" value="{{$payfast->custom_int2}}">
-            <input type="hidden" name="custom_str2" value="Player">
-
-            <!-- Event -->
-            <input type="hidden" name="custom_int3" value="{{$payfast->custom_int3}}">
-            <input type="hidden" name="custom_str3" value="Event">
-
-            <!--  User -->
-            <input type="hidden" name="custom_int4" value="{{$payfast->custom_int4}}">
-            <input type="hidden" name="custom_str4" value="User">
-
-            <!--  order -->
-            <input type="hidden" name="custom_int5" value="{{$payfast->custom_int5}}">
-            <input type="hidden" name="custom_str5" value="ClothingOrder">
-
-            <button class="btn btn-danger btn-lg">Pay now with Payfast</button>
-
-        </form>
+        {!! $payfast->getForm() !!}
+        <button type="submit" form="payfastForm" class="btn btn-danger btn-lg">Pay now with PayFast</button>
 </div>
 
 

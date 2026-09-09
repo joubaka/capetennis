@@ -8,8 +8,8 @@
   foreach ($ordersToShow as $order) {
     $orderTotal = 0;
     foreach ($order->items as $it) {
-      $qty  = $it->quantity ?? 1;
-      $unit = $it->price ?? optional($it->itemType)->price;
+      $qty  = $it->qty ?? 1;
+      $unit = $it->price;
       if (is_numeric($unit)) $orderTotal += $qty * $unit;
     }
     $grandTotal += $orderTotal;
@@ -51,9 +51,9 @@
               $lines = [];
 
               foreach ($order->items as $it) {
-                $typeName = optional($it->itemType)->item_type_name ?? 'Item';
-                $sizeName = optional($it->size)->name ?? optional($it->size)->label ?? null;
-                $qty      = $it->quantity ?? 1;
+                $typeName = $it->item_name ?: (optional($it->itemType)->item_type_name ?? 'Item');
+                $sizeName = $it->size_name ?: optional($it->size)->size;
+                $qty      = $it->qty ?? 1;
 
                 $lines[] = [
                   'name' => $typeName,
