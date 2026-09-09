@@ -49,6 +49,12 @@
   .team-admin-workspace .tab-pane .card-header {
     display: flex; align-items: center; justify-content: space-between;
   }
+  .team-admin-workspace .team-player-table {
+    width: 100%; min-width: 1200px; table-layout: fixed;
+  }
+  .team-admin-workspace .team-player-table :is(th, td) {
+    overflow: hidden; text-overflow: ellipsis;
+  }
   /* Small device improvements */
   @media (max-width: 576px) {
     .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }
@@ -88,7 +94,7 @@
   }
 </style>
 
-<div class="team-admin-workspace">
+<div class="team-admin-workspace" data-backend-wide>
   <div class="nav-tabs-shadow mb-4">
 
       {{-- ✅ Top nav --}}

@@ -120,7 +120,15 @@
 
                 {{-- TEAM TABLE --}}
                 <div class="table-responsive">
-                  <table class="table table-sm table-bordered text-nowrap" style="min-width:1200px">
+                  <table class="table table-sm table-bordered text-nowrap team-player-table">
+                    <colgroup>
+                      <col style="width: 7%">
+                      <col style="width: 22%">
+                      <col style="width: 31%">
+                      <col style="width: 16%">
+                      <col style="width: 14%">
+                      <col style="width: 10%">
+                    </colgroup>
                     <thead class="table-light">
                       <tr>
                         <th>#</th>
