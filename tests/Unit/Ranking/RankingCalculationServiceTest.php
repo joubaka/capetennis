@@ -255,7 +255,7 @@ class RankingCalculationServiceTest extends TestCase
         );
     }
 
-    public function test_final_leg_position_breaks_a_tie_after_equal_third_scores(): void
+    public function test_latest_played_leg_position_breaks_a_tie_after_equal_third_scores(): void
     {
         $this->series->update([
             'auto_award_rule' => false,
@@ -301,7 +301,7 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertSame(600, $second->droppedLegs[0]->points);
         $this->assertSame(1, $first->rankPosition);
         $this->assertSame(2, $second->rankPosition);
-        $this->assertStringContainsString('final-leg placing (3rd at Event 103)', $first->tiebreakNotes[0]);
+        $this->assertStringContainsString('latest-played-leg placing (3rd at Event 103)', $first->tiebreakNotes[0]);
         $this->assertSame('Event 103', $first->lastLegPositionDecision['event_name']);
         $this->assertSame(3, $first->lastLegPositionDecision['positions'][1]);
         $this->assertSame(4, $first->lastLegPositionDecision['positions'][2]);
@@ -309,7 +309,95 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertNull($second->tieDecision);
     }
 
-    public function test_final_leg_position_rule_uses_actual_finish_and_ranks_it_above_an_absence(): void
+    public function test_latest_played_leg_falls_back_for_the_tied_players_when_only_someone_else_played_leg_three(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => true,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 3],
+            [2, 101, 3], [2, 102, 1],
+            [3, 103, 2],
+        ]);
+        $this->dateCategoryEvent(101, now()->subDays(30)->toDateString());
+        $this->dateCategoryEvent(102, now()->subDays(20)->toDateString());
+        $this->dateCategoryEvent(103, now()->subDays(10)->toDateString());
+
+        $result = $this->service()->calculate($this->list);
+        $winner = $this->rowFor($result, 2);
+        $runnerUp = $this->rowFor($result, 1);
+
+        $this->assertSame(1600, $winner->totalPoints);
+        $this->assertSame(1600, $runnerUp->totalPoints);
+        $this->assertSame(1, $winner->rankPosition);
+        $this->assertSame(2, $runnerUp->rankPosition);
+        $this->assertSame('Event 102', $winner->lastLegPositionDecision['event_name']);
+        $this->assertSame(1, $winner->lastLegPositionDecision['positions'][2]);
+        $this->assertSame(3, $winner->lastLegPositionDecision['positions'][1]);
+        $this->assertNull($winner->tieDecision);
+        $this->assertNull($runnerUp->tieDecision);
+    }
+
+    public function test_player_with_a_leg_two_result_ranks_ahead_when_the_other_tied_player_stopped_after_leg_one(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => true,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+
+        $this->seedPositions([
+            [1, 101, 3], [1, 102, 4],
+            [2, 101, 1],
+            [3, 103, 2],
+        ]);
+        $this->dateCategoryEvent(101, now()->subDays(30)->toDateString());
+        $this->dateCategoryEvent(102, now()->subDays(20)->toDateString());
+        $this->dateCategoryEvent(103, now()->subDays(10)->toDateString());
+
+        $result = $this->service()->calculate($this->list);
+        $winner = $this->rowFor($result, 1);
+        $runnerUp = $this->rowFor($result, 2);
+
+        $this->assertSame(1000, $winner->totalPoints);
+        $this->assertSame(1000, $runnerUp->totalPoints);
+        $this->assertSame(1, $winner->rankPosition);
+        $this->assertSame(2, $runnerUp->rankPosition);
+        $this->assertSame('Event 102', $winner->lastLegPositionDecision['event_name']);
+        $this->assertSame(4, $winner->lastLegPositionDecision['positions'][1]);
+        $this->assertNull($winner->lastLegPositionDecision['positions'][2]);
+    }
+
+    public function test_equal_finishes_in_the_latest_played_leg_remain_for_admin_decision(): void
+    {
+        $this->series->update([
+            'auto_award_rule' => false,
+            'use_last_leg_position_tiebreak' => true,
+            'use_head_to_head_tiebreak' => false,
+        ]);
+        DB::table('points')->where('series_id', $this->series->id)->whereIn('position', [2, 3])->update(['score' => 1000]);
+
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2],
+            [2, 101, 3], [2, 102, 2],
+        ]);
+        $this->dateCategoryEvent(101, now()->subDays(20)->toDateString());
+        $this->dateCategoryEvent(102, now()->subDays(10)->toDateString());
+
+        $result = $this->service()->calculate($this->list);
+        $first = $this->rowFor($result, 1);
+        $second = $this->rowFor($result, 2);
+
+        $this->assertSame($first->rankPosition, $second->rankPosition);
+        $this->assertSame('manual', $first->tieDecision['suggested_method']);
+        $this->assertSame([1, 2], $first->tieDecision['player_ids']);
+        $this->assertSame($first->tieDecision['tie_key'], $second->tieDecision['tie_key']);
+    }
+
+    public function test_latest_played_leg_position_rule_uses_actual_finish_and_ranks_it_above_an_absence(): void
     {
         $this->series->update([
             'auto_award_rule' => false,
@@ -333,7 +421,7 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertNull($this->rowFor($result, 1)->lastLegPositionDecision['positions'][2]);
     }
 
-    public function test_final_leg_position_does_not_affect_series_where_the_rule_is_disabled(): void
+    public function test_latest_played_leg_position_does_not_affect_series_where_the_rule_is_disabled(): void
     {
         $this->series->update([
             'auto_award_rule' => false,

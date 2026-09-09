@@ -279,8 +279,8 @@
 
             <div class="toggle-row mt-2">
               <div class="toggle-info">
-                <strong>2. Use Final-Leg Finishing Position</strong>
-                <small>If totals and third-event scores are still equal, rank the player who actually finished higher in the latest played linked leg first. A recorded finish ranks ahead of no finish; automatic awards are not treated as actual finishes.</small>
+                <strong>2. Use Latest-Played-Leg Finishing Position</strong>
+                <small>If totals and third-event scores are still equal, use the latest linked leg played by either tied player. A recorded finish ranks ahead of no finish; if neither played that leg, move back to the previous leg. Equal finishes remain tied for an administrator to decide. Automatic awards are not actual finishes.</small>
               </div>
               <div class="form-check form-switch mt-1">
                 <input class="form-check-input" type="checkbox" name="use_last_leg_position_tiebreak" id="use_last_leg_position_tiebreak"

@@ -57,7 +57,25 @@ $configData = Helper::appClasses();
   }
   .maintenance-status::before { content: ''; width: .5rem; height: .5rem; border-radius: 50%; background: #f0a34a; }
   .maintenance-card h1 { color: #51485f; font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.1; margin: 1.25rem 0 .9rem; }
-  .maintenance-card p { color: #756d80; max-width: 34rem; font-size: 1rem; line-height: 1.7; margin-bottom: 1.5rem; }
+  .maintenance-card p { color: #756d80; max-width: 34rem; font-size: 1rem; line-height: 1.7; margin-bottom: 1.25rem; }
+  .maintenance-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; }
+  .maintenance-retry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    padding: .65rem 1rem;
+    border-radius: .75rem;
+    background: #7250d1;
+    color: #fff;
+    font-size: .875rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: 0 .4rem 1rem rgba(114, 80, 209, .2);
+  }
+  .maintenance-retry:hover,
+  .maintenance-retry:focus { background: #6241c1; color: #fff; }
+  .maintenance-retry:focus-visible { outline: .2rem solid rgba(114, 80, 209, .3); outline-offset: .2rem; }
   .maintenance-note { color: #8a8292; font-size: .875rem; }
   .maintenance-art { width: 100%; max-width: 430px; justify-self: center; }
   .maintenance-art img { display: block; width: 100%; height: auto; }
@@ -65,6 +83,7 @@ $configData = Helper::appClasses();
     .maintenance-page { padding: 1rem; }
     .maintenance-card { grid-template-columns: 1fr; padding: 1.5rem; border-radius: 1rem; text-align: center; }
     .maintenance-card p { margin-left: auto; margin-right: auto; }
+    .maintenance-actions { justify-content: center; }
     .maintenance-art { order: -1; max-width: 300px; }
   }
 </style>
@@ -75,17 +94,44 @@ $configData = Helper::appClasses();
   <section class="maintenance-card">
     <div>
       <div class="maintenance-brand">Cape Tennis</div>
-      <div class="maintenance-status mt-4" role="status">Scheduled maintenance</div>
+      <div class="maintenance-status mt-4" role="status">Quick system update</div>
       <h1 id="maintenance-title">We’ll be back shortly.</h1>
       <p>
-        Cape Tennis is temporarily offline while we carry out important improvements.
-        Your account and tournament data remain safe, and access will return as soon as the work is complete.
+        Cape Tennis is briefly unavailable while we deploy an update.
+        Your account, entries and tournament data remain safe.
       </p>
-      <div class="maintenance-note">Please try again in about 60 minutes. Thank you for your patience.</div>
+      <div class="maintenance-actions">
+        <a class="maintenance-retry" href="{{ request()->getRequestUri() }}">Check now</a>
+        <div class="maintenance-note">
+          We’ll check again automatically in <span id="maintenance-countdown" aria-hidden="true">20 seconds</span>.
+        </div>
+      </div>
     </div>
     <div class="maintenance-art">
       <img src="{{ asset('assets/img/illustrations/page-misc-under-maintenance.png') }}" alt="A person working on a laptop during maintenance">
     </div>
   </section>
 </main>
+@endsection
+
+@section('page-script')
+<script>
+  (() => {
+    const countdown = document.getElementById('maintenance-countdown');
+    let secondsRemaining = 20;
+
+    window.setInterval(() => {
+      secondsRemaining -= 1;
+
+      if (secondsRemaining <= 0) {
+        window.location.reload();
+        return;
+      }
+
+      if (countdown) {
+        countdown.textContent = `${secondsRemaining} ${secondsRemaining === 1 ? 'second' : 'seconds'}`;
+      }
+    }, 1000);
+  })();
+</script>
 @endsection

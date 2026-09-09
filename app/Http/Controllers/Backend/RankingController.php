@@ -827,20 +827,20 @@ class RankingController extends Controller
     if (! empty($lastLeg)) {
       $positions = is_array($lastLeg['positions'] ?? null) ? $lastLeg['positions'] : [];
       $position = $positions[$ranking->player_id] ?? $positions[(string) $ranking->player_id] ?? null;
-      $facts[] = ['label' => 'Method', 'value' => 'Higher final-leg placing'];
+      $facts[] = ['label' => 'Method', 'value' => 'Higher latest-played-leg placing'];
       if (! empty($lastLeg['event_name'])) {
-        $facts[] = ['label' => 'Final leg', 'value' => (string) $lastLeg['event_name']];
+        $facts[] = ['label' => 'Latest played leg', 'value' => (string) $lastLeg['event_name']];
       }
       $facts[] = [
-        'label' => 'This player’s final-leg finish',
+        'label' => 'This player’s finish in that leg',
         'value' => $position === null ? 'No recorded finish' : '#'.(int) $position,
       ];
 
       return [
-        'method' => 'Final-leg placing',
+        'method' => 'Latest-played-leg placing',
         'summary' => ! empty($lastLeg['third_score_compared'])
-          ? 'The players remained equal on counted points and third-event score, so their actual finishing positions in the final leg were compared. The higher finish determined the order.'
-          : 'The players remained equal on counted points, so their actual finishing positions in the final leg were compared. The higher finish determined the order.',
+          ? 'The players remained equal on counted points and third-event score, so their actual finishing positions in the latest leg played by either player were compared. The higher finish determined the order.'
+          : 'The players remained equal on counted points, so their actual finishing positions in the latest leg played by either player were compared. The higher finish determined the order.',
         'facts' => $facts,
       ];
     }

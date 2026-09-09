@@ -22,7 +22,7 @@ use Illuminate\Support\Collection;
  *  3. Apply walkover/default exclusion (if configured)
  *  4. Apply 2-of-3 auto-award rule (if series.auto_award_rule = true)
  *  5. Apply best-N reduction
- *  6. Apply configured dropped-score, final-leg placement, and head-to-head tiebreaks
+ *  6. Apply configured dropped-score, latest-played-leg placement, and head-to-head tiebreaks
  *  7. Assign rank positions (shared for ties)
  */
 final class RankingCalculationService
@@ -141,9 +141,9 @@ final class RankingCalculationService
         $useThirdScoreTiebreak = (bool) ($series?->use_third_score_tiebreak ?? true);
         $useLastLegPositionTiebreak = (bool) ($series?->use_last_leg_position_tiebreak ?? false);
         $useHeadToHeadTiebreak = (bool) ($series?->use_head_to_head_tiebreak ?? true);
-        $lastLegContext = $useLastLegPositionTiebreak
-            ? $this->lastPlayedLegContext($list, $legs)
-            : null;
+        $lastLegContexts = $useLastLegPositionTiebreak
+            ? $this->playedLegContexts($list, $legs)
+            : [];
         $headToHeadWinners = $useHeadToHeadTiebreak
             ? $this->latestHeadToHeadWinners($list, $rows->pluck('playerId'))
             : [];
@@ -152,7 +152,7 @@ final class RankingCalculationService
             $headToHeadWinners,
             $useThirdScoreTiebreak,
             $useLastLegPositionTiebreak,
-            $lastLegContext,
+            $lastLegContexts,
         );
         $warnings = array_merge($warnings, $tiebreakWarnings);
 
@@ -165,17 +165,17 @@ final class RankingCalculationService
             $appliedHeadToHeadPairs,
             $useThirdScoreTiebreak,
             $useLastLegPositionTiebreak,
-            $lastLegContext,
+            $lastLegContexts,
         );
 
-        // Automatic rules resolve distinct third scores and final-leg placings.
+        // Automatic rules resolve distinct third scores and latest-played-leg placings.
         // Only players still level afterwards require a run-scoped admin decision.
         $this->attachTieDecisions(
             $rows,
             (int) $list->id,
             $useThirdScoreTiebreak,
             $useLastLegPositionTiebreak,
-            $lastLegContext,
+            $lastLegContexts,
         );
 
         // Build audit trail
@@ -419,7 +419,7 @@ final class RankingCalculationService
     /**
      * Tiebreak order (when best-N totalPoints are equal):
      *  1. Highest score outside the best-N total (zero when there is none)
-     *  2. Higher actual finishing position in the last linked leg (when enabled)
+     *  2. Higher actual finishing position in the latest leg played by anyone in the tied group (when enabled)
      *  3. Winner of the most recent recorded head-to-head match
      *  4. Shared rank when no enabled rule resolves the tie
      *
@@ -431,7 +431,7 @@ final class RankingCalculationService
         array $headToHeadWinners,
         bool $useThirdScoreTiebreak,
         bool $useLastLegPositionTiebreak,
-        ?array $lastLegContext,
+        array $lastLegContexts,
     ): array
     {
         $warnings = [];
@@ -440,7 +440,7 @@ final class RankingCalculationService
         // Sort groups by points descending so flatMap produces the final ordering
         $sorted = $rows->groupBy(fn(RankingRow $r) => $r->totalPoints)
             ->sortKeysDesc()
-            ->flatMap(function (Collection $group) use ($headToHeadWinners, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContext, &$warnings, &$appliedHeadToHeadPairs) {
+            ->flatMap(function (Collection $group) use ($headToHeadWinners, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContexts, &$warnings, &$appliedHeadToHeadPairs) {
                 if ($group->count() <= 1) {
                     return $group;
                 }
@@ -452,7 +452,7 @@ final class RankingCalculationService
                 return $group
                     ->groupBy(fn (RankingRow $row) => $useThirdScoreTiebreak ? $this->nextBestScore($row) : 0)
                     ->sortKeysDesc()
-                    ->flatMap(function (Collection $thirdScoreGroup) use ($headToHeadWinners, $pts, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContext, &$appliedHeadToHeadPairs) {
+                    ->flatMap(function (Collection $thirdScoreGroup) use ($headToHeadWinners, $pts, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContexts, &$appliedHeadToHeadPairs) {
                         $rows = $thirdScoreGroup->values()->all();
                         $thirdScore = $this->nextBestScore($rows[0]);
 
@@ -463,19 +463,23 @@ final class RankingCalculationService
                             return $thirdScoreGroup;
                         }
 
-                        $lastLegGroups = $thirdScoreGroup
-                            ->groupBy(fn (RankingRow $row) => $useLastLegPositionTiebreak
-                                ? ($this->lastLegPosition($row, $lastLegContext) ?? 'missing')
-                                : 'last-leg-disabled')
-                            ->sortBy(fn (Collection $positionGroup) => $useLastLegPositionTiebreak
-                                ? ($this->lastLegPosition($positionGroup->first(), $lastLegContext) ?? PHP_INT_MAX)
-                                : 0);
-                        $lastLegResolvedPartOfTie = $useLastLegPositionTiebreak && $lastLegGroups->count() > 1;
-                        $lastLegEvidence = $lastLegResolvedPartOfTie
-                            ? $this->lastLegPositionEvidence($thirdScoreGroup, $lastLegContext, $useThirdScoreTiebreak)
-                            : null;
+                        $lastLegGroups = $useLastLegPositionTiebreak
+                            ? $this->partitionByLatestPlayedLeg($thirdScoreGroup, $lastLegContexts)
+                            : [[
+                                'rows' => $thirdScoreGroup->values(),
+                                'context' => null,
+                                'comparison_rows' => $thirdScoreGroup->values(),
+                                'resolved' => false,
+                            ]];
 
-                        return $lastLegGroups->flatMap(function (Collection $lastPositionGroup) use ($headToHeadWinners, $pts, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContext, $lastLegResolvedPartOfTie, $lastLegEvidence, &$appliedHeadToHeadPairs) {
+                        return collect($lastLegGroups)->flatMap(function (array $lastLegGroup) use ($headToHeadWinners, $pts, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, &$appliedHeadToHeadPairs) {
+                            /** @var Collection<RankingRow> $lastPositionGroup */
+                            $lastPositionGroup = $lastLegGroup['rows'];
+                            $lastLegContext = $lastLegGroup['context'];
+                            $lastLegResolvedPartOfTie = (bool) $lastLegGroup['resolved'];
+                            $lastLegEvidence = $lastLegResolvedPartOfTie
+                                ? $this->lastLegPositionEvidence($lastLegGroup['comparison_rows'], $lastLegContext, $useThirdScoreTiebreak)
+                                : null;
                             $rows = $lastPositionGroup->values()->all();
 
                             if ($lastLegEvidence) {
@@ -509,9 +513,9 @@ final class RankingCalculationService
                                 if ($lastLegResolvedPartOfTie && $lastPositionGroup->count() === 1) {
                                     $position = $this->lastLegPosition($row, $lastLegContext);
                                     $placing = $position === null ? 'no recorded finish' : $this->ordinal($position);
-                                    $eventName = (string) ($lastLegContext['event_name'] ?? 'the final leg');
+                                    $eventName = (string) ($lastLegContext['event_name'] ?? 'the latest played leg');
                                     $earlierComparison = $useThirdScoreTiebreak ? ' and third-event score' : '';
-                                    $row->tiebreakNotes = ["Tied on {$pts} points{$earlierComparison}; compared by final-leg placing ({$placing} at {$eventName})."];
+                                    $row->tiebreakNotes = ["Tied on {$pts} points{$earlierComparison}; compared by latest-played-leg placing ({$placing} at {$eventName})."];
                                     continue;
                                 }
 
@@ -546,7 +550,7 @@ final class RankingCalculationService
         array $appliedHeadToHeadPairs,
         bool $useThirdScoreTiebreak,
         bool $useLastLegPositionTiebreak,
-        ?array $lastLegContext,
+        array $lastLegContexts,
     ): void
     {
         $rank = 1;
@@ -567,7 +571,7 @@ final class RankingCalculationService
                 $appliedHeadToHeadPairs,
                 $useThirdScoreTiebreak,
                 $useLastLegPositionTiebreak,
-                $lastLegContext,
+                $lastLegContexts,
             )) {
                 $row->rankPosition = $prev->rankPosition;
             } else {
@@ -585,11 +589,12 @@ final class RankingCalculationService
         array $headToHeadWinners,
         bool $useThirdScoreTiebreak,
         bool $useLastLegPositionTiebreak,
-        ?array $lastLegContext,
+        array $lastLegContexts,
     ): bool
     {
         if ($a->totalPoints !== $b->totalPoints) return false;
         if ($useThirdScoreTiebreak && $this->nextBestScore($a) !== $this->nextBestScore($b)) return false;
+        $lastLegContext = $this->lastPlayedLegContextForRows(collect([$a, $b]), $lastLegContexts);
         if ($useLastLegPositionTiebreak
             && $this->lastLegPosition($a, $lastLegContext) !== $this->lastLegPosition($b, $lastLegContext)) {
             return false;
@@ -613,7 +618,7 @@ final class RankingCalculationService
 
         if ($useLastLegPositionTiebreak
             && $this->lastLegPosition($a, $lastLegContext) !== $this->lastLegPosition($b, $lastLegContext)) {
-            return 'higher final-leg placing';
+            return 'higher latest-played-leg placing';
         }
 
         $headToHead = $headToHeadWinners[$this->playerPairKey($a->playerId, $b->playerId)] ?? null;
@@ -661,18 +666,18 @@ final class RankingCalculationService
         return empty($row->droppedLegs) ? 0 : max(array_column($row->droppedLegs, 'points'));
     }
 
-    /** @return array<string, mixed>|null */
-    private function lastPlayedLegContext(RankingList $list, Collection $legs): ?array
+    /** @return array<int, array<string, mixed>> */
+    private function playedLegContexts(RankingList $list, Collection $legs): array
     {
         $playedCategoryEventIds = $legs
             ->pluck('categoryEventId')
             ->unique()
             ->values();
         if ($playedCategoryEventIds->isEmpty()) {
-            return null;
+            return [];
         }
 
-        $event = \DB::table('ranking_list_category_events as rlce')
+        $events = \DB::table('ranking_list_category_events as rlce')
             ->join('category_events as ce', 'ce.id', '=', 'rlce.category_event_id')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
             ->where('rlce.ranking_list_id', $list->id)
@@ -686,26 +691,115 @@ final class RankingCalculationService
                 'e.name as event_name',
                 'e.start_date as event_date',
             ])
-            ->first();
+            ->get();
 
-        if (! $event) {
-            return null;
+        return $events->map(function ($event) use ($legs): array {
+            $positions = $legs
+                ->filter(fn (RankingLeg $leg) => $leg->categoryEventId === (int) $event->category_event_id
+                    && ! $leg->synthetic
+                    && $leg->position > 0)
+                ->mapWithKeys(fn (RankingLeg $leg) => [$leg->playerId => $leg->position])
+                ->all();
+
+            return [
+                'category_event_id' => (int) $event->category_event_id,
+                'event_id' => (int) $event->event_id,
+                'event_name' => (string) $event->event_name,
+                'event_date' => $event->event_date,
+                'positions' => $positions,
+            ];
+        })->all();
+    }
+
+    /** @param array<int, array<string, mixed>> $lastLegContexts
+     *  @return array<string, mixed>|null
+     */
+    private function lastPlayedLegContextForRows(Collection $rows, array $lastLegContexts): ?array
+    {
+        $playerIds = $rows->pluck('playerId')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($lastLegContexts as $context) {
+            if (array_intersect($playerIds, array_map('intval', array_keys($context['positions'] ?? [])))) {
+                return $context;
+            }
         }
 
-        $positions = $legs
-            ->filter(fn (RankingLeg $leg) => $leg->categoryEventId === (int) $event->category_event_id
-                && ! $leg->synthetic
-                && $leg->position > 0)
-            ->mapWithKeys(fn (RankingLeg $leg) => [$leg->playerId => $leg->position])
-            ->all();
+        return null;
+    }
 
-        return [
-            'category_event_id' => (int) $event->category_event_id,
-            'event_id' => (int) $event->event_id,
-            'event_name' => (string) $event->event_name,
-            'event_date' => $event->event_date,
-            'positions' => $positions,
-        ];
+    /**
+     * Split tied rows using the newest leg in which at least one of them has an
+     * actual result. Players absent from that leg continue to the next older
+     * leg; players with the same recorded position remain tied for admin review.
+     *
+     * @param  array<int, array<string, mixed>>  $lastLegContexts
+     * @return array<int, array{rows: Collection, context: ?array, comparison_rows: Collection, resolved: bool}>
+     */
+    private function partitionByLatestPlayedLeg(Collection $rows, array $lastLegContexts): array
+    {
+        $partitions = [];
+        $remaining = $rows->values();
+
+        foreach ($lastLegContexts as $context) {
+            if ($remaining->count() <= 1) {
+                break;
+            }
+
+            $comparisonRows = $remaining;
+            $present = $remaining->filter(
+                fn (RankingRow $row) => $this->lastLegPosition($row, $context) !== null
+            );
+            if ($present->isEmpty()) {
+                continue;
+            }
+
+            $positionGroups = $present
+                ->groupBy(fn (RankingRow $row) => $this->lastLegPosition($row, $context))
+                ->sortKeys();
+            $resolvedAtThisLeg = $present->count() < $remaining->count() || $positionGroups->count() > 1;
+
+            foreach ($positionGroups as $positionGroup) {
+                $partitions[] = [
+                    'rows' => $positionGroup->values(),
+                    'context' => $context,
+                    'comparison_rows' => $comparisonRows,
+                    'resolved' => $resolvedAtThisLeg,
+                ];
+            }
+
+            $presentIds = $present->pluck('playerId')->map(fn ($id) => (int) $id)->all();
+            $remaining = $remaining
+                ->reject(fn (RankingRow $row) => in_array($row->playerId, $presentIds, true))
+                ->values();
+
+            // Once every remaining player has a result in this leg, equal
+            // placings stay unresolved instead of falling back to an older leg.
+            if ($remaining->isEmpty()) {
+                return $partitions;
+            }
+
+            if ($remaining->count() === 1) {
+                $partitions[] = [
+                    'rows' => $remaining,
+                    'context' => $context,
+                    'comparison_rows' => $comparisonRows,
+                    'resolved' => true,
+                ];
+
+                return $partitions;
+            }
+        }
+
+        if ($remaining->isNotEmpty()) {
+            $partitions[] = [
+                'rows' => $remaining,
+                'context' => null,
+                'comparison_rows' => $remaining,
+                'resolved' => false,
+            ];
+        }
+
+        return $partitions;
     }
 
     private function lastLegPosition(RankingRow $row, ?array $lastLegContext): ?int
@@ -765,54 +859,62 @@ final class RankingCalculationService
         int $rankingListId,
         bool $useThirdScoreTiebreak,
         bool $useLastLegPositionTiebreak,
-        ?array $lastLegContext,
+        array $lastLegContexts,
     ): void {
-        $rows->groupBy(fn (RankingRow $row) => implode(':', [
-            $row->totalPoints,
-            $useThirdScoreTiebreak ? $this->nextBestScore($row) : 'third-score-disabled',
-            $useLastLegPositionTiebreak
-                ? ($this->lastLegPosition($row, $lastLegContext) ?? 'last-leg-missing')
-                : 'last-leg-disabled',
-        ]))
-            ->filter(fn (Collection $group) => $group->count() > 1)
-            ->each(function (Collection $group) use ($rankingListId): void {
-                $orderedRows = $group->values();
-                $playerIds = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->sort()->values();
-                $suggestedOrder = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->values();
-                $headToHead = $orderedRows
-                    ->map(fn (RankingRow $row) => $row->headToHeadDecision)
-                    ->filter()
-                    ->first();
-                $hasUniqueSuggestedRanks = $orderedRows->pluck('rankPosition')->unique()->count() === $orderedRows->count();
+        $rows->groupBy(fn (RankingRow $row) => $row->totalPoints)
+            ->each(function (Collection $pointsGroup) use ($rankingListId, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContexts): void {
+                $pointsGroup
+                    ->groupBy(fn (RankingRow $row) => $useThirdScoreTiebreak
+                        ? $this->nextBestScore($row)
+                        : 'third-score-disabled')
+                    ->each(function (Collection $thirdScoreGroup) use ($rankingListId, $useLastLegPositionTiebreak, $lastLegContexts): void {
+                        $groups = $useLastLegPositionTiebreak
+                            ? $this->partitionByLatestPlayedLeg($thirdScoreGroup, $lastLegContexts)
+                            : [['rows' => $thirdScoreGroup->values()]];
 
-                $suggestedMethod = 'manual';
-                if ($hasUniqueSuggestedRanks && $headToHead && $orderedRows->count() === 2) {
-                    $suggestedMethod = 'head_to_head';
-                }
+                        collect($groups)
+                            ->map(fn (array $group) => $group['rows'])
+                            ->filter(fn (Collection $group) => $group->count() > 1)
+                            ->each(function (Collection $group) use ($rankingListId): void {
+                                $orderedRows = $group->values();
+                                $playerIds = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->sort()->values();
+                                $suggestedOrder = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->values();
+                                $headToHead = $orderedRows
+                                    ->map(fn (RankingRow $row) => $row->headToHeadDecision)
+                                    ->filter()
+                                    ->first();
+                                $hasUniqueSuggestedRanks = $orderedRows->pluck('rankPosition')->unique()->count() === $orderedRows->count();
 
-                $tieKey = hash('sha256', implode(':', [
-                    $rankingListId,
-                    (int) $orderedRows->first()->totalPoints,
-                    $playerIds->implode(','),
-                ]));
-                $decision = [
-                    'tie_key' => $tieKey,
-                    'ranking_list_id' => $rankingListId,
-                    'total_points' => (int) $orderedRows->first()->totalPoints,
-                    'player_ids' => $playerIds->all(),
-                    'suggested_order' => $suggestedOrder->all(),
-                    'suggested_method' => $suggestedMethod,
-                    'head_to_head_decision' => $headToHead,
-                    'confirmed_order' => null,
-                    'reason' => null,
-                    'note' => null,
-                    'confirmed_by' => null,
-                    'confirmed_at' => null,
-                ];
+                                $suggestedMethod = 'manual';
+                                if ($hasUniqueSuggestedRanks && $headToHead && $orderedRows->count() === 2) {
+                                    $suggestedMethod = 'head_to_head';
+                                }
 
-                $orderedRows->each(function (RankingRow $row) use ($decision): void {
-                    $row->tieDecision = $decision;
-                });
+                                $tieKey = hash('sha256', implode(':', [
+                                    $rankingListId,
+                                    (int) $orderedRows->first()->totalPoints,
+                                    $playerIds->implode(','),
+                                ]));
+                                $decision = [
+                                    'tie_key' => $tieKey,
+                                    'ranking_list_id' => $rankingListId,
+                                    'total_points' => (int) $orderedRows->first()->totalPoints,
+                                    'player_ids' => $playerIds->all(),
+                                    'suggested_order' => $suggestedOrder->all(),
+                                    'suggested_method' => $suggestedMethod,
+                                    'head_to_head_decision' => $headToHead,
+                                    'confirmed_order' => null,
+                                    'reason' => null,
+                                    'note' => null,
+                                    'confirmed_by' => null,
+                                    'confirmed_at' => null,
+                                ];
+
+                                $orderedRows->each(function (RankingRow $row) use ($decision): void {
+                                    $row->tieDecision = $decision;
+                                });
+                            });
+                    });
             });
     }
 

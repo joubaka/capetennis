@@ -200,7 +200,7 @@ class PublicRankingVisibilityTest extends TestCase
             ->assertDontSee('data-bs-target="#tie-break-'.$ordinaryRow->id.'"', false);
     }
 
-    public function test_public_leaderboard_explains_an_automatic_final_leg_placing_tiebreak(): void
+    public function test_public_leaderboard_explains_an_automatic_latest_played_leg_placing_tiebreak(): void
     {
         $series = Series::factory()->create(['leaderboard_published' => true]);
         $category = Category::factory()->create(['name' => 'u/13 Girls']);
@@ -216,7 +216,7 @@ class PublicRankingVisibilityTest extends TestCase
             'run-live',
             now(),
             [
-                'tiebreak_notes' => ['Tied on 1800 points and third-event score; compared by final-leg placing (3rd at Witzenberg Leg 3).'],
+                'tiebreak_notes' => ['Tied on 1800 points and third-event score; compared by latest-played-leg placing (3rd at Witzenberg Leg 3).'],
                 'last_leg_position_decision' => [
                     'event_name' => 'Witzenberg Leg 3',
                     'event_date' => '2026-08-30',
@@ -227,9 +227,9 @@ class PublicRankingVisibilityTest extends TestCase
 
         $this->get(route('frontend.ranking.show', $series))
             ->assertOk()
-            ->assertSee('Final-leg placing')
+            ->assertSee('Latest-played-leg placing')
             ->assertSee('Witzenberg Leg 3')
-            ->assertSee('This player’s final-leg finish')
+            ->assertSee('This player’s finish in that leg')
             ->assertSee('#3')
             ->assertSee('The higher finish determined the order.');
     }
