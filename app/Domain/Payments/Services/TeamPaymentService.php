@@ -30,8 +30,15 @@ class TeamPaymentService
 
                 if ($existing) {
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
+                        $ownershipChanged = (int) $existing->user_id !== (int) $user->id;
+                        $totalChanged = round((float) $existing->total_amount, 2) !== round($total, 2);
                         $existing->user_id = $user->id;
                         $existing->total_amount = $total;
+                        if ($ownershipChanged || $totalChanged) {
+                            $existing->wallet_reserved = 0;
+                            $existing->payfast_amount_due = round($total, 2);
+                            $existing->wallet_debited = false;
+                        }
                         $existing->save();
                     }
 
@@ -70,6 +77,25 @@ class TeamPaymentService
         app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->confirmPaidOrder($finalized);
 
         return $finalized;
+    }
+
+    public function finalizeWalletPayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
+    {
+        return DB::transaction(function () use ($order, $context) {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $total = round((float) $locked->total_amount, 2);
+            $reserved = round((float) $locked->wallet_reserved, 2);
+            $payfastDue = round((float) $locked->payfast_amount_due, 2);
+
+            if ($total <= 0 || $payfastDue !== 0.0 || $reserved !== $total) {
+                throw new \RuntimeException('Wallet payment cannot complete while an unpaid balance remains.');
+            }
+
+            return $this->finalizePayment($locked, $context + [
+                'payment_method' => 'wallet',
+                'payfast_amount_due' => 0,
+            ]);
+        });
     }
 
     public function markPlayerPaid(TeamPaymentOrder $order): ?TeamPlayer

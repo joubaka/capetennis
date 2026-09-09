@@ -35,6 +35,11 @@ class RegistrationRefundController extends Controller
       return back()->withErrors('Registration must be withdrawn first.');
     }
 
+    if (! $registration->withdrawn_at
+      || $registration->withdrawn_at->gt($registration->categoryEvent->event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline passed before this entry was withdrawn.');
+    }
+
     $payment = $registration->paymentInfo();
 
     // No payment found - nothing to refund
@@ -89,6 +94,11 @@ class RegistrationRefundController extends Controller
     // draws and entry lists.
     if ($registration->status !== 'withdrawn') {
       return back()->withErrors('Registration must be withdrawn before requesting a refund.');
+    }
+
+    if (! $registration->withdrawn_at
+      || $registration->withdrawn_at->gt($registration->categoryEvent->event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline passed before this entry was withdrawn.');
     }
 
     // Duplicate protection
@@ -263,7 +273,7 @@ class RegistrationRefundController extends Controller
         'refund_account_number' => $request->account_number,
         'refund_branch_code' => $request->branch_code,
         'refund_account_type' => $request->account_type,
-      ]);
+      ], $user);
     } catch (RefundAlreadyProcessedException $e) {
       return back()->with('success', 'Refund already requested.');
     }

@@ -93,6 +93,90 @@ class RegistrationWalletCheckoutTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_wallet_completion_rejects_an_order_with_a_payfast_remainder(): void
+    {
+        $user = User::factory()->create();
+        $wallet = Wallet::factory()->forUser($user)->create();
+        WalletTransaction::create([
+            'wallet_id' => $wallet->id,
+            'type' => 'credit',
+            'amount' => 50,
+            'source_type' => 'test_seed',
+            'source_id' => 91,
+            'meta' => [],
+        ]);
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 50,
+            'payfast_amount_due' => 50,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+        (new RegistrationOrderItems())->forceFill([
+            'order_id' => $order->id,
+            'item_price' => 100,
+        ])->save();
+
+        $this->actingAs($user)
+            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->assertRedirect(route('registration.checkout', $order));
+
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_wallet_completion_is_idempotent_and_debits_exactly_once(): void
+    {
+        $user = User::factory()->create();
+        $wallet = Wallet::factory()->forUser($user)->create();
+        WalletTransaction::create([
+            'wallet_id' => $wallet->id,
+            'type' => 'credit',
+            'amount' => 100,
+            'source_type' => 'test_seed',
+            'source_id' => 92,
+            'meta' => [],
+        ]);
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 100,
+            'payfast_amount_due' => 0,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+        (new RegistrationOrderItems())->forceFill([
+            'order_id' => $order->id,
+            'item_price' => 100,
+        ])->save();
+
+        $this->actingAs($user)
+            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->assertRedirect();
+        $this->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->assertRedirect();
+
+        $this->assertTrue((bool) $order->fresh()->pay_status);
+        $this->assertTrue((bool) $order->fresh()->wallet_debited);
+        $this->assertFalse((bool) $order->fresh()->payfast_paid);
+        $this->assertSame('wallet', $order->fresh()->payment_method);
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertEquals(0.0, $wallet->fresh()->balance);
+    }
+
+    public function test_registration_success_rejects_another_users_order(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $order = RegistrationOrder::create(['user_id' => $owner->id, 'pay_status' => true]);
+
+        $this->actingAs($other)
+            ->get(route('frontend.registration.success', ['order' => $order->id]))
+            ->assertForbidden();
+    }
+
     public function test_checkout_cancel_returns_to_the_orders_event_and_releases_reservation(): void
     {
         $user = User::factory()->create();

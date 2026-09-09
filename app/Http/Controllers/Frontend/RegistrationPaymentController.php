@@ -5,14 +5,12 @@ namespace App\Http\Controllers\Frontend;
 use App\Domain\Payments\Services\PaymentOrchestrator;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Models\MastersInvitation;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
-use App\Services\Wallet\WalletService;
 use App\Services\PaymentFailureReporter;
 use App\Domain\Payments\Services\PaymentTransactionService;
 
@@ -175,8 +173,14 @@ class RegistrationPaymentController extends Controller
   {
     abort_unless((int) $order->user_id === (int) auth()->id(), 403);
     abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409, 'Order already paid.');
+    abort_if(($order->status ?? null) === 'cancelled', 409, 'Order has been cancelled.');
 
     $this->assertMastersOrderIsInvitationLinked($order);
+    try {
+      app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('registration.checkout', $order)->withErrors($exception->getMessage());
+    }
 
     $total = round((float) $order->items()->sum('item_price'), 2);
     if ($total <= 0) {
@@ -340,51 +344,20 @@ class RegistrationPaymentController extends Controller
         ->route('frontend.registration.success', $orderId);
     }
 
-    DB::transaction(function () use ($user, $order) {
-
-      $walletTx = null;
-
-      if ($order->wallet_reserved > 0) {
-
-        Log::info('HYBRID COMPLETE DEBIT', [
-          'order_id' => $order->id,
-          'amount' => $order->wallet_reserved,
+    try {
+      $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
+      $order = app(\App\Domain\Payments\Services\RegistrationPaymentService::class)
+        ->finalizeWalletPayment($order, [
+          'wallet_source_type' => 'event_registration_wallet_payment',
+          'wallet_meta' => [
+            'order_id' => $order->id,
+            'reference' => $eventName,
+          ],
         ]);
-
-        $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
-
-        $walletTx = app(WalletService::class)->debit(
-          $user->wallet,
-          $order->wallet_reserved,
-          'event_registration_wallet_payment',
-          $order->id,
-          [
-            'order_id' => $order->id,
-            'reference' => $eventName,
-          ]
-        );
-
-        activity('wallet')
-          ->performedOn($order)
-          ->causedBy($user)
-          ->withProperties([
-            'type' => 'debit',
-            'amount' => $order->wallet_reserved,
-            'reference' => $eventName,
-            'order_id' => $order->id,
-          ])
-          ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-      }
-
-      $order->wallet_debited     = true;
-      $order->payfast_paid       = true;
-      $order->pay_status         = 1;
-      $order->payment_method     = 'wallet';
-      $order->wallet_transaction_id = $walletTx?->id;
-      $order->save();
-
-      $this->markOrderPaid($order->id, 'wallet', null, $walletTx);
-    });
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('registration.checkout', $order)
+        ->withErrors($exception->getMessage());
+    }
 
     $walletEventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event';
     $walletPlayer = optional($order->items->first())->player_id
@@ -425,7 +398,10 @@ class RegistrationPaymentController extends Controller
   public function handlePayfastSuccess(array $payfastData)
   {
     Log::info('PAYFAST ITN RECEIVED', [
-      'raw_data' => $payfastData
+      'order_id' => (int) ($payfastData['custom_int5'] ?? 0),
+      'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
+      'payment_status' => $payfastData['payment_status'] ?? null,
+      'amount_gross' => $payfastData['amount_gross'] ?? null,
     ]);
 
     $orderId = (int) ($payfastData['custom_int5'] ?? 0);
@@ -489,6 +465,7 @@ class RegistrationPaymentController extends Controller
       $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
         'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
         'payfast_amount_due' => $amountGross,
+        'payfast_amount_received' => $amountGross,
         'payment_method' => $method,
         'wallet_source_type' => 'event_registration_wallet_payment',
         'wallet_meta' => ['order_id' => $order->id],
@@ -704,17 +681,19 @@ class RegistrationPaymentController extends Controller
       return redirect()->route('events.index')->withErrors($exception->getMessage());
     }
 
-    app(\App\Domain\Payments\Services\TeamPaymentService::class)
-      ->finalizePayment($order, [
-        'payment_method' => 'WALLET',
+    try {
+      app(\App\Domain\Payments\Services\TeamPaymentService::class)
+      ->finalizeWalletPayment($order, [
         'wallet_source_type' => 'team_registration_wallet_payment',
         'wallet_meta' => [
           'order_id' => $order->id,
           'reference' => optional($order->event)->name ?? 'Team Registration',
         ],
-        'pf_payment_id' => 'wallet-team-order-' . $order->id,
-        'payfast_amount_due' => 0,
       ]);
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('team.checkout', ['order' => $order->id])
+        ->withErrors($exception->getMessage());
+    }
 
     return redirect()->route('event.success', ['id' => $order->event_id])
       ->with('success', 'Team payment completed using wallet.');

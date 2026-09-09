@@ -68,23 +68,30 @@ class RegisterController extends Controller
       return false;
     }
 
-    $merchantId = $data['merchant_id'] ?? null;
+    $merchantId = (string) ($data['merchant_id'] ?? '');
+    $sandbox = (bool) config('services.payfast.sandbox', false);
+    $expectedMerchantId = (string) ($sandbox
+      ? (config('services.payfast.sandbox_id') ?: config('services.payfast.sandbox_merchant_id'))
+      : (config('services.payfast.merchant_id') ?: config('services.payfast.live_merchant_id')));
+    $passphrase = $sandbox
+      ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
+      : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
-    // Fail CLOSED — if no passphrase is configured, reject all ITNs.
-    $hasPassphrase = !empty(config('services.payfast.passphrase_live'))
-                  || !empty(config('services.payfast.passphrase_sandbox'))
-                  || !empty(config('services.payfast.passphrase'));
-
-    if (!$hasPassphrase) {
-      Log::critical('[PAYFAST SIG] FATAL: No passphrase configured — rejecting ITN.', [
-        'merchant_id'   => $merchantId,
+    if ($expectedMerchantId === '' || $merchantId === '' || ! hash_equals($expectedMerchantId, $merchantId)) {
+      Log::warning('[PAYFAST SIG] Merchant mismatch', [
         'pf_payment_id' => $data['pf_payment_id'] ?? null,
-        'ip'            => request()->ip(),
+        'sandbox' => $sandbox,
       ]);
       return false;
     }
 
-    Log::info('[PAYFAST SIG] Start validation', ['merchant_id' => $merchantId]);
+    if (empty($passphrase)) {
+      Log::critical('[PAYFAST SIG] No passphrase configured — rejecting ITN.', [
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+        'sandbox' => $sandbox,
+      ]);
+      return false;
+    }
 
     // Get the raw POST body — PayFast signs this exact string
     $rawBody = $request instanceof Request
@@ -100,46 +107,19 @@ class RegisterController extends Controller
     $baseString = preg_replace('/&?signature=[^&]*/', '', $rawBody);
     $baseString = rtrim($baseString, '&');
 
-    // Determine priority passphrase from merchant_id
-    $sandboxMerchantId = config('services.payfast.sandbox_merchant_id', '10008657');
-
-    if ($merchantId && (string) $merchantId === (string) $sandboxMerchantId) {
-      $priority = config('services.payfast.passphrase_sandbox');
-    } else {
-      $priority = config('services.payfast.passphrase_live');
-    }
-
-    $passphrases = [];
-    if ($priority) $passphrases[] = $priority;
-    foreach (['passphrase_live', 'passphrase_sandbox', 'passphrase'] as $key) {
-      $p = config("services.payfast.{$key}");
-      if ($p && !in_array($p, $passphrases, true)) $passphrases[] = $p;
-    }
-
-    foreach ($passphrases as $i => $pf) {
-      if (empty($pf)) continue;
-
-      $pfOutput = $baseString . '&passphrase=' . urlencode(trim($pf));
-      $computed = md5($pfOutput);
-
-      if ($computed === $incoming) {
-        Log::info('[PAYFAST SIG] ✓ Valid signature matched', ['attempt' => $i + 1]);
-        return true;
-      }
-
-      Log::debug('[PAYFAST SIG] attempt failed', [
-        'attempt'  => $i + 1,
-        'computed' => $computed,
-        'received' => $incoming,
+    $computed = md5($baseString . '&passphrase=' . urlencode(trim((string) $passphrase)));
+    if (hash_equals($computed, (string) $incoming)) {
+      Log::info('[PAYFAST SIG] Valid signature', [
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+        'sandbox' => $sandbox,
       ]);
+      return true;
     }
 
-    Log::error('[PAYFAST SIG] ✗ Signature validation failed', [
-      'merchant_id'       => $merchantId,
-      'passphrases_tried' => count($passphrases),
-      'received_sig'      => $incoming,
-      'ip'                => request()->ip(),
-      'base_string'       => $baseString,
+    Log::error('[PAYFAST SIG] Signature validation failed', [
+      'pf_payment_id' => $data['pf_payment_id'] ?? null,
+      'sandbox' => $sandbox,
+      'ip' => request()->ip(),
     ]);
 
     return false;
@@ -394,14 +374,20 @@ class RegisterController extends Controller
     
     $data = $request->all();
 
-    Log::info('[HYBRID ITN RECEIVED]', $data);
+    Log::info('[HYBRID ITN RECEIVED]', [
+      'order_id' => (int) ($data['custom_int5'] ?? 0),
+      'pf_payment_id' => $data['pf_payment_id'] ?? null,
+      'payment_status' => $data['payment_status'] ?? null,
+      'amount_gross' => $data['amount_gross'] ?? null,
+    ]);
 
     // 🔐 1️⃣ Validate signature
     if (!$this->validatePayfastSignature($request)) {
      
 
       Log::error('[HYBRID ITN INVALID SIGNATURE]', [
-        'data' => $data
+        'order_id' => (int) ($data['custom_int5'] ?? 0),
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
       ]);
 
       return response('Invalid signature', 400);
@@ -849,226 +835,71 @@ class RegisterController extends Controller
   {
     $data = $request->all();
 
-    Log::info('🟢 TEAM ITN STEP 0: RECEIVED', $data);
-
-    /*
-    |--------------------------------------------------------------------------
-    | 1️⃣ VERIFY SIGNATURE (INLINE – NO HELPER)
-    |--------------------------------------------------------------------------
-    */
-    $signatureValid = $this->validatePayfastSignature($request);
-
-    Log::info('🟢 TEAM ITN STEP 1: SIGNATURE RESULT', [
-      'valid' => $signatureValid
+    Log::info('TEAM ITN RECEIVED', [
+      'order_id' => (int) ($data['custom_int5'] ?? 0),
+      'pf_payment_id' => $data['pf_payment_id'] ?? null,
+      'payment_status' => $data['payment_status'] ?? null,
+      'amount_gross' => $data['amount_gross'] ?? null,
     ]);
 
-    if (!$signatureValid) {
-      Log::error('🔴 TEAM ITN FAILED: INVALID SIGNATURE');
+    if (! $this->validatePayfastSignature($request)) {
       return response('Invalid signature', 400);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 2️⃣ VALIDATE STATUS
-    |--------------------------------------------------------------------------
-    */
-    Log::info('🟢 TEAM ITN STEP 2: STATUS CHECK', [
-      'status' => $data['payment_status'] ?? null
-    ]);
-
     if (($data['payment_status'] ?? '') !== 'COMPLETE') {
-      Log::warning('🟡 TEAM ITN IGNORED: NOT COMPLETE');
       return response('Ignored', 200);
     }
 
     $orderId = (int) ($data['custom_int5'] ?? 0);
-
-    Log::info('🟢 TEAM ITN STEP 3: ORDER ID', [
-      'order_id' => $orderId
-    ]);
-
-    if (!$orderId) {
-      Log::error('🔴 TEAM ITN FAILED: NO ORDER ID');
+    if ($orderId <= 0) {
       return response('No order ID', 400);
     }
 
     try {
+      $processed = DB::transaction(function () use ($orderId, $data) {
+        $order = \App\Models\TeamPaymentOrder::query()
+          ->lockForUpdate()
+          ->with(['user.wallet', 'event', 'team', 'player'])
+          ->findOrFail($orderId);
 
-      DB::transaction(function () use ($orderId, $data) {
-
-        Log::info('🟢 TEAM ITN STEP 4: BEGIN TRANSACTION');
-
-        $order = \App\Models\TeamPaymentOrder::lockForUpdate()
-          ->with('user.wallet')
-          ->find($orderId);
-
-        Log::info('🟢 TEAM ITN STEP 5: ORDER FOUND', [
-          'exists' => (bool) $order
-        ]);
-
-        if (!$order) {
-          throw new \Exception("Team order not found: {$orderId}");
+        if ((int) $order->pay_status === 1 || (bool) $order->payfast_paid) {
+          return false;
         }
 
-        Log::info('🟢 TEAM ITN STEP 6: ORDER STATE BEFORE UPDATE', [
-          'pay_status' => $order->pay_status,
-          'payfast_paid' => $order->payfast_paid,
-          'wallet_reserved' => $order->wallet_reserved,
-          'wallet_debited' => $order->wallet_debited,
-          'payfast_amount_due' => $order->payfast_amount_due
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | IDEMPOTENCY
-        |--------------------------------------------------------------------------
-        */
-        if ((int) $order->pay_status === 1) {
-          app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
-            ->confirmPaidOrder($order);
-          Log::warning('🟡 TEAM ITN ALREADY PROCESSED');
-          return;
+        if (! $order->event || ! $order->team || ! $order->player
+          || ! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)
+            ->teamBelongsToEvent($order->team, $order->event)
+          || ! \App\Models\TeamPlayer::query()
+            ->where('team_id', $order->team_id)
+            ->where('player_id', $order->player_id)
+            ->exists()) {
+          throw new \RuntimeException('Team payment order relationships are invalid.');
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | AMOUNT VALIDATION (STRICT)
-        |--------------------------------------------------------------------------
-        */
-        $expected = round((float) $order->payfast_amount_due, 2);
         $received = round((float) ($data['amount_gross'] ?? 0), 2);
-
-        Log::info('🟢 TEAM ITN STEP 7: AMOUNT CHECK', [
-          'expected' => $expected,
-          'received' => $received
-        ]);
-
-        if ($expected !== $received) {
-          throw new \Exception("Amount mismatch. Expected {$expected}, got {$received}");
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | MARK PAYFAST PAID
-        |--------------------------------------------------------------------------
-        */
-        $order->payfast_paid = true;
-        $order->pay_status = 1;
-        $order->payfast_pf_payment_id = $data['pf_payment_id'] ?? null;
-
-        $order->save();
-
-        Log::info('🟢 TEAM ITN STEP 8: ORDER UPDATED', [
-          'new_pay_status' => $order->pay_status
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | WALLET DEBIT (HYBRID)
-        |--------------------------------------------------------------------------
-        */
-        if (
-          $order->wallet_reserved > 0 &&
-          !$order->wallet_debited &&
-          $order->user &&
-          $order->user->wallet
-        ) {
-
-          Log::info('🟢 TEAM ITN STEP 9: DEBIT WALLET', [
-            'amount' => $order->wallet_reserved
-          ]);
-
-          $eventName = optional($order->event)->name ?? 'Team Registration';
-
-          app(\App\Services\Wallet\WalletService::class)->debit(
-            $order->user->wallet,
-            (float) $order->wallet_reserved,
-            'team_registration_wallet_payment',
-            $order->id,
-            [
+        $order = app(\App\Domain\Payments\Services\TeamPaymentService::class)
+          ->finalizePayment($order, [
+            'pf_payment_id' => $data['pf_payment_id'] ?? null,
+            'payfast_amount_due' => $received,
+            'payfast_amount_received' => $received,
+            'payment_method' => (float) $order->wallet_reserved > 0 ? 'hybrid' : 'payfast',
+            'wallet_source_type' => 'team_registration_wallet_payment',
+            'wallet_meta' => [
               'order_id' => $order->id,
-              'source' => 'team_hybrid_notify',
-              'reference' => $eventName,
-            ]
-          );
-
-          activity('wallet')
-            ->performedOn($order)
-            ->causedBy($order->user)
-            ->withProperties([
-              'type' => 'debit',
-              'amount' => $order->wallet_reserved,
-              'reference' => $eventName,
-              'order_id' => $order->id,
-            ])
-            ->log("Wallet debited R{$order->wallet_reserved} for {$eventName}");
-
-          $order->wallet_debited = true;
-          $order->save();
-
-          Log::info('🟢 TEAM ITN STEP 10: WALLET DEBITED');
-        } else {
-          Log::info('🟢 TEAM ITN STEP 9: NO WALLET DEBIT NEEDED');
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | TEAM PLAYER UPDATE
-        |--------------------------------------------------------------------------
-        */
-        $teamPlayer = \App\Models\TeamPlayer::where('team_id', $order->team_id)
-          ->where('player_id', $order->player_id)
-          ->first();
-
-        Log::info('🟢 TEAM ITN STEP 11: TEAM PLAYER FOUND', [
-          'exists' => (bool) $teamPlayer
-        ]);
-
-        if ($teamPlayer) {
-
-          Log::info('🟢 TEAM ITN STEP 12: TEAM PLAYER BEFORE', [
-            'pay_status' => $teamPlayer->pay_status
+              'reference' => optional($order->event)->name ?? 'Team Registration',
+            ],
           ]);
-
-          $teamPlayer->pay_status = 1;
-          $teamPlayer->save();
-
-          Log::info('🟢 TEAM ITN STEP 13: TEAM PLAYER UPDATED', [
-            'new_pay_status' => $teamPlayer->pay_status
-          ]);
-        }
-
-        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
-          ->confirmPaidOrder($order);
-
-        Log::info('🟢 TEAM ITN STEP 14: SUCCESS');
 
         $teamEventName = optional($order->event)->name ?? 'Team Event';
-        $teamPlayerObj = \App\Models\Player::find($order->player_id);
-
-        /*
-        |--------------------------------------------------------------------------
-        | WRITE transactions_pf RECORD (so event transaction page shows this payment)
-        |--------------------------------------------------------------------------
-        */
-        try {
-          $txData = array_merge($data, [
-            'custom_int5'  => $order->id,
-            'custom_int4'  => $order->user_id,
-            'custom_int3'  => $order->event_id,
-            'custom_str3'  => $teamEventName,
-            'item_name'    => $teamEventName,
-            'custom_int2'  => $teamPlayerObj ? $teamPlayerObj->id : null,
-            'custom_str2'  => $teamPlayerObj ? trim($teamPlayerObj->name . ' ' . $teamPlayerObj->surname) : null,
-          ]);
-          self::update_transaction($txData, $order);
-          Log::info('🟢 TEAM ITN STEP 14b: TRANSACTION RECORD WRITTEN');
-        } catch (\Throwable $e) {
-          Log::error('🔴 TEAM ITN TRANSACTION WRITE FAILED', [
-            'order_id' => $order->id,
-            'message'  => $e->getMessage(),
-          ]);
-        }
+        app(\App\Domain\Payments\Services\PaymentTransactionService::class)->record(array_merge($data, [
+          'custom_int5' => $order->id,
+          'custom_int4' => $order->user_id,
+          'custom_int3' => $order->event_id,
+          'custom_str3' => $teamEventName,
+          'item_name' => $teamEventName,
+          'custom_int2' => $order->player_id,
+          'custom_str2' => trim($order->player->name . ' ' . $order->player->surname),
+        ]), $order);
 
         activity('registration')
           ->performedOn($order)
@@ -1076,26 +907,37 @@ class RegisterController extends Controller
           ->withProperties([
             'order_id' => $order->id,
             'event' => $teamEventName,
-            'player' => $teamPlayerObj ? trim($teamPlayerObj->name . ' ' . $teamPlayerObj->surname) : '',
+            'player' => trim($order->player->name . ' ' . $order->player->surname),
             'team_id' => $order->team_id,
             'method' => 'payfast_team',
-            'amount' => $data['amount_gross'] ?? '',
+            'amount' => $received,
           ])
           ->log("Team registration paid for {$teamEventName}");
+
+        return true;
       });
 
-    } catch (\Throwable $e) {
-
-      Log::error('🔴 TEAM ITN FAILED', [
+      Log::info($processed ? 'TEAM ITN COMPLETED' : 'TEAM ITN REPLAY IGNORED', [
         'order_id' => $orderId,
-        'message' => $e->getMessage()
       ]);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+      return response('Order not found', 404);
+    } catch (\Throwable $e) {
+      Log::error('TEAM ITN FAILED', [
+        'order_id' => $orderId,
+        'pf_payment_id' => $data['pf_payment_id'] ?? null,
+        'message' => $e->getMessage(),
+      ]);
+      app(\App\Services\PaymentFailureReporter::class)->report(
+        'team.payfast_itn',
+        ['order_id' => $orderId, 'payfast_payment_id' => $data['pf_payment_id'] ?? null],
+        $e
+      );
 
-      return response('Error', 500);
+      return response('Payment verification failed', 400);
     }
 
-    return response('OK', 200)
-      ->header('Content-Type', 'text/plain');
+    return response('OK', 200)->header('Content-Type', 'text/plain');
   }
 
 
@@ -1408,10 +1250,9 @@ class RegisterController extends Controller
     $playerIds  = $request->player;
     $categoryIds = $request->category;
 
-    // Retain ownership context for audit diagnostics. Tournament registration
-    // deliberately remains open so one user may register another player's profile.
+    $ownedPlayerIds = [];
     if (!$isAdmin) {
-      $ownedPlayerIds = $authUser->ownedPlayerIds();
+      $ownedPlayerIds = array_map('intval', $authUser->ownedPlayerIds());
 
       Log::info('[REGISTRATION OWNERSHIP CHECK]', [
         'auth_user_id'     => $authUser->id,
@@ -1427,6 +1268,11 @@ class RegisterController extends Controller
     for ($i = 0; $i < count($playerIds); $i++) {
       $playerId       = (int) $playerIds[$i];
       $categoryEventId = (int) $categoryIds[$i];
+
+      if (! $isAdmin && ! in_array($playerId, $ownedPlayerIds, true)) {
+        $duplicateErrors[] = 'You may only register a player profile linked to your account.';
+        continue;
+      }
 
       $categoryEvent = CategoryEvent::find($categoryEventId);
       if (! $categoryEvent) {
@@ -1523,28 +1369,16 @@ class RegisterController extends Controller
         $totalFee += $orderItem->item_price;
       }
 
-      // Free event — mark paid immediately inside the transaction
-      if ($totalFee <= 0) {
-        foreach ($regorder->items as $item) {
-          $reg = Registration::find($item->registration_id);
-          if ($reg) {
-            $reg->categoryEvents()->updateExistingPivot($item->category_event_id, [
-              'payment_status_id' => 1,
-            ]);
-          }
-        }
-        $regorder->pay_status    = 1;
-        $regorder->payfast_paid  = true;
-        $regorder->wallet_debited = true;
-      } else {
-        $regorder->wallet_reserved    = 0;
-        $regorder->payfast_amount_due = $totalFee;
-        $regorder->wallet_debited     = false;
-        $regorder->payfast_paid       = false;
-      }
-
       $regorder->total_fee = $totalFee;
       $regorder->save();
+
+      if ($totalFee <= 0) {
+        $regorder = app(\App\Domain\Payments\Services\RegistrationPaymentService::class)
+          ->markFreeOrderPaid($regorder);
+      } else {
+        $regorder = app(\App\Domain\Payments\Services\RegistrationPaymentService::class)
+          ->reservePayment($regorder, 0, round((float) $totalFee, 2));
+      }
 
       return $regorder;
     });
@@ -1597,6 +1431,7 @@ class RegisterController extends Controller
   public function registrationSuccess($orderId)
   {
     $order = RegistrationOrder::with('items.category_event')->findOrFail($orderId);
+    abort_unless((int) $order->user_id === (int) auth()->id(), 403);
 
     // Redirect back to the event the user registered for
     $eventId = optional($order->items->first()?->category_event)->event_id;

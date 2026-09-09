@@ -17,6 +17,10 @@ class PaymentOrchestrator
 
     public function initiatePayment(Model $order, float $walletApplied, float $remainingAmount): Model
     {
+        if (! is_finite($walletApplied) || ! is_finite($remainingAmount) || $walletApplied < 0 || $remainingAmount < 0) {
+            throw new \InvalidArgumentException('Payment amounts must be finite and non-negative.');
+        }
+
         $orderClass = get_class($order);
 
         return FinanceMutationScope::run('payment_state_write', function () use ($order, $orderClass, $walletApplied, $remainingAmount) {
@@ -64,6 +68,15 @@ class PaymentOrchestrator
                         throw new \RuntimeException('This payment order has been cancelled. Start registration again.');
                     }
 
+                    if (array_key_exists('payfast_amount_received', $context)) {
+                        $expected = round((float) ($locked->payfast_amount_due ?? 0), 2);
+                        $received = round((float) $context['payfast_amount_received'], 2);
+
+                        if ($expected <= 0 || $received !== $expected) {
+                            throw new \RuntimeException("Payment amount mismatch. Expected {$expected}, received {$received}.");
+                        }
+                    }
+
                     $walletReserved = (float) ($locked->wallet_reserved ?? 0);
                     $walletTransaction = null;
                     if ($walletReserved > 0 && !(bool) ($locked->wallet_debited ?? false)) {
@@ -83,8 +96,9 @@ class PaymentOrchestrator
                         $locked->wallet_debited = true;
                     }
 
+                    $walletOnly = strtolower((string) ($context['payment_method'] ?? '')) === 'wallet';
                     $locked->pay_status = 1;
-                    $locked->payfast_paid = true;
+                    $locked->payfast_paid = ! $walletOnly;
                     if (array_key_exists('status', $locked->getAttributes())) {
                         $locked->status = 'completed';
                     }

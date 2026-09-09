@@ -11,7 +11,9 @@ use App\Models\TeamPlayer;
 use App\Models\TeamFixture;
 use App\Models\TeamFixturePlayer;
 use App\Models\TeamFixtureResult;
+use App\Models\TeamPaymentOrder;
 use App\Models\User;
+use App\Domain\Finance\Services\RefundRequestService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -92,6 +94,57 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
 
         $this->assertNull($futureAssignment->fresh()->team1_id);
         $this->assertEquals($player->id, $completedAssignment->fresh()->team1_id);
+    }
+
+    public function test_team_refund_request_preserves_original_paid_state(): void
+    {
+        [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        TeamPlayer::query()->where('team_id', $team->id)->where('player_id', $player->id)
+            ->update(['pay_status' => 0]);
+        $order = TeamPaymentOrder::create([
+            'user_id' => $user->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
+
+        app(RefundRequestService::class)->requestTeamRefund($order, [
+            'refund_method' => 'bank',
+            'refund_status' => 'pending',
+            'refund_gross' => 200,
+            'refund_fee' => 20,
+            'refund_net' => 180,
+        ], $user);
+
+        $this->assertTrue((bool) $order->fresh()->pay_status);
+        $this->assertTrue((bool) $order->fresh()->payfast_paid);
+        $this->assertSame('pending', $order->fresh()->refund_status);
+    }
+
+    public function test_team_refund_rejects_a_player_co_owner_who_did_not_pay(): void
+    {
+        [$payer, $event, $team, $player] = $this->paidTeamPlayer();
+        $otherOwner = User::factory()->create();
+        $otherOwner->players()->attach($player->id);
+        TeamPlayer::query()->where('team_id', $team->id)->where('player_id', $player->id)
+            ->update(['pay_status' => 0]);
+        TeamPaymentOrder::create([
+            'user_id' => $payer->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
+
+        $this->actingAs($otherOwner)->post(
+            route('team.player.refund.request', [$team, $player, $event]),
+            ['method' => 'wallet']
+        )->assertForbidden();
     }
 
     private function paidTeamPlayer(): array

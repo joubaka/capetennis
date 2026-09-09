@@ -395,9 +395,7 @@ class TeamController extends Controller
 
     if ($walletReserved > $walletBalance) {
       $walletReserved = 0.00;
-      $order->wallet_reserved = 0.00;
-      $order->payfast_amount_due = round($total, 2);
-      $order->save();
+      $order = app(TeamPaymentService::class)->reservePayment($order, 0, round($total, 2));
     }
 
     $payfastDueStored = round((float) ($order->payfast_amount_due ?? $total), 2);
@@ -734,8 +732,9 @@ class TeamController extends Controller
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
-    $teamplayer->pay_status = $teamplayer->pay_status ? 0 : 1;
-    $teamplayer->save();
+    $teamplayer = app(TeamPaymentService::class)->updateTeamPlayerSlot($teamplayer, [
+      'pay_status' => $teamplayer->pay_status ? 0 : 1,
+    ]);
 
     return response()->json([
       'success' => true,

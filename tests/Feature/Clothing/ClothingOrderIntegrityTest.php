@@ -129,6 +129,8 @@ class ClothingOrderIntegrityTest extends TestCase
             [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], (string) str()->uuid()
         );
         config([
+            'services.payfast.sandbox' => false,
+            'services.payfast.merchant_id' => 'live-test-merchant',
             'services.payfast.passphrase_live' => 'clothing-test-passphrase',
             'services.payfast.passphrase_sandbox' => null,
             'services.payfast.passphrase' => null,
@@ -142,6 +144,11 @@ class ClothingOrderIntegrityTest extends TestCase
         ];
 
         $this->post(route('notify.clothing'), $payload + ['signature' => 'invalid'])->assertStatus(400);
+        $this->assertSame(0, (int) $order->fresh()->pay_status);
+
+        $wrongMerchantPayload = array_replace($payload, ['merchant_id' => 'sandbox-test-merchant']);
+        $wrongMerchantSignature = md5(http_build_query($wrongMerchantPayload).'&passphrase='.urlencode('clothing-test-passphrase'));
+        $this->post(route('notify.clothing'), $wrongMerchantPayload + ['signature' => $wrongMerchantSignature])->assertStatus(400);
         $this->assertSame(0, (int) $order->fresh()->pay_status);
 
         $signature = md5(http_build_query($payload).'&passphrase='.urlencode('clothing-test-passphrase'));

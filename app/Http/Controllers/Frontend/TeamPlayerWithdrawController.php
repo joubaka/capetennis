@@ -62,8 +62,8 @@ class TeamPlayerWithdrawController extends Controller
 
     // Paid slot: mark as unpaid and redirect to refund or notify no-refund
     if ((int) $teamPlayer->pay_status === 1) {
-      $teamPlayer->pay_status = 0;
-      $teamPlayer->save();
+      app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->updateTeamPlayerSlot($teamPlayer, ['pay_status' => 0]);
       $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
 
       $withdrawalOrder = TeamPaymentOrder::where('team_id', $team->id)
@@ -85,8 +85,8 @@ class TeamPlayerWithdrawController extends Controller
 
       // No refund workflow follows a late withdrawal, so free the roster slot now.
       // Otherwise the player remains listed on the team despite the success message.
-      $teamPlayer->player_id = 0;
-      $teamPlayer->save();
+      app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
         ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
@@ -95,8 +95,8 @@ class TeamPlayerWithdrawController extends Controller
 
     // Unpaid: clear the slot to make it available
     $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
-    $teamPlayer->player_id = 0;
-    $teamPlayer->save();
+    app(\App\Domain\Payments\Services\TeamPaymentService::class)
+      ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
       ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
@@ -154,6 +154,14 @@ class TeamPlayerWithdrawController extends Controller
 
     if (!$order) {
       return redirect()->route('events.show', [$eventId])->with('success', 'Player withdrawn (no payment to refund).');
+    }
+
+    if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
+      abort(403, 'Only the payer may choose a refund method.');
+    }
+
+    if (now()->gt($event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline has passed.');
     }
 
     if (!$order || ((int) $order->pay_status !== 1 && !$order->payfast_paid && !$order->wallet_debited)) {
@@ -216,6 +224,14 @@ class TeamPlayerWithdrawController extends Controller
 
     if (!$order) {
       return back()->withErrors('Payment order not found.');
+    }
+
+    if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
+      abort(403, 'Only the payer may request this refund.');
+    }
+
+    if (now()->gt($event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline has passed.');
     }
 
     if ($order->isRefundCompleted() || $order->isRefundPending()) {
@@ -286,7 +302,8 @@ class TeamPlayerWithdrawController extends Controller
 
         // Only free the slot after the canonical refund transaction succeeds.
         // Keep the order's paid flags intact as an audit record of the original payment.
-        $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)
+          ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
         app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
           ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
@@ -348,7 +365,6 @@ class TeamPlayerWithdrawController extends Controller
     // BANK: persist bank refund details and mark refund pending
     try {
       app(RefundRequestService::class)->requestTeamRefund($order, [
-        'pay_status' => 0,
         'refund_method' => 'bank',
         'refund_status' => 'pending',
         'refund_gross' => $gross,
@@ -359,8 +375,9 @@ class TeamPlayerWithdrawController extends Controller
         'refund_account_number' => $request->account_number ?? null,
         'refund_branch_code' => $request->branch_code ?? null,
         'refund_account_type' => $request->account_type ?? null,
-      ]);
-      $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
+      ], $user);
+      app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
         ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
     } catch (RefundAlreadyProcessedException $e) {

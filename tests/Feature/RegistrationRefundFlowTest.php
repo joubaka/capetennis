@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\CategoryEventRegistration;
 use App\Models\User;
+use App\Domain\Finance\Services\RefundRequestService;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -104,6 +106,26 @@ class RegistrationRefundFlowTest extends TestCase
         $response->assertSessionHasErrors();
         $this->assertSame('active', $reg->fresh()->status);
         $this->assertFalse($reg->fresh()->isRefundCompleted());
+    }
+
+    public function test_refund_service_rejects_an_entry_withdrawn_after_the_deadline(): void
+    {
+        $user = User::factory()->create();
+        $reg = CategoryEventRegistration::factory()->withdrawn()->paid()->create([
+            'user_id' => $user->id,
+            'withdrawn_at' => now(),
+        ]);
+        $reg->categoryEvent->event->update(['withdrawal_deadline' => now()->subMinute()]);
+
+        try {
+            app(RefundRequestService::class)->requestRegistrationRefund($reg, [
+                'refund_method' => 'bank',
+                'refund_status' => 'pending',
+            ], $user);
+            $this->fail('Late refund request should be rejected.');
+        } catch (ValidationException) {
+            $this->assertSame('not_refunded', $reg->fresh()->refund_status);
+        }
     }
 
     public function test_invalid_refund_method_fails_validation(): void

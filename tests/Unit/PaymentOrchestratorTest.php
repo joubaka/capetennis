@@ -180,6 +180,31 @@ class PaymentOrchestratorTest extends TestCase
         $this->assertFalse((bool) $order->wallet_debited);
     }
 
+    public function test_initiate_payment_rejects_negative_amounts(): void
+    {
+        [$order] = $this->makeOrder(walletReserved: 0, payfastDue: 100);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->orchestrator->initiatePayment($order, -1, 101);
+    }
+
+    public function test_finalize_payment_revalidates_received_payfast_amount_under_lock(): void
+    {
+        [$order, $wallet] = $this->makeOrder(walletReserved: 25, payfastDue: 75);
+
+        try {
+            $this->orchestrator->finalizePayment($order, ['payfast_amount_received' => 70]);
+            $this->fail('Mismatched PayFast amount should be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Payment amount mismatch', $exception->getMessage());
+        }
+
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertEquals(525.0, $wallet->fresh()->balance);
+    }
+
     public function test_initiate_payment_is_skipped_for_already_paid_order(): void
     {
         [$order] = $this->makeOrder(walletReserved: 0, payfastDue: 0);

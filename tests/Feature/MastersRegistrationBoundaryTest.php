@@ -64,11 +64,32 @@ class MastersRegistrationBoundaryTest extends TestCase
         $this->assertDatabaseCount('registration_order_items', 0);
     }
 
-    public function test_any_user_can_still_register_a_player_for_a_normal_event(): void
+    public function test_user_cannot_register_an_unowned_player_for_a_normal_event(): void
     {
         [$event, $categoryEvent] = $this->individualEvent();
         $user = User::factory()->create();
         $player = Player::factory()->create();
+
+        $this->withoutMiddleware([
+                EnsureAgreementAccepted::class,
+                EnsurePlayerProfileUpdated::class,
+            ])
+            ->actingAs($user)
+            ->post(route('pay.now.payfast'), $this->registrationPayload($player, $categoryEvent))
+            ->assertSessionHasErrors('msg');
+
+        $this->assertDatabaseMissing('registration_order_items', [
+            'player_id' => $player->id,
+            'category_event_id' => $categoryEvent->id,
+        ]);
+    }
+
+    public function test_user_can_register_an_owned_player_for_a_normal_event(): void
+    {
+        [$event, $categoryEvent] = $this->individualEvent();
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $user->players()->attach($player->id);
 
         $this->withoutMiddleware([
                 EnsureAgreementAccepted::class,
