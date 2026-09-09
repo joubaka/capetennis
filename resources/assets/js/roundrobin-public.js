@@ -133,7 +133,12 @@
     console.log('🔹 Rendering public matrix');
 
     const wrapper = $('#rr-matrix-wrapper');
-    wrapper.empty();
+    wrapper.empty().addClass('rr-matrix-scroll');
+
+    if (!RR_GROUPS.length) {
+      wrapper.html('<div class="text-muted text-center py-4">No groups are available for this draw.</div>');
+      return;
+    }
 
     RR_GROUPS.forEach(group => {
       const groupId = group.id;
@@ -145,25 +150,32 @@
         seed: r.pivot?.seed ?? 999,
       })).sort((a, b) => a.seed - b.seed);
 
+      const completed = fixtures.filter(fx => fx && fx.all_sets && fx.all_sets.length).length;
+
       let html = `
-      <h6 class="fw-bold mt-3 mb-2">Box ${group.name}</h6>
-      <div class="table-responsive mb-4">
+      <section class="rr-group-section" aria-labelledby="rr-public-group-${groupId}">
+      <div class="rr-group-heading">
+        <h6 id="rr-public-group-${groupId}" class="fw-bold">Box ${escapeHtml(group.name)}</h6>
+        <span class="rr-group-meta">${players.length} players · ${fixtures.length} matches · ${completed} completed</span>
+      </div>
+      <div class="rr-matrix-scroll rr-matrix-table-shell">
         <table class="table table-bordered table-sm rr-matrix-table">
+          <caption class="visually-hidden">Round robin results for Box ${escapeHtml(group.name)}</caption>
           <thead>
             <tr>
-              <th class="bg-light"></th>
-              ${players.map(p => `<th class="text-center">${escapeHtml(p.name)}</th>`).join('')}
+              <th scope="col" aria-label="Player"></th>
+              ${players.map(p => `<th scope="col" class="text-center" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
       `;
 
       players.forEach(rowP => {
-        html += `<tr><th class="bg-light small">${escapeHtml(rowP.name)}</th>`;
+        html += `<tr><th scope="row" class="small" title="${escapeHtml(rowP.name)}">${escapeHtml(rowP.name)}</th>`;
 
         players.forEach(colP => {
           if (rowP.id === colP.id) {
-            html += `<td class="bg-light"></td>`;
+            html += `<td class="bg-diagonal" aria-label="Same player; no match"></td>`;
             return;
           }
 
@@ -173,7 +185,7 @@
           );
 
           if (!fx) {
-            html += `<td class="text-center text-muted">–</td>`;
+            html += `<td class="text-center text-muted" aria-label="Match not generated">Not generated</td>`;
             return;
           }
 
@@ -182,13 +194,34 @@
             ? 'Followed by'
             : (fx.time ? formatDayTimeVenue(fx, true) : '');
 
-          html += `<td class="text-center">${score || time || '–'}</td>`;
+          html += `<td class="text-center rr-match-cell">${escapeHtml(score || time || '—')}</td>`;
         });
 
         html += `</tr>`;
       });
 
-      html += `</tbody></table></div>`;
+      html += `</tbody></table></div><div class="rr-mobile-match-list">`;
+
+      fixtures.forEach(fx => {
+        if (!fx) return;
+        const home = players.find(player => player.id === fx.r1_id)?.name || fx.name1 || 'Player';
+        const away = players.find(player => player.id === fx.r2_id)?.name || fx.name2 || 'Player';
+        const score = formatScoreCell(fx, fx.r1_id);
+        const status = score || (fx.schedule_hidden === true
+          ? 'Followed by'
+          : (fx.time ? formatDayTimeVenue(fx, true) : 'Awaiting schedule'));
+
+        html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
+          <span class="rr-mobile-players"><span>${escapeHtml(home)}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}</span></span>
+          <span class="rr-mobile-status">${escapeHtml(status)}</span>
+        </div>`;
+      });
+
+      if (!fixtures.length) {
+        html += '<p class="text-muted small mb-0">No matches have been generated for this box.</p>';
+      }
+
+      html += `</div></section>`;
       wrapper.append(html);
     });
   }
@@ -377,7 +410,16 @@
     const wrapper = document.getElementById('main-bracket-wrapper');
     if (!wrapper || !window.RR_MAIN_BRACKET_URL) return;
 
-    fetch(window.RR_MAIN_BRACKET_URL, { headers: { Accept: 'text/html' } })
+    const url = new URL(window.RR_MAIN_BRACKET_URL, window.location.href);
+    url.searchParams.set('_fresh', Date.now().toString());
+
+    fetch(url.toString(), {
+      cache: 'no-store',
+      headers: {
+        Accept: 'text/html',
+        'Cache-Control': 'no-cache',
+      },
+    })
       .then(response => {
         if (!response.ok) throw new Error('Unable to load bracket');
         return response.text();

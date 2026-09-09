@@ -55,6 +55,15 @@ class DrawSetupTest extends TestCase
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
             ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Build your groups');
+        $publicDraw = $this->get(route('public.roundrobin.show', $draw))->assertOk();
+        $publicBracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
+        foreach ([$publicDraw, $publicBracket] as $response) {
+            $cacheControl = (string) $response->headers->get('Cache-Control');
+            $this->assertStringContainsString('no-store', $cacheControl);
+            $this->assertStringContainsString('no-cache', $cacheControl);
+            $this->assertStringContainsString('must-revalidate', $cacheControl);
+            $this->assertStringContainsString('max-age=0', $cacheControl);
+        }
         $this->assertSame(0, $draw->drawFixtures()->count());
         $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 0, 'draft' => ['size' => 4, 'slots' => []]])->assertConflict();
     }

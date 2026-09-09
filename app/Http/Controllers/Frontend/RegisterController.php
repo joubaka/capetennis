@@ -266,6 +266,11 @@ class RegisterController extends Controller
     // ✅ FIX 1: assign the event properly
     $event = Event::with('eventTypeModel')->findOrFail($id);
 
+    if ($event->isMasters()) {
+      return redirect()->route('events.show', $event->id)
+        ->withErrors(['msg' => 'Masters registration is invitation-only. Select your name from the Masters invitation list to register.']);
+    }
+
     $players = collect(); // Players loaded via AJAX Select2
 
     $eventCategories = CategoryEvent::where('event_id', $id)
@@ -1429,6 +1434,17 @@ class RegisterController extends Controller
       $categoryEvent = CategoryEvent::find($categoryEventId);
       if (! $categoryEvent) {
         $duplicateErrors[] = "The selected category no longer exists.";
+        continue;
+      }
+
+      $categoryEvent->loadMissing('event.eventTypeModel');
+      if ($categoryEvent->event?->isMasters()) {
+        $duplicateErrors[] = 'Masters registration is invitation-only. Select your name from the Masters invitation list to register.';
+        continue;
+      }
+
+      if (!$isAdmin && !in_array($playerId, $ownedPlayerIds, true)) {
+        $duplicateErrors[] = "Player ID {$playerId} is not linked to your account.";
         continue;
       }
 

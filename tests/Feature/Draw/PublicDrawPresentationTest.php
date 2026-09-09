@@ -53,7 +53,8 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('<th>Venue</th>', $html);
         $this->assertStringContainsString('<th class="text-center">Court</th>', $html);
         $this->assertStringContainsString('roundrobin-public.js?v=', $html);
-        $this->assertStringContainsString('position: sticky', $html);
+        $this->assertStringContainsString('draw-roundrobin.css?v=', $html);
+        $this->assertStringNotContainsString('width: 24px !important', $html);
         $this->assertStringContainsString('td[data-label="Time"]', $html);
         $this->assertStringNotContainsString('<span class="badge bg-label-success">Draw published</span>', $html);
     }
@@ -76,5 +77,11 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString("data-label=\"Venue\">\${escapeHtml(fx.venue_name", $script);
         $this->assertStringContainsString("data-label=\"Court\" class=\"text-center\">\${escapeHtml(scheduleHidden ? ''", $script);
         $this->assertStringNotContainsString('if (a.round !== b.round)', $script);
+        $this->assertStringContainsString("wrapper.empty().addClass('rr-matrix-scroll');", $script);
+        $this->assertStringContainsString('rr-matrix-table-shell', $script);
+        $this->assertStringContainsString('rr-mobile-match-list', $script);
+        $this->assertStringContainsString("url.searchParams.set('_fresh', Date.now().toString());", $script);
+        $this->assertStringContainsString("cache: 'no-store'", $script);
+        $this->assertStringContainsString("'Cache-Control': 'no-cache'", $script);
     }
 }

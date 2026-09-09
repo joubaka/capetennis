@@ -82,14 +82,14 @@ class PublicRoundRobinController extends Controller
       ];
     });
   
-    return view('frontend.roundrobin.show', [
+    return response()->view('frontend.roundrobin.show', [
       'draw' => $draw,
       'svg' => $svgData,
       'groupsJson' => $groupsJson,
       'rrFixtures' => $hub['rrFixtures'],
       'oops' => $hub['oops'],
       'standings' => $hub['standings'],
-    ]);
+    ])->withHeaders($this->freshDrawHeaders());
   }
 
   // =============================================================
@@ -107,19 +107,32 @@ class PublicRoundRobinController extends Controller
       $engine = new \App\Services\BracketEngine($draw);
       $svgData = $engine->build();
 
-      return view('backend.draw.roundrobin.draw-svg', [
+      return response()->view('backend.draw.roundrobin.draw-svg', [
         'draw' => $draw,
         'svg' => $svgData,
-      ]);
+      ])->withHeaders($this->freshDrawHeaders());
     }
 
     $engine = new \App\Services\DynamicBracketEngine($draw);
     $svgData = $engine->build();
 
-    return view('backend.draw.roundrobin.dynamic-bracket-svg', [
+    return response()->view('backend.draw.roundrobin.dynamic-bracket-svg', [
       'draw' => $draw,
       'svgData' => $svgData,
       'emptyBracket' => $isEmpty,
-    ]);
+    ])->withHeaders($this->freshDrawHeaders());
+  }
+
+  /**
+   * Public tournament state changes during the event, so browsers and proxies
+   * must revalidate the page and its asynchronously loaded playoff bracket.
+   */
+  private function freshDrawHeaders(): array
+  {
+    return [
+      'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma' => 'no-cache',
+      'Expires' => '0',
+    ];
   }
 }

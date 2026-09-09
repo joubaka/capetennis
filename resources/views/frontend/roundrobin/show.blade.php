@@ -4,99 +4,8 @@
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/public-draw.css') }}?v={{ filemtime(public_path('css/public-draw.css')) }}">
+<link rel="stylesheet" href="{{ asset('assets/css/draw-roundrobin.css') }}?v={{ filemtime(public_path('assets/css/draw-roundrobin.css')) }}">
 <style>
-  /* ==============================================
-     BASE TABLE STYLE
-     ============================================== */
-  .rr-matrix-table {
-    border-collapse: collapse !important;
-    table-layout: fixed !important;
-    background: #ffffff !important;
-    width: max-content !important;
-  }
-
-  /* Scroll wrapper */
-  .rr-matrix-scroll {
-    overflow-x: auto !important;
-    overflow-y: hidden;
-    width: 100%;
-    padding-bottom: 5px;
-    -webkit-overflow-scrolling: touch;
-    position: relative;
-  }
-
-  .rr-matrix-scroll::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 20px;
-    background: linear-gradient(to right, transparent, rgba(0,0,0,0.15));
-    pointer-events: none;
-  }
-
-  /* ==============================================
-     SMALLER CELLS (new compact mode)
-     ============================================== */
-  .rr-matrix-table td,
-  .rr-matrix-table td.rr-score-cell {
-    padding: 0 !important;
-    height: 26px !important;
-    width: 26px !important;
-    min-width: 26px !important;
-    max-width: 26px !important;
-    text-align: center;
-    vertical-align: middle;
-    border: 1px solid #dcdcdc !important;
-    font-size: 11px !important;
-    background: #ffffff !important;
-  }
-
-  /* Diagonal black */
-  .rr-matrix-table td.bg-light {
-    background: #000 !important;
-    border: 1px solid #fff !important;
-  }
-
-  /* ==============================================
-     HEADER STYLE (smaller)
-     ============================================== */
-  .rr-matrix-table thead th {
-    padding: 4px 6px !important;
-    background: #0a3566 !important;
-    color: #fff !important;
-    font-weight: 600;
-    font-size: 11px !important;
-    white-space: nowrap !important;
-    width: 140px !important; /* reduced from 200 */
-  }
-
-  /* ==============================================
-     LEFT PLAYER NAMES (smaller)
-     ============================================== */
-  .rr-matrix-table tbody th {
-    background: #0b722e !important;
-    color: #fff !important;
-    font-weight: 600;
-    font-size: 11px !important;
-    padding: 4px 6px !important;
-    white-space: nowrap !important;
-  }
-
-  /* ==============================================
-     SCORE COLORS
-     ============================================== */
-  .rr-matrix-table .rr-win {
-    color: #00a859 !important;
-    font-weight: bold;
-  }
-
-  .rr-matrix-table .rr-loss {
-    color: #d32f2f !important;
-    font-weight: bold;
-  }
-
   /* Keep the player-facing schedule readable and make start times easy to scan. */
   #oop-pane .card-body { overflow-x: auto; }
   #rr-order-table { min-width: 1050px; }
@@ -128,36 +37,6 @@
     #oop-pane .card-header,
     #standings-pane .card-header,
     #main-bracket-pane .card-header { padding: .85rem; }
-
-    /* shrink name column further */
-    .rr-matrix-table thead th {
-      font-size: 10px !important;
-      width: 108px !important;
-      white-space: normal !important;
-      overflow-wrap: anywhere;
-      line-height: 1.2;
-    }
-    .rr-matrix-table tbody th {
-      font-size: 10px !important;
-      position: sticky;
-      left: 0;
-      z-index: 2;
-      width: 108px;
-      max-width: 108px;
-      white-space: normal !important;
-      overflow-wrap: anywhere;
-      line-height: 1.2;
-    }
-    .rr-matrix-table thead th:first-child { position: sticky; left: 0; z-index: 3; }
-
-    /* slightly smaller cells on mobile */
-    .rr-matrix-table td,
-    .rr-matrix-table td.rr-score-cell {
-      width: 24px !important;
-      min-width: 24px !important;
-      height: 24px !important;
-      font-size: 10px !important;
-    }
 
     /* OOP table mobile */
     #rr-order-table { font-size: 12px; }

@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use App\Models\MastersInvitation;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
@@ -30,6 +32,8 @@ class RegistrationPaymentController extends Controller
     if (isset($order->status) && $order->status === 'cancelled') {
       return redirect()->back()->withErrors('This order has been cancelled and cannot be paid.');
     }
+
+    $this->assertMastersOrderIsInvitationLinked($order);
 
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
@@ -84,6 +88,10 @@ class RegistrationPaymentController extends Controller
     // Cancelled orders cannot be paid
     if (isset($order->status) && $order->status === 'cancelled') {
       return back()->withErrors('This order has been cancelled and cannot be paid.');
+    }
+
+    if ($type !== 'team') {
+      $this->assertMastersOrderIsInvitationLinked($order);
     }
 
     try {
@@ -168,6 +176,8 @@ class RegistrationPaymentController extends Controller
     abort_unless((int) $order->user_id === (int) auth()->id(), 403);
     abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409, 'Order already paid.');
 
+    $this->assertMastersOrderIsInvitationLinked($order);
+
     $total = round((float) $order->items()->sum('item_price'), 2);
     if ($total <= 0) {
       return redirect()->route('registration.checkout', $order)->withErrors('This registration does not require payment.');
@@ -227,6 +237,8 @@ class RegistrationPaymentController extends Controller
     if ($order->wallet_debited || $order->payfast_paid) {
       return response()->json(['error' => 'Order already paid.'], 400);
     }
+
+    $this->assertMastersOrderIsInvitationLinked($order);
 
     $wallet = $user->wallet;
     $walletBalance = $wallet?->balance ?? 0;
@@ -308,6 +320,8 @@ class RegistrationPaymentController extends Controller
       ]);
       abort(403);
     }
+
+    $this->assertMastersOrderIsInvitationLinked($order);
 
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
@@ -558,6 +572,40 @@ class RegistrationPaymentController extends Controller
     return redirect()
       ->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
       ->withErrors('Payment cancelled. No wallet funds were deducted.');
+  }
+
+  /**
+   * Masters orders may only proceed when created by the invitation workflow.
+   * This also blocks payment of legacy generic checkout orders that bypassed it.
+   */
+  private function assertMastersOrderIsInvitationLinked(RegistrationOrder $order): void
+  {
+    $order->loadMissing('items.category_event.event.eventTypeModel');
+
+    foreach ($order->items as $item) {
+      $event = $item->category_event?->event;
+      if (!$event?->isMasters()) {
+        continue;
+      }
+
+      $linked = MastersInvitation::query()
+        ->where('event_id', $event->id)
+        ->where('category_event_id', $item->category_event_id)
+        ->where('player_id', $item->player_id)
+        ->where('registration_id', $item->registration_id)
+        ->where('order_id', $order->id)
+        ->whereIn('status', [
+          MastersInvitation::ACCEPTED_PENDING_PAYMENT,
+          MastersInvitation::PAID_CONFIRMED,
+        ])
+        ->exists();
+
+      if (!$linked) {
+        throw ValidationException::withMessages([
+          'registration' => 'This Masters payment is not linked to a valid invitation. Return to the Masters event page and select your name.',
+        ]);
+      }
+    }
   }
 
   public function teamHybridPay(Request $request)
