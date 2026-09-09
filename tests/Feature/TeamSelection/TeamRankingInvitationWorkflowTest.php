@@ -4,6 +4,7 @@ namespace Tests\Feature\TeamSelection;
 
 use App\Domain\Payments\Services\TeamPaymentService;
 use App\Models\Category;
+use App\Models\CategoryEvent;
 use App\Models\BulkEmailLog;
 use App\Models\Event;
 use App\Models\EventRegion;
@@ -198,6 +199,130 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             2,
             User::factory()->create()
         );
+    }
+
+    public function test_ranking_categories_create_missing_event_categories_and_region_teams_without_duplicates(): void
+    {
+        [$source, $existingTeam] = $this->selectionSource();
+        $secondCategory = Category::factory()->create(['name' => 'u/12 Girls']);
+        $secondList = RankingList::factory()->create([
+            'series_id' => $source->series_id,
+            'category_id' => $secondCategory->id,
+        ]);
+        foreach (Player::factory()->count(3)->create() as $index => $player) {
+            SeriesRanking::create([
+                'series_id' => $source->series_id,
+                'ranking_list_id' => $secondList->id,
+                'category_id' => $secondCategory->id,
+                'player_id' => $player->id,
+                'rank_position' => $index + 1,
+                'total_points' => 800 - $index,
+                'meta_json' => ['events_played' => 3],
+                'status' => 'published',
+                'run_id' => 'published-team-selection-run',
+                'published_at' => now(),
+            ]);
+        }
+
+        $service = app(TeamRankingImportService::class);
+        $setup = $service->categorySetup($source);
+        $this->assertTrue($setup['published_ready']);
+        $this->assertCount(2, $setup['rows']);
+        $this->assertSame(3, $setup['rows']->firstWhere('ranking_list_id', $secondList->id)['ranked_count']);
+
+        $payload = $setup['rows']->map(fn (array $row) => [
+            'selected' => true,
+            'ranking_list_id' => $row['ranking_list_id'],
+            'team_name' => $row['team']?->name ?: $row['suggested_team_name'],
+            'num_players' => 2,
+        ])->all();
+        $result = $service->createTeamsFromRankingCategories($source, $payload, User::factory()->create());
+
+        $this->assertSame(['created' => 1, 'linked' => 1, 'unchanged' => 0], $result);
+        $this->assertSame(2, CategoryEvent::where('event_id', $source->event_id)->count());
+        $this->assertSame(2, Team::withoutGlobalScopes()->where('region_id', $source->region_id)
+            ->whereNotNull('category_event_id')->count());
+        $this->assertNotNull($existingTeam->fresh()->category_event_id);
+        $this->assertSame(2, TeamPlayer::withoutGlobalScopes()->where('team_id', $existingTeam->id)->count());
+
+        $existingTeam->update(['name' => 'Overberg A']);
+        $preview = $service->preview($source);
+        $this->assertTrue(collect($preview['mappings'])->contains(
+            fn (array $mapping) => $mapping['team']->id === $existingTeam->id
+                && $mapping['ranking_list']->category_id === $existingTeam->fresh()->category?->category_id
+        ));
+
+        $secondResult = $service->createTeamsFromRankingCategories($source, $payload, User::factory()->create());
+        $this->assertSame(['created' => 0, 'linked' => 0, 'unchanged' => 2], $secondResult);
+        $this->assertSame(2, Team::withoutGlobalScopes()->where('region_id', $source->region_id)
+            ->whereNotNull('category_event_id')->count());
+    }
+
+    public function test_link_redirect_opens_the_ranking_category_team_setup_popup(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Team popup test', 'type' => 2, 'code' => 'team-popup-test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = Event::factory()->create(['eventType' => $teamEventType, 'start_date' => now()->addMonth()]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $region = TeamRegion::create(['region_name' => 'Boland Primary Schools']);
+        $eventRegion = new EventRegion();
+        $eventRegion->event_id = $event->id;
+        $eventRegion->region_id = $region->id;
+        $eventRegion->ordering = 1;
+        $eventRegion->save();
+        $series = Series::factory()->create([
+            'year' => (int) $event->start_date->format('Y'),
+        ]);
+        RankingList::factory()->create([
+            'series_id' => $series->id,
+            'category_id' => Category::factory()->create(['name' => 'u/10 Girls'])->id,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('backend.team-selection.link', [$event, $eventRegion]), [
+            'series_id' => $series->id,
+            'reserve_count' => 2,
+        ]);
+
+        $sourceId = $eventRegion->fresh('rankingSource')->rankingSource->id;
+        $response->assertRedirect(route('backend.team-selection.index', $event))
+            ->assertSessionHas('open_team_setup_source', $sourceId);
+        $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
+            ->assertOk()
+            ->assertSee('Create teams from ranking categories')
+            ->assertSee('u/10 Girls');
+    }
+
+    public function test_unlink_preserves_event_categories_and_teams_before_an_import_starts(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $service = app(TeamRankingImportService::class);
+        $setupRow = $service->categorySetup($source)['rows']->first();
+        $service->createTeamsFromRankingCategories($source, [[
+            'selected' => true,
+            'ranking_list_id' => $setupRow['ranking_list_id'],
+            'team_name' => $team->name,
+            'num_players' => 2,
+        ]], User::factory()->create());
+        $categoryEventId = $team->fresh()->category_event_id;
+
+        $service->unlink($source, User::factory()->create());
+
+        $this->assertDatabaseMissing('event_region_ranking_sources', ['id' => $source->id]);
+        $this->assertDatabaseHas('teams', ['id' => $team->id, 'category_event_id' => $categoryEventId]);
+        $this->assertDatabaseHas('category_events', ['id' => $categoryEventId, 'event_id' => $source->event_id]);
+    }
+
+    public function test_unlink_is_blocked_after_a_ranked_player_import_exists(): void
+    {
+        [$source] = $this->selectionSource();
+        app(TeamRankingImportService::class)->import($source, User::factory()->create());
+
+        $this->expectException(ValidationException::class);
+        app(TeamRankingImportService::class)->unlink($source, User::factory()->create());
     }
 
     public function test_preview_excludes_historical_teams_that_share_the_region(): void

@@ -440,6 +440,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   Route::middleware('role:super-user|admin')->prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
     Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
+    Route::delete('events/{event}/sources/{source}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'unlink'])->name('unlink');
+    Route::post('events/{event}/sources/{source}/teams', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'createTeams'])->name('teams.create');
     Route::get('events/{event}/sources/{source}/preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'preview'])->name('preview');
     Route::post('events/{event}/sources/{source}/import', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'import'])->name('import');
     Route::post('events/{event}/imports/{selectionImport}/send', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'send'])->name('send');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\TeamSelection;
 
 use App\Domain\Ranking\Services\RankingTeamEligibilityService;
+use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\EventRegionRankingSource;
@@ -18,6 +19,7 @@ use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 final class TeamRankingImportService
@@ -65,6 +67,205 @@ final class TeamRankingImportService
         });
     }
 
+    /** @return array{rows: Collection<int, array<string, mixed>>, published_ready: bool} */
+    public function categorySetup(EventRegionRankingSource $source): array
+    {
+        $source->loadMissing(['event', 'series', 'region']);
+        $lists = RankingList::query()->with('category')
+            ->where('series_id', $source->series_id)
+            ->whereNotNull('category_id')
+            ->get()
+            ->sortBy(fn (RankingList $list) => mb_strtolower((string) $list->category?->name))
+            ->values();
+        $categoryIds = $lists->pluck('category_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $eventCategories = CategoryEvent::query()
+            ->where('event_id', $source->event_id)->whereIn('category_id', $categoryIds)
+            ->get()->keyBy(fn (CategoryEvent $categoryEvent) => (int) $categoryEvent->category_id);
+        $teams = $this->teamsForEvent($source->event, [(int) $source->region_id])->load('category');
+        $publishedReady = $this->hasPublishedRanking($source->series_id);
+        $publishedRunId = $publishedReady ? $this->publishedRunId($source->series_id) : null;
+        $rankedCounts = $publishedRunId
+            ? SeriesRanking::query()->where('series_id', $source->series_id)->where('run_id', $publishedRunId)
+                ->where('status', 'published')->selectRaw('ranking_list_id, COUNT(*) as aggregate')
+                ->groupBy('ranking_list_id')->pluck('aggregate', 'ranking_list_id')
+            : collect();
+
+        $rows = $lists->map(function (RankingList $list) use ($source, $eventCategories, $teams, $rankedCounts): array {
+            $categoryEvent = $eventCategories->get((int) $list->category_id);
+            $team = $categoryEvent
+                ? $teams->first(fn (Team $candidate) => (int) $candidate->category_event_id === (int) $categoryEvent->id)
+                : null;
+            if (! $team) {
+                $key = $this->categoryKey((string) $list->category?->name);
+                $legacyMatches = $key
+                    ? $teams->filter(fn (Team $candidate) => ! $candidate->category_event_id && $this->categoryKey((string) $candidate->name) === $key)
+                    : collect();
+                $team = $legacyMatches->count() === 1 ? $legacyMatches->first() : null;
+            }
+            $prefix = trim((string) ($source->region?->short_name ?: $source->region?->region_name));
+
+            return [
+                'ranking_list_id' => (int) $list->id,
+                'category_id' => (int) $list->category_id,
+                'category_name' => (string) ($list->category?->name ?: 'Category #'.$list->category_id),
+                'ranked_count' => (int) ($rankedCounts[$list->id] ?? 0),
+                'event_category' => $categoryEvent,
+                'team' => $team,
+                'ready' => (bool) ($categoryEvent && $team
+                    && (int) $team->category_event_id === (int) $categoryEvent->id
+                    && (int) $team->num_team_members > 0),
+                'suggested_team_name' => trim($prefix.' '.(string) $list->category?->name),
+            ];
+        });
+
+        return ['rows' => $rows, 'published_ready' => $publishedReady];
+    }
+
+    /**
+     * @param array<int, array{selected?: mixed, ranking_list_id: mixed, team_name?: mixed, num_players?: mixed}> $categories
+     * @return array{created: int, linked: int, unchanged: int}
+     */
+    public function createTeamsFromRankingCategories(EventRegionRankingSource $source, array $categories, User $actor): array
+    {
+        $selected = collect($categories)->filter(fn (array $row) => (bool) ($row['selected'] ?? false))->values();
+        if ($selected->isEmpty()) {
+            throw ValidationException::withMessages(['categories' => 'Select at least one ranking category.']);
+        }
+
+        return DB::transaction(function () use ($source, $selected, $actor): array {
+            $lockedSource = EventRegionRankingSource::query()->lockForUpdate()->findOrFail($source->id);
+            if ($lockedSource->imports()->whereIn('status', ['draft', 'sent'])->exists()) {
+                throw ValidationException::withMessages(['categories' => 'Teams cannot be changed after a ranking import has started.']);
+            }
+            $rankingLists = RankingList::query()->with('category')
+                ->where('series_id', $lockedSource->series_id)
+                ->whereIn('id', $selected->pluck('ranking_list_id')->map(fn ($id) => (int) $id))
+                ->lockForUpdate()->get()->keyBy('id');
+            if ($rankingLists->count() !== $selected->count()) {
+                throw ValidationException::withMessages(['categories' => 'One or more categories do not belong to the linked ranking series.']);
+            }
+
+            $event = Event::query()->lockForUpdate()->findOrFail($lockedSource->event_id);
+            $created = 0;
+            $linked = 0;
+            $unchanged = 0;
+            foreach ($selected as $row) {
+                $rankingList = $rankingLists->get((int) $row['ranking_list_id']);
+                $teamName = trim((string) ($row['team_name'] ?? ''));
+                $numPlayers = (int) ($row['num_players'] ?? 0);
+                if ($teamName === '' || $numPlayers < 1 || $numPlayers > 50) {
+                    throw ValidationException::withMessages([
+                        'categories' => "Enter a team name and player quantity for {$rankingList->category?->name}.",
+                    ]);
+                }
+
+                $categoryEvent = CategoryEvent::query()->firstOrCreate(
+                    ['event_id' => $event->id, 'category_id' => $rankingList->category_id],
+                    ['entry_fee' => 0, 'ordering' => ((int) CategoryEvent::where('event_id', $event->id)->max('ordering')) + 1]
+                );
+                $team = Team::query()->withoutGlobalScopes()
+                    ->where('region_id', $lockedSource->region_id)
+                    ->where('category_event_id', $categoryEvent->id)
+                    ->lockForUpdate()->first();
+
+                if (! $team) {
+                    $key = $this->categoryKey((string) $rankingList->category?->name);
+                    $legacyMatches = Team::query()->withoutGlobalScopes()
+                        ->where('region_id', $lockedSource->region_id)
+                        ->whereNull('category_event_id')
+                        ->where('year', (string) ($event->start_date?->format('Y') ?: date('Y')))
+                        ->lockForUpdate()->get()
+                        ->filter(fn (Team $candidate) => $key && $this->categoryKey((string) $candidate->name) === $key);
+                    if ($legacyMatches->count() > 1) {
+                        throw ValidationException::withMessages([
+                            'categories' => "More than one existing team matches {$rankingList->category?->name}. Link the correct team category manually first.",
+                        ]);
+                    }
+                    $team = $legacyMatches->first();
+                }
+
+                if ($team) {
+                    $occupied = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', '>', 0)->exists();
+                    if ($occupied && (int) $team->num_team_members !== $numPlayers) {
+                        throw ValidationException::withMessages([
+                            'categories' => "{$team->name} already has players. Its team size was not changed.",
+                        ]);
+                    }
+                    $wasLinked = ! $team->category_event_id;
+                    $team->forceFill([
+                        'category_event_id' => $categoryEvent->id,
+                        'num_team_members' => $numPlayers,
+                    ])->save();
+                    $wasLinked ? $linked++ : $unchanged++;
+                } else {
+                    $team = new Team([
+                        'name' => $teamName,
+                        'num_team_members' => $numPlayers,
+                        'year' => $event->start_date?->format('Y') ?: date('Y'),
+                        'published' => false,
+                        'region_id' => $lockedSource->region_id,
+                        'category_event_id' => $categoryEvent->id,
+                        'noProfile' => false,
+                    ]);
+                    if (Schema::hasColumn('teams', 'user_id')) $team->setAttribute('user_id', $actor->id);
+                    if (Schema::hasColumn('teams', 'personal_team')) $team->setAttribute('personal_team', false);
+                    $team->save();
+                    $created++;
+                }
+
+                for ($rank = 1; $rank <= $numPlayers; $rank++) {
+                    TeamPlayer::query()->withoutGlobalScopes()->firstOrCreate(
+                        ['team_id' => $team->id, 'rank' => $rank],
+                        ['player_id' => 0, 'pay_status' => 0]
+                    );
+                }
+                TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)
+                    ->where('rank', '>', $numPlayers)->where('player_id', 0)->delete();
+            }
+
+            activity('team-selection')->performedOn($event)->causedBy($actor)
+                ->withProperties([
+                    'source_id' => $lockedSource->id,
+                    'region_id' => $lockedSource->region_id,
+                    'ranking_list_ids' => $selected->pluck('ranking_list_id')->map(fn ($id) => (int) $id)->all(),
+                    'created_teams' => $created,
+                    'linked_existing_teams' => $linked,
+                ])->log('created regional event teams from ranking categories');
+
+            return compact('created', 'linked', 'unchanged');
+        });
+    }
+
+    public function hasPublishedRanking(int $seriesId): bool
+    {
+        $latest = SeriesRanking::query()->where('series_id', $seriesId)
+            ->orderByDesc('created_at')->orderByDesc('id')->first(['status', 'run_id']);
+
+        return $latest?->status === 'published' && filled($latest->run_id);
+    }
+
+    public function unlink(EventRegionRankingSource $source, User $actor): void
+    {
+        DB::transaction(function () use ($source, $actor): void {
+            $lockedSource = EventRegionRankingSource::query()->lockForUpdate()->findOrFail($source->id);
+            if ($lockedSource->imports()->exists()) {
+                throw ValidationException::withMessages([
+                    'series_id' => 'This series cannot be unlinked because a ranked-player import already exists. Restart the unsent draft first, or retain the link for the audit history.',
+                ]);
+            }
+
+            $event = Event::findOrFail($lockedSource->event_id);
+            activity('team-selection')->performedOn($event)->causedBy($actor)
+                ->withProperties([
+                    'source_id' => $lockedSource->id,
+                    'event_region_id' => $lockedSource->event_region_id,
+                    'region_id' => $lockedSource->region_id,
+                    'series_id' => $lockedSource->series_id,
+                ])->log('unlinked event region from ranking series');
+            $lockedSource->delete();
+        });
+    }
+
     /** @return array{run_id: string, mappings: array<int, array<string, mixed>>, warnings: array<int, string>} */
     public function preview(EventRegionRankingSource $source): array
     {
@@ -79,28 +280,35 @@ final class TeamRankingImportService
             ->orderBy('rank_position')
             ->get();
 
-        $teams = $this->teamsForEvent($source->event, [(int) $source->region_id]);
+        $teams = $this->teamsForEvent($source->event, [(int) $source->region_id])->load('category');
         if ($teams->isEmpty()) {
             throw ValidationException::withMessages(['teams' => 'Create and configure this region’s teams before importing ranked players.']);
         }
 
         $lists = $rows->pluck('rankingList')->filter()->unique('id')->values();
         $listByKey = $lists->groupBy(fn (RankingList $list) => $this->categoryKey((string) $list->category?->name));
-        $teamKeys = $teams->groupBy(fn (Team $team) => $this->categoryKey((string) $team->name));
+        $listByCategory = $lists->groupBy(fn (RankingList $list) => (int) $list->category_id);
+        $teamKeys = $teams->groupBy(fn (Team $team) => $team->category?->category_id
+            ? 'category:'.(int) $team->category->category_id
+            : 'name:'.($this->categoryKey((string) $team->name) ?: 'unmatched-'.$team->id));
         $warnings = [];
         $mappings = [];
 
         foreach ($teams as $team) {
-            $key = $this->categoryKey((string) $team->name);
-            if ($key === null) {
-                $warnings[] = "Team {$team->name} does not identify an age group and gender.";
+            $categoryId = (int) ($team->category?->category_id ?? 0);
+            $key = $categoryId > 0 ? null : $this->categoryKey((string) $team->name);
+            $identity = $categoryId > 0 ? 'category:'.$categoryId : 'name:'.($key ?: 'unmatched-'.$team->id);
+            if (($teamKeys->get($identity)?->count() ?? 0) > 1) {
+                $warnings[] = "More than one event team is linked to the ranking category for {$team->name}.";
                 continue;
             }
-            if (($teamKeys->get($key)?->count() ?? 0) > 1) {
-                $warnings[] = "More than one team matches {$key}; team names must identify a unique ranking category.";
+            if ($categoryId <= 0 && $key === null) {
+                $warnings[] = "Team {$team->name} has no event category and its name does not identify an age group and gender.";
                 continue;
             }
-            $matches = $listByKey->get($key, collect());
+            $matches = $categoryId > 0
+                ? $listByCategory->get($categoryId, collect())
+                : $listByKey->get($key, collect());
             if ($matches->count() !== 1) {
                 $warnings[] = $matches->isEmpty()
                     ? "No published ranking list matches {$team->name}."

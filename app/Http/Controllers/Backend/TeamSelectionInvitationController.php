@@ -31,8 +31,12 @@ class TeamSelectionInvitationController extends Controller
         })->pluck('id');
         $teams = $service->teamsForEvent($event, $eventRegions->pluck('region_id')->map(fn ($id) => (int) $id)->all())
             ->loadCount(['team_players', 'team_players_no_profile'])->groupBy('region_id');
+        $categorySetups = $eventRegions->filter(fn (EventRegion $eventRegion) => $eventRegion->rankingSource)
+            ->mapWithKeys(fn (EventRegion $eventRegion) => [
+                $eventRegion->rankingSource->id => $service->categorySetup($eventRegion->rankingSource),
+            ]);
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams'));
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups'));
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)
@@ -44,7 +48,41 @@ class TeamSelectionInvitationController extends Controller
         ]);
         $service->link($event, $eventRegion, Series::findOrFail($data['series_id']), (int) $data['reserve_count'], $request->user());
 
-        return back()->with('success', 'The region is linked to its ranking series.');
+        $source = $eventRegion->fresh('rankingSource')->rankingSource;
+
+        return redirect()->route('backend.team-selection.index', $event)
+            ->with('success', 'The region is linked. Select the ranking categories that must become event teams.')
+            ->with('open_team_setup_source', $source?->id);
+    }
+
+    public function createTeams(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
+    {
+        $this->authorizeSource($event, $source);
+        $data = $request->validate([
+            'categories' => ['required', 'array', 'min:1'],
+            'categories.*.selected' => ['nullable', 'boolean'],
+            'categories.*.ranking_list_id' => ['required', 'integer', 'distinct'],
+            'categories.*.team_name' => ['nullable', 'string', 'max:255'],
+            'categories.*.num_players' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $result = $service->createTeamsFromRankingCategories($source, $data['categories'], $request->user());
+
+        if ($service->hasPublishedRanking($source->series_id)) {
+            return redirect()->route('backend.team-selection.preview', [$event, $source])
+                ->with('success', "Created {$result['created']} teams and linked {$result['linked']} existing teams. Review the ranked players before importing.");
+        }
+
+        return redirect()->route('backend.team-selection.index', $event)
+            ->with('success', "Created {$result['created']} teams and linked {$result['linked']} existing teams. Publish the latest ranking before importing players.");
+    }
+
+    public function unlink(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
+    {
+        $this->authorizeSource($event, $source);
+        $service->unlink($source, $request->user());
+
+        return redirect()->route('backend.team-selection.index', $event)
+            ->with('success', 'The ranking series was unlinked. Existing event categories and teams were preserved.');
     }
 
     public function preview(Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
