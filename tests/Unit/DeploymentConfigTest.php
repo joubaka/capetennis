@@ -21,6 +21,7 @@ class DeploymentConfigTest extends TestCase
             '2026_09_06_000001_add_require_full_sets_to_draw_settings.php',
             '2026_09_06_010000_repair_overberg_u10b_single_set_results.php',
             '2026_09_07_060000_add_score_format_to_draw_settings.php',
+            '2026_09_09_040000_add_user_id_to_registration_order_items.php',
         ] as $migration) {
             $this->assertStringContainsString($migration, $config);
         }
@@ -32,5 +33,20 @@ class DeploymentConfigTest extends TestCase
 
         $this->assertStringContainsString('migrate:status --pending --no-interaction --no-ansi', $script);
         $this->assertStringContainsString('Pending migrations remain after the approved migration list ran', $script);
+    }
+
+    public function test_deploy_reconciles_masters_payments_before_the_application_returns_online(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+        $reconciliation = 'masters:reconcile-payments --apply';
+        $bringOnline = 'run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0';
+
+        $this->assertStringContainsString($reconciliation, $script);
+        $this->assertStringContainsString($bringOnline, $script);
+        $this->assertLessThan(
+            strpos($script, $bringOnline),
+            strpos($script, $reconciliation),
+            'Masters payment reconciliation must complete before the application returns online.'
+        );
     }
 }

@@ -69,6 +69,8 @@ if [ "$SKIP_MIGRATIONS" = false ] && [ "$RUN_MIGRATIONS" = true ]; then
         fail 'Pending migrations remain after the approved migration list ran; add each reviewed path to MIGRATION_PATHS'
     fi
 fi
+log INFO 'Reconciling completed Masters payments with their invitations'
+run_php "$APP_PATH/artisan" masters:reconcile-payments --apply
 run_php "$APP_PATH/artisan" storage:link 2>&1 | grep -v 'already exists' || true
 run_php "$APP_PATH/artisan" config:cache; run_php "$APP_PATH/artisan" route:cache; run_php "$APP_PATH/artisan" view:cache
 sync_public_html; run_php "$APP_PATH/artisan" queue:restart; run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0; trap - EXIT
