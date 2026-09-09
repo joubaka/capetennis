@@ -96,7 +96,14 @@ class TeamSelectionInvitationController extends Controller
     public function import(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
     {
         $this->authorizeSource($event, $source);
-        $selectionImport = $service->import($source, $request->user());
+        $data = $request->validate([
+            'confirm_incomplete_rosters' => ['nullable', 'accepted'],
+        ]);
+        $selectionImport = $service->import(
+            $source,
+            $request->user(),
+            array_key_exists('confirm_incomplete_rosters', $data)
+        );
 
         return redirect()->route('backend.team-selection.index', $event)
             ->with('success', "Imported {$selectionImport->invitations->where('status', 'invited')->count()} selected players and {$selectionImport->invitations->where('status', 'reserve')->count()} reserves.");

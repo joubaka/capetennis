@@ -292,6 +292,7 @@ final class TeamRankingImportService
             ? 'category:'.(int) $team->category->category_id
             : 'name:'.($this->categoryKey((string) $team->name) ?: 'unmatched-'.$team->id));
         $warnings = [];
+        $notices = [];
         $mappings = [];
 
         foreach ($teams as $team) {
@@ -327,7 +328,12 @@ final class TeamRankingImportService
             $eligible = $this->eligibility->eligible($ranked, $source->series)->values();
             $required = $capacity + (int) $source->reserve_count;
             if ($eligible->count() < $capacity) {
-                $warnings[] = "{$team->name} has only {$eligible->count()} eligible ranked players for {$capacity} places.";
+                $emptyPlaces = $capacity - $eligible->count();
+                $notices[] = "{$team->name} has {$eligible->count()} eligible ranked players for {$capacity} team places. {$emptyPlaces} team place(s) will remain empty and no reserves are available.";
+            } elseif ($eligible->count() < $required) {
+                $availableReserves = max(0, $eligible->count() - $capacity);
+                $missingReserves = (int) $source->reserve_count - $availableReserves;
+                $notices[] = "{$team->name} can fill all {$capacity} team places but has only {$availableReserves} reserve(s). {$missingReserves} reserve place(s) will remain empty.";
             }
 
             $mappings[] = [
@@ -358,10 +364,15 @@ final class TeamRankingImportService
             throw ValidationException::withMessages(['mapping' => 'No team could be matched safely to a published ranking list.']);
         }
 
-        return ['run_id' => $runId, 'mappings' => $mappings, 'warnings' => array_values(array_unique($warnings))];
+        return [
+            'run_id' => $runId,
+            'mappings' => $mappings,
+            'warnings' => array_values(array_unique($warnings)),
+            'notices' => array_values(array_unique($notices)),
+        ];
     }
 
-    public function import(EventRegionRankingSource $source, User $actor): TeamSelectionImport
+    public function import(EventRegionRankingSource $source, User $actor, bool $confirmIncompleteRosters = false): TeamSelectionImport
     {
         $preview = $this->preview($source);
         if ($preview['warnings'] !== []) {
@@ -369,8 +380,13 @@ final class TeamRankingImportService
                 'import' => 'Resolve the preview warnings before importing: '.implode(' ', $preview['warnings']),
             ]);
         }
+        if ($preview['notices'] !== [] && ! $confirmIncompleteRosters) {
+            throw ValidationException::withMessages([
+                'confirm_incomplete_rosters' => 'Confirm that you accept the empty team or reserve places before importing.',
+            ]);
+        }
 
-        return DB::transaction(function () use ($source, $actor, $preview) {
+        return DB::transaction(function () use ($source, $actor, $preview, $confirmIncompleteRosters) {
             $lockedSource = EventRegionRankingSource::query()->lockForUpdate()->findOrFail($source->id);
             if ((int) $lockedSource->event_id !== (int) $source->event_id
                 || (int) $lockedSource->region_id !== (int) $source->region_id
@@ -404,6 +420,13 @@ final class TeamRankingImportService
                     throw ValidationException::withMessages([
                         'team' => "{$team->name} already contains selected or paid players and was not changed.",
                     ]);
+                }
+
+                for ($rosterRank = 1; $rosterRank <= $mapping['capacity']; $rosterRank++) {
+                    TeamPlayer::query()->withoutGlobalScopes()->firstOrCreate(
+                        ['team_id' => $team->id, 'rank' => $rosterRank],
+                        ['player_id' => 0, 'pay_status' => 0]
+                    );
                 }
 
                 $rank = 0;
@@ -453,6 +476,8 @@ final class TeamRankingImportService
                     'series_id' => $import->series_id,
                     'ranking_run_id' => $import->ranking_run_id,
                     'invitation_count' => $import->invitations()->count(),
+                    'incomplete_rosters_confirmed' => $confirmIncompleteRosters,
+                    'incomplete_roster_notices' => $preview['notices'],
                 ])->log('imported ranked players into event region teams');
 
             return $import->fresh(['invitations.player', 'invitations.team']);

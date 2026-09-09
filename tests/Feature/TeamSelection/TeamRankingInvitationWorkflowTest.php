@@ -60,6 +60,33 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         app(TeamRankingImportService::class)->import($source, User::factory()->create());
     }
 
+    public function test_confirmed_incomplete_import_keeps_unfilled_team_places_empty(): void
+    {
+        [$source, $team, $players] = $this->selectionSource();
+        $team->update(['num_team_members' => 8]);
+        $service = app(TeamRankingImportService::class);
+        $preview = $service->preview($source);
+
+        $this->assertNotEmpty($preview['notices']);
+        $this->assertEmpty($preview['warnings']);
+        try {
+            $service->import($source, User::factory()->create());
+            $this->fail('Expected an explicit incomplete-roster confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('confirm_incomplete_rosters', $exception->errors());
+        }
+
+        $selectionImport = $service->import($source, User::factory()->create(), true);
+
+        $this->assertSame(5, $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->count());
+        $this->assertSame(0, $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)->count());
+        $this->assertSame(8, TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(
+            $players->pluck('id')->concat([0, 0, 0])->all(),
+            TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->orderBy('rank')->pluck('player_id')->all()
+        );
+    }
+
     public function test_another_account_cannot_use_a_players_team_invitation(): void
     {
         [$source] = $this->selectionSource();
