@@ -78,7 +78,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
             'region_id' => $source->id, 'ordering' => 1,
         ]);
 
-        $this->actingAs(User::factory()->create())
+        $admin = $this->authorizedAdminForRegion($target, 2026);
+        $this->actingAs($admin)
             ->get(route('backend.region.clothing.edit', $target))
             ->assertOk()
             ->assertSee('Copy and review last year’s clothing')
@@ -132,6 +133,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         $source = TeamRegion::create(['region_name' => 'West Coast Primary Schools 2025']);
         $target = TeamRegion::create(['region_name' => 'West Coast Primary Schools 2026']);
+        $this->attachAdminToRegion($admin, $target, 2026);
         $item = ClothingItemType::create([
             'item_type_name' => 'West Coast Shirt Girls', 'price' => 370,
             'region_id' => $source->id, 'ordering' => 3,
@@ -155,5 +157,60 @@ class RegionClothingCopyWorkflowTest extends TestCase
             'region_id' => $target->id, 'item_type_name' => $item->item_type_name, 'price' => 400,
         ]);
         $this->assertFalse((bool) $target->fresh()->clothing_order);
+    }
+
+    public function test_unassigned_authenticated_user_cannot_manage_or_open_region_clothing(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Protected Region 2026']);
+        $this->authorizedAdminForRegion($region, 2026);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('backend.region.clothing.edit', $region))->assertForbidden();
+        $this->actingAs($user)->post(route('backend.region.clothing.items.store', $region), [
+            'item_type_name' => 'Unauthorized shirt', 'price' => 100,
+        ])->assertForbidden();
+        $this->actingAs($user)->patch(route('backend.region.clothing.toggle', $region))->assertForbidden();
+        $this->actingAs($user)->get(route('backend.region.clothing.orders', $region))->assertForbidden();
+    }
+
+    public function test_ordering_cannot_open_until_every_item_has_a_price_and_size(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Readiness Region 2026', 'clothing_order' => false]);
+        $admin = $this->authorizedAdminForRegion($region, 2026);
+        $item = ClothingItemType::create([
+            'item_type_name' => 'Incomplete shirt', 'price' => 0, 'region_id' => $region->id,
+        ]);
+
+        $this->actingAs($admin)->patch(route('backend.region.clothing.toggle', $region))->assertStatus(422);
+        $this->assertFalse((bool) $region->fresh()->clothing_order);
+
+        $item->update(['price' => 300]);
+        ClothingSize::create(['size' => 'M', 'item_type' => $item->id]);
+        $this->actingAs($admin)->patch(route('backend.region.clothing.toggle', $region))
+            ->assertRedirect();
+        $this->assertTrue((bool) $region->fresh()->clothing_order);
+    }
+
+    private function authorizedAdminForRegion(TeamRegion $region, int $year): User
+    {
+        Role::findOrCreate('admin', 'web');
+        $admin = User::factory()->create()->assignRole('admin');
+        $this->attachAdminToRegion($admin, $region, $year);
+
+        return $admin;
+    }
+
+    private function attachAdminToRegion(User $admin, TeamRegion $region, int $year): void
+    {
+        $typeId = DB::table('eventtypes')->insertGetId([
+            'name' => 'Clothing authorization team event', 'type' => 2,
+            'code' => 'cloth-auth-'.substr((string) str()->uuid(), 0, 8), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = Event::factory()->create([
+            'eventType' => $typeId,
+            'start_date' => "{$year}-10-09",
+        ]);
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $region->id, 'ordering' => 1]);
     }
 }

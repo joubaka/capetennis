@@ -241,13 +241,6 @@ class ClothingOrderController extends Controller
     return response()->json(['items' => $data]);
   }
 
-  public function place(TeamRegion $region, Request $request)
-  {
-    abort(404);
-  }
-
-
-
   public function toggleClothingOrder($id)
   {
     $region = TeamRegion::findOrFail($id);

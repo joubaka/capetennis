@@ -1904,7 +1904,6 @@ Route::middleware('auth')->group(function () {
 
 Route::prefix('region/{region}')->name('frontend.clothing.')->group(function () {
   Route::get('clothing/sheet', [ClothingOrderController::class, 'sheet'])->name('sheet');
-  Route::post('clothing/place', [ClothingOrderController::class, 'place'])->name('place');
 });
 Route::post(
   'backend/ranking-scores/{id}/school',
