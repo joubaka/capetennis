@@ -117,6 +117,107 @@ class ExternalTeamWorkbookImportTest extends TestCase
         $this->assertDatabaseCount('no_profile_team_players', 0);
     }
 
+    public function test_admin_can_fill_only_empty_ranks_with_replaceable_placeholder_slots(): void
+    {
+        [$event, $region, $admin] = $this->eventRegionAndAdmin();
+
+        $preview = $this->actingAs($admin)->postJson(
+            route('backend.region.teams.import.no.profile', [$event, $region]),
+            [
+                'file' => $this->workbook(),
+                'expected_players' => 8,
+                'team_prefix' => 'ZFM',
+                'fill_missing_players' => 1,
+            ]
+        );
+
+        $preview->assertOk()
+            ->assertJsonPath('teams.2.category', 'Boys U11')
+            ->assertJsonPath('teams.2.selectable', true)
+            ->assertJsonPath('teams.2.placeholder_count', 1)
+            ->assertJsonPath('teams.2.placeholder_ranks.0', 8)
+            ->assertJsonPath('teams.2.players.7.rank', 8)
+            ->assertJsonPath('teams.2.players.7.name', 'Player 8')
+            ->assertJsonPath('teams.2.players.7.surname', 'To be confirmed')
+            ->assertJsonPath('teams.2.players.7.is_placeholder', true)
+            ->assertJsonPath('placeholder_player_count', 1);
+
+        $confirmed = $this->actingAs($admin)->postJson(
+            route('backend.region.teams.import.no.profile', [$event, $region]),
+            [
+                'file' => $this->workbook(),
+                'expected_players' => 8,
+                'team_prefix' => 'ZFM',
+                'sheet_name' => 'Selected squads',
+                'fill_missing_players' => 1,
+                'confirmed' => 1,
+                'selected_team_keys' => ['boys-u11'],
+            ]
+        );
+
+        $confirmed->assertOk()
+            ->assertJsonPath('team_count', 1)
+            ->assertJsonPath('player_count', 8)
+            ->assertJsonPath('teams.0.placeholder_count', 1);
+
+        $this->assertDatabaseHas('no_profile_team_players', [
+            'rank' => 8,
+            'name' => 'Player 8',
+            'surname' => 'To be confirmed',
+            'player_profile' => null,
+            'pay_status' => 0,
+        ]);
+        $this->assertDatabaseCount('no_profile_team_players', 8);
+        $this->assertDatabaseCount('team_players', 8);
+
+        $reimport = $this->actingAs($admin)->postJson(
+            route('backend.region.teams.import.no.profile', [$event, $region]),
+            [
+                'file' => $this->workbook('Real', 'Player'),
+                'expected_players' => 8,
+                'team_prefix' => 'ZFM',
+                'sheet_name' => 'Selected squads',
+                'confirmed' => 1,
+                'selected_team_keys' => ['boys-u11'],
+            ]
+        );
+
+        $reimport->assertOk()->assertJsonPath('teams.0.placeholder_count', 0);
+        $this->assertDatabaseHas('no_profile_team_players', [
+            'rank' => 8,
+            'name' => 'Real',
+            'surname' => 'Player',
+        ]);
+        $this->assertDatabaseMissing('no_profile_team_players', [
+            'rank' => 8,
+            'name' => 'Player 8',
+            'surname' => 'To be confirmed',
+        ]);
+    }
+
+    public function test_placeholder_option_does_not_hide_a_partial_player_name(): void
+    {
+        [$event, $region, $admin] = $this->eventRegionAndAdmin();
+
+        $preview = $this->actingAs($admin)->postJson(
+            route('backend.region.teams.import.no.profile', [$event, $region]),
+            [
+                'file' => $this->workbook('Partial', ''),
+                'expected_players' => 8,
+                'team_prefix' => 'ZFM',
+                'fill_missing_players' => 1,
+            ]
+        );
+
+        $preview->assertOk()
+            ->assertJsonPath('teams.2.selectable', false)
+            ->assertJsonPath('teams.2.placeholder_count', 0)
+            ->assertJsonFragment(['Row 23: both name and surname are required for rank 8.']);
+
+        $this->assertDatabaseCount('teams', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+    }
+
     private function eventRegionAndAdmin(): array
     {
         $event = Event::factory()->create([
@@ -137,7 +238,7 @@ class ExternalTeamWorkbookImportTest extends TestCase
         return [$event, $region, $admin];
     }
 
-    private function workbook(): UploadedFile
+    private function workbook(string $rankEightName = '', string $rankEightSurname = ''): UploadedFile
     {
         $spreadsheet = new Spreadsheet();
         $guestList = $spreadsheet->getActiveSheet();
@@ -171,7 +272,7 @@ class ExternalTeamWorkbookImportTest extends TestCase
             [5, 'Player', 'Five'],
             [6, 'Player', 'Six'],
             [7, 'Player', 'Seven'],
-            [8, '', ''],
+            [8, $rankEightName, $rankEightSurname],
         ], null, 'A16');
 
         $path = tempnam(sys_get_temp_dir(), 'external-team-workbook-').'.xlsx';

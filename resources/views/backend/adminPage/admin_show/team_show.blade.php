@@ -290,6 +290,17 @@
                 <option value="">Auto-detect the best worksheet</option>
               </select>
             </div>
+            <div class="col-12">
+              <div class="form-check border rounded p-3 ps-5 bg-light">
+                <input class="form-check-input" type="checkbox" value="1" id="bulk-import-fill-missing" name="fill_missing_players">
+                <label class="form-check-label fw-medium" for="bulk-import-fill-missing">
+                  Import incomplete teams with placeholder players
+                </label>
+                <div class="form-text mt-1">
+                  Missing ranks become clearly labelled slots such as “Player 8 — To be confirmed”. Partial names, duplicate ranks and invalid ranks still block import.
+                </div>
+              </div>
+            </div>
           </div>
 
           <div id="bulk-import-status" class="alert alert-primary d-none mt-3 mb-0">
@@ -304,7 +315,7 @@
                 <h6 class="mb-0">Review teams before importing</h6>
                 <div id="bulk-import-summary" class="small text-muted"></div>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-import-select-complete">Select all complete teams</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-import-select-complete">Select all teams ready to import</button>
             </div>
             <div class="table-responsive border rounded">
               <table class="table table-sm align-middle mb-0">

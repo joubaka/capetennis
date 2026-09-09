@@ -578,6 +578,7 @@ class TeamController extends Controller
       'file' => 'required|file|mimes:xlsx,xls,csv|max:5120',
       'confirmed' => 'nullable|boolean',
       'expected_players' => 'nullable|integer|min:1|max:50',
+      'fill_missing_players' => 'nullable|boolean',
       'team_prefix' => 'nullable|string|max:100',
       'sheet_name' => 'nullable|string|max:255',
       'selected_team_keys' => 'nullable|array',
@@ -623,11 +624,13 @@ class TeamController extends Controller
       $region,
       $parsed['teams'],
       $teamPrefix,
-      $expectedPlayers
+      $expectedPlayers,
+      $request->boolean('fill_missing_players')
     );
 
     if (! $request->boolean('confirmed')) {
       $completeTeams = collect($preview)->where('selectable', true);
+      $placeholderCount = $completeTeams->sum('placeholder_count');
 
       return response()->json([
         'success' => true,
@@ -638,6 +641,7 @@ class TeamController extends Controller
         'teams' => $preview,
         'complete_team_count' => $completeTeams->count(),
         'complete_player_count' => $completeTeams->sum('player_count'),
+        'placeholder_player_count' => $placeholderCount,
       ]);
     }
 

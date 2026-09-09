@@ -26,12 +26,12 @@ class ExternalTeamWorkbookService
         TeamRegion $region,
         array $parsedTeams,
         string $teamPrefix,
-        int $expectedPlayers
+        int $expectedPlayers,
+        bool $fillMissingPlayers = false
     ): array {
         $this->assertRegionBelongsToEvent($event, $region);
 
-        return array_map(function (array $parsed) use ($event, $region, $teamPrefix, $expectedPlayers): array {
-            $errors = $parsed['errors'];
+        return array_map(function (array $parsed) use ($event, $region, $teamPrefix, $expectedPlayers, $fillMissingPlayers): array {
             $category = $this->findCategory($parsed['category']);
             $categoryEvent = $category
                 ? CategoryEvent::query()->where('event_id', $event->id)->where('category_id', $category->id)->first()
@@ -39,6 +39,19 @@ class ExternalTeamWorkbookService
             $team = $categoryEvent
                 ? Team::query()->where('region_id', $region->id)->where('category_event_id', $categoryEvent->id)->first()
                 : null;
+            $placeholderRanks = [];
+
+            if ($fillMissingPlayers && ($parsed['can_fill_placeholders'] ?? false)) {
+                [$parsed['players'], $placeholderRanks] = $this->fillMissingRanks(
+                    $parsed['players'],
+                    $parsed['placeholder_ranks'] ?? [],
+                    $team
+                );
+                $parsed['player_count'] = count($parsed['players']);
+                $errors = $parsed['blocking_errors'] ?? [];
+            } else {
+                $errors = $parsed['errors'];
+            }
 
             if ($team && (int) $team->num_team_members !== $expectedPlayers) {
                 $errors[] = "Existing team {$team->name} has {$team->num_team_members} slots; this import expects {$expectedPlayers}.";
@@ -54,6 +67,8 @@ class ExternalTeamWorkbookService
                 'existing_team_id' => $team?->id,
                 'action' => $team ? 'Update existing team' : 'Create no-profile team',
                 'errors' => $errors,
+                'placeholder_count' => count($placeholderRanks),
+                'placeholder_ranks' => $placeholderRanks,
                 'selectable' => $errors === [],
             ]);
         }, $parsedTeams);
@@ -156,6 +171,10 @@ class ExternalTeamWorkbookService
                     'team_id' => $team->id,
                     'team_name' => $team->name,
                     'player_count' => count($parsed['players']),
+                    'placeholder_count' => count(array_filter(
+                        $parsed['players'],
+                        fn (array $player): bool => (bool) ($player['is_placeholder'] ?? false)
+                    )),
                 ];
             }
 
@@ -165,11 +184,51 @@ class ExternalTeamWorkbookService
                     'region_id' => $region->id,
                     'team_ids' => array_column($imported, 'team_id'),
                     'team_keys' => $selectedKeys,
+                    'placeholder_count' => array_sum(array_column($imported, 'placeholder_count')),
                 ])
                 ->log('External team workbook imported');
 
             return $imported;
         });
+    }
+
+    private function fillMissingRanks(array $players, array $missingRanks, ?Team $team): array
+    {
+        $existing = $team
+            ? $team->team_players_no_profile()->whereIn('rank', $missingRanks)->get()->keyBy('rank')
+            : collect();
+        $placeholderRanks = [];
+
+        foreach ($missingRanks as $rank) {
+            $slot = $existing->get($rank);
+            if ($slot && trim((string) $slot->name) !== '' && trim((string) $slot->surname) !== '') {
+                $players[] = [
+                    'rank' => (int) $rank,
+                    'name' => (string) $slot->name,
+                    'surname' => (string) $slot->surname,
+                    'date_of_birth' => $slot->date_of_birth?->format('Y-m-d'),
+                    'email' => $slot->email,
+                    'cell_nr' => $slot->cell_nr,
+                    'is_placeholder' => false,
+                ];
+                continue;
+            }
+
+            $players[] = [
+                'rank' => (int) $rank,
+                'name' => 'Player '.$rank,
+                'surname' => 'To be confirmed',
+                'date_of_birth' => null,
+                'email' => null,
+                'cell_nr' => null,
+                'is_placeholder' => true,
+            ];
+            $placeholderRanks[] = (int) $rank;
+        }
+
+        usort($players, fn (array $left, array $right): int => $left['rank'] <=> $right['rank']);
+
+        return [$players, $placeholderRanks];
     }
 
     private function findCategory(string $name): ?Category

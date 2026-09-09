@@ -189,22 +189,29 @@ class ExternalTeamWorkbookParser
     {
         $seenRanks = [];
         $validPlayers = [];
+        $blockedRanks = [];
 
         foreach ($players as $player) {
             if ($player['rank'] < 1) {
                 $errors[] = "Row {$player['row']}: rank must be positive.";
                 continue;
             }
-            if ($player['name'] === '' || $player['surname'] === '') {
-                $errors[] = "Row {$player['row']}: both name and surname are required for rank {$player['rank']}.";
-                continue;
-            }
             if (isset($seenRanks[$player['rank']])) {
                 $errors[] = "Rank {$player['rank']} is duplicated on rows {$seenRanks[$player['rank']]} and {$player['row']}.";
+                $blockedRanks[] = $player['rank'];
                 continue;
             }
 
             $seenRanks[$player['rank']] = $player['row'];
+            if ($player['name'] === '' && $player['surname'] === '') {
+                continue;
+            }
+            if ($player['name'] === '' || $player['surname'] === '') {
+                $errors[] = "Row {$player['row']}: both name and surname are required for rank {$player['rank']}.";
+                $blockedRanks[] = $player['rank'];
+                continue;
+            }
+
             unset($player['row']);
             $validPlayers[] = $player;
         }
@@ -225,6 +232,12 @@ class ExternalTeamWorkbookParser
         }
 
         $errors = array_values(array_unique($errors));
+        $blockingErrors = array_values(array_filter(
+            $errors,
+            fn (string $error): bool => ! str_starts_with($error, "Expected {$expectedPlayers} players, but found ")
+                && ! str_starts_with($error, 'Missing ranks:')
+        ));
+        $placeholderRanks = array_values(array_diff($missing, $blockedRanks));
 
         return [
             'key' => $category['key'],
@@ -233,6 +246,12 @@ class ExternalTeamWorkbookParser
             'players' => $validPlayers,
             'player_count' => count($validPlayers),
             'errors' => $errors,
+            'blocking_errors' => $blockingErrors,
+            'placeholder_ranks' => $placeholderRanks,
+            'can_fill_placeholders' => $missing !== []
+                && $placeholderRanks === $missing
+                && $blockingErrors === []
+                && $outside === [],
             'selectable' => $errors === [],
         ];
     }

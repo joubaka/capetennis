@@ -714,7 +714,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
 
   function setBulkImportBusy(busy) {
     $('#bulk-import-status').toggleClass('d-none', !busy);
-    $('#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet')
+    $('#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet, #bulk-import-fill-missing')
       .prop('disabled', busy);
 
     if (!busy) {
@@ -765,11 +765,13 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
 
   function renderBulkImportTeams(response) {
     const rows = (response.teams || []).map(team => {
-      const validation = team.errors.length
+      const validation = team.placeholder_count
+        ? `<span class="badge bg-label-warning">Ready with ${team.placeholder_count} placeholder${team.placeholder_count === 1 ? '' : 's'}</span>`
+        : team.errors.length
         ? `<ul class="small text-danger mb-0 ps-3">${team.errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>`
         : '<span class="badge bg-label-success">Complete</span>';
       const players = team.players.map(player =>
-        `<li><span class="text-muted">${player.rank}.</span> ${escapeHtml(player.name)} ${escapeHtml(player.surname)}</li>`
+        `<li class="${player.is_placeholder ? 'text-warning' : ''}"><span class="text-muted">${player.rank}.</span> ${escapeHtml(player.name)} ${escapeHtml(player.surname)}${player.is_placeholder ? ' <span class="badge bg-label-warning ms-1">Placeholder</span>' : ''}</li>`
       ).join('');
 
       return `
@@ -797,7 +799,8 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
 
     $('#bulk-import-preview-body').html(rows);
     $('#bulk-import-summary').text(
-      `${response.selected_sheet}: ${response.complete_team_count} complete teams, ${response.complete_player_count} players ready to import.`
+      `${response.selected_sheet}: ${response.complete_team_count} teams ready, ${response.complete_player_count} roster slots` +
+      (response.placeholder_player_count ? `, including ${response.placeholder_player_count} placeholder${response.placeholder_player_count === 1 ? '' : 's'}.` : '.')
     );
     $('#bulk-import-preview').removeClass('d-none');
     $('#bulk-import-confirmed').val('1');
@@ -820,7 +823,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     resetBulkImportPreview(true);
   });
 
-  $('#bulk-import-file, #bulk-import-prefix, #bulk-import-expected').on('change input', function () {
+  $('#bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-fill-missing').on('change input', function () {
     resetBulkImportPreview($(this).is('#bulk-import-file'));
   });
 
@@ -847,7 +850,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       return;
     }
     if ($('#bulk-import-confirmed').val() === '1' && $('.bulk-team-select:checked').length === 0) {
-      toastr.error('Select at least one complete team.');
+      toastr.error('Select at least one team ready to import.');
       return;
     }
 
