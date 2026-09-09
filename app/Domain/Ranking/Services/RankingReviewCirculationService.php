@@ -61,6 +61,12 @@ final class RankingReviewCirculationService
                     throw ValidationException::withMessages(['campaign' => 'That circulation token belongs to another series.']);
                 }
 
+                if (mb_strtolower(trim((string) $existing->reply_to)) !== mb_strtolower(trim($replyTo))) {
+                    throw ValidationException::withMessages([
+                        'reply_to' => "This ranking campaign was already queued with {$existing->reply_to} as its Reply-to address. Refresh before retrying.",
+                    ]);
+                }
+
                 return $existing;
             }
 

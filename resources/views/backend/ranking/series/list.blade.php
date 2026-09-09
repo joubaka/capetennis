@@ -779,6 +779,7 @@
               <div class="mb-3">
                 <label class="form-label">Reply-to address <span class="text-danger">*</span></label>
                 <input type="email" class="form-control" id="ranking-review-reply-to" required>
+                <div class="form-text">Participant replies will be sent to exactly this address.</div>
               </div>
               <div class="mb-3">
                 <label class="form-label">Subject <span class="text-danger">*</span></label>
@@ -806,7 +807,10 @@
         <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
           <div class="form-check me-auto">
             <input class="form-check-input" type="checkbox" id="ranking-review-confirm">
-            <label class="form-check-label" for="ranking-review-confirm">I reviewed the recipients, cutoff and email above.</label>
+            <label class="form-check-label" for="ranking-review-confirm">
+              I reviewed the recipients, cutoff and email above. Replies will go to
+              <strong id="ranking-review-confirm-reply-to">the address entered above</strong>.
+            </label>
           </div>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-success" id="send-ranking-review" disabled>
@@ -991,6 +995,22 @@ const reviewModal = document.getElementById('rankingReviewModal');
 const reviewConfirm = document.getElementById('ranking-review-confirm');
 const reviewSendButton = document.getElementById('send-ranking-review');
 const reviewError = document.getElementById('ranking-review-error');
+const reviewComposerFields = Array.from(reviewModal?.querySelectorAll('#ranking-review-cutoff, #ranking-review-reply-to, #ranking-review-subject, #ranking-review-message') || []);
+const reviewPreviewButton = document.getElementById('refresh-ranking-email-preview');
+const reviewConfirmReplyTo = document.getElementById('ranking-review-confirm-reply-to');
+
+function setRankingReviewComposerDisabled(disabled) {
+  reviewComposerFields.forEach(field => { field.disabled = disabled; });
+  if (reviewPreviewButton) reviewPreviewButton.disabled = disabled;
+  if (reviewConfirm) reviewConfirm.disabled = disabled;
+}
+
+function resetRankingReviewConfirmation() {
+  if (reviewConfirm) reviewConfirm.checked = false;
+  if (reviewSendButton) reviewSendButton.disabled = true;
+  const replyTo = document.getElementById('ranking-review-reply-to')?.value.trim();
+  if (reviewConfirmReplyTo) reviewConfirmReplyTo.textContent = replyTo || 'the address entered above';
+}
 
 function rankingReviewPayload() {
   return {
@@ -1026,8 +1046,8 @@ async function refreshRankingEmailPreview() {
 
 reviewModal?.addEventListener('show.bs.modal', async () => {
   reviewError.classList.add('d-none');
-  reviewConfirm.checked = false;
-  reviewSendButton.disabled = true;
+  setRankingReviewComposerDisabled(true);
+  resetRankingReviewConfirmation();
   try {
     const response = await fetch('{{ route('ranking.series.review-circulation.preview', $series) }}', {headers: {'Accept': 'application/json'}});
     const payload = await responsePayload(response);
@@ -1063,11 +1083,15 @@ reviewModal?.addEventListener('show.bs.modal', async () => {
     });
     missingWrap.classList.toggle('d-none', payload.audience.missing.length === 0);
     await refreshRankingEmailPreview();
+    setRankingReviewComposerDisabled(false);
+    resetRankingReviewConfirmation();
   } catch (error) {
     reviewError.textContent = error.message;
     reviewError.classList.remove('d-none');
   }
 });
+
+reviewComposerFields.forEach(field => field.addEventListener('input', resetRankingReviewConfirmation));
 
 reviewConfirm?.addEventListener('change', () => {
   reviewSendButton.disabled = !reviewConfirm.checked;

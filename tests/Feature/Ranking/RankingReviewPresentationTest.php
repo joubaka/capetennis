@@ -15,6 +15,10 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('ranking-review-cutoff', $view);
         $this->assertStringContainsString('ranking-email-preview', $view);
         $this->assertStringContainsString('ranking-review-confirm', $view);
+        $this->assertStringContainsString('ranking-review-confirm-reply-to', $view);
+        $this->assertStringContainsString('Participant replies will be sent to exactly this address.', $view);
+        $this->assertStringContainsString('setRankingReviewComposerDisabled(true)', $view);
+        $this->assertStringContainsString("field.addEventListener('input', resetRankingReviewConfirmation)", $view);
         $this->assertStringContainsString('Retry failed emails', $view);
         $this->assertStringContainsString('Finalize & Publish', $view);
         $this->assertStringContainsString('No ranking email will be sent.', $view);

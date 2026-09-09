@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -35,6 +36,7 @@ class RankingReviewCirculationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Queue::fake();
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $this->admin = User::factory()->create()->assignRole('admin');
         $this->series = Series::factory()->create(['ranking_review_default_hours' => 24]);
@@ -96,12 +98,52 @@ class RankingReviewCirculationTest extends TestCase
             $uuid,
             'Changed by a duplicate click',
             'Changed',
-            'changed@example.test',
+            'rankings@example.test',
             now()->addDays(2),
         );
         $this->assertSame($campaign->id, $again->id);
         $this->assertSame('Please check rankings', $again->subject);
         $this->assertSame(1, RankingReviewCampaign::count());
+    }
+
+    public function test_duplicate_campaign_token_cannot_silently_change_the_reply_to_address(): void
+    {
+        $this->rankedPlayer('One', 'one@example.test', 1);
+        $uuid = (string) Str::uuid();
+        $service = app(RankingReviewCirculationService::class);
+
+        $service->send(
+            $this->series,
+            $this->admin,
+            $uuid,
+            'Please check rankings',
+            'Review your ranking.',
+            'no.reply@ashtonps.co.za',
+            now()->addDay(),
+        );
+
+        try {
+            $service->send(
+                $this->series,
+                $this->admin,
+                $uuid,
+                'Please check rankings',
+                'Review your ranking.',
+                'hoof@ashtonps.co.za',
+                now()->addDay(),
+            );
+            $this->fail('A changed Reply-to address must not be silently ignored.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['This ranking campaign was already queued with no.reply@ashtonps.co.za as its Reply-to address. Refresh before retrying.'],
+                $exception->errors()['reply_to']
+            );
+        }
+
+        $this->assertDatabaseHas('ranking_review_campaigns', [
+            'uuid' => $uuid,
+            'reply_to' => 'no.reply@ashtonps.co.za',
+        ]);
     }
 
     public function test_active_circulation_blocks_early_publication_then_finalizes_the_same_run_after_cutoff(): void
