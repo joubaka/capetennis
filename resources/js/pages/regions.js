@@ -705,17 +705,21 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     $('#bulk-import-preview').addClass('d-none');
     $('#bulk-import-preview-body').empty();
     $('#bulk-import-errors').addClass('d-none').empty();
-    $('#bulk-import-submit').text('Preview teams').prop('disabled', false);
     if (clearSheets) {
       $('#bulk-import-sheet').html('<option value="">Auto-detect the best worksheet</option>');
       $('#bulk-import-sheet-wrap').addClass('d-none');
     }
+    updateBulkImportActionButton();
   }
 
   function setBulkImportBusy(busy) {
     $('#bulk-import-status').toggleClass('d-none', !busy);
     $('#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet')
       .prop('disabled', busy);
+
+    if (!busy) {
+      updateBulkImportActionButton();
+    }
   }
 
   function renderWorkbookSheets(sheets, selectedSheet) {
@@ -736,12 +740,27 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     }
   }
 
-  function updateBulkImportConfirmButton() {
-    if ($('#bulk-import-confirmed').val() !== '1') return;
+  function updateBulkImportActionButton() {
+    if ($('#bulk-import-confirmed').val() !== '1') {
+      const hasWorkbook = Boolean(document.getElementById('bulk-import-file')?.files?.length);
+      $('#bulk-import-submit').text('Preview teams').prop('disabled', !hasWorkbook);
+      return;
+    }
+
     const selected = $('.bulk-team-select:checked').length;
     $('#bulk-import-submit')
       .text(selected ? `Confirm import of ${selected} team${selected === 1 ? '' : 's'}` : 'Select a complete team')
       .prop('disabled', selected === 0);
+  }
+
+  function showBulkImportErrors(message, rawErrors = []) {
+    const errors = [...new Set((Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat())
+      .filter(error => error && error !== message))];
+
+    $('#bulk-import-errors').removeClass('d-none').html(
+      `<strong>${escapeHtml(message)}</strong>` +
+      (errors.length ? `<ul class="mb-0 mt-1">${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '')
+    );
   }
 
   function renderBulkImportTeams(response) {
@@ -782,7 +801,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     );
     $('#bulk-import-preview').removeClass('d-none');
     $('#bulk-import-confirmed').val('1');
-    updateBulkImportConfirmButton();
+    updateBulkImportActionButton();
   }
 
   $(document).on('click', '.import-region-teams-btn', function () {
@@ -809,23 +828,22 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     resetBulkImportPreview(false);
   });
 
-  $(document).on('change', '.bulk-team-select', updateBulkImportConfirmButton);
+  $(document).on('change', '.bulk-team-select', updateBulkImportActionButton);
 
   $('#bulk-import-select-complete').on('click', function () {
     $('.bulk-team-select:not(:disabled)').prop('checked', true);
-    updateBulkImportConfirmButton();
+    updateBulkImportActionButton();
   });
 
   $('#bulk-import-submit').on('click', function () {
     const form = document.getElementById('bulk-team-import-form');
-    const file = document.getElementById('bulk-import-file');
 
     if (!bulkTeamImportUrl) {
       toastr.error('Choose a region before importing teams.');
       return;
     }
-    if (!file?.files?.length) {
-      toastr.error('Choose a workbook to import.');
+    if (!form.checkValidity()) {
+      form.reportValidity();
       return;
     }
     if ($('#bulk-import-confirmed').val() === '1' && $('.bulk-team-select:checked').length === 0) {
@@ -833,13 +851,16 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       return;
     }
 
+    // Disabled form controls are omitted from FormData. Capture the upload before
+    // locking the controls so the selected workbook and import settings are sent.
+    const formData = new FormData(form);
     setBulkImportBusy(true);
     $('#bulk-import-errors').addClass('d-none').empty();
 
     $.ajax({
       url: bulkTeamImportUrl,
       method: 'POST',
-      data: new FormData(form),
+      data: formData,
       processData: false,
       contentType: false,
       headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
@@ -857,17 +878,13 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       error: function (xhr) {
         const payload = xhr.responseJSON || {};
         renderWorkbookSheets(payload.sheets, null);
-        const rawErrors = payload.errors || [];
-        const errors = Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat();
-        $('#bulk-import-errors').removeClass('d-none').html(
-          `<strong>${escapeHtml(payload.message || 'Import failed. Nothing was imported.')}</strong>` +
-          (errors.length ? `<ul class="mb-0 mt-1">${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '')
-        );
-        toastr.error(payload.message || 'Import failed.');
+        const message = payload.message || 'Import failed. Nothing was imported.';
+        showBulkImportErrors(message, payload.errors || []);
+        toastr.error(message);
       },
       complete: function () {
         setBulkImportBusy(false);
-        updateBulkImportConfirmButton();
+        updateBulkImportActionButton();
       }
     });
   });

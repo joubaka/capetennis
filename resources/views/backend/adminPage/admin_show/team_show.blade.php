@@ -259,6 +259,9 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        <div class="alert alert-info py-2 mb-3">
+          <strong>Preview first.</strong> Choose the workbook and check the detected teams. Nothing is created until you confirm the selected complete teams.
+        </div>
         <form id="bulk-team-import-form" enctype="multipart/form-data">
           @csrf
           <input type="hidden" id="bulk-import-confirmed" name="confirmed" value="0">
@@ -268,13 +271,13 @@
               <label for="bulk-import-file" class="form-label">Team workbook</label>
               <input type="file" class="form-control" id="bulk-import-file" name="file" accept=".xlsx,.xls,.csv" required>
               <div class="form-text">
-                Supports side-by-side headings such as Boys U10, Girls U10, Seuns o10 and Dogters 010, or a table with Category, Rank, Name and Surname columns.
+                Excel or CSV. Supports side-by-side headings such as Boys U10, Girls U10, Seuns o10 and Dogters 010, or columns for Category, Rank, Name and Surname.
               </div>
             </div>
             <div class="col-sm-6 col-lg-3">
-              <label for="bulk-import-prefix" class="form-label">Team name prefix</label>
+              <label for="bulk-import-prefix" class="form-label">Team names start with</label>
               <input type="text" class="form-control" id="bulk-import-prefix" name="team_prefix" maxlength="100" required>
-              <div class="form-text">Example: ZFM creates ZFM Boys U10.</div>
+              <div class="form-text">Example: ZFM creates “ZFM Boys U10”.</div>
             </div>
             <div class="col-sm-6 col-lg-3">
               <label for="bulk-import-expected" class="form-label">Players per team</label>
@@ -326,7 +329,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="bulk-import-cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="bulk-import-submit">Preview teams</button>
+        <button type="button" class="btn btn-primary" id="bulk-import-submit" disabled>Preview teams</button>
       </div>
     </div>
   </div>
