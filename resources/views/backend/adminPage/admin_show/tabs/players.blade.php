@@ -21,20 +21,26 @@
   </div>
 
   {{-- GLOBAL ACTIONS --}}
-  <div class="d-flex align-items-center gap-2 mt-2 mb-2">
-    <a href="{{ route('event.players.exportPdf', $event->id) }}"
-       class="btn btn-sm btn-outline-danger" target="_blank">
-      <i class="ti ti-file-text"></i> Export PDF
-    </a>
+  <div class="player-global-actions d-flex align-items-center justify-content-between gap-2">
+    <div>
+      <div class="fw-semibold">Player exports</div>
+      <div class="small text-muted">Download the complete event player list.</div>
+    </div>
+    <div class="player-global-actions__buttons d-flex align-items-center gap-2">
+      <a href="{{ route('event.players.exportPdf', $event->id) }}"
+         class="btn btn-sm btn-outline-danger" target="_blank">
+        <i class="ti ti-file-text"></i> Export PDF
+      </a>
 
-    <a href="{{ route('event.players.exportExcel', $event->id) }}"
-       class="btn btn-sm btn-outline-success" target="_blank">
-      <i class="ti ti-file-spreadsheet"></i> Export Excel
-    </a>
+      <a href="{{ route('event.players.exportExcel', $event->id) }}"
+         class="btn btn-sm btn-outline-success" target="_blank">
+        <i class="ti ti-file-spreadsheet"></i> Export Excel
+      </a>
+    </div>
   </div>
 
   {{-- REGION PANELS --}}
-  <div class="tab-content">
+  <div class="tab-content region-tab-content">
 
     @foreach($regionsInEvent as $k => $region)
       <div class="tab-pane fade {{ $k === 0 ? 'show active' : '' }}"
@@ -46,7 +52,7 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="m-0">Players — {{ $region->region_name }}</h5>
 
-            <div class="d-flex gap-2">
+            <div class="region-email-actions d-flex flex-wrap gap-2">
               <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
                       data-regionid="{{ $region->id }}"
                       data-regionname="{{ $region->region_name }}">

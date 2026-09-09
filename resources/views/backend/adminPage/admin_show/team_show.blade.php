@@ -10,37 +10,68 @@
 
 
 <style>
-  .tabs-wrap {
+  .team-admin-workspace .tabs-wrap {
     position: sticky; top: 72px; z-index: 100;
     background: var(--bs-body-bg);
     border-bottom: 1px solid var(--bs-border-color);
   }
-  .tabs-wrap .nav-tabs {
+  .team-admin-workspace .tabs-wrap .nav-tabs {
     flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
     gap: .25rem; scrollbar-width: thin;
   }
-  .tabs-wrap .nav-link {
+  .team-admin-workspace .tabs-wrap .nav-link {
     white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem;
     padding: .5rem .75rem;
   }
-  .tabs-wrap .nav-link .badge {
+  .team-admin-workspace .tabs-wrap .nav-link .badge {
     transform: translateY(-1px);
   }
-  .subtabs-sticky {
+  .team-admin-workspace .subtabs-sticky {
     position: sticky; top: 124px; z-index: 90;
     background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color);
   }
-  .subtabs-sticky .nav-tabs { overflow-x: auto; flex-wrap: nowrap; }
-  .tab-pane .card-header { display: flex; align-items: center; justify-content: space-between; }
+  .team-admin-workspace .subtabs-sticky .nav-tabs {
+    overflow-x: auto; flex-wrap: nowrap;
+  }
+  .team-admin-workspace .subtabs-sticky .nav-item {
+    flex: 1 1 0; min-width: 0;
+  }
+  .team-admin-workspace .subtabs-sticky .nav-link {
+    width: 100%; height: 100%; min-height: 3rem; margin-right: 0;
+    white-space: normal; text-align: center;
+  }
+  .team-admin-workspace .region-tab-content {
+    padding: 0; background: transparent;
+  }
+  .team-admin-workspace .player-global-actions {
+    padding: 1rem 0; border-bottom: 1px solid var(--bs-border-color);
+  }
+  .team-admin-workspace .tab-pane .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
   /* Small device improvements */
   @media (max-width: 576px) {
-    .tabs-wrap { position: sticky; top: 56px; }
-    .subtabs-sticky { top: 108px; }
-    .tabs-wrap .nav-link { padding: .35rem .5rem; font-size: .9rem; }
-    .tabs-wrap .nav-link .badge { font-size: .65rem; padding: .18rem .36rem; }
-    .tab-content { padding: .5rem !important; }
-    .tab-pane .card-header { flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
-    .card { margin-bottom: .75rem; }
+    .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }
+    .team-admin-workspace .subtabs-sticky { top: 108px; }
+    .team-admin-workspace .tabs-wrap .nav-link { padding: .35rem .5rem; font-size: .9rem; }
+    .team-admin-workspace .tabs-wrap .nav-link .badge { font-size: .65rem; padding: .18rem .36rem; }
+    .team-admin-workspace > .nav-tabs-shadow > .tab-content { padding: .5rem !important; }
+    .team-admin-workspace .region-tab-content { padding: 0 !important; }
+    .team-admin-workspace .subtabs-sticky .nav-item { flex: 0 0 auto; }
+    .team-admin-workspace .subtabs-sticky .nav-link {
+      width: auto; height: auto; min-height: 2.75rem; white-space: nowrap;
+    }
+    .team-admin-workspace .player-global-actions {
+      align-items: stretch !important; flex-direction: column; padding: .75rem 0;
+    }
+    .team-admin-workspace .player-global-actions__buttons {
+      display: grid !important; grid-template-columns: 1fr 1fr; width: 100%;
+    }
+    .team-admin-workspace .player-global-actions__buttons .btn { width: 100%; }
+    .team-admin-workspace .region-email-actions { display: grid !important; width: 100%; }
+    .team-admin-workspace .region-email-actions .btn { width: 100%; }
+    .team-admin-workspace .tab-pane .card-header { flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
+    .team-admin-workspace .card { margin-bottom: .75rem; }
     /* Make modals use most of the screen on small devices */
     .modal-dialog { max-width: 100%; margin: .25rem; }
     .modal-content { height: calc(100vh - 56px); border-radius: .25rem; }
@@ -50,17 +81,15 @@
 
   /* Very small screens: reduce clutter by hiding secondary badges */
   @media (max-width: 420px) {
-    .tabs-wrap .nav-link .badge.bg-label-info,
-    .tabs-wrap .nav-link .badge.bg-label-warning,
-    .tabs-wrap .nav-link .badge.bg-label-primary { display: none; }
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-info,
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-warning,
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-primary { display: none; }
+    .team-admin-workspace .player-global-actions__buttons { grid-template-columns: 1fr; }
   }
 </style>
 
-<div class="col-xl-12">
-
-
-  <div class="col-xl-12">
-    <div class="nav-tabs-shadow mb-4">
+<div class="team-admin-workspace">
+  <div class="nav-tabs-shadow mb-4">
 
       {{-- ✅ Top nav --}}
       <div class="tabs-wrap">
@@ -245,7 +274,6 @@
       </div> {{-- /.tab-content --}}
     </div>
   </div>
-</div>
 
 <!-- Import all no-profile teams for one region -->
 <div class="modal fade" id="import-region-teams-modal" tabindex="-1" aria-hidden="true">
