@@ -205,15 +205,19 @@ class TeamSelectionInvitationController extends Controller
         abort_unless($access->isEventManager($request->user(), $event), 403);
         $data = $request->validate([
             'use_default' => ['nullable', 'boolean'],
-            'manager_email' => ['nullable', 'required_unless:use_default,1', 'email:rfc', 'max:255'],
+            'manager_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            // Retained for compatibility with forms submitted before the searchable selector was added.
+            'manager_email' => ['nullable', 'email:rfc', 'max:255'],
         ]);
         if ((bool) ($data['use_default'] ?? false)) {
             EventRegionManager::query()->where('event_region_id', $eventRegion->id)->delete();
             return back()->with('success', 'This region now uses the default series event organizer.');
         }
-        $user = User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($data['manager_email']))])->first();
+        $user = isset($data['manager_user_id'])
+            ? User::query()->find($data['manager_user_id'])
+            : User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($data['manager_email'] ?? ''))])->first();
         if (! $user) {
-            throw ValidationException::withMessages(['manager_email' => 'No user account exists for that email address. The user does not need a player profile, but must have an account.']);
+            throw ValidationException::withMessages(['manager_user_id' => 'Select a system user for this region. The user does not need a player profile.']);
         }
         EventRegionManager::updateOrCreate(
             ['event_region_id' => $eventRegion->id],
@@ -229,6 +233,35 @@ class TeamSelectionInvitationController extends Controller
             : ($regionCount === 1 ? 'Access is limited to this region.' : "This account is now assigned to {$regionCount} regions in this event.");
 
         return back()->with('success', "{$user->email} was assigned. {$scope}");
+    }
+
+    public function searchUsers(Request $request, Event $event, RegionManagerAccessService $access)
+    {
+        abort_unless($event->isTeam(), 404);
+        abort_unless($access->isEventManager($request->user(), $event), 403);
+        $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+        $query = trim($data['q']);
+        if (mb_strlen($query) < 2) {
+            throw ValidationException::withMessages(['q' => 'Enter at least two characters to search users.']);
+        }
+
+        $users = User::query()
+            ->where(function ($userQuery) use ($query): void {
+                $userQuery->where('name', 'like', "%{$query}%")
+                    ->orWhere('email', 'like', "%{$query}%");
+            })
+            ->orderBy('name')
+            ->orderBy('email')
+            ->limit(20)
+            ->get(['id', 'name', 'email']);
+
+        return response()->json([
+            'results' => $users->map(function (User $user): array {
+                $name = trim($user->name ?? '');
+
+                return ['id' => $user->id, 'text' => ($name !== '' ? "{$name} · " : '').$user->email];
+            })->values(),
+        ]);
     }
 
     public function replace(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)

@@ -370,8 +370,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $second->event_id = $event->id; $second->region_id = $secondRegion->id; $second->ordering = 2;
         $second->save();
 
+        $this->actingAs($admin)->getJson(route('backend.team-selection.users.search', [$event, 'q' => 'region.manager']))
+            ->assertOk()
+            ->assertJsonPath('results.0.id', $manager->id)
+            ->assertJsonPath('results.0.text', "{$manager->name} · {$manager->email}");
         $this->actingAs($admin)->put(route('backend.team-selection.manager.assign', [$event, $first]), [
-            'manager_email' => strtoupper($manager->email),
+            'manager_user_id' => $manager->id,
         ])->assertRedirect();
         $this->assertDatabaseHas('event_region_managers', [
             'event_region_id' => $first->id, 'user_id' => $manager->id,
@@ -380,6 +384,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
             ->assertOk()->assertSee('Assigned Region')->assertDontSee('Private Other Region');
+        $this->actingAs($manager)->getJson(route('backend.team-selection.users.search', [$event, 'q' => 'region']))
+            ->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [])
             ->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [

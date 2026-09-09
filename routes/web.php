@@ -440,6 +440,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
+    Route::get('events/{event}/users', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchUsers'])->name('users.search');
     Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
     Route::delete('events/{event}/sources/{source}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'unlink'])->name('unlink');
     Route::post('events/{event}/sources/{source}/teams', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'createTeams'])->name('teams.create');

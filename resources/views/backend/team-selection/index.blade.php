@@ -2,6 +2,14 @@
 
 @section('title', 'Team Selection & Invitations')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+@endsection
+
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
@@ -57,7 +65,7 @@
               </div>
               @if($isEventManager)
                 <form method="POST" action="{{ route('backend.team-selection.manager.assign', [$event, $eventRegion]) }}" class="row g-2 align-items-end mt-1">@csrf @method('PUT')
-                  <div class="col-md-7"><label class="form-label">Assign a different user by account email</label><input type="email" name="manager_email" class="form-control" value="{{ $eventRegion->managerAssignment ? $regionManager?->email : '' }}" placeholder="organizer@example.com"></div>
+                  <div class="col-md-7"><label class="form-label" for="region-manager-{{ $eventRegion->id }}">Select a system user</label><select id="region-manager-{{ $eventRegion->id }}" name="manager_user_id" class="form-select region-manager-select" data-placeholder="Search by name or email…"><option value=""></option>@if($eventRegion->managerAssignment && $regionManager)<option value="{{ $regionManager->id }}" selected>{{ trim($regionManager->name ?: (($regionManager->userName ?? '').' '.($regionManager->userSurname ?? ''))) }} · {{ $regionManager->email }}</option>@endif</select></div>
                   <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Assign to this region</button></div>
                   <div class="col-md-2 d-grid"><button class="btn btn-outline-secondary" name="use_default" value="1" @disabled(!$defaultRegionManagers->get($eventRegion->id))>Use default</button></div>
                 </form>
@@ -280,6 +288,23 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  if (window.jQuery?.fn?.select2) {
+    window.jQuery('.region-manager-select').select2({
+      width: '100%',
+      placeholder: function () { return window.jQuery(this).data('placeholder'); },
+      allowClear: true,
+      minimumInputLength: 2,
+      ajax: {
+        url: @json(route('backend.team-selection.users.search', $event)),
+        dataType: 'json',
+        delay: 250,
+        data: function (params) { return { q: params.term }; },
+        processResults: function (data) { return data; },
+        cache: true
+      }
+    });
+  }
+
   const sourceId = @json(session('open_team_setup_source') ?: old('setup_source'));
   if (sourceId && typeof bootstrap !== 'undefined') {
     const modal = document.getElementById(`ranking-category-setup-${sourceId}`);
