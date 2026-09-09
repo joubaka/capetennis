@@ -1403,16 +1403,13 @@ class RegisterController extends Controller
     $isAdmin    = $authUser->hasAnyRole(['super-user', 'admin']);
 
     // ----------------------------
-    // Pre-flight: ownership + duplicate checks (outside transaction, fail fast)
+    // Pre-flight: ownership context + duplicate checks (outside transaction, fail fast)
     // ----------------------------
     $playerIds  = $request->player;
     $categoryIds = $request->category;
 
-    // Collect player IDs the auth user owns (unless admin).
-    // Ownership is established via TWO paths:
-    //   1. user_players pivot table (explicit link created during registration flow)
-    //   2. players.userId FK (legacy/migrated players linked directly to a user account)
-    // Both must be checked — missing either path causes false permission denials.
+    // Retain ownership context for audit diagnostics. Tournament registration
+    // deliberately remains open so one user may register another player's profile.
     if (!$isAdmin) {
       $ownedPlayerIds = $authUser->ownedPlayerIds();
 
@@ -1440,11 +1437,6 @@ class RegisterController extends Controller
       $categoryEvent->loadMissing('event.eventTypeModel');
       if ($categoryEvent->event?->isMasters()) {
         $duplicateErrors[] = 'Masters registration is invitation-only. Select your name from the Masters invitation list to register.';
-        continue;
-      }
-
-      if (!$isAdmin && !in_array($playerId, $ownedPlayerIds, true)) {
-        $duplicateErrors[] = "Player ID {$playerId} is not linked to your account.";
         continue;
       }
 

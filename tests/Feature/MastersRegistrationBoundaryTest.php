@@ -14,6 +14,7 @@ use App\Models\Registration;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -63,30 +64,11 @@ class MastersRegistrationBoundaryTest extends TestCase
         $this->assertDatabaseCount('registration_order_items', 0);
     }
 
-    public function test_generic_registration_rejects_a_player_not_linked_to_the_account(): void
+    public function test_any_user_can_still_register_a_player_for_a_normal_event(): void
     {
         [$event, $categoryEvent] = $this->individualEvent();
         $user = User::factory()->create();
-        $otherPlayer = Player::factory()->create();
-
-        $this->withoutMiddleware([
-                EnsureAgreementAccepted::class,
-                EnsurePlayerProfileUpdated::class,
-            ])
-            ->actingAs($user)
-            ->from(route('events.show', $event))
-            ->post(route('pay.now.payfast'), $this->registrationPayload($otherPlayer, $categoryEvent))
-            ->assertRedirect(route('events.show', $event))
-            ->assertSessionHasErrors('msg');
-
-        $this->assertDatabaseCount('registration_orders', 0);
-    }
-
-    public function test_linked_player_can_still_use_generic_registration_for_a_normal_event(): void
-    {
-        [$event, $categoryEvent] = $this->individualEvent();
-        $user = User::factory()->create();
-        $player = Player::factory()->create(['userId' => $user->id]);
+        $player = Player::factory()->create();
 
         $this->withoutMiddleware([
                 EnsureAgreementAccepted::class,
@@ -117,6 +99,35 @@ class MastersRegistrationBoundaryTest extends TestCase
             ->get(route('registration.checkout', $order))
             ->assertRedirect(route('events.show', $event))
             ->assertSessionHasErrors('registration');
+    }
+
+    public function test_unlinked_legacy_masters_order_is_blocked_at_every_payment_entry_point(): void
+    {
+        [$event, $categoryEvent, $user, $player] = $this->mastersEvent();
+        [$order] = $this->orderFor($user, $player, $categoryEvent);
+        Wallet::factory()->forUser($user)->create();
+        $this->withoutMiddleware([
+            EnsureAgreementAccepted::class,
+            EnsurePlayerProfileUpdated::class,
+        ]);
+        $this->actingAs($user);
+
+        $this->post(route('registration.payfast-only', $order))
+            ->assertRedirect()
+            ->assertSessionHasErrors('registration');
+        $this->post(route('registration.hybrid.pay'), [
+            'type' => 'registration',
+            'custom_int5' => $order->id,
+        ])->assertRedirect()->assertSessionHasErrors('registration');
+        $this->postJson(route('registration.hybrid.apply-wallet'), [
+            'order_id' => $order->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('registration');
+        $this->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->assertRedirect()
+            ->assertSessionHasErrors('registration');
+
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
     }
 
     public function test_invitation_linked_masters_order_can_open_checkout(): void
