@@ -61,6 +61,34 @@ class PublicRankingVisibilityTest extends TestCase
             ->assertDontSee('Archived Player');
     }
 
+    public function test_public_leaderboard_marks_ranked_players_below_the_team_selection_minimum(): void
+    {
+        $series = Series::factory()->create([
+            'leaderboard_published' => true,
+            'minimum_events_for_team_selection' => 2,
+        ]);
+        $category = Category::factory()->create();
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $player = Player::factory()->create(['name' => 'One Event Player']);
+
+        $this->row(
+            $series,
+            $list,
+            $category,
+            $player,
+            RankingStatus::Published,
+            'run-live',
+            now(),
+            ['events_played' => 1],
+        );
+
+        $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()
+            ->assertSee('One Event Player')
+            ->assertSee('Not eligible for team selection')
+            ->assertSee('1 event played');
+    }
+
     public function test_direct_leaderboard_url_returns_404_when_series_is_not_published(): void
     {
         $series = Series::factory()->create(['leaderboard_published' => false]);

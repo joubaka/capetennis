@@ -413,6 +413,7 @@ final class RankingRebuildService
             'wins'          => $row->wins,
             'best_single'   => $row->bestSingle,
             'positions_sum' => $row->positionsSum,
+            'events_played' => $row->eventsPlayed,
             'counting_legs' => array_map(fn($l) => [
                 'category_event_id' => $l->categoryEventId,
                 'position'          => $l->position,

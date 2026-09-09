@@ -351,6 +351,7 @@ class SeriesController extends Controller
       'name' => ['sometimes', 'string', 'max:255'],
       'year' => ['sometimes', 'nullable', 'integer', 'min:2000', 'max:2100'],
       'best_num_of_scores' => ['required', 'integer', 'min:1'],
+      'minimum_events_for_team_selection' => ['sometimes', 'integer', 'min:1', 'max:99'],
       'rank_type' => ['sometimes', 'nullable', 'integer', 'exists:rank_types,id'],
       'leaderboard_published' => ['sometimes', 'integer', 'in:0,1'],
       'auto_award_rule' => ['sometimes', 'integer', 'in:0,1'],

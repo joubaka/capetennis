@@ -126,12 +126,17 @@
 
             <div class="settings-section-title">Scoring</div>
             <div class="row g-3 mb-4">
-              <div class="col-6">
+              <div class="col-md-4">
                 <label class="form-label fw-semibold small mb-1">Best Results Counted</label>
                 <input type="number" name="best_num_of_scores" class="form-control" min="1" required value="{{ $series->best_num_of_scores }}">
                 <div class="form-text">Series-wide default.</div>
               </div>
-              <div class="col-6">
+              <div class="col-md-4">
+                <label class="form-label fw-semibold small mb-1">Events Required for Team Selection</label>
+                <input type="number" name="minimum_events_for_team_selection" class="form-control" min="1" max="99" required value="{{ $series->minimum_events_for_team_selection ?? 1 }}">
+                <div class="form-text">Players remain ranked, but cannot be selected until they have this many actual results.</div>
+              </div>
+              <div class="col-md-4">
                 <label class="form-label fw-semibold small mb-1">Rank Type</label>
                 <select name="rank_type" class="form-select" required
                   {{ $series->points_template_created ? 'disabled title="Rank type cannot be changed after points have been applied."' : '' }}>
@@ -413,6 +418,7 @@
   const presetSelect = document.getElementById('ranking_rule_preset_id');
   const presetRuleInputs = [
     document.querySelector('[name="best_num_of_scores"]'),
+    document.querySelector('[name="minimum_events_for_team_selection"]'),
     document.getElementById('auto_award_rule'),
     document.getElementById('use_third_score_tiebreak'),
     document.getElementById('use_last_leg_position_tiebreak'),
@@ -424,6 +430,7 @@
     if (!rules) return;
 
     document.querySelector('[name="best_num_of_scores"]').value = rules.best_num_of_scores;
+    document.querySelector('[name="minimum_events_for_team_selection"]').value = rules.minimum_events_for_team_selection || 1;
     document.getElementById('auto_award_rule').checked = Boolean(rules.auto_award_rule);
     document.getElementById('use_third_score_tiebreak').checked = Boolean(rules.use_third_score_tiebreak);
     document.getElementById('use_last_leg_position_tiebreak').checked = Boolean(rules.use_last_leg_position_tiebreak);
@@ -445,6 +452,7 @@
       name:                 document.querySelector('[name="name"]').value,
       year:                 document.querySelector('[name="year"]').value,
       best_num_of_scores:   document.querySelector('[name="best_num_of_scores"]').value,
+      minimum_events_for_team_selection: document.querySelector('[name="minimum_events_for_team_selection"]').value,
       rank_type:            document.querySelector('[name="rank_type"]:not([disabled])') ? document.querySelector('[name="rank_type"]').value : null,
       auto_award_rule:      document.getElementById('auto_award_rule').checked ? 1 : 0,
       use_third_score_tiebreak: document.getElementById('use_third_score_tiebreak').checked ? 1 : 0,

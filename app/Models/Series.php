@@ -17,6 +17,7 @@ class Series extends Model
     'ranking_rule_preset_id',
     'leaderboard_published',
     'best_num_of_scores',
+    'minimum_events_for_team_selection',
     'points_template_created', // ✅ ADD THIS
     'auto_award_rule',
     'use_third_score_tiebreak',
@@ -29,6 +30,7 @@ class Series extends Model
     'best_of' => 'integer',
     'published' => 'boolean',
     'leaderboard_published' => 'boolean',
+    'minimum_events_for_team_selection' => 'integer',
     'auto_award_rule' => 'boolean',
     'use_third_score_tiebreak' => 'boolean',
     'use_last_leg_position_tiebreak' => 'boolean',

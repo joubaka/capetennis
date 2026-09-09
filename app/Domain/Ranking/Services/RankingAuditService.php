@@ -168,6 +168,7 @@ final class RankingAuditService
                 'name'      => $series->name,
                 'rank_type' => optional($series->rankType)->type,
                 'best_n'    => $series->best_num_of_scores,
+                'minimum_events_for_team_selection' => $series->minimum_events_for_team_selection ?? 1,
                 'auto_award_rule' => $series->auto_award_rule,
                 'ranking_rule_preset_id' => $series->ranking_rule_preset_id,
                 'ranking_rule_preset' => optional($series->rankingRulePreset)->name,

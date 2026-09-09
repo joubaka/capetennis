@@ -10,6 +10,7 @@ final class RankingRulePresetService
 {
     public const RULE_FIELDS = [
         'best_num_of_scores',
+        'minimum_events_for_team_selection',
         'auto_award_rule',
         'use_third_score_tiebreak',
         'use_last_leg_position_tiebreak',
@@ -71,6 +72,7 @@ final class RankingRulePresetService
     {
         return [
             'best_num_of_scores' => max(1, (int) ($settings['best_num_of_scores'] ?? 2)),
+            'minimum_events_for_team_selection' => max(1, (int) ($settings['minimum_events_for_team_selection'] ?? 1)),
             'auto_award_rule' => (bool) ($settings['auto_award_rule'] ?? false),
             'use_third_score_tiebreak' => (bool) ($settings['use_third_score_tiebreak'] ?? false),
             'use_last_leg_position_tiebreak' => (bool) ($settings['use_last_leg_position_tiebreak'] ?? false),

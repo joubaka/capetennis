@@ -2,6 +2,13 @@
   <div class="card-header d-flex justify-content-between align-items-start"><div><h5 class="mb-1">Invitation selection</h5><p class="text-muted small mb-0">Choose the Series rankings to use. Changes save immediately.</p></div><span class="badge bg-label-primary">{{ $rankingCategoryLinks->where('enabled', true)->count() }} selected</span></div>
   <div class="card-body">
     <div class="row g-3 mb-3"><div class="col-md-6"><span class="text-muted small d-block">Parent series</span><strong>{{ $event->series?->name ?? 'Not linked' }}</strong></div><div class="col-md-3"><span class="text-muted small d-block">Ranking lists</span><strong>{{ $rankingLists->count() }}</strong></div><div class="col-md-3"><span class="text-muted small d-block">Published runs</span><strong>{{ $publishedRuns->count() }}</strong></div></div>
+    @if(($event->series?->minimum_events_for_team_selection ?? 1) > 1)
+      <div class="alert alert-info py-2">
+        <strong>Team-selection eligibility:</strong>
+        players need at least {{ $event->series->minimum_events_for_team_selection }} actual event results.
+        Ranked players below this minimum remain visible in the rankings but are skipped when this batch is generated.
+      </div>
+    @endif
     <div class="d-flex justify-content-end mb-3"><form method="POST" action="{{ route('backend.masters.sync-categories', $event) }}">@csrf<button class="btn btn-outline-primary btn-sm">Sync new Series rankings</button></form></div>
     @if(!$event->series)<div class="alert alert-danger">Blocked: link this event to a series.</div>
     @elseif($rankingCategoryLinks->isEmpty())<div class="alert alert-warning">Sync the Series ranking lists to create the available Masters categories.</div><form method="POST" action="{{ route('backend.masters.sync-categories', $event) }}" class="mt-3">@csrf<button class="btn btn-primary">Sync categories from Series rankings</button></form>

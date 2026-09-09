@@ -9,6 +9,7 @@ use App\Domain\Ranking\Services\RankingTieDecisionService;
 use App\Domain\Ranking\Services\RankingPublicationService;
 use App\Domain\Ranking\Services\RankingRebuildService;
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
+use App\Domain\Ranking\Services\RankingTeamEligibilityService;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\CategoryResult;
@@ -34,7 +35,7 @@ class SeriesRankingController extends Controller
   /**
    * Display the ranking list for a series
    */
-  public function index(Series $series)
+  public function index(Series $series, RankingTeamEligibilityService $teamEligibility)
   {
     $this->authorize('view', $series);
 
@@ -74,6 +75,9 @@ class SeriesRankingController extends Controller
       ->sortBy('start_date')
       ->first(fn ($event) => $event->isMasters() && (!$event->start_date || $event->start_date->endOfDay()->gte(now())));
     $scoreDetails = $detailService->scoreDetails($series, $rankings);
+    $teamEligibilityByRanking = $rankings->mapWithKeys(
+      fn (SeriesRanking $ranking) => [$ranking->id => $teamEligibility->assess($ranking, $series)]
+    );
 
     return view('backend.ranking.series.list', [
       'series' => $series,
@@ -83,6 +87,7 @@ class SeriesRankingController extends Controller
       'activeStatus' => $activeStatus,
       'hasArchivedSnapshot' => $hasArchivedSnapshot,
       'scoreDetails' => $scoreDetails,
+      'teamEligibilityByRanking' => $teamEligibilityByRanking,
       'tieDecisionAdvisories' => $detailService->tieDecisionAdvisories($series, $rankings, $scoreDetails),
       'reviewCampaign' => $reviewCampaign,
       'reviewCampaignReport' => $reviewCampaignReport,

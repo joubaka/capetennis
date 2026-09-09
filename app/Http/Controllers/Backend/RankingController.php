@@ -15,6 +15,7 @@ use App\Models\RankingListCategoryEvent;
 use App\Models\Series;
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Domain\Ranking\Services\RankingRebuildService;
+use App\Domain\Ranking\Services\RankingTeamEligibilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +97,7 @@ class RankingController extends Controller
     //
   }
 
-  public function ranking_frontend_show($id)
+  public function ranking_frontend_show($id, RankingTeamEligibilityService $teamEligibility)
   {
     $series = Series::whereKey($id)
       ->where('leaderboard_published', true)
@@ -188,13 +189,17 @@ class RankingController extends Controller
 
       return $detail ? [$ranking->id => $detail] : [];
     });
+    $teamEligibilityByRanking = $rankings->mapWithKeys(
+      fn ($ranking) => [$ranking->id => $teamEligibility->assess($ranking, $series)]
+    );
 
     return view('frontend.ranking.show_ranking', compact(
       'series',
       'rankings',
       'categories',
       'displayLegsByRanking',
-      'tieBreakDetailsByRanking'
+      'tieBreakDetailsByRanking',
+      'teamEligibilityByRanking'
     ));
   }
 

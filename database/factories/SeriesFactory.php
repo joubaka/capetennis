@@ -18,6 +18,7 @@ class SeriesFactory extends Factory
             'ranking_rule_preset_id' => null,
             'leaderboard_published'  => 0,
             'best_num_of_scores'     => 2,
+            'minimum_events_for_team_selection' => 1,
             'points_template_created'=> 0,
             'auto_award_rule'        => true,
             'use_third_score_tiebreak' => true,

@@ -851,6 +851,7 @@ class RankingCalculationServiceTest extends TestCase
         $p1 = $this->rowFor($result, 1);
         $this->assertNotNull($p1);
         $this->assertTrue($p1->autoAward);
+        $this->assertSame(2, $p1->eventsPlayed, 'Synthetic awards must not count as played events.');
 
         $syntheticLegs = array_filter($p1->countingLegs, fn(RankingLeg $l) => $l->synthetic);
         $this->assertNotEmpty($syntheticLegs);

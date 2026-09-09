@@ -374,6 +374,13 @@ final class RankingCalculationService
         $rows = collect();
 
         foreach ($byPlayer as $playerId => $legs) {
+            $actualEventsPlayed = collect($legs)
+                ->reject(fn (RankingLeg $leg) => $leg->synthetic)
+                ->filter(fn (RankingLeg $leg) => $leg->position > 0)
+                ->pluck('categoryEventId')
+                ->unique()
+                ->count();
+
             // Sort by points desc, then by date asc (earlier = preferred when equal)
             usort($legs, function (RankingLeg $a, RankingLeg $b) {
                 if ($a->points !== $b->points) {
@@ -402,7 +409,7 @@ final class RankingCalculationService
                 countingLegs:  $counting,
                 droppedLegs:   $dropped,
                 wins:          $wins,
-                eventsPlayed:  count($legs),
+                eventsPlayed:  $actualEventsPlayed,
                 bestSingle:    $bestSingle,
                 positionsSum:  $posSum,
                 autoAward:     $hasAutoAward,

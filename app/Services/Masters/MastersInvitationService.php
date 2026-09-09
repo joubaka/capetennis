@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Masters;
 
 use App\Domain\Payments\Services\PaymentOrchestrator;
+use App\Domain\Ranking\Services\RankingTeamEligibilityService;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
 use App\Models\MastersInvitation;
@@ -29,6 +30,10 @@ use App\Jobs\SendMastersInvitationEmailJob;
 
 final class MastersInvitationService
 {
+    public function __construct(
+        private readonly RankingTeamEligibilityService $rankingTeamEligibility,
+    ) {}
+
     public function authorizePlayerAccount(MastersInvitation $invitation, User $user): void
     {
         $player = $invitation->relationLoaded('player')
@@ -192,7 +197,8 @@ final class MastersInvitationService
         $rows = SeriesRanking::query()->where('series_id', $seriesId)->where('run_id', $runId)
             ->where('status', 'published')->orderBy('ranking_list_id')->orderBy('rank_position')->get();
         if ($rows->isEmpty()) throw ValidationException::withMessages(['ranking' => 'No published ranking rows were found for this run.']);
-        return DB::transaction(function () use ($event, $seriesId, $runId, $mappings, $topX, $actor, $options, $rows) {
+        $series = $event->series()->firstOrFail();
+        return DB::transaction(function () use ($event, $series, $seriesId, $runId, $mappings, $topX, $actor, $options, $rows) {
             Event::query()->lockForUpdate()->findOrFail($event->id);
             if (MastersInvitationBatch::where('event_id', $event->id)->whereIn('status', ['generated', 'ready_for_invitation', 'sent'])->exists()) {
                 throw ValidationException::withMessages(['batch' => 'This Masters event already has an active invitation batch. Complete or restart it before generating another batch.']);
@@ -219,12 +225,19 @@ final class MastersInvitationService
                 if (!$link || !$link->enabled) {
                     throw ValidationException::withMessages(['mapping' => 'A disabled ranking list cannot be included in an invitation batch. Refresh the page and select only enabled categories.']);
                 }
-                $queue = $rows->where('ranking_list_id', $rankingListId)->values();
+                $allRankedPlayers = $rows->where('ranking_list_id', $rankingListId)->values();
+                $queue = $this->rankingTeamEligibility->eligible($allRankedPlayers, $series);
+                if ($queue->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'ranking' => 'No team-eligible players were found for one of the selected ranking lists.',
+                    ]);
+                }
                 $mappingTopX = (int) ($link->top_x ?: $topX);
                 foreach ($queue as $index => $row) {
                     if (isset($usedPlayers[$row->player_id])) continue;
                     $usedPlayers[$row->player_id] = true;
                     $player = Player::find($row->player_id);
+                    $eligibility = $this->rankingTeamEligibility->assess($row, $series);
                     MastersInvitation::create([
                         'batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $categoryEventId,
                         'ranking_list_id' => $rankingListId, 'ranking_category_id' => $row->category_id,
@@ -232,7 +245,13 @@ final class MastersInvitationService
                         'queue_position' => $index + 1, 'total_points' => $row->total_points,
                         'status' => $index < $mappingTopX ? MastersInvitation::INVITED : MastersInvitation::RESERVE,
                         'invited_at' => $index < $mappingTopX ? now() : null,
-                        'snapshot_json' => ['player_name' => $player?->full_name, 'rank_position' => $row->rank_position, 'total_points' => $row->total_points],
+                        'snapshot_json' => [
+                            'player_name' => $player?->full_name,
+                            'rank_position' => $row->rank_position,
+                            'total_points' => $row->total_points,
+                            'events_played' => $eligibility['events_played'],
+                            'minimum_events_for_team_selection' => $eligibility['minimum_events'],
+                        ],
                     ]);
                 }
             }

@@ -322,10 +322,12 @@ class RankingManagementAuthorizationTest extends TestCase
             ->assertOk()
             ->assertSee('id="use_third_score_tiebreak"', false)
             ->assertSee('id="use_last_leg_position_tiebreak"', false)
-            ->assertSee('id="use_head_to_head_tiebreak"', false);
+            ->assertSee('id="use_head_to_head_tiebreak"', false)
+            ->assertSee('name="minimum_events_for_team_selection"', false);
 
         $this->postJson(route('ranking.series.update', $series), [
             'best_num_of_scores' => 2,
+            'minimum_events_for_team_selection' => 3,
             'use_third_score_tiebreak' => 0,
             'use_last_leg_position_tiebreak' => 1,
             'use_head_to_head_tiebreak' => 0,
@@ -335,6 +337,7 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertFalse($series->use_third_score_tiebreak);
         $this->assertTrue($series->use_last_leg_position_tiebreak);
         $this->assertFalse($series->use_head_to_head_tiebreak);
+        $this->assertSame(3, $series->minimum_events_for_team_selection);
     }
 
     public function test_built_in_witzenberg_preset_applies_authoritative_rules(): void
@@ -350,7 +353,8 @@ class RankingManagementAuthorizationTest extends TestCase
 
         $this->postJson(route('ranking.series.update', $series), [
             'best_num_of_scores' => 9,
-            'auto_award_rule' => 0,
+            'minimum_events_for_team_selection' => 9,
+            'auto_award_rule' => 1,
             'use_third_score_tiebreak' => 0,
             'use_last_leg_position_tiebreak' => 0,
             'use_head_to_head_tiebreak' => 1,
@@ -359,7 +363,8 @@ class RankingManagementAuthorizationTest extends TestCase
 
         $series->refresh();
         $this->assertSame(2, $series->best_num_of_scores);
-        $this->assertTrue($series->auto_award_rule);
+        $this->assertFalse($series->auto_award_rule);
+        $this->assertSame(2, $series->minimum_events_for_team_selection);
         $this->assertTrue($series->use_third_score_tiebreak);
         $this->assertTrue($series->use_last_leg_position_tiebreak);
         $this->assertFalse($series->use_head_to_head_tiebreak);
@@ -373,6 +378,7 @@ class RankingManagementAuthorizationTest extends TestCase
         $response = $this->actingAs($this->admin)
             ->postJson(route('ranking.series.update', $series), [
                 'best_num_of_scores' => 3,
+                'minimum_events_for_team_selection' => 4,
                 'auto_award_rule' => 0,
                 'use_third_score_tiebreak' => 1,
                 'use_last_leg_position_tiebreak' => 1,
@@ -387,6 +393,7 @@ class RankingManagementAuthorizationTest extends TestCase
         $this->assertSame($this->admin->id, $preset->created_by);
         $this->assertFalse($preset->is_system);
         $this->assertSame(3, $preset->rules['best_num_of_scores']);
+        $this->assertSame(4, $preset->rules['minimum_events_for_team_selection']);
         $this->assertTrue($preset->rules['use_last_leg_position_tiebreak']);
         $this->assertSame($presetId, $series->fresh()->ranking_rule_preset_id);
     }
@@ -414,6 +421,8 @@ class RankingManagementAuthorizationTest extends TestCase
 
         $series = Series::where('name', 'Witzenberg Future Series')->firstOrFail();
         $this->assertSame(2, $series->best_num_of_scores);
+        $this->assertSame(2, $series->minimum_events_for_team_selection);
+        $this->assertFalse($series->auto_award_rule);
         $this->assertTrue($series->use_last_leg_position_tiebreak);
         $this->assertFalse($series->use_head_to_head_tiebreak);
         $this->assertSame($preset->id, $series->ranking_rule_preset_id);

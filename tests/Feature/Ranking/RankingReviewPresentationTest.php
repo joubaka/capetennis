@@ -22,6 +22,11 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('Share with participants', $view);
         $this->assertStringContainsString('Public leaderboard visibility remains a separate setting.', $view);
         $this->assertStringContainsString('You cannot mark the ranking reviewed until all are confirmed.', $view);
+        $this->assertStringContainsString('data-ranking-view="detailed"', $view);
+        $this->assertStringContainsString('ranking-view-simple', $view);
+        $this->assertStringContainsString('ranking-view-detailed', $view);
+        $this->assertStringContainsString("window.localStorage.setItem(rankingViewStorageKey, selectedView)", $view);
+        $this->assertStringContainsString('show-ranking-details', $view);
     }
 
     public function test_series_surfaces_expose_the_default_window_and_optional_shortcut(): void

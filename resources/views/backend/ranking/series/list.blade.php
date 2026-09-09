@@ -57,6 +57,26 @@
   .ranking-more-actions summary { list-style: none; }
   .ranking-more-actions summary::-webkit-details-marker { display: none; }
   .ranking-more-actions-menu { display: grid; gap: .5rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ranking-simple-only { display: none; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-detailed-only { display: none !important; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-simple-only { display: block; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-category-card { margin-bottom: 1rem !important; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-category-card .card-header { padding: .65rem 1rem; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-category-card .category-title { margin-top: 0; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-table-wrap { padding: 0 1rem .5rem; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-table > :not(caption) > * > * { padding: .35rem .5rem; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-event-list { gap: .35rem !important; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-event-score {
+    border-left-width: 3px;
+    border-radius: .35rem;
+    min-width: 0;
+    padding: .2rem .45rem;
+    width: auto;
+  }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-event-score:hover { transform: none; }
+  #ranking-list-page[data-ranking-view="simple"] .ranking-simple-event-link { align-items: center; display: flex; gap: .3rem; white-space: nowrap; }
+  #ranking-list-page[data-ranking-view="simple"] .tiebreak-note { display: none; }
+  #ranking-list-page[data-ranking-view="simple"] .tie-decision-note > td { padding-bottom: .45rem; padding-top: .25rem; }
 
   @media (max-width: 767.98px) {
     .ranking-header-card { margin-bottom: 1rem !important; }
@@ -118,6 +138,17 @@
     .tie-decision-content { flex-direction: column; }
     .tie-decision-content > .badge { align-self: flex-start; }
     .tie-decision-form { padding: .75rem !important; }
+    #ranking-list-page[data-ranking-view="simple"] .ranking-table .ranking-player-row {
+      align-items: center;
+      display: grid;
+      gap: .15rem .6rem;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      padding: .5rem .65rem;
+    }
+    #ranking-list-page[data-ranking-view="simple"] .ranking-table .ranking-player-row > td { width: auto; }
+    #ranking-list-page[data-ranking-view="simple"] .ranking-table .ranking-player-row > td[data-label]::before { display: none; }
+    #ranking-list-page[data-ranking-view="simple"] .ranking-player-scores { grid-column: 1 / -1; margin-top: .15rem; }
+    #ranking-list-page[data-ranking-view="simple"] .ranking-table .tie-decision-note { margin-top: -.35rem; padding: .5rem .65rem; }
   }
 
   @media print {
@@ -132,6 +163,8 @@
     .badge.bg-danger { background: #f8d7da !important; border-color: #dc3545; }
     .badge.bg-warning { background: #fff3cd !important; border-color: #ffc107; }
     .ranking-event-score { min-width: 0; box-shadow: none !important; transform: none !important; }
+    .ranking-detailed-only { display: block !important; }
+    .ranking-simple-only { display: none !important; }
     a { color: #000 !important; text-decoration: none !important; }
     .table-striped > tbody > tr:nth-of-type(odd) > * { background-color: #f9f9f9 !important; }
   }
@@ -139,7 +172,7 @@
 @endsection
 
 @section('content')
-<div class="container-xl print-area">
+<div class="container-xl print-area" id="ranking-list-page" data-ranking-view="detailed">
 
   @php
     $pendingTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
@@ -293,7 +326,19 @@
     </div>
   </div>
 
-  <div class="card mb-4 no-print border-start border-primary border-3" id="ranking-process-guide">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print ranking-view-controls" aria-label="Ranking display options">
+    <span class="small text-muted">Choose how much ranking detail to show.</span>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Ranking view">
+      <button type="button" class="btn btn-outline-primary ranking-view-button" id="ranking-view-simple" data-view="simple" aria-pressed="false">
+        <i class="ti ti-list me-1" aria-hidden="true"></i>Simple
+      </button>
+      <button type="button" class="btn btn-primary ranking-view-button" id="ranking-view-detailed" data-view="detailed" aria-pressed="true">
+        <i class="ti ti-layout-list me-1" aria-hidden="true"></i>Detailed
+      </button>
+    </div>
+  </div>
+
+  <div class="card mb-4 no-print border-start border-primary border-3 ranking-detailed-only" id="ranking-process-guide">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
       <div>
         <h5 class="mb-1">How to complete this ranking</h5>
@@ -346,7 +391,7 @@
   </div>
 
   @if($reviewCampaign && $reviewCampaignReport)
-    <div class="card mb-4 no-print border-start border-info border-3" id="ranking-review-status-card">
+    <div class="card mb-4 no-print border-start border-info border-3 ranking-detailed-only" id="ranking-review-status-card">
       <div class="card-body">
         <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
           <div>
@@ -389,7 +434,7 @@
   @endif
 
   @if($activeStatus === 'published' && $nextMastersEvent)
-    <div class="alert alert-success no-print d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="alert alert-success no-print d-flex flex-wrap justify-content-between align-items-center gap-2 ranking-detailed-only">
       <div><strong>Rankings finalized.</strong> The next invitation workflow remains separately reviewable and confirmed.</div>
       <a href="{{ route('backend.masters.setup', $nextMastersEvent) }}" class="btn btn-success btn-sm">
         Prepare invitations for {{ $nextMastersEvent->name }}
@@ -414,7 +459,7 @@
     @endphp
 
     @if($rows->isNotEmpty())
-      <div class="card mb-4">
+      <div class="card mb-4 ranking-category-card">
         <div class="card-header">
           <h5 class="mb-0 category-title">{{ $category->name }}</h5>
         </div>
@@ -426,7 +471,7 @@
                 <th width="70">Rank</th>
                 <th>Player</th>
                 <th width="160">Total Points</th>
-                <th>Scores per Event</th>
+                <th><span class="ranking-detailed-only">Scores per Event</span><span class="ranking-simple-only">Event links</span></th>
               </tr>
             </thead>
 
@@ -443,6 +488,7 @@
                     : null;
                   $isLastInTie = !$nextRow || $nextTieKey !== $tieKey;
                   $tieDecision = $isLastInTie ? ($tieDecisionAdvisories[$tieKey] ?? null) : null;
+                  $teamEligibility = $teamEligibilityByRanking[$row->id] ?? ['eligible' => true];
                 @endphp
 
                 <tr class="ranking-player-row">
@@ -452,6 +498,11 @@
                     {{ $row->player->full_name
                       ?? $row->player->name
                       ?? 'Unknown Player' }}
+                    @if(!$teamEligibility['eligible'])
+                      <span class="badge bg-label-warning d-block d-sm-inline-block mt-1 mt-sm-0 ms-sm-1" title="{{ $teamEligibility['reason'] }}">
+                        Not team eligible · {{ $teamEligibility['events_played'] }} event{{ $teamEligibility['events_played'] === 1 ? '' : 's' }} played
+                      </span>
+                    @endif
                   </td>
 
                   <td class="points" data-label="Points">{{ $row->total_points }}</td>
@@ -474,36 +525,49 @@
                             class="ranking-event-score {{ $scoreClass }} text-decoration-none d-block"
                             title="Open {{ $event->name }} final positions"
                           >
-                            <span class="d-flex justify-content-between gap-2 align-items-start">
-                              <span class="ranking-event-name small fw-semibold">{{ $event->name }}</span>
+                            <span class="ranking-simple-only ranking-simple-event-link">
+                              @if($leg['leg_label'])
+                                <span class="badge bg-label-primary">{{ $leg['leg_label'] }}</span>
+                              @endif
+                              <strong>{{ $leg['points'] }}</strong>
+                              <span class="text-muted">pts</span>
                               <i class="ti ti-external-link small" aria-hidden="true"></i>
                             </span>
-                            @if($leg['leg_label'])
-                              <span class="badge bg-label-primary ranking-event-leg mt-1">{{ $leg['leg_label'] }}</span>
-                            @endif
-                            <span class="d-block mt-1">
-                              <strong>{{ $leg['points'] }} pts</strong>
-                              <span class="text-muted">·
-                                @if($isAuto)
-                                  Automatic #{{ $leg['ranking_position'] ?? 1 }}
-                                @elseif($leg['actual_position'])
-                                  Finished #{{ $leg['actual_position'] }}
-                                @else
-                                  Position unavailable
-                                @endif
+                            <span class="ranking-detailed-only">
+                              <span class="d-flex justify-content-between gap-2 align-items-start">
+                                <span class="ranking-event-name small fw-semibold">{{ $event->name }}</span>
+                                <i class="ti ti-external-link small" aria-hidden="true"></i>
                               </span>
-                            </span>
-                            @if(!$isAuto && $leg['actual_position'] && $leg['ranking_position'] && $leg['actual_position'] !== $leg['ranking_position'])
-                              <span class="d-block small text-warning-emphasis">Ranking points position #{{ $leg['ranking_position'] }}</span>
-                            @endif
-                            <span class="badge mt-1 {{ $isAuto ? 'bg-warning text-dark' : ($leg['counted'] ? 'bg-label-success' : 'bg-label-danger') }}">
-                              {{ $statusLabel }}
+                              @if($leg['leg_label'])
+                                <span class="badge bg-label-primary ranking-event-leg mt-1">{{ $leg['leg_label'] }}</span>
+                              @endif
+                              <span class="d-block mt-1">
+                                <strong>{{ $leg['points'] }} pts</strong>
+                                <span class="text-muted">·
+                                  @if($isAuto)
+                                    Automatic #{{ $leg['ranking_position'] ?? 1 }}
+                                  @elseif($leg['actual_position'])
+                                    Finished #{{ $leg['actual_position'] }}
+                                  @else
+                                    Position unavailable
+                                  @endif
+                                </span>
+                              </span>
+                              @if(!$isAuto && $leg['actual_position'] && $leg['ranking_position'] && $leg['actual_position'] !== $leg['ranking_position'])
+                                <span class="d-block small text-warning-emphasis">Ranking points position #{{ $leg['ranking_position'] }}</span>
+                              @endif
+                              <span class="badge mt-1 {{ $isAuto ? 'bg-warning text-dark' : ($leg['counted'] ? 'bg-label-success' : 'bg-label-danger') }}">
+                                {{ $statusLabel }}
+                              </span>
                             </span>
                           </a>
                         @else
                           <span class="ranking-event-score {{ $scoreClass }} d-block">
-                            <strong>{{ $leg['points'] }} pts</strong>
-                            <span class="d-block small text-muted">{{ $statusLabel }} · Event unavailable</span>
+                            <span class="ranking-simple-only ranking-simple-event-link"><strong>{{ $leg['points'] }}</strong><span class="text-muted">pts</span></span>
+                            <span class="ranking-detailed-only">
+                              <strong>{{ $leg['points'] }} pts</strong>
+                              <span class="d-block small text-muted">{{ $statusLabel }} · Event unavailable</span>
+                            </span>
                           </span>
                         @endif
                       @endforeach
@@ -520,7 +584,13 @@
                   <tr class="tie-decision-note" id="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}">
                     <td></td>
                     <td colspan="3">
-                      <div class="d-flex gap-2 align-items-start py-2 tie-decision-content">
+                      <div class="ranking-simple-only small">
+                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} me-1">
+                          {{ $tieDecision['confirmed'] ? 'Tie confirmed' : 'Tie decision required' }}
+                        </span>
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline show-ranking-details" data-target="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}">View decision</button>
+                      </div>
+                      <div class="d-flex gap-2 align-items-start py-2 tie-decision-content ranking-detailed-only">
                         <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} mt-1">
                           {{ $tieDecision['confirmed'] ? 'Tie decision confirmed' : 'Confirmation required' }}
                         </span>
@@ -758,6 +828,48 @@ toastr.options = {
   positionClass: 'toast-top-right',
   timeOut: 2500
 };
+
+const rankingListPage = document.getElementById('ranking-list-page');
+const rankingViewButtons = Array.from(document.querySelectorAll('.ranking-view-button'));
+const rankingViewStorageKey = 'cape-tennis:ranking-list-view';
+
+function setRankingView(view, persist = true) {
+  const selectedView = view === 'simple' ? 'simple' : 'detailed';
+  rankingListPage.dataset.rankingView = selectedView;
+  rankingViewButtons.forEach(button => {
+    const isActive = button.dataset.view === selectedView;
+    button.classList.toggle('btn-primary', isActive);
+    button.classList.toggle('btn-outline-primary', !isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+
+  if (persist) {
+    try {
+      window.localStorage.setItem(rankingViewStorageKey, selectedView);
+    } catch (error) {
+      // The view still works when browser storage is unavailable.
+    }
+  }
+}
+
+let savedRankingView = 'detailed';
+try {
+  savedRankingView = window.localStorage.getItem(rankingViewStorageKey) || 'detailed';
+} catch (error) {
+  // Keep the detailed default when browser storage is unavailable.
+}
+setRankingView(savedRankingView, false);
+
+rankingViewButtons.forEach(button => {
+  button.addEventListener('click', () => setRankingView(button.dataset.view));
+});
+
+document.querySelectorAll('.show-ranking-details').forEach(button => {
+  button.addEventListener('click', () => {
+    setRankingView('detailed');
+    window.requestAnimationFrame(() => document.getElementById(button.dataset.target)?.scrollIntoView({behavior: 'smooth', block: 'center'}));
+  });
+});
 
 document.querySelectorAll('.rebuild-ranking').forEach(button => button.addEventListener('click', () => {
   button.disabled = true;
