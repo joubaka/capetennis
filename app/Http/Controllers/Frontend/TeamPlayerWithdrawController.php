@@ -43,7 +43,8 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('You do not own this player profile.');
     }
 
-    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+    $event = \App\Models\Event::findOrFail($eventId);
+    if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
 
@@ -57,10 +58,6 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     // Check withdrawal deadline
-    $event = \App\Models\Event::find($eventId);
-    if (!$event) {
-      return back()->withErrors('Event not found.');
-    }
     $refundAllowed = now()->lte($event->withdrawalCloseAt());
 
     // Paid slot: mark as unpaid and redirect to refund or notify no-refund
@@ -90,6 +87,8 @@ class TeamPlayerWithdrawController extends Controller
       // Otherwise the player remains listed on the team despite the success message.
       $teamPlayer->player_id = 0;
       $teamPlayer->save();
+      app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+        ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
       return back()->with('success', 'Player withdrawn from team. Refund is not available because the withdrawal deadline has passed. For assistance, contact support@capetennis.co.za.');
     }
@@ -98,6 +97,8 @@ class TeamPlayerWithdrawController extends Controller
     $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
     $teamPlayer->player_id = 0;
     $teamPlayer->save();
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+      ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
     return back()->with('success', 'Player withdrawn (no payment). Slot is now available.');
   }
@@ -132,7 +133,8 @@ class TeamPlayerWithdrawController extends Controller
       abort(403);
     }
 
-    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+    $event = \App\Models\Event::findOrFail($eventId);
+    if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
 
@@ -190,7 +192,8 @@ class TeamPlayerWithdrawController extends Controller
       abort(403);
     }
 
-    if ((int) optional($team->category)->event_id !== (int) $eventId) {
+    $event = \App\Models\Event::findOrFail($eventId);
+    if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
 
@@ -284,6 +287,8 @@ class TeamPlayerWithdrawController extends Controller
         // Only free the slot after the canonical refund transaction succeeds.
         // Keep the order's paid flags intact as an audit record of the original payment.
         $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
+        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+          ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
 
         $teamRefEventName = optional($order->event)->name ?? 'Team Refund';
 
@@ -356,6 +361,8 @@ class TeamPlayerWithdrawController extends Controller
         'refund_account_type' => $request->account_type ?? null,
       ]);
       $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
+      app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+        ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
     } catch (RefundAlreadyProcessedException $e) {
       return back()->with('success', 'Refund already processed.');
     }

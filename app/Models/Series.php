@@ -43,6 +43,11 @@ class Series extends Model
   {
     return $this->hasMany(RankingList::class, 'series_id', 'id');
   }
+
+  public function rankings()
+  {
+    return $this->hasMany(SeriesRanking::class, 'series_id', 'id');
+  }
   public function rankType()
   {
     return $this->belongsTo(RankType::class, 'rank_type', 'id');

@@ -929,6 +929,8 @@ class RegisterController extends Controller
         |--------------------------------------------------------------------------
         */
         if ((int) $order->pay_status === 1) {
+          app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+            ->confirmPaidOrder($order);
           Log::warning('🟡 TEAM ITN ALREADY PROCESSED');
           return;
         }
@@ -1040,6 +1042,9 @@ class RegisterController extends Controller
             'new_pay_status' => $teamPlayer->pay_status
           ]);
         }
+
+        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+          ->confirmPaidOrder($order);
 
         Log::info('🟢 TEAM ITN STEP 14: SUCCESS');
 

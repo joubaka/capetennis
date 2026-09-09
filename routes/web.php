@@ -137,6 +137,13 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
   Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'decline'])->name('invitations.decline');
 });
 
+Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->group(function () {
+  Route::get('invitations', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'index'])->name('invitations.index');
+  Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'show'])->name('invitations.show');
+  Route::post('invitations/{invitation}/accept', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'accept'])->name('invitations.accept');
+  Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'decline'])->name('invitations.decline');
+});
+
 Route::get('masters/invitations/{invitation}/confirm-decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'confirmDecline'])
   ->middleware('signed')->name('masters.invitations.confirm-decline');
 
@@ -428,6 +435,17 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('invitations/{invitation}/restore', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'restoreInvitation'])->name('invitation.restore');
     Route::get('invitations/{invitation}/preview', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'previewInvitation'])->name('invitation.preview');
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
+  });
+
+  Route::middleware('role:super-user|admin')->prefix('team-selection')->name('backend.team-selection.')->group(function () {
+    Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
+    Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
+    Route::get('events/{event}/sources/{source}/preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'preview'])->name('preview');
+    Route::post('events/{event}/sources/{source}/import', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'import'])->name('import');
+    Route::post('events/{event}/imports/{selectionImport}/send', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'send'])->name('send');
+    Route::post('events/{event}/imports/{selectionImport}/restart', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'restart'])->name('restart');
+    Route::patch('events/{event}/imports/{selectionImport}/deadlines', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
+    Route::post('events/{event}/imports/{selectionImport}/emails/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryFailed'])->name('emails.retry');
   });
 
   // Add these inside the backend/authenticated group (apply same middleware as other admin routes)

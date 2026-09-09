@@ -152,6 +152,7 @@ class TeamController extends Controller
     {
         $team = Team::findOrFail($id);
         $this->authorize('team.delete', $team);
+        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
         Team::where('id', $id)->delete();
         return 'deleted';
@@ -162,6 +163,7 @@ class TeamController extends Controller
     $teamplayer = TeamPlayer::findOrFail($request->pivot);
     $team = $teamplayer->team;
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $teamplayer->player_id = $request->player;
     $teamplayer->save();
@@ -265,6 +267,7 @@ class TeamController extends Controller
     $teamId = (int) $request->input('team_id');
     $team = Team::findOrFail($teamId);
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $order = $request->input('order', []);
     $updated = collect();
@@ -365,6 +368,8 @@ class TeamController extends Controller
 
     try {
       app(ExternalTeamRosterService::class)->assertCanRegister($user, $event, $team, $player);
+      app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+        ->assertPaymentOpen($event->id, $team->id, $player->id);
     } catch (\Illuminate\Validation\ValidationException $exception) {
       return redirect()->back()->withErrors($exception->errors());
     } catch (\RuntimeException $exception) {
@@ -383,6 +388,7 @@ class TeamController extends Controller
 
     // create or load TeamPaymentOrder (unique constraint prevents duplicates)
     $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->attachOrder($order);
 
     $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
     $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);
@@ -453,6 +459,7 @@ class TeamController extends Controller
     {
         $team = Team::findOrFail($request->team);
         $this->authorize('team.update', $team);
+        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
         $eventCategory = CategoryEvent::findOrFail($request->data);
 
@@ -490,6 +497,7 @@ class TeamController extends Controller
   {
     $this->authorize('event.manage', $event);
     $rosters->assertTeamBelongsToEvent($team, $event);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $request->validate([
       'file' => 'required|file|mimes:xlsx,xls,csv|max:5120',
@@ -716,6 +724,7 @@ class TeamController extends Controller
     $teamplayer = TeamPlayer::findOrFail($request->pivot_id);
     $team = $teamplayer->team;
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $teamplayer->pay_status = $teamplayer->pay_status ? 0 : 1;
     $teamplayer->save();
@@ -742,6 +751,7 @@ class TeamController extends Controller
   public function importFromRanking(Request $request, Event $event, Team $team)
   {
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $request->validate([
       'ranking_list_id' => 'required|exists:ranking_lists,id',
@@ -760,6 +770,7 @@ class TeamController extends Controller
   {
     $team = Team::findOrFail($id);
     $this->authorize('team.update', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     // Flip state (or use passed value)
     $team->noProfile = $request->has('state')
@@ -781,6 +792,7 @@ class TeamController extends Controller
     $np = NoProfileTeamPlayer::findOrFail($id);
     $team = $np->team;
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $np->update([
       'name' => $request->input('name'),
@@ -802,6 +814,7 @@ class TeamController extends Controller
 
     $team = Team::findOrFail($validated['team_id']);
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     DB::beginTransaction();
 
@@ -875,6 +888,7 @@ class TeamController extends Controller
 
     $team = Team::findOrFail($data['team_id']);
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $nextRank = TeamPlayer::where('team_id', $data['team_id'])->max('rank') ?? 0;
 
@@ -938,6 +952,7 @@ class TeamController extends Controller
 
     $team = Team::findOrFail($data['team_id']);
     $this->authorize('team.players.manage', $team);
+    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $teamId = (int) $data['team_id'];
     $preservePayments = (bool) ($data['preserve_payments'] ?? false);

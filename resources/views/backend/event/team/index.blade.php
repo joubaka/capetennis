@@ -10,6 +10,12 @@
 
       <div class="card-body d-grid gap-2">
 
+        <a class="btn btn-primary"
+           href="{{ route('backend.team-selection.index', $event) }}">
+          <i class="ti ti-user-check me-1"></i>
+          Team Selection & Invitations
+        </a>
+
         <button type="button"
                 class="btn btn-outline-success"
                 id="sync-team-categories-btn"

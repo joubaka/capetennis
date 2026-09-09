@@ -16,6 +16,11 @@ class EventRegion extends Model
     public function region(){
         return $this->belongsTo(TeamRegion::class,'region_id');
      }
+
+    public function rankingSource()
+    {
+        return $this->hasOne(EventRegionRankingSource::class, 'event_region_id');
+    }
     
      
 }

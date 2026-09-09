@@ -67,6 +67,7 @@ class TeamPaymentService
         /** @var TeamPaymentOrder $finalized */
         $finalized = $this->paymentOrchestrator->finalizePayment($order, $context);
         $this->markPlayerPaid($finalized);
+        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->confirmPaidOrder($finalized);
 
         return $finalized;
     }
@@ -130,5 +131,13 @@ class TeamPaymentService
                 return $locked;
             });
         });
+    }
+
+    public function cancelPayment(TeamPaymentOrder $order): TeamPaymentOrder
+    {
+        /** @var TeamPaymentOrder $cancelled */
+        $cancelled = $this->paymentOrchestrator->cancelPayment($order);
+
+        return $cancelled;
     }
 }
