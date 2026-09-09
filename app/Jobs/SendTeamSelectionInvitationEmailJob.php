@@ -59,7 +59,11 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             return;
         }
         $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
-            ->sendNow(new TeamSelectionInvitationMail($invitation, $log->payload['kind'] ?? 'invitation'));
+            ->sendNow(new TeamSelectionInvitationMail(
+                $invitation,
+                $log->payload['kind'] ?? 'invitation',
+                $log->payload['campaign'] ?? [],
+            ));
         if ($sent === null) throw new \RuntimeException('Team invitation was not accepted by the mail transport.');
         $log->update(['status' => 'sent', 'sent_at' => now(), 'failed_at' => null, 'error_message' => null]);
     }

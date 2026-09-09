@@ -25,6 +25,7 @@
       @php($categorySetup = $source ? $categorySetups->get($source->id) : null)
       @php($activeImport = $source?->imports?->whereIn('status', ['draft','sent'])->sortByDesc('id')->first())
       @php($recipientEmailFor = fn($invitation) => collect([$invitation->player?->user?->email])->merge($invitation->player?->users?->pluck('email') ?? collect())->first(fn($email) => filter_var($email, FILTER_VALIDATE_EMAIL)))
+      @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $eventRegion->region?->clothingItems?->contains(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
       <div class="col-12">
         <div class="card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
@@ -94,17 +95,36 @@
                 </form>
               @endif
               @if($activeImport->status === 'draft')
-                <form method="POST" action="{{ route('backend.team-selection.send', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf
-                  <div class="col-md-4"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" class="form-control" required></div>
-                  <div class="col-md-4"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" class="form-control" required></div>
-                  <div class="col-md-4 d-grid"><button class="btn btn-success">Send invitations</button></div>
-                </form>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-mail-cog me-1"></i>Prepare invitations</button><span class="text-muted small">Review the message, deadlines and exact recipients before sending.</span></div>
                 <form method="POST" action="{{ route('backend.team-selection.restart', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Remove this unsent import and clear its generated roster places?');">@csrf<button class="btn btn-sm btn-outline-danger">Restart draft import</button></form>
               @endif
             @endif
           </div>
         </div>
       </div>
+
+      @if($activeImport?->status === 'draft')
+        <div class="modal fade" id="prepare-invitations-{{ $activeImport->id }}" tabindex="-1" aria-labelledby="prepare-invitations-title-{{ $activeImport->id }}" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.send', [$event, $activeImport]) }}" class="modal-content">@csrf
+            <input type="hidden" name="selection_import_id" value="{{ $activeImport->id }}">
+            <div class="modal-header"><div><h5 class="modal-title" id="prepare-invitations-title-{{ $activeImport->id }}">Prepare regional invitations</h5><div class="text-muted small">{{ $eventRegion->region?->region_name }} · {{ $activeImport->invitations->where('status','invited')->count() }} selected recipients</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+              <div class="alert alert-info">The actual email can be previewed before sending. The saved message is snapshotted for audit and failed-email retries.</div>
+              <div class="row g-3">
+                <div class="col-12"><label class="form-label">Email subject</label><input type="text" name="email_subject" maxlength="180" class="form-control" value="{{ old('email_subject', 'Platteland team invitation: '.$event->name) }}" required></div>
+                <div class="col-12"><label class="form-label">Invitation message</label><textarea name="email_message" rows="4" maxlength="10000" class="form-control" required>{{ old('email_message', 'You have been selected to represent your region. Please review the event information and respond before the deadline.') }}</textarea><div class="form-text">This message appears near the top of every invitation.</div></div>
+                <div class="col-12"><label class="form-label">Event information</label><textarea name="event_information" rows="5" maxlength="20000" class="form-control">{{ old('event_information', trim(strip_tags((string)$event->information))) }}</textarea><div class="form-text">Dates and entry fee are inserted automatically. Add venues, arrival times, accommodation or team instructions here.</div></div>
+                <div class="col-md-4"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ old('response_deadline') }}" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ old('payment_deadline') }}" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label">Reply-to email</label><input type="email" name="reply_to" value="{{ old('reply_to', $event->email) }}" class="form-control" maxlength="255"><div class="form-text">Optional contact for player replies.</div></div>
+                <div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Mention optional regional clothing and show ordering after event payment</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>
+              </div>
+              <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing account/email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-outline-primary" formaction="{{ route('backend.team-selection.email.preview', [$event, $activeImport]) }}" formtarget="_blank">Preview actual email</button><button type="submit" class="btn btn-success" onclick="return confirm('Queue these invitations for the selected players in this region?');">Confirm and send {{ $activeImport->invitations->where('status','invited')->count() }} invitations</button></div>
+          </form></div>
+        </div>
+      @endif
 
       @if($source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
@@ -214,6 +234,12 @@ document.addEventListener('DOMContentLoaded', function () {
   if (sourceId && typeof bootstrap !== 'undefined') {
     const modal = document.getElementById(`ranking-category-setup-${sourceId}`);
     if (modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+  }
+
+  const invitationImportId = @json(old('selection_import_id'));
+  if (invitationImportId && typeof bootstrap !== 'undefined') {
+    const invitationModal = document.getElementById(`prepare-invitations-${invitationImportId}`);
+    if (invitationModal) bootstrap.Modal.getOrCreateInstance(invitationModal).show();
   }
 
   document.querySelectorAll('[id^="ranking-category-form-"]').forEach(function (form) {

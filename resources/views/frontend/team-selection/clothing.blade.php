@@ -1,0 +1,18 @@
+@extends('layouts/contentNavbarLayout')
+@section('title', 'Order regional clothing')
+@section('content')
+<div class="container-xxl flex-grow-1 container-p-y"><div class="row justify-content-center"><div class="col-xl-8 col-lg-9">
+  <div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h4 class="mb-1">Optional regional clothing</h4><p class="text-muted mb-0">{{ $invitation->region?->region_name }} · {{ $invitation->player?->full_name }}</p></div><a class="btn btn-outline-secondary" href="{{ route('team-selection.invitations.show', $invitation) }}">Back</a></div>
+  @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
+  <form method="POST" action="{{ route('clothingOrder.store') }}" class="card shadow-sm" id="regional-clothing-form">@csrf
+    <input type="hidden" name="event_id" value="{{ $invitation->event_id }}"><input type="hidden" name="region_id" value="{{ $invitation->region_id }}"><input type="hidden" name="player_id" value="{{ $invitation->player_id }}"><input type="hidden" name="team_id" value="{{ $invitation->team_id }}"><input type="hidden" name="request_token" value="{{ $requestToken }}">
+    <div class="card-body"><p>Select only the items you require. Clothing is paid separately from the event entry.</p><div class="d-grid gap-3">
+      @foreach($items as $item)<div class="border rounded p-3 clothing-line" data-price="{{ (float)$item->price }}"><div class="form-check mb-2"><input class="form-check-input clothing-toggle" type="checkbox" id="clothing-{{ $item->id }}"><label class="form-check-label fw-semibold" for="clothing-{{ $item->id }}">{{ $item->item_type_name }} · R{{ number_format((float)$item->price, 2) }}</label></div><div class="row g-2 clothing-options d-none"><div class="col-sm-7"><label class="form-label">Size</label><select class="form-select" name="items[{{ $item->id }}][size]" disabled required><option value="">Choose size</option>@foreach($item->sizes->sortBy('ordering') as $size)<option value="{{ $size->id }}">{{ $size->size }}</option>@endforeach</select></div><div class="col-sm-5"><label class="form-label">Quantity</label><input class="form-control clothing-qty" type="number" name="items[{{ $item->id }}][qty]" value="1" min="1" max="20" disabled required></div></div></div>@endforeach
+    </div><div class="d-flex justify-content-between border-top mt-4 pt-3"><strong>Total</strong><strong id="clothing-total">R0.00</strong></div></div>
+    <div class="card-footer d-flex justify-content-end"><button class="btn btn-primary" id="clothing-submit" disabled>Continue to clothing payment</button></div>
+  </form>
+</div></div></div>
+@endsection
+@section('page-script')
+<script>document.addEventListener('DOMContentLoaded',()=>{const form=document.getElementById('regional-clothing-form'),total=document.getElementById('clothing-total'),submit=document.getElementById('clothing-submit');const refresh=()=>{let amount=0,selected=0;form.querySelectorAll('.clothing-line').forEach(line=>{const checked=line.querySelector('.clothing-toggle').checked,options=line.querySelector('.clothing-options');options.classList.toggle('d-none',!checked);options.querySelectorAll('select,input').forEach(input=>input.disabled=!checked);if(checked){selected++;amount+=Number(line.dataset.price)*Number(line.querySelector('.clothing-qty').value||0);}});total.textContent='R'+amount.toFixed(2);submit.disabled=selected===0;};form.querySelectorAll('.clothing-toggle,.clothing-qty').forEach(input=>input.addEventListener('change',refresh));refresh();});</script>
+@endsection

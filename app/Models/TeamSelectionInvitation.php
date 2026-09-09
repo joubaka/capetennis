@@ -16,14 +16,15 @@ class TeamSelectionInvitation extends Model
     protected $fillable = [
         'import_id', 'event_id', 'region_id', 'team_id', 'player_id', 'ranking_list_id',
         'order_id', 'ranking_position', 'queue_position', 'total_points', 'roster_rank',
-        'status', 'decline_reason', 'promoted_from_id', 'invited_at', 'accepted_at',
+        'status', 'decline_reason', 'declined_by_user_id', 'decline_method',
+        'promoted_from_id', 'invited_at', 'accepted_at', 'payment_started_at',
         'paid_at', 'declined_at', 'snapshot_json',
     ];
 
     protected $casts = [
         'total_points' => 'float', 'roster_rank' => 'integer', 'snapshot_json' => 'array',
         'invited_at' => 'datetime', 'accepted_at' => 'datetime', 'paid_at' => 'datetime',
-        'declined_at' => 'datetime',
+        'payment_started_at' => 'datetime', 'declined_at' => 'datetime',
     ];
 
     public function selectionImport() { return $this->belongsTo(TeamSelectionImport::class, 'import_id'); }
@@ -33,6 +34,7 @@ class TeamSelectionInvitation extends Model
     public function player() { return $this->belongsTo(Player::class); }
     public function rankingList() { return $this->belongsTo(RankingList::class); }
     public function order() { return $this->belongsTo(TeamPaymentOrder::class, 'order_id'); }
+    public function declinedBy() { return $this->belongsTo(User::class, 'declined_by_user_id'); }
     public function emailLogs()
     {
         return $this->hasMany(BulkEmailLog::class, 'related_id')

@@ -79,6 +79,20 @@ class ClothingOrderIntegrityTest extends TestCase
         ));
     }
 
+    public function test_order_rejects_region_explicitly_excluded_from_online_clothing(): void
+    {
+        $data = $this->orderContext();
+        $data['region']->update(['clothing_admin' => 0, 'clothing_order' => 1]);
+        $token = (string) str()->uuid();
+
+        $this->expectValidationKey('region_id', fn () => app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region']->fresh(), $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], $token
+        ));
+
+        $this->assertDatabaseMissing('clothing_orders', ['request_token' => $token]);
+    }
+
     public function test_payment_requires_exact_amount_and_is_idempotent(): void
     {
         $data = $this->orderContext();

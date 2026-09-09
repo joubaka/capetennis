@@ -140,6 +140,7 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
 Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->group(function () {
   Route::get('invitations', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'show'])->name('invitations.show');
+  Route::get('invitations/{invitation}/clothing', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'clothing'])->name('invitations.clothing');
   Route::post('invitations/{invitation}/accept', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'accept'])->name('invitations.accept');
   Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'decline'])->name('invitations.decline');
 });
@@ -437,7 +438,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });
 
-  Route::middleware('role:super-user|admin')->prefix('team-selection')->name('backend.team-selection.')->group(function () {
+  Route::middleware('role:super-user|admin|convenor')->prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
     Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
     Route::delete('events/{event}/sources/{source}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'unlink'])->name('unlink');
@@ -445,6 +446,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('events/{event}/sources/{source}/preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'preview'])->name('preview');
     Route::post('events/{event}/sources/{source}/import', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'import'])->name('import');
     Route::post('events/{event}/imports/{selectionImport}/send', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'send'])->name('send');
+    Route::post('events/{event}/imports/{selectionImport}/email-preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'previewEmail'])->name('email.preview');
     Route::post('events/{event}/imports/{selectionImport}/restart', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'restart'])->name('restart');
     Route::patch('events/{event}/imports/{selectionImport}/deadlines', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
     Route::post('events/{event}/imports/{selectionImport}/emails/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryFailed'])->name('emails.retry');
@@ -1198,6 +1200,8 @@ Route::delete(
   // ✅ Region Clothing Management (items, prices, sizes per region)
   Route::get('event/{event}/clothing', [RegionClothingController::class, 'eventSetup'])
     ->name('backend.event.clothing.index');
+  Route::patch('event/{event}/clothing/regions', [RegionClothingController::class, 'updateEventRegions'])
+    ->name('backend.event.clothing.regions.update');
   Route::get('region/{region}/clothing', [RegionClothingController::class, 'edit'])
     ->name('backend.region.clothing.edit');
   Route::post('region/{region}/clothing/copy', [RegionClothingController::class, 'copyFromRegion'])

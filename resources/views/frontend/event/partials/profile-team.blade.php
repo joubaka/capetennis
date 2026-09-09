@@ -25,7 +25,7 @@
               $player     = $isDummy ? null : $slot->player;
 
               $paid       = (int) ($slot->pay_status ?? 0) === 1;
-              $canOrder   = (int) ($region->clothing_order ?? 0) === 1;
+              $canOrder   = $region->usesOnlineClothingOrders() && (int) ($region->clothing_order ?? 0) === 1;
               $signupOpen = (int) ($event->signUp ?? 0) === 1;
 
               $playerName = $player

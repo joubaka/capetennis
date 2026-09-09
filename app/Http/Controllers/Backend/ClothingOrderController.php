@@ -214,7 +214,7 @@ class ClothingOrderController extends Controller
 
   public function sheet(TeamRegion $region, Request $request)
   {
-    abort_unless((bool) $region->clothing_order, 404);
+    abort_unless($region->usesOnlineClothingOrders() && (bool) $region->clothing_order, 404);
     // Load items with sizes; adapt to your relationships
     // Example Eloquent shape: $region->clothingItems()->with('sizes')->orderBy('ordering')->get()
     $items = $region->clothingItems()
@@ -247,6 +247,7 @@ class ClothingOrderController extends Controller
     $this->authorize('region-clothing.manage', $region);
 
     if (! $region->clothing_order) {
+      abort_unless($region->usesOnlineClothingOrders(), 422, 'Select this region for online clothing orders in the event clothing setup first.');
       $items = $region->clothingItems()->withCount('sizes')->get();
       abort_if($items->isEmpty(), 422, 'Add clothing items before opening orders.');
       abort_if($items->contains(fn ($item) => (float) $item->price <= 0 || (int) $item->sizes_count === 0), 422,

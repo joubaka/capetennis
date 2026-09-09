@@ -6,6 +6,8 @@ use App\Domain\Payments\Services\TeamPaymentService;
 use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\BulkEmailLog;
+use App\Models\ClothingItemType;
+use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\Player;
@@ -20,6 +22,7 @@ use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
+use App\Mail\TeamSelectionInvitationMail;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Queue;
@@ -106,6 +109,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $stats = app(TeamSelectionInvitationService::class)->send($selectionImport, [
             'response_deadline' => now()->addDay(),
             'payment_deadline' => now()->addDays(2),
+            'email_subject' => 'Platteland selection',
+            'email_message' => 'Please confirm your availability.',
+            'event_information' => 'Arrive at 08:00 at the main venue.',
+            'reply_to' => 'teams@example.test',
         ], $actor);
         $this->assertSame(2, $stats['queued']);
         $this->assertSame(0, $stats['missing_email']);
@@ -115,6 +122,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $invitation->player->update(['userId' => $owner->id]);
         $accepted = app(TeamSelectionInvitationService::class)->accept($invitation, $owner);
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
+        $this->assertNull($accepted->accepted_at);
+        $this->assertNotNull($accepted->payment_started_at);
 
         $event = $selectionImport->event;
         $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $event, 490.00);
@@ -125,6 +134,20 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $invitation->refresh();
         $this->assertSame($order->id, $invitation->order_id);
         $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $invitation->status);
+        $this->assertNotNull($invitation->accepted_at);
+        $this->assertSame('Platteland selection', $selectionImport->fresh()->email_subject);
+        $this->assertNotNull($selectionImport->fresh()->communication_hash);
+        $payload = BulkEmailLog::where('mail_type', 'team_selection_invitation')->firstOrFail()->payload;
+        $this->assertSame('Please confirm your availability.', $payload['campaign']['message']);
+        $this->assertSame('teams@example.test', $payload['campaign']['reply_to']);
+        $html = (new TeamSelectionInvitationMail(
+            $invitation->load(['selectionImport.event', 'region', 'team', 'player']),
+            'invitation',
+            $payload['campaign'],
+        ))->render();
+        $this->assertStringContainsString('Accept and pay', $html);
+        $this->assertStringContainsString('Decline invitation', $html);
+        $this->assertStringContainsString('Arrive at 08:00 at the main venue.', $html);
     }
 
     public function test_declining_a_selected_place_promotes_the_next_reserve_into_the_same_roster_rank(): void
@@ -150,6 +173,98 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)->value('player_id')
         );
         $this->assertSame(TeamSelectionInvitation::DECLINED, $declining->fresh()->status);
+        $this->assertSame($owner->id, $declining->fresh()->declined_by_user_id);
+        $this->assertSame('authenticated_invitation', $declining->fresh()->decline_method);
+    }
+
+    public function test_player_can_decline_after_starting_payment_and_unpaid_order_is_cancelled(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], User::factory()->create());
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        app(TeamSelectionInvitationService::class)->accept($invitation, $owner);
+        $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $selectionImport->event, 490.00);
+        $order->update(['wallet_reserved' => 100.00, 'payfast_amount_due' => 390.00]);
+        app(TeamSelectionInvitationService::class)->attachOrder($order);
+
+        app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), $owner, 'School commitment');
+
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $invitation->fresh()->status);
+        $this->assertSame($owner->id, $invitation->fresh()->declined_by_user_id);
+        $this->assertNull($invitation->fresh()->payment_started_at);
+        $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
+        $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
+    }
+
+    public function test_only_paid_invitation_owner_can_open_enabled_regional_clothing_catalogue(): void
+    {
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update(['status' => 'sent', 'include_clothing' => true]);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $invitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now(), 'accepted_at' => now()]);
+        $region = $source->region;
+        $region->update(['clothing_admin' => true, 'clothing_order' => true]);
+        $item = ClothingItemType::create([
+            'region_id' => $region->id,
+            'item_type_name' => 'Regional tracksuit',
+            'price' => 850.00,
+            'ordering' => 1,
+        ]);
+        ClothingSize::create(['item_type' => $item->id, 'size' => 'Medium', 'ordering' => 1]);
+        $owner = User::findOrFail($invitation->player->userId);
+
+        $this->actingAs($owner)->get(route('team-selection.invitations.clothing', $invitation))
+            ->assertOk()
+            ->assertSee('Regional tracksuit')
+            ->assertSee('R850.00');
+        $this->actingAs(User::factory()->create())
+            ->get(route('team-selection.invitations.clothing', $invitation))
+            ->assertForbidden();
+    }
+
+    public function test_event_admin_can_prepare_and_preview_the_actual_regional_invitation_email(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Team invitation preview', 'type' => 2, 'code' => 'team-invitation-preview',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = $source->event;
+        $event->update(['eventType' => $teamType]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
+            ->assertOk()
+            ->assertSee('Prepare invitations')
+            ->assertSee('Preview actual email')
+            ->assertSee('Invitation message');
+
+        $this->actingAs($admin)->post(route('backend.team-selection.email.preview', [$event, $selectionImport]), [
+            'email_subject' => 'Regional Platteland invitation',
+            'email_message' => 'A message written by the regional organiser.',
+            'event_information' => 'Meet the team manager at 07:30.',
+            'reply_to' => 'manager@example.test',
+            'response_deadline' => now()->addDay()->format('Y-m-d H:i:s'),
+            'payment_deadline' => now()->addDays(2)->format('Y-m-d H:i:s'),
+            'include_clothing' => false,
+        ])->assertOk()
+            ->assertSee('A message written by the regional organiser.')
+            ->assertSee('Meet the team manager at 07:30.')
+            ->assertSee('Accept and pay')
+            ->assertSee('Decline invitation');
+
+        $this->assertSame('draft', $selectionImport->fresh()->status);
+        $this->assertNull($selectionImport->fresh()->prepared_at);
     }
 
     public function test_team_selection_setup_is_event_scoped_to_an_authorized_admin(): void

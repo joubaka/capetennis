@@ -8,11 +8,14 @@ class TeamSelectionImport extends Model
 {
     protected $fillable = [
         'source_id', 'event_id', 'region_id', 'series_id', 'ranking_run_id', 'imported_by',
-        'status', 'response_deadline', 'payment_deadline', 'imported_at', 'sent_at',
+        'status', 'response_deadline', 'payment_deadline', 'email_subject', 'email_message',
+        'event_information', 'reply_to', 'include_clothing', 'communication_hash',
+        'prepared_by', 'prepared_at', 'imported_at', 'sent_at',
     ];
 
     protected $casts = [
         'response_deadline' => 'datetime', 'payment_deadline' => 'datetime',
+        'include_clothing' => 'boolean', 'prepared_at' => 'datetime',
         'imported_at' => 'datetime', 'sent_at' => 'datetime',
     ];
 

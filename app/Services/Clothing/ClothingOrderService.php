@@ -49,6 +49,9 @@ final class ClothingOrderService
         if (! $canManageEvent && ! in_array((int) $player->id, $user->ownedPlayerIds(), true)) {
             throw ValidationException::withMessages(['player_id' => 'You may only order clothing for a player linked to your account.']);
         }
+        if (! $region->usesOnlineClothingOrders()) {
+            throw ValidationException::withMessages(['region_id' => 'Online clothing ordering is not offered for this region.']);
+        }
         if (! (bool) $region->clothing_order) {
             throw ValidationException::withMessages(['region_id' => 'Clothing ordering is currently closed for this region.']);
         }

@@ -10,6 +10,7 @@ use App\Models\Event;
 use App\Models\TeamRegion;
 use App\Services\Clothing\RegionClothingCopyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RegionClothingController extends Controller
@@ -31,6 +32,36 @@ class RegionClothingController extends Controller
     });
 
     return view('backend.clothing.event-setup', compact('event', 'recommendedSources'));
+  }
+
+  public function updateEventRegions(Request $request, Event $event)
+  {
+    abort_unless($event->isTeam(), 404);
+    $this->authorize('event-draw.view', $event);
+
+    $data = $request->validate([
+      'region_ids' => ['nullable', 'array'],
+      'region_ids.*' => ['integer', 'distinct'],
+    ]);
+    $eventRegionIds = $event->regions()->pluck('team_regions.id');
+    $selectedIds = collect($data['region_ids'] ?? [])->map(fn ($id) => (int) $id)->unique();
+
+    if ($selectedIds->diff($eventRegionIds->map(fn ($id) => (int) $id))->isNotEmpty()) {
+      abort(422, 'A selected region does not belong to this event.');
+    }
+
+    DB::transaction(function () use ($eventRegionIds, $selectedIds): void {
+      TeamRegion::query()->whereIn('id', $eventRegionIds)->get()->each(function (TeamRegion $region) use ($selectedIds): void {
+        $enabled = $selectedIds->contains((int) $region->id);
+        $region->update([
+          'clothing_admin' => $enabled ? 1 : 0,
+          'clothing_order' => $enabled ? (int) $region->clothing_order : 0,
+        ]);
+      });
+    });
+
+    return redirect()->route('backend.event.clothing.index', $event)
+      ->with('success', 'Online clothing regions updated. Catalogues and paid order history were kept.');
   }
 
   /**
@@ -70,6 +101,7 @@ class RegionClothingController extends Controller
   public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service)
   {
     $this->authorize('region-clothing.manage', $region);
+    abort_unless($region->usesOnlineClothingOrders(), 422, 'Select this region for online clothing orders before copying a catalogue.');
     $data = $request->validate([
       'source_region_id' => ['required', 'integer', Rule::exists('team_regions', 'id')->whereNot('id', $region->id)],
       'confirm_prices' => ['accepted'],

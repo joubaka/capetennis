@@ -388,7 +388,7 @@ class TeamController extends Controller
 
     // create or load TeamPaymentOrder (unique constraint prevents duplicates)
     $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
-    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->attachOrder($order);
+    $selectionInvitation = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->attachOrder($order);
 
     $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
     $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);
@@ -429,7 +429,10 @@ class TeamController extends Controller
     // notify team ITN route
     $payfast->setTeamNotifyUrl(route('notify.team'));
     // cancel/return should use routes that exist in your app
-    $payfast->setCancelUrl(route('team.checkout', ['order' => $order->id]));
+    $cancelUrl = $selectionInvitation
+      ? route('team-selection.invitations.show', $selectionInvitation)
+      : route('team.checkout', ['order' => $order->id]);
+    $payfast->setCancelUrl($cancelUrl);
     $payfast->setReturnUrl(route('event.success', ['id' => $event->id]) . '?email=' . urlencode($user->email));
     Log::info('TEAM PAYFAST INIT', [
       'order_id' => $order->id,
@@ -448,6 +451,7 @@ class TeamController extends Controller
         'team' => $team,
         'player' => $player,
         'order' => $order,
+        'cancelUrl' => $cancelUrl,
         'total' => $total,
         'walletBalance' => $walletBalance,
         'walletReserved' => $walletReserved,

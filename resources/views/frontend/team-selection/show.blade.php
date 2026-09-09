@@ -1,14 +1,36 @@
 @extends('layouts/contentNavbarLayout')
-
 @section('title', 'Platteland team invitation')
-
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y"><div class="row justify-content-center"><div class="col-lg-8"><div class="card border-primary"><div class="card-header text-center"><h4 class="mb-1">Platteland team invitation</h4><p class="text-muted mb-0">{{ $invitation->selectionImport?->event?->name }}</p></div><div class="card-body p-lg-5"><h5>Hello {{ $invitation->player?->full_name }},</h5><p>You have been selected to represent <strong>{{ $invitation->region?->region_name }}</strong>.</p><div class="alert alert-primary"><strong>{{ $invitation->team?->name }}</strong><br>Ranking position: {{ $invitation->ranking_position }}<br>Team order: {{ $invitation->roster_rank }}</div>@if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
-  @if($invitation->status === \App\Models\TeamSelectionInvitation::INVITED)
-    <div class="d-flex flex-wrap gap-2"><form method="POST" action="{{ route('team-selection.invitations.accept', $invitation) }}">@csrf<button class="btn btn-primary">Register and accept place</button></form><button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#decline-team-invitation">Decline invitation</button></div>
-    <div class="modal fade" id="decline-team-invitation" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="POST" action="{{ route('team-selection.invitations.decline', $invitation) }}" class="modal-content">@csrf<div class="modal-header"><h5 class="modal-title">Decline invitation?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>The next reserve player will be placed in this team position.</p><label class="form-label">Reason (optional)</label><textarea name="reason" maxlength="1000" class="form-control"></textarea></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep place</button><button class="btn btn-danger">Confirm decline</button></div></form></div></div>
-  @elseif($invitation->status === \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)<a class="btn btn-primary" href="{{ route('team.payment.payfast', [$invitation->team_id,$invitation->player_id,$invitation->event_id]) }}">Complete payment</a>
-  @elseif($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)<div class="alert alert-success mb-0">Registration and payment confirmed.</div>
-  @else<div class="alert alert-secondary mb-0">This invitation is {{ str_replace('_',' ',$invitation->status) }}.</div>@endif
-</div></div></div></div></div>
+@php($event = $invitation->selectionImport?->event)
+<div class="container-xxl flex-grow-1 container-p-y"><div class="row justify-content-center"><div class="col-xl-8 col-lg-9"><div class="card border-primary shadow-sm">
+  <div class="card-header text-center py-4"><span class="badge bg-label-primary mb-2">Regional team selection</span><h4 class="mb-1">Platteland team invitation</h4><p class="text-muted mb-0">{{ $event?->name }}</p></div>
+  <div class="card-body p-4 p-lg-5"><h5>Hello {{ $invitation->player?->full_name }},</h5>
+    @if($invitation->selectionImport?->email_message)<p>{!! nl2br(e($invitation->selectionImport->email_message)) !!}</p>@endif
+    <p>You have been selected to represent <strong>{{ $invitation->region?->region_name }}</strong>.</p>
+    <div class="alert alert-primary d-flex flex-column gap-1"><strong>{{ $invitation->team?->name }}</strong><span>Ranking position: {{ $invitation->ranking_position }}</span><span>Playing order: {{ $invitation->roster_rank }}</span></div>
+    <div class="row g-2 mb-4">
+      @if($event?->start_date)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Event dates</small><strong>{{ $event->start_date->format('d M Y') }}{{ $event->end_date && !$event->end_date->equalTo($event->start_date) ? ' – '.$event->end_date->format('d M Y') : '' }}</strong></div></div>@endif
+      <div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Entry fee</small><strong>R{{ number_format((float) $event?->entryFee, 2) }}</strong></div></div>
+      @if($invitation->selectionImport?->response_deadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Respond by</small><strong>{{ $invitation->selectionImport->response_deadline->format('d M Y H:i') }}</strong></div></div>@endif
+      @if($invitation->selectionImport?->payment_deadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Payment deadline</small><strong>{{ $invitation->selectionImport->payment_deadline->format('d M Y H:i') }}</strong></div></div>@endif
+    </div>
+    @if($invitation->selectionImport?->event_information)<div class="alert alert-warning"><strong>Event information</strong><div class="mt-1">{!! nl2br(e($invitation->selectionImport->event_information)) !!}</div></div>@endif
+    @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
+    @if($invitation->status === \App\Models\TeamSelectionInvitation::INVITED)
+      <p>Choose one option. Your team place is confirmed only after payment has been verified.</p><div class="d-flex flex-wrap gap-2"><form method="POST" action="{{ route('team-selection.invitations.accept', $invitation) }}">@csrf<button class="btn btn-success btn-lg"><i class="ti ti-credit-card me-1"></i>Accept and pay</button></form><button class="btn btn-outline-danger btn-lg" data-bs-toggle="modal" data-bs-target="#decline-team-invitation">Decline invitation</button></div>
+    @elseif($invitation->status === \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
+      <div class="alert alert-warning"><strong>Your place is not confirmed yet.</strong> Complete payment before the deadline, or decline so the reserve can be invited.</div><div class="d-flex flex-wrap gap-2"><a class="btn btn-success btn-lg" href="{{ route('team.payment.payfast', [$invitation->team_id,$invitation->player_id,$invitation->event_id]) }}"><i class="ti ti-credit-card me-1"></i>Continue payment</a><button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#decline-team-invitation">Decline invitation</button></div>
+    @elseif($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
+      <div class="alert alert-success"><i class="ti ti-circle-check me-1"></i><strong>Registration and payment confirmed.</strong> Your team place is secured.</div>
+      @if($canOrderClothing)<a class="btn btn-outline-primary" href="{{ route('team-selection.invitations.clothing', $invitation) }}"><i class="ti ti-shirt me-1"></i>Order optional clothing</a>@endif
+      @if($clothingOrders->isNotEmpty())<div class="mt-3"><strong>Clothing orders</strong>@foreach($clothingOrders as $order)<div class="small text-muted">Order #{{ $order->id }} · R{{ number_format((float)$order->total, 2) }} · {{ $order->pay_status ? 'Paid' : 'Payment pending' }}</div>@endforeach</div>@endif
+    @else<div class="alert alert-secondary mb-0">This invitation is {{ str_replace('_',' ',$invitation->status) }}.</div>@endif
+  </div>
+</div></div></div></div>
+@if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+<div class="modal fade" id="decline-team-invitation" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><form method="POST" action="{{ route('team-selection.invitations.decline', $invitation) }}" class="modal-content">@csrf<div class="modal-header"><h5 class="modal-title">Decline invitation?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>The place will be released and the next reserve may be invited.</p><label class="form-label">Reason (optional)</label><textarea name="reason" maxlength="1000" class="form-control" rows="3"></textarea></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep invitation</button><button class="btn btn-danger">Confirm decline</button></div></form></div></div>
+@endif
+@endsection
+@section('page-script')
+@if(request('action') === 'decline')<script>document.addEventListener('DOMContentLoaded',()=>{const el=document.getElementById('decline-team-invitation');if(el&&window.bootstrap) bootstrap.Modal.getOrCreateInstance(el).show();});</script>@endif
 @endsection

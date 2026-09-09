@@ -19,7 +19,7 @@ class TeamSelectionInvitationController extends Controller
     public function index(Event $event, TeamRankingImportService $service)
     {
         $this->authorizeEvent($event);
-        $eventRegions = EventRegion::with(['region', 'rankingSource.series', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs'])
+        $eventRegions = EventRegion::with(['region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs'])
             ->where('event_id', $event->id)->orderBy('ordering')->get();
         $eventYear = (int) ($event->start_date?->format('Y') ?: date('Y'));
         $series = Series::query()->where('year', $eventYear)->orderBy('name')->get();
@@ -113,13 +113,26 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeEvent($event);
-        $data = $request->validate([
-            'response_deadline' => ['required', 'date'],
-            'payment_deadline' => ['required', 'date', 'after_or_equal:response_deadline'],
-        ]);
+        $data = $this->communicationData($request);
         $stats = $service->send($selectionImport, $data, $request->user());
 
         return back()->with('success', "Queued {$stats['queued']} invitations. {$stats['missing_email']} selected players need an email address.");
+    }
+
+    public function previewEmail(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
+        $this->authorizeEvent($event);
+        $data = $this->communicationData($request);
+        $invitation = $selectionImport->invitations()
+            ->with(['selectionImport.event', 'region', 'team', 'player'])
+            ->where('status', 'invited')
+            ->orderBy('queue_position')
+            ->firstOrFail();
+        $campaign = $service->previewCampaign($selectionImport, $data);
+        $kind = 'invitation';
+
+        return view('emails.team-selection.invitation', compact('invitation', 'campaign', 'kind'));
     }
 
     public function restart(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamRankingImportService $service)
@@ -163,5 +176,18 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         $this->authorize('event-draw.view', $event);
+    }
+
+    private function communicationData(Request $request): array
+    {
+        return $request->validate([
+            'response_deadline' => ['required', 'date'],
+            'payment_deadline' => ['required', 'date', 'after_or_equal:response_deadline'],
+            'email_subject' => ['required', 'string', 'max:180'],
+            'email_message' => ['required', 'string', 'max:10000'],
+            'event_information' => ['nullable', 'string', 'max:20000'],
+            'reply_to' => ['nullable', 'email:rfc', 'max:255'],
+            'include_clothing' => ['nullable', 'boolean'],
+        ]);
     }
 }

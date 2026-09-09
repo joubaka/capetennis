@@ -102,7 +102,10 @@ class RegionClothingCopyWorkflowTest extends TestCase
         ]);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
-        $target = TeamRegion::create(['region_name' => 'Overberg Primary Schools 2027']);
+        $target = TeamRegion::create([
+            'region_name' => 'Overberg Primary Schools 2027',
+            'clothing_admin' => true,
+        ]);
         DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $target->id, 'ordering' => 1]);
         $sourceEvent = Event::factory()->create(['eventType' => $teamEventType, 'start_date' => '2026-10-09']);
         $source = TeamRegion::create(['region_name' => 'Overberg Primary Schools 2026']);
@@ -127,12 +130,56 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->actingAs($otherAdmin)->get(route('backend.event.clothing.index', $event))->assertForbidden();
     }
 
+    public function test_event_admin_selects_only_event_regions_for_online_clothing(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Online clothing selection event', 'type' => 2,
+            'code' => 'cloth-select-'.substr((string) str()->uuid(), 0, 8),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = Event::factory()->create(['eventType' => $teamEventType]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $selected = TeamRegion::create(['region_name' => 'Selected Region']);
+        $notSelected = TeamRegion::create([
+            'region_name' => 'Not Selected Region', 'clothing_admin' => true, 'clothing_order' => true,
+        ]);
+        $outside = TeamRegion::create(['region_name' => 'Outside Region']);
+        DB::table('event_regions')->insert([
+            ['event_id' => $event->id, 'region_id' => $selected->id, 'ordering' => 1],
+            ['event_id' => $event->id, 'region_id' => $notSelected->id, 'ordering' => 2],
+        ]);
+
+        $this->actingAs($admin)->patch(route('backend.event.clothing.regions.update', $event), [
+            'region_ids' => [$selected->id],
+        ])->assertRedirect(route('backend.event.clothing.index', $event));
+
+        $this->assertTrue($selected->fresh()->usesOnlineClothingOrders());
+        $this->assertFalse($notSelected->fresh()->usesOnlineClothingOrders());
+        $this->assertFalse((bool) $notSelected->fresh()->clothing_order);
+        $this->assertNull($outside->fresh()->clothing_admin);
+
+        $this->actingAs($admin)->patch(route('backend.event.clothing.regions.update', $event), [
+            'region_ids' => [$outside->id],
+        ])->assertStatus(422);
+        $this->assertNull($outside->fresh()->clothing_admin);
+
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($otherAdmin)->patch(route('backend.event.clothing.regions.update', $event), [
+            'region_ids' => [$selected->id],
+        ])->assertForbidden();
+    }
+
     public function test_admin_copy_route_requires_price_confirmation_and_keeps_ordering_closed(): void
     {
         Role::findOrCreate('admin', 'web');
         $admin = User::factory()->create()->assignRole('admin');
         $source = TeamRegion::create(['region_name' => 'West Coast Primary Schools 2025']);
-        $target = TeamRegion::create(['region_name' => 'West Coast Primary Schools 2026']);
+        $target = TeamRegion::create([
+            'region_name' => 'West Coast Primary Schools 2026',
+            'clothing_admin' => true,
+        ]);
         $this->attachAdminToRegion($admin, $target, 2026);
         $item = ClothingItemType::create([
             'item_type_name' => 'West Coast Shirt Girls', 'price' => 370,
@@ -189,6 +236,10 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->actingAs($admin)->patch(route('backend.region.clothing.toggle', $region))
             ->assertRedirect();
         $this->assertTrue((bool) $region->fresh()->clothing_order);
+
+        $region->update(['clothing_admin' => 0, 'clothing_order' => 0]);
+        $this->actingAs($admin)->patch(route('backend.region.clothing.toggle', $region))->assertStatus(422);
+        $this->assertFalse((bool) $region->fresh()->clothing_order);
     }
 
     private function authorizedAdminForRegion(TeamRegion $region, int $year): User

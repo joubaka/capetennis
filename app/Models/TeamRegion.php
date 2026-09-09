@@ -80,13 +80,32 @@ class TeamRegion extends Model
   }
 
   /**
-   * Determine if the region has admin access to clothing setup.
-   *
-   * @return bool
+   * Read the legacy clothing participation flag.
    */
   public function isClothingAdmin(): bool
   {
     return (bool) $this->clothing_admin;
+  }
+
+  /**
+   * Determine whether this region participates in online clothing ordering.
+   *
+   * Older catalogues pre-date the explicit selection. For those nullable rows,
+   * retain their existing behaviour when a catalogue or open-order flag exists.
+   */
+  public function usesOnlineClothingOrders(): bool
+  {
+    if ($this->clothing_admin !== null) {
+      return (bool) $this->clothing_admin;
+    }
+
+    if ((bool) $this->clothing_order) {
+      return true;
+    }
+
+    return $this->relationLoaded('clothingItems')
+      ? $this->clothingItems->isNotEmpty()
+      : $this->clothingItems()->exists();
   }
 
   /**
@@ -96,6 +115,6 @@ class TeamRegion extends Model
    */
   public function hasClothingAccess(): bool
   {
-    return $this->isClothingEnabled() || $this->isClothingAdmin();
+    return $this->isClothingEnabled() || $this->usesOnlineClothingOrders();
   }
 }

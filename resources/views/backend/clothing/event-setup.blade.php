@@ -10,13 +10,37 @@
   </div>
 
   <div class="alert alert-info">
-    Set up each region from a previous year, review this year’s prices, and keep ordering closed until the catalogue is approved. Previous events are never changed.
+    First select the regions that will use online clothing orders. Then set up their catalogues, review this year’s prices, and keep ordering closed until each catalogue is approved. Previous events are never changed.
   </div>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+
+  <form method="POST" action="{{ route('backend.event.clothing.regions.update', $event) }}" class="card mb-4">
+    @csrf @method('PATCH')
+    <div class="card-header">
+      <h5 class="mb-1">Regions using online clothing orders</h5>
+      <p class="text-muted small mb-0">Untick a region to remove ordering from its player area. Existing catalogues and paid orders will be kept.</p>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        @foreach($event->regions as $region)
+          <div class="col-12 col-md-6 col-xl-4">
+            <div class="form-check border rounded p-3 ps-5 h-100">
+              <input class="form-check-input" type="checkbox" name="region_ids[]" value="{{ $region->id }}" id="online-clothing-region-{{ $region->id }}" @checked($region->usesOnlineClothingOrders())>
+              <label class="form-check-label fw-semibold" for="online-clothing-region-{{ $region->id }}">{{ $region->region_name }}</label>
+            </div>
+          </div>
+        @endforeach
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end">
+      <button class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Save online clothing regions</button>
+    </div>
+  </form>
 
   <div class="row g-3">
     @foreach($event->regions as $region)
       @php($items = $region->clothingItems)
+      @php($usesOnlineClothing = $region->usesOnlineClothingOrders())
       @php($recommended = $recommendedSources->get($region->id))
       @php($sizeCount = $items->sum(fn($item) => $item->sizes->count()))
       @php($notReady = $items->filter(fn($item) => (float)$item->price <= 0 || $item->sizes->isEmpty()))
@@ -27,12 +51,14 @@
               <h5 class="mb-1">{{ $region->region_name }}</h5>
               <div class="text-muted small">{{ $items->count() }} items · {{ $sizeCount }} size options</div>
             </div>
-            <span class="badge bg-label-{{ $region->clothing_order ? 'success' : ($items->isNotEmpty() ? 'warning' : 'secondary') }}">
-              {{ $region->clothing_order ? 'Ordering open' : ($items->isNotEmpty() ? 'Catalogue ready · ordering closed' : 'Not set up') }}
+            <span class="badge bg-label-{{ !$usesOnlineClothing ? 'secondary' : ($region->clothing_order ? 'success' : ($items->isNotEmpty() ? 'warning' : 'secondary')) }}">
+              {{ !$usesOnlineClothing ? 'Online orders not used' : ($region->clothing_order ? 'Ordering open' : ($items->isNotEmpty() ? 'Catalogue ready · ordering closed' : 'Not set up')) }}
             </span>
           </div>
           <div class="card-body">
-            @if($items->isNotEmpty())
+            @if(!$usesOnlineClothing)
+              <div class="alert alert-light border mb-3">This region is not selected for online clothing orders. Select it above and save before setting up or opening its catalogue.</div>
+            @elseif($items->isNotEmpty())
               <div class="table-responsive mb-3">
                 <table class="table table-sm mb-0"><thead><tr><th>Order</th><th>Item</th><th>Price</th><th>Sizes</th></tr></thead><tbody>
                   @foreach($items->sortBy([['ordering','asc'],['item_type_name','asc']]) as $item)
@@ -52,11 +78,13 @@
             @endif
 
             <div class="d-flex flex-wrap gap-2">
-              <a class="btn btn-primary" href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region->id, 'source_region' => $recommended?->id])) }}">
-                <i class="ti ti-settings me-1"></i>{{ $items->isEmpty() ? 'Set up clothing' : 'Manage clothing & prices' }}
-              </a>
+              @if($usesOnlineClothing)
+                <a class="btn btn-primary" href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region->id, 'source_region' => $recommended?->id])) }}">
+                  <i class="ti ti-settings me-1"></i>{{ $items->isEmpty() ? 'Set up clothing' : 'Manage clothing & prices' }}
+                </a>
+              @endif
               <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', $region) }}"><i class="ti ti-list me-1"></i>Paid orders</a>
-              @if($items->isNotEmpty())
+              @if($usesOnlineClothing && $items->isNotEmpty())
                 <form method="POST" action="{{ route('backend.region.clothing.toggle', $region) }}">
                   @csrf @method('PATCH')
                   <button class="btn btn-{{ $region->clothing_order ? 'outline-danger' : 'success' }}" @disabled(!$region->clothing_order && $notReady->isNotEmpty())>

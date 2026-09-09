@@ -66,22 +66,37 @@ final class TeamSelectionInvitationService
                 ]);
             }
 
+            $campaign = $this->campaignSnapshot($locked, $deadlines, $response, $payment);
+
             $stats = ['selected' => $selected->count(), 'queued' => 0, 'missing_email' => 0];
             foreach ($selected as $invitation) {
                 $email = $this->contactEmail($invitation);
                 $invitation->update(['invited_at' => now()]);
-                $this->queueMail($invitation, $email, 'invitation');
+                $this->queueMail($invitation, $email, 'invitation', $campaign);
                 $stats['queued']++;
             }
 
             $locked->update([
                 'response_deadline' => $response,
                 'payment_deadline' => $payment,
+                'email_subject' => $campaign['subject'],
+                'email_message' => $campaign['message'],
+                'event_information' => $campaign['event_information'],
+                'reply_to' => $campaign['reply_to'],
+                'include_clothing' => $campaign['include_clothing'],
+                'communication_hash' => $campaign['hash'],
+                'prepared_by' => $actor->id,
+                'prepared_at' => now(),
                 'status' => 'sent',
                 'sent_at' => now(),
             ]);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
-                ->withProperties($stats + ['response_deadline' => $response->toIso8601String(), 'payment_deadline' => $payment->toIso8601String()])
+                ->withProperties($stats + [
+                    'response_deadline' => $response->toIso8601String(),
+                    'payment_deadline' => $payment->toIso8601String(),
+                    'communication_hash' => $campaign['hash'],
+                    'include_clothing' => $campaign['include_clothing'],
+                ])
                 ->log('sent regional team selection invitations');
 
             return $stats;
@@ -104,22 +119,32 @@ final class TeamSelectionInvitationService
             app(ExternalTeamRosterService::class)->assertCanRegister(
                 $user, $locked->selectionImport->event, $locked->team, $locked->player
             );
-            $locked->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'accepted_at' => now()]);
-            activity('team-selection')->performedOn($locked)->causedBy($user)->log('accepted regional team invitation and continued to payment');
+            $locked->update([
+                'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                'accepted_at' => null,
+                'payment_started_at' => now(),
+            ]);
+            activity('team-selection')->performedOn($locked)->causedBy($user)
+                ->log('started payment for regional team invitation');
 
             return $locked->fresh();
         });
     }
 
-    public function attachOrder(TeamPaymentOrder $order): void
+    public function attachOrder(TeamPaymentOrder $order): ?TeamSelectionInvitation
     {
-        TeamSelectionInvitation::query()
+        $invitation = TeamSelectionInvitation::query()
             ->where('event_id', $order->event_id)
             ->where('team_id', $order->team_id)
             ->where('player_id', $order->player_id)
             ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
-            ->whereNull('order_id')
-            ->update(['order_id' => $order->id]);
+            ->latest('id')
+            ->first();
+        if ($invitation && ! $invitation->order_id) {
+            $invitation->update(['order_id' => $order->id]);
+        }
+
+        return $invitation?->fresh();
     }
 
     public function assertPaymentOpen(int $eventId, int $teamId, int $playerId): void
@@ -151,7 +176,12 @@ final class TeamSelectionInvitationService
                 ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
                 ->first();
             if (! $invitation) return;
-            $invitation->update(['order_id' => $order->id, 'status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+            $invitation->update([
+                'order_id' => $order->id,
+                'status' => TeamSelectionInvitation::PAID_CONFIRMED,
+                'accepted_at' => $invitation->accepted_at ?: now(),
+                'paid_at' => now(),
+            ]);
         });
     }
 
@@ -161,17 +191,32 @@ final class TeamSelectionInvitationService
 
         return DB::transaction(function () use ($invitation, $user, $reason) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
-            if ($locked->selectionImport->status !== 'sent' || $locked->status !== TeamSelectionInvitation::INVITED) {
-                throw ValidationException::withMessages(['invitation' => 'Only an unanswered invitation can be declined.']);
+            if ($locked->selectionImport->status !== 'sent' || ! in_array($locked->status, [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            ], true)) {
+                throw ValidationException::withMessages(['invitation' => 'Only an unpaid invitation can be declined.']);
             }
-            if ($locked->selectionImport->response_deadline && now()->gt($locked->selectionImport->response_deadline)) {
-                throw ValidationException::withMessages(['invitation' => 'The response deadline has passed.']);
+            $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                ? $locked->selectionImport->payment_deadline
+                : $locked->selectionImport->response_deadline;
+            if ($deadline && now()->gt($deadline)) {
+                throw ValidationException::withMessages(['invitation' => 'The invitation deadline has passed.']);
+            }
+            if ($locked->order_id) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
+                    app(TeamPaymentService::class)->cancelPayment($order);
+                }
             }
             $rank = $locked->roster_rank;
             $locked->update([
                 'status' => TeamSelectionInvitation::DECLINED,
                 'declined_at' => now(),
                 'decline_reason' => $reason,
+                'declined_by_user_id' => $user->id,
+                'decline_method' => 'authenticated_invitation',
+                'payment_started_at' => null,
                 'roster_rank' => null,
             ]);
             $slot = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $locked->team_id)
@@ -180,7 +225,11 @@ final class TeamSelectionInvitationService
 
             $reserve = $this->promoteNextReserve($locked, $rank);
             activity('team-selection')->performedOn($locked)->causedBy($user)
-                ->withProperties(['replacement_id' => $reserve?->id, 'reason' => $reason])
+                ->withProperties([
+                    'replacement_id' => $reserve?->id,
+                    'reason' => $reason,
+                    'method' => 'authenticated_invitation',
+                ])
                 ->log('declined regional team invitation');
 
             return $reserve?->fresh();
@@ -353,7 +402,7 @@ final class TeamSelectionInvitationService
             'promoted_from_id' => $vacated->id,
             'invited_at' => now(),
         ]);
-        $this->queueMail($reserve, $email, 'replacement');
+        $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
 
         return $reserve;
     }
@@ -375,7 +424,12 @@ final class TeamSelectionInvitationService
         return $email ? mb_strtolower(trim((string) $email)) : null;
     }
 
-    private function queueMail(TeamSelectionInvitation $invitation, string $email, string $kind): void
+    private function queueMail(
+        TeamSelectionInvitation $invitation,
+        string $email,
+        string $kind,
+        array $campaign = [],
+    ): void
     {
         $existing = BulkEmailLog::query()->where([
             'mail_type' => 'team_selection_invitation',
@@ -392,9 +446,66 @@ final class TeamSelectionInvitationService
             'recipient_email' => $email,
             'recipient_name' => $invitation->player?->full_name,
             'status' => 'queued',
-            'payload' => ['kind' => $kind],
+            'payload' => ['kind' => $kind, 'campaign' => $campaign],
             'queued_at' => now(),
         ]);
         SendTeamSelectionInvitationEmailJob::dispatch($log->id, $invitation->event_id);
+    }
+
+    public function previewCampaign(TeamSelectionImport $import, array $details): array
+    {
+        $import->loadMissing(['event', 'region.clothingItems.sizes']);
+        $response = now()->parse($details['response_deadline']);
+        $payment = now()->parse($details['payment_deadline']);
+
+        return $this->campaignSnapshot($import, $details, $response, $payment);
+    }
+
+    private function campaignSnapshot(
+        TeamSelectionImport $import,
+        array $details,
+        mixed $response,
+        mixed $payment,
+    ): array {
+        $event = $import->event;
+        $region = $import->region;
+        $subject = trim((string) ($details['email_subject'] ?? 'Platteland team invitation: '.$event?->name));
+        $message = trim((string) ($details['email_message'] ?? 'You have been selected to represent your region. Please respond before the deadline.'));
+        $eventInformation = trim((string) ($details['event_information'] ?? strip_tags((string) $event?->information)));
+        $replyTo = filled($details['reply_to'] ?? null) ? mb_strtolower(trim((string) $details['reply_to'])) : null;
+        $clothingAvailable = $region
+            && $region->usesOnlineClothingOrders()
+            && (bool) $region->clothing_order
+            && $region->clothingItems()
+                ->where('price', '>', 0)
+                ->whereHas('sizes')
+                ->exists();
+        $includeClothing = (bool) ($details['include_clothing'] ?? false) && $clothingAvailable;
+        $snapshot = [
+            'subject' => $subject,
+            'message' => $message,
+            'event_information' => $eventInformation,
+            'reply_to' => $replyTo,
+            'response_deadline' => $response->toIso8601String(),
+            'payment_deadline' => $payment->toIso8601String(),
+            'include_clothing' => $includeClothing,
+        ];
+        $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $snapshot;
+    }
+
+    private function savedCampaignSnapshot(TeamSelectionImport $import): array
+    {
+        return [
+            'subject' => $import->email_subject,
+            'message' => $import->email_message,
+            'event_information' => $import->event_information,
+            'reply_to' => $import->reply_to,
+            'response_deadline' => $import->response_deadline?->toIso8601String(),
+            'payment_deadline' => $import->payment_deadline?->toIso8601String(),
+            'include_clothing' => (bool) $import->include_clothing,
+            'hash' => $import->communication_hash,
+        ];
     }
 }
