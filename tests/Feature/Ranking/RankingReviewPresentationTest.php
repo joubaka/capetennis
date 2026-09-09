@@ -17,6 +17,7 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('ranking-review-confirm', $view);
         $this->assertStringContainsString('Retry failed emails', $view);
         $this->assertStringContainsString('Finalize & Publish', $view);
+        $this->assertStringContainsString('No ranking email will be sent.', $view);
         $this->assertStringContainsString('How to complete this ranking', $view);
         $this->assertStringContainsString('Check scores and ties', $view);
         $this->assertStringContainsString('Share with participants', $view);
@@ -38,6 +39,8 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('Default Reply Window', $settings);
         $this->assertStringContainsString('Share Rankings for Review', $home);
         $this->assertStringContainsString('Finalize & Publish Rankings', $home);
+        $this->assertStringContainsString('No ranking email will be sent.', $home);
+        $this->assertStringContainsString('No ranking email will be sent.', $settings);
     }
 
     public function test_ranking_page_has_a_compact_mobile_admin_workflow(): void

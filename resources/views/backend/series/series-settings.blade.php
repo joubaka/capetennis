@@ -219,7 +219,7 @@
                 <button type="button"
                         class="btn btn-success btn-sm ranking-publication-action ranking-lifecycle-action"
                         data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                        data-confirm="{{ $reviewCampaign ? 'Finalize and publish the ranking circulated to participants?' : 'Publish this reviewed ranking directly to the public leaderboard?' }}">
+                        data-confirm="{{ $reviewCampaign ? 'Close the participant review and publish these rankings? No ranking email will be sent.' : 'Publish this reviewed ranking? No ranking email will be sent.' }}">
                   <i class="ti ti-world-upload me-1"></i>{{ $reviewCampaign ? 'Finalize & Publish' : 'Publish Rankings' }}
                 </button>
               @elseif($activeRankingStatus === 'calculated')

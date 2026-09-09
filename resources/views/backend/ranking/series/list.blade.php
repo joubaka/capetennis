@@ -248,7 +248,7 @@
           @endif
           <button class="btn btn-success ranking-lifecycle-action"
                   data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                  data-confirm="{{ $reviewCampaign ? 'Finalize and publish the exact ranking circulated to participants?' : 'Publish this reviewed run directly to the public leaderboard?' }}">
+                  data-confirm="{{ $reviewCampaign ? 'Close the participant review and publish these rankings? No ranking email will be sent.' : 'Publish this reviewed ranking? No ranking email will be sent.' }}">
             <i class="ti ti-world-upload me-1"></i> {{ $reviewCampaign ? 'Finalize & Publish' : 'Publish' }}
           </button>
         @elseif($activeStatus === 'published' && $hasArchivedSnapshot)
@@ -286,7 +286,7 @@
         @elseif($activeStatus === 'reviewed')
           <button class="btn btn-success w-100 ranking-lifecycle-action ranking-primary-action"
                   data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                  data-confirm="Finalize and publish the exact ranking circulated to participants?">
+                  data-confirm="Close the participant review and publish these rankings? No ranking email will be sent.">
             <i class="ti ti-world-upload me-1"></i> Finalize &amp; Publish
           </button>
         @endif
@@ -309,7 +309,7 @@
             @if($activeStatus === 'reviewed' && !$reviewCampaign)
               <button class="btn btn-outline-success ranking-lifecycle-action"
                       data-url="{{ route('ranking.series.ranking.publish', $series) }}"
-                      data-confirm="Publish this reviewed run directly to the public leaderboard?">
+                      data-confirm="Publish this reviewed ranking? No ranking email will be sent.">
                 <i class="ti ti-world-upload me-1"></i> Publish directly
               </button>
             @endif

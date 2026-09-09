@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ranking;
 
 use App\Domain\Ranking\Services\RankingReviewCirculationService;
+use App\Jobs\SendBulkEmailJob;
 use App\Models\BulkEmailLog;
 use App\Models\Category;
 use App\Models\CategoryEvent;
@@ -105,6 +106,7 @@ class RankingReviewCirculationTest extends TestCase
 
     public function test_active_circulation_blocks_early_publication_then_finalizes_the_same_run_after_cutoff(): void
     {
+        Queue::fake();
         $this->rankedPlayer('One', 'one@example.test', 1);
         $campaign = app(RankingReviewCirculationService::class)->send(
             $this->series,
@@ -115,6 +117,7 @@ class RankingReviewCirculationTest extends TestCase
             'rankings@example.test',
             now()->addHour(),
         );
+        Queue::assertPushed(SendBulkEmailJob::class, 1);
 
         $this->actingAs($this->admin)
             ->postJson(route('ranking.series.ranking.publish', $this->series))
@@ -128,10 +131,11 @@ class RankingReviewCirculationTest extends TestCase
             ->update(['status' => 'sent']);
         $this->postJson(route('ranking.series.ranking.publish', $this->series))
             ->assertOk()
-            ->assertJsonPath('message', 'Participant review closed. Rankings finalized and published.');
+            ->assertJsonPath('message', 'Participant review closed. Rankings finalized and published. No ranking emails were sent.');
 
         $this->assertDatabaseHas('series_rankings', ['run_id' => 'review-run', 'status' => 'published']);
         $this->assertDatabaseHas('ranking_review_campaigns', ['id' => $campaign->id, 'status' => 'finalized']);
+        Queue::assertPushed(SendBulkEmailJob::class, 1);
     }
 
     public function test_signed_provisional_page_is_run_scoped_and_superseded_links_close(): void

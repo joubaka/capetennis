@@ -176,8 +176,8 @@ class SeriesRankingController extends Controller
     });
 
     return response()->json(['message' => $campaign
-      ? 'Participant review closed. Rankings finalized and published.'
-      : 'Ranking published.']);
+      ? 'Participant review closed. Rankings finalized and published. No ranking emails were sent.'
+      : 'Ranking published. No ranking emails were sent.']);
   }
 
   /** Confirm an applied H2H decision on the current calculated ranking run. */
