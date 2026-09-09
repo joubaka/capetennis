@@ -293,6 +293,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
             ->assertSee('Create teams from ranking categories')
+            ->assertSee('Default team size')
+            ->assertSee('Apply to checked teams')
+            ->assertSee('Team size')
             ->assertSee('u/10 Girls');
     }
 

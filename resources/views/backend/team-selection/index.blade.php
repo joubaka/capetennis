@@ -125,9 +125,19 @@
                   <form id="ranking-category-form-{{ $source->id }}" method="POST" action="{{ route('backend.team-selection.teams.create', [$event, $source]) }}">
                     @csrf
                     <input type="hidden" name="setup_source" value="{{ $source->id }}">
+                    <div class="row g-2 align-items-end mb-3">
+                      <div class="col-sm-6 col-md-4">
+                        <label class="form-label" for="default-team-size-{{ $source->id }}">Default team size</label>
+                        <input type="number" class="form-control default-team-size" id="default-team-size-{{ $source->id }}" value="8" min="1" max="50" inputmode="numeric">
+                        <div class="form-text">Selected players per team, excluding reserves.</div>
+                      </div>
+                      <div class="col-sm-6 col-md-4 d-grid">
+                        <button type="button" class="btn btn-outline-primary apply-default-team-size">Apply to checked teams</button>
+                      </div>
+                    </div>
                     <div class="table-responsive">
                       <table class="table align-middle mb-0">
-                        <thead><tr><th style="width:48px">Use</th><th>Ranking category</th><th>Ranked</th><th>Event status</th><th>Team name</th><th style="width:140px">Players in team</th></tr></thead>
+                        <thead><tr><th style="width:48px">Use</th><th>Ranking category</th><th>Ranked</th><th>Event status</th><th>Team name</th><th style="width:140px">Team size</th></tr></thead>
                         <tbody>
                           @foreach($setupRows as $rowIndex => $row)
                             @php($ready = $row['ready'])
@@ -165,7 +175,7 @@
                                 @if($ready)
                                   {{ $row['team']->num_team_members }}
                                 @else
-                                  <input type="number" class="form-control" name="categories[{{ $rowIndex }}][num_players]" value="{{ old("categories.$rowIndex.num_players", $row['team']?->num_team_members) }}" min="1" max="50" placeholder="Required" required>
+                                  <input type="number" class="form-control team-size-input" name="categories[{{ $rowIndex }}][num_players]" value="{{ old("categories.$rowIndex.num_players", $row['team']?->num_team_members ?: 8) }}" min="1" max="50" inputmode="numeric" aria-label="Team size for {{ $row['category_name'] }}" required>
                                 @endif
                               </td>
                             </tr>
@@ -203,6 +213,19 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   document.querySelectorAll('[id^="ranking-category-form-"]').forEach(function (form) {
+    const defaultSize = form.querySelector('.default-team-size');
+    const applyDefault = form.querySelector('.apply-default-team-size');
+    if (defaultSize && applyDefault) {
+      applyDefault.addEventListener('click', function () {
+        const value = defaultSize.value;
+        if (!value) return;
+        form.querySelectorAll('input[type="checkbox"][name$="[selected]"]:checked').forEach(function (checkbox) {
+          const input = checkbox.closest('tr').querySelector('.team-size-input');
+          if (input) input.value = value;
+        });
+      });
+    }
+
     form.querySelectorAll('input[type="checkbox"][name$="[selected]"]').forEach(function (checkbox) {
       const row = checkbox.closest('tr');
       const toggleInputs = function () {
