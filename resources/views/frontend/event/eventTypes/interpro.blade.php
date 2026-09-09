@@ -34,8 +34,8 @@
       @include('frontend.event.partials.interpro-draws-mobile')
 
       {{-- 🔹 Regions & Teams Tabs --}}
-      <div class="card p-4">
-        <div class="card-body pb-0">
+      <div class="card p-3 p-sm-4">
+        <div class="card-body p-0 pb-2">
           <div class="badge bg-label-primary mb-3" role="alert">
             Click on a Region below to register
           </div>

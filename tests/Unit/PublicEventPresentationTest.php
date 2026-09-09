@@ -54,7 +54,7 @@ class PublicEventPresentationTest extends TestCase
         $this->assertStringContainsString('Event documents', $html);
     }
 
-    public function test_team_region_picker_uses_wrapped_buttons_and_a_mobile_select_without_horizontal_scrolling(): void
+    public function test_team_region_picker_uses_viewport_safe_wrapped_buttons_on_every_screen_size(): void
     {
         foreach (['team.blade.php', 'interpro.blade.php'] as $template) {
             $html = file_get_contents(resource_path('views/frontend/event/eventTypes/'.$template));
@@ -63,9 +63,13 @@ class PublicEventPresentationTest extends TestCase
         }
 
         $picker = file_get_contents(resource_path('views/frontend/event/partials/_region_team_picker.blade.php'));
-        $this->assertStringContainsString('region-team-select', $picker);
         $this->assertStringContainsString('region-tab-grid', $picker);
+        $this->assertStringContainsString('grid-template-columns: 1fr', $picker);
         $this->assertStringContainsString('grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))', $picker);
+        $this->assertStringContainsString('overflow-wrap: anywhere', $picker);
+        $this->assertStringContainsString('min-height: 48px', $picker);
+        $this->assertStringContainsString('/<wbr>', $picker);
+        $this->assertStringNotContainsString('region-team-select', $picker);
         $this->assertStringNotContainsString('overflow-auto', $picker);
     }
 }
