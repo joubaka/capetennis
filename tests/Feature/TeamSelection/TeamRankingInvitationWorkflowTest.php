@@ -124,6 +124,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
         $this->assertNull($accepted->accepted_at);
         $this->assertNotNull($accepted->payment_started_at);
+        $this->assertSame($accepted->id, app(TeamSelectionInvitationService::class)->accept($accepted, $owner)->id);
 
         $event = $selectionImport->event;
         $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $event, 490.00);
@@ -200,6 +201,34 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($invitation->fresh()->payment_started_at);
         $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
         $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
+    }
+
+    public function test_decline_cannot_overtake_a_paid_order_waiting_for_invitation_sync(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], User::factory()->create());
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        app(TeamSelectionInvitationService::class)->accept($invitation, $owner);
+        $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $selectionImport->event, 490.00);
+        app(TeamSelectionInvitationService::class)->attachOrder($order);
+        $order->update(['pay_status' => true, 'payfast_paid' => true]);
+
+        try {
+            app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), $owner, 'Too late');
+            $this->fail('Expected paid-order protection to block the decline.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($invitation->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $invitation->roster_rank)->value('player_id'));
     }
 
     public function test_only_paid_invitation_owner_can_open_enabled_regional_clothing_catalogue(): void

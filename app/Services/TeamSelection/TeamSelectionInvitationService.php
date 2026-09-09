@@ -110,6 +110,14 @@ final class TeamSelectionInvitationService
         return DB::transaction(function () use ($invitation, $user) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
+            if ($locked->selectionImport->status === 'sent'
+                && $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
+                if ($locked->selectionImport->payment_deadline && now()->gt($locked->selectionImport->payment_deadline)) {
+                    throw ValidationException::withMessages(['payment' => 'The payment deadline for this invitation has passed.']);
+                }
+
+                return $locked->fresh();
+            }
             if ($locked->selectionImport->status !== 'sent' || $locked->status !== TeamSelectionInvitation::INVITED) {
                 throw ValidationException::withMessages(['invitation' => 'This invitation is not available for acceptance.']);
             }
@@ -205,7 +213,12 @@ final class TeamSelectionInvitationService
             }
             if ($locked->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
-                if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
+                if ($order) {
+                    if ($order->pay_status || $order->payfast_paid || $order->wallet_debited) {
+                        throw ValidationException::withMessages([
+                            'payment' => 'Payment has already been received or is being finalized. The invitation cannot be declined.',
+                        ]);
+                    }
                     app(TeamPaymentService::class)->cancelPayment($order);
                 }
             }
@@ -469,10 +482,11 @@ final class TeamSelectionInvitationService
     ): array {
         $event = $import->event;
         $region = $import->region;
-        $subject = trim((string) ($details['email_subject'] ?? 'Platteland team invitation: '.$event?->name));
+        $subject = trim((string) preg_replace('/[\r\n]+/', ' ', (string) ($details['email_subject'] ?? 'Platteland team invitation: '.$event?->name)));
         $message = trim((string) ($details['email_message'] ?? 'You have been selected to represent your region. Please respond before the deadline.'));
         $eventInformation = trim((string) ($details['event_information'] ?? strip_tags((string) $event?->information)));
-        $replyTo = filled($details['reply_to'] ?? null) ? mb_strtolower(trim((string) $details['reply_to'])) : null;
+        $replyCandidate = filled($details['reply_to'] ?? null) ? mb_strtolower(trim((string) $details['reply_to'])) : null;
+        $replyTo = $replyCandidate && filter_var($replyCandidate, FILTER_VALIDATE_EMAIL) ? $replyCandidate : null;
         $clothingAvailable = $region
             && $region->usesOnlineClothingOrders()
             && (bool) $region->clothing_order
