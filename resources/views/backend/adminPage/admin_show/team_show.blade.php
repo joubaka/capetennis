@@ -55,6 +55,9 @@
   .team-admin-workspace .team-player-table :is(th, td) {
     overflow: hidden; text-overflow: ellipsis;
   }
+  .team-admin-workspace .team-player-table :is(th, td):last-child {
+    overflow: visible; text-overflow: clip;
+  }
   /* Small device improvements */
   @media (max-width: 576px) {
     .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }

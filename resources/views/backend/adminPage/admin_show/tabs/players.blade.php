@@ -174,11 +174,11 @@
 
                           <td>
                             <div class="dropdown">
-                              <button class="btn p-0 dropdown-toggle" data-bs-toggle="dropdown">
+                              <button type="button" class="btn p-0 dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="ti ti-dots-vertical"></i>
                               </button>
 
-                              <div class="dropdown-menu">
+                              <div class="dropdown-menu dropdown-menu-end">
                                 <a class="dropdown-item replacePlayerBtn"
                                    data-slotid="{{ $slot->id }}"
                                    data-teamid="{{ $team->id }}"

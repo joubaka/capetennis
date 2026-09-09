@@ -17,6 +17,7 @@ class TeamAdminLayoutTest extends TestCase
         $this->assertStringContainsString('region-email-actions', $players);
         $this->assertStringContainsString('team-player-table', $players);
         $this->assertStringContainsString('<colgroup>', $players);
+        $this->assertStringContainsString('dropdown-menu dropdown-menu-end', $players);
     }
 
     public function test_team_admin_spacing_and_mobile_rules_are_scoped(): void
@@ -28,6 +29,8 @@ class TeamAdminLayoutTest extends TestCase
         $this->assertStringContainsString('class="team-admin-workspace" data-backend-wide', $layout);
         $this->assertStringContainsString('.team-admin-workspace .region-tab-content', $layout);
         $this->assertStringContainsString('.team-admin-workspace .team-player-table', $layout);
+        $this->assertStringContainsString('.team-player-table :is(th, td):last-child', $layout);
+        $this->assertStringContainsString('overflow: visible; text-overflow: clip;', $layout);
         $this->assertStringNotContainsString("\n    .tab-content { padding: .5rem !important; }", $layout);
         $this->assertSame(0, preg_match('/class="col-xl-12"/', $layout));
     }
