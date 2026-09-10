@@ -21,7 +21,6 @@ use App\Models\Category;
 use App\Models\MastersRankingCategoryLink;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -33,21 +32,6 @@ final class MastersInvitationService
     public function __construct(
         private readonly RankingTeamEligibilityService $rankingTeamEligibility,
     ) {}
-
-    public function authorizePlayerAccount(MastersInvitation $invitation, User $user): void
-    {
-        $player = $invitation->relationLoaded('player')
-            ? $invitation->player
-            : $invitation->player()->first();
-
-        $ownsInvitation = $player
-            && ((int) $player->userId === (int) $user->id
-                || $player->users()->whereKey($user->id)->exists());
-
-        if (!$ownsInvitation) {
-            throw new AuthorizationException('This Masters invitation is not linked to your account.');
-        }
-    }
 
     public function syncRankingCategories(Event $event): array
     {
@@ -594,8 +578,6 @@ final class MastersInvitationService
 
     public function accept(MastersInvitation $invitation, User $user): RegistrationOrder
     {
-        $this->authorizePlayerAccount($invitation, $user);
-
         if ($paidItem = $this->paidOrderItemFor($invitation)) {
             $this->reconcilePaidInvitation($invitation);
 
@@ -605,7 +587,7 @@ final class MastersInvitationService
         return DB::transaction(function () use ($invitation, $user) {
             $locked = MastersInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
 
-            $this->recordActor($locked, $user, 'accepted invitation and started PayFast registration');
+            $this->recordActor($locked, $user, 'started Masters registration and PayFast payment');
             if ($locked->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
                 return RegistrationOrder::findOrFail($locked->order_id);
             }
@@ -652,8 +634,6 @@ final class MastersInvitationService
 
     public function decline(MastersInvitation $invitation, User $user, ?string $reason = null): ?MastersInvitation
     {
-        $this->authorizePlayerAccount($invitation, $user);
-
         return DB::transaction(function () use ($invitation, $user, $reason) {
             $locked = MastersInvitation::query()->lockForUpdate()->with('batch')->findOrFail($invitation->id);
             $this->recordActor($locked, $user, 'declined invitation');

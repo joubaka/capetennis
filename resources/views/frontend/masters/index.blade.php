@@ -13,7 +13,7 @@
         <p class="mb-1">{{ $invitation->categoryEvent->category->name ?? 'Age group' }}</p>
         <p class="text-muted">Ranking position {{ $invitation->ranking_position }} · {{ $invitation->total_points }} points</p>
         @if($invitation->status === 'invited')
-          <form method="POST" action="{{ route('masters.invitations.accept', $invitation) }}" class="d-inline">@csrf<button class="btn btn-primary">Accept and pay</button></form>
+          <form method="POST" action="{{ route('masters.invitations.accept', $invitation) }}" class="d-inline">@csrf<button class="btn btn-primary">Register and pay</button></form>
           <form method="POST" action="{{ route('masters.invitations.decline', $invitation) }}" class="d-inline">@csrf<button class="btn btn-outline-secondary">I am unavailable</button></form>
         @elseif($invitation->status === 'accepted_pending_payment')
           <a class="btn btn-warning" href="{{ route('registration.checkout', $invitation->order_id) }}">Complete payment</a>

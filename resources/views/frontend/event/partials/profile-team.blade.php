@@ -91,8 +91,9 @@
                     {{-- CLOTHING --}}
                     @if($canOrder)
                       <a href="javascript:void(0)"
-                         class="btn btn-xs btn-outline-secondary clothing-order"
-                         title="Order clothing"
+                         class="btn btn-sm btn-outline-secondary clothing-order"
+                         title="Order clothing for {{ $playerName }}"
+                         aria-label="Order clothing for {{ $playerName }}"
                          data-playerid="{{ $player->id }}"
                          data-name="{{ $playerName }}"
                          data-team="{{ $team->id }}"
@@ -100,7 +101,7 @@
                          data-eventid="{{ $event->id }}"
                          data-bs-toggle="modal"
                          data-bs-target="#clothing-order-modal">
-                        <i class="ti ti-shirt"></i>
+                        <i class="ti ti-shirt me-1" aria-hidden="true"></i>Order clothing
                       </a>
                     @endif
 

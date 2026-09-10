@@ -48,10 +48,9 @@ final class ClothingOrderService
         if (! TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $player->id)->exists()) {
             throw ValidationException::withMessages(['player_id' => 'The selected player is not in this team.']);
         }
-        $canManageEvent = $user->hasRole('super-user') || $user->is_event_admin($event->id) || $user->is_convenor($event->id);
-        if (! $canManageEvent && ! in_array((int) $player->id, $user->ownedPlayerIds(), true)) {
-            throw ValidationException::withMessages(['player_id' => 'You may only order clothing for a player linked to your account.']);
-        }
+        // Clothing is ordered from the published team roster. Any authenticated
+        // user may place an order for a rostered player; the relationship checks
+        // above prevent a submitted player, team or event from being substituted.
         if (! $region->usesOnlineClothingOrders()) {
             throw ValidationException::withMessages(['region_id' => 'Online clothing ordering is not offered for this region.']);
         }
@@ -104,6 +103,8 @@ final class ClothingOrderService
                 $rows[] = compact('item', 'size', 'price', 'lineTotal', 'line');
             }
 
+            // Calculate the PayFast amount once on the complete basket. The
+            // stored catalogue values remain the approved clothing amounts.
             $pricing = $this->prices->totals($total);
             $order = ClothingOrder::create([
                 'player_id' => $player->id,

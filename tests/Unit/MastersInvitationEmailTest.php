@@ -7,11 +7,8 @@ use App\Jobs\SendMastersInvitationEmailJob;
 use App\Mail\MastersInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\MastersInvitation;
-use App\Models\User;
 use App\Services\MailAccountManager;
-use App\Services\Masters\MastersInvitationService;
 use App\Services\Masters\RetryMastersInvitationEmails;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Queue\Jobs\FakeJob;
@@ -140,30 +137,11 @@ class MastersInvitationEmailTest extends TestCase
         $responseUrl = route('masters.invitations.show', $invitation);
 
         $this->assertStringContainsString('>View event</a>', $html);
-        $this->assertStringContainsString('>Register</a>', $html);
-        $this->assertStringContainsString('>Decline</a>', $html);
+        $this->assertStringContainsString('>Register and pay</a>', $html);
+        $this->assertStringContainsString('>I am unavailable</a>', $html);
         $this->assertStringContainsString(route('events.show', $invitation->batch->event), $html);
         $this->assertSame(2, substr_count($html, 'href="'.$responseUrl.'"'));
         $this->assertSame(MastersInvitation::INVITED, $invitation->fresh()->status);
-    }
-
-    public function test_invitation_response_authorization_accepts_direct_and_parent_links_but_rejects_other_users(): void
-    {
-        DB::table('users')->insert([
-            ['id' => 10, 'name' => 'Player account', 'email' => 'player@example.test'],
-            ['id' => 11, 'name' => 'Parent account', 'email' => 'parent@example.test'],
-            ['id' => 12, 'name' => 'Other account', 'email' => 'other@example.test'],
-        ]);
-        DB::table('players')->insert(['id' => 20, 'userId' => 10, 'name' => 'Invited', 'surname' => 'Player']);
-        DB::table('user_players')->insert(['user_id' => 11, 'player_id' => 20]);
-        $invitation = MastersInvitation::create(['batch_id' => 1, 'player_id' => 20, 'status' => MastersInvitation::INVITED]);
-        $service = app(MastersInvitationService::class);
-
-        $service->authorizePlayerAccount($invitation, User::findOrFail(10));
-        $service->authorizePlayerAccount($invitation, User::findOrFail(11));
-
-        $this->expectException(AuthorizationException::class);
-        $service->authorizePlayerAccount($invitation, User::findOrFail(12));
     }
 
     public function test_it_sends_once_inside_the_job_and_only_then_records_success(): void

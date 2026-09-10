@@ -143,6 +143,82 @@ class RankingHeadToHeadConfirmationTest extends TestCase
             ->assertOk();
     }
 
+    public function test_admin_can_replace_an_automatic_third_score_order_with_the_qualifying_head_to_head(): void
+    {
+        [$series, $event, $fixture] = $this->seedCalculatedDecision();
+        $admin = $this->authorizedAdmin($event);
+        $rows = SeriesRanking::where('series_id', $series->id)->orderBy('rank_position')->get();
+        $headToHead = $rows->first()->meta_json['head_to_head_decision'];
+        $winnerId = (int) $headToHead['winner_player_id'];
+        $loserId = (int) $rows->first(fn (SeriesRanking $row) => (int) $row->player_id !== $winnerId)->player_id;
+        $playerIds = collect([$winnerId, $loserId])->sort()->values();
+        $tieKey = hash('sha256', implode(':', [
+            $rows->first()->ranking_list_id,
+            $rows->first()->total_points,
+            $playerIds->implode(','),
+        ]));
+        $decision = [
+            'tie_key' => $tieKey,
+            'ranking_list_id' => (int) $rows->first()->ranking_list_id,
+            'total_points' => (int) $rows->first()->total_points,
+            'player_ids' => $playerIds->all(),
+            'suggested_order' => [$loserId, $winnerId],
+            'suggested_method' => 'third_event_score',
+            'head_to_head_decision' => $headToHead,
+            'confirmed_order' => null,
+            'reason' => null,
+            'note' => null,
+            'confirmed_by' => null,
+            'confirmed_at' => null,
+        ];
+        foreach ($rows as $row) {
+            $meta = $row->meta_json;
+            $meta['tie_decision'] = $decision;
+            $meta['tiebreak_notes'] = ['Tied on 1500 points; compared by third-event score (400 points).'];
+            $row->update([
+                'rank_position' => (int) $row->player_id === $loserId ? 1 : 2,
+                'meta_json' => $meta,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('Override tie-break')
+            ->assertSee('Qualifying head-to-head');
+
+        $note = 'The committee confirmed head-to-head must take precedence for this tied pair.';
+        $this->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+            'ordered_player_ids' => [$winnerId, $loserId],
+            'reason' => 'head_to_head',
+            'note' => $note,
+        ])->assertOk()
+            ->assertJsonPath('decision.reason', 'head_to_head')
+            ->assertJsonPath('decision.confirmed_order.0', $winnerId)
+            ->assertJsonPath('decision.head_to_head_decision.fixture_id', $fixture->id);
+
+        $winnerRow = SeriesRanking::where('player_id', $winnerId)->firstOrFail();
+        $this->assertSame(1, $winnerRow->rank_position);
+        $this->assertStringContainsString(
+            'Tie-break manually changed from third-event score to qualifying head-to-head',
+            $winnerRow->meta_json['tiebreak_notes'][0]
+        );
+        $this->assertStringContainsString($note, $winnerRow->meta_json['tiebreak_notes'][0]);
+        $this->assertDatabaseHas('ranking_head_to_head_confirmations', [
+            'series_id' => $series->id,
+            'run_id' => 'h2h-run',
+            'fixture_id' => $fixture->id,
+            'confirmed_by' => $admin->id,
+        ]);
+        $this->assertDatabaseHas('ranking_tie_decisions', [
+            'series_id' => $series->id,
+            'run_id' => 'h2h-run',
+            'tie_key' => $tieKey,
+            'reason' => 'head_to_head',
+            'note' => $note,
+        ]);
+    }
+
     public function test_unauthorized_admin_cannot_confirm_another_series_decision(): void
     {
         [$series, , $fixture] = $this->seedCalculatedDecision();

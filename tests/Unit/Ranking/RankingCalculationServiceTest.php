@@ -231,8 +231,42 @@ class RankingCalculationServiceTest extends TestCase
         $this->assertEquals(1, $this->rowFor($result, 1)->rankPosition);
         $this->assertEquals(2, $this->rowFor($result, 2)->rankPosition);
         $this->assertStringContainsString('third-event score (600 points)', $this->rowFor($result, 1)->tiebreakNotes[0]);
-        $this->assertNull($this->rowFor($result, 1)->tieDecision);
-        $this->assertNull($this->rowFor($result, 2)->tieDecision);
+        $this->assertSame('third_event_score', $this->rowFor($result, 1)->tieDecision['suggested_method']);
+        $this->assertSame([1, 2], $this->rowFor($result, 1)->tieDecision['suggested_order']);
+        $this->assertSame(
+            $this->rowFor($result, 1)->tieDecision['tie_key'],
+            $this->rowFor($result, 2)->tieDecision['tie_key']
+        );
+    }
+
+    public function test_third_event_resolution_retains_qualifying_head_to_head_evidence_for_manual_override(): void
+    {
+        $this->series->update(['auto_award_rule' => false]);
+        $this->seedPositions([
+            [1, 101, 1], [1, 102, 2], [1, 103, 3],
+            [2, 101, 2], [2, 102, 1], [2, 103, 4],
+        ]);
+
+        $categoryEvent = DB::table('category_events')->where('id', 102)->first();
+        $draw = Draw::factory()->create([
+            'event_id' => $categoryEvent->event_id,
+            'category_event_id' => null,
+        ]);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id,
+            'registration1_id' => $this->resultRegistrationIds['1:102'],
+            'registration2_id' => $this->resultRegistrationIds['2:102'],
+            'winner_registration' => $this->resultRegistrationIds['2:102'],
+        ]);
+        $this->recordSet($fixture, $this->resultRegistrationIds['2:102'], 4, 6);
+
+        $result = $this->service()->calculate($this->list);
+        $decision = $this->rowFor($result, 1)->tieDecision;
+
+        $this->assertSame('third_event_score', $decision['suggested_method']);
+        $this->assertSame([1, 2], $decision['suggested_order']);
+        $this->assertSame($fixture->id, $decision['head_to_head_decision']['fixture_id']);
+        $this->assertSame(2, $decision['head_to_head_decision']['winner_player_id']);
     }
 
     public function test_third_event_tiebreak_can_be_disabled_for_a_series(): void

@@ -168,14 +168,16 @@ final class RankingCalculationService
             $lastLegContexts,
         );
 
-        // Automatic rules resolve distinct third scores and latest-played-leg placings.
-        // Only players still level afterwards require a run-scoped admin decision.
+        // Persist run-scoped evidence for unresolved ties and for two-player
+        // equal-total groups resolved by third score. The latter stay automatic,
+        // but an administrator may override them while the run is calculated.
         $this->attachTieDecisions(
             $rows,
             (int) $list->id,
             $useThirdScoreTiebreak,
             $useLastLegPositionTiebreak,
             $lastLegContexts,
+            $headToHeadWinners,
         );
 
         // Build audit trail
@@ -867,6 +869,7 @@ final class RankingCalculationService
         bool $useThirdScoreTiebreak,
         bool $useLastLegPositionTiebreak,
         array $lastLegContexts,
+        array $headToHeadWinners,
     ): void {
         $rows->groupBy(fn (RankingRow $row) => $row->totalPoints)
             ->each(function (Collection $pointsGroup) use ($rankingListId, $useThirdScoreTiebreak, $useLastLegPositionTiebreak, $lastLegContexts): void {
@@ -922,6 +925,44 @@ final class RankingCalculationService
                                 });
                             });
                     });
+            });
+
+        $rows->groupBy(fn (RankingRow $row) => $row->totalPoints)
+            ->filter(fn (Collection $group) => $group->count() === 2)
+            ->each(function (Collection $group) use ($rankingListId, $useThirdScoreTiebreak, $headToHeadWinners): void {
+                $orderedRows = $group->sortBy(fn (RankingRow $row) => $row->rankPosition)->values();
+                if ($orderedRows->contains(fn (RankingRow $row) => $row->tieDecision !== null)
+                    || ! $useThirdScoreTiebreak
+                    || $this->nextBestScore($orderedRows[0]) === $this->nextBestScore($orderedRows[1])) {
+                    return;
+                }
+
+                $playerIds = $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->sort()->values();
+                $headToHead = $headToHeadWinners[
+                    $this->playerPairKey($orderedRows[0]->playerId, $orderedRows[1]->playerId)
+                ] ?? null;
+                $decision = [
+                    'tie_key' => hash('sha256', implode(':', [
+                        $rankingListId,
+                        (int) $orderedRows->first()->totalPoints,
+                        $playerIds->implode(','),
+                    ])),
+                    'ranking_list_id' => $rankingListId,
+                    'total_points' => (int) $orderedRows->first()->totalPoints,
+                    'player_ids' => $playerIds->all(),
+                    'suggested_order' => $orderedRows->pluck('playerId')->map(fn ($id) => (int) $id)->all(),
+                    'suggested_method' => 'third_event_score',
+                    'head_to_head_decision' => $headToHead,
+                    'confirmed_order' => null,
+                    'reason' => null,
+                    'note' => null,
+                    'confirmed_by' => null,
+                    'confirmed_at' => null,
+                ];
+
+                $orderedRows->each(function (RankingRow $row) use ($decision): void {
+                    $row->tieDecision = $decision;
+                });
             });
     }
 

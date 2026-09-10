@@ -7,6 +7,7 @@ use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPlayer;
+use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Services\PlayerEligibilityService;
 use Illuminate\Support\Facades\DB;
@@ -185,13 +186,22 @@ class ExternalTeamRosterService
 
     public function assertCanRegister(User $user, Event $event, Team $team, Player $player): TeamPlayer
     {
+        $teamPlayer = $this->assertSelectedPlayerCanRegister($event, $team, $player);
+        if (! $this->userOwnsPlayer($user, $player)
+            && ! $user->can('event.manage', $event)
+            && ! $this->hasAcceptedSelectionInvitation($user, $event, $team, $player)) {
+            throw ValidationException::withMessages(['player' => 'You may only register a player linked to your account.']);
+        }
+
+        return $teamPlayer;
+    }
+
+    public function assertSelectedPlayerCanRegister(Event $event, Team $team, Player $player): TeamPlayer
+    {
         $this->assertTeamBelongsToEvent($team, $event);
 
         if (! $team->published) throw ValidationException::withMessages(['team' => 'This team has not been published yet.']);
         if (! $this->registrationIsOpen($event)) throw ValidationException::withMessages(['event' => 'Registration for this event is closed.']);
-        if (! $this->userOwnsPlayer($user, $player) && ! $user->can('event.manage', $event)) {
-            throw ValidationException::withMessages(['player' => 'You may only register a player linked to your account.']);
-        }
 
         $teamPlayer = TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->first();
         if (! $teamPlayer) throw ValidationException::withMessages(['player' => 'This player is not on the selected team roster.']);
@@ -200,6 +210,20 @@ class ExternalTeamRosterService
         $this->playerEligibility->assertEligible($player, $event);
 
         return $teamPlayer;
+    }
+
+    private function hasAcceptedSelectionInvitation(User $user, Event $event, Team $team, Player $player): bool
+    {
+        return TeamSelectionInvitation::query()
+            ->where('event_id', $event->id)
+            ->where('team_id', $team->id)
+            ->where('player_id', $player->id)
+            ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
+            ->where(function ($query) use ($user) {
+                $query->whereNull('order_id')
+                    ->orWhereHas('order', fn ($order) => $order->where('user_id', $user->id));
+            })
+            ->exists();
     }
 
     public function registrationIsOpen(Event $event): bool

@@ -139,6 +139,36 @@ class RankingTieDecisionTest extends TestCase
             ->assertJsonPath('message', "Expected exactly one calculated ranking run for series {$series->id}; found 0.");
     }
 
+    public function test_reviewed_legacy_third_score_pair_links_to_a_scoped_rebuild_and_edit_action(): void
+    {
+        [$series, $event, $players] = $this->seedTie();
+        $admin = $this->authorizedAdmin($event);
+
+        SeriesRanking::where('series_id', $series->id)->get()->each(function (SeriesRanking $row): void {
+            $meta = $row->meta_json;
+            unset($meta['tie_decision'], $meta['head_to_head_decision']);
+            $meta['tiebreak_notes'] = [
+                'Tied on 1500 points; compared by third-event score ('.($row->rank_position === 1 ? '400' : '0').' points).',
+            ];
+            $row->update([
+                'status' => 'reviewed',
+                'meta_json' => $meta,
+            ]);
+        });
+
+        $playerIds = collect($players)->pluck('id')->map(fn ($id) => (int) $id)->sort()->implode(',');
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('tiebreak-note-action', false)
+            ->assertSee('Open correction options for this tie-break')
+            ->assertSee('This reviewed ranking predates editable tie decisions.')
+            ->assertSee('Rebuild and edit this tie-break')
+            ->assertSee('data-open-tie-players="'.$playerIds.'"', false)
+            ->assertSee('cape-tennis:open-ranking-tie', false);
+    }
+
     public function test_existing_third_event_resolution_does_not_require_admin_approval(): void
     {
         [$series, $event, $players] = $this->seedTie();
@@ -164,6 +194,67 @@ class RankingTieDecisionTest extends TestCase
             ->assertDontSee('Confirmation required');
 
         $this->postJson(route('ranking.series.ranking.review', $series))->assertOk();
+    }
+
+    public function test_automatic_third_event_resolution_can_be_overridden_with_a_visible_audited_reason(): void
+    {
+        [$series, $event, $players, $tieKey] = $this->seedTie();
+        $admin = $this->authorizedAdmin($event);
+        $rows = SeriesRanking::where('series_id', $series->id)->orderBy('id')->get();
+
+        foreach ($rows as $index => $row) {
+            $meta = $row->meta_json;
+            $meta['tie_decision']['suggested_method'] = 'third_event_score';
+            $meta['tie_decision']['suggested_order'] = [$players[0]->id, $players[1]->id];
+            $meta['tiebreak_notes'] = ['Tied on 1500 points; compared by third-event score (400 points).'];
+            $row->update(['rank_position' => $index + 1, 'meta_json' => $meta]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('Automatic tie-break')
+            ->assertSee('Override tie-break')
+            ->assertSee('Third-event score (automatic)')
+            ->assertSee('Open and edit this tie-break decision')
+            ->assertSee('tiebreak-note-action', false)
+            ->assertSee('data-target="tie-decision-'.$tieKey.'"', false)
+            ->assertSee('tie-decision-editor', false);
+
+        $this->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+            'ordered_player_ids' => [$players[1]->id, $players[0]->id],
+            'reason' => 'previous_ranking',
+            'note' => '',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Explain why the automatic third-event score tie-break is being changed.');
+
+        $reason = 'The committee approved the prior published order after checking the supporting records.';
+        $this->postJson(route('ranking.series.ranking.tie-decision.confirm', [$series, $tieKey]), [
+            'ordered_player_ids' => [$players[1]->id, $players[0]->id],
+            'reason' => 'previous_ranking',
+            'note' => $reason,
+        ])->assertOk();
+
+        $updatedMeta = SeriesRanking::where('player_id', $players[1]->id)->firstOrFail()->meta_json;
+        $this->assertSame(1, SeriesRanking::where('player_id', $players[1]->id)->value('rank_position'));
+        $this->assertCount(1, $updatedMeta['tiebreak_notes']);
+        $this->assertStringContainsString(
+            'Tie-break manually changed from third-event score to previous published ranking',
+            $updatedMeta['tiebreak_notes'][0]
+        );
+        $this->assertStringContainsString($reason, $updatedMeta['tiebreak_notes'][0]);
+        $this->assertDatabaseHas('ranking_tie_decisions', [
+            'series_id' => $series->id,
+            'tie_key' => $tieKey,
+            'reason' => 'previous_ranking',
+            'note' => $reason,
+            'confirmed_by' => $admin->id,
+        ]);
+
+        $this->get(route('ranking.series.list', $series))
+            ->assertOk()
+            ->assertSee('Tie-break manually changed from third-event score to previous published ranking')
+            ->assertSee($reason);
     }
 
     public function test_multi_player_tie_supports_a_confirmed_shared_position(): void

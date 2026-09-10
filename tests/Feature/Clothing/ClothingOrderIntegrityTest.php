@@ -55,7 +55,7 @@ class ClothingOrderIntegrityTest extends TestCase
         $this->assertSame(1, ClothingOrder::where('request_token', $token)->count());
     }
 
-    public function test_order_rejects_closed_catalogue_unowned_player_and_wrong_item_size_pair(): void
+    public function test_order_rejects_closed_catalogue_and_wrong_item_size_pair_but_allows_unlinked_user(): void
     {
         $data = $this->orderContext();
         $service = app(ClothingOrderService::class);
@@ -67,10 +67,12 @@ class ClothingOrderIntegrityTest extends TestCase
 
         $data['region']->update(['clothing_order' => true]);
         $stranger = User::factory()->create();
-        $this->expectValidationKey('player_id', fn () => $service->create(
+        $unlinkedOrder = $service->create(
             $stranger, $data['event'], $data['region']->fresh(), $data['team'], $data['player'],
             [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], (string) str()->uuid()
-        ));
+        );
+        $this->assertSame($stranger->id, $unlinkedOrder->user_id);
+        $this->assertSame($data['player']->id, $unlinkedOrder->player_id);
 
         $otherItem = ClothingItemType::create([
             'item_type_name' => 'Cap', 'price' => 230, 'region_id' => $data['region']->id,
@@ -94,6 +96,99 @@ class ClothingOrderIntegrityTest extends TestCase
         ));
 
         $this->assertDatabaseMissing('clothing_orders', ['request_token' => $token]);
+    }
+
+    public function test_published_roster_shows_a_labelled_clothing_action_when_ordering_is_open(): void
+    {
+        $data = $this->orderContext();
+        $data['team']->update(['published' => 1]);
+
+        $html = view('frontend.event.partials.profile-team', [
+            'team' => $data['team']->fresh()->load('teamPlayers.player.users'),
+            'region' => $data['region']->fresh(),
+            'event' => $data['event']->fresh(),
+        ])->render();
+
+        $this->assertStringContainsString('Order clothing', $html);
+        $this->assertStringContainsString('class="btn btn-sm btn-outline-secondary clothing-order"', $html);
+    }
+
+    public function test_clothing_modal_has_a_server_generated_request_token_and_submit_fallback(): void
+    {
+        $html = view('frontend.event.partials._clothing_order_modal')->render();
+
+        $this->assertMatchesRegularExpression(
+            '/name="request_token"\s+id="clothing_request_token"\s+value="[0-9a-f-]{36}"/i',
+            $html
+        );
+        $this->assertStringContainsString("form.addEventListener('submit'", $html);
+        $this->assertStringContainsString("modal.addEventListener('show.bs.modal'", $html);
+    }
+
+    public function test_order_form_lists_the_inclusive_customer_unit_price(): void
+    {
+        $data = $this->orderContext();
+
+        $this->actingAs($data['user'])
+            ->post(route('get.region.clothing.items'), ['region' => $data['region']->id])
+            ->assertOk()
+            ->assertSee('R385.78')
+            ->assertSee('data-price="370"', false);
+    }
+
+    public function test_customer_checkout_never_displays_the_internal_payment_fee_breakdown(): void
+    {
+        $data = $this->orderContext();
+        $order = app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], (string) str()->uuid()
+        )->load('items.order.player');
+        $payfast = new class {
+            public function getForm(): string
+            {
+                return '<form id="payfastForm"></form>';
+            }
+        };
+        $viewData = [
+            'items' => $order->items,
+            'payfast' => $payfast,
+            'order' => $order,
+            'total' => (float) $order->total,
+            'subtotal' => (float) $order->subtotal,
+            'payfastFee' => (float) $order->payfast_fee,
+        ];
+
+        $customerHtml = view('frontend.clothing.cart-clothing', $viewData)->render();
+        $this->assertStringNotContainsString('PayFast fee', $customerHtml);
+        $this->assertStringNotContainsString('Clothing subtotal', $customerHtml);
+        $this->assertStringContainsString('Total payable', $customerHtml);
+        $this->assertStringContainsString('R'.number_format((float) $order->total, 2), $customerHtml);
+        $this->assertStringContainsString('table-responsive d-none d-md-block', $customerHtml);
+        $this->assertStringContainsString('class="d-md-none"', $customerHtml);
+        $this->assertStringContainsString('d-grid d-sm-block', $customerHtml);
+    }
+
+    public function test_checkout_normalises_an_existing_pending_order_to_its_customer_total(): void
+    {
+        $data = $this->orderContext();
+        $token = (string) str()->uuid();
+        $order = app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], $token
+        );
+        $order->items()->update(['price' => 354.22, 'line_total' => 354.22]);
+
+        $this->actingAs($data['user'])->post(route('clothingOrder.store'), [
+            'player_id' => $data['player']->id,
+            'team_id' => $data['team']->id,
+            'event_id' => $data['event']->id,
+            'region_id' => $data['region']->id,
+            'request_token' => $token,
+            'items' => [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]],
+        ])->assertOk()
+            ->assertSee('R385.78')
+            ->assertDontSee('R354.22')
+            ->assertDontSee('PayFast fee');
     }
 
     public function test_payment_requires_exact_amount_and_is_idempotent(): void

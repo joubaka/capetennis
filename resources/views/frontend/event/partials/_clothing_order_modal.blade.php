@@ -44,9 +44,16 @@
         <input type="hidden" name="region_id" id="order_region_id">
         <input type="hidden" name="player_id" id="order_player_id">
         <input type="hidden" name="team_id" id="order_team_id">
-        <input type="hidden" name="request_token" id="clothing_request_token">
+        <input type="hidden"
+               name="request_token"
+               id="clothing_request_token"
+               value="{{ (string) \Illuminate\Support\Str::uuid() }}">
 
         <div class="modal-body">
+
+          <div class="alert alert-info py-2" role="note">
+            Any signed-in user may order for this player. The player does not need to be linked to your account.
+          </div>
 
           {{-- ITEMS (AJAX HTML INJECTED HERE) --}}
           <div id="clothingOrderList">
@@ -55,10 +62,7 @@
 
           {{-- TOTAL --}}
           <div class="border-top pt-3 mt-3">
-            <div class="d-flex justify-content-between"><span>Clothing subtotal</span><span id="orderSubtotal">R0.00</span></div>
-            <div class="d-flex justify-content-between text-muted mt-1"><span>PayFast fee</span><span id="orderPayfastFee">R0.00</span></div>
             <div class="d-flex justify-content-between fs-5 mt-2"><strong>Total payable</strong><strong id="orderTotal">R0.00</strong></div>
-            <div class="form-text">Calculated from the current PayFast settings.</div>
           </div>
 
         </div>
@@ -87,14 +91,34 @@
 {{-- ROUTE --}}
 <script>
   window.CLOTHING_ITEMS_URL = @json(route('get.region.clothing.items'));
-  $(document).on('click', '.clothing-order', function () {
-    const token = window.crypto?.randomUUID?.()
-      || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (char) {
+
+  (function () {
+    const tokenInput = document.getElementById('clothing_request_token');
+    const modal = document.getElementById('clothing-order-modal');
+    const form = document.getElementById('clothingOrderForm');
+
+    if (!tokenInput || !modal || !form) return;
+
+    const generateToken = function () {
+      if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (char) {
         const random = Math.random() * 16 | 0;
         return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
       });
-    $('#clothing_request_token').val(token);
-  });
+    };
+
+    const refreshToken = function () {
+      tokenInput.value = generateToken();
+    };
+
+    // Generate a fresh idempotency key for each checkout attempt. The submit
+    // safeguard also covers keyboard submission or a missed modal event.
+    modal.addEventListener('show.bs.modal', refreshToken);
+    form.addEventListener('submit', function () {
+      if (!tokenInput.value) refreshToken();
+    });
+  })();
 </script>
 
 

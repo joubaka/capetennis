@@ -15,7 +15,7 @@
                for="item-{{ $item->id }}">
           {{ $item->item_type_name }}
           <span class="text-muted ms-2">
-            (R{{ number_format($item->price, 2) }})
+            (R{{ number_format($item->customer_price, 2) }})
           </span>
         </label>
       </div>

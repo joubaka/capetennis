@@ -99,13 +99,41 @@ class ClothingOrderController extends Controller
     }
 
     return view('frontend.clothing.cart-clothing', [
-      'items' => $order->items,
+      'items' => $this->customerFacingItems($order),
       'payfast' => $payfast,
       'order' => $order,
       'total' => (float) $order->total,
       'subtotal' => (float) $order->subtotal,
       'payfastFee' => (float) $order->payfast_fee,
     ]);
+  }
+
+  /**
+   * Older pending orders snapshot the internal amount on each line. Present
+   * those rows using the already-locked payable total without mutating history.
+   */
+  private function customerFacingItems(ClothingOrder $order): \Illuminate\Support\Collection
+  {
+    $items = $order->items->map(fn (ClothingOrderItem $item) => clone $item)->values();
+    $storedTotal = round((float) $items->sum(fn (ClothingOrderItem $item) => (float) $item->line_total), 2);
+    $payableTotal = round((float) $order->total, 2);
+
+    if ($items->isEmpty() || abs($storedTotal - $payableTotal) < 0.01 || $storedTotal <= 0) {
+      return $items;
+    }
+
+    $remaining = $payableTotal;
+    $items->each(function (ClothingOrderItem $item, int $index) use ($items, $storedTotal, $payableTotal, &$remaining): void {
+      $lineTotal = $index === $items->count() - 1
+        ? $remaining
+        : round($payableTotal * ((float) $item->line_total / $storedTotal), 2);
+      $quantity = max(1, (int) $item->qty);
+      $item->line_total = round($lineTotal, 2);
+      $item->price = round($lineTotal / $quantity, 2);
+      $remaining = round($remaining - $lineTotal, 2);
+    });
+
+    return $items;
   }
 
   /**

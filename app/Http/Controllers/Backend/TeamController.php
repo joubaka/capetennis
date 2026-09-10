@@ -367,9 +367,9 @@ class TeamController extends Controller
     $event = \App\Models\Event::findOrFail($eventId);
 
     try {
-      app(ExternalTeamRosterService::class)->assertCanRegister($user, $event, $team, $player);
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
-        ->assertPaymentOpen($event->id, $team->id, $player->id);
+        ->beginRegistration($event->id, $team->id, $player->id, $user);
+      app(ExternalTeamRosterService::class)->assertCanRegister($user, $event, $team, $player);
     } catch (\Illuminate\Validation\ValidationException $exception) {
       return redirect()->back()->withErrors($exception->errors());
     } catch (\RuntimeException $exception) {

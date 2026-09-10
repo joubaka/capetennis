@@ -303,8 +303,8 @@ class RankingListDetailService
     }
 
     /**
-     * Build admin decision cards only for groups still tied after the normal
-     * third-event comparison, including groups with no head-to-head evidence.
+     * Build admin decision cards for unresolved ties and overridable automatic
+     * two-player third-score decisions.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -314,16 +314,7 @@ class RankingListDetailService
         $decisionGroups = $rankings
             ->filter(fn ($ranking) => ! empty($ranking->meta_json['tie_decision']['tie_key']))
             ->groupBy(fn ($ranking) => (string) $ranking->meta_json['tie_decision']['tie_key'])
-            ->filter(function (Collection $group): bool {
-                if ($group->count() <= 1) {
-                    return false;
-                }
-
-                $decision = $group->first()->meta_json['tie_decision'] ?? [];
-
-                return ($decision['suggested_method'] ?? null) !== 'third_event_score'
-                    || $group->pluck('rank_position')->unique()->count() < $group->count();
-            });
+            ->filter(fn (Collection $group): bool => $group->count() > 1);
         $legacyGroups = $rankings
             ->filter(fn ($ranking) => empty($ranking->meta_json['tie_decision']['tie_key']))
             ->groupBy(fn ($ranking) => $this->tieKey((int) $ranking->ranking_list_id, (int) $ranking->total_points))
@@ -338,8 +329,9 @@ class RankingListDetailService
                     fn ($ranking) => ! empty($ranking->meta_json['head_to_head_decision'])
                 );
                 $hasSharedRank = $group->pluck('rank_position')->unique()->count() < $group->count();
+                $hasAutomaticThirdScoreComparison = $this->usesAutomaticThirdScoreComparison($group);
 
-                return $hasHeadToHead || $hasSharedRank;
+                return $hasHeadToHead || $hasSharedRank || $hasAutomaticThirdScoreComparison;
             });
         $groups = $decisionGroups->toBase()->merge($legacyGroups->toBase());
 
@@ -361,6 +353,7 @@ class RankingListDetailService
                 (int) $orderedRows->first()->total_points
             );
             $evidence = $headToHead[$evidenceKey] ?? null;
+            $usesAutomaticThirdScore = $this->usesAutomaticThirdScoreComparison($orderedRows);
             $players = $orderedRows->map(function ($ranking) use ($scoreDetails): array {
                 $eventScores = collect($scoreDetails[$ranking->id] ?? [])->map(fn (array $leg) => [
                     'event_name' => (string) ($leg['event']?->name ?? 'Event unavailable'),
@@ -387,7 +380,8 @@ class RankingListDetailService
                 'players' => $players,
                 'suggested_order' => $decision['suggested_order']
                     ?? $orderedRows->pluck('player_id')->map(fn ($id) => (int) $id)->values()->all(),
-                'suggested_method' => $decision['suggested_method'] ?? ($legacyHeadToHead ? 'head_to_head' : 'manual'),
+                'suggested_method' => $decision['suggested_method']
+                    ?? ($legacyHeadToHead ? 'head_to_head' : ($usesAutomaticThirdScore ? 'third_event_score' : 'manual')),
                 'reason' => $decision['reason'] ?? ($legacyHeadToHead ? 'head_to_head' : null),
                 'note' => $decision['note'] ?? null,
                 'confirmed_order' => $decision['confirmed_order'] ?? null,
@@ -422,6 +416,17 @@ class RankingListDetailService
     private function tieKey(int $categoryId, int $points): string
     {
         return $categoryId.':'.$points;
+    }
+
+    private function usesAutomaticThirdScoreComparison(Collection $group): bool
+    {
+        return $group->count() === 2 && $group->every(function ($ranking): bool {
+            $meta = is_array($ranking->meta_json) ? $ranking->meta_json : [];
+
+            return collect($meta['tiebreak_notes'] ?? [])->contains(
+                fn ($note) => str_contains((string) $note, 'compared by third-event score')
+            );
+        });
     }
 
     private function rankingThirdScore($ranking): int

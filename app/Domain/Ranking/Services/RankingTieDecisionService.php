@@ -78,6 +78,11 @@ final class RankingTieDecisionService
             if ($reason === 'other' && $note === '') {
                 throw new \RuntimeException('A custom note is required when Other is selected.');
             }
+            $overridesAutomaticMethod = ($decision['suggested_method'] ?? null) === 'third_event_score'
+                && $reason !== 'third_event_score';
+            if ($overridesAutomaticMethod && $note === '') {
+                throw new \RuntimeException('Explain why the automatic third-event score tie-break is being changed.');
+            }
 
             $wasConfirmed = ! empty($decision['confirmed_at']);
             $previousDecision = $wasConfirmed ? $decision : null;
@@ -131,7 +136,7 @@ final class RankingTieDecisionService
                 'confirmed_at' => $confirmedAt->toIso8601String(),
             ]);
             $startRank = (int) $rows->min('rank_position');
-            $displayNote = $this->displayNote($reason, $note);
+            $displayNote = $this->displayNote($reason, $note, $decision['suggested_method'] ?? null);
 
             foreach ($rows as $row) {
                 $freshMeta = $row->fresh()->meta_json;
@@ -140,7 +145,10 @@ final class RankingTieDecisionService
                     $freshMeta['head_to_head_decision'] = $headToHead;
                 }
                 $notes = collect($freshMeta['tiebreak_notes'] ?? [])
-                    ->reject(fn ($existing) => str_starts_with((string) $existing, 'Tie broken by '))
+                    ->reject(fn ($existing) => str_starts_with((string) $existing, 'Tie broken by ')
+                        || str_starts_with((string) $existing, 'Tie-break manually changed from '))
+                    ->reject(fn ($existing) => $overridesAutomaticMethod
+                        && str_contains((string) $existing, 'compared by third-event score'))
                     ->values()
                     ->push($displayNote)
                     ->all();
@@ -268,7 +276,7 @@ final class RankingTieDecisionService
         }
     }
 
-    private function displayNote(string $reason, string $note): string
+    private function displayNote(string $reason, string $note, ?string $suggestedMethod): string
     {
         $label = match ($reason) {
             'head_to_head' => 'qualifying head-to-head',
@@ -278,7 +286,11 @@ final class RankingTieDecisionService
             default => 'administrator decision',
         };
 
-        return 'Tie broken by '.$label.' — administrator confirmed.'
+        $prefix = $suggestedMethod === 'third_event_score' && $reason !== 'third_event_score'
+            ? 'Tie-break manually changed from third-event score to '.$label.' — administrator confirmed.'
+            : 'Tie broken by '.$label.' — administrator confirmed.';
+
+        return $prefix
             .($note !== '' ? ' '.$note : '');
     }
 }

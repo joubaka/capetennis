@@ -83,9 +83,9 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->actingAs($admin)
             ->get(route('backend.region.clothing.edit', $target))
             ->assertOk()
-            ->assertSee('Customer price preview')
-            ->assertSee('PayFast fee')
-            ->assertSee('Customer pays')
+            ->assertSee('Set the total fee')
+            ->assertSee('PayFast included')
+            ->assertSee('Net clothing amount')
             ->assertSee('Copy and review last year’s clothing')
             ->assertSee('Overberg Primary Schools 2025')
             ->assertSee('Overberg Hoodie')
@@ -279,7 +279,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
 
         $this->assertSame(400.00, $pricing['total']);
         $this->assertSame($savedPrice, $pricing['subtotal']);
-        $this->assertEqualsWithDelta(400.00 - $savedPrice, $pricing['payfast_fee'], 0.001);
+        $this->assertEqualsWithDelta(400.00 - $pricing['payfast_fee'], $savedPrice, 0.001);
     }
 
     private function authorizedAdminForRegion(TeamRegion $region, int $year): User

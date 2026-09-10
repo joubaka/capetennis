@@ -10,8 +10,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('clothing_orders', function (Blueprint $table): void {
-            $table->decimal('subtotal', 10, 2)->default(0)->after('town_text');
-            $table->decimal('payfast_fee', 10, 2)->default(0)->after('subtotal');
+            // Clean installations do not necessarily have the legacy address
+            // columns, so these fields must not depend on town_text existing.
+            $table->decimal('subtotal', 10, 2)->default(0);
+            $table->decimal('payfast_fee', 10, 2)->default(0);
         });
 
         DB::table('clothing_orders')->update([

@@ -14,32 +14,49 @@ use App\Models\RegistrationOrderItems;
 use App\Models\User;
 use App\Services\Masters\MastersInvitationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class MastersPaymentReconciliationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_only_an_account_linked_to_the_invited_player_can_view_or_respond(): void
+    public function test_register_starts_masters_payment_without_a_separate_acceptance(): void
     {
-        [$invitation, $owner] = $this->invitationScenario();
+        [$invitation] = $this->invitationScenario();
+        $otherUser = User::factory()->create();
+
+        $this->get(route('masters.invitations.show', $invitation))
+            ->assertRedirect();
+        $this->actingAs($otherUser)
+            ->get(route('masters.invitations.show', $invitation))
+            ->assertOk()
+            ->assertSee('Register and pay with PayFast')
+            ->assertDontSee('accept the invitation', false);
+        $response = $this->actingAs($otherUser)
+            ->post(route('masters.invitations.accept', $invitation))
+            ->assertRedirect();
+
+        $this->assertStringContainsString('/registration/checkout/', $response->headers->get('Location'));
+        $this->assertSame(MastersInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertDatabaseHas('registration_orders', [
+            'id' => $invitation->fresh()->order_id,
+            'user_id' => $otherUser->id,
+        ]);
+    }
+
+    public function test_any_authenticated_account_can_decline_an_invitation(): void
+    {
+        Queue::fake();
+        [$invitation] = $this->invitationScenario();
         $otherUser = User::factory()->create();
 
         $this->actingAs($otherUser)
-            ->get(route('masters.invitations.show', $invitation))
-            ->assertForbidden();
-        $this->actingAs($otherUser)
-            ->post(route('masters.invitations.accept', $invitation))
-            ->assertForbidden();
-        $this->actingAs($otherUser)
-            ->post(route('masters.invitations.decline', $invitation))
-            ->assertForbidden();
+            ->post(route('masters.invitations.decline', $invitation), ['reason' => 'Unavailable'])
+            ->assertRedirect();
 
-        $this->assertSame(MastersInvitation::INVITED, $invitation->fresh()->status);
-        $this->assertDatabaseCount('registration_orders', 0);
-        $this->actingAs($owner)
-            ->get(route('masters.invitations.show', $invitation))
-            ->assertOk();
+        $this->assertSame(MastersInvitation::DECLINED, $invitation->fresh()->status);
+        $this->assertSame($otherUser->id, $invitation->fresh()->declined_by_user_id);
     }
 
     public function test_accepting_an_invitation_does_not_create_an_active_entry_before_payment(): void

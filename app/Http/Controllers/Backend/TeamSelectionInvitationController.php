@@ -44,6 +44,9 @@ class TeamSelectionInvitationController extends Controller
         $announcementRecipients = $eventRegions->mapWithKeys(fn (EventRegion $item) => [
             $item->id => $this->announcementRecipients($event, $item),
         ]);
+        $regionRosterRecipients = $eventRegions->mapWithKeys(fn (EventRegion $item) => [
+            $item->id => $this->rosterRecipients($event, $item),
+        ]);
         $eventYear = (int) ($event->start_date?->format('Y') ?: date('Y'));
         $series = Series::query()->where('year', $eventYear)->orderBy('name')->get();
         $readySeriesIds = $series->filter(function (Series $item): bool {
@@ -59,7 +62,7 @@ class TeamSelectionInvitationController extends Controller
                 $eventRegion->rankingSource->id => $service->categorySetup($eventRegion->rankingSource),
             ]);
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients'));
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients'));
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)
@@ -313,30 +316,33 @@ class TeamSelectionInvitationController extends Controller
         $query = trim($data['q']);
 
         $existingPlayerIds = $selectionImport->invitations()->pluck('player_id');
+        $searchTerms = preg_split('/\s+/u', $query, -1, PREG_SPLIT_NO_EMPTY) ?: [$query];
         $players = Player::query()->with(['user:id,email', 'users:id,email'])
             ->whereNotIn('id', $existingPlayerIds)
-            ->where(function ($playerQuery) use ($query): void {
-                $playerQuery->where('name', 'like', "%{$query}%")
-                    ->orWhere('surname', 'like', "%{$query}%")
-                    ->orWhere('email', 'like', "%{$query}%")
-                    ->orWhere('cellNr', 'like', "%{$query}%")
-                    ->orWhereHas('user', fn ($userQuery) => $userQuery->where('email', 'like', "%{$query}%"))
-                    ->orWhereHas('users', fn ($userQuery) => $userQuery->where('email', 'like', "%{$query}%"));
+            ->where(function ($playerQuery) use ($searchTerms): void {
+                foreach ($searchTerms as $term) {
+                    $playerQuery->where(function ($termQuery) use ($term): void {
+                        $termQuery->where('name', 'like', "%{$term}%")
+                            ->orWhere('surname', 'like', "%{$term}%")
+                            ->orWhere('email', 'like', "%{$term}%")
+                            ->orWhere('cellNr', 'like', "%{$term}%")
+                            ->orWhereHas('user', fn ($userQuery) => $userQuery->where('email', 'like', "%{$term}%"))
+                            ->orWhereHas('users', fn ($userQuery) => $userQuery->where('email', 'like', "%{$term}%"));
+                    });
+                }
             })
             ->orderBy('surname')->orderBy('name')->limit(40)->get()
-            ->map(function (Player $player): ?array {
-                $email = collect([$player->user?->email])
+            ->map(function (Player $player): array {
+                $email = collect([$player->user?->email, $player->email])
                     ->merge($player->users->pluck('email'))
                     ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
-                if (! $email) {
-                    return null;
-                }
+                $contact = $email ?: (filled($player->cellNr) ? $player->cellNr : 'No email or cell');
 
                 return [
                     'id' => $player->id,
-                    'text' => trim($player->full_name).' · '.$email,
+                    'text' => trim($player->full_name).' · '.$contact,
                 ];
-            })->filter()->take(20)->values();
+            })->take(20)->values();
 
         return response()->json(['results' => $players]);
     }
@@ -388,44 +394,41 @@ class TeamSelectionInvitationController extends Controller
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
         $data = $request->validate([
-            'target_type' => ['required', 'in:team,player'],
-            'team_id' => ['required', 'integer', 'exists:teams,id'],
+            'target_type' => ['required', 'in:region,team,player'],
+            'team_id' => ['nullable', 'required_unless:target_type,region', 'integer', 'exists:teams,id'],
             'invitation_id' => ['nullable', 'integer', 'exists:team_selection_invitations,id'],
             'subject' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:20000'],
             'confirm_recipients' => ['accepted'],
+            'recipient_hash' => ['nullable', 'string', 'size:64'],
         ]);
-        $team = Team::query()->withoutGlobalScopes()->with('category.event')->findOrFail($data['team_id']);
-        abort_unless((int) $team->region_id === (int) $eventRegion->region_id
-            && (int) $team->category?->event_id === (int) $event->id, 404);
 
-        $invitations = TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
-            ->where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
-            ->where('team_id', $team->id)
-            ->whereIn('status', [
-                TeamSelectionInvitation::INVITED,
-                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
-                TeamSelectionInvitation::PAID_CONFIRMED,
-            ]);
-        if ($data['target_type'] === 'player') {
-            $invitations->whereKey((int) ($data['invitation_id'] ?? 0));
+        $team = null;
+        if ($data['target_type'] !== 'region') {
+            $team = Team::query()->withoutGlobalScopes()->with('category.event')->findOrFail($data['team_id']);
+            abort_unless((int) $team->region_id === (int) $eventRegion->region_id
+                && (int) $team->category?->event_id === (int) $event->id, 404);
         }
-        $targets = $invitations->get();
-        abort_if($targets->isEmpty(), 404);
-        $recipients = $targets->map(function (TeamSelectionInvitation $invitation): array {
-            $email = collect([
-                $invitation->player?->user?->email,
-                $invitation->player?->email,
-            ])->merge($invitation->player?->users?->pluck('email') ?? collect())
-                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
 
-            return ['email' => $email, 'name' => $invitation->player?->full_name];
-        })->filter(fn (array $recipient) => filled($recipient['email']))->unique('email')->values();
+        $invitationId = $data['target_type'] === 'player' ? (int) ($data['invitation_id'] ?? 0) : null;
+        $recipients = $this->rosterRecipients($event, $eventRegion, $team?->id, $invitationId);
         if ($recipients->isEmpty()) {
             throw ValidationException::withMessages(['message' => 'No active selected recipient has a valid email address.']);
         }
-        $related = $data['target_type'] === 'player' ? $targets->first() : $team;
-        $stats = $mailer->dispatch('team_email', $related, $recipients, [
+        if ($data['target_type'] === 'region') {
+            $currentHash = hash('sha256', $recipients->pluck('email')->toJson());
+            if (! hash_equals($currentHash, (string) ($data['recipient_hash'] ?? ''))) {
+                throw ValidationException::withMessages(['confirm_recipients' => 'The regional recipient list changed. Review the current list and confirm again.']);
+            }
+        }
+
+        $related = $data['target_type'] === 'region'
+            ? $eventRegion
+            : ($data['target_type'] === 'player'
+                ? TeamSelectionInvitation::query()->findOrFail($invitationId)
+                : $team);
+        $mailType = $data['target_type'] === 'region' ? 'region_email' : 'team_email';
+        $stats = $mailer->dispatch($mailType, $related, $recipients, [
             'subject' => trim($data['subject']),
             'message' => $data['message'],
             'from_name' => $request->user()->name ?: 'Regional team manager',
@@ -433,9 +436,11 @@ class TeamSelectionInvitationController extends Controller
         ], true);
         activity('team-selection')->performedOn($related)->causedBy($request->user())
             ->withProperties(['target_type' => $data['target_type'], 'queued' => $stats['queued'], 'region_id' => $eventRegion->region_id])
-            ->log('regional manager emailed selected team roster');
+            ->log($data['target_type'] === 'region'
+                ? 'regional manager emailed all active selected players in region'
+                : 'regional manager emailed selected team roster');
 
-        return back()->with('success', "Queued {$stats['queued']} roster email(s).");
+        return back()->with('success', "Queued {$stats['queued']} email(s) for active selected player(s).");
     }
 
     public function storeAnnouncement(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
@@ -559,6 +564,35 @@ class TeamSelectionInvitationController extends Controller
             ->map(fn ($email) => mb_strtolower(trim((string) $email)))
             ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
             ->unique()->sort()->values();
+    }
+
+    private function rosterRecipients(Event $event, EventRegion $eventRegion, ?int $teamId = null, ?int $invitationId = null)
+    {
+        return TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
+            ->where('event_id', $event->id)
+            ->where('region_id', $eventRegion->region_id)
+            ->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ])
+            ->when($teamId, fn ($query) => $query->where('team_id', $teamId))
+            ->when($invitationId, fn ($query) => $query->whereKey($invitationId))
+            ->get()
+            ->map(function (TeamSelectionInvitation $invitation): array {
+                $email = collect([
+                    $invitation->player?->user?->email,
+                    $invitation->player?->email,
+                ])->merge($invitation->player?->users?->pluck('email') ?? collect())
+                    ->map(fn ($candidate) => mb_strtolower(trim((string) $candidate)))
+                    ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+
+                return ['email' => $email, 'name' => $invitation->player?->full_name];
+            })
+            ->filter(fn (array $recipient) => filled($recipient['email']))
+            ->unique('email')
+            ->sortBy('email')
+            ->values();
     }
 
     private function communicationData(Request $request): array

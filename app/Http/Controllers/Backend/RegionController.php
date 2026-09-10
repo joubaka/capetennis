@@ -106,6 +106,10 @@ class RegionController extends Controller
       ->orderBy('ordering')
       ->get();
 
+    $clothingItems->each(function (ClothingItemType $item) use ($prices): void {
+      $item->setAttribute('customer_price', $prices->totals((float) $item->price)['total']);
+    });
+
     return view('frontend.clothing.partials.items', [
       'clothingItems' => $clothingItems,
       'payfastSettings' => $prices->settings(),

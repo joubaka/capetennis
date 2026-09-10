@@ -83,6 +83,7 @@
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
+      @php($regionRosterEmailRecipients = $regionRosterRecipients->get($eventRegion->id, collect()))
       <div
         id="region-panel-{{ $eventRegion->id }}"
         class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
@@ -135,7 +136,15 @@
 
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Regional teams &amp; players</strong><div class="small text-muted">This mirrors the host roster view. Ranking positions, selection history and payment state are shown as read-only records.</div></div>
-              <span class="badge bg-label-warning">Region-scoped workspace</span>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                @if($activeImport?->status === 'draft')
+                  <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
+                @endif
+                @if($regionRosterEmailRecipients->isNotEmpty())
+                  <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="region" data-recipient="{{ $regionRosterEmailRecipients->count() }} active selected player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $regionRosterEmailRecipients->pluck('email')->toJson()) }}"><i class="ti ti-mail me-1"></i>Email all players in region</button>
+                @endif
+                <span class="badge bg-label-warning">Region-scoped workspace</span>
+              </div>
             </div>
 
             @if($regionTeams->isNotEmpty())
@@ -198,12 +207,15 @@
                                 @php($recipientEmail = $recipientEmailFor($invitation))
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
                                 @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
+                                @php($isInactive = in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) || (!$isReserve && !$invitation->roster_rank))
+                                @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
+                                @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
-                                  <td><span class="badge {{ $isReserve ? 'bg-label-warning' : 'bg-label-primary' }}">{{ $isReserve ? 'Reserve '.$invitation->queue_position : 'Rank '.$invitation->roster_rank }}</span></td>
+                                  <td><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
                                   <td><div>{{ $recipientEmail ?: 'Account link required' }}</div><div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div></td>
                                   <td>@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
-                                  <td><span class="badge bg-label-{{ $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info') }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
+                                  <td><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
                                   <td>
                                     <div>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</div>
                                     @if($activeImport->status === 'sent' && !$isReserve)
@@ -396,10 +408,12 @@
           <input type="hidden" name="target_type" value="team" data-roster-email-target>
           <input type="hidden" name="team_id" data-roster-email-team>
           <input type="hidden" name="invitation_id" data-roster-email-invitation>
+          <input type="hidden" name="recipient_hash" data-roster-email-hash>
           <div class="modal-header"><div><h5 class="modal-title">Email selected roster</h5><div class="small text-muted" data-roster-email-recipient></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
             <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
+            <details class="mb-3 d-none" data-roster-region-review><summary>Review all {{ $regionRosterEmailRecipients->count() }} exact regional recipient(s)</summary><div class="small text-muted mt-2">@foreach($regionRosterEmailRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
             <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm the recipient details above are correct</label></div>
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
@@ -547,7 +561,9 @@ document.addEventListener('DOMContentLoaded', function () {
       modal.querySelector('[data-roster-email-target]').value = button.dataset.targetType || 'team';
       modal.querySelector('[data-roster-email-team]').value = button.dataset.teamId || '';
       modal.querySelector('[data-roster-email-invitation]').value = button.dataset.invitationId || '';
+      modal.querySelector('[data-roster-email-hash]').value = button.dataset.recipientHash || '';
       modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
+      modal.querySelector('[data-roster-region-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'region');
     });
   });
 

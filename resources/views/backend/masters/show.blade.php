@@ -129,8 +129,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const deadlineHints = {
-    response_deadline: 'The last date and time for the player to accept or decline the invitation.',
-    payment_deadline: 'The last date and time for an accepted player to complete payment and secure their place.',
+    response_deadline: 'The last date and time for the selected player to register or report that they are unavailable.',
+    payment_deadline: 'The last date and time for a player who started registration to complete payment and secure their place.',
     replacement_payment_deadline: 'The last date and time a replacement player may complete payment after being invited.'
   };
   Object.entries(deadlineHints).forEach(function ([name, hint]) {

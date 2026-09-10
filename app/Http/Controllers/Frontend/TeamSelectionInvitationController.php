@@ -29,10 +29,19 @@ class TeamSelectionInvitationController extends Controller
         return view('frontend.team-selection.index', compact('invitations'));
     }
 
-    public function show(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    public function show(Request $request, TeamSelectionInvitation $invitation)
     {
         $invitation->load(['selectionImport.event', 'region.clothingItems.sizes', 'team', 'player']);
-        $service->authorizePlayer($invitation, $request->user());
+        if ($request->query('action') === 'pay' && in_array($invitation->status, [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+        ], true)) {
+            return redirect()->route('team.payment.payfast', [
+                'team' => $invitation->team_id,
+                'player' => $invitation->player_id,
+                'event' => $invitation->event_id,
+            ]);
+        }
         $canOrderClothing = $this->canOrderClothing($invitation);
         $clothingOrders = ClothingOrder::query()
             ->where('event_id', $invitation->event_id)
@@ -76,15 +85,17 @@ class TeamSelectionInvitationController extends Controller
             : 'Your unavailability was recorded.');
     }
 
-    public function clothing(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service, ClothingPriceService $prices)
+    public function clothing(Request $request, TeamSelectionInvitation $invitation, ClothingPriceService $prices)
     {
         $invitation->load(['selectionImport.event', 'region.clothingItems.sizes', 'team', 'player']);
-        $service->authorizePlayer($invitation, $request->user());
         abort_unless($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED, 403, 'Complete event payment before ordering clothing.');
         abort_unless($this->canOrderClothing($invitation), 404);
         $items = $invitation->region->clothingItems
             ->filter(fn ($item) => (float) $item->price > 0 && $item->sizes->isNotEmpty())
             ->sortBy('ordering')->values();
+        $items->each(function ($item) use ($prices): void {
+            $item->setAttribute('customer_price', $prices->totals((float) $item->price)['total']);
+        });
         $requestToken = (string) Str::uuid();
         $payfastSettings = $prices->settings();
 

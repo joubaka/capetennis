@@ -6,6 +6,7 @@ namespace App\Services\TeamSelection;
 
 use App\Domain\Payments\Services\TeamPaymentService;
 use App\Domain\Teams\Services\ExternalTeamRosterService;
+use App\Services\Clothing\ClothingPriceService;
 use App\Jobs\SendTeamSelectionInvitationEmailJob;
 use App\Models\BulkEmailLog;
 use App\Models\TeamPaymentOrder;
@@ -15,20 +16,12 @@ use App\Models\TeamSelectionImport;
 use App\Models\TeamSelectionInvitation;
 use App\Models\Team;
 use App\Models\User;
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class TeamSelectionInvitationService
 {
-    public function authorizePlayer(TeamSelectionInvitation $invitation, User $user): void
-    {
-        $player = $invitation->relationLoaded('player') ? $invitation->player : $invitation->player()->first();
-        if (! $player || ((int) $player->userId !== (int) $user->id
-            && ! $player->users()->whereKey($user->id)->exists())) {
-            throw new AuthorizationException('This team invitation is not linked to your account.');
-        }
-    }
+    public function __construct(private ClothingPriceService $clothingPrices) {}
 
     public function send(TeamSelectionImport $import, array $deadlines, User $actor): array
     {
@@ -113,27 +106,24 @@ final class TeamSelectionInvitationService
 
     public function accept(TeamSelectionInvitation $invitation, User $user): TeamSelectionInvitation
     {
-        $this->authorizePlayer($invitation->loadMissing('player'), $user);
-
         return DB::transaction(function () use ($invitation, $user) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
-            if ($locked->selectionImport->status === 'sent'
-                && $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
+            if ($locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
                 if ($this->paymentDeadline($locked) && now()->gt($this->paymentDeadline($locked))) {
                     throw ValidationException::withMessages(['payment' => 'The payment deadline for this invitation has passed.']);
                 }
 
                 return $locked->fresh();
             }
-            if ($locked->selectionImport->status !== 'sent' || $locked->status !== TeamSelectionInvitation::INVITED) {
-                throw ValidationException::withMessages(['invitation' => 'This invitation is not available for acceptance.']);
+            if ($locked->status !== TeamSelectionInvitation::INVITED) {
+                throw ValidationException::withMessages(['invitation' => 'Registration is no longer available for this selected player.']);
             }
             if ($this->responseDeadline($locked) && now()->gt($this->responseDeadline($locked))) {
                 throw ValidationException::withMessages(['invitation' => 'The response deadline has passed.']);
             }
-            app(ExternalTeamRosterService::class)->assertCanRegister(
-                $user, $locked->selectionImport->event, $locked->team, $locked->player
+            app(ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister(
+                $locked->selectionImport->event, $locked->team, $locked->player
             );
             $locked->update([
                 'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -163,19 +153,21 @@ final class TeamSelectionInvitationService
         return $invitation?->fresh();
     }
 
-    public function assertPaymentOpen(int $eventId, int $teamId, int $playerId): void
+    public function beginRegistration(int $eventId, int $teamId, int $playerId, User $user): ?TeamSelectionInvitation
     {
         $invitation = TeamSelectionInvitation::query()->with('selectionImport')
             ->where('event_id', $eventId)->where('team_id', $teamId)->where('player_id', $playerId)
             ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT])
             ->latest('id')->first();
-        if (! $invitation) return;
+        if (! $invitation) return null;
         if ($invitation->status === TeamSelectionInvitation::INVITED) {
-            throw ValidationException::withMessages(['invitation' => 'Open your team invitation and accept the place before starting payment.']);
+            return $this->accept($invitation, $user);
         }
         if ($this->paymentDeadline($invitation) && now()->gt($this->paymentDeadline($invitation))) {
             throw ValidationException::withMessages(['payment' => 'The payment deadline for this team invitation has passed.']);
         }
+
+        return $invitation;
     }
 
     public function confirmPaidOrder(TeamPaymentOrder $order): void
@@ -203,15 +195,15 @@ final class TeamSelectionInvitationService
 
     public function decline(TeamSelectionInvitation $invitation, User $user, ?string $reason): ?TeamSelectionInvitation
     {
-        $this->authorizePlayer($invitation->loadMissing('player'), $user);
-
         return DB::transaction(function () use ($invitation, $user, $reason) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
-            if ($locked->selectionImport->status !== 'sent' || ! in_array($locked->status, [
+            if (! in_array($locked->status, [
                 TeamSelectionInvitation::INVITED,
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
             ], true)) {
-                throw ValidationException::withMessages(['invitation' => 'Only an unpaid invitation can be declined.']);
+                throw ValidationException::withMessages([
+                    'invitation' => 'This invitation is no longer awaiting payment. A paid registration must use the withdrawal process.',
+                ]);
             }
             $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
                 ? $this->paymentDeadline($locked)
@@ -244,7 +236,7 @@ final class TeamSelectionInvitationService
                 ->where('rank', $rank)->where('player_id', $locked->player_id)->lockForUpdate()->first();
             if ($slot) app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
 
-            $reserve = $this->promoteNextReserve($locked, $rank);
+            $reserve = $this->promoteNextReserve($locked, $rank, true);
             activity('team-selection')->performedOn($locked)->causedBy($user)
                 ->withProperties([
                     'replacement_id' => $reserve?->id,
@@ -601,13 +593,6 @@ final class TeamSelectionInvitationService
                 ->orderBy('queue_position')->lockForUpdate()->first();
             if (! $template) {
                 throw ValidationException::withMessages(['player_id' => 'Import the ranked player list for this team before adding another system profile.']);
-            }
-
-            $player->loadMissing(['user', 'users']);
-            $email = collect([$player->user?->email])->merge($player->users->pluck('email'))
-                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
-            if (! $email) {
-                throw ValidationException::withMessages(['player_id' => 'Select a player profile linked to a system account with a valid email address.']);
             }
 
             $queuePosition = (int) $lockedImport->invitations()->where('team_id', $lockedTeam->id)->max('queue_position') + 1;
@@ -1006,6 +991,9 @@ final class TeamSelectionInvitationService
                 ->whereHas('sizes')
                 ->exists();
         $includeClothing = (bool) ($details['include_clothing'] ?? false) && $clothingAvailable;
+        $eventVenues = $event
+            ? ($event->relationLoaded('venues') ? $event->getRelation('venues') : $event->venues()->get())
+            : collect();
         $eventDetails = [
             'name' => $event?->name,
             'published' => (bool) $event?->published,
@@ -1014,7 +1002,7 @@ final class TeamSelectionInvitationService
             'entry_fee' => (float) ($event?->entryFee ?? 0),
             'organizer' => $event?->organizer,
             'contact_email' => $event?->email,
-            'venues' => $event?->venues?->pluck('name')->filter()->values()->all() ?? [],
+            'venues' => $eventVenues->pluck('name')->filter()->values()->all(),
             'venue_notes' => trim((string) $event?->venue_notes),
             'public_url' => $event?->published ? route('events.show', $event) : null,
         ];
@@ -1024,7 +1012,7 @@ final class TeamSelectionInvitationService
                 ->sortBy('ordering')
                 ->map(fn ($item) => [
                     'name' => $item->item_type_name,
-                    'price' => (float) $item->price,
+                    'price' => $this->clothingPrices->totals((float) $item->price)['total'],
                     'sizes' => $item->sizes->sortBy('ordering')->pluck('size')->filter()->values()->all(),
                 ])->values()->all()
             : [];

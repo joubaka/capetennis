@@ -790,7 +790,8 @@ class RankingController extends Controller
     $facts = [['label' => 'Equal ranking total', 'value' => $total.' points']];
     $reason = $decision['reason'] ?? null;
 
-    if ($reason === 'head_to_head' || ($reason === null && ! empty($headToHead))) {
+    if ($reason === 'head_to_head'
+      || ($reason === null && empty($decision['tie_key']) && ! empty($headToHead))) {
       $facts[] = ['label' => 'Method', 'value' => 'Qualifying head-to-head'];
       if (! empty($headToHead['event_name'])) {
         $facts[] = ['label' => 'Event', 'value' => (string) $headToHead['event_name']];
@@ -807,11 +808,15 @@ class RankingController extends Controller
 
       $won = (int) ($headToHead['winner_player_id'] ?? 0) === (int) $ranking->player_id;
 
+      $wasThirdScoreOverride = ($decision['suggested_method'] ?? null) === 'third_event_score';
+
       return [
         'method' => 'Qualifying head-to-head',
-        'summary' => $won
-          ? 'The players remained equal after the third-event comparison. This player won the qualifying head-to-head, and the administrator confirmed the result.'
-          : 'The players remained equal after the third-event comparison. Their order was decided by the qualifying head-to-head and confirmed by the administrator.',
+        'summary' => $wasThirdScoreOverride
+          ? 'An administrator changed the automatic third-event score tie-break to the qualifying head-to-head result.'
+          : ($won
+            ? 'The players remained equal after the third-event comparison. This player won the qualifying head-to-head, and the administrator confirmed the result.'
+            : 'The players remained equal after the third-event comparison. Their order was decided by the qualifying head-to-head and confirmed by the administrator.'),
         'facts' => $facts,
       ];
     }

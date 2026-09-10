@@ -38,6 +38,24 @@
   .tie-order-grid { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: .5rem; align-items: center; }
   @media (max-width: 575.98px) { .tie-order-grid { grid-template-columns: minmax(0, 1fr) 88px; } }
   .tiebreak-note { font-size: .75rem; }
+  .tiebreak-note-action {
+    align-items: center;
+    background: rgba(var(--bs-primary-rgb), .06);
+    border: 1px solid rgba(var(--bs-primary-rgb), .28);
+    border-radius: 999px;
+    color: var(--bs-primary);
+    display: inline-flex;
+    gap: .25rem;
+    padding: .22rem .5rem;
+    text-align: left;
+    transition: background-color .15s ease, border-color .15s ease;
+  }
+  .tiebreak-note-action:hover,
+  .tiebreak-note-action:focus-visible {
+    background: rgba(var(--bs-primary-rgb), .12);
+    border-color: rgba(var(--bs-primary-rgb), .55);
+    color: var(--bs-primary);
+  }
   .ranking-process-step { border-left: 3px solid var(--bs-border-color); padding-left: .85rem; }
   .ranking-process-step.is-current { border-left-color: var(--bs-primary); }
   .ranking-process-step.is-complete { border-left-color: var(--bs-success); }
@@ -163,6 +181,7 @@
     .badge.bg-danger { background: #f8d7da !important; border-color: #dc3545; }
     .badge.bg-warning { background: #fff3cd !important; border-color: #ffc107; }
     .ranking-event-score { min-width: 0; box-shadow: none !important; transform: none !important; }
+    .tiebreak-note-action { background: transparent !important; border: 0 !important; color: #000 !important; padding: 0 !important; }
     .ranking-detailed-only { display: block !important; }
     .ranking-simple-only { display: none !important; }
     a { color: #000 !important; text-decoration: none !important; }
@@ -175,17 +194,19 @@
 <div class="container-xl print-area" id="ranking-list-page" data-ranking-view="detailed">
 
   @php
+    $requiresTieConfirmation = fn ($decision) => empty($decision['confirmed'])
+      && ($decision['suggested_method'] ?? null) !== 'third_event_score';
     $pendingTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
-      fn ($decision) => empty($decision['confirmed'])
+      $requiresTieConfirmation
     )->count();
     $legacyTieDecisions = collect($tieDecisionAdvisories ?? [])->filter(
       fn ($decision) => !empty($decision['requires_rebuild'])
     )->count();
     $firstPendingTie = collect($tieDecisionAdvisories ?? [])->first(
-      fn ($decision) => empty($decision['confirmed'])
+      $requiresTieConfirmation
     );
     $firstPendingTieGroupKey = collect($tieDecisionAdvisories ?? [])->search(
-      fn ($decision) => empty($decision['confirmed'])
+      $requiresTieConfirmation
     );
     $firstPendingTieAnchor = $firstPendingTie['tie_key'] ?? $firstPendingTieGroupKey;
     $workflowStep = match (true) {
@@ -487,7 +508,8 @@
                     ? ($nextMeta['tie_decision']['tie_key'] ?? ($nextRow->ranking_list_id.':'.$nextRow->total_points))
                     : null;
                   $isLastInTie = !$nextRow || $nextTieKey !== $tieKey;
-                  $tieDecision = $isLastInTie ? ($tieDecisionAdvisories[$tieKey] ?? null) : null;
+                  $rowTieDecision = $tieDecisionAdvisories[$tieKey] ?? null;
+                  $tieDecision = $isLastInTie ? $rowTieDecision : null;
                   $teamEligibility = $teamEligibilityByRanking[$row->id] ?? ['eligible' => true];
                 @endphp
 
@@ -573,26 +595,52 @@
                       @endforeach
                     </div>
                     @foreach($meta['tiebreak_notes'] ?? [] as $tiebreakNote)
-                      <div class="tiebreak-note text-muted mt-1">
-                        <i class="ti ti-scale me-1" aria-hidden="true"></i>{{ $tiebreakNote }}
-                      </div>
+                      @if($rowTieDecision)
+                        <button type="button"
+                                class="tiebreak-note tiebreak-note-action show-ranking-details mt-1"
+                                data-target="tie-decision-{{ $rowTieDecision['tie_key'] ?? $tieKey }}"
+                                title="{{ $activeStatus === 'calculated'
+                                  ? 'Open and edit this tie-break decision'
+                                  : ($activeStatus === 'reviewed'
+                                    ? 'Open correction options for this tie-break'
+                                    : 'View this tie-break decision') }}">
+                          <i class="ti ti-scale" aria-hidden="true"></i>
+                          <span>{{ $tiebreakNote }}</span>
+                          <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                        </button>
+                      @else
+                        <div class="tiebreak-note text-muted mt-1">
+                          <i class="ti ti-scale me-1" aria-hidden="true"></i>{{ $tiebreakNote }}
+                        </div>
+                      @endif
                     @endforeach
                   </td>
                 </tr>
 
                 @if($tieDecision)
-                  <tr class="tie-decision-note" id="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}">
+                  @php
+                    $isAutomaticTieDecision = !$tieDecision['confirmed']
+                      && $tieDecision['suggested_method'] === 'third_event_score';
+                    $tiePlayerIds = collect($tieDecision['players'])
+                      ->pluck('id')
+                      ->map(fn ($id) => (int) $id)
+                      ->sort()
+                      ->implode(',');
+                  @endphp
+                  <tr class="tie-decision-note"
+                      id="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}"
+                      data-tie-players="{{ $tiePlayerIds }}">
                     <td></td>
                     <td colspan="3">
                       <div class="ranking-simple-only small">
-                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} me-1">
-                          {{ $tieDecision['confirmed'] ? 'Tie confirmed' : 'Tie decision required' }}
+                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : ($isAutomaticTieDecision ? 'bg-info' : 'bg-warning text-dark') }} me-1">
+                          {{ $tieDecision['confirmed'] ? 'Tie confirmed' : ($isAutomaticTieDecision ? 'Automatic tie-break' : 'Tie decision required') }}
                         </span>
                         <button type="button" class="btn btn-link btn-sm p-0 align-baseline show-ranking-details" data-target="tie-decision-{{ $tieDecision['tie_key'] ?? $tieKey }}">View decision</button>
                       </div>
                       <div class="d-flex gap-2 align-items-start py-2 tie-decision-content ranking-detailed-only">
-                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : 'bg-warning text-dark' }} mt-1">
-                          {{ $tieDecision['confirmed'] ? 'Tie decision confirmed' : 'Confirmation required' }}
+                        <span class="badge {{ $tieDecision['confirmed'] ? 'bg-success' : ($isAutomaticTieDecision ? 'bg-info' : 'bg-warning text-dark') }} mt-1">
+                          {{ $tieDecision['confirmed'] ? 'Tie decision confirmed' : ($isAutomaticTieDecision ? 'Automatic tie-break' : 'Confirmation required') }}
                         </span>
                         <div class="flex-grow-1">
                           <div class="fw-semibold">
@@ -606,10 +654,20 @@
                                   default => 'administrator decision',
                                 };
                               @endphp
-                              Tie broken by {{ $reasonLabel }} — administrator confirmed.
+                              @if($tieDecision['suggested_method'] === 'third_event_score' && $tieDecision['reason'] !== 'third_event_score')
+                                Tie-break manually changed from third-event score to {{ $reasonLabel }} — administrator confirmed.
+                              @else
+                                Tie broken by {{ $reasonLabel }} — administrator confirmed.
+                              @endif
                               @if($tieDecision['note']) <span class="fw-normal">{{ $tieDecision['note'] }}</span> @endif
                             @elseif($tieDecision['requires_rebuild'])
-                              This legacy calculated tie has no run-scoped decision record. Rebuild the ranking before review.
+                              @if($activeStatus === 'reviewed')
+                                This reviewed ranking predates editable tie decisions. Create a fresh calculated run before changing this pair; any open participant-review circulation will be superseded.
+                              @else
+                                This legacy calculated tie has no run-scoped decision record. Rebuild the ranking before review.
+                              @endif
+                            @elseif($isAutomaticTieDecision)
+                              The equal ranking total was automatically separated by third-event score. You may retain it or manually override it below while this run is still calculated.
                             @else
                               This group is still tied after the normal third-event comparison and requires an administrator’s final decision before review, sharing, or publication.
                             @endif
@@ -660,24 +718,39 @@
                             </div>
                           @endif
 
+                          @if($tieDecision['requires_rebuild'] && in_array($activeStatus, ['calculated', 'reviewed'], true))
+                            <button type="button"
+                                    class="btn btn-sm btn-warning mt-3 rebuild-ranking"
+                                    data-open-tie-players="{{ $tiePlayerIds }}"
+                                    data-confirm="{{ $activeStatus === 'reviewed'
+                                      ? 'Create a fresh calculated ranking run to edit this tie? The reviewed run will be replaced and any open participant-review circulation will be superseded.'
+                                      : 'Rebuild this calculated ranking so this tie can be edited and audited?' }}">
+                              <i class="ti ti-refresh me-1" aria-hidden="true"></i>Rebuild and edit this tie-break
+                            </button>
+                          @endif
+
                           @if($activeStatus === 'calculated' && !$tieDecision['requires_rebuild'] && $tieDecision['tie_key'])
                             @php
                               $selectedTieOrder = $tieDecision['confirmed_order'] ?: $tieDecision['suggested_order'];
                               $selectedTieReason = $tieDecision['reason']
-                                ?: ($tieDecision['suggested_method'] === 'head_to_head' ? 'head_to_head' : 'previous_ranking');
+                                ?: (in_array($tieDecision['suggested_method'], ['head_to_head', 'third_event_score'], true)
+                                  ? $tieDecision['suggested_method']
+                                  : 'previous_ranking');
                             @endphp
-                            @if($tieDecision['confirmed'])
-                              <details class="mt-2">
-                                <summary class="btn btn-sm btn-outline-warning">
-                                  <i class="ti ti-edit me-1"></i>Edit tie decision
+                            @if($tieDecision['confirmed'] || $isAutomaticTieDecision)
+                              <details class="mt-2 tie-decision-editor">
+                                <summary class="btn btn-sm {{ $isAutomaticTieDecision ? 'btn-outline-primary' : 'btn-outline-warning' }}">
+                                  <i class="ti ti-edit me-1"></i>{{ $isAutomaticTieDecision ? 'Override tie-break' : 'Edit tie decision' }}
                                 </summary>
                             @endif
                             <form class="tie-decision-form border rounded p-3 mt-2 bg-white"
-                                  data-is-edit="{{ $tieDecision['confirmed'] ? '1' : '0' }}"
+                                  data-is-edit="{{ $tieDecision['confirmed'] || $isAutomaticTieDecision ? '1' : '0' }}"
                                   data-url="{{ route('ranking.series.ranking.tie-decision.confirm', [$series, $tieDecision['tie_key']]) }}">
                               <div class="small text-muted mb-2">
                                 @if($tieDecision['confirmed'])
                                   Change the final order, reason, or note below. This update will be recorded in the ranking audit history.
+                                @elseif($isAutomaticTieDecision)
+                                  The current order uses third-event score. Select a different supported reason and explain why the automatic tie-break must change. The original method and your change are retained in the audit history.
                                 @elseif($tieDecision['suggested_method'] === 'head_to_head')
                                   Suggested order uses the qualifying head-to-head shown above.
                                 @else
@@ -703,6 +776,9 @@
                                 <div class="col-md-5">
                                   <label class="form-label small fw-semibold">Reason</label>
                                   <select class="form-select form-select-sm tie-reason" required>
+                                    @if($tieDecision['suggested_method'] === 'third_event_score' || $selectedTieReason === 'third_event_score')
+                                      <option value="third_event_score" {{ $selectedTieReason === 'third_event_score' ? 'selected' : '' }}>Third-event score (automatic)</option>
+                                    @endif
                                     @if($tieDecision['head_to_head_decision'])
                                       <option value="head_to_head" {{ $selectedTieReason === 'head_to_head' ? 'selected' : '' }}>Qualifying head-to-head</option>
                                     @endif
@@ -712,15 +788,15 @@
                                   </select>
                                 </div>
                                 <div class="col-md-7">
-                                  <label class="form-label small fw-semibold">Decision note</label>
-                                  <textarea class="form-control form-control-sm tie-note" rows="2" maxlength="1000" placeholder="Add the reason or supporting context. Required when Other is selected.">{{ $tieDecision['note'] }}</textarea>
+                                  <label class="form-label small fw-semibold">Decision note / reason for change</label>
+                                  <textarea class="form-control form-control-sm tie-note" rows="2" maxlength="1000" placeholder="Explain the change. Required when overriding an automatic tie-break or selecting Other.">{{ $tieDecision['note'] }}</textarea>
                                 </div>
                               </div>
                               <button type="submit" class="btn btn-sm btn-warning mt-2">
-                                <i class="ti ti-check me-1"></i>{{ $tieDecision['confirmed'] ? 'Save tie decision changes' : 'Confirm final tie decision' }}
+                                <i class="ti ti-check me-1"></i>{{ $tieDecision['confirmed'] ? 'Save tie decision changes' : ($isAutomaticTieDecision ? 'Save tie-break override' : 'Confirm final tie decision') }}
                               </button>
                             </form>
-                            @if($tieDecision['confirmed'])
+                            @if($tieDecision['confirmed'] || $isAutomaticTieDecision)
                               </details>
                             @endif
                           @elseif($activeStatus === 'calculated' && !$tieDecision['confirmed'] && !$tieDecision['tie_key'] && !empty($tieDecision['head_to_head_decision']['fixture_id']))
@@ -871,11 +947,17 @@ rankingViewButtons.forEach(button => {
 document.querySelectorAll('.show-ranking-details').forEach(button => {
   button.addEventListener('click', () => {
     setRankingView('detailed');
-    window.requestAnimationFrame(() => document.getElementById(button.dataset.target)?.scrollIntoView({behavior: 'smooth', block: 'center'}));
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(button.dataset.target);
+      const editor = target?.querySelector('details.tie-decision-editor');
+      if (editor) editor.open = true;
+      target?.scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
   });
 });
 
 document.querySelectorAll('.rebuild-ranking').forEach(button => button.addEventListener('click', () => {
+  if (button.dataset.confirm && !window.confirm(button.dataset.confirm)) return;
   button.disabled = true;
 
   fetch('{{ route('ranking.series.rebuild', $series) }}', {
@@ -892,6 +974,13 @@ document.querySelectorAll('.rebuild-ranking').forEach(button => button.addEventL
     return payload;
   })
   .then(r => {
+    if (button.dataset.openTiePlayers) {
+      try {
+        window.sessionStorage.setItem('cape-tennis:open-ranking-tie', button.dataset.openTiePlayers);
+      } catch (error) {
+        // The rebuilt page still exposes the clickable tie-break when storage is unavailable.
+      }
+    }
     toastr.success(r.message);
     location.reload();
   })
@@ -900,6 +989,23 @@ document.querySelectorAll('.rebuild-ranking').forEach(button => button.addEventL
     button.disabled = false;
   });
 }));
+
+try {
+  const tiePlayersToOpen = window.sessionStorage.getItem('cape-tennis:open-ranking-tie');
+  if (tiePlayersToOpen) {
+    window.sessionStorage.removeItem('cape-tennis:open-ranking-tie');
+    const target = Array.from(document.querySelectorAll('.tie-decision-note'))
+      .find(row => row.dataset.tiePlayers === tiePlayersToOpen);
+    if (target) {
+      setRankingView('detailed');
+      const editor = target.querySelector('details.tie-decision-editor');
+      if (editor) editor.open = true;
+      window.requestAnimationFrame(() => target.scrollIntoView({behavior: 'smooth', block: 'center'}));
+    }
+  }
+} catch (error) {
+  // The normal ranking view remains available when browser storage is unavailable.
+}
 
 document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
   button.addEventListener('click', async () => {

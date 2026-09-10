@@ -627,7 +627,7 @@ $(document).ready(function () {
     $('#order_team_id').val(btn.dataset.team || '');
     $('#orderPlayerName').text(btn.dataset.name || '');
 
-    $('#orderSubtotal, #orderPayfastFee, #orderTotal').text('R0.00');
+    $('#orderTotal').text('R0.00');
     $('#clothingOrderList').html(
       '<div class="alert alert-info mb-0">Loading clothing…</div>'
     );
@@ -711,9 +711,7 @@ $(document).ready(function () {
     const fee = total > 0 && settings
       ? Math.round((((total * Number(settings.payfastPercentage) / 100) + Number(settings.payfastFlat)) * (1 + Number(settings.payfastVat) / 100)) * 100) / 100
       : 0;
-    console.log('[ClothingModal] pricing updated:', { subtotal: total, payfastFee: fee });
-    $('#orderSubtotal').text('R' + total.toFixed(2));
-    $('#orderPayfastFee').text('R' + fee.toFixed(2));
+    console.log('[ClothingModal] customer total updated:', total + fee);
     $('#orderTotal').text('R' + (total + fee).toFixed(2));
   }
 

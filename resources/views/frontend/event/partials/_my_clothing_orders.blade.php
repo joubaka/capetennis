@@ -6,12 +6,9 @@
   // precompute a grand total if prices are available
   $grandTotal = 0;
   foreach ($ordersToShow as $order) {
-    $orderTotal = 0;
-    foreach ($order->items as $it) {
-      $qty  = $it->qty ?? 1;
-      $unit = $it->price;
-      if (is_numeric($unit)) $orderTotal += $qty * $unit;
-    }
+    $orderTotal = is_numeric($order->total ?? null)
+      ? (float) $order->total
+      : (float) $order->items->sum(fn($it) => ($it->qty ?? 1) * (float) $it->price);
     $grandTotal += $orderTotal;
     $order->computed_total = $orderTotal; // attach for display
   }

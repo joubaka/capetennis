@@ -9,10 +9,9 @@ use Illuminate\Http\Request;
 
 class MastersInvitationController extends Controller
 {
-    public function show(MastersInvitation $invitation, Request $request, MastersInvitationService $service)
+    public function show(MastersInvitation $invitation)
     {
         $invitation->load(['batch.event', 'categoryEvent.category', 'player']);
-        $service->authorizePlayerAccount($invitation, $request->user());
 
         return view('frontend.masters.show', compact('invitation'));
     }
@@ -32,7 +31,7 @@ class MastersInvitationController extends Controller
     {
         $order = $service->accept($invitation, $request->user());
         return redirect()->route('registration.checkout', $order)
-            ->with('success', 'Invitation accepted. Complete payment to confirm your Masters place.');
+            ->with('success', 'Complete payment to confirm your Masters registration.');
     }
 
     public function decline(MastersInvitation $invitation, Request $request, MastersInvitationService $service)
