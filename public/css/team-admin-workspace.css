@@ -86,6 +86,82 @@
   text-overflow: clip;
 }
 
+[data-regional-team-workspace] [data-regional-workspace-content] {
+  position: relative;
+  min-height: 12rem;
+}
+
+[data-regional-team-workspace] [data-regional-workspace-content][aria-busy="true"] > * {
+  opacity: .42;
+  pointer-events: none;
+}
+
+[data-regional-team-workspace] [data-regional-workspace-content][aria-busy="true"]::after {
+  content: "Loading workspace…";
+  position: absolute;
+  top: 2rem;
+  left: 50%;
+  z-index: 20;
+  transform: translateX(-50%);
+  padding: .65rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .65rem;
+  background: var(--bs-body-bg);
+  color: var(--bs-heading-color);
+  box-shadow: 0 .4rem 1.2rem rgba(31, 57, 104, .16);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.regional-roster-toolbar {
+  display: grid;
+  grid-template-columns: minmax(18rem, 2fr) minmax(12rem, 1fr) auto;
+  gap: .85rem;
+  align-items: end;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .8rem;
+  background: var(--bs-card-bg);
+}
+
+.regional-roster-toolbar__summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .75rem;
+  min-height: 2.4rem;
+  white-space: nowrap;
+}
+
+[data-regional-team-workspace] [data-regional-team] {
+  padding: 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .8rem;
+  background: var(--bs-card-bg);
+  box-shadow: 0 .15rem .55rem rgba(31, 57, 104, .06);
+}
+
+[data-regional-team-workspace] [data-regional-team] .table-responsive {
+  border: 1px solid var(--bs-border-color);
+  border-radius: .5rem;
+}
+
+[data-regional-team-workspace] [data-regional-team] .table-responsive thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+[data-regional-team-workspace] [data-regional-team] .bg-light {
+  background: color-mix(in srgb, var(--bs-warning) 7%, var(--bs-card-bg)) !important;
+}
+
+[data-regional-team-workspace] [data-regional-team] .dropdown-toggle,
+[data-regional-team-workspace] [data-regional-team] .btn-sm {
+  min-height: 2.25rem;
+}
+
 @media (max-width: 576px) {
   .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }
   .team-admin-workspace .subtabs-sticky { top: 108px; }
@@ -119,6 +195,14 @@
   .modal-content { height: calc(100vh - 56px); border-radius: .25rem; }
   .modal-body { overflow-y: auto; }
   .modal-header .modal-title { font-size: 1rem; }
+  .regional-roster-toolbar { grid-template-columns: 1fr; padding: .75rem; }
+  .regional-roster-toolbar__summary { justify-content: space-between; white-space: normal; }
+  [data-regional-team-workspace] [data-regional-team] { padding: .75rem; }
+}
+
+@media (min-width: 577px) and (max-width: 991.98px) {
+  .regional-roster-toolbar { grid-template-columns: 1fr 1fr; }
+  .regional-roster-toolbar__summary { grid-column: 1 / -1; justify-content: space-between; }
 }
 
 @media (max-width: 420px) {

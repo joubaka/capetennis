@@ -574,19 +574,21 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $selectionImport = TeamSelectionImport::where('source_id', $source->id)->firstOrFail();
         $ordered = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('roster_rank')->get();
-        $this->actingAs($manager)->post(route('backend.team-selection.invitations.move', [$event, $selectionImport, $ordered->last()]), [
+        $this->actingAs($manager)->postJson(route('backend.team-selection.invitations.move', [$event, $selectionImport, $ordered->last()]), [
             'direction' => 'up',
-        ])->assertRedirect();
+        ])->assertOk()
+            ->assertJsonPath('message', 'Regional roster order updated.')
+            ->assertJsonPath('content_url', route('backend.team-selection.index', ['event' => $event, 'view' => 'order']));
         $this->assertSame(1, $ordered->last()->fresh()->roster_rank);
         $this->assertSame($ordered->last()->player_id, TeamPlayer::withoutGlobalScopes()
             ->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
-        $this->actingAs($manager)->post(route('backend.team-selection.roster-email.send', [$event, $eventRegion]), [
+        $this->actingAs($manager)->postJson(route('backend.team-selection.roster-email.send', [$event, $eventRegion]), [
             'target_type' => 'team',
             'team_id' => $team->id,
             'subject' => 'Regional team update',
             'message' => 'Please note the updated team information.',
             'confirm_recipients' => 1,
-        ])->assertRedirect();
+        ])->assertOk()->assertJsonPath('message', 'Queued 2 roster email(s).');
         $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_email')->where('related_id', $team->id)->count());
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
             ->assertOk()
@@ -598,6 +600,15 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('>Teams</a>', false)
             ->assertSee(route('backend.team-selection.index', ['event' => $event, 'view' => 'players']), false)
             ->assertSee(route('backend.team-selection.index', ['event' => $event, 'view' => 'order']), false)
+            ->assertSee('data-regional-workspace-tab="players"', false)
+            ->assertSee('data-regional-workspace-content', false)
+            ->assertSee('data-regional-roster-toolbar', false)
+            ->assertSee('data-regional-roster-search', false)
+            ->assertSee('data-regional-payment-filter', false)
+            ->assertSee('data-regional-filter-reset', false)
+            ->assertSee('data-regional-team', false)
+            ->assertSee('data-regional-player-row', false)
+            ->assertSee('data-regional-email-form', false)
             ->assertSee('Players — '.$eventRegion->region->region_name)
             ->assertDontSee(route('admin.events.overview', $event), false)
             ->assertDontSee('>Event overview</a>', false)
@@ -625,6 +636,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Player Order — '.$eventRegion->region->region_name)
             ->assertSee('Change the playing order without changing the selected players')
             ->assertDontSee('Add an existing system player profile')
+            ->assertDontSee('Private Other Region');
+        $this->actingAs($manager)
+            ->withHeader('X-Requested-With', 'XMLHttpRequest')
+            ->get(route('backend.team-selection.index', ['event' => $event, 'view' => 'order']))
+            ->assertOk()
+            ->assertSee('Player Order — '.$eventRegion->region->region_name)
+            ->assertSee('data-regional-order-form', false)
+            ->assertDontSee('data-regional-roster-toolbar', false)
+            ->assertDontSee('event-workspace-chrome', false)
+            ->assertDontSee('data-regional-workspace-tab', false)
             ->assertDontSee('Private Other Region');
         $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
             ->assertRedirect();

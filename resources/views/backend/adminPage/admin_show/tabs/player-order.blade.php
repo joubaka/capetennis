@@ -155,12 +155,12 @@
                             <td>
                               @if($orderedInvitation)
                                 <div class="d-flex gap-1">
-                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}">
+                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}" data-regional-order-form>
                                     @csrf
                                     <input type="hidden" name="direction" value="up">
                                     <button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($orderedInvitations->first()?->id === $orderedInvitation->id)><i class="ti ti-arrow-up"></i></button>
                                   </form>
-                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}">
+                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}" data-regional-order-form>
                                     @csrf
                                     <input type="hidden" name="direction" value="down">
                                     <button class="btn btn-sm btn-outline-primary" title="Move down" @disabled($orderedInvitations->last()?->id === $orderedInvitation->id)><i class="ti ti-arrow-down"></i></button>

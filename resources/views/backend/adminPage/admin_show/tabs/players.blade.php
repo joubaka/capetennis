@@ -93,7 +93,7 @@
               @endphp
 
               {{-- TEAM HEADER --}}
-              <div class="mb-4">
+              <div class="mb-4" @if($teamWorkspaceRegional) data-regional-team data-team-name="{{ str($team->name)->lower() }}" @endif>
 
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <div>
@@ -195,7 +195,8 @@
                             : null;
                         @endphp
 
-                        <tr data-playerteamid="{{ $slot->id }}">
+                        <tr data-playerteamid="{{ $slot->id }}"
+                            @if($teamWorkspaceRegional) data-regional-player-row data-pay-status="{{ $paid ? 'paid' : 'unpaid' }}" @endif>
                           <td>
                             <span class="badge bg-label-primary">{{ $slot->rank }}</span>
                           </td>

@@ -76,6 +76,10 @@ class TeamSelectionInvitationController extends Controller
 
         $view = $isEventManager ? 'backend.team-selection.index' : 'backend.team-selection.regional';
 
+        if (! $isEventManager && request()->ajax()) {
+            return view('backend.team-selection.partials.regional-content', compact('event', 'eventRegions', 'workspaceRegions', 'teamSelectionInvitations'));
+        }
+
         return view($view, compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'workspaceRegions', 'teamSelectionInvitations'));
     }
 
@@ -306,7 +310,15 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate(['direction' => ['required', 'in:up,down']]);
         $service->moveRosterRank($invitation, $request->user(), $data['direction']);
 
-        return back()->with('success', 'Regional roster order updated.');
+        $message = 'Regional roster order updated.';
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'content_url' => route('backend.team-selection.index', ['event' => $event, 'view' => 'order']),
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)
@@ -438,7 +450,12 @@ class TeamSelectionInvitationController extends Controller
             ->withProperties(['target_type' => $data['target_type'], 'queued' => $stats['queued'], 'region_id' => $eventRegion->region_id])
             ->log('regional manager emailed selected team roster');
 
-        return back()->with('success', "Queued {$stats['queued']} roster email(s).");
+        $message = "Queued {$stats['queued']} roster email(s).";
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function storeAnnouncement(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
