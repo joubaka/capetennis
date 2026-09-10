@@ -12,6 +12,10 @@
   $clothingItems = collect($campaign['clothing_items'] ?? []);
   $publicEventUrl = $eventDetails['public_url'] ?? ($event?->published ? route('events.show', $event) : null);
   $venueNames = collect($eventDetails['venues'] ?? [])->filter();
+  $eventName = $eventDetails['name'] ?? $event?->name;
+  $eventStart = filled($eventDetails['start_date'] ?? null) ? \Illuminate\Support\Carbon::parse($eventDetails['start_date']) : $event?->start_date;
+  $eventEnd = filled($eventDetails['end_date'] ?? null) ? \Illuminate\Support\Carbon::parse($eventDetails['end_date']) : $event?->end_date;
+  $entryFee = $eventDetails['entry_fee'] ?? $event?->entryFee;
 @endphp
 <div style="margin:0;background:#f4f3f8;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:#4f4b5f;line-height:1.55">
   <div style="max-width:640px;margin:auto;background:#fff;border:1px solid #e6e3ed;border-radius:12px;overflow:hidden">
@@ -19,11 +23,12 @@
     <div style="padding:30px 32px">
       <h2 style="color:#263b50">Hello {{ $invitation->player?->full_name ?? 'Player' }},</h2>
       @if($message)<p>{!! nl2br(e($message)) !!}</p>@endif
-      <p>You have been selected to represent <strong>{{ $invitation->region?->region_name }}</strong> at <strong>{{ $event?->name }}</strong>.</p>
+      <p>You have been selected to represent <strong>{{ $invitation->region?->region_name }}</strong> at <strong>{{ $eventName }}</strong>.</p>
       <div style="background:#f2f7fa;border-left:4px solid #16876f;padding:16px 18px;margin:22px 0"><strong>{{ $invitation->team?->name }}</strong><br>Ranking position: {{ $invitation->ranking_position }}<br>Playing order: {{ $invitation->roster_rank }}</div>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 20px">
-        @if($event?->start_date)<tr><td style="padding:7px 0;color:#777180">Event dates</td><td style="padding:7px 0;text-align:right;font-weight:bold">{{ $event->start_date->format('d M Y') }}{{ $event->end_date && !$event->end_date->equalTo($event->start_date) ? ' – '.$event->end_date->format('d M Y') : '' }}</td></tr>@endif
-        <tr><td style="padding:7px 0;color:#777180">Entry fee</td><td style="padding:7px 0;text-align:right;font-weight:bold">R{{ number_format((float) $event?->entryFee, 2) }}</td></tr>
+        @if($eventStart)<tr><td style="padding:7px 0;color:#777180">Event dates</td><td style="padding:7px 0;text-align:right;font-weight:bold">{{ $eventStart->format('d M Y') }}{{ $eventEnd && !$eventEnd->equalTo($eventStart) ? ' – '.$eventEnd->format('d M Y') : '' }}</td></tr>@endif
+        <tr><td style="padding:7px 0;color:#777180">Entry fee</td><td style="padding:7px 0;text-align:right;font-weight:bold">R{{ number_format((float) $entryFee, 2) }}</td></tr>
+        @if($eventDetails['published'] ?? $event?->published)<tr><td style="padding:7px 0;color:#777180">Event status</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#16876f">Published</td></tr>@endif
         @if($responseDeadline)<tr><td style="padding:7px 0;color:#777180">Respond by</td><td style="padding:7px 0;text-align:right;font-weight:bold">{{ $responseDeadline->format('d M Y H:i') }}</td></tr>@endif
         @if($paymentDeadline)<tr><td style="padding:7px 0;color:#777180">Payment deadline</td><td style="padding:7px 0;text-align:right;font-weight:bold">{{ $paymentDeadline->format('d M Y H:i') }}</td></tr>@endif
         @if(filled($eventDetails['organizer'] ?? $event?->organizer))<tr><td style="padding:7px 0;color:#777180">Organiser</td><td style="padding:7px 0;text-align:right;font-weight:bold">{{ $eventDetails['organizer'] ?? $event?->organizer }}</td></tr>@endif

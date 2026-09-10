@@ -404,15 +404,14 @@
 
 @endforeach
 @endif
-@if(auth()->check() && (
-  auth()->user()->hasRole('super-user') ||
-  $event->admins->contains(auth()->id())
-))
+@if($isEventWideAdministrator)
   <a class="btn btn-secondary m-2" href="{{ route('admin.events.overview',$event) }}">
     <i class="ti ti-shield ti-xs"></i> Administrator
   </a>
-
-
+@elseif($canManageRegionalTeamSelection)
+  <a class="btn btn-primary m-2" href="{{ route('backend.team-selection.index', $event) }}">
+    <i class="ti ti-map-pin-cog ti-xs"></i> Regional administration
+  </a>
 @endif
 
     </ul>

@@ -11,6 +11,7 @@ use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventAdmin;
 use App\Models\EventRegion;
+use App\Models\EventRegionManager;
 use App\Models\EventRegionRankingSource;
 use App\Models\Player;
 use App\Models\RankingList;
@@ -398,6 +399,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Cape Winelands Primary Schools 2026')
             ->assertSee('data-region-tabs', false)
             ->assertSee('data-bs-toggle="tab"', false);
+        $this->actingAs($admin)->get(route('events.show', $event))
+            ->assertOk()
+            ->assertSee('Administrator')
+            ->assertSee(route('admin.events.overview', $event), false)
+            ->assertDontSee('Regional administration');
 
         $otherAdmin = User::factory()->create()->assignRole('admin');
         $this->actingAs($otherAdmin)->get(route('backend.team-selection.index', $event))->assertForbidden();
@@ -441,10 +447,26 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('for your assigned region')
             ->assertDontSee('Private Other Region')
             ->assertDontSee('data-region-tabs', false);
+        $this->actingAs($manager)->get(route('events.show', $event))
+            ->assertOk()
+            ->assertSee('Regional administration')
+            ->assertSee(route('backend.team-selection.index', $event), false)
+            ->assertDontSee(route('admin.events.overview', $event), false);
+        $this->actingAs($manager)->get(route('admin.events.overview', $event))->assertForbidden();
         $this->actingAs($manager)->getJson(route('backend.team-selection.users.search', [$event, 'q' => 'region']))
             ->assertForbidden();
-        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [])
-            ->assertForbidden();
+        $rankingSeries = Series::factory()->create(['year' => (int) $event->start_date->format('Y')]);
+        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [
+            'series_id' => $rankingSeries->id, 'reserve_count' => 2,
+        ])->assertRedirect();
+        $this->assertDatabaseHas('event_region_ranking_sources', [
+            'event_region_id' => $first->id, 'series_id' => $rankingSeries->id,
+        ]);
+        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $second]), [
+            'series_id' => $rankingSeries->id, 'reserve_count' => 2,
+        ])->assertForbidden();
+        $this->actingAs($manager)->get(route('backend.region.clothing.edit', $firstRegion))->assertOk();
+        $this->actingAs($manager)->get(route('backend.region.clothing.edit', $secondRegion))->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [
             'title' => 'Assigned team update', 'message' => 'Practice starts at 08:00.', 'send_email' => 0,
         ])->assertRedirect();
@@ -496,6 +518,50 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertTrue($access->canManage($organizer, $eventRegion));
         $this->actingAs($organizer)->get(route('backend.team-selection.index', $event))
             ->assertOk()->assertSee('Default Manager Region');
+    }
+
+    public function test_regional_manager_can_complete_own_region_setup_import_and_restart_without_event_wide_access(): void
+    {
+        [$source] = $this->selectionSource();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Scoped regional workflow', 'type' => 2, 'code' => 'scoped-regional-workflow',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = $source->event;
+        $event->update(['eventType' => $teamType]);
+        $eventRegion = EventRegion::where('event_id', $event->id)->where('region_id', $source->region_id)->firstOrFail();
+        $manager = User::factory()->create();
+        EventRegionManager::create([
+            'event_id' => $event->id,
+            'event_region_id' => $eventRegion->id,
+            'region_id' => $eventRegion->region_id,
+            'user_id' => $manager->id,
+            'assigned_by' => User::factory()->create()->id,
+        ]);
+        $rankingList = RankingList::where('series_id', $source->series_id)->firstOrFail();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.teams.create', [$event, $source]), [
+            'categories' => [[
+                'selected' => 1,
+                'ranking_list_id' => $rankingList->id,
+                'team_name' => 'Regional manager team',
+                'num_players' => 2,
+            ]],
+        ])->assertRedirect(route('backend.team-selection.preview', [$event, $source]));
+
+        $this->actingAs($manager)->get(route('backend.team-selection.preview', [$event, $source]))
+            ->assertOk()
+            ->assertSee('Preview ranked-player import');
+        $this->actingAs($manager)->post(route('backend.team-selection.import', [$event, $source]), [
+            'confirm_incomplete_rosters' => 1,
+        ])
+            ->assertRedirect(route('backend.team-selection.index', $event));
+
+        $selectionImport = TeamSelectionImport::where('source_id', $source->id)->firstOrFail();
+        $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
+            ->assertRedirect();
+        $this->assertDatabaseMissing('team_selection_imports', ['id' => $selectionImport->id]);
+        $this->actingAs($manager)->get(route('admin.events.overview', $event))->assertForbidden();
     }
 
     public function test_multiple_common_series_organizers_require_an_explicit_region_assignment(): void

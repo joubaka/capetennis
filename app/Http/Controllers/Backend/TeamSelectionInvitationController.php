@@ -64,7 +64,7 @@ class TeamSelectionInvitationController extends Controller
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)
     {
         abort_unless((int) $eventRegion->event_id === (int) $event->id, 404);
-        $this->authorizeEventManager($event, $request->user());
+        $this->authorizeRegion($event, $eventRegion, $request->user());
         $data = $request->validate([
             'series_id' => ['required', 'integer', 'exists:series,id'],
             'reserve_count' => ['required', 'integer', 'min:0', 'max:20'],
@@ -81,7 +81,6 @@ class TeamSelectionInvitationController extends Controller
     public function createTeams(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
     {
         $this->authorizeSource($event, $source);
-        $this->authorizeEventManager($event, $request->user());
         $data = $request->validate([
             'categories' => ['required', 'array', 'min:1'],
             'categories.*.selected' => ['nullable', 'boolean'],
@@ -103,7 +102,6 @@ class TeamSelectionInvitationController extends Controller
     public function unlink(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
     {
         $this->authorizeSource($event, $source);
-        $this->authorizeEventManager($event, $request->user());
         $service->unlink($source, $request->user());
 
         return redirect()->route('backend.team-selection.index', $event)
@@ -121,7 +119,6 @@ class TeamSelectionInvitationController extends Controller
     public function import(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
     {
         $this->authorizeSource($event, $source);
-        $this->authorizeEventManager($event, $request->user());
         $data = $request->validate([
             'confirm_incomplete_rosters' => ['nullable', 'accepted'],
         ]);
@@ -175,7 +172,6 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        $this->authorizeEventManager($event, $request->user());
         $service->restartDraft($selectionImport, $request->user());
 
         return back()->with('success', 'The draft import was removed. Team quantities and the ranking link can now be corrected.');
@@ -385,12 +381,6 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $eventRegion->event_id === (int) $event->id && $event->isTeam(), 404);
         abort_unless(app(RegionManagerAccessService::class)->canManage($user, $eventRegion), 403);
-    }
-
-    private function authorizeEventManager(Event $event, User $user): void
-    {
-        abort_unless($event->isTeam(), 404);
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($user, $event), 403);
     }
 
     /** @return \Illuminate\Support\Collection<int, string> */

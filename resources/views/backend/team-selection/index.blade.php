@@ -75,10 +75,10 @@
             @elseif($source)
               <div class="d-flex flex-wrap align-items-center gap-2">
                 <span class="badge bg-label-primary">Series linked</span>
-                @if($isEventManager)<form method="POST" action="{{ route('backend.team-selection.unlink', [$event, $source]) }}" onsubmit="return confirm('Unlink this ranking series? Existing event categories and teams will be kept.');">
+                <form method="POST" action="{{ route('backend.team-selection.unlink', [$event, $source]) }}" onsubmit="return confirm('Unlink this ranking series? Existing event categories and teams will be kept.');">
                   @csrf @method('DELETE')
                   <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-unlink me-1"></i>Unlink series</button>
-                </form>@endif
+                </form>
               </div>
             @else
               <span class="badge bg-label-secondary">Manual/imported or not linked</span>
@@ -111,13 +111,13 @@
                 @endforeach
               </div></details>
             @endif
-            @if($isEventManager)<form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
+            <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
               <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" {{ $activeImport ? 'disabled' : '' }} required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}" @selected($source?->series_id === $item->id)>{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · latest ranking published' : ' · ranking not ready' }}</option>@endforeach</select></div>
               <div class="col-sm-5 col-lg-2"><label class="form-label">Reserves per team</label><input type="number" name="reserve_count" min="0" max="20" value="{{ $source?->reserve_count ?? 2 }}" class="form-control" {{ $activeImport ? 'disabled' : '' }} required></div>
               <div class="col-sm-7 col-lg-3 d-grid"><button class="btn btn-outline-primary" {{ $activeImport ? 'disabled' : '' }}>Link series</button></div>
-            </form>@endif
+            </form>
 
-            @if($isEventManager && $source && !$activeImport)
+            @if($source && !$activeImport)
               <div class="d-flex flex-wrap gap-2 mt-3">
                 <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#ranking-category-setup-{{ $source->id }}">
                   <i class="ti ti-category-plus me-1"></i>Set up categories &amp; teams
@@ -213,7 +213,7 @@
         </div>
       @endif
 
-      @if($isEventManager && $source && !$activeImport && $categorySetup)
+      @if($source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
         @php($missingSetupRows = $setupRows->reject(fn($row) => $row['ready']))
         <div class="modal fade" id="ranking-category-setup-{{ $source->id }}" tabindex="-1" aria-labelledby="ranking-category-setup-title-{{ $source->id }}" aria-hidden="true">

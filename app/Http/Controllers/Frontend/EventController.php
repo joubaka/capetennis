@@ -10,6 +10,7 @@ use App\Models\ClothingItemType;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventAdmin;
+use App\Models\EventRegion;
 use App\Models\EventType;
 use App\Models\SellProduct;
 use App\Models\TeamFixture;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\ClothingOrder;
 use App\Models\CategoryResult;
 use App\Services\PublicTournamentVisibility;
+use App\Services\TeamSelection\RegionManagerAccessService;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 
@@ -111,7 +113,7 @@ class EventController extends Controller
 
 
 
-  public function show($id)
+  public function show($id, RegionManagerAccessService $regionManagerAccess)
   {
     $t0 = microtime(true);
 
@@ -162,10 +164,20 @@ class EventController extends Controller
 
     // Draft events are limited to their assigned admins and super users.
     $user = Auth::user();
+    $canManageRegionalTeamSelection = $user && $event->isTeam()
+      ? EventRegion::query()
+        ->with('events')
+        ->where('event_id', $event->id)
+        ->get()
+        ->contains(fn (EventRegion $eventRegion) => $regionManagerAccess->canManage($user, $eventRegion))
+      : false;
+    $isEventWideAdministrator = $user && (
+      $user->hasRole('super-user') || $user->is_event_admin($event->id)
+    );
     $canViewEvent = Event::query()
       ->visibleTo($user)
       ->whereKey($event->getKey())
-      ->exists();
+      ->exists() || $canManageRegionalTeamSelection;
 
     if (!$canViewEvent) {
         return response()->view('frontend.event.unavailable', ['event' => $event], 404);
@@ -508,7 +520,9 @@ return view('frontend.event.show', compact(
       'categoryResults',
       'entryCount',
       'drawPublicationSummary',
-      'canPreviewUnpublishedDraws'
+      'canPreviewUnpublishedDraws',
+      'canManageRegionalTeamSelection',
+      'isEventWideAdministrator'
     ));
   }
 
