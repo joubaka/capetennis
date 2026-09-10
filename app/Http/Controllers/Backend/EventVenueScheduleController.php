@@ -102,7 +102,15 @@ final class EventVenueScheduleController extends Controller
         $courtCount = DB::table('event_venue_courts')->where('event_id', $event->id)
             ->where('venue_id', $venue->id)->where('active', true)->count();
         $event->venues()->syncWithoutDetaching([$venue->id => ['num_courts' => $courtCount]]);
-        return response()->json(['message' => "{$venue->name} added with {$courtCount} courts."]);
+        return response()->json([
+            'message' => "{$venue->name} added with {$courtCount} courts.",
+            'venue' => [
+                'id' => $venue->id,
+                'name' => $venue->name,
+                'num_courts' => $courtCount,
+                'ball_type' => $data['ball_type'] ?: 'standard',
+            ],
+        ]);
     }
 
     public function addCourt(Request $request, Event $event)

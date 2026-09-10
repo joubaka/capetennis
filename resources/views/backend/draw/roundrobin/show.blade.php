@@ -1163,6 +1163,7 @@
         groupsSave:    "{{ route('api.draws.groups.save', $draw) }}",
         scheduleSave:  "{{ route('api.draws.schedule.save', $draw) }}",
         scheduleSummary: "{{ route('api.draws.schedule.summary', $draw) }}",
+        venueCreate:   "{{ route('backend.event-venue-schedule.venues', $draw->event_id) }}",
 
         // Legacy web routes (still active during transition)
         legacyScoreStore:  "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}",

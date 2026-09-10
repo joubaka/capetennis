@@ -800,7 +800,11 @@ class EventVenueScheduleTest extends TestCase
 
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.venues', $event), [
             'venue_id' => $venue->id, 'courts' => 3, 'ball_type' => 'orange',
-        ])->assertOk();
+        ])->assertOk()
+            ->assertJsonPath('venue.id', $venue->id)
+            ->assertJsonPath('venue.name', 'Junior Courts')
+            ->assertJsonPath('venue.num_courts', 3)
+            ->assertJsonPath('venue.ball_type', 'orange');
         $this->assertDatabaseHas('event_venues', [
             'event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 3,
         ]);

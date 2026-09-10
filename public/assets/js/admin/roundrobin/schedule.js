@@ -49,6 +49,66 @@
     if (modal) modal.hide();
   }
 
+  function resetCreateVenue() {
+    $('#new-draw-venue-name').val('');
+    $('#new-draw-venue-courts').val(1);
+    $('#new-draw-venue-ball').val('standard');
+    $('#create-draw-venue-status').removeClass('text-danger text-success').text('');
+  }
+
+  function _createVenue() {
+    var name = $.trim($('#new-draw-venue-name').val());
+    var courts = Number($('#new-draw-venue-courts').val());
+    var $button = $('#create-draw-venue');
+    var $status = $('#create-draw-venue-status').removeClass('text-danger text-success');
+
+    if (!name) {
+      $status.addClass('text-danger').text('Enter a venue name.');
+      $('#new-draw-venue-name').trigger('focus');
+      return;
+    }
+    if (!Number.isInteger(courts) || courts < 1 || courts > 100) {
+      $status.addClass('text-danger').text('Enter between 1 and 100 courts.');
+      $('#new-draw-venue-courts').trigger('focus');
+      return;
+    }
+
+    $button.prop('disabled', true);
+    $status.text('Creating venue…');
+    AdminApi.postJson(AdminRoutes.get('venueCreate'), {
+      name: name,
+      courts: courts,
+      ball_type: $('#new-draw-venue-ball').val()
+    }).then(function (response) {
+      var venue = response.venue;
+      if (!venue || !venue.id) throw { message: 'The venue was created but could not be selected. Refresh and try again.' };
+
+      if (!ALL_VENUES.some(function (item) { return String(item.id) === String(venue.id); })) {
+        ALL_VENUES.push({ id: venue.id, name: venue.name });
+        ALL_VENUES.sort(function (a, b) { return a.name.localeCompare(b.name); });
+      }
+
+      $('#venues-container .venue-select').each(function () {
+        if (!$(this).find('option[value="' + venue.id + '"]').length) {
+          $(this).append($('<option></option>').val(venue.id).text(venue.name));
+        }
+      });
+
+      var $blank = $('#venues-container .venue-select').filter(function () { return !$(this).val(); }).first();
+      if ($blank.length) {
+        $blank.val(String(venue.id)).trigger('change');
+        $blank.closest('.venue-row').find('input[name="num_courts[]"]').val(venue.num_courts || courts);
+      } else {
+        venueRow(venue.id, venue.num_courts || courts);
+      }
+
+      resetCreateVenue();
+      $status.addClass('text-success').text((response.message || 'Venue created.') + ' It is selected above; click Save to assign it to this draw.');
+    }).catch(function (error) {
+      $status.addClass('text-danger').text(error.message || 'Could not create the venue.');
+    }).then(function () { $button.prop('disabled', false); });
+  }
+
   // ─── Schedule table ───────────────────────────────────────────────
   function renderScheduleTable() {
     var oop  = AdminState.getOop();
@@ -185,6 +245,14 @@
   function bind() {
     $(document).on('click', '.addVenues', _openVenues);
     $(document).on('click', '#addVenueRow', function () { venueRow('', 1); });
+    $(document).on('click', '#toggle-create-venue', function () {
+      var $panel = $('#create-venue-panel');
+      var opening = $panel.hasClass('d-none');
+      $panel.toggleClass('d-none', !opening);
+      $(this).attr('aria-expanded', opening ? 'true' : 'false');
+      if (opening) $('#new-draw-venue-name').trigger('focus');
+    });
+    $(document).on('click', '#create-draw-venue', _createVenue);
     $(document).on('click', '#venuesModal .btn-remove-row', function () {
       var $row = $(this).closest('.venue-row');
       var $select = $row.find('.venue-select');

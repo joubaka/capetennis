@@ -42,6 +42,12 @@ const server = http.createServer(async (request, response) => {
       ? JSON.parse(raw)
       : Object.fromEntries(new URLSearchParams(raw));
     calls.push({ path: pathname, data });
+    if (pathname.includes('/venue-schedule/venues')) {
+      return json(response, {
+        message: data.name + ' added with ' + data.courts + ' courts.',
+        venue: { id: 9090, name: data.name, num_courts: Number(data.courts), ball_type: data.ball_type }
+      });
+    }
     if (pathname.endsWith('/save-groups')) {
       if (failSave) return json(response, { message: 'Test save failure. Your edits are retained.' }, 503);
       groups = data.groups.map(g => ({
@@ -299,12 +305,17 @@ async function run() {
     await check('Add Venue opens the rendered modal and saves the array contract', async () => {
       await page.locator('#rr-add-venues').click();
       await page.locator('#venuesModal.show').waitFor();
-      await page.locator('#venuesModal .venue-select').selectOption({ index: 1 });
-      await page.locator('#venuesModal input[name="num_courts[]"]').fill('4');
+      await page.locator('#toggle-create-venue').click();
+      await page.locator('#new-draw-venue-name').fill('New Browser Courts');
+      await page.locator('#new-draw-venue-courts').fill('4');
+      await page.locator('#new-draw-venue-ball').selectOption('yellow');
+      await page.locator('#create-draw-venue').click();
+      await page.getByText('It is selected above; click Save to assign it to this draw.').waitFor();
+      assert.equal(await page.locator('#venuesModal .venue-select').inputValue(), '9090');
       await page.locator('#venuesForm button[type="submit"]').click();
       await page.locator('#venuesModal').waitFor({ state: 'hidden' });
       const save = calls.findLast(call => call.path.endsWith('/venues'));
-      assert.deepEqual(save.data.venue_id.map(Number), [Number(await page.locator('#venuesModal .venue-select option').nth(1).getAttribute('value'))]);
+      assert.deepEqual(save.data.venue_id.map(Number), [9090]);
       assert.deepEqual(save.data.num_courts.map(Number), [4]);
     });
     await check('Mobile assignment actions and navigation fit the viewport', async () => {

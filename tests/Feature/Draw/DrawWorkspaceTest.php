@@ -237,6 +237,8 @@ class DrawWorkspaceTest extends TestCase
         $response->assertSee('name="scheduled_at"', false)
             ->assertSee('id="rr-add-venues"', false)
             ->assertSee('id="venuesModal"', false)
+            ->assertSee('id="create-draw-venue"', false)
+            ->assertSee('Create a venue not in the list')
             ->assertSee('window.RR_ALL_VENUES', false)
             ->assertDontSee('data-bs-target="#basicModal"', false)
             ->assertSee('name="score_format"', false)
