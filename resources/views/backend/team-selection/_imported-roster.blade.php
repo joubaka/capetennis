@@ -9,10 +9,12 @@
     <div class="p-3 border-bottom small text-muted">Imported roster names remain visible even before a Cape Tennis player profile is linked. Correcting a name does not create, unlink or edit a player profile.</div>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
-        <thead><tr><th>Rank</th><th>Imported roster name</th><th>Profile status</th><th>Imported contact</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Imported roster name</th><th>Profile status</th><th>Contact</th></tr></thead>
         <tbody>
           @forelse($importedRoster as $slot)
             @php($linkedProfile = $slot->player_profile ? $slot->profile : null)
+            @php($contactEmail = $linkedProfile ? ($teamSelectionContacts->primaryEmail($linkedProfile) ?: $slot->email) : $slot->email)
+            @php($contactCell = $linkedProfile?->cellNr ?: $slot->cell_nr)
             <tr>
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
               <td style="min-width:320px">
@@ -32,7 +34,7 @@
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
               </td>
-              <td><div>{{ $slot->email ?: 'No email' }}</div><div class="small text-muted">{{ $slot->cell_nr ?: 'No cell number' }}</div></td>
+              <td><div>{{ $contactEmail ?: 'No email' }}</div><div class="small text-muted">{{ $contactCell ?: 'No cell number' }}</div></td>
             </tr>
           @empty
             <tr><td colspan="4" class="text-center text-muted py-4">No imported roster players have been added to this team yet.</td></tr>

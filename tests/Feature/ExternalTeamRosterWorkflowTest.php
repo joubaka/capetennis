@@ -459,7 +459,12 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $eventRegion->ordering = 1;
         $eventRegion->save();
 
-        $linkedPlayer = Player::factory()->create(['name' => 'Linked', 'surname' => 'Player']);
+        $linkedPlayer = Player::factory()->create([
+            'name' => 'Linked',
+            'surname' => 'Player',
+            'email' => 'linked.player@example.test',
+            'cellNr' => '0821234567',
+        ]);
         $linkedSlot = NoProfileTeamPlayer::create([
             'team_id' => $this->team->id,
             'rank' => 1,
@@ -473,6 +478,8 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'rank' => 2,
             'name' => 'Imported',
             'surname' => 'Name',
+            'email' => 'imported.player@example.test',
+            'cell_nr' => '0837654321',
             'pay_status' => 0,
         ]);
         TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $linkedPlayer->id, 'pay_status' => 0]);
@@ -483,6 +490,10 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->assertSee('2 roster players · 1 linked · 1 unlinked')
             ->assertSee('Imported · Linked')
             ->assertSee('Imported · Unlinked')
+            ->assertSee('linked.player@example.test')
+            ->assertSee('0821234567')
+            ->assertSee('imported.player@example.test')
+            ->assertSee('0837654321')
             ->assertSee('value="Imported"', false)
             ->assertSee('Player order');
 
