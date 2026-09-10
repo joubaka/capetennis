@@ -156,7 +156,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('Arrive at 08:00 at the main venue.', $html);
     }
 
-    public function test_declining_a_selected_place_promotes_the_next_reserve_into_the_same_roster_rank(): void
+    public function test_declining_a_selected_place_closes_the_gap_and_promotes_the_next_reserve_at_the_end(): void
     {
         Queue::fake();
         [$source, $team] = $this->selectionSource();
@@ -166,6 +166,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'payment_deadline' => now()->addDays(2),
         ], User::factory()->create());
         $declining = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('queue_position')->firstOrFail();
+        $following = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->where('id', '!=', $declining->id)->orderBy('roster_rank')->firstOrFail();
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)->orderBy('queue_position')->firstOrFail();
         $owner = User::factory()->create();
         $declining->player->update(['userId' => $owner->id]);
@@ -174,10 +176,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->assertSame($reserve->id, $promoted?->id);
         $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
+        $this->assertSame(1, $following->fresh()->roster_rank);
+        $this->assertSame(2, $reserve->fresh()->roster_rank);
         $this->assertSame(
-            $reserve->player_id,
+            $following->player_id,
             TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)->value('player_id')
         );
+        $this->assertSame($reserve->player_id,
+            TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 2)->value('player_id'));
         $this->assertSame(TeamSelectionInvitation::DECLINED, $declining->fresh()->status);
         $this->assertSame($owner->id, $declining->fresh()->declined_by_user_id);
         $this->assertSame('authenticated_invitation', $declining->fresh()->decline_method);
@@ -197,19 +203,191 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->orderBy('queue_position')->firstOrFail();
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')->firstOrFail();
-        $rank = $selected->roster_rank;
+        $following = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->where('id', '!=', $selected->id)->orderBy('roster_rank')->firstOrFail();
+        $vacatedRank = $selected->roster_rank;
+        $finalRank = $following->roster_rank;
         $manager = User::factory()->create();
 
         $promoted = $service->replaceWithNextReserve($selected, $manager, 'Unavailable for the event weekend');
 
         $this->assertSame($reserve->id, $promoted->id);
         $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
-        $this->assertSame($rank, $reserve->fresh()->roster_rank);
+        $this->assertSame($finalRank, $reserve->fresh()->roster_rank);
+        $this->assertSame($vacatedRank, $following->fresh()->roster_rank);
         $this->assertSame('regional_manager_replacement', $selected->fresh()->decline_method);
         $this->assertSame($manager->id, $selected->fresh()->declined_by_user_id);
         $this->assertSame('Unavailable for the event weekend', $selected->fresh()->decline_reason);
+        $this->assertSame($following->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $vacatedRank)->value('player_id'));
         $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()
-            ->where('team_id', $team->id)->where('rank', $rank)->value('player_id'));
+            ->where('team_id', $team->id)->where('rank', $finalRank)->value('player_id'));
+    }
+
+    public function test_draft_replacement_can_promote_the_next_reserve_without_sending_email(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('queue_position')->firstOrFail();
+        $following = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->where('id', '!=', $selected->id)->orderBy('roster_rank')->firstOrFail();
+        $vacatedRank = $selected->roster_rank;
+        $finalRank = $following->roster_rank;
+
+        $promoted = app(TeamSelectionInvitationService::class)
+            ->replaceWithNextReserve($selected, User::factory()->create(), 'Draft roster correction');
+
+        $this->assertSame($reserve->id, $promoted->id);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
+        $this->assertSame($finalRank, $reserve->fresh()->roster_rank);
+        $this->assertSame($vacatedRank, $following->fresh()->roster_rank);
+        $this->assertNull($reserve->fresh()->invited_at);
+        $this->assertSame($following->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $vacatedRank)->value('player_id'));
+        $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $finalRank)->value('player_id'));
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $reserve->id,
+        ]);
+    }
+
+    public function test_manager_can_replace_an_unpaid_player_with_a_custom_linked_profile(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $team->update(['num_team_members' => 3]);
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Custom profile replacement', 'type' => 2, 'code' => 'custom-profile-replacement',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $following = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->where('id', '!=', $selected->id)->orderBy('roster_rank')->get();
+        $this->assertCount(2, $following);
+        $vacatedRank = $selected->roster_rank;
+        $finalRank = $following->last()->roster_rank;
+        $owner = User::factory()->create(['email' => 'custom.player@example.test']);
+        $customPlayer = Player::factory()->create([
+            'name' => 'Custom', 'surname' => 'Selection',
+            'email' => 'custom.player@example.test', 'userId' => $owner->id,
+        ]);
+
+        $this->actingAs(User::factory()->create())->post(
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $selected]),
+            [
+                'replacement_mode' => 'custom_profile',
+                'replacement_player_id' => $customPlayer->id,
+                'replacement_invitation_id' => $selected->id,
+                'reason' => 'Unauthorized replacement attempt',
+            ]
+        )->assertForbidden();
+        $this->assertFalse($selectionImport->invitations()->where('player_id', $customPlayer->id)->exists());
+
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $selected]),
+            [
+                'replacement_mode' => 'custom_profile',
+                'replacement_player_id' => $customPlayer->id,
+                'replacement_invitation_id' => $selected->id,
+                'reason' => 'Captain selected an alternate profile',
+            ]
+        )->assertRedirect()->assertSessionHas('success');
+
+        $replacement = $selectionImport->invitations()->where('player_id', $customPlayer->id)->firstOrFail();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $replacement->status);
+        $this->assertSame($finalRank, $replacement->roster_rank);
+        $this->assertSame($vacatedRank, $following->first()->fresh()->roster_rank);
+        $this->assertSame($finalRank - 1, $following->last()->fresh()->roster_rank);
+        $this->assertNull($replacement->invited_at);
+        $this->assertSame('manual_system_profile', $replacement->snapshot_json['selection_source']);
+        $this->assertSame($selected->id, $replacement->snapshot_json['replaces_invitation_id']);
+        $this->assertSame('regional_manager_custom_profile', $selected->fresh()->decline_method);
+        $this->assertSame($following->first()->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $vacatedRank)->value('player_id'));
+        $this->assertSame($following->last()->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $finalRank - 1)->value('player_id'));
+        $this->assertSame($customPlayer->id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $finalRank)->value('player_id'));
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $selected->id,
+            'description' => 'regional manager replaced selected player with custom system profile',
+        ]);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $replacement->id,
+        ]);
+
+        $unlinkedPlayer = Player::factory()->create(['userId' => null, 'email' => null]);
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $replacement]),
+            [
+                'replacement_mode' => 'custom_profile',
+                'replacement_player_id' => $unlinkedPlayer->id,
+                'replacement_invitation_id' => $replacement->id,
+                'reason' => 'Unlinked profile attempt',
+            ]
+        )->assertSessionHasErrors('replacement_player_id');
+        $this->assertSame(TeamSelectionInvitation::INVITED, $replacement->fresh()->status);
+
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $replacement]),
+            [
+                'replacement_mode' => 'custom_profile',
+                'replacement_player_id' => $customPlayer->id,
+                'replacement_invitation_id' => $replacement->id,
+                'reason' => 'Duplicate profile attempt',
+            ]
+        )->assertSessionHasErrors('replacement_player_id');
+    }
+
+    public function test_sent_custom_profile_replacement_queues_the_saved_invitation_email(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update([
+            'status' => 'sent',
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+            'email_subject' => 'Saved regional invitation',
+            'email_message' => 'Please confirm your team place.',
+        ]);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $owner = User::factory()->create(['email' => 'sent.custom@example.test']);
+        $customPlayer = Player::factory()->create([
+            'name' => 'Sent', 'surname' => 'Custom',
+            'email' => 'sent.custom@example.test', 'userId' => $owner->id,
+        ]);
+
+        $replacement = app(TeamSelectionInvitationService::class)->replaceWithSystemPlayer(
+            $selected,
+            $customPlayer,
+            User::factory()->create(),
+            'Sent selection correction'
+        );
+
+        $this->assertNotNull($replacement->invited_at);
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'mail_type' => 'team_selection_invitation',
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $replacement->id,
+            'recipient_email' => 'sent.custom@example.test',
+            'status' => 'queued',
+        ]);
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
     }
 
     public function test_player_can_decline_after_starting_payment_and_unpaid_order_is_cancelled(): void
@@ -629,6 +807,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Player order')
             ->assertSee('Email team')
             ->assertSee('Change player')
+            ->assertSee('data-replacement-player-form', false)
+            ->assertSee('data-replacement-mode', false)
+            ->assertSee('Choose a Cape Tennis player profile')
+            ->assertSee('Search player name, email or cell')
             ->assertSee('value="Player not available."', false)
             ->assertSee('Selection / payment')
             ->assertSee('Read only')
@@ -984,6 +1166,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'payment_deadline' => now()->addDays(2),
         ], User::factory()->create());
         $withdrawing = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('queue_position')->firstOrFail();
+        $following = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->where('id', '!=', $withdrawing->id)->orderBy('roster_rank')->firstOrFail();
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)->orderBy('queue_position')->firstOrFail();
         TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $withdrawing->player_id)
             ->update(['player_id' => 0, 'pay_status' => 0]);
@@ -997,7 +1181,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $withdrawing->fresh()->status);
         $this->assertSame($reserve->id, $promoted?->id);
-        $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
+        $this->assertSame($following->player_id, TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
+        $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 2)->value('player_id'));
     }
 
     public function test_withdrawal_cancels_an_unpaid_attached_order_before_promoting_a_reserve(): void
@@ -1086,7 +1271,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($failed->fresh()->failed_at);
     }
 
-    public function test_expired_response_frees_the_exact_rank_and_promotes_the_next_reserve(): void
+    public function test_expired_responses_promote_the_next_reserve_without_leaving_a_roster_gap(): void
     {
         Queue::fake();
         [$source, $team] = $this->selectionSource();
@@ -1102,7 +1287,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->orderBy('queue_position')->firstOrFail();
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')->firstOrFail();
-        $rank = $selected->roster_rank;
         $selectionImport->update(['response_deadline' => now()->subMinute()]);
 
         $rows = $service->processExpiredInvitations($selectionImport->event_id, true);
@@ -1111,8 +1295,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::DECLINED, $selected->fresh()->status);
         $this->assertSame('system_response_deadline', $selected->fresh()->decline_method);
         $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
+        $this->assertSame(1, $reserve->fresh()->roster_rank);
         $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()
-            ->where('team_id', $team->id)->where('rank', $rank)->value('player_id'));
+            ->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
     }
 
     public function test_promoted_reserve_uses_replacement_deadline_after_original_response_window(): void

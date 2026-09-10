@@ -334,14 +334,18 @@ final class TeamSelectionInvitationService
                 'payment_started_at' => null,
                 'roster_rank' => null,
             ]);
-            $replacement = $this->promoteNextReserve($locked, $rank);
+            $replacement = $this->promoteNextReserve($locked, $rank, true);
             if (! $replacement) {
                 throw ValidationException::withMessages([
                     'replacement' => 'No eligible reserve with a linked email account is available for this team.',
                 ]);
             }
             activity('team-selection')->performedOn($locked)->causedBy($actor)
-                ->withProperties(['replacement_id' => $replacement->id, 'reason' => $reason])
+                ->withProperties([
+                    'replacement_id' => $replacement->id,
+                    'replacement_strategy' => 'next_reserve',
+                    'reason' => $reason,
+                ])
                 ->log('regional manager replaced selected player with next reserve');
 
             return $replacement->fresh();
@@ -402,6 +406,179 @@ final class TeamSelectionInvitationService
                     'swapped_invitation_id' => $swap->id,
                 ])->log('regional manager changed active roster order');
         });
+    }
+
+    public function replaceWithSystemPlayer(
+        TeamSelectionInvitation $invitation,
+        Player $player,
+        User $actor,
+        string $reason,
+    ): TeamSelectionInvitation {
+        return DB::transaction(function () use ($invitation, $player, $actor, $reason): TeamSelectionInvitation {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
+            if (! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'Only an unpaid selected player can be replaced. Withdraw and process any paid player through the normal refund workflow.',
+                ]);
+            }
+
+            $selectionImport = $locked->selectionImport;
+            if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages(['replacement' => 'This regional selection is no longer open for player replacement.']);
+            }
+            if ($selectionImport->status === 'sent'
+                && ($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
+                && now()->gt($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)) {
+                throw ValidationException::withMessages(['replacement' => 'The replacement deadline for this regional selection has passed.']);
+            }
+            if ($selectionImport->invitations()->where('player_id', $player->id)->exists()) {
+                throw ValidationException::withMessages(['replacement_player_id' => 'This player is already recorded in the regional selection.']);
+            }
+
+            $player->loadMissing(['user', 'users']);
+            $email = collect([$player->user?->email])->merge($player->users->pluck('email'))
+                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+            if (! $email) {
+                throw ValidationException::withMessages([
+                    'replacement_player_id' => 'Select a Cape Tennis player profile linked to an account with a valid email address.',
+                ]);
+            }
+
+            if ($locked->order_id) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
+                    throw ValidationException::withMessages(['replacement' => 'Payment has already been received; use the withdrawal and refund workflow.']);
+                }
+                if ($order) app(TeamPaymentService::class)->cancelPayment($order);
+            }
+
+            $rank = $locked->roster_rank;
+            if (! $rank) {
+                throw ValidationException::withMessages(['replacement' => 'The selected player no longer occupies an active roster rank.']);
+            }
+            $slot = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $locked->team_id)
+                ->where('rank', $rank)->where('player_id', $locked->player_id)->lockForUpdate()->first();
+            if ($slot) {
+                app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
+            }
+
+            $locked->update([
+                'status' => TeamSelectionInvitation::DECLINED,
+                'declined_at' => now(),
+                'decline_reason' => $reason,
+                'declined_by_user_id' => $actor->id,
+                'decline_method' => 'regional_manager_custom_profile',
+                'payment_started_at' => null,
+                'roster_rank' => null,
+            ]);
+
+            $replacementRank = $this->closeRosterGap($locked, (int) $rank);
+            $replacementSlot = TeamPlayer::query()->withoutGlobalScopes()
+                ->where('team_id', $locked->team_id)->where('rank', $replacementRank)->lockForUpdate()->first();
+            $replacementSlot ??= TeamPlayer::create([
+                'team_id' => $locked->team_id,
+                'rank' => $replacementRank,
+                'player_id' => 0,
+                'pay_status' => 0,
+            ]);
+            app(TeamPaymentService::class)->updateTeamPlayerSlot($replacementSlot, [
+                'player_id' => $player->id,
+                'pay_status' => 0,
+            ]);
+
+            $replacement = TeamSelectionInvitation::create([
+                'import_id' => $selectionImport->id,
+                'event_id' => $selectionImport->event_id,
+                'region_id' => $selectionImport->region_id,
+                'team_id' => $locked->team_id,
+                'player_id' => $player->id,
+                'ranking_list_id' => $locked->ranking_list_id,
+                'ranking_position' => (int) $selectionImport->invitations()->where('team_id', $locked->team_id)->max('ranking_position') + 1,
+                'queue_position' => (int) $selectionImport->invitations()->where('team_id', $locked->team_id)->max('queue_position') + 1,
+                'total_points' => 0,
+                'roster_rank' => $replacementRank,
+                'status' => TeamSelectionInvitation::INVITED,
+                'promoted_from_id' => $locked->id,
+                'invited_at' => $selectionImport->status === 'sent' ? now() : null,
+                'snapshot_json' => [
+                    'selection_source' => 'manual_system_profile',
+                    'player_name' => $player->full_name,
+                    'ranking_position' => null,
+                    'total_points' => null,
+                    'ranking_run_id' => $selectionImport->ranking_run_id,
+                    'replaces_invitation_id' => $locked->id,
+                    'added_by' => $actor->id,
+                    'reason' => $reason,
+                ],
+            ]);
+
+            if ($selectionImport->status === 'sent') {
+                $this->queueMail($replacement, mb_strtolower(trim((string) $email)), 'replacement', $this->savedCampaignSnapshot($selectionImport));
+            }
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'replacement_id' => $replacement->id,
+                    'replacement_player_id' => $player->id,
+                    'replacement_strategy' => 'custom_profile',
+                    'vacated_rank' => (int) $rank,
+                    'replacement_rank' => $replacementRank,
+                    'reason' => $reason,
+                ])->log('regional manager replaced selected player with custom system profile');
+
+            return $replacement->fresh('player');
+        });
+    }
+
+    /**
+     * Close a vacated roster position and return the final active rank where a
+     * manually selected replacement must be inserted.
+     */
+    private function closeRosterGap(TeamSelectionInvitation $vacated, int $vacatedRank): int
+    {
+        $activeBelow = TeamSelectionInvitation::query()->lockForUpdate()
+            ->where('import_id', $vacated->import_id)
+            ->where('team_id', $vacated->team_id)
+            ->where('roster_rank', '>', $vacatedRank)
+            ->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ])
+            ->orderBy('roster_rank')
+            ->get();
+
+        if ($activeBelow->isEmpty()) {
+            return $vacatedRank;
+        }
+
+        $lastRank = (int) $activeBelow->last()->roster_rank;
+        $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+            ->where('team_id', $vacated->team_id)
+            ->whereBetween('rank', [$vacatedRank, $lastRank])
+            ->get()
+            ->keyBy('rank');
+
+        foreach ($activeBelow as $moving) {
+            $sourceRank = (int) $moving->roster_rank;
+            $destinationRank = $sourceRank - 1;
+            $sourceSlot = $slots->get($sourceRank);
+            $destinationSlot = $slots->get($destinationRank);
+            if (! $sourceSlot || ! $destinationSlot
+                || (int) $sourceSlot->player_id !== (int) $moving->player_id) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'The roster order changed while the replacement was being made. Refresh the page and try again.',
+                ]);
+            }
+
+            app(TeamPaymentService::class)->updateTeamPlayerSlot($destinationSlot, [
+                'player_id' => $sourceSlot->player_id,
+                'pay_status' => $sourceSlot->pay_status,
+            ]);
+            $moving->update(['roster_rank' => $destinationRank]);
+        }
+
+        return $lastRank;
     }
 
     public function addSystemPlayerAsReserve(TeamSelectionImport $import, Team $team, Player $player, User $actor, string $reason): TeamSelectionInvitation
@@ -698,11 +875,14 @@ final class TeamSelectionInvitationService
         return $rows;
     }
 
-    private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank): ?TeamSelectionInvitation
+    private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank, bool $allowDraft = false): ?TeamSelectionInvitation
     {
         $selectionImport = $vacated->selectionImport;
-        if (! $rank || ! $selectionImport || $selectionImport->status !== 'sent'
-            || (($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
+        $statusAllowsReplacement = $selectionImport
+            && ($selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft'));
+        if (! $rank || ! $statusAllowsReplacement
+            || ($selectionImport->status === 'sent'
+                && ($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
                 && now()->gt($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline))) {
             return null;
         }
@@ -718,21 +898,19 @@ final class TeamSelectionInvitationService
             return null;
         }
 
+        $replacementRank = $this->closeRosterGap($vacated, (int) $rank);
         $replacementSlot = TeamPlayer::query()->withoutGlobalScopes()
             ->where('team_id', $vacated->team_id)
-            ->where('rank', $rank)
+            ->where('rank', $replacementRank)
             ->lockForUpdate()
             ->first();
         if (! $replacementSlot) {
             $replacementSlot = TeamPlayer::create([
                 'team_id' => $vacated->team_id,
-                'rank' => $rank,
+                'rank' => $replacementRank,
                 'player_id' => 0,
                 'pay_status' => 0,
             ]);
-        }
-        if ((int) $replacementSlot->player_id > 0) {
-            return null;
         }
         app(TeamPaymentService::class)->updateTeamPlayerSlot($replacementSlot, [
             'player_id' => $reserve->player_id,
@@ -740,11 +918,13 @@ final class TeamSelectionInvitationService
         ]);
         $reserve->update([
             'status' => TeamSelectionInvitation::INVITED,
-            'roster_rank' => $rank,
+            'roster_rank' => $replacementRank,
             'promoted_from_id' => $vacated->id,
-            'invited_at' => now(),
+            'invited_at' => $selectionImport->status === 'sent' ? now() : null,
         ]);
-        $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
+        if ($selectionImport->status === 'sent') {
+            $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
+        }
 
         return $reserve;
     }

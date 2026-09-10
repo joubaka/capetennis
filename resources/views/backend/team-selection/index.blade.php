@@ -19,6 +19,7 @@
   .regional-team-card .card-header[data-team-workspace-header] { cursor: pointer; }
   .regional-team-card .table > :not(caption) > * > * { padding: .7rem .65rem; }
   .regional-team-card .reserve-row { background: #fffaf0; }
+  .regional-team-card .replacement-player-form { min-width: 20rem; max-width: min(26rem, 80vw); }
   .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
   @media (max-width: 767.98px) {
     .regional-team-card .table { min-width: 760px; }
@@ -217,9 +218,45 @@
                                   <td>
                                     <div class="d-flex flex-wrap gap-1">
                                       @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
-                                    @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $teamReserves->isNotEmpty())
-                                      <details><summary class="btn btn-sm btn-outline-warning">Change player</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<div class="small text-muted mb-1">The next eligible reserve will take this exact roster rank.</div><input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" value="Player not available." placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
-                                    @elseif(!$recipientEmail)
+                                    @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                      @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)
+                                      @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($teamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
+                                      @php($replacementMode = $replacementMode === 'next_reserve' && $teamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
+                                      <details @if($replacementFormOpen) open @endif>
+                                        <summary class="btn btn-sm btn-outline-warning">Change player</summary>
+                                        <form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}"
+                                              class="mt-2 replacement-player-form" data-replacement-player-form
+                                              onsubmit="return confirm('Replace this unpaid player? The roster change is audited and cannot be undone.');">
+                                          @csrf
+                                          <input type="hidden" name="replacement_invitation_id" value="{{ $invitation->id }}">
+                                          <label class="form-label small mb-1" for="replacement-mode-{{ $invitation->id }}">Replacement source</label>
+                                          <select id="replacement-mode-{{ $invitation->id }}" name="replacement_mode"
+                                                  class="form-select form-select-sm mb-2 replacement-mode-select" data-replacement-mode>
+                                            <option value="next_reserve" @disabled($teamReserves->isEmpty()) @selected($replacementMode === 'next_reserve')>
+                                              @if($teamReserves->isNotEmpty()) Next reserve — {{ $teamReserves->first()->player?->full_name }} @else No eligible reserve available @endif
+                                            </option>
+                                            <option value="custom_profile" @selected($replacementMode === 'custom_profile')>Choose a Cape Tennis player profile</option>
+                                          </select>
+                                          <div @class(['mb-2', 'd-none' => $replacementMode !== 'custom_profile']) data-custom-replacement-profile>
+                                            <label class="form-label small mb-1" for="replacement-player-{{ $invitation->id }}">Player profile</label>
+                                            <select id="replacement-player-{{ $invitation->id }}" name="replacement_player_id"
+                                                    class="form-select team-player-select replacement-profile-select"
+                                                    data-placeholder="Search player name, email or cell…"
+                                                    data-search-url="{{ route('backend.team-selection.players.search', [$event, $activeImport, $regionTeam]) }}"
+                                                    @disabled($replacementMode !== 'custom_profile') @required($replacementMode === 'custom_profile')>
+                                              <option value=""></option>
+                                            </select>
+                                            <div class="form-text">Only profiles linked to a Cape Tennis account with a valid email are available. Existing players below this place move up, and the replacement joins the final active roster place.</div>
+                                          </div>
+                                          <label class="form-label small mb-1" for="replacement-reason-{{ $invitation->id }}">Reason</label>
+                                          <input id="replacement-reason-{{ $invitation->id }}" type="text" name="reason"
+                                                 class="form-control form-control-sm mb-2" maxlength="1000"
+                                                 value="Player not available." placeholder="Required reason" required>
+                                          <button class="btn btn-sm btn-warning w-100">Confirm replacement</button>
+                                        </form>
+                                      </details>
+                                    @endif
+                                    @if(!$recipientEmail && ($isReserve || !in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)))
                                       <span class="text-muted small">No action available</span>
                                     @endif
                                     </div>
@@ -512,6 +549,25 @@ document.addEventListener('DOMContentLoaded', function () {
       modal.querySelector('[data-roster-email-invitation]').value = button.dataset.invitationId || '';
       modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
     });
+  });
+
+  const syncReplacementProfile = function (modeSelect) {
+    const form = modeSelect.closest('[data-replacement-player-form]');
+    const profileWrap = form?.querySelector('[data-custom-replacement-profile]');
+    const profileSelect = form?.querySelector('.replacement-profile-select');
+    if (!profileWrap || !profileSelect) return;
+    const customProfile = modeSelect.value === 'custom_profile';
+    profileWrap.classList.toggle('d-none', !customProfile);
+    profileSelect.disabled = !customProfile;
+    profileSelect.required = customProfile;
+    if (!customProfile) profileSelect.value = '';
+    if (window.jQuery?.fn?.select2 && window.jQuery(profileSelect).hasClass('select2-hidden-accessible')) {
+      window.jQuery(profileSelect).trigger('change.select2');
+    }
+  };
+  document.querySelectorAll('[data-replacement-mode]').forEach(function (modeSelect) {
+    syncReplacementProfile(modeSelect);
+    modeSelect.addEventListener('change', function () { syncReplacementProfile(modeSelect); });
   });
 
   if (window.jQuery?.fn?.select2) {

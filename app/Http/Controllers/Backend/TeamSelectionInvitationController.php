@@ -276,10 +276,24 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
-        $replacement = $service->replaceWithNextReserve($invitation, $request->user(), $data['reason']);
+        $data = $request->validate([
+            'replacement_mode' => ['nullable', 'in:next_reserve,custom_profile'],
+            'replacement_player_id' => ['nullable', 'required_if:replacement_mode,custom_profile', 'integer', 'exists:players,id'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+        $mode = $data['replacement_mode'] ?? 'next_reserve';
+        $replacement = $mode === 'custom_profile'
+            ? $service->replaceWithSystemPlayer(
+                $invitation,
+                Player::query()->findOrFail((int) $data['replacement_player_id']),
+                $request->user(),
+                trim($data['reason'])
+            )
+            : $service->replaceWithNextReserve($invitation, $request->user(), trim($data['reason']));
 
-        return back()->with('success', ($replacement->player?->full_name ?? 'The next reserve').' was promoted and sent a replacement invitation.');
+        $delivery = $selectionImport->status === 'sent' ? ' and queued for a replacement invitation' : '';
+
+        return back()->with('success', ($replacement->player?->full_name ?? 'The replacement player').' was selected'.$delivery.'.');
     }
 
     public function moveRosterRank(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
