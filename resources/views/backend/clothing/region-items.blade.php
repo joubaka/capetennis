@@ -74,10 +74,13 @@
                     </td>
                     <td><input class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191"></td>
                     <td><input class="form-control clothing-cost-price" type="number" step="0.01" name="items[{{ $rowIndex }}][cost_price]" value="{{ old("items.$rowIndex.cost_price", $sourceItem->cost_price !== null ? number_format((float) $sourceItem->cost_price, 2, '.', '') : '') }}" min="0" inputmode="decimal" aria-label="Buying amount for {{ $sourceItem->item_type_name }}"></td>
-                    <td><input class="form-control clothing-preview-price" type="number" step="0.01" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", number_format((float) $sourceItem->price, 2, '.', '')) }}" min="0" required inputmode="decimal" aria-label="Clothing amount for {{ $sourceItem->item_type_name }}"></td>
+                    <td>
+                      <input class="form-control clothing-preview-price" type="number" step="0.01" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", number_format((float) $sourceItem->price, 2, '.', '')) }}" min="0" required inputmode="decimal" aria-label="Clothing amount for {{ $sourceItem->item_type_name }}">
+                      <input class="clothing-pricing-source" type="hidden" name="items[{{ $rowIndex }}][pricing_source]" value="{{ old("items.$rowIndex.pricing_source", 'price') }}">
+                    </td>
                     <td class="fw-semibold clothing-preview-profit">—</td>
                     <td class="text-muted clothing-preview-fee">R0.00</td>
-                    <td class="fw-semibold clothing-preview-net">R0.00</td>
+                    <td><input class="form-control fw-semibold clothing-preview-total" type="number" step="0.01" name="items[{{ $rowIndex }}][final_amount]" value="{{ old("items.$rowIndex.final_amount") }}" min="0" required inputmode="decimal" aria-label="Final customer amount for {{ $sourceItem->item_type_name }}"></td>
                     <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][ordering]" value="{{ old("items.$rowIndex.ordering", $rowIndex + 1) }}" min="1"></td>
                     <td><div class="d-flex flex-wrap gap-1">@foreach($sourceItem->sizes->sortBy([['ordering','asc'],['id','asc']]) as $size)<span class="badge bg-label-primary">{{ $size->size }}</span>@endforeach</div></td>
                   </tr>
@@ -132,10 +135,11 @@
                 </td>
                 <td>
                   <input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
+                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="price">
                 </td>
                 <td class="fw-semibold clothing-preview-profit">—</td>
                 <td class="text-muted clothing-preview-fee">R0.00</td>
-                <td class="fw-semibold clothing-preview-net">R0.00</td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
                 <td>
                   <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
                 </td>
@@ -185,13 +189,13 @@
         <div class="mb-2 clothing-pricing-row">
           <div class="row g-2">
             <div class="col-sm-6"><label class="form-label">Buying amount (R)</label><input type="number" step="0.01" class="form-control clothing-cost-price" name="cost_price" min="0"></div>
-            <div class="col-sm-6"><label class="form-label">Clothing amount (R)</label><input type="number" step="0.01" class="form-control clothing-preview-price" name="price" min="0" value="0"></div>
+            <div class="col-sm-6"><label class="form-label">Clothing amount (R)</label><input type="number" step="0.01" class="form-control clothing-preview-price" name="price" min="0" value="0"><input class="clothing-pricing-source" type="hidden" name="pricing_source" value="price"></div>
           </div>
           <div class="form-text">Vendor profit is calculated before the PayFast fee is added.</div>
           <div class="row g-2 mt-1">
             <div class="col-4"><span class="form-text">Vendor profit</span><div class="fw-semibold clothing-preview-profit">—</div></div>
             <div class="col-4"><span class="form-text">PayFast fee</span><div class="clothing-preview-fee">R0.00</div></div>
-            <div class="col-4"><span class="form-text">Final amount</span><div class="fw-semibold clothing-preview-net">R0.00</div></div>
+            <div class="col-4"><label class="form-text mb-0">Final amount</label><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold clothing-preview-total" name="final_amount" value="0" inputmode="decimal"></div>
           </div>
         </div>
         <div class="mb-2">
@@ -216,30 +220,83 @@
       : 0;
   }
 
+  function totalsFromFinalAmount(finalAmount) {
+    const requestedTotal = Math.round(Math.max(0, finalAmount) * 100) / 100;
+    if (requestedTotal === 0) return { subtotal: 0, fee: 0, total: 0 };
+
+    const vatMultiplier = 1 + (Number(payfast.vat) / 100);
+    const multiplier = 1 + ((Number(payfast.percentage) / 100) * vatMultiplier);
+    const grossFlat = Number(payfast.flat) * vatMultiplier;
+    const estimate = Math.max(0, (requestedTotal - grossFlat) / multiplier);
+    let bestSubtotal = Math.round(estimate * 100) / 100;
+    let bestFee = feeFor(bestSubtotal);
+    let bestTotal = Math.round((bestSubtotal + bestFee) * 100) / 100;
+
+    for (let offset = -5; offset <= 5; offset++) {
+      const subtotal = Math.round(Math.max(0, estimate + (offset / 100)) * 100) / 100;
+      const fee = feeFor(subtotal);
+      const total = Math.round((subtotal + fee) * 100) / 100;
+      if (Math.abs(total - requestedTotal) < Math.abs(bestTotal - requestedTotal)) {
+        bestSubtotal = subtotal;
+        bestFee = fee;
+        bestTotal = total;
+      }
+    }
+
+    return { subtotal: bestSubtotal, fee: bestFee, total: bestTotal };
+  }
+
+  function refreshProfit(row, subtotal) {
+    const costInput = row.querySelector('.clothing-cost-price');
+    const profit = row.querySelector('.clothing-preview-profit');
+    if (!profit) return;
+
+    const hasCost = costInput && costInput.value.trim() !== '';
+    const amount = subtotal - Math.max(0, Number(costInput?.value) || 0);
+    profit.textContent = hasCost ? `R${amount.toFixed(2)}` : '—';
+    profit.classList.toggle('text-danger', hasCost && amount < 0);
+    profit.classList.toggle('text-success', hasCost && amount >= 0);
+  }
+
   function refreshPricePreview(input) {
     const row = input.closest('.clothing-pricing-row');
     const priceInput = row.querySelector('.clothing-preview-price');
-    const costInput = row.querySelector('.clothing-cost-price');
     const total = Math.max(0, Number(priceInput?.value) || 0);
     const fee = feeFor(total);
     row.querySelector('.clothing-preview-fee').textContent = `R${fee.toFixed(2)}`;
-    row.querySelector('.clothing-preview-net').textContent = `R${(total + fee).toFixed(2)}`;
-    const profit = row.querySelector('.clothing-preview-profit');
-    if (profit) {
-      const hasCost = costInput && costInput.value.trim() !== '';
-      const amount = total - Math.max(0, Number(costInput?.value) || 0);
-      profit.textContent = hasCost ? `R${amount.toFixed(2)}` : '—';
-      profit.classList.toggle('text-danger', hasCost && amount < 0);
-      profit.classList.toggle('text-success', hasCost && amount >= 0);
-    }
+    row.querySelector('.clothing-preview-total').value = (total + fee).toFixed(2);
+    refreshProfit(row, total);
+  }
+
+  function refreshFromFinalAmount(input, normaliseFinal = false) {
+    const row = input.closest('.clothing-pricing-row');
+    const result = totalsFromFinalAmount(Number(input.value) || 0);
+    row.querySelector('.clothing-preview-price').value = result.subtotal.toFixed(2);
+    row.querySelector('.clothing-preview-fee').textContent = `R${result.fee.toFixed(2)}`;
+    if (normaliseFinal) input.value = result.total.toFixed(2);
+    refreshProfit(row, result.subtotal);
   }
 
   document.querySelectorAll('.clothing-pricing-row').forEach(row => {
     const priceInput = row.querySelector('.clothing-preview-price');
-    priceInput.addEventListener('input', () => refreshPricePreview(priceInput));
+    const finalInput = row.querySelector('.clothing-preview-total');
+    const sourceInput = row.querySelector('.clothing-pricing-source');
+    priceInput.addEventListener('input', () => {
+      sourceInput.value = 'price';
+      refreshPricePreview(priceInput);
+    });
+    finalInput.addEventListener('input', () => {
+      sourceInput.value = 'final_amount';
+      refreshFromFinalAmount(finalInput);
+    });
+    finalInput.addEventListener('change', () => refreshFromFinalAmount(finalInput, true));
     const costInput = row.querySelector('.clothing-cost-price');
-    if (costInput) costInput.addEventListener('input', () => refreshPricePreview(costInput));
-    refreshPricePreview(priceInput);
+    if (costInput) costInput.addEventListener('input', () => refreshProfit(row, Math.max(0, Number(priceInput.value) || 0)));
+    if (sourceInput.value === 'final_amount' && finalInput.value !== '') {
+      refreshFromFinalAmount(finalInput, true);
+    } else {
+      refreshPricePreview(priceInput);
+    }
   });
 
   // ---------- helpers ----------
@@ -256,7 +313,7 @@
 
   $('.clothing-copy-toggle').on('change', function(){
     const disabled = !this.checked;
-    $(this).closest('tr').find('input[name$="[item_type_name]"], input[name$="[cost_price]"], input[name$="[price]"], input[name$="[ordering]"]').prop('disabled', disabled);
+    $(this).closest('tr').find('input[name$="[item_type_name]"], input[name$="[cost_price]"], input[name$="[price]"], input[name$="[final_amount]"], input[name$="[pricing_source]"], input[name$="[ordering]"]').prop('disabled', disabled);
   });
 
   function logClick(msg, extra={}) {
@@ -395,6 +452,8 @@
         item_type_name: $(this).find('.item-name').val().trim(),
         cost_price: $(this).find('.item-cost-price').val() || null,
         price: Number($(this).find('.item-price').val() || 0),
+        final_amount: Number($(this).find('.item-final-amount').val() || 0),
+        pricing_source: $(this).find('.item-pricing-source').val(),
         ordering: $(this).find('.item-ordering').val() || null,
       });
     });

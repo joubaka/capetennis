@@ -173,7 +173,11 @@
   }
   .event-workspace-chrome .ct-context-nav [aria-current="page"] .ti { color: var(--event-teal); }
   .event-workspace-more { margin-left: auto; }
-  .event-workspace-more .dropdown-menu { min-width: 245px; margin-top: 8px !important; }
+  .event-workspace-more .dropdown-menu {
+    z-index: 1025;
+    min-width: 245px;
+    margin-top: 8px !important;
+  }
   .ct-backend .event-workspace-more .dropdown-item { gap: 10px; min-height: 40px; padding: 9px 14px; }
   .event-workspace-more .dropdown-item .ti { width: 18px; color: var(--ct-accent); font-size: 18px; }
 
