@@ -1236,6 +1236,26 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ], User::factory()->create());
     }
 
+    public function test_selection_page_distinguishes_an_invalid_linked_account_email_from_an_unlinked_player(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        [$source, , $players] = $this->selectionSource();
+        $admin = User::factory()->create()->assignRole('admin');
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
+        $invalidAccount = User::factory()->create(['email' => 'tsargeant@shprite']);
+        $players->first()->update([
+            'email' => 'family@example.test',
+            'userId' => $invalidAccount->id,
+        ]);
+        app(TeamRankingImportService::class)->import($source, $admin);
+
+        $this->actingAs($admin)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Linked account email invalid')
+            ->assertSee('tsargeant@shprite')
+            ->assertDontSee('Account link required');
+    }
+
     public function test_link_rejects_a_series_from_another_event_year(): void
     {
         [$source] = $this->selectionSource();
@@ -1725,8 +1745,110 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             route('backend.team-selection.players.add', [$source->event, $selectionImport, $team]),
             ['player_id' => $player->id, 'reason' => 'Duplicate attempt', 'add_team_id' => $team->id]
         )->assertSessionHasErrors('player_id');
-        $this->assertSame(1, $selectionImport->invitations()->where('player_id', $player->id)->count());
+        $this->assertSame(1, $selectionImport->invitations()->where('team_id', $team->id)
+            ->where('player_id', $player->id)->count());
         $this->assertTrue($selectionImport->invitations()->where('player_id', $unlinked->id)->exists());
+    }
+
+    public function test_ranked_primary_reserve_can_help_another_team_and_returns_to_real_team_when_promoted(): void
+    {
+        [$source, $primaryTeam, $players] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Shared reserve team event', 'type' => 2, 'code' => 'shared-reserve-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $primaryPlayer = $players->get(2);
+        $primaryPlayer->update(['name' => 'Rian', 'surname' => 'Fourie']);
+        $primaryReserve = $selectionImport->invitations()->where('team_id', $primaryTeam->id)
+            ->where('player_id', $primaryPlayer->id)->firstOrFail();
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $primaryReserve->status);
+
+        $helperTeam = new Team();
+        $helperTeam->forceFill([
+            'user_id' => $manager->id,
+            'personal_team' => false,
+            'name' => 'Overberg helper group',
+            'region_id' => $primaryTeam->region_id,
+            'num_team_members' => 2,
+            'published' => true,
+            'year' => $primaryTeam->year,
+        ])->save();
+        $template = $selectionImport->invitations()->where('team_id', $primaryTeam->id)->firstOrFail();
+        $helperPlayer = Player::factory()->create();
+        TeamPlayer::create([
+            'team_id' => $helperTeam->id,
+            'player_id' => $helperPlayer->id,
+            'rank' => 1,
+            'pay_status' => 0,
+        ]);
+        $helperSelected = TeamSelectionInvitation::create([
+            'import_id' => $selectionImport->id,
+            'event_id' => $selectionImport->event_id,
+            'region_id' => $selectionImport->region_id,
+            'team_id' => $helperTeam->id,
+            'player_id' => $helperPlayer->id,
+            'ranking_list_id' => $template->ranking_list_id,
+            'ranking_position' => 1,
+            'queue_position' => 1,
+            'total_points' => 0,
+            'roster_rank' => 1,
+            'status' => TeamSelectionInvitation::INVITED,
+        ]);
+
+        $service = app(TeamSelectionInvitationService::class);
+
+        $this->actingAs($manager)
+            ->getJson(route('backend.team-selection.players.search', [
+                $source->event, $selectionImport, $helperTeam, 'q' => 'Rian Fourie',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('results.0.id', $primaryPlayer->id);
+
+        $helperPlacement = $service->replaceWithSystemPlayer(
+            $helperSelected,
+            $primaryPlayer,
+            $manager,
+            'Available to help the older age group'
+        );
+        $this->assertSame(TeamSelectionInvitation::INVITED, $helperPlacement->status);
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $primaryReserve->fresh()->status);
+
+        $selectionImport->invitations()->where('team_id', $primaryTeam->id)
+            ->where('status', TeamSelectionInvitation::RESERVE)
+            ->where('player_id', '!=', $primaryPlayer->id)
+            ->update([
+                'status' => TeamSelectionInvitation::WITHDRAWN,
+                'declined_at' => now(),
+                'decline_reason' => 'Test queue preparation.',
+            ]);
+        $selected = $selectionImport->invitations()->where('team_id', $primaryTeam->id)
+            ->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+
+        $promoted = $service->replaceWithNextReserve($selected, $manager, 'Primary-team place became available.');
+
+        $this->assertSame($primaryReserve->id, $promoted->id);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $primaryReserve->fresh()->status);
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $helperPlacement->fresh()->status);
+        $this->assertSame('system_primary_team_promotion', $helperPlacement->fresh()->decline_method);
+        $this->assertSame(
+            'This player has been put into the real team: '.$primaryTeam->name.'.',
+            $helperPlacement->fresh()->decline_reason
+        );
+        $this->assertSame(0, TeamPlayer::withoutGlobalScopes()->where('team_id', $helperTeam->id)
+            ->where('rank', 1)->value('player_id'));
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $helperPlacement->id,
+            'description' => 'moved helper player into primary regional team',
+        ]);
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('This player has been put into the real team: '.$primaryTeam->name.'.');
     }
 
     /** @return array{0: \App\Models\EventRegionRankingSource, 1: Team, 2: \Illuminate\Support\Collection<int, Player>} */

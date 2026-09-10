@@ -340,7 +340,9 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
         $query = trim($data['q']);
 
-        $existingPlayerIds = $selectionImport->invitations()->pluck('player_id');
+        $existingPlayerIds = $selectionImport->invitations()
+            ->where('team_id', $team->id)
+            ->pluck('player_id');
         $searchTerms = preg_split('/\s+/u', $query, -1, PREG_SPLIT_NO_EMPTY) ?: [$query];
         $players = Player::query()->with(['user:id,email', 'users:id,email'])
             ->whereNotIn('id', $existingPlayerIds)

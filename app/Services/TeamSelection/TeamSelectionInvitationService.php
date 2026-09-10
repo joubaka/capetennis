@@ -422,12 +422,13 @@ final class TeamSelectionInvitationService
                 ]);
             }
 
-            $selectionImport = $locked->selectionImport;
+            $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($locked->import_id);
             if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages(['replacement' => 'This regional selection is no longer open for player replacement.']);
             }
-            if ($selectionImport->invitations()->where('player_id', $player->id)->exists()) {
-                throw ValidationException::withMessages(['replacement_player_id' => 'This player is already recorded in the regional selection.']);
+            if ($selectionImport->invitations()->where('team_id', $locked->team_id)
+                ->where('player_id', $player->id)->exists()) {
+                throw ValidationException::withMessages(['replacement_player_id' => 'This player is already recorded for this team.']);
             }
 
             $player->loadMissing(['user', 'users']);
@@ -517,7 +518,6 @@ final class TeamSelectionInvitationService
                     'reason' => $reason,
                 ],
             ]);
-
             if ($selectionImport->status === 'sent') {
                 $this->queueMail($replacement, mb_strtolower(trim((string) $email)), 'replacement', $this->savedCampaignSnapshot($selectionImport));
             }
@@ -598,8 +598,9 @@ final class TeamSelectionInvitationService
             if ((int) $lockedTeam->region_id !== (int) $lockedImport->region_id) {
                 throw ValidationException::withMessages(['player_id' => 'That team does not belong to this regional selection.']);
             }
-            if ($lockedImport->invitations()->where('player_id', $player->id)->exists()) {
-                throw ValidationException::withMessages(['player_id' => 'This player is already recorded in the regional selection.']);
+            if ($lockedImport->invitations()->where('team_id', $lockedTeam->id)
+                ->where('player_id', $player->id)->exists()) {
+                throw ValidationException::withMessages(['player_id' => 'This player is already recorded for this team.']);
             }
 
             $template = $lockedImport->invitations()->where('team_id', $lockedTeam->id)
@@ -765,7 +766,7 @@ final class TeamSelectionInvitationService
             }
             $email = $this->contactEmail($locked);
             if (! $email) {
-                throw ValidationException::withMessages(['email' => 'This player does not have a linked account email address.']);
+                throw ValidationException::withMessages(['email' => 'This player does not have a valid email address on a linked account.']);
             }
 
             $log = BulkEmailLog::create([
@@ -937,7 +938,7 @@ final class TeamSelectionInvitationService
 
     private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank, bool $allowDraft = false): ?TeamSelectionInvitation
     {
-        $selectionImport = $vacated->selectionImport;
+        $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($vacated->import_id);
         $statusAllowsReplacement = $selectionImport
             && ($selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft'));
         if (! $rank || ! $statusAllowsReplacement) {
@@ -951,7 +952,8 @@ final class TeamSelectionInvitationService
             ->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')
             ->get();
-        $reserve = $reserves->first(fn (TeamSelectionInvitation $candidate) => $this->contactEmail($candidate));
+        $reserve = $reserves->first(fn (TeamSelectionInvitation $candidate) => $this->contactEmail($candidate)
+            && ! $this->hasPaidHelperPlacement($candidate));
         $email = $reserve ? $this->contactEmail($reserve) : null;
         if (! $reserve || ! $email) {
             return null;
@@ -990,11 +992,98 @@ final class TeamSelectionInvitationService
             'response_deadline_override' => $replacementDeadlines[0],
             'payment_deadline_override' => $replacementDeadlines[1],
         ]);
+        $this->moveFromHelperTeamsToPrimaryTeam($reserve);
         if ($selectionImport->status === 'sent') {
             $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
         }
 
         return $reserve;
+    }
+
+    private function hasPaidHelperPlacement(TeamSelectionInvitation $primaryReserve): bool
+    {
+        if (data_get($primaryReserve->snapshot_json, 'selection_source') === 'manual_system_profile') {
+            return false;
+        }
+
+        return TeamSelectionInvitation::query()
+            ->where('import_id', $primaryReserve->import_id)
+            ->where('player_id', $primaryReserve->player_id)
+            ->where('team_id', '!=', $primaryReserve->team_id)
+            ->where('status', TeamSelectionInvitation::PAID_CONFIRMED)
+            ->get()
+            ->contains(fn (TeamSelectionInvitation $placement) => data_get(
+                $placement->snapshot_json,
+                'selection_source'
+            ) === 'manual_system_profile');
+    }
+
+    private function moveFromHelperTeamsToPrimaryTeam(TeamSelectionInvitation $primarySelection): void
+    {
+        if (data_get($primarySelection->snapshot_json, 'selection_source') === 'manual_system_profile') {
+            return;
+        }
+
+        $primarySelection->loadMissing('team');
+        $helperPlacements = TeamSelectionInvitation::query()
+            ->lockForUpdate()
+            ->where('import_id', $primarySelection->import_id)
+            ->where('player_id', $primarySelection->player_id)
+            ->where('team_id', '!=', $primarySelection->team_id)
+            ->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            ])
+            ->get()
+            ->filter(fn (TeamSelectionInvitation $placement) => data_get(
+                $placement->snapshot_json,
+                'selection_source'
+            ) === 'manual_system_profile');
+
+        foreach ($helperPlacements as $helper) {
+            if ($helper->order_id) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->find($helper->order_id);
+                if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
+                    app(TeamPaymentService::class)->cancelPayment($order);
+                }
+            }
+
+            $rank = $helper->roster_rank;
+            $message = 'This player has been put into the real team: '
+                .($primarySelection->team?->name ?: 'primary age-group team').'.';
+            $helper->update([
+                'status' => TeamSelectionInvitation::WITHDRAWN,
+                'declined_at' => now(),
+                'decline_reason' => $message,
+                'decline_method' => 'system_primary_team_promotion',
+                'payment_started_at' => null,
+                'vacated_roster_rank' => $rank,
+                'roster_rank' => null,
+            ]);
+            if ($rank) {
+                $slot = TeamPlayer::query()->withoutGlobalScopes()
+                    ->where('team_id', $helper->team_id)
+                    ->where('rank', $rank)
+                    ->where('player_id', $helper->player_id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($slot) {
+                    app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
+                }
+                $replacementRank = $this->closeRosterGap($helper, (int) $rank);
+                if ($helper->selectionImport?->auto_replacement_enabled) {
+                    $this->promoteNextReserve($helper, $replacementRank, true);
+                }
+            }
+
+            activity('team-selection')->performedOn($helper)
+                ->withProperties([
+                    'primary_invitation_id' => $primarySelection->id,
+                    'primary_team_id' => $primarySelection->team_id,
+                    'helper_team_id' => $helper->team_id,
+                    'player_id' => $primarySelection->player_id,
+                ])->log('moved helper player into primary regional team');
+        }
     }
 
     private function contactEmail(TeamSelectionInvitation $invitation): ?string

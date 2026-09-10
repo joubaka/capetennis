@@ -78,7 +78,8 @@
       @php($regionTeams = $teams->get($eventRegion->region_id, collect()))
       @php($categorySetup = $source ? $categorySetups->get($source->id) : null)
       @php($activeImport = $source?->imports?->whereIn('status', ['draft','sent'])->sortByDesc('id')->first())
-      @php($recipientEmailFor = fn($invitation) => collect([$invitation->player?->user?->email])->merge($invitation->player?->users?->pluck('email') ?? collect())->first(fn($email) => filter_var($email, FILTER_VALIDATE_EMAIL)))
+      @php($linkedAccountEmailsFor = fn($invitation) => collect([$invitation->player?->user?->email])->merge($invitation->player?->users?->pluck('email') ?? collect())->filter(fn($email) => filled($email))->unique()->values())
+      @php($recipientEmailFor = fn($invitation) => $linkedAccountEmailsFor($invitation)->first(fn($email) => filter_var($email, FILTER_VALIDATE_EMAIL)))
       @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $eventRegion->region?->clothingItems?->contains(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
@@ -212,6 +213,7 @@
                             <tbody>
                               @forelse($teamInvitations as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
+                                @php($linkedAccountEmails = $linkedAccountEmailsFor($invitation))
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
                                 @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
                                 @php($isInactive = in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) || (!$isReserve && !$invitation->roster_rank))
@@ -222,9 +224,19 @@
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
                                   <td><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
-                                  <td><div>{{ $recipientEmail ?: 'Account link required' }}</div><div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div></td>
+                                  <td>
+                                    @if($recipientEmail)
+                                      <div>{{ $recipientEmail }}</div>
+                                    @elseif($linkedAccountEmails->isNotEmpty())
+                                      <div class="text-warning">Linked account email invalid</div>
+                                      <div class="small text-muted">{{ $linkedAccountEmails->first() }}</div>
+                                    @else
+                                      <div>Account link required</div>
+                                    @endif
+                                    <div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div>
+                                  </td>
                                   <td>@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
-                                  <td><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
+                                  <td><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>@if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif</td>
                                   <td>
                                     <div>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</div>
                                     @if($activeImport->status === 'sent' && !$isReserve)
