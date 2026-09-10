@@ -27,7 +27,7 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         $isEventManager = $access->isEventManager(request()->user(), $event);
-        $eventRegions = EventRegion::with(['events', 'managerAssignment.user', 'announcements.creator', 'announcements.emailLogs', 'region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs'])
+        $eventRegions = EventRegion::with(['events', 'managerAssignment.user', 'announcements.creator', 'announcements.emailLogs', 'region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.team', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs'])
             ->where('event_id', $event->id)->orderBy('ordering')->get();
         if (! $isEventManager) {
             $eventRegions = $eventRegions->filter(fn (EventRegion $item) => $access->canManage(request()->user(), $item))->values();

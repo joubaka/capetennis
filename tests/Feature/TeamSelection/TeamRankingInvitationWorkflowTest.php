@@ -522,7 +522,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_regional_manager_can_complete_own_region_setup_import_and_restart_without_event_wide_access(): void
     {
-        [$source] = $this->selectionSource();
+        [$source, $team, $players] = $this->selectionSource();
         $teamType = DB::table('eventtypes')->insertGetId([
             'name' => 'Scoped regional workflow', 'type' => 2, 'code' => 'scoped-regional-workflow',
             'created_at' => now(), 'updated_at' => now(),
@@ -558,6 +558,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertRedirect(route('backend.team-selection.index', $event));
 
         $selectionImport = TeamSelectionImport::where('source_id', $source->id)->firstOrFail();
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
+            ->assertOk()
+            ->assertSee('Regional teams & players')
+            ->assertSee('Region-scoped workspace')
+            ->assertSee($team->name)
+            ->assertSee($players->first()->full_name)
+            ->assertSee('Selection / payment')
+            ->assertSee('Read only')
+            ->assertSee('Ranking snapshot:')
+            ->assertDontSee('Private Other Region');
         $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
             ->assertRedirect();
         $this->assertDatabaseMissing('team_selection_imports', ['id' => $selectionImport->id]);

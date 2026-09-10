@@ -6,6 +6,25 @@
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
 @endsection
 
+@section('page-style')
+<style>
+  .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
+  .region-workspace-card > .card-header { background: linear-gradient(115deg, #173f78, #2563a9); color: #fff; }
+  .region-workspace-card > .card-header .text-muted { color: rgba(255,255,255,.76) !important; }
+  .regional-metric { height: 100%; border: 1px solid #dbe6f4; border-radius: .65rem; padding: .85rem 1rem; background: linear-gradient(145deg, #fff, #f5f9ff); }
+  .regional-metric small { display: block; color: #68778c; }
+  .regional-metric strong { display: block; margin-top: .15rem; color: #173f78; font-size: 1.25rem; }
+  .regional-team-card { border: 1px solid #dbe6f4; border-top: 4px solid #2374bb; box-shadow: 0 .2rem .7rem rgba(31, 57, 104, .07); }
+  .regional-team-card .card-header { background: linear-gradient(90deg, #f3f8ff, #fff8ef); }
+  .regional-team-card .table > :not(caption) > * > * { padding: .7rem .65rem; }
+  .regional-team-card .reserve-row { background: #fffaf0; }
+  .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
+  @media (max-width: 767.98px) {
+    .regional-team-card .table { min-width: 760px; }
+  }
+</style>
+@endsection
+
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 @endsection
@@ -67,7 +86,7 @@
         aria-labelledby="region-tab-{{ $eventRegion->id }}"
         tabindex="0"
       >
-        <div class="card">
+        <div class="card region-workspace-card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
             <div><h5 class="mb-1">{{ $eventRegion->region?->region_name }}</h5><span class="text-muted small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
             @if($activeImport)
@@ -100,16 +119,87 @@
                 @if(!$eventRegion->managerAssignment && $defaultCandidates->count() > 1)<div class="alert alert-warning mt-2 mb-0">This series has multiple common event organizers. No default was selected automatically; assign the intended account explicitly.</div>@endif
               @endif
             </div>
+            @if($activeImport)
+              @php($selectedInvitations = $activeImport->invitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
+              <div class="row g-2 mb-3" aria-label="Regional roster summary">
+                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Active selection</small><strong>{{ $selectedInvitations->count() }}</strong></div></div>
+                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Reserve queue</small><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count() }}</strong></div></div>
+                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Registration paid</small><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)->count() }}</strong></div></div>
+                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Contact needed</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div>
+              </div>
+            @endif
+
+            <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div><strong>Regional teams &amp; players</strong><div class="small text-muted">This mirrors the host roster view. Ranking positions, selection history and payment state are shown as read-only records.</div></div>
+              <span class="badge bg-label-warning">Region-scoped workspace</span>
+            </div>
+
             @if($regionTeams->isNotEmpty())
-              <details class="mb-3"><summary class="fw-semibold">Manage regional team details</summary><div class="mt-2 d-flex flex-column gap-2">
+              <div class="row g-3 mb-3">
                 @foreach($regionTeams as $regionTeam)
-                  <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end border rounded p-2">@csrf @method('PATCH')
-                    <div class="col-md-7"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
-                    <div class="col-md-3"><input type="hidden" name="published" value="0"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="published" value="1" id="published-team-{{ $regionTeam->id }}" @checked($regionTeam->published)><label class="form-check-label" for="published-team-{{ $regionTeam->id }}">Published for registration</label></div></div>
-                    <div class="col-md-2 d-grid"><button class="btn btn-outline-primary">Save team</button></div>
-                  </form>
+                  @php($teamInvitations = $activeImport?->invitations?->where('team_id', $regionTeam->id)->sortBy('queue_position') ?? collect())
+                  @php($teamSelected = $teamInvitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
+                  @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
+                  <div class="col-12">
+                    <div class="card regional-team-card">
+                      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                          <h6 class="mb-1">{{ $regionTeam->name }}</h6>
+                          <span class="text-muted small">{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                          <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
+                          <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-expanded="false">Team settings</button>
+                        </div>
+                      </div>
+                      <div class="collapse" id="team-settings-{{ $regionTeam->id }}">
+                        <div class="card-body border-bottom">
+                          <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end">@csrf @method('PATCH')
+                            <div class="col-md-7"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
+                            <div class="col-md-3"><input type="hidden" name="published" value="0"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="published" value="1" id="published-team-{{ $regionTeam->id }}" @checked($regionTeam->published)><label class="form-check-label" for="published-team-{{ $regionTeam->id }}">Published for registration</label></div></div>
+                            <div class="col-md-2 d-grid"><button class="btn btn-primary">Save team</button></div>
+                          </form>
+                        </div>
+                      </div>
+                      @if($activeImport)
+                        <div class="table-responsive">
+                          <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>Place</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
+                            <tbody>
+                              @forelse($teamInvitations as $invitation)
+                                @php($recipientEmail = $recipientEmailFor($invitation))
+                                @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
+                                @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
+                                <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
+                                  <td><span class="badge {{ $isReserve ? 'bg-label-warning' : 'bg-label-primary' }}">{{ $isReserve ? 'Reserve '.$invitation->queue_position : 'Team '.$invitation->roster_rank }}</span></td>
+                                  <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
+                                  <td><div>{{ $recipientEmail ?: 'Account link required' }}</div><div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div></td>
+                                  <td><strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div></td>
+                                  <td><span class="badge bg-label-{{ $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info') }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
+                                  <td>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</td>
+                                  <td>
+                                    @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $teamReserves->isNotEmpty())
+                                      <details><summary class="btn btn-sm btn-outline-warning">Use next reserve</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
+                                    @else
+                                      <span class="text-muted small">No action available</span>
+                                    @endif
+                                  </td>
+                                </tr>
+                              @empty
+                                <tr><td colspan="7" class="text-center text-muted py-4">No ranked players have been imported for this team yet.</td></tr>
+                              @endforelse
+                            </tbody>
+                          </table>
+                        </div>
+                      @else
+                        <div class="card-body text-muted">Player places will appear here after the region reviews and imports its published ranking.</div>
+                      @endif
+                    </div>
+                  </div>
                 @endforeach
-              </div></details>
+              </div>
+            @else
+              <div class="alert alert-warning">No regional teams exist yet. Link a ranking series and set up the region’s categories and teams below.</div>
             @endif
             <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
               <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" {{ $activeImport ? 'disabled' : '' }} required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}" @selected($source?->series_id === $item->id)>{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · latest ranking published' : ' · ranking not ready' }}</option>@endforeach</select></div>
@@ -132,21 +222,7 @@
                 <div class="alert alert-warning mt-3 mb-0"><strong>Player import unavailable:</strong> review and publish a canonical ranking for {{ $source->series?->name }} first. You can still create its categories and teams now.</div>
               @endif
             @elseif($activeImport)
-              <div class="table-responsive mt-3"><table class="table table-sm"><thead><tr><th>Selected</th><th>Reserves</th><th>Registered</th><th>Missing account/email</th><th>Ranking snapshot</th></tr></thead><tbody><tr><td>{{ $activeImport->invitations->whereIn('status',['invited','accepted_pending_payment','paid_confirmed'])->count() }}</td><td>{{ $activeImport->invitations->where('status','reserve')->count() }}</td><td>{{ $activeImport->invitations->where('status','paid_confirmed')->count() }}</td><td>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</td><td><code>{{ $activeImport->ranking_run_id }}</code></td></tr></tbody></table></div>
-              <details class="mt-2">
-                <summary class="fw-semibold">Review selected players, reserves and email delivery</summary>
-                <div class="table-responsive mt-2"><table class="table table-sm align-middle"><thead><tr><th>Player</th><th>Team</th><th>Ranking</th><th>Selection</th><th>Recipient</th><th>Email</th><th>Replacement</th></tr></thead><tbody>
-                  @foreach($activeImport->invitations->sortBy([['team_id','asc'],['queue_position','asc']]) as $invitation)
-                    @php($recipientEmail = $recipientEmailFor($invitation))
-                    @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
-                    <tr><td>{{ $invitation->player?->full_name }}</td><td>{{ $invitation->team?->name }}</td><td>#{{ $invitation->ranking_position }}</td><td>{{ str($invitation->status)->replace('_',' ')->title() }}</td><td>{{ $recipientEmail ?: 'Account link required' }}</td><td>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</td><td>
-                      @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $activeImport->invitations->where('team_id', $invitation->team_id)->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->isNotEmpty())
-                        <details><summary class="btn btn-sm btn-outline-warning">Use next reserve</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
-                      @else<span class="text-muted small">—</span>@endif
-                    </td></tr>
-                  @endforeach
-                </tbody></table></div>
-              </details>
+              <div class="regional-readonly rounded p-2 mt-3 small"><strong>Ranking snapshot:</strong> <code>{{ $activeImport->ranking_run_id }}</code> · locked to preserve the imported selection record.</div>
               @php($emailLogs = $activeImport->invitations->flatMap->emailLogs)
               @if($activeImport->status === 'sent')
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
