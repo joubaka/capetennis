@@ -132,6 +132,20 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->actingAs($user)->put(route('player.claim.complete'), [
             'dateOfBirth' => '2012-05-17',
             'gender' => 'Male',
+            'cellNr' => '',
+            'email' => 'updated@example.test',
+            'confirmed_details' => 1,
+        ])->assertSessionHasErrors('cellNr');
+
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertDatabaseMissing('user_players', [
+            'user_id' => $user->id,
+            'player_id' => $owned->id,
+        ]);
+
+        $this->actingAs($user)->put(route('player.claim.complete'), [
+            'dateOfBirth' => '2012-05-17',
+            'gender' => 'Male',
             'cellNr' => '0821234567',
             'email' => 'updated@example.test',
             'confirmed_details' => 1,
