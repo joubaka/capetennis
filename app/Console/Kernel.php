@@ -44,6 +44,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('masters:reconcile-payments --apply')
             ->everyFiveMinutes()
             ->withoutOverlapping();
+
+        $schedule->command('team-selection:process-deadlines --apply')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     }
 
     /**

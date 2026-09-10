@@ -9,6 +9,7 @@ use App\Models\BulkEmailLog;
 use App\Models\ClothingItemType;
 use App\Models\ClothingSize;
 use App\Models\Event;
+use App\Models\EventAdmin;
 use App\Models\EventRegion;
 use App\Models\EventRegionRankingSource;
 use App\Models\Player;
@@ -831,6 +832,29 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
     }
 
+    public function test_teams_page_separates_active_roster_and_reserves_without_historical_region_teams(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $source->event->update(['eventType' => 3]);
+        app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
+        $otherEvent = Event::factory()->create();
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        Team::factory()->create([
+            'name' => 'Historical region team that must stay hidden',
+            'region_id' => $team->region_id,
+            'category_event_id' => $otherCategory->id,
+        ]);
+
+        $this->actingAs($admin)->get(route('admin.events.teams', $source->event_id))
+            ->assertOk()
+            ->assertSee($team->name)
+            ->assertSee('Reserve queue')
+            ->assertSee('Team Selection & Reserves', false)
+            ->assertDontSee('Historical region team that must stay hidden');
+    }
+
     public function test_sent_import_deadlines_can_be_extended_and_failed_email_can_be_retried(): void
     {
         Queue::fake();
@@ -853,6 +877,60 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(1, app(TeamSelectionInvitationService::class)->retryFailedEmails($selectionImport, $actor));
         $this->assertSame('queued', $failed->fresh()->status);
         $this->assertNull($failed->fresh()->failed_at);
+    }
+
+    public function test_expired_response_frees_the_exact_rank_and_promotes_the_next_reserve(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ], $actor);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('queue_position')->firstOrFail();
+        $rank = $selected->roster_rank;
+        $selectionImport->update(['response_deadline' => now()->subMinute()]);
+
+        $rows = $service->processExpiredInvitations($selectionImport->event_id, true);
+
+        $this->assertTrue(collect($rows)->contains(fn (array $row) => $row['invitation_id'] === $selected->id));
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $selected->fresh()->status);
+        $this->assertSame('system_response_deadline', $selected->fresh()->decline_method);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->fresh()->status);
+        $this->assertSame($reserve->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', $rank)->value('player_id'));
+    }
+
+    public function test_promoted_reserve_uses_replacement_deadline_after_original_response_window(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(4),
+        ], $actor);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $reserve = $service->replaceWithNextReserve($selected, $actor, 'Testing replacement window');
+        $selectionImport->update([
+            'response_deadline' => now()->subDays(2),
+            'payment_deadline' => now()->subDay(),
+        ]);
+        $owner = User::findOrFail($reserve->player->userId);
+
+        $accepted = $service->accept($reserve->fresh(), $owner);
+
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
     }
 
     public function test_import_is_blocked_when_a_newer_ranking_run_has_not_been_published(): void

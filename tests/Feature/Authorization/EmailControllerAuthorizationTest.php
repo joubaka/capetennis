@@ -5,14 +5,18 @@ namespace Tests\Feature\Authorization;
 use App\Models\Event;
 use App\Models\EventAdmin;
 use App\Models\EventConvenor;
+use App\Models\EventRegion;
+use App\Models\BulkEmailLog;
 use App\Models\CategoryEvent;
 use App\Models\Player;
 use App\Models\Series;
 use App\Models\Team;
 use App\Models\TeamRegion;
+use App\Http\Controllers\Backend\EmailController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class EmailControllerAuthorizationTest extends TestCase
@@ -338,6 +342,56 @@ class EmailControllerAuthorizationTest extends TestCase
       'emailSubject' => 'Test',
     ]);
     $response->assertStatus(403);
+  }
+
+  public function test_team_email_rejects_a_team_from_another_event(): void
+  {
+    $categoryEventB = CategoryEvent::factory()->create(['event_id' => $this->eventB->id]);
+    $teamB = Team::factory()->create([
+      'category_event_id' => $categoryEventB->id,
+      'region_id' => $this->regionA->id,
+    ]);
+
+    $this->actingAs($this->admin)->postJson(route('email.send'), [
+      'target_type' => 'team',
+      'team_id' => $teamB->id,
+      'event_id' => $this->eventA->id,
+      'fromName' => 'Test',
+      'message' => 'Test message',
+      'emailSubject' => 'Test',
+    ])->assertNotFound();
+  }
+
+  public function test_region_email_uses_only_explicitly_event_scoped_teams(): void
+  {
+    Queue::fake();
+    config()->set('mail.bulk_mail.batch_threshold', 1);
+    foreach ([$this->eventA, $this->eventB] as $event) {
+      $eventRegion = new EventRegion();
+      $eventRegion->event_id = $event->id;
+      $eventRegion->region_id = $this->regionA->id;
+      $eventRegion->ordering = 1;
+      $eventRegion->save();
+    }
+    $playerA = Player::factory()->create(['email' => 'event-a-roster@example.test']);
+    $this->teamA->players()->attach($playerA->id, ['rank' => 1, 'pay_status' => 0]);
+    $categoryEventB = CategoryEvent::factory()->create(['event_id' => $this->eventB->id]);
+    $teamB = Team::factory()->create(['category_event_id' => $categoryEventB->id, 'region_id' => $this->regionA->id]);
+    $playerB = Player::factory()->create(['email' => 'event-b-roster@example.test']);
+    $teamB->players()->attach($playerB->id, ['rank' => 1, 'pay_status' => 0]);
+
+    app(EmailController::class)->sendToRegion([
+      'event' => $this->eventA->id,
+      'region' => $this->regionA->id,
+      'subject' => 'Scoped team message',
+      'message' => 'Active roster only',
+      'fromName' => 'Cape Tennis',
+      'replyTo' => null,
+      'bcc' => false,
+    ], 'smtp');
+
+    $this->assertDatabaseHas('bulk_email_logs', ['mail_type' => 'region_email', 'recipient_email' => 'event-a-roster@example.test']);
+    $this->assertDatabaseMissing('bulk_email_logs', ['mail_type' => 'region_email', 'recipient_email' => 'event-b-roster@example.test']);
   }
 
   public function test_convenor_follows_existing_head_office_rules()

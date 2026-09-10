@@ -52,6 +52,10 @@
 
     <div class="card-body">
 
+      <div class="alert alert-warning">
+        Your team place is still active. Submitting one of the refund options below completes the withdrawal, removes you from future fixtures and releases the place to the next reserve where applicable. Leaving this page makes no changes.
+      </div>
+
       {{-- Amount summary --}}
       <div class="mb-3">
         <p class="mb-1">

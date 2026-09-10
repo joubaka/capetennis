@@ -23,10 +23,13 @@
   {{-- GLOBAL ACTIONS --}}
   <div class="player-global-actions d-flex align-items-center justify-content-between gap-2">
     <div>
-      <div class="fw-semibold">Player exports</div>
-      <div class="small text-muted">Download the complete event player list.</div>
+      <div class="fw-semibold">Active-roster exports</div>
+      <div class="small text-muted">Downloads contain occupied team places only; reserves remain in the selection queue.</div>
     </div>
     <div class="player-global-actions__buttons d-flex align-items-center gap-2">
+      <a href="{{ route('backend.team-selection.index', $event) }}" class="btn btn-sm btn-primary">
+        <i class="ti ti-list-check"></i> Team Selection & Reserves
+      </a>
       <a href="{{ route('event.players.exportPdf', $event->id) }}"
          class="btn btn-sm btn-outline-danger" target="_blank">
         <i class="ti ti-file-text"></i> Export PDF
@@ -56,14 +59,14 @@
               <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
                       data-regionid="{{ $region->id }}"
                       data-regionname="{{ $region->region_name }}">
-                <i class="ti ti-mail"></i> Email All Players
+                <i class="ti ti-mail"></i> Email Active Roster
               </button>
 
               {{-- ✅ NEW: Email Unpaid Players in Region --}}
               <button class="btn btn-sm btn-outline-warning emailUnpaidRegionBtn"
                       data-regionid="{{ $region->id }}"
                       data-regionname="{{ $region->region_name }}">
-                <i class="ti ti-alert-circle"></i> Email Unpaid Players
+                <i class="ti ti-alert-circle"></i> Email Unpaid Active Roster
               </button>
             </div>
           </div>
@@ -72,6 +75,14 @@
 
             @forelse($region->teams ?? collect() as $team)
 
+              @php
+                $selectionInvitations = ($teamSelectionInvitations ?? collect())->get($team->id, collect());
+                $rankingManaged = $selectionInvitations->isNotEmpty();
+                $teamReserves = $selectionInvitations
+                  ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)
+                  ->sortBy('queue_position');
+              @endphp
+
               {{-- TEAM HEADER --}}
               <div class="mb-4">
 
@@ -79,6 +90,9 @@
                   <div>
                     <h5 class="mb-0">{{ $team->name }}</h5>
                     <small class="text-muted">Team ID: {{ $team->id }}</small>
+                    @if($rankingManaged)
+                      <span class="badge bg-label-info ms-2">Ranking-managed</span>
+                    @endif
                   </div>
 
                   <div class="d-flex align-items-center gap-2">
@@ -93,16 +107,16 @@
                       <ul class="dropdown-menu dropdown-menu-end">
                         <li>
                           <a class="dropdown-item emailTeamBtn" href="#" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">
-                            <i class="ti ti-mail me-1"></i> Email Team
+                            <i class="ti ti-mail me-1"></i> Email Active Roster
                           </a>
                         </li>
                         <!-- team-level 'Email Unpaid Players' removed from dropdown -->
                         <li><hr class="dropdown-divider"></li>
-                        <li>
-                          <a class="dropdown-item editRosterBtn" href="#" data-teamid="{{ $team->id }}">
-                            <i class="ti ti-users me-1"></i> Edit Roster
-                          </a>
-                        </li>
+                        @if($rankingManaged)
+                          <li><a class="dropdown-item" href="{{ route('backend.team-selection.index', $event) }}"><i class="ti ti-list-check me-1"></i> Manage Selection & Reserves</a></li>
+                        @else
+                          <li><a class="dropdown-item editRosterBtn" href="#" data-teamid="{{ $team->id }}"><i class="ti ti-users me-1"></i> Edit Roster</a></li>
+                        @endif
                         <li>
                           <a class="dropdown-item" href="{{ route('backend.region.clothing.edit', $region->id) }}">
                             <i class="ti ti-settings me-1"></i> Clothing Setup
@@ -179,12 +193,14 @@
                               </button>
 
                               <div class="dropdown-menu dropdown-menu-end">
+                                @unless($rankingManaged)
                                 <a class="dropdown-item replacePlayerBtn"
                                    data-slotid="{{ $slot->id }}"
                                    data-teamid="{{ $team->id }}"
                                    data-playername="{{ $name }}">
                                   <i class="ti ti-refresh me-1"></i> Replace Player
                                 </a>
+                                @endunless
 
                                 @if($player)
                                   <a class="dropdown-item emailPlayer"
@@ -198,6 +214,7 @@
                                   </span>
                                 @endif
 
+                                @unless($rankingManaged)
                                 <a class="dropdown-item changePayStatus"
                                    data-pivot="{{ $slot->id }}">
                                   <i class="ti ti-credit-card me-1"></i> Change Pay Status
@@ -207,6 +224,9 @@
                                    data-pivot="{{ $slot->id }}">
                                   <i class="ti ti-cash me-1"></i> Refund to Wallet
                                 </a>
+                                @else
+                                  <a class="dropdown-item" href="{{ route('backend.team-selection.index', $event) }}"><i class="ti ti-list-check me-1"></i> Manage in Team Selection</a>
+                                @endunless
                               </div>
                             </div>
                           </td>
@@ -215,6 +235,23 @@
                     </tbody>
                   </table>
                 </div>
+
+                @if($rankingManaged)
+                  <div class="border rounded bg-light p-3 mt-2">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                      <div><strong>Reserve queue</strong><div class="small text-muted">Held back from the active roster, draws, exports and active-roster email until promoted.</div></div>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Manage selection</a>
+                    </div>
+                    @forelse($teamReserves as $reserve)
+                      <div class="d-flex flex-wrap gap-2 justify-content-between border-top py-2 small">
+                        <span><strong>#{{ $loop->iteration }}</strong> {{ $reserve->player?->full_name ?? 'Missing player' }}</span>
+                        <span class="text-muted">Ranking #{{ $reserve->ranking_position ?? '—' }}</span>
+                      </div>
+                    @empty
+                      <div class="small text-muted">No reserves remain for this team.</div>
+                    @endforelse
+                  </div>
+                @endif
 
               </div>
 

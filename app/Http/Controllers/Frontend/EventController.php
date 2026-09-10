@@ -16,7 +16,6 @@ use App\Models\TeamFixture;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\TeamFixtureResult;
-use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
 use App\Models\User;
 use Carbon\Carbon;
@@ -285,25 +284,9 @@ class EventController extends Controller
     // ---------------------------------------------------------
     $products = SellProduct::where('event_id', $event->id)->get();
 
-    // ---------------------------------------------------------
-    // TEAM REGISTRATIONS (PAID)
-    // ---------------------------------------------------------
-    $teamRegs = TeamPlayer::where('pay_status', 1)
-      ->whereHas('team.regions', function ($q) use ($event) {
-        $q->whereHas('events', function ($q2) use ($event) {
-          $q2->where('events.id', $event->id);
-        });
-      })
-      ->get();
-
-    // Keep the public figure aligned with the event admin statistics:
-    // confirmed individual registrations, or teams for team events.
-    $entryCount = $event->isTeam()
-      ? $event->regions()->with('teams')->get()->flatMap(fn ($region) => $region->teams)->count()
-      : $event->registrations()
-        ->where('status', '!=', 'withdrawn')
-        ->where('payment_status_id', 1)
-        ->count();
+    // Team/category rows describe the event structure. Only completed player
+    // payments (or paid individual registrations) are confirmed entries.
+    $entryCount = $event->confirmedEntryCount();
 
     // ---------------------------------------------------------
     // SORT DRAWS
@@ -507,7 +490,6 @@ return view('frontend.event.show', compact(
       'userRegistrations',
       'eventCats',
       'categories',
-      'teamRegs',
       'event',
       'user',
       'signUp',

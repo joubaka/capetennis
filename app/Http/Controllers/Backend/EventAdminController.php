@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Models\Registration;
 use App\Models\PlayerRegistration;
 use App\Models\CategoryEventRegistration;
+use App\Models\TeamSelectionInvitation;
 use App\Services\EventOperationsService;
 
 class EventAdminController extends Controller
@@ -190,6 +191,33 @@ class EventAdminController extends Controller
 
     $allCategories = \App\Models\Category::orderBy('name')->get();
 
+    // Ranking-managed team rosters are projected into team_players, while the
+    // invitation ledger remains authoritative for selected/reserve state.
+    $teamSelectionInvitations = TeamSelectionInvitation::query()
+      ->with(['player', 'selectionImport'])
+      ->where('event_id', $event->id)
+      ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
+      ->orderBy('team_id')
+      ->orderBy('queue_position')
+      ->get()
+      ->groupBy('team_id');
+
+    // A region is shared by many historical events. Once explicit event-team
+    // links exist, do not leak those other teams into this event workspace.
+    $explicitTeamIds = Team::query()->withoutGlobalScopes()
+      ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
+      ->pluck('id')
+      ->merge($teamSelectionInvitations->keys())
+      ->map(fn ($teamId) => (int) $teamId)
+      ->unique();
+    if ($explicitTeamIds->isNotEmpty()) {
+      $event->regions->each(function (TeamRegion $region) use ($explicitTeamIds): void {
+        $region->setRelation('teams', $region->teams
+          ->filter(fn (Team $team) => $explicitTeamIds->contains((int) $team->id))
+          ->values());
+      });
+    }
+
 
     return view('backend.adminPage.show', compact(
       'event',
@@ -207,7 +235,8 @@ class EventAdminController extends Controller
       'nettTotal',
       'finalBalance',
       'playerInfo',
-        'allCategories',
+      'allCategories',
+      'teamSelectionInvitations',
     ));
   }
 

@@ -183,6 +183,28 @@ class Event extends Model
     )->orderBy('category_event_id');
   }
 
+  /**
+   * Count only completed, active registrations that belong to this event.
+   *
+   * Team rows and imported roster places describe the tournament structure;
+   * they are not confirmed entries until the player's payment is finalised.
+   */
+  public function confirmedEntryCount(): int
+  {
+    if ($this->isTeam()) {
+      return TeamPlayer::query()
+        ->withoutGlobalScopes()
+        ->where('pay_status', 1)
+        ->whereHas('team.category', fn (Builder $query) => $query->where('event_id', $this->id))
+        ->count();
+    }
+
+    return $this->registrations()
+      ->where('status', '!=', 'withdrawn')
+      ->where('payment_status_id', 1)
+      ->count();
+  }
+
   public function series()
   {
     return $this->belongsTo(Series::class, 'series_id', 'id');

@@ -1,11 +1,15 @@
 @php
-  $categoryFees = $event->eventCategories
-    ->filter(fn ($categoryEvent) => $categoryEvent->category)
-    ->map(fn ($categoryEvent) => [
-      'category' => $categoryEvent->category->name,
-      'fee' => (float) ($categoryEvent->entry_fee ?? $event->entryFee ?? 0),
-    ])
-    ->values();
+  // Team checkout is priced from the event fee (plus any region fee), not the
+  // category rows used to organise imported team selections.
+  $categoryFees = $event->isTeam()
+    ? collect()
+    : $event->eventCategories
+      ->filter(fn ($categoryEvent) => $categoryEvent->category)
+      ->map(fn ($categoryEvent) => [
+        'category' => $categoryEvent->category->name,
+        'fee' => (float) ($categoryEvent->entry_fee ?? $event->entryFee ?? 0),
+      ])
+      ->values();
 
   $distinctFees = $categoryFees
     ->pluck('fee')

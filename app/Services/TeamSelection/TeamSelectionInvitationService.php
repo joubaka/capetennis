@@ -39,8 +39,10 @@ final class TeamSelectionInvitationService
 
             $response = now()->parse($deadlines['response_deadline']);
             $payment = now()->parse($deadlines['payment_deadline']);
-            if ($response->isPast() || $payment->isPast() || $payment->lt($response)) {
-                throw ValidationException::withMessages(['deadlines' => 'Use future deadlines with payment on or after the response deadline.']);
+            $replacement = now()->parse($deadlines['replacement_payment_deadline'] ?? $deadlines['payment_deadline']);
+            if ($response->isPast() || $payment->isPast() || $replacement->isPast()
+                || $payment->lt($response) || $replacement->lt($payment)) {
+                throw ValidationException::withMessages(['deadlines' => 'Use future deadlines ordered as response, payment, then replacement payment.']);
             }
             if (! app(ExternalTeamRosterService::class)->registrationIsOpen($locked->event)) {
                 throw ValidationException::withMessages(['event' => 'Publish the event and open team registration before sending invitations.']);
@@ -66,7 +68,7 @@ final class TeamSelectionInvitationService
                 ]);
             }
 
-            $campaign = $this->campaignSnapshot($locked, $deadlines, $response, $payment);
+            $campaign = $this->campaignSnapshot($locked, $deadlines, $response, $payment, $replacement);
 
             $stats = ['selected' => $selected->count(), 'queued' => 0, 'missing_email' => 0];
             foreach ($selected as $invitation) {
@@ -79,6 +81,7 @@ final class TeamSelectionInvitationService
             $locked->update([
                 'response_deadline' => $response,
                 'payment_deadline' => $payment,
+                'replacement_payment_deadline' => $replacement,
                 'email_subject' => $campaign['subject'],
                 'email_message' => $campaign['message'],
                 'event_information' => $campaign['event_information'],
@@ -94,6 +97,7 @@ final class TeamSelectionInvitationService
                 ->withProperties($stats + [
                     'response_deadline' => $response->toIso8601String(),
                     'payment_deadline' => $payment->toIso8601String(),
+                    'replacement_payment_deadline' => $replacement->toIso8601String(),
                     'communication_hash' => $campaign['hash'],
                     'include_clothing' => $campaign['include_clothing'],
                 ])
@@ -112,7 +116,7 @@ final class TeamSelectionInvitationService
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
             if ($locked->selectionImport->status === 'sent'
                 && $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
-                if ($locked->selectionImport->payment_deadline && now()->gt($locked->selectionImport->payment_deadline)) {
+                if ($this->paymentDeadline($locked) && now()->gt($this->paymentDeadline($locked))) {
                     throw ValidationException::withMessages(['payment' => 'The payment deadline for this invitation has passed.']);
                 }
 
@@ -121,7 +125,7 @@ final class TeamSelectionInvitationService
             if ($locked->selectionImport->status !== 'sent' || $locked->status !== TeamSelectionInvitation::INVITED) {
                 throw ValidationException::withMessages(['invitation' => 'This invitation is not available for acceptance.']);
             }
-            if ($locked->selectionImport->response_deadline && now()->gt($locked->selectionImport->response_deadline)) {
+            if ($this->responseDeadline($locked) && now()->gt($this->responseDeadline($locked))) {
                 throw ValidationException::withMessages(['invitation' => 'The response deadline has passed.']);
             }
             app(ExternalTeamRosterService::class)->assertCanRegister(
@@ -165,7 +169,7 @@ final class TeamSelectionInvitationService
         if ($invitation->status === TeamSelectionInvitation::INVITED) {
             throw ValidationException::withMessages(['invitation' => 'Open your team invitation and accept the place before starting payment.']);
         }
-        if ($invitation->selectionImport?->payment_deadline && now()->gt($invitation->selectionImport->payment_deadline)) {
+        if ($this->paymentDeadline($invitation) && now()->gt($this->paymentDeadline($invitation))) {
             throw ValidationException::withMessages(['payment' => 'The payment deadline for this team invitation has passed.']);
         }
     }
@@ -206,8 +210,8 @@ final class TeamSelectionInvitationService
                 throw ValidationException::withMessages(['invitation' => 'Only an unpaid invitation can be declined.']);
             }
             $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
-                ? $locked->selectionImport->payment_deadline
-                : $locked->selectionImport->response_deadline;
+                ? $this->paymentDeadline($locked)
+                : $this->responseDeadline($locked);
             if ($deadline && now()->gt($deadline)) {
                 throw ValidationException::withMessages(['invitation' => 'The invitation deadline has passed.']);
             }
@@ -362,14 +366,17 @@ final class TeamSelectionInvitationService
             }
             $response = now()->parse($deadlines['response_deadline']);
             $payment = now()->parse($deadlines['payment_deadline']);
-            if ($response->isPast() || $payment->isPast() || $payment->lt($response)
+            $replacement = now()->parse($deadlines['replacement_payment_deadline'] ?? $deadlines['payment_deadline']);
+            if ($response->isPast() || $payment->isPast() || $replacement->isPast()
+                || $payment->lt($response) || $replacement->lt($payment)
                 || ($locked->response_deadline && $response->lt($locked->response_deadline))
-                || ($locked->payment_deadline && $payment->lt($locked->payment_deadline))) {
-                throw ValidationException::withMessages(['deadlines' => 'Deadlines may only be extended, with payment on or after the response deadline.']);
+                || ($locked->payment_deadline && $payment->lt($locked->payment_deadline))
+                || ($locked->replacement_payment_deadline && $replacement->lt($locked->replacement_payment_deadline))) {
+                throw ValidationException::withMessages(['deadlines' => 'Deadlines may only be extended in response, payment, replacement-payment order.']);
             }
-            $locked->update(['response_deadline' => $response, 'payment_deadline' => $payment]);
+            $locked->update(['response_deadline' => $response, 'payment_deadline' => $payment, 'replacement_payment_deadline' => $replacement]);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
-                ->withProperties(['response_deadline' => $response->toIso8601String(), 'payment_deadline' => $payment->toIso8601String()])
+                ->withProperties(['response_deadline' => $response->toIso8601String(), 'payment_deadline' => $payment->toIso8601String(), 'replacement_payment_deadline' => $replacement->toIso8601String()])
                 ->log('extended regional team invitation deadlines');
 
             return $locked->fresh();
@@ -380,7 +387,8 @@ final class TeamSelectionInvitationService
     {
         return DB::transaction(function () use ($import, $actor): int {
             $locked = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
-            if ($locked->status !== 'sent' || ($locked->response_deadline && now()->gt($locked->response_deadline))) {
+            $lastDeadline = $locked->replacement_payment_deadline ?: $locked->payment_deadline ?: $locked->response_deadline;
+            if ($locked->status !== 'sent' || ($lastDeadline && now()->gt($lastDeadline))) {
                 throw ValidationException::withMessages(['email' => 'Failed invitations can only be retried while the response window is open.']);
             }
 
@@ -416,11 +424,108 @@ final class TeamSelectionInvitationService
         });
     }
 
+    /**
+     * Expire unanswered or unpaid places and offer the exact vacated roster
+     * rank to the next reserve while the replacement window remains open.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function processExpiredInvitations(?int $eventId = null, bool $apply = false): array
+    {
+        $candidates = TeamSelectionInvitation::query()
+            ->with(['selectionImport', 'player'])
+            ->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            ])
+            ->whereHas('selectionImport', fn ($query) => $query->where('status', 'sent'))
+            ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
+            ->orderBy('id')
+            ->get()
+            ->filter(function (TeamSelectionInvitation $invitation): bool {
+                $deadline = $invitation->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                    ? $this->paymentDeadline($invitation)
+                    : $this->responseDeadline($invitation);
+
+                return $deadline && now()->gt($deadline);
+            });
+
+        $rows = [];
+        foreach ($candidates as $candidate) {
+            $row = [
+                'invitation_id' => $candidate->id,
+                'player' => $candidate->player?->full_name ?? 'Unknown player',
+                'previous_status' => $candidate->status,
+                'replacement_id' => null,
+            ];
+            if ($apply) {
+                $row['replacement_id'] = DB::transaction(function () use ($candidate): ?int {
+                    $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                        ->with(['selectionImport', 'player'])->findOrFail($candidate->id);
+                    if (! in_array($locked->status, [
+                        TeamSelectionInvitation::INVITED,
+                        TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    ], true)) {
+                        return null;
+                    }
+                    $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                        ? $this->paymentDeadline($locked)
+                        : $this->responseDeadline($locked);
+                    if (! $deadline || now()->lte($deadline)) {
+                        return null;
+                    }
+
+                    if ($locked->order_id) {
+                        $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                        if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
+                            return null;
+                        }
+                        if ($order) {
+                            app(TeamPaymentService::class)->cancelPayment($order);
+                        }
+                    }
+
+                    $rank = $locked->roster_rank;
+                    $slot = TeamPlayer::query()->withoutGlobalScopes()
+                        ->where('team_id', $locked->team_id)->where('rank', $rank)
+                        ->where('player_id', $locked->player_id)->lockForUpdate()->first();
+                    if ($slot) {
+                        app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
+                    }
+                    $reason = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                        ? 'Payment deadline expired.'
+                        : 'Response deadline expired.';
+                    $method = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                        ? 'system_payment_deadline'
+                        : 'system_response_deadline';
+                    $locked->update([
+                        'status' => TeamSelectionInvitation::DECLINED,
+                        'declined_at' => now(),
+                        'decline_reason' => $reason,
+                        'decline_method' => $method,
+                        'payment_started_at' => null,
+                        'roster_rank' => null,
+                    ]);
+                    $replacement = $this->promoteNextReserve($locked, $rank);
+                    activity('team-selection')->performedOn($locked)
+                        ->withProperties(['replacement_id' => $replacement?->id, 'method' => $method])
+                        ->log('expired regional team invitation');
+
+                    return $replacement?->id;
+                });
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
     private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank): ?TeamSelectionInvitation
     {
         $selectionImport = $vacated->selectionImport;
         if (! $rank || ! $selectionImport || $selectionImport->status !== 'sent'
-            || ($selectionImport->response_deadline && now()->gt($selectionImport->response_deadline))) {
+            || (($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
+                && now()->gt($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline))) {
             return null;
         }
 
@@ -516,8 +621,9 @@ final class TeamSelectionInvitationService
         $import->loadMissing(['event', 'region.clothingItems.sizes']);
         $response = now()->parse($details['response_deadline']);
         $payment = now()->parse($details['payment_deadline']);
+        $replacement = now()->parse($details['replacement_payment_deadline'] ?? $details['payment_deadline']);
 
-        return $this->campaignSnapshot($import, $details, $response, $payment);
+        return $this->campaignSnapshot($import, $details, $response, $payment, $replacement);
     }
 
     private function campaignSnapshot(
@@ -525,6 +631,7 @@ final class TeamSelectionInvitationService
         array $details,
         mixed $response,
         mixed $payment,
+        mixed $replacement,
     ): array {
         $event = $import->event;
         $region = $import->region;
@@ -548,6 +655,7 @@ final class TeamSelectionInvitationService
             'reply_to' => $replyTo,
             'response_deadline' => $response->toIso8601String(),
             'payment_deadline' => $payment->toIso8601String(),
+            'replacement_payment_deadline' => $replacement->toIso8601String(),
             'include_clothing' => $includeClothing,
         ];
         $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -564,8 +672,23 @@ final class TeamSelectionInvitationService
             'reply_to' => $import->reply_to,
             'response_deadline' => $import->response_deadline?->toIso8601String(),
             'payment_deadline' => $import->payment_deadline?->toIso8601String(),
+            'replacement_payment_deadline' => $import->replacement_payment_deadline?->toIso8601String(),
             'include_clothing' => (bool) $import->include_clothing,
             'hash' => $import->communication_hash,
         ];
+    }
+
+    private function responseDeadline(TeamSelectionInvitation $invitation): mixed
+    {
+        return $invitation->promoted_from_id
+            ? ($invitation->selectionImport?->replacement_payment_deadline ?: $invitation->selectionImport?->payment_deadline)
+            : $invitation->selectionImport?->response_deadline;
+    }
+
+    private function paymentDeadline(TeamSelectionInvitation $invitation): mixed
+    {
+        return $invitation->promoted_from_id
+            ? ($invitation->selectionImport?->replacement_payment_deadline ?: $invitation->selectionImport?->payment_deadline)
+            : $invitation->selectionImport?->payment_deadline;
     }
 }

@@ -4,8 +4,10 @@
   $teamCount     = $event->regions->sum(fn ($r) => $r->teams->count());
   $categoryCount = $event->eventCategories->count();
   $playerCount   = $event->regions->sum(
-    fn ($r) => $r->teams->sum(fn ($t) => $t->players->count())
+    fn ($r) => $r->teams->sum(fn ($t) => $t->teamPlayers->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count())
   );
+  $reserveCount = ($teamSelectionInvitations ?? collect())->flatten(1)
+    ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
 @endphp
 
 
@@ -133,6 +135,9 @@
               <i class="ti ti-users-group ti-xs me-1"></i>
               Players
               <span class="badge rounded-pill bg-label-success ms-1">{{ $playerCount }}</span>
+              @if($reserveCount > 0)
+                <span class="badge rounded-pill bg-label-warning ms-1">{{ $reserveCount }} reserves</span>
+              @endif
             </button>
           </li>
 

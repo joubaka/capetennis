@@ -71,6 +71,28 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         ]);
     }
 
+    public function test_opening_refund_choice_does_not_mutate_paid_roster_or_future_fixtures(): void
+    {
+        [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $event->update(['withdrawal_deadline' => now()->addDay()]);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $future = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
+        $assignment = TeamFixturePlayer::create([
+            'team_fixture_id' => $future->id, 'team1_id' => $player->id, 'team2_id' => null,
+        ]);
+
+        $this->actingAs($user)->post(
+            route('team.player.withdraw', [$team, $player, $event])
+        )->assertRedirect(route('team.player.refund.choose', [$team->id, $player->id, $event->id]));
+
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'pay_status' => 1,
+        ]);
+        $this->assertSame($player->id, $assignment->fresh()->team1_id);
+    }
+
     public function test_withdrawal_clears_future_fixture_assignments_but_preserves_completed_history(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();

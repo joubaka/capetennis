@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Models\SiteSetting;
+use App\Models\TeamSelectionInvitation;
 
 
 class EmailController extends Controller
@@ -233,7 +234,7 @@ class EmailController extends Controller
    */
   protected function sendToEventType(array $details, string $mailer)
   {  
-    $event = Event::with('eventType', 'region_in_events')->find($details['event']);
+    $event = Event::with('eventType', 'regions')->find($details['event']);
     if (!$event)
       return ['message' => 'Event not found', 'title' => 'error'];
 
@@ -241,7 +242,7 @@ class EmailController extends Controller
 
       return $this->sendToEvent($details, $mailer);
     } elseif ($event->eventType->type == 2) {
-      foreach ($event->region_in_events as $region) {
+      foreach ($event->regions as $region) {
         $details['region'] = $region->id;
         $this->sendToRegion($details, $mailer);
       }
@@ -472,9 +473,11 @@ class EmailController extends Controller
   /** ✅ All players in team */
   public function sendToTeam(array $details, string $mailer)
   {
-    $team = Team::with('players')->find($details['team']);
+    $event = Event::findOrFail($details['event'] ?? 0);
+    $team = $this->teamsForEmailScope($event)
+      ->firstWhere('id', (int) ($details['team'] ?? 0));
     if (!$team)
-      return ['message' => 'Team not found.', 'title' => 'error'];
+      abort(404, 'Team does not belong to this event.');
 
     // ✅ Collect player emails
     $recipients = [];
@@ -483,6 +486,7 @@ class EmailController extends Controller
         $recipients[] = trim(strtolower($player->email));
       }
     }
+    $recipients = array_values(array_unique($recipients));
 
     // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
     if (count($recipients) >= config('mail.bulk_mail.batch_threshold', 10)) {
@@ -524,17 +528,19 @@ class EmailController extends Controller
       'bcc_flag' => $details['bcc'] ?? false,
     ]);
 
-    $region = TeamRegion::with('teams.players')->find($details['region']);
+    $event = Event::findOrFail($details['event'] ?? 0);
+    $region = TeamRegion::find($details['region']);
 
-    if (!$region) {
+    if (!$region || ! $event->regions()->whereKey($region->id)->exists()) {
       Log::warning('[sendToRegion] ❌ Region not found', ['region_id' => $details['region']]);
-      return ['message' => 'Region not found.', 'title' => 'error'];
+      abort(404, 'Region does not belong to this event.');
     }
+    $teams = $this->teamsForEmailScope($event, $region->id);
 
     Log::info('[sendToRegion] 🟢 Region loaded', [
       'region_id' => $region->id,
       'region_name' => $region->region_name ?? null,
-      'teams_count' => $region->teams->count(),
+      'teams_count' => $teams->count(),
     ]);
 
     // ✅ Collect all player emails from all teams in the region
@@ -542,7 +548,7 @@ class EmailController extends Controller
     $playerCount = 0;
     $missingEmail = 0;
 
-    foreach ($region->teams as $teamIndex => $team) {
+    foreach ($teams as $teamIndex => $team) {
       $players = $team->players ?? collect();
 
       Log::debug('[sendToRegion] 🔹 Processing team', [
@@ -575,6 +581,7 @@ class EmailController extends Controller
     }
 
     // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
+    $recipients = array_values(array_unique($recipients));
     $recipientCount = count($recipients);
     if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
       Log::info('[EmailController] Using BulkMailDispatcher for region email', [
@@ -896,22 +903,20 @@ class EmailController extends Controller
   /** ✅ Unregistered (unpaid) players across entire event */
   public function sendToAllUnregisteredInEvent(array $details, string $mailer)
   {
-    $event = Event::with('region_in_events.teams.players')->find($details['event']);
+    $event = Event::find($details['event']);
     if (!$event)
       return ['message' => 'Event not found', 'title' => 'error'];
 
     // Collect unpaid player emails
     $recipients = [];
-    foreach ($event->region_in_events as $region) {
-      foreach ($region->teams as $team) {
-        foreach ($team->players as $player) {
-          if ($player->pivot->pay_status == 0 && !empty($player->email)) {
-            $recipients[] = trim(strtolower($player->email));
-          }
+    foreach ($this->teamsForEmailScope($event) as $team) {
+      foreach ($team->players as $player) {
+        if ($player->pivot->pay_status == 0 && !empty($player->email)) {
+          $recipients[] = trim(strtolower($player->email));
         }
       }
     }
-
+    $recipients = array_values(array_unique($recipients));
     $count = count($recipients);
 
     // Use BulkMailDispatcher for throttled sending
@@ -948,13 +953,15 @@ class EmailController extends Controller
   /** ✅ Unregistered (unpaid) players in specific region */
   public function sendToUnregisteredInRegion(array $details, string $mailer)
   {
-    $region = TeamRegion::with('teams.players')->find($details['region']);
-    if (!$region)
-      return ['message' => 'Region not found', 'title' => 'error'];
+    $event = Event::findOrFail($details['event'] ?? 0);
+    $region = TeamRegion::find($details['region']);
+    if (!$region || ! $event->regions()->whereKey($region->id)->exists())
+      abort(404, 'Region does not belong to this event.');
+    $teams = $this->teamsForEmailScope($event, $region->id);
 
     // Collect unpaid player emails
     $recipients = [];
-    foreach ($region->teams as $team) {
+    foreach ($teams as $team) {
       foreach ($team->players as $player) {
         if ($player->pivot->pay_status == 0 && !empty($player->email)) {
           $recipients[] = trim(strtolower($player->email));
@@ -962,6 +969,7 @@ class EmailController extends Controller
       }
     }
 
+    $recipients = array_values(array_unique($recipients));
     $count = count($recipients);
 
     // Use BulkMailDispatcher for throttled sending
@@ -995,6 +1003,29 @@ class EmailController extends Controller
     return ['message' => "$count unregistered players emailed in region: {$region->region_name}.", 'title' => 'success'];
   }
 
+  /**
+   * Resolve only teams that have an explicit relationship with this event.
+   * Region membership alone is not sufficient because regions and legacy
+   * teams are shared across historical events.
+   */
+  private function teamsForEmailScope(Event $event, ?int $regionId = null)
+  {
+    $selectionTeamIds = TeamSelectionInvitation::query()
+      ->where('event_id', $event->id)
+      ->pluck('team_id');
+
+    return Team::query()->withoutGlobalScopes()
+      ->with('players')
+      ->when($regionId, fn ($query) => $query->where('region_id', $regionId))
+      ->where(function ($query) use ($event, $selectionTeamIds): void {
+        $query->whereHas('category', fn ($category) => $category->where('event_id', $event->id));
+        if ($selectionTeamIds->isNotEmpty()) {
+          $query->orWhereIn('id', $selectionTeamIds);
+        }
+      })
+      ->get();
+  }
+
   /** ✅ AJAX helpers */
   public function getPlayers($eventId)
   {
@@ -1002,15 +1033,13 @@ class EmailController extends Controller
     $this->authorize('event-email.view', $event);
 
     try {
-      $event = Event::with(['registrations.players', 'region_in_events.teams.players'])->findOrFail($eventId);
+      $event = Event::with('registrations.players')->findOrFail($eventId);
 
       $players = collect();
       if ($event->registrations->isNotEmpty()) {
         $players = $event->registrations->flatMap(fn($r) => $r->players);
-      } elseif ($event->region_in_events->isNotEmpty()) {
-        $players = $event->region_in_events
-          ->flatMap(fn($region) => $region->teams)
-          ->flatMap(fn($team) => $team->players);
+      } else {
+        $players = $this->teamsForEmailScope($event)->flatMap(fn($team) => $team->players);
       }
 
       $data = $players->filter(fn($p) => $p && $p->email)
@@ -1027,11 +1056,10 @@ class EmailController extends Controller
 
   public function getTeams($eventId)
   {
-    $event = Event::with('region_in_events.teams.regions')->findOrFail($eventId);
+    $event = Event::findOrFail($eventId);
     $this->authorize('event-email.view', $event);
 
-    $teams = $event->region_in_events
-      ->flatMap(fn($region) => $region->teams)
+    $teams = $this->teamsForEmailScope($event)
       ->unique('id')
       ->map(fn($t) => [
         'id' => $t->id,

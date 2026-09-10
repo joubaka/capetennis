@@ -51,6 +51,7 @@
             @forelse($region->teams ?? collect() as $team)
 
               @php
+                $rankingManaged = ($teamSelectionInvitations ?? collect())->has($team->id);
                 $slots = ($team->teamPlayers ?? collect())->sortBy('rank')->values();
                 $noProfiles = $team->noProfile
                   ? $team->team_players_no_profile()->orderBy('rank')->get()
@@ -66,6 +67,7 @@
                   <div>
                     <h5 class="mb-0">{{ $team->name }}</h5>
                     <small class="text-muted">Team ID: {{ $team->id }}</small>
+                    @if($rankingManaged)<span class="badge bg-label-info ms-2">Ranking-managed</span>@endif
                   </div>
                   <span class="badge {{ $team->published ? 'bg-label-success' : 'bg-label-danger' }}">
                     {{ $team->published ? 'Published' : 'Not Published' }}
@@ -88,7 +90,7 @@
                       </tr>
                     </thead>
 
-                    <tbody class="sortablePlayers" data-team-id="{{ $team->id }}">
+                    <tbody class="{{ $rankingManaged ? '' : 'sortablePlayers' }}" data-team-id="{{ $team->id }}">
 
                       @for($rank = 1; $rank <= $maxRows; $rank++)
                         @php
@@ -111,8 +113,8 @@
                           data-noprofileid="{{ $noProfile?->id }}"
                           data-type="{{ $rowType }}">
 
-                          <td class="text-center drag-handle">
-                            <i class="ti ti-grip-vertical text-muted"></i>
+                          <td class="text-center {{ $rankingManaged ? '' : 'drag-handle' }}">
+                            <i class="ti {{ $rankingManaged ? 'ti-lock text-muted' : 'ti-grip-vertical text-muted' }}"></i>
                           </td>
 
                           <td>
@@ -144,6 +146,9 @@
                     </tbody>
                   </table>
                 </div>
+                @if($rankingManaged)
+                  <div class="alert alert-info py-2 small mt-2 mb-0">This order is controlled by the ranking selection. Use <a href="{{ route('backend.team-selection.index', $event) }}" class="alert-link">Team Selection & Reserves</a> to replace an unpaid player with the next reserve.</div>
+                @endif
               </div>
 
             @empty

@@ -178,6 +178,7 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate([
             'response_deadline' => ['required', 'date'],
             'payment_deadline' => ['required', 'date', 'after_or_equal:response_deadline'],
+            'replacement_payment_deadline' => ['nullable', 'date', 'after_or_equal:payment_deadline'],
         ]);
         $service->extendDeadlines($selectionImport, $data, $request->user());
 
@@ -401,6 +402,7 @@ class TeamSelectionInvitationController extends Controller
         return $request->validate([
             'response_deadline' => ['required', 'date'],
             'payment_deadline' => ['required', 'date', 'after_or_equal:response_deadline'],
+            'replacement_payment_deadline' => ['nullable', 'date', 'after_or_equal:payment_deadline'],
             'email_subject' => ['required', 'string', 'max:180'],
             'email_message' => ['required', 'string', 'max:10000'],
             'event_information' => ['nullable', 'string', 'max:20000'],

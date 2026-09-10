@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\Event;
+use App\Models\EventType;
 use Illuminate\Support\Collection;
 use Tests\TestCase;
 
@@ -39,6 +40,24 @@ class EventEntryFeeDisplayTest extends TestCase
         $this->assertStringContainsString('R285.00', $html);
         $this->assertStringContainsString('Girls under 12', $html);
         $this->assertStringContainsString('R250.00', $html);
+    }
+
+    public function test_team_event_uses_event_fee_instead_of_imported_zero_category_fees(): void
+    {
+        $event = $this->eventWithCategoryFees(490, [
+            ['Overberg under 10 boys', 0],
+            ['West Coast under 10 boys', 0],
+        ]);
+        $eventType = new EventType();
+        $eventType->forceFill(['type' => EventType::TEAM]);
+        $event->setRelation('eventTypeModel', $eventType);
+
+        $html = $this->renderFeePartial($event);
+
+        $this->assertStringContainsString('Entry fee:', $html);
+        $this->assertStringContainsString('R490.00', $html);
+        $this->assertStringNotContainsString('R0.00', $html);
+        $this->assertStringNotContainsString('Entry fees:', $html);
     }
 
     private function eventWithCategoryFees(float $eventFee, array $fees): Event
