@@ -153,20 +153,21 @@
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
                           @if($teamSelected->isNotEmpty())<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-1"></i>Email team</button>@endif
-                          <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
-                          <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-expanded="false">Team settings</button>
+                          <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
+                          <button class="btn btn-sm btn-outline-primary team-settings-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-controls="team-settings-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-settings me-1"></i><span>Team settings</span></button>
                         </div>
                       </div>
-                      <div class="collapse" id="team-workspace-{{ $regionTeam->id }}">
                       <div class="collapse" id="team-settings-{{ $regionTeam->id }}">
                         <div class="card-body border-bottom">
                           <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end">@csrf @method('PATCH')
+                            <input type="hidden" name="settings_team_id" value="{{ $regionTeam->id }}">
                             <div class="col-md-7"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
                             <div class="col-md-3"><input type="hidden" name="published" value="0"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="published" value="1" id="published-team-{{ $regionTeam->id }}" @checked($regionTeam->published)><label class="form-check-label" for="published-team-{{ $regionTeam->id }}">Published for registration</label></div></div>
                             <div class="col-md-2 d-grid"><button class="btn btn-primary">Save team</button></div>
                           </form>
                         </div>
                       </div>
+                      <div class="collapse" id="team-workspace-{{ $regionTeam->id }}">
                       @if($activeImport)
                         <ul class="nav nav-tabs px-3 pt-3" role="tablist">
                           <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#team-players-{{ $regionTeam->id }}" type="button"><i class="ti ti-users me-1"></i>Players</button></li>
@@ -491,6 +492,17 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  document.querySelectorAll('[id^="team-settings-"]').forEach(function (settings) {
+    const toggle = document.querySelector(`[data-bs-target="#${settings.id}"]`);
+    const label = toggle?.querySelector('span');
+    settings.addEventListener('shown.bs.collapse', function () {
+      if (label) label.textContent = 'Close settings';
+    });
+    settings.addEventListener('hidden.bs.collapse', function () {
+      if (label) label.textContent = 'Team settings';
+    });
+  });
+
   document.querySelectorAll('[id^="roster-email-"]').forEach(function (modal) {
     modal.addEventListener('show.bs.modal', function (event) {
       const button = event.relatedTarget;
@@ -539,6 +551,12 @@ document.addEventListener('DOMContentLoaded', function () {
   if (addTeamId && typeof bootstrap !== 'undefined') {
     const workspace = document.getElementById(`team-workspace-${addTeamId}`);
     if (workspace) bootstrap.Collapse.getOrCreateInstance(workspace, { toggle: false }).show();
+  }
+
+  const settingsTeamId = @json(old('settings_team_id'));
+  if (settingsTeamId && typeof bootstrap !== 'undefined') {
+    const settings = document.getElementById(`team-settings-${settingsTeamId}`);
+    if (settings) bootstrap.Collapse.getOrCreateInstance(settings, { toggle: false }).show();
   }
 
   const sourceId = @json(session('open_team_setup_source') ?: old('setup_source'));

@@ -454,7 +454,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Assigned Region')
             ->assertSee('for your assigned region')
-            ->assertSee('Back to event')
+            ->assertSee('Tournament workspace')
+            ->assertSee('>Teams</a>', false)
+            ->assertDontSee('Back to event')
             ->assertSee(route('events.show', $event), false)
             ->assertDontSee('Private Other Region')
             ->assertDontSee('data-region-tabs', false);
@@ -501,6 +503,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'name' => 'Managed safely', 'published' => 1,
         ])->assertRedirect();
         $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'published' => 1]);
+        $otherTeam = new Team();
+        $otherTeam->forceFill(['name' => 'Private team', 'region_id' => $secondRegion->id,
+            'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
+            'user_id' => $admin->id, 'personal_team' => false])->save();
+        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $second, $otherTeam]), [
+            'name' => 'Must stay private', 'published' => 1,
+        ])->assertForbidden();
+        $this->assertDatabaseHas('teams', ['id' => $otherTeam->id, 'name' => 'Private team', 'published' => 0]);
         $this->actingAs($manager)->get(route('backend.team.availablePlayers', ['team_id' => $assignedTeam->id]))
             ->assertForbidden();
     }
@@ -609,6 +619,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Show team')
             ->assertSee('data-team-workspace-header', false)
             ->assertSee('data-team-workspace-target="#team-workspace-'.$team->id.'"', false)
+            ->assertSee('class="btn btn-sm btn-outline-primary team-settings-toggle"', false)
+            ->assertSee('aria-controls="team-settings-'.$team->id.'"', false)
+            ->assertSeeInOrder([
+                'id="team-settings-'.$team->id.'"',
+                'id="team-workspace-'.$team->id.'"',
+            ], false)
+            ->assertSee('name="settings_team_id" value="'.$team->id.'"', false)
             ->assertSee('Player order')
             ->assertSee('Email team')
             ->assertSee('Change player')
@@ -617,6 +634,15 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Read only')
             ->assertSee('Ranking snapshot:')
             ->assertDontSee('Private Other Region');
+        $this->actingAs($manager)->from(route('backend.team-selection.index', $event))
+            ->patch(route('backend.team-selection.teams.update', [$event, $eventRegion, $team]), [
+                'settings_team_id' => $team->id,
+                'name' => '',
+                'published' => 1,
+            ])->assertRedirect(route('backend.team-selection.index', $event))->assertSessionHasErrors('name');
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
+            ->assertOk()
+            ->assertSee('const settingsTeamId = '.$team->id.';', false);
         $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
             ->assertRedirect();
         $this->assertDatabaseMissing('team_selection_imports', ['id' => $selectionImport->id]);
