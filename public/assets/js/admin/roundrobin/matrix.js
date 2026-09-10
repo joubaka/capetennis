@@ -134,7 +134,7 @@
 
     // Normalize once
     fixtures = normalizeAll(fixtures);
-    AdminState.setFixtures(fixtures);
+    // Rendering must not dispatch another fixture update (which recursively renders).
 
     var totalFixtures = 0;
     var completedFixtures = 0;
@@ -144,7 +144,7 @@
       var gFix     = (fixtures && fixtures[gid]) ? fixtures[gid] : [];
 
       var players = (group.registrations || []).map(function (r) {
-        return { id: r.id, name: r.display_name || 'N/A', seed: r.pivot ? (r.pivot.seed || 9999) : 9999 };
+        return { id: r.id, name: r.display_name || 'N/A', seed: r.seed || (r.pivot ? (r.pivot.seed || 9999) : 9999) };
       }).sort(function (a, b) { return a.seed - b.seed; });
 
       var completed = gFix.filter(function (fx) { return fx.all_sets && fx.all_sets.length; }).length;
@@ -209,6 +209,8 @@
         }
       }
     });
+
+    AdminState.on('rr:groups:updated', render);
 
     // Full re-render after any fixture update
     AdminState.on('rr:fixtures:updated', function () {

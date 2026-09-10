@@ -1228,16 +1228,16 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
 {{-- ═══════════════════════════════════════════════════════════
      RR Page Modules
      ═══════════════════════════════════════════════════════════ --}}
-<script src="{{ asset('assets/js/admin/roundrobin/matrix.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/matrix.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/scores.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/scores.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/standings.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/standings.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/oop.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/oop.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/groups.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/groups.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/schedule.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/schedule.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/brackets.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/brackets.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/state-badges.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/state-badges.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/workspace.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/workspace.js')) }}"></script>
-<script src="{{ asset('assets/js/admin/roundrobin/init.js') }}?v={{ filemtime(public_path('assets/js/admin/roundrobin/init.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/matrix.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/matrix.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/scores.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/scores.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/standings.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/standings.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/oop.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/oop.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/groups.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/groups.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/schedule.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/schedule.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/brackets.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/brackets.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/state-badges.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/state-badges.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/workspace.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/workspace.js')) }}"></script>
+<script src="{{ asset('assets/js/admin/roundrobin/init.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/init.js')) }}"></script>
 
 @include('backend.draw.roundrobin.setup-scripts')
 

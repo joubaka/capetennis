@@ -222,6 +222,12 @@ class DrawWorkspaceTest extends TestCase
         foreach (['btn-print-fixtures', 'btn-print-matrix', 'btn-print-bracket', 'btn-print-empty-bracket', 'btn-print-combined', 'btn-print-draw-pack', 'preset-selector', 'btn-save-notes', 'autoScheduleBtn'] as $id) {
             $response->assertSee('id="'.$id.'"', false);
         }
+        foreach (['matrix', 'scores', 'standings', 'oop', 'groups', 'schedule', 'brackets', 'state-badges', 'workspace', 'init'] as $asset) {
+            $response->assertSee(
+                $asset.'.js?v='.md5_file(public_path('assets/js/admin/roundrobin/'.$asset.'.js')),
+                false
+            );
+        }
         $response->assertSee('name="scheduled_at"', false)
             ->assertSee('name="score_format"', false)
             ->assertSee('One set · first to 3 games')

@@ -2,8 +2,7 @@
  * RR Admin — main entry point.
  *
  * Boots all RR modules in the correct order, wires AdminState from
- * the Blade-injected globals, and preserves backward compatibility
- * with the legacy draw-roundrobin1.js during the transition period.
+ * the Blade-injected globals, and supplies the shared state used by setup and print views.
  *
  * Load order (guaranteed by Blade page-script section):
  *   1. core/api.js
@@ -55,7 +54,7 @@
 
     // ── 4. Init each module ───────────────────────────────────────
     if (root.RRMatrix)      RRMatrix.init();
-    if (root.RRScores)      RRScores.bind();      // already auto-bound; no-op if called twice
+    if (root.RRScores)      RRScores.bind();      // bind() is idempotent
     if (root.RRStandings)   { /* event-driven, no explicit init */ }
     if (root.RROOP)         RROOP.init(drawId);
     if (root.RRGroups)      RRGroups.init(drawId);
@@ -72,7 +71,7 @@
     if (root.RRStandings) RRStandings.render();
 
     // ── 6. Keep window globals in sync (legacy shims) ────────────
-    // These are read by draw-roundrobin1.js during the transition.
+    // Setup and print views read these globals.
     AdminState.on('rr:fixtures:updated', function (e) {
       root.RR_FIXTURES = e.detail.fixtures;
     });

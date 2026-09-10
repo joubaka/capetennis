@@ -34,10 +34,12 @@
 
     var disable = locked || published;
     $('[data-rr-destructive]').prop('disabled', disable).toggleClass('disabled', disable);
+    if (root.RRGroups) RRGroups.applyLockUI();
   }
 
   // ─── Lock toggle button ───────────────────────────────────────────
   function _toggleLock() {
+    if (root.RRGroups && (RRGroups.isDirty() || RRGroups.isBusy())) { AdminToast.warning('Save assignments before locking the draw.'); return; }
     var $btn     = $('#btn-toggle-lock');
     var isLocked = $btn.hasClass('btn-danger');
     var action   = isLocked ? 'unlock' : 'lock';
@@ -73,6 +75,7 @@
         }
 
         AdminState.setLocked(res.locked);
+        root.location.reload();
       }).catch(function (err) {
         AdminToast.error(err.message || 'Error toggling lock.');
       }).then(function () { restore(); });
