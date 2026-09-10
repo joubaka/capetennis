@@ -181,9 +181,11 @@
                         <div class="card-body border-bottom">
                           <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end">@csrf @method('PATCH')
                             <input type="hidden" name="settings_team_id" value="{{ $regionTeam->id }}">
-                            <div class="col-md-7"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
+                            <div class="col-md-5"><label class="form-label">Team name</label><input name="name" value="{{ $regionTeam->name }}" class="form-control" maxlength="255" required></div>
+                            <div class="col-md-2"><label class="form-label">Players in team</label><input type="number" name="num_team_members" value="{{ (int) old('settings_team_id') === (int) $regionTeam->id ? old('num_team_members', $regionTeam->num_team_members) : $regionTeam->num_team_members }}" class="form-control" min="1" max="50" required></div>
                             <div class="col-md-3"><input type="hidden" name="published" value="0"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="published" value="1" id="published-team-{{ $regionTeam->id }}" @checked($regionTeam->published)><label class="form-check-label" for="published-team-{{ $regionTeam->id }}">Published for registration</label></div></div>
                             <div class="col-md-2 d-grid"><button class="btn btn-primary">Save team</button></div>
+                            <div class="col-12 form-text">Increasing the number adds open player places. The number cannot be reduced below an occupied roster rank.</div>
                           </form>
                         </div>
                       </div>

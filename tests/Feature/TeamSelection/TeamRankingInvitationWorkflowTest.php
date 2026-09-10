@@ -930,15 +930,36 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
             'user_id' => $admin->id, 'personal_team' => false])->save();
         $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
-            'name' => 'Managed safely', 'published' => 1,
+            'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1,
         ])->assertRedirect();
-        $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'published' => 1]);
+        $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1]);
+
+        $selectionSource = $first->fresh()->rankingSource;
+        $selectionImport = TeamSelectionImport::create([
+            'source_id' => $selectionSource->id, 'event_id' => $event->id,
+            'region_id' => $firstRegion->id, 'series_id' => $rankingSeries->id,
+            'ranking_run_id' => 'capacity-guard-run', 'imported_by' => $manager->id,
+            'status' => 'draft',
+        ]);
+        $rankedPlayer = Player::factory()->create();
+        $rankingList = RankingList::factory()->create(['series_id' => $rankingSeries->id]);
+        TeamSelectionInvitation::create([
+            'import_id' => $selectionImport->id, 'event_id' => $event->id,
+            'region_id' => $firstRegion->id, 'team_id' => $assignedTeam->id,
+            'player_id' => $rankedPlayer->id, 'ranking_list_id' => $rankingList->id,
+            'ranking_position' => 4, 'queue_position' => 4, 'total_points' => 100,
+            'roster_rank' => 4, 'status' => TeamSelectionInvitation::INVITED,
+        ]);
+        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
+            'name' => 'Managed safely', 'num_team_members' => 3, 'published' => 1,
+        ])->assertSessionHasErrors('num_team_members');
+        $this->assertSame(4, (int) $assignedTeam->fresh()->num_team_members);
         $otherTeam = new Team();
         $otherTeam->forceFill(['name' => 'Private team', 'region_id' => $secondRegion->id,
             'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
             'user_id' => $admin->id, 'personal_team' => false])->save();
         $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $second, $otherTeam]), [
-            'name' => 'Must stay private', 'published' => 1,
+            'name' => 'Must stay private', 'num_team_members' => 4, 'published' => 1,
         ])->assertForbidden();
         $this->assertDatabaseHas('teams', ['id' => $otherTeam->id, 'name' => 'Private team', 'published' => 0]);
         $this->actingAs($manager)->get(route('backend.team.availablePlayers', ['team_id' => $assignedTeam->id]))
@@ -1082,6 +1103,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 'id="team-workspace-'.$team->id.'"',
             ], false)
             ->assertSee('name="settings_team_id" value="'.$team->id.'"', false)
+            ->assertSee('name="num_team_members"', false)
+            ->assertSee('Players in team')
             ->assertSee('Player order')
             ->assertSee('Email team')
             ->assertSee('Email all players in region')
@@ -1101,6 +1124,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->patch(route('backend.team-selection.teams.update', [$event, $eventRegion, $team]), [
                 'settings_team_id' => $team->id,
                 'name' => '',
+                'num_team_members' => $team->num_team_members,
                 'published' => 1,
             ])->assertRedirect(route('backend.team-selection.index', $event))->assertSessionHasErrors('name');
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))

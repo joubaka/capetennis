@@ -82,9 +82,12 @@ class RegionClothingCopyWorkflowTest extends TestCase
         ]);
 
         $admin = $this->authorizedAdminForRegion($target, 2026);
+        $event = $target->events()->firstOrFail();
         $this->actingAs($admin)
             ->get(route('backend.region.clothing.edit', $target))
             ->assertOk()
+            ->assertSee('Back to event')
+            ->assertSee(route('admin.events.overview', $event), false)
             ->assertSee('Buying amount (R)')
             ->assertSee('Clothing amount (R)')
             ->assertSee('Vendor profit')
@@ -144,7 +147,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
             ->assertSee(route('backend.region.clothing.edit', [
                 'region' => $target->id,
                 'source_region' => $source->id,
-            ]), false);
+                'event_id' => $event->id,
+            ]));
 
         $otherAdmin = User::factory()->create()->assignRole('admin');
         $this->actingAs($otherAdmin)->get(route('backend.event.clothing.index', $event))->assertForbidden();

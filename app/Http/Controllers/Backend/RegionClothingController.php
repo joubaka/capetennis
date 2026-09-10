@@ -100,13 +100,8 @@ class RegionClothingController extends Controller
 
     $payfastSettings = $prices->settings();
 
-    $backEvent = $request->integer('event_id')
-      ? Event::find($request->integer('event_id'))
-      : null;
-    $backEventRegion = $backEvent
-      ? EventRegion::query()->with('events')->where('event_id', $backEvent->id)->where('region_id', $region->id)->first()
-      : null;
-    if (! $backEventRegion || ! $access->canManage($request->user(), $backEventRegion)) $backEvent = null;
+    $backEventRegion = $this->resolveBackEventRegion($request, $region, $access);
+    $backEvent = $backEventRegion?->events;
     $backUrl = $backEvent
       ? ($access->isEventManager($request->user(), $backEvent)
         ? route('admin.events.overview', $backEvent)
@@ -114,6 +109,28 @@ class RegionClothingController extends Controller
       : null;
 
     return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear', 'payfastSettings', 'backEvent', 'backUrl'));
+  }
+
+  private function resolveBackEventRegion(Request $request, TeamRegion $region, RegionManagerAccessService $access): ?EventRegion
+  {
+    $query = EventRegion::query()
+      ->with('events')
+      ->where('event_regions.region_id', $region->id);
+
+    if ($request->integer('event_id')) {
+      $eventRegion = $query->where('event_regions.event_id', $request->integer('event_id'))->first();
+
+      return $eventRegion && $access->canManage($request->user(), $eventRegion) ? $eventRegion : null;
+    }
+
+    return $query
+      ->join('events', 'events.id', '=', 'event_regions.event_id')
+      ->select('event_regions.*')
+      ->orderByDesc('events.start_date')
+      ->orderByDesc('events.id')
+      ->limit(25)
+      ->get()
+      ->first(fn (EventRegion $eventRegion) => $access->canManage($request->user(), $eventRegion));
   }
 
   public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service, ClothingPriceService $prices)

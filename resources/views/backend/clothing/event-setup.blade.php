@@ -79,11 +79,11 @@
 
             <div class="d-flex flex-wrap gap-2">
               @if($usesOnlineClothing)
-                <a class="btn btn-primary" href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region->id, 'source_region' => $recommended?->id])) }}">
+                <a class="btn btn-primary" href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region->id, 'source_region' => $recommended?->id, 'event_id' => $event->id])) }}">
                   <i class="ti ti-settings me-1"></i>{{ $items->isEmpty() ? 'Set up clothing' : 'Manage clothing & prices' }}
                 </a>
               @endif
-              <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', $region) }}"><i class="ti ti-list me-1"></i>Paid orders</a>
+              <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]) }}"><i class="ti ti-list me-1"></i>Paid orders</a>
               @if($usesOnlineClothing && $items->isNotEmpty())
                 <form method="POST" action="{{ route('backend.region.clothing.toggle', $region) }}">
                   @csrf @method('PATCH')
