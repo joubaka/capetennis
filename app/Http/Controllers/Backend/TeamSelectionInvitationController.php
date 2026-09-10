@@ -23,7 +23,6 @@ use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\TeamSelectionContactService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class TeamSelectionInvitationController extends Controller
@@ -544,7 +543,13 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', "Re-queued {$stats['queued']} failed email(s) for currently active recipients.");
     }
 
-    public function updateTeam(Request $request, Event $event, EventRegion $eventRegion, Team $team)
+    public function updateTeam(
+        Request $request,
+        Event $event,
+        EventRegion $eventRegion,
+        Team $team,
+        TeamSelectionInvitationService $service,
+    )
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
         $team->loadMissing('category.event');
@@ -556,56 +561,23 @@ class TeamSelectionInvitationController extends Controller
             'published' => ['required', 'boolean'],
         ]);
 
-        DB::transaction(function () use ($data, $event, $eventRegion, $request, $team): void {
-            $lockedTeam = Team::query()->lockForUpdate()->findOrFail($team->id);
-            $requestedPlaces = (int) $data['num_team_members'];
-            $occupiedInvitationRank = (int) TeamSelectionInvitation::query()
-                ->where('event_id', $event->id)
-                ->where('team_id', $lockedTeam->id)
-                ->whereIn('status', [
-                    TeamSelectionInvitation::INVITED,
-                    TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
-                    TeamSelectionInvitation::PAID_CONFIRMED,
-                ])
-                ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
-                ->max('roster_rank');
-            $occupiedTeamPlayers = $lockedTeam->teamPlayers()->where('player_id', '>', 0);
-            $occupiedTeamPlayerRank = max(
-                (int) (clone $occupiedTeamPlayers)->count(),
-                (int) (clone $occupiedTeamPlayers)->max('rank')
-            );
-            $occupiedImportedRank = max(
-                (int) $lockedTeam->team_players_no_profile()->count(),
-                (int) $lockedTeam->team_players_no_profile()->max('rank')
-            );
-            $minimumPlaces = max($occupiedInvitationRank, $occupiedTeamPlayerRank, $occupiedImportedRank);
-
-            if ($requestedPlaces < $minimumPlaces) {
-                throw ValidationException::withMessages([
-                    'num_team_members' => "This team has an occupied player place at rank {$minimumPlaces}. Move or remove that player before reducing the team below {$minimumPlaces} places.",
-                ]);
-            }
-
-            $previousPlaces = (int) $lockedTeam->num_team_members;
-            $lockedTeam->teamPlayers()
-                ->where('rank', '>', $requestedPlaces)
-                ->where('player_id', 0)
-                ->delete();
-            $lockedTeam->update([
+        $result = $service->updateTeamSettings(
+            $team,
+            $event,
+            (int) $eventRegion->region_id,
+            [
                 'name' => trim($data['name']),
-                'num_team_members' => $requestedPlaces,
+                'num_team_members' => (int) $data['num_team_members'],
                 'published' => (bool) $data['published'],
-            ]);
-            activity('team-selection')->performedOn($lockedTeam)->causedBy($request->user())
-                ->withProperties([
-                    'region_id' => $eventRegion->region_id,
-                    'published' => (bool) $data['published'],
-                    'previous_player_places' => $previousPlaces,
-                    'player_places' => $requestedPlaces,
-                ])->log('regional manager updated team details');
-        });
+            ],
+            $request->user(),
+        );
 
-        return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.");
+        $reserveMessage = $result['moved_to_reserves'] > 0
+            ? " {$result['moved_to_reserves']} player(s) moved to the reserve queue."
+            : '';
+
+        return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.{$reserveMessage}");
     }
 
     public function updateImportedPlayer(

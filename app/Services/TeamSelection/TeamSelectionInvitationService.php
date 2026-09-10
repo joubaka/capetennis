@@ -9,6 +9,7 @@ use App\Domain\Teams\Services\ExternalTeamRosterService;
 use App\Services\Clothing\ClothingPriceService;
 use App\Jobs\SendTeamSelectionInvitationEmailJob;
 use App\Models\BulkEmailLog;
+use App\Models\Event;
 use App\Models\TeamPaymentOrder;
 use App\Models\Player;
 use App\Models\TeamPlayer;
@@ -25,6 +26,115 @@ final class TeamSelectionInvitationService
         private ClothingPriceService $clothingPrices,
         private TeamSelectionContactService $contacts,
     ) {}
+
+    /**
+     * @param array{name: string, num_team_members: int, published: bool} $attributes
+     * @return array{moved_to_reserves: int}
+     */
+    public function updateTeamSettings(Team $team, Event $event, int $regionId, array $attributes, User $actor): array
+    {
+        return DB::transaction(function () use ($team, $event, $regionId, $attributes, $actor): array {
+            $lockedTeam = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($team->id);
+            $requestedPlaces = (int) $attributes['num_team_members'];
+            $previousPlaces = (int) $lockedTeam->num_team_members;
+
+            $activeImport = TeamSelectionImport::query()
+                ->where('event_id', $event->id)
+                ->where('region_id', $regionId)
+                ->whereIn('status', ['draft', 'sent'])
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+            $overflow = $activeImport
+                ? TeamSelectionInvitation::query()
+                    ->where('import_id', $activeImport->id)
+                    ->where('team_id', $lockedTeam->id)
+                    ->whereIn('status', [
+                        TeamSelectionInvitation::INVITED,
+                        TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                        TeamSelectionInvitation::PAID_CONFIRMED,
+                    ])
+                    ->where('roster_rank', '>', $requestedPlaces)
+                    ->orderBy('roster_rank')
+                    ->lockForUpdate()
+                    ->get()
+                : collect();
+
+            $protected = $overflow->whereIn('status', [
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ]);
+            if ($protected->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'num_team_members' => 'The team size cannot move accepted or paid players to reserves. Withdraw those players through the normal payment and refund workflow first.',
+                ]);
+            }
+
+            $managedSlotKeys = $overflow->mapWithKeys(fn (TeamSelectionInvitation $invitation) => [
+                ((int) $invitation->roster_rank).':'.((int) $invitation->player_id) => true,
+            ]);
+            $occupiedOverflowSlots = TeamPlayer::query()->withoutGlobalScopes()
+                ->where('team_id', $lockedTeam->id)
+                ->where('rank', '>', $requestedPlaces)
+                ->where('player_id', '>', 0)
+                ->lockForUpdate()
+                ->get();
+            $unmanagedRosterRank = (int) $occupiedOverflowSlots
+                ->reject(fn (TeamPlayer $slot) => $managedSlotKeys->has(((int) $slot->rank).':'.((int) $slot->player_id)))
+                ->max('rank');
+            $importedRosterRank = (int) $lockedTeam->team_players_no_profile()
+                ->where('rank', '>', $requestedPlaces)
+                ->max('rank');
+            $unmanagedRank = max($unmanagedRosterRank, $importedRosterRank);
+            if ($unmanagedRank > 0) {
+                throw ValidationException::withMessages([
+                    'num_team_members' => "Player place {$unmanagedRank} is not part of the active reserve queue and cannot be moved automatically. Move or remove that roster player first.",
+                ]);
+            }
+
+            foreach ($overflow as $invitation) {
+                $previousRank = (int) $invitation->roster_rank;
+                $slot = $occupiedOverflowSlots->first(fn (TeamPlayer $candidate) =>
+                    (int) $candidate->rank === $previousRank
+                    && (int) $candidate->player_id === (int) $invitation->player_id
+                );
+                if ($slot) {
+                    app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, [
+                        'player_id' => 0,
+                        'pay_status' => 0,
+                    ]);
+                }
+                $invitation->update([
+                    'status' => TeamSelectionInvitation::RESERVE,
+                    'roster_rank' => null,
+                ]);
+                activity('team-selection')->performedOn($invitation)->causedBy($actor)
+                    ->withProperties([
+                        'team_id' => $lockedTeam->id,
+                        'previous_roster_rank' => $previousRank,
+                        'new_team_capacity' => $requestedPlaces,
+                    ])->log('moved selected player to reserve after team capacity reduction');
+            }
+
+            TeamPlayer::query()->withoutGlobalScopes()
+                ->where('team_id', $lockedTeam->id)
+                ->where('rank', '>', $requestedPlaces)
+                ->where('player_id', 0)
+                ->delete();
+            $lockedTeam->update($attributes);
+            activity('team-selection')->performedOn($lockedTeam)->causedBy($actor)
+                ->withProperties([
+                    'region_id' => $regionId,
+                    'published' => (bool) $attributes['published'],
+                    'previous_player_places' => $previousPlaces,
+                    'player_places' => $requestedPlaces,
+                    'moved_to_reserves' => $overflow->count(),
+                    'moved_invitation_ids' => $overflow->pluck('id')->all(),
+                ])->log('regional manager updated team details');
+
+            return ['moved_to_reserves' => $overflow->count()];
+        });
+    }
 
     public function send(TeamSelectionImport $import, array $deadlines, User $actor): array
     {

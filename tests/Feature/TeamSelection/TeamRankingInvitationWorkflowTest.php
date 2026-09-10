@@ -950,10 +950,48 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'ranking_position' => 4, 'queue_position' => 4, 'total_points' => 100,
             'roster_rank' => 4, 'status' => TeamSelectionInvitation::INVITED,
         ]);
+        TeamPlayer::create([
+            'team_id' => $assignedTeam->id,
+            'player_id' => $rankedPlayer->id,
+            'rank' => 4,
+            'pay_status' => 0,
+        ]);
+        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
+            'name' => 'Managed safely', 'num_team_members' => 3, 'published' => 1,
+        ])->assertSessionHasNoErrors()->assertSessionHas('success', 'Regional team details updated to 3 player places. 1 player(s) moved to the reserve queue.');
+        $this->assertSame(3, (int) $assignedTeam->fresh()->num_team_members);
+        $this->assertDatabaseHas('team_selection_invitations', [
+            'import_id' => $selectionImport->id,
+            'team_id' => $assignedTeam->id,
+            'player_id' => $rankedPlayer->id,
+            'status' => TeamSelectionInvitation::RESERVE,
+            'roster_rank' => null,
+            'queue_position' => 4,
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'description' => 'moved selected player to reserve after team capacity reduction',
+        ]);
+        $this->assertDatabaseMissing('team_players', [
+            'team_id' => $assignedTeam->id,
+            'rank' => 4,
+        ]);
+        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
+            'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1,
+        ])->assertSessionHasNoErrors();
+        $paidInvitation = $selectionImport->invitations()->where('player_id', $rankedPlayer->id)->firstOrFail();
+        $paidInvitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'roster_rank' => 4]);
+        TeamPlayer::create([
+            'team_id' => $assignedTeam->id,
+            'player_id' => $rankedPlayer->id,
+            'rank' => 4,
+            'pay_status' => 1,
+        ]);
         $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
             'name' => 'Managed safely', 'num_team_members' => 3, 'published' => 1,
         ])->assertSessionHasErrors('num_team_members');
         $this->assertSame(4, (int) $assignedTeam->fresh()->num_team_members);
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $paidInvitation->fresh()->status);
         $otherTeam = new Team();
         $otherTeam->forceFill(['name' => 'Private team', 'region_id' => $secondRegion->id,
             'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
