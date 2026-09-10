@@ -334,6 +334,17 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', ($replacement->player?->full_name ?? 'The next reserve').' was promoted and the replacement invitation was queued.');
     }
 
+    public function activateReserve(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $activated = $service->activateReserveInOpenPlace($invitation, $request->user());
+        $delivery = $selectionImport->status === 'sent' ? ' The invitation email was queued.' : '';
+
+        return back()->with('success', ($activated->player?->full_name ?? 'The reserve')
+            .' is now active at Rank '.$activated->roster_rank.'.'.$delivery);
+    }
+
     public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)
     {
         $this->authorizeTeamImport($event, $selectionImport, $team, $request->user());

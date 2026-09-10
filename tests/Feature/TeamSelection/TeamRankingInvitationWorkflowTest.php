@@ -1240,6 +1240,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     {
         Role::findOrCreate('admin', 'web');
         [$source, , $players] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Team link display test', 'type' => 2, 'code' => 'team-link-display-test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamEventType]);
         $admin = User::factory()->create()->assignRole('admin');
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
         $invalidAccount = User::factory()->create(['email' => 'tsargeant@shprite']);
@@ -1849,6 +1854,64 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
             ->assertSee('This player has been put into the real team: '.$primaryTeam->name.'.');
+    }
+
+    public function test_manager_can_activate_reserves_into_unfilled_configured_team_places(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Open roster team event', 'type' => 2, 'code' => 'open-roster-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $team->update(['num_team_members' => 4]);
+
+        $service = app(TeamSelectionInvitationService::class);
+        $first = Player::factory()->create(['name' => 'Seventh', 'surname' => 'Player']);
+        $second = Player::factory()->create(['name' => 'Eighth', 'surname' => 'Player']);
+        $third = Player::factory()->create(['name' => 'Extra', 'surname' => 'Reserve']);
+        $firstReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $first, $manager, 'Fill open place seven');
+        $secondReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $second, $manager, 'Fill open place eight');
+        $thirdReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $third, $manager, 'Remain in reserve queue');
+
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Activate as Rank 3')
+            ->assertSee('Activate as Rank 4');
+
+        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.invitations.activate', [
+            $source->event, $selectionImport, $firstReserve,
+        ]))->assertForbidden();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+            $source->event, $selectionImport, $firstReserve,
+        ]))->assertRedirect()->assertSessionHas('success');
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+            $source->event, $selectionImport, $secondReserve,
+        ]))->assertRedirect()->assertSessionHas('success');
+
+        $this->assertSame(3, $firstReserve->fresh()->roster_rank);
+        $this->assertSame(4, $secondReserve->fresh()->roster_rank);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $firstReserve->fresh()->status);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $secondReserve->fresh()->status);
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $thirdReserve->fresh()->status);
+        $this->assertSame(
+            [$first->id, $second->id],
+            TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+                ->whereIn('rank', [3, 4])->orderBy('rank')->pluck('player_id')->all()
+        );
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $firstReserve->id,
+            'description' => 'activated reserve in open regional team place',
+        ]);
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+            $source->event, $selectionImport, $thirdReserve,
+        ]))->assertSessionHasErrors('activation');
     }
 
     /** @return array{0: \App\Models\EventRegionRankingSource, 1: Team, 2: \Illuminate\Support\Collection<int, Player>} */

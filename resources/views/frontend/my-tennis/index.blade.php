@@ -131,7 +131,7 @@
       <div class="mb-3" id="my-tennis-link-feedback" role="status" aria-live="polite"></div>
       <div class="collapse" id="link-player-panel">
         <div class="border rounded p-3 mb-3">
-          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-shield-check fs-4" aria-hidden="true"></i><div><strong>Safe linking</strong><br><span class="small">Search finds the profile, but it is only linked after you verify the player’s date of birth and the email or mobile number recorded for that profile. We never display that private value in search results.</span></div></div>
+          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-shield-check fs-4" aria-hidden="true"></i><div><strong>Safe linking</strong><br><span class="small">Search finds the profile, but it is only linked after you verify the player’s date of birth and the email or mobile number recorded for that profile. We never display that private value in search results. A player may be linked to more than one parent or guardian account.</span></div></div>
           <label for="my-tennis-player-search" class="form-label">1. Find the player profile</label>
           <div class="input-group">
             <input id="my-tennis-player-search" class="form-control" type="search" minlength="2" maxlength="100" placeholder="Search by name or email">

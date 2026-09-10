@@ -155,6 +155,7 @@
                   @php($teamSelected = $teamInvitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
                   @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
                   @php($eligibleTeamReserves = $teamReserves->filter(fn($reserve) => $recipientEmailFor($reserve)))
+                  @php($openRosterRanks = (int) $regionTeam->num_team_members > 0 ? collect(range(1, (int) $regionTeam->num_team_members))->reject(fn($rank) => $teamSelected->contains(fn($selected) => (int) $selected->roster_rank === $rank))->values() : collect())
                   @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
                   @php($linkedImportedCount = $importedRoster->whereNotNull('player_profile')->count())
                   <div class="col-12">
@@ -250,6 +251,9 @@
                                   </td>
                                   <td>
                                     <div class="d-flex flex-wrap gap-1">
+                                    @if($isReserve && ($reserveActivationIndex = $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id)) !== false && ($reserveActivationRank = $openRosterRanks->get($reserveActivationIndex)))
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place?');">@csrf<button class="btn btn-sm btn-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
+                                    @endif
                                       @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                       @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)

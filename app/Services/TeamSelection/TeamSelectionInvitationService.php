@@ -936,6 +936,105 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function activateReserveInOpenPlace(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor): TeamSelectionInvitation {
+            $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id);
+            if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages(['activation' => 'Only the current draft or sent selection can be changed.']);
+            }
+
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['player', 'team'])->findOrFail($invitation->id);
+            if ((int) $locked->import_id !== (int) $lockedImport->id
+                || $locked->status !== TeamSelectionInvitation::RESERVE) {
+                throw ValidationException::withMessages(['activation' => 'Only a current reserve can fill an open team place.']);
+            }
+
+            $team = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($locked->team_id);
+            $capacity = max(0, (int) $team->num_team_members);
+            $activeRanks = TeamSelectionInvitation::query()->lockForUpdate()
+                ->where('import_id', $lockedImport->id)
+                ->where('team_id', $team->id)
+                ->whereIn('status', [
+                    TeamSelectionInvitation::INVITED,
+                    TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    TeamSelectionInvitation::PAID_CONFIRMED,
+                ])
+                ->whereNotNull('roster_rank')
+                ->pluck('roster_rank')
+                ->map(fn ($rank) => (int) $rank)
+                ->all();
+            if (count($activeRanks) >= $capacity) {
+                throw ValidationException::withMessages(['activation' => 'This team already fills all configured places.']);
+            }
+
+            $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+                ->where('team_id', $team->id)
+                ->whereBetween('rank', [1, max(1, $capacity)])
+                ->get()
+                ->keyBy('rank');
+            $openRank = null;
+            foreach (range(1, $capacity) as $rank) {
+                $slot = $slots->get($rank);
+                if (! in_array($rank, $activeRanks, true) && (! $slot || (int) $slot->player_id === 0)) {
+                    $openRank = $rank;
+                    break;
+                }
+            }
+            if (! $openRank) {
+                throw ValidationException::withMessages([
+                    'activation' => 'No safe empty roster slot is available. Refresh the team and verify its configured places.',
+                ]);
+            }
+
+            $slot = $slots->get($openRank) ?: TeamPlayer::create([
+                'team_id' => $team->id,
+                'rank' => $openRank,
+                'player_id' => 0,
+                'pay_status' => 0,
+            ]);
+            app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, [
+                'player_id' => $locked->player_id,
+                'pay_status' => 0,
+            ]);
+
+            $replacementDeadlines = $lockedImport->status === 'sent'
+                ? $this->replacementDeadlines($lockedImport)
+                : [null, null];
+            if ($lockedImport->status === 'sent' && ! $replacementDeadlines[0]) {
+                throw ValidationException::withMessages([
+                    'activation' => 'A reserve cannot be activated because the event has already started.',
+                ]);
+            }
+            $locked->update([
+                'status' => TeamSelectionInvitation::INVITED,
+                'roster_rank' => $openRank,
+                'invited_at' => $lockedImport->status === 'sent' ? now() : null,
+                'response_deadline_override' => $replacementDeadlines[0],
+                'payment_deadline_override' => $replacementDeadlines[1],
+            ]);
+            $this->moveFromHelperTeamsToPrimaryTeam($locked);
+
+            if ($lockedImport->status === 'sent') {
+                $email = $this->contactEmail($locked);
+                if (! $email) {
+                    throw ValidationException::withMessages(['activation' => 'This reserve needs a linked valid email before activation.']);
+                }
+                $this->queueMail($locked, $email, 'replacement', $this->savedCampaignSnapshot($lockedImport));
+            }
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'event_id' => $lockedImport->event_id,
+                    'team_id' => $team->id,
+                    'player_id' => $locked->player_id,
+                    'roster_rank' => $openRank,
+                ])->log('activated reserve in open regional team place');
+
+            return $locked->fresh('player');
+        });
+    }
+
     private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank, bool $allowDraft = false): ?TeamSelectionInvitation
     {
         $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($vacated->import_id);

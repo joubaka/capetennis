@@ -25,13 +25,6 @@ class UserPlayerController extends Controller
     $isPrivileged = $actor && method_exists($actor, 'hasAnyRole')
       && $actor->hasAnyRole(['super-user', 'admin']);
 
-    if (!$isPrivileged && (
-      ($player->userId && (int) $player->userId !== (int) $user->id)
-      || $player->users()->whereKeyNot($user->id)->exists()
-    )) {
-      abort(403, 'This player is already linked to another family.');
-    }
-
     if (!$isPrivileged && !$user->players()->where('player_id', $data['player_id'])->exists()) {
       $dobMatches = $data['date_of_birth']
         && substr((string) $player->dateOfBirth, 0, 10) === $data['date_of_birth'];

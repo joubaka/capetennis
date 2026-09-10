@@ -50,15 +50,29 @@ class UserPlayerLinkAuthorizationTest extends TestCase
             ->assertOk();
     }
 
-    public function test_user_cannot_claim_a_player_already_linked_to_another_family(): void
+    public function test_verified_player_can_be_linked_to_more_than_one_family_account(): void
     {
         $owner = User::factory()->create();
         $claimant = User::factory()->create();
-        $player = Player::factory()->create(['userId' => $owner->id]);
+        $player = Player::factory()->create([
+            'userId' => $owner->id,
+            'dateOfBirth' => '2012-05-17',
+            'email' => 'family@example.test',
+        ]);
 
         $this->actingAs($claimant)
-            ->postJson(route('backend.user.players.store', $claimant), ['player_id' => $player->id])
-            ->assertForbidden();
+            ->postJson(route('backend.user.players.store', $claimant), [
+                'player_id' => $player->id,
+                'date_of_birth' => '2012-05-17',
+                'contact' => 'family@example.test',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('user_players', [
+            'user_id' => $claimant->id,
+            'player_id' => $player->id,
+        ]);
+        $this->assertSame($owner->id, $player->fresh()->userId);
     }
 
     public function test_user_can_unlink_a_legacy_direct_player_link_without_deleting_the_player(): void

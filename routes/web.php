@@ -462,6 +462,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/replace', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'replace'])->name('invitations.replace');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/move', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'moveRosterRank'])->name('invitations.move');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/promote-reserve', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'promoteReserveManually'])->name('invitations.promote-reserve');
+    Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/activate', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'activateReserve'])->name('invitations.activate');
     Route::get('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchPlayers'])->name('players.search');
     Route::post('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'addPlayer'])->name('players.add');
     Route::get('events/{event}/imports/{selectionImport}/invitations/{invitation}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'viewSentInvitation'])->name('invitations.email.view');
