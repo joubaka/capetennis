@@ -55,13 +55,14 @@
       @if($copySource)
         <div class="alert alert-warning">
           <strong>Price review required:</strong> these are the saved prices from {{ $copySource->region_name }}. Edit the {{ $targetYear }} selling prices below before confirming. Clothing ordering will remain closed after copying.
+          The customer preview includes the PayFast fee from the current system settings.
         </div>
         <form method="POST" action="{{ route('backend.region.clothing.copy', $region) }}">
           @csrf
           <input type="hidden" name="source_region_id" value="{{ $copySource->id }}">
           <div class="table-responsive">
             <table class="table align-middle">
-              <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:150px">{{ $targetYear }} price (R)</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
+              <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:150px">Clothing price (R)</th><th style="width:135px">PayFast fee</th><th style="width:145px">Customer pays</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
               <tbody>
                 @foreach($copySource->clothingItems->sortBy([['ordering','asc'],['item_type_name','asc']])->values() as $rowIndex => $sourceItem)
                   <tr>
@@ -71,7 +72,9 @@
                       <input type="hidden" name="items[{{ $rowIndex }}][source_item_id]" value="{{ $sourceItem->id }}">
                     </td>
                     <td><input class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191"></td>
-                    <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", (int) $sourceItem->price) }}" min="0" required inputmode="numeric"></td>
+                    <td><input class="form-control clothing-preview-price" type="number" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", (int) $sourceItem->price) }}" min="0" required inputmode="numeric"></td>
+                    <td class="text-muted clothing-preview-fee">R0.00</td>
+                    <td class="fw-semibold clothing-preview-total">R0.00</td>
                     <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][ordering]" value="{{ old("items.$rowIndex.ordering", $rowIndex + 1) }}" min="1"></td>
                     <td><div class="d-flex flex-wrap gap-1">@foreach($sourceItem->sizes->sortBy([['ordering','asc'],['id','asc']]) as $size)<span class="badge bg-label-primary">{{ $size->size }}</span>@endforeach</div></td>
                   </tr>
@@ -95,6 +98,9 @@
       <button id="btn-save" class="btn btn-success btn-sm">Save Changes</button>
     </div>
     <div class="card-body p-0">
+      <div class="alert alert-info rounded-0 border-start-0 border-end-0 mb-0">
+        <strong>Customer price preview:</strong> PayFast is calculated at {{ number_format($payfastSettings['percentage'], 2) }}% + R{{ number_format($payfastSettings['flat'], 2) }}, including {{ number_format($payfastSettings['vat'], 2) }}% VAT. The payable preview below is for one item.
+      </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" id="items-table">
           <thead class="table-light">
@@ -102,6 +108,8 @@
               <th style="width: 40px">#</th>
               <th>Name</th>
               <th style="width:140px">Price (R)</th>
+              <th style="width:135px">PayFast fee</th>
+              <th style="width:145px">Customer pays</th>
               <th style="width:120px">Ordering</th>
               <th>Sizes</th>
               <th style="width: 80px"></th>
@@ -115,8 +123,10 @@
                   <input type="text" class="form-control form-control-sm item-name" value="{{ $i->item_type_name }}">
                 </td>
                 <td>
-                  <input type="number" min="0" class="form-control form-control-sm item-price" value="{{ (int)($i->price ?? 0) }}">
+                  <input type="number" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ (int)($i->price ?? 0) }}">
                 </td>
+                <td class="text-muted clothing-preview-fee">R0.00</td>
+                <td class="fw-semibold clothing-preview-total">R0.00</td>
                 <td>
                   <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
                 </td>
@@ -140,7 +150,7 @@
                 </td>
               </tr>
             @empty
-              <tr><td colspan="6" class="text-center p-4 text-muted">No items yet</td></tr>
+              <tr><td colspan="8" class="text-center p-4 text-muted">No items yet</td></tr>
             @endforelse
           </tbody>
         </table>
@@ -181,6 +191,22 @@
 <script>
 (function(){
   const DEBUG = true;
+  const payfast = @json($payfastSettings);
+
+  function refreshPricePreview(input) {
+    const row = input.closest('tr');
+    const subtotal = Math.max(0, Number(input.value) || 0);
+    const fee = subtotal > 0
+      ? Math.round((((subtotal * Number(payfast.percentage) / 100) + Number(payfast.flat)) * (1 + Number(payfast.vat) / 100)) * 100) / 100
+      : 0;
+    row.querySelector('.clothing-preview-fee').textContent = `R${fee.toFixed(2)}`;
+    row.querySelector('.clothing-preview-total').textContent = `R${(subtotal + fee).toFixed(2)}`;
+  }
+
+  document.querySelectorAll('.clothing-preview-price').forEach(input => {
+    input.addEventListener('input', () => refreshPricePreview(input));
+    refreshPricePreview(input);
+  });
 
   // ---------- helpers ----------
   const csrf = '{{ csrf_token() }}';

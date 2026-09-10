@@ -7,6 +7,7 @@ use App\Models\TeamSelectionInvitation;
 use App\Models\ClothingOrder;
 use App\Models\TeamSelectionRegionAnnouncement;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
+use App\Services\Clothing\ClothingPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -75,7 +76,7 @@ class TeamSelectionInvitationController extends Controller
             : 'Your unavailability was recorded.');
     }
 
-    public function clothing(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    public function clothing(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service, ClothingPriceService $prices)
     {
         $invitation->load(['selectionImport.event', 'region.clothingItems.sizes', 'team', 'player']);
         $service->authorizePlayer($invitation, $request->user());
@@ -85,8 +86,9 @@ class TeamSelectionInvitationController extends Controller
             ->filter(fn ($item) => (float) $item->price > 0 && $item->sizes->isNotEmpty())
             ->sortBy('ordering')->values();
         $requestToken = (string) Str::uuid();
+        $payfastSettings = $prices->settings();
 
-        return view('frontend.team-selection.clothing', compact('invitation', 'items', 'requestToken'));
+        return view('frontend.team-selection.clothing', compact('invitation', 'items', 'requestToken', 'payfastSettings'));
     }
 
     private function canOrderClothing(TeamSelectionInvitation $invitation): bool

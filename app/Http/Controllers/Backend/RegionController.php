@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\ClothingItemType;
 use App\Models\TeamRegion;
+use App\Services\Clothing\ClothingPriceService;
 use Illuminate\Http\Request;
 
 class RegionController extends Controller
@@ -92,7 +93,7 @@ class RegionController extends Controller
         //
     }
 
-  public function getRegionClothingItems(Request $request)
+  public function getRegionClothingItems(Request $request, ClothingPriceService $prices)
   {
     $data = $request->validate(['region' => ['required', 'integer', 'exists:team_regions,id']]);
     $region = \App\Models\TeamRegion::findOrFail($data['region']);
@@ -106,7 +107,8 @@ class RegionController extends Controller
       ->get();
 
     return view('frontend.clothing.partials.items', [
-      'clothingItems' => $clothingItems
+      'clothingItems' => $clothingItems,
+      'payfastSettings' => $prices->settings(),
     ]);
   }
 

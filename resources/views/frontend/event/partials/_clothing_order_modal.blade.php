@@ -54,9 +54,11 @@
           </div>
 
           {{-- TOTAL --}}
-          <div class="border-top pt-3 mt-3 d-flex justify-content-between align-items-center">
-            <strong>Total</strong>
-            <strong id="orderTotal">R0.00</strong>
+          <div class="border-top pt-3 mt-3">
+            <div class="d-flex justify-content-between"><span>Clothing subtotal</span><span id="orderSubtotal">R0.00</span></div>
+            <div class="d-flex justify-content-between text-muted mt-1"><span>PayFast fee</span><span id="orderPayfastFee">R0.00</span></div>
+            <div class="d-flex justify-content-between fs-5 mt-2"><strong>Total payable</strong><strong id="orderTotal">R0.00</strong></div>
+            <div class="form-text">Calculated from the current PayFast settings.</div>
           </div>
 
         </div>

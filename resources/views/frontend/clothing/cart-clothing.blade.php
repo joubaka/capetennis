@@ -68,7 +68,15 @@
 
        <tfoot>
   <tr class="border-top">
-    <td colspan="4" class="text-end fw-bold">Total</td>
+    <td colspan="4" class="text-end">Clothing subtotal</td>
+    <td class="text-end">R{{ number_format($subtotal, 2) }}</td>
+  </tr>
+  <tr>
+    <td colspan="4" class="text-end text-muted">PayFast fee</td>
+    <td class="text-end text-muted">R{{ number_format($payfastFee, 2) }}</td>
+  </tr>
+  <tr>
+    <td colspan="4" class="text-end fw-bold">Total payable</td>
     <td class="text-end fw-bold">
       R{{ number_format($total, 2) }}
     </td>

@@ -1,3 +1,4 @@
+<div id="clothingPricingSettings" class="d-none" data-payfast-percentage="{{ $payfastSettings['percentage'] }}" data-payfast-flat="{{ $payfastSettings['flat'] }}" data-payfast-vat="{{ $payfastSettings['vat'] }}"></div>
 @forelse($clothingItems as $item)
   <div class="card mb-2 clothing-item"
        data-item="{{ $item->id }}"

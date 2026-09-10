@@ -92,6 +92,8 @@ class ClothingOrderController extends Controller
         'ok' => true,
         'orderId' => $order->id,
         'total' => (float) $order->total,
+        'subtotal' => (float) $order->subtotal,
+        'payfastFee' => (float) $order->payfast_fee,
         'cartUrl' => route('events.show', $event),
       ]);
     }
@@ -101,6 +103,8 @@ class ClothingOrderController extends Controller
       'payfast' => $payfast,
       'order' => $order,
       'total' => (float) $order->total,
+      'subtotal' => (float) $order->subtotal,
+      'payfastFee' => (float) $order->payfast_fee,
     ]);
   }
 

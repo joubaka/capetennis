@@ -10,7 +10,7 @@ class ClothingOrder extends Model
     use HasFactory;
     protected $fillable = [
         'player_id', 'team_id', 'event_id', 'pf_id', 'pay_status', 'user_id',
-        'user_text', 'email_text', 'town_text', 'total', 'status', 'request_token',
+        'user_text', 'email_text', 'town_text', 'subtotal', 'payfast_fee', 'total', 'status', 'request_token',
         'payfast_paid', 'payfast_amount_due', 'payfast_pf_payment_id',
         'wallet_reserved', 'wallet_debited', 'payment_method', 'paid_at', 'amount_paid',
     ];
@@ -20,6 +20,8 @@ class ClothingOrder extends Model
         'payfast_paid' => 'boolean',
         'wallet_debited' => 'boolean',
         'total' => 'decimal:2',
+        'subtotal' => 'decimal:2',
+        'payfast_fee' => 'decimal:2',
         'payfast_amount_due' => 'decimal:2',
         'amount_paid' => 'decimal:2',
         'paid_at' => 'datetime',

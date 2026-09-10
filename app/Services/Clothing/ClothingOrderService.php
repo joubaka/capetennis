@@ -19,7 +19,10 @@ use Illuminate\Validation\ValidationException;
 
 final class ClothingOrderService
 {
-    public function __construct(private PaymentOrchestrator $payments)
+    public function __construct(
+        private PaymentOrchestrator $payments,
+        private ClothingPriceService $prices,
+    )
     {
     }
 
@@ -101,6 +104,7 @@ final class ClothingOrderService
                 $rows[] = compact('item', 'size', 'price', 'lineTotal', 'line');
             }
 
+            $pricing = $this->prices->totals($total);
             $order = ClothingOrder::create([
                 'player_id' => $player->id,
                 'team_id' => $team->id,
@@ -109,7 +113,9 @@ final class ClothingOrderService
                 'request_token' => $requestToken,
                 'pay_status' => 0,
                 'status' => 'pending',
-                'total' => round($total, 2),
+                'subtotal' => $pricing['subtotal'],
+                'payfast_fee' => $pricing['payfast_fee'],
+                'total' => $pricing['total'],
             ]);
             foreach ($rows as $row) {
                 ClothingOrderItem::create([
@@ -124,7 +130,7 @@ final class ClothingOrderService
                 ]);
             }
 
-            return $this->payments->initiatePayment($order, 0, round($total, 2));
+            return $this->payments->initiatePayment($order, 0, $pricing['total']);
         });
     }
 }

@@ -9,6 +9,7 @@ use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\TeamRegion;
 use App\Services\Clothing\RegionClothingCopyService;
+use App\Services\Clothing\ClothingPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -68,7 +69,7 @@ class RegionClothingController extends Controller
    * Show clothing items (with sizes) for a region, and allow inline editing.
    * View: resources/views/admin/clothing/region_items.blade.php
    */
-  public function edit(Request $request, TeamRegion $region){
+  public function edit(Request $request, TeamRegion $region, ClothingPriceService $prices){
     $this->authorize('region-clothing.manage', $region);
    
     // Load items for this region with sizes
@@ -95,7 +96,9 @@ class RegionClothingController extends Controller
     preg_match('/\b(20\d{2})\b/u', (string) $region->region_name, $targetYearMatch);
     $targetYear = isset($targetYearMatch[1]) ? (int) $targetYearMatch[1] : now()->year;
 
-    return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear'));
+    $payfastSettings = $prices->settings();
+
+    return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear', 'payfastSettings'));
   }
 
   public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service)

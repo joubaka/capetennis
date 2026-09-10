@@ -8,6 +8,7 @@ use App\Models\ClothingOrder;
 use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\Player;
+use App\Models\SiteSetting;
 use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
@@ -35,14 +36,16 @@ class ClothingOrderIntegrityTest extends TestCase
         );
 
         $this->assertSame('pending', $order->status);
-        $this->assertSame('740.00', $order->total);
-        $this->assertSame('740.00', $order->payfast_amount_due);
+        $this->assertSame('740.00', $order->subtotal);
+        $this->assertSame('29.28', $order->payfast_fee);
+        $this->assertSame('769.28', $order->total);
+        $this->assertSame('769.28', $order->payfast_amount_due);
         $line = $order->items()->firstOrFail();
         $this->assertSame('West Coast Shirt', $line->item_name);
         $this->assertSame('11-12', $line->size_name);
         $this->assertSame(2, (int) $line->qty);
-        $this->assertSame('370.00', (string) $line->price);
-        $this->assertSame('740.00', (string) $line->line_total);
+        $this->assertEquals(370.00, (float) $line->price);
+        $this->assertEquals(740.00, (float) $line->line_total);
 
         $same = $service->create(
             $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
@@ -110,14 +113,14 @@ class ClothingOrderIntegrityTest extends TestCase
         }
         $this->assertSame(0, (int) $order->fresh()->pay_status);
 
-        $paid = $payments->finalizePayfast($order->id, 'PF-CLOTHING-1', 370.00);
+        $paid = $payments->finalizePayfast($order->id, 'PF-CLOTHING-1', 385.78);
         $this->assertSame(1, (int) $paid->pay_status);
         $this->assertTrue((bool) $paid->payfast_paid);
         $this->assertSame('completed', $paid->status);
         $this->assertSame('PF-CLOTHING-1', $paid->pf_id);
-        $this->assertSame('370.00', $paid->amount_paid);
+        $this->assertSame('385.78', $paid->amount_paid);
 
-        $again = $payments->finalizePayfast($order->id, 'PF-CLOTHING-1', 370.00);
+        $again = $payments->finalizePayfast($order->id, 'PF-CLOTHING-1', 385.78);
         $this->assertSame($paid->id, $again->id);
     }
 
@@ -138,7 +141,7 @@ class ClothingOrderIntegrityTest extends TestCase
         $payload = [
             'merchant_id' => 'live-test-merchant',
             'payment_status' => 'COMPLETE',
-            'amount_gross' => '370.00',
+            'amount_gross' => '385.78',
             'custom_int5' => $order->id,
             'pf_payment_id' => 'PF-ITN-CLOTHING-1',
         ];
@@ -159,6 +162,9 @@ class ClothingOrderIntegrityTest extends TestCase
 
     private function orderContext(): array
     {
+        SiteSetting::set('payfast_fee_percentage', 3.2, SiteSetting::GROUP_PAYFAST);
+        SiteSetting::set('payfast_fee_flat', 2.00, SiteSetting::GROUP_PAYFAST);
+        SiteSetting::set('payfast_vat_rate', 14, SiteSetting::GROUP_PAYFAST);
         $typeId = DB::table('eventtypes')->insertGetId([
             'name' => 'Clothing team event', 'type' => 2,
             'code' => 'cloth-order-'.substr((string) str()->uuid(), 0, 8), 'created_at' => now(), 'updated_at' => now(),

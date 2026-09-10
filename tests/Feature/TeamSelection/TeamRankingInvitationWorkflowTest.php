@@ -285,7 +285,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($owner)->get(route('team-selection.invitations.clothing', $invitation))
             ->assertOk()
             ->assertSee('Regional tracksuit')
-            ->assertSee('R850.00');
+            ->assertSee('R850.00')
+            ->assertSee('PayFast fee')
+            ->assertSee('Total payable');
         $this->actingAs(User::factory()->create())
             ->get(route('team-selection.invitations.clothing', $invitation))
             ->assertForbidden();
