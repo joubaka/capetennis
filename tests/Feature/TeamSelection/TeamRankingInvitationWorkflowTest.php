@@ -592,8 +592,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Tournament workspace')
             ->assertSee('event-workspace-chrome', false)
+            ->assertSee('css/team-admin-workspace.css', false)
+            ->assertSee('data-regional-team-workspace', false)
             ->assertSee(route('backend.team-selection.index', $event), false)
             ->assertSee('>Teams</a>', false)
+            ->assertSee(route('backend.team-selection.index', ['event' => $event, 'view' => 'players']), false)
+            ->assertSee(route('backend.team-selection.index', ['event' => $event, 'view' => 'order']), false)
+            ->assertSee('Players — '.$eventRegion->region->region_name)
             ->assertDontSee(route('admin.events.overview', $event), false)
             ->assertDontSee('>Event overview</a>', false)
             ->assertDontSee('>Draws</a>', false)
@@ -616,6 +621,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Selection / payment')
             ->assertSee('Read only')
             ->assertSee('Ranking snapshot:')
+            ->assertDontSee('Private Other Region');
+        $this->actingAs($manager)->get(route('backend.team-selection.index', ['event' => $event, 'view' => 'order']))
+            ->assertOk()
+            ->assertSee('data-regional-team-workspace', false)
+            ->assertSee('Player order')
+            ->assertSee('Player Order — '.$eventRegion->region->region_name)
+            ->assertSee('Change the playing order without changing the selected players')
+            ->assertDontSee('Add an existing system player profile')
             ->assertDontSee('Private Other Region');
         $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
             ->assertRedirect();

@@ -7,15 +7,15 @@
 @endsection
 
 @section('page-style')
+<link rel="stylesheet" href="{{ asset('css/team-admin-workspace.css') }}?v={{ filemtime(public_path('css/team-admin-workspace.css')) }}">
 <style>
-  .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
-  .region-workspace-card > .card-header { background: linear-gradient(115deg, #173f78, #2563a9); color: #fff; }
-  .region-workspace-card > .card-header .text-muted { color: rgba(255,255,255,.76) !important; }
+  .region-workspace-card { border: 1px solid var(--bs-border-color); box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
+  .region-workspace-card > .card-header { background: var(--bs-card-bg); color: inherit; }
   .regional-metric { height: 100%; border: 1px solid #dbe6f4; border-radius: .65rem; padding: .85rem 1rem; background: linear-gradient(145deg, #fff, #f5f9ff); }
   .regional-metric small { display: block; color: #68778c; }
   .regional-metric strong { display: block; margin-top: .15rem; color: #173f78; font-size: 1.25rem; }
-  .regional-team-card { border: 1px solid #dbe6f4; border-top: 4px solid #2374bb; box-shadow: 0 .2rem .7rem rgba(31, 57, 104, .07); }
-  .regional-team-card .card-header { background: linear-gradient(90deg, #f3f8ff, #fff8ef); }
+  .regional-team-card { border: 1px solid var(--bs-border-color); box-shadow: none; }
+  .regional-team-card .card-header { background: var(--bs-card-bg); }
   .regional-team-card .card-header[data-team-workspace-header] { cursor: pointer; }
   .regional-team-card .table > :not(caption) > * > * { padding: .7rem .65rem; }
   .regional-team-card .reserve-row { background: #fffaf0; }
@@ -47,30 +47,57 @@
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
-  @if($isEventManager)
-    <div class="alert alert-info">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
-  @else
-    <div class="alert alert-info">You are viewing team selection, invitations and announcements for your assigned region.</div>
-  @endif
+  @php
+    $teamWorkspaceActive = request('view') === 'order' ? 'order' : 'players';
+    $workspaceInvitations = $eventRegions->flatMap(function ($eventRegion) {
+      $activeImport = $eventRegion->rankingSource?->imports?->whereIn('status', ['draft', 'sent'])->sortByDesc('id')->first();
+      return $activeImport?->invitations ?? collect();
+    });
+    $regionCount = $eventRegions->count();
+    $teamCount = $teams->flatten(1)->count();
+    $categoryCount = 0;
+    $playerCount = $workspaceInvitations->whereIn('status', [
+      \App\Models\TeamSelectionInvitation::INVITED,
+      \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+      \App\Models\TeamSelectionInvitation::PAID_CONFIRMED,
+    ])->count();
+    $reserveCount = $workspaceInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
+  @endphp
 
-  @if($eventRegions->count() > 1)
-    <div class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist" aria-label="Event regions" data-region-tabs>
+  <div class="team-admin-workspace" data-backend-wide data-regional-team-workspace>
+    <div class="nav-tabs-shadow mb-4">
+      @include('backend.event.partials.team-workspace-nav', [
+        'teamWorkspaceMode' => 'regional',
+        'teamWorkspaceShowAdminTabs' => false,
+      ])
+      <div class="tab-content p-3">
+
+  <div class="subtabs-sticky" role="navigation" aria-label="Event regions" data-region-tabs>
+    <ul class="nav nav-tabs px-2">
       @foreach($eventRegions as $eventRegion)
-        <button
-          type="button"
-          class="nav-link text-nowrap {{ $loop->first ? 'active' : '' }}"
-          id="region-tab-{{ $eventRegion->id }}"
-          data-bs-toggle="tab"
-          data-bs-target="#region-panel-{{ $eventRegion->id }}"
-          role="tab"
-          aria-controls="region-panel-{{ $eventRegion->id }}"
-          aria-selected="{{ $loop->first ? 'true' : 'false' }}"
-        >{{ $eventRegion->region?->region_name }}</button>
+        <li class="nav-item">
+          <button
+            type="button"
+            class="nav-link text-nowrap {{ $loop->first ? 'active' : '' }}"
+            id="region-tab-{{ $eventRegion->id }}"
+            data-bs-toggle="tab"
+            data-bs-target="#region-panel-{{ $eventRegion->id }}"
+            role="tab"
+            aria-controls="region-panel-{{ $eventRegion->id }}"
+            aria-selected="{{ $loop->first ? 'true' : 'false' }}"
+          >{{ $eventRegion->region?->region_name }}</button>
+        </li>
       @endforeach
-    </div>
+    </ul>
+  </div>
+
+  @if($isEventManager)
+    <div class="alert alert-info mt-3">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+  @else
+    <div class="alert alert-info mt-3">You are viewing team selection, invitations and announcements for your assigned region.</div>
   @endif
 
-  <div class="{{ $eventRegions->count() > 1 ? 'tab-content' : 'row g-3' }}">
+  <div class="tab-content region-tab-content">
     @foreach($eventRegions as $eventRegion)
       @php($source = $eventRegion->rankingSource)
       @php($sourceReady = $source && $readySeriesIds->contains($source->series_id))
@@ -84,14 +111,14 @@
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
       <div
         id="region-panel-{{ $eventRegion->id }}"
-        class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
+        class="tab-pane fade{{ $loop->first ? ' show active' : '' }}"
         role="tabpanel"
         aria-labelledby="region-tab-{{ $eventRegion->id }}"
         tabindex="0"
       >
         <div class="card region-workspace-card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
-            <div><h5 class="mb-1">{{ $eventRegion->region?->region_name }}</h5><span class="text-muted small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
+            <div><h5 class="mb-1">{{ $teamWorkspaceActive === 'order' ? 'Player Order' : 'Players' }} — {{ $eventRegion->region?->region_name }}</h5><span class="text-muted small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
             @if($activeImport)
               <span class="badge bg-label-{{ $activeImport->status === 'sent' ? 'success' : 'warning' }}">{{ ucfirst($activeImport->status) }}</span>
             @elseif($source)
@@ -168,12 +195,8 @@
                         </div>
                       </div>
                       @if($activeImport)
-                        <ul class="nav nav-tabs px-3 pt-3" role="tablist">
-                          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#team-players-{{ $regionTeam->id }}" type="button"><i class="ti ti-users me-1"></i>Players</button></li>
-                          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#team-order-{{ $regionTeam->id }}" type="button"><i class="ti ti-list-numbers me-1"></i>Player order</button></li>
-                        </ul>
-                        <div class="tab-content p-0">
-                        <div class="tab-pane fade show active" id="team-players-{{ $regionTeam->id }}">
+                        @if($teamWorkspaceActive === 'players')
+                        <div>
                         <form method="POST" action="{{ route('backend.team-selection.players.add', [$event, $activeImport, $regionTeam]) }}" class="row g-2 align-items-end p-3 border-bottom">
                           @csrf
                           <input type="hidden" name="add_team_id" value="{{ $regionTeam->id }}">
@@ -231,7 +254,8 @@
                           </table>
                         </div>
                         </div>
-                        <div class="tab-pane fade" id="team-order-{{ $regionTeam->id }}">
+                        @else
+                        <div>
                           <div class="p-3 border-bottom small text-muted">Change the playing order without changing the selected players, their payment state, or the original ranking snapshot. Every move is audited.</div>
                           <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0">
@@ -253,7 +277,7 @@
                             </table>
                           </div>
                         </div>
-                        </div>
+                        @endif
                       @else
                         <div class="card-body text-muted">Player places will appear here after the region reviews and imports its published ranking.</div>
                       @endif
@@ -465,6 +489,9 @@
         </div>
       @endif
     @endforeach
+  </div>
+      </div>
+    </div>
   </div>
 </div>
 @endsection
