@@ -395,7 +395,7 @@ class RegistrationPaymentController extends Controller
   /**
    * PayFast ITN
    */
-  public function handlePayfastSuccess(array $payfastData)
+  public function handlePayfastSuccess(array $payfastData): bool
   {
     Log::info('PAYFAST ITN RECEIVED', [
       'order_id' => (int) ($payfastData['custom_int5'] ?? 0),
@@ -410,7 +410,7 @@ class RegistrationPaymentController extends Controller
 
     if (!$orderId) {
       app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'No order ID received', 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
-      return;
+      return false;
     }
 
     if ($paymentStatus !== 'COMPLETE') {
@@ -418,14 +418,14 @@ class RegistrationPaymentController extends Controller
         'order_id' => $orderId,
         'status' => $paymentStatus
       ]);
-      return;
+      return false;
     }
 
     $order = RegistrationOrder::with('user.wallet', 'items')->find($orderId);
 
     if (!$order) {
       app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Order not found', 'order_id' => $orderId, 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
-      return;
+      return false;
     }
 
     // 🔐 Idempotency protection
@@ -436,19 +436,7 @@ class RegistrationPaymentController extends Controller
       Log::info('PAYFAST SKIPPED: Already fully processed', [
         'order_id' => $orderId
       ]);
-      return;
-    }
-
-    // 🔎 Validate amount
-    $expected = round((float) $order->payfast_amount_due, 2);
-    if ($expected > 0 && round($amountGross, 2) != $expected) {
-      Log::error('PAYFAST AMOUNT MISMATCH', [
-        'order_id' => $orderId,
-        'expected' => $expected,
-        'received' => $amountGross
-      ]);
-      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Amount mismatch', 'order_id' => $orderId, 'expected_amount' => $expected, 'received_amount' => $amountGross, 'payfast_status' => $paymentStatus]);
-      return;
+      return true;
     }
 
     Log::info('PAYFAST ORDER STATE BEFORE', [
@@ -462,10 +450,9 @@ class RegistrationPaymentController extends Controller
     try {
 
       $method = (float) $order->wallet_reserved > 0 ? 'hybrid' : 'payfast';
-      $order = app(PaymentOrchestrator::class)->finalizePayment($order, [
+      $order = app(\App\Domain\Payments\Services\RegistrationPaymentService::class)
+        ->finalizePayfastPayment($order, $amountGross, [
         'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
-        'payfast_amount_due' => $amountGross,
-        'payfast_amount_received' => $amountGross,
         'payment_method' => $method,
         'wallet_source_type' => 'event_registration_wallet_payment',
         'wallet_meta' => ['order_id' => $order->id],
@@ -493,7 +480,7 @@ class RegistrationPaymentController extends Controller
 
       app(PaymentFailureReporter::class)->report('registration.payfast_itn_finalize', ['order_id' => $orderId, 'payfast_payment_id' => $payfastData['pf_payment_id'] ?? null], $e);
 
-      return;
+      return false;
     }
 
     Log::info('HYBRID PAYMENT COMPLETED SUCCESSFULLY', [
@@ -513,6 +500,8 @@ class RegistrationPaymentController extends Controller
         'amount_gross' => $payfastData['amount_gross'] ?? '',
       ])
       ->log("Registration paid via PayFast for {$pfEventName}");
+
+    return true;
   }
 
   /**

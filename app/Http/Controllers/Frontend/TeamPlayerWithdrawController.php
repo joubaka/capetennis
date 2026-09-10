@@ -71,6 +71,8 @@ class TeamPlayerWithdrawController extends Controller
         ->where('event_id', $eventId)
         ->first();
       if ($withdrawalOrder) {
+        $withdrawalOrder = app(\App\Domain\Payments\Services\TeamPaymentService::class)
+          ->recordWithdrawal($withdrawalOrder, $user);
         app(\App\Services\TeamCommunicationService::class)->withdrawal($withdrawalOrder, [
           'refund_available' => $refundAllowed,
         ]);
@@ -160,8 +162,17 @@ class TeamPlayerWithdrawController extends Controller
       abort(403, 'Only the payer may choose a refund method.');
     }
 
-    if (now()->gt($event->withdrawalCloseAt())) {
-      return back()->withErrors('The withdrawal deadline has passed.');
+    if (! $order->withdrawn_at && now()->lte($event->withdrawalCloseAt())) {
+      $order = app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->recordWithdrawal($order, $user);
+    }
+
+    if (! $order->withdrawn_at) {
+      return back()->withErrors('Player withdrawal time was not recorded. Please withdraw the player again or contact support.');
+    }
+
+    if ($order->withdrawn_at->gt($event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline passed before this player was withdrawn.');
     }
 
     if (!$order || ((int) $order->pay_status !== 1 && !$order->payfast_paid && !$order->wallet_debited)) {
@@ -230,8 +241,17 @@ class TeamPlayerWithdrawController extends Controller
       abort(403, 'Only the payer may request this refund.');
     }
 
-    if (now()->gt($event->withdrawalCloseAt())) {
-      return back()->withErrors('The withdrawal deadline has passed.');
+    if (! $order->withdrawn_at && now()->lte($event->withdrawalCloseAt())) {
+      $order = app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->recordWithdrawal($order, $user);
+    }
+
+    if (! $order->withdrawn_at) {
+      return back()->withErrors('Player withdrawal time was not recorded. Please withdraw the player again or contact support.');
+    }
+
+    if ($order->withdrawn_at->gt($event->withdrawalCloseAt())) {
+      return back()->withErrors('The withdrawal deadline passed before this player was withdrawn.');
     }
 
     if ($order->isRefundCompleted() || $order->isRefundPending()) {

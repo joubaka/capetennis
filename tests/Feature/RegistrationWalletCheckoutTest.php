@@ -11,6 +11,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Http\Middleware\EnsureAgreementAccepted;
 use App\Http\Middleware\EnsurePlayerProfileUpdated;
+use App\Domain\Payments\Services\RegistrationPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -175,6 +176,64 @@ class RegistrationWalletCheckoutTest extends TestCase
         $this->actingAs($other)
             ->get(route('frontend.registration.success', ['order' => $order->id]))
             ->assertForbidden();
+    }
+
+    public function test_payfast_finalization_recovers_missing_legacy_due_from_locked_item_totals(): void
+    {
+        $user = User::factory()->create();
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 0,
+            'payfast_amount_due' => 0,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+        (new RegistrationOrderItems())->forceFill([
+            'order_id' => $order->id,
+            'item_price' => 100,
+        ])->save();
+
+        $finalized = app(RegistrationPaymentService::class)->finalizePayfastPayment($order, 100, [
+            'pf_payment_id' => 'PF-LEGACY-DUE',
+            'payment_method' => 'payfast',
+        ]);
+
+        $this->assertTrue((bool) $finalized->pay_status);
+        $this->assertTrue((bool) $finalized->payfast_paid);
+        $this->assertSame(100.0, (float) $finalized->payfast_amount_due);
+        $this->assertSame('PF-LEGACY-DUE', $finalized->payfast_pf_payment_id);
+    }
+
+    public function test_legacy_due_recovery_still_rejects_an_amount_not_supported_by_item_totals(): void
+    {
+        $user = User::factory()->create();
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'wallet_reserved' => 0,
+            'payfast_amount_due' => 0,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+        (new RegistrationOrderItems())->forceFill([
+            'order_id' => $order->id,
+            'item_price' => 100,
+        ])->save();
+
+        try {
+            app(RegistrationPaymentService::class)->finalizePayfastPayment($order, 90, [
+                'pf_payment_id' => 'PF-WRONG-AMOUNT',
+                'payment_method' => 'payfast',
+            ]);
+            $this->fail('An amount not supported by the order item totals must be rejected.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Payment amount mismatch', $exception->getMessage());
+        }
+
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $order->fresh()->payfast_paid);
+        $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
     }
 
     public function test_checkout_cancel_returns_to_the_orders_event_and_releases_reservation(): void

@@ -159,6 +159,23 @@ class TeamPaymentService
         });
     }
 
+    public function recordWithdrawal(TeamPaymentOrder $order, User $actor): TeamPaymentOrder
+    {
+        return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $actor) {
+            return DB::transaction(function () use ($order, $actor) {
+                $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+
+                if (! $locked->withdrawn_at) {
+                    $locked->withdrawn_at = now();
+                    $locked->withdrawn_by = $actor->id;
+                    $locked->save();
+                }
+
+                return $locked;
+            });
+        });
+    }
+
     public function cancelPayment(TeamPaymentOrder $order): TeamPaymentOrder
     {
         /** @var TeamPaymentOrder $cancelled */

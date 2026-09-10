@@ -399,7 +399,9 @@ class RegisterController extends Controller
     }
 
     // Route the legacy PayFast callback through the canonical payment adapter.
-    app(RegistrationPaymentController::class)->handlePayfastSuccess($data);
+    if (! app(RegistrationPaymentController::class)->handlePayfastSuccess($data)) {
+      return response('Payment verification failed', 400);
+    }
 
     return response('OK', 200);
 

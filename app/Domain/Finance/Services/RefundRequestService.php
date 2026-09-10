@@ -91,8 +91,11 @@ class RefundRequestService
         if (! $actor || ((int) $order->user_id !== (int) $actor->id && ! $isSuperUser)) {
             throw ValidationException::withMessages(['refund' => 'Only the payer may request this refund.']);
         }
-        if (! $order->event || now()->gt($order->event->withdrawalCloseAt())) {
-            throw ValidationException::withMessages(['refund' => 'The withdrawal deadline has passed.']);
+        if (! $order->event || ! $order->withdrawn_at) {
+            throw ValidationException::withMessages(['refund' => 'Player must be withdrawn before requesting a refund.']);
+        }
+        if ($order->withdrawn_at->gt($order->event->withdrawalCloseAt())) {
+            throw ValidationException::withMessages(['refund' => 'The withdrawal deadline passed before this player was withdrawn.']);
         }
         if ((int) $order->pay_status !== 1 && ! $order->payfast_paid && ! $order->wallet_debited) {
             throw ValidationException::withMessages(['refund' => 'No paid amount was found for this order.']);

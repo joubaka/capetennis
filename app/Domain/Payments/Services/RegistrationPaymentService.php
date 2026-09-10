@@ -62,6 +62,45 @@ class RegistrationPaymentService
         });
     }
 
+    public function finalizePayfastPayment(RegistrationOrder $order, float $receivedAmount, array $context = []): RegistrationOrder
+    {
+        if (! is_finite($receivedAmount) || $receivedAmount <= 0) {
+            throw new \RuntimeException('PayFast payment amount must be positive.');
+        }
+
+        return DB::transaction(function () use ($order, $receivedAmount, $context) {
+            $locked = RegistrationOrder::query()
+                ->lockForUpdate()
+                ->with('items')
+                ->findOrFail($order->id);
+
+            if ((int) $locked->pay_status === 1 || (bool) $locked->payfast_paid) {
+                return $locked;
+            }
+
+            $total = round((float) $locked->items->sum('item_price'), 2);
+            $reserved = round((float) $locked->wallet_reserved, 2);
+            $expected = round($total - $reserved, 2);
+            $received = round($receivedAmount, 2);
+
+            if ($total <= 0 || $reserved < 0 || $expected <= 0 || $received !== $expected) {
+                throw new \RuntimeException("Payment amount mismatch. Expected {$expected}, received {$received}.");
+            }
+
+            // Older pending orders may not have stored the PayFast remainder.
+            // Recover it only from the locked item-price snapshot and reservation.
+            if (round((float) $locked->payfast_amount_due, 2) !== $expected) {
+                $locked->payfast_amount_due = $expected;
+                $locked->save();
+            }
+
+            return $this->finalizePayment($locked, array_merge($context, [
+                'payfast_amount_due' => $expected,
+                'payfast_amount_received' => $received,
+            ]));
+        });
+    }
+
     public function markOrderRegistrationsPaid(RegistrationOrder $order, ?string $pfPaymentId, ?int $userId = null): void
     {
         FinanceMutationScope::run('registration_payment_state_write', function () use ($order, $pfPaymentId, $userId) {

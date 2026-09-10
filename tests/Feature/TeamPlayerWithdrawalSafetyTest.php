@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Domain\Finance\Services\RefundRequestService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Mail;
 
 class TeamPlayerWithdrawalSafetyTest extends TestCase
 {
@@ -109,6 +110,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
             'total_amount' => 200,
             'pay_status' => 1,
             'payfast_paid' => true,
+            'withdrawn_at' => now(),
         ]);
 
         app(RefundRequestService::class)->requestTeamRefund($order, [
@@ -122,6 +124,44 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         $this->assertTrue((bool) $order->fresh()->pay_status);
         $this->assertTrue((bool) $order->fresh()->payfast_paid);
         $this->assertSame('pending', $order->fresh()->refund_status);
+    }
+
+    public function test_timely_team_withdrawal_remains_refundable_after_deadline_passes(): void
+    {
+        Mail::fake();
+        [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $withdrawalTime = now();
+        $event->update(['withdrawal_deadline' => $withdrawalTime->copy()->addMinute()]);
+        $order = TeamPaymentOrder::create([
+            'user_id' => $user->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
+
+        $this->travelTo($withdrawalTime);
+        $this->actingAs($user)->post(
+            route('team.player.withdraw', [$team, $player, $event])
+        )->assertRedirect(route('team.player.refund.choose', [$team->id, $player->id, $event->id]));
+
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame($user->id, $order->fresh()->withdrawn_by);
+
+        $this->travelTo($withdrawalTime->copy()->addMinutes(2));
+        $this->post(route('team.player.refund.request', [$team, $player, $event]), [
+            'method' => 'bank',
+            'account_name' => 'Test Payer',
+            'bank_name' => 'ABSA',
+            'account_number' => '1234567890',
+            'branch_code' => '632005',
+            'account_type' => 'current',
+        ])->assertRedirect();
+
+        $this->assertSame('pending', $order->fresh()->refund_status);
+        $this->travelBack();
     }
 
     public function test_team_refund_rejects_a_player_co_owner_who_did_not_pay(): void
