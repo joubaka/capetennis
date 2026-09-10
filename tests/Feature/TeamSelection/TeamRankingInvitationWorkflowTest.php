@@ -958,7 +958,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $first, $assignedTeam]), [
             'name' => 'Managed safely', 'num_team_members' => 3, 'published' => 1,
-        ])->assertSessionHasNoErrors()->assertSessionHas('success', 'Regional team details updated to 3 player places. 1 player(s) moved to the reserve queue.');
+        ])->assertSessionHasNoErrors()->assertSessionHas('success', 'Regional team details updated to 3 player places. 1 player was moved to the reserve queue.');
         $this->assertSame(3, (int) $assignedTeam->fresh()->num_team_members);
         $this->assertDatabaseHas('team_selection_invitations', [
             'import_id' => $selectionImport->id,

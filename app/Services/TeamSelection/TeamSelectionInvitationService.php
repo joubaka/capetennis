@@ -34,10 +34,7 @@ final class TeamSelectionInvitationService
     public function updateTeamSettings(Team $team, Event $event, int $regionId, array $attributes, User $actor): array
     {
         return DB::transaction(function () use ($team, $event, $regionId, $attributes, $actor): array {
-            $lockedTeam = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($team->id);
             $requestedPlaces = (int) $attributes['num_team_members'];
-            $previousPlaces = (int) $lockedTeam->num_team_members;
-
             $activeImport = TeamSelectionImport::query()
                 ->where('event_id', $event->id)
                 ->where('region_id', $regionId)
@@ -48,7 +45,7 @@ final class TeamSelectionInvitationService
             $overflow = $activeImport
                 ? TeamSelectionInvitation::query()
                     ->where('import_id', $activeImport->id)
-                    ->where('team_id', $lockedTeam->id)
+                    ->where('team_id', $team->id)
                     ->whereIn('status', [
                         TeamSelectionInvitation::INVITED,
                         TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -59,6 +56,8 @@ final class TeamSelectionInvitationService
                     ->lockForUpdate()
                     ->get()
                 : collect();
+            $lockedTeam = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($team->id);
+            $previousPlaces = (int) $lockedTeam->num_team_members;
 
             $protected = $overflow->whereIn('status', [
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,

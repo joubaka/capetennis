@@ -32,4 +32,45 @@ class EventLifecycleServiceTest extends TestCase
         ]), $now));
         $this->assertSame('archived', $service->state(new Event(['status' => 'archived']), $now));
     }
+
+    public function test_snapshot_exposes_operator_friendly_labels(): void
+    {
+        $service = new EventLifecycleService();
+        $now = Carbon::parse('2026-08-21 12:00:00');
+
+        $open = new Event([
+            'published' => true,
+            'signUp' => true,
+            'start_date' => '2026-09-01',
+            'deadline' => 7,
+        ]);
+
+        $this->assertSame('Entries Open', $service->snapshot($open, $now)['label']);
+        $this->assertSame('Entries Closed', $service->snapshot(new Event([
+            'published' => true,
+            'signUp' => false,
+        ]), $now)['label']);
+        $this->assertSame('Results Published', $service->snapshot(new Event([
+            'published' => true,
+            'results_published' => true,
+        ]), $now)['label']);
+    }
+
+    public function test_event_status_label_uses_the_shared_lifecycle_instead_of_entry_records(): void
+    {
+        Carbon::setTestNow('2026-08-21 12:00:00');
+
+        try {
+            $event = new Event([
+                'published' => true,
+                'signUp' => true,
+                'start_date' => '2026-09-01',
+                'deadline' => 7,
+            ]);
+
+            $this->assertSame('Entries Open', $event->status_label);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
 }

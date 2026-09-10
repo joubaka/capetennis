@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\EventLifecycleService;
 use App\Services\RichTextSanitizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -403,23 +404,7 @@ class Event extends Model
   */
   public function getStatusLabelAttribute(): string
   {
-    if ($this->completed_at) {
-      return 'Completed';
-    }
-
-    if ($this->fixtures()->exists()) {
-      return 'In Progress';
-    }
-
-    if ($this->draws()->exists()) {
-      return 'Draw Generated';
-    }
-
-    if ($this->registrations()->exists()) {
-      return 'Entries Open';
-    }
-
-    return 'Draft';
+    return app(EventLifecycleService::class)->snapshot($this)['label'];
   }
 
   // app/Models/Event.php

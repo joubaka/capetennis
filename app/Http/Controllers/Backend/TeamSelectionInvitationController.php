@@ -573,9 +573,11 @@ class TeamSelectionInvitationController extends Controller
             $request->user(),
         );
 
-        $reserveMessage = $result['moved_to_reserves'] > 0
-            ? " {$result['moved_to_reserves']} player(s) moved to the reserve queue."
-            : '';
+        $reserveMessage = match ($result['moved_to_reserves']) {
+            0 => '',
+            1 => ' 1 player was moved to the reserve queue.',
+            default => " {$result['moved_to_reserves']} players were moved to the reserve queue.",
+        };
 
         return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.{$reserveMessage}");
     }

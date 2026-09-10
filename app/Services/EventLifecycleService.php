@@ -19,7 +19,7 @@ class EventLifecycleService
 
         return [
             'state' => $state,
-            'label' => str_replace('_', ' ', ucfirst($state)),
+            'label' => $this->label($state),
             'published' => (bool) $event->published,
             'entries_open' => $state === 'published_open',
             'withdrawals_open' => $event->canWithdraw(),
@@ -27,6 +27,16 @@ class EventLifecycleService
             'start_date' => $event->start_date?->toDateString(),
             'end_date' => $event->end_date?->toDateString(),
         ];
+    }
+
+    public function label(string $state): string
+    {
+        return match ($state) {
+            'published_open' => 'Entries Open',
+            'entries_closed' => 'Entries Closed',
+            'results_published' => 'Results Published',
+            default => str_replace('_', ' ', ucfirst($state)),
+        };
     }
 
     public function state(Event $event, Carbon $now): string
