@@ -27,6 +27,7 @@ use App\Models\Event;
 use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PlayerController extends Controller
 {
@@ -190,15 +191,31 @@ class PlayerController extends Controller
       );
     }
 
-    $result = $this->playerIdentity->findOrCreate([
-      'name' => $validated['player_name'],
-      'surname' => $validated['player_surname'],
-      'dateOfBirth' => $validated['dob'],
-      'gender' => (int) $validated['gender'],
-      'userId' => Auth::id(),
-      'cellNr' => $validated['cell_nr'] ?? null,
-      'email' => $validated['email'] ?? null,
-    ]);
+    $result = DB::transaction(function () use ($validated, $claimContext, $request) {
+      $result = $this->playerIdentity->findOrCreate([
+        'name' => $validated['player_name'],
+        'surname' => $validated['player_surname'],
+        'dateOfBirth' => $validated['dob'],
+        'gender' => (int) $validated['gender'],
+        'userId' => Auth::id(),
+        'cellNr' => $validated['cell_nr'] ?? null,
+        'email' => $validated['email'] ?? null,
+      ]);
+
+      if ($claimContext) {
+        $this->externalRosters->claim(
+          $request->user(),
+          $claimContext['event'],
+          $claimContext['team'],
+          $claimContext['slot'],
+          $result['player'],
+          $validated['dob'],
+          [$validated['email'] ?? null, $validated['cell_nr'] ?? null],
+        );
+      }
+
+      return $result;
+    });
     $player = $result['player'];
 
     $notification = [
@@ -208,10 +225,6 @@ class PlayerController extends Controller
 
     // If this was triggered from a noProfile placeholder
     if ($claimContext) {
-      $this->externalRosters->claim(
-        $request->user(), $claimContext['event'], $claimContext['team'], $claimContext['slot'], $player
-      );
-
       // Redirect to payment for this player
       return redirect()->route('team.payment.payfast', [
         $claimContext['team']->id,
@@ -473,29 +486,56 @@ class PlayerController extends Controller
 
   public function search(Request $request)
   {
-    $q = trim($request->get('q', ''));
+    $validated = $request->validate([
+      'q' => ['nullable', 'string', 'max:100'],
+      'scope' => ['nullable', 'in:owned'],
+      'format' => ['nullable', 'in:select2'],
+      'page' => ['nullable', 'integer', 'min:1'],
+    ]);
+    $q = trim((string) ($validated['q'] ?? ''));
+    $page = (int) ($validated['page'] ?? 1);
+    $isPrivateSafeSearch = ($validated['format'] ?? null) === 'select2';
 
     $players = Player::query()
-      ->when($request->input('scope') === 'owned', function ($query) use ($request) {
+      ->when(($validated['scope'] ?? null) === 'owned', function ($query) use ($request) {
         $query->where(function ($owned) use ($request) {
           $owned->where('userId', $request->user()->id)
             ->orWhereHas('users', fn ($users) => $users->whereKey($request->user()->id));
         });
       })
-      ->when($q, function ($query) use ($q) {
+      ->when($q, function ($query) use ($q, $isPrivateSafeSearch) {
         // Split into words: "John Smith" => ["John", "Smith"]
         $terms = preg_split('/\s+/', $q);
 
         foreach ($terms as $term) {
-          $query->where(function ($sub) use ($term) {
+          $term = addcslashes($term, '\\%_');
+          $query->where(function ($sub) use ($term, $isPrivateSafeSearch) {
             $sub->where('name', 'like', "%{$term}%")
-              ->orWhere('surname', 'like', "%{$term}%")
-              ->orWhere('email', 'like', "%{$term}%");
+              ->orWhere('surname', 'like', "%{$term}%");
+            if (! $isPrivateSafeSearch) {
+              $sub->orWhere('email', 'like', "%{$term}%");
+            }
           });
         }
       })
-      ->limit(10)
-      ->get(['id', 'name', 'surname', 'dateOfBirth']);
+      ->orderBy('surname')
+      ->orderBy('name')
+      ->orderBy('id');
+
+    if (($validated['format'] ?? null) === 'select2') {
+      $pageSize = 20;
+      $results = $players->simplePaginate($pageSize, ['id', 'name', 'surname'], 'page', $page);
+
+      return response()->json([
+        'results' => collect($results->items())->map(fn (Player $player): array => [
+          'id' => $player->id,
+          'text' => trim($player->name.' '.$player->surname).' · profile #'.$player->id,
+        ])->values(),
+        'pagination' => ['more' => $results->hasMorePages()],
+      ]);
+    }
+
+    $players = $players->limit(25)->get(['id', 'name', 'surname']);
 
     return response()->json($players);
   }
@@ -541,6 +581,8 @@ class PlayerController extends Controller
       'team' => 'required|integer|exists:teams,id',
       'event' => 'required|integer|exists:events,id',
       'noProfile' => 'required|integer|exists:no_profile_team_players,id',
+      'date_of_birth' => 'nullable|date_format:Y-m-d',
+      'contact' => 'nullable|string|max:190',
     ]);
 
     $player = Player::findOrFail($validated['player_id']);
@@ -548,7 +590,15 @@ class PlayerController extends Controller
     $event = Event::findOrFail($validated['event']);
     $noProfile = NoProfileTeamPlayer::findOrFail($validated['noProfile']);
 
-    $this->externalRosters->claim($request->user(), $event, $team, $noProfile, $player);
+    $this->externalRosters->claim(
+      $request->user(),
+      $event,
+      $team,
+      $noProfile,
+      $player,
+      $validated['date_of_birth'] ?? null,
+      [$validated['contact'] ?? null],
+    );
 
     // Redirect to payment
     return redirect()->route('team.payment.payfast', [$team->id, $player->id, $event->id])

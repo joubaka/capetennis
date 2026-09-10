@@ -450,14 +450,18 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('events/{event}/imports/{selectionImport}/email-preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'previewEmail'])->name('email.preview');
     Route::post('events/{event}/imports/{selectionImport}/restart', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'restart'])->name('restart');
     Route::patch('events/{event}/imports/{selectionImport}/deadlines', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
+    Route::patch('events/{event}/imports/{selectionImport}/replacement-mode', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateReplacementMode'])->name('replacement-mode.update');
     Route::post('events/{event}/imports/{selectionImport}/emails/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryFailed'])->name('emails.retry');
     Route::put('events/{event}/regions/{eventRegion}/manager', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'assignManager'])->name('manager.assign');
     Route::post('events/{event}/regions/{eventRegion}/announcements', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'storeAnnouncement'])->name('announcements.store');
     Route::delete('events/{event}/regions/{eventRegion}/announcements/{announcement}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'destroyAnnouncement'])->name('announcements.destroy');
     Route::post('events/{event}/regions/{eventRegion}/announcements/{announcement}/retry', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'retryAnnouncement'])->name('announcements.retry');
     Route::patch('events/{event}/regions/{eventRegion}/teams/{team}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateTeam'])->name('teams.update');
+    Route::patch('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateImportedPlayer'])->name('imported-players.update');
+    Route::post('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}/move', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'moveImportedPlayer'])->name('imported-players.move');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/replace', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'replace'])->name('invitations.replace');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/move', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'moveRosterRank'])->name('invitations.move');
+    Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/promote-reserve', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'promoteReserveManually'])->name('invitations.promote-reserve');
     Route::get('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchPlayers'])->name('players.search');
     Route::post('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'addPlayer'])->name('players.add');
     Route::get('events/{event}/imports/{selectionImport}/invitations/{invitation}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'viewSentInvitation'])->name('invitations.email.view');

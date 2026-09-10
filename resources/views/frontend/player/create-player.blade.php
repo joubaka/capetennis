@@ -13,31 +13,31 @@
 @section('page-script')
 <script>
 $(document).ready(function() {
+  let currentSearchTerm = '';
+
   // Ajax search with Select2
   $('#player-search').select2({
-    placeholder: 'Search your existing profiles',
+    placeholder: 'Search all Cape Tennis player profiles',
     ajax: {
       url: '{{ route("player.search") }}',
       dataType: 'json',
       delay: 250,
       data: function (params) {
-        return { q: params.term, scope: 'owned' };
+        currentSearchTerm = params.term || '';
+        return { q: currentSearchTerm, page: params.page || 1, format: 'select2' };
       },
       processResults: function (data, params) {
-        let results = data.map(function(player) {
-          return {
-            id: player.id,
-            text: player.name + ' ' + player.surname + (player.dateOfBirth ? ' · born ' + player.dateOfBirth.substring(0, 10) : '')
-          };
-        });
+        let results = data.results || [];
 
-        // Always add "Create new" option at the bottom
-        results.push({
-          id: 'create_new',
-          text: '➕ Create new player "' + (params.term || '') + '"'
-        });
+        // Offer creation after every existing matching profile has been reviewed.
+        if (!data.pagination?.more) {
+          results.push({
+            id: 'create_new',
+            text: '➕ Create new player "' + currentSearchTerm + '"'
+          });
+        }
 
-        return { results: results };
+        return { results: results, pagination: data.pagination || { more: false } };
       }
     },
     minimumInputLength: 2
@@ -53,7 +53,7 @@ $(document).ready(function() {
       $('#attach-player-form').addClass('d-none');
 
       // Pre-fill name/surname from search term
-      let term = $('#player-search').data('select2').dropdown.$search.val();
+      let term = currentSearchTerm;
       if (term) {
         let parts = term.split(' ');
         $('input[name="player_name"]').val(parts.shift() || '');
@@ -87,7 +87,7 @@ $(document).ready(function() {
 <div class="card mb-4">
   <div class="card-header">Link {{ $name ?? 'this player' }} {{ $surname ?? '' }}</div>
   <div class="card-body">
-    <p class="text-muted small">Search profiles already linked to your account. If this player used Cape Tennis before but is not linked to your account, ask the tournament administrator to verify the profile instead of creating a duplicate.</p>
+    <p class="text-muted small">Search every Cape Tennis profile before creating a new one. Search results show only a name and profile number; private contact details and dates of birth are never displayed.</p>
     <select id="player-search" style="width:100%"></select>
   </div>
 </div>
@@ -99,7 +99,23 @@ $(document).ready(function() {
   <input type="hidden" name="team" value="{{ $team ?? '' }}">
   <input type="hidden" name="event" value="{{ $event ?? '' }}">
   <input type="hidden" name="noProfile" value="{{ $noProfileId ?? '' }}">
-  <button type="submit" class="btn btn-success">Attach Player</button>
+  <div class="card mb-3">
+    <div class="card-header">Verify existing profile</div>
+    <div class="card-body">
+      <p class="text-muted small">If this profile is not already linked to your account, enter the player’s date of birth and the email address or mobile number already recorded on the profile.</p>
+      <div class="row g-3">
+        <div class="col-12 col-md-5">
+          <label for="existing-player-dob" class="form-label">Date of birth</label>
+          <input id="existing-player-dob" type="date" name="date_of_birth" class="form-control">
+        </div>
+        <div class="col-12 col-md-7">
+          <label for="existing-player-contact" class="form-label">Recorded email or mobile number</label>
+          <input id="existing-player-contact" type="text" name="contact" class="form-control" maxlength="190" autocomplete="off">
+        </div>
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-success">Link Profile and Continue to Payment</button>
 </form>
 
 {{-- 🔹 Create New Player --}}
@@ -156,7 +172,7 @@ $(document).ready(function() {
     </div>
   </div>
 
-  <button type="submit" class="btn btn-primary mt-3">Create Player</button>
+  <button type="submit" class="btn btn-primary mt-3">Create Profile and Continue to Payment</button>
 </form>
 
 @endsection

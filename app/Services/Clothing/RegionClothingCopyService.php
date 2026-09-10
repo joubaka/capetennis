@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 final class RegionClothingCopyService
 {
     /**
-     * @param array<int, array{selected?: mixed, source_item_id: mixed, item_type_name?: mixed, price?: mixed, ordering?: mixed}> $rows
+     * @param array<int, array{selected?: mixed, source_item_id: mixed, item_type_name?: mixed, price?: mixed, cost_price?: mixed, ordering?: mixed}> $rows
      * @return array{created: int, skipped: int}
      */
     public function copy(TeamRegion $target, TeamRegion $source, array $rows, User $actor, bool $pricesConfirmed): array
@@ -52,6 +52,9 @@ final class RegionClothingCopyService
                 $sourceItem = $sourceItems->get((int) $row['source_item_id']);
                 $name = trim((string) ($row['item_type_name'] ?? ''));
                 $price = round((float) ($row['price'] ?? -1), 2);
+                $costPrice = filled($row['cost_price'] ?? null)
+                    ? round((float) $row['cost_price'], 2)
+                    : null;
                 $ordering = filled($row['ordering'] ?? null) ? (int) $row['ordering'] : null;
                 if ($name === '' || $price < 0) {
                     throw ValidationException::withMessages([
@@ -68,6 +71,7 @@ final class RegionClothingCopyService
                 $newItem = ClothingItemType::create([
                     'item_type_name' => $name,
                     'price' => $price,
+                    'cost_price' => $costPrice,
                     'region_id' => $lockedTarget->id,
                     'ordering' => $ordering,
                 ]);
@@ -101,6 +105,9 @@ final class RegionClothingCopyService
                         'source_item_id' => (int) $row['source_item_id'],
                         'name' => trim((string) ($row['item_type_name'] ?? '')),
                         'price' => round((float) ($row['price'] ?? 0), 2),
+                        'cost_price' => filled($row['cost_price'] ?? null)
+                            ? round((float) $row['cost_price'], 2)
+                            : null,
                     ])->all(),
                 ])->log('copied reviewed clothing setup from previous region');
 

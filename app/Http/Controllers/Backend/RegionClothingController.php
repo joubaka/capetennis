@@ -128,6 +128,7 @@ class RegionClothingController extends Controller
       'items.*.source_item_id' => ['required', 'integer', 'distinct'],
       'items.*.item_type_name' => ['nullable', 'string', 'max:191'],
       'items.*.price' => ['nullable', 'numeric', 'min:0'],
+      'items.*.cost_price' => ['nullable', 'numeric', 'min:0'],
       'items.*.final_amount' => ['nullable', 'numeric', 'min:0'],
       'items.*.pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'items.*.ordering' => ['nullable', 'integer', 'min:0'],
@@ -196,6 +197,7 @@ class RegionClothingController extends Controller
     $data = $request->validate([
       'item_type_name' => 'required|string|max:191',
       'price' => 'nullable|numeric|min:0',
+      'cost_price' => 'nullable|numeric|min:0',
       'final_amount' => 'nullable|numeric|min:0',
       'pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'ordering' => 'nullable|integer|min:0',
@@ -225,6 +227,7 @@ class RegionClothingController extends Controller
       'items.*.id' => 'required|integer|exists:clothing_item_types,id',
       'items.*.item_type_name' => 'required|string|max:191',
       'items.*.price' => 'nullable|numeric|min:0',
+      'items.*.cost_price' => 'nullable|numeric|min:0',
       'items.*.final_amount' => 'nullable|numeric|min:0',
       'items.*.pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'items.*.ordering' => 'nullable|integer|min:0',
@@ -238,6 +241,7 @@ class RegionClothingController extends Controller
       $item->update([
         'item_type_name' => $row['item_type_name'],
         'price' => $row['price'] ?? 0,
+        'cost_price' => $row['cost_price'] ?? null,
         'ordering' => $row['ordering'] ?? null,
       ]);
     }

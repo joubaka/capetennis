@@ -54,7 +54,7 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
         $invitation = TeamSelectionInvitation::with(['selectionImport.event', 'region', 'team', 'player'])->find($log->related_id);
         if (! $invitation || (int) $invitation->event_id !== $this->eventId
             || $invitation->status !== TeamSelectionInvitation::INVITED
-            || ($invitation->selectionImport?->response_deadline && now()->gt($invitation->selectionImport->response_deadline))) {
+            || ($invitation->effectiveResponseDeadline() && now()->gt($invitation->effectiveResponseDeadline()))) {
             $log->markAsSkipped('Invitation is no longer eligible to send.');
             return;
         }

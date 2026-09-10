@@ -31,9 +31,14 @@
               $playerName = $player
                 ? trim(($player->name ?? '').' '.($player->surname ?? ''))
                 : '— Empty slot —';
+              $isInvitationTarget = $player
+                && request()->integer('team') === (int) $team->id
+                && request()->integer('player') === (int) $player->id;
             @endphp
 
-            <li class="list-group-item {{ $isDummy ? 'bg-light' : '' }}">
+            <li id="team-registration-{{ $team->id }}-{{ $player?->id ?? 0 }}"
+                class="list-group-item {{ $isDummy ? 'bg-light' : '' }} {{ $isInvitationTarget ? 'border border-success rounded bg-success-subtle' : '' }}"
+                @if($isInvitationTarget) data-team-registration-target="true" @endif>
               <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
 
                 {{-- LEFT: RANK + NAME --}}
@@ -77,7 +82,7 @@
                     {{-- UNPAID + SIGNUPS OPEN --}}
                     @elseif($signupOpen)
                       <a href="{{ route('team.payment.payfast', [$team->id, $player->id, $event->id]) }}"
-                         class="btn btn-sm btn-warning">
+                         class="btn btn-sm btn-warning team-registration-button">
                         <i class="ti ti-credit-card me-1"></i>Register
                       </a>
 

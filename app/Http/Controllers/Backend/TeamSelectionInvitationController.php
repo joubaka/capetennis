@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\EventRegionRankingSource;
 use App\Models\EventRegionManager;
+use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
 use App\Models\Series;
 use App\Models\SeriesRanking;
@@ -17,6 +18,7 @@ use App\Models\TeamSelectionRegionAnnouncement;
 use App\Models\User;
 use App\Services\BulkMailDispatcher;
 use App\Services\TeamSelection\RegionManagerAccessService;
+use App\Services\TeamSelection\ImportedTeamRosterService;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use Illuminate\Http\Request;
@@ -56,6 +58,7 @@ class TeamSelectionInvitationController extends Controller
             return $latest?->status === 'published' && filled($latest->run_id);
         })->pluck('id');
         $teams = $service->teamsForEvent($event, $eventRegions->pluck('region_id')->map(fn ($id) => (int) $id)->all())
+            ->load(['team_players_no_profile.profile'])
             ->loadCount(['team_players', 'team_players_no_profile'])->groupBy('region_id');
         $categorySetups = $eventRegions->filter(fn (EventRegion $eventRegion) => $eventRegion->rankingSource)
             ->mapWithKeys(fn (EventRegion $eventRegion) => [
@@ -195,6 +198,19 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'Invitation deadlines were extended.');
     }
 
+    public function updateReplacementMode(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate(['replacement_mode' => ['required', 'in:automatic,manual']]);
+        $automatic = $data['replacement_mode'] === 'automatic';
+        $service->updateReplacementMode($selectionImport, $automatic, $request->user());
+
+        return back()->with('success', $automatic
+            ? 'Automatic reserve promotion is enabled. Each replacement receives at least 24 hours where the event date allows it.'
+            : 'Manual reserve promotion is enabled. Future vacancies will wait for regional approval.');
+    }
+
     public function retryFailed(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
@@ -307,6 +323,15 @@ class TeamSelectionInvitationController extends Controller
         $service->moveRosterRank($invitation, $request->user(), $data['direction']);
 
         return back()->with('success', 'Regional roster order updated.');
+    }
+
+    public function promoteReserveManually(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $replacement = $service->promoteNextReserveManually($invitation, $request->user());
+
+        return back()->with('success', ($replacement->player?->full_name ?? 'The next reserve').' was promoted and the replacement invitation was queued.');
     }
 
     public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)
@@ -520,6 +545,39 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'Regional team details updated.');
     }
 
+    public function updateImportedPlayer(
+        Request $request,
+        Event $event,
+        EventRegion $eventRegion,
+        Team $team,
+        NoProfileTeamPlayer $noProfileTeamPlayer,
+        ImportedTeamRosterService $rosters,
+    ) {
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'surname' => ['required', 'string', 'max:100'],
+        ]);
+        $rosters->rename($event, $noProfileTeamPlayer, $data['name'], $data['surname'], $request->user());
+
+        return back()->with('success', 'The imported roster name was updated. Its profile-link status was not changed.');
+    }
+
+    public function moveImportedPlayer(
+        Request $request,
+        Event $event,
+        EventRegion $eventRegion,
+        Team $team,
+        NoProfileTeamPlayer $noProfileTeamPlayer,
+        ImportedTeamRosterService $rosters,
+    ) {
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        $data = $request->validate(['direction' => ['required', 'in:up,down']]);
+        $rosters->move($event, $noProfileTeamPlayer, $data['direction'], $request->user());
+
+        return back()->with('success', 'The imported roster order was updated.');
+    }
+
     public function destroyAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement)
     {
         abort_unless((int) $announcement->event_region_id === (int) $eventRegion->id, 404);
@@ -564,6 +622,21 @@ class TeamSelectionInvitationController extends Controller
             ->map(fn ($email) => mb_strtolower(trim((string) $email)))
             ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
             ->unique()->sort()->values();
+    }
+
+    private function authorizeImportedRosterSlot(
+        Event $event,
+        EventRegion $eventRegion,
+        Team $team,
+        NoProfileTeamPlayer $slot,
+        User $user,
+    ): void {
+        $this->authorizeRegion($event, $eventRegion, $user);
+        $team->loadMissing('category.event');
+        abort_unless((int) $team->region_id === (int) $eventRegion->region_id
+            && (int) $team->category?->event_id === (int) $event->id
+            && (int) $slot->team_id === (int) $team->id, 404);
+        app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
     }
 
     private function rosterRecipients(Event $event, EventRegion $eventRegion, ?int $teamId = null, ?int $invitationId = null)

@@ -36,11 +36,13 @@ class TeamSelectionInvitationController extends Controller
             TeamSelectionInvitation::INVITED,
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
         ], true)) {
-            return redirect()->route('team.payment.payfast', [
+            $registrationUrl = route('events.show', [
+                'event' => $invitation->event_id,
                 'team' => $invitation->team_id,
                 'player' => $invitation->player_id,
-                'event' => $invitation->event_id,
-            ]);
+            ]).'#team-registration-'.$invitation->team_id.'-'.$invitation->player_id;
+
+            return redirect()->to($registrationUrl);
         }
         $canOrderClothing = $this->canOrderClothing($invitation);
         $clothingOrders = ClothingOrder::query()

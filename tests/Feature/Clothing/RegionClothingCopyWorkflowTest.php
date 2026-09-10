@@ -24,7 +24,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $source = TeamRegion::create(['region_name' => 'Overberg Primary Schools 2025']);
         $target = TeamRegion::create(['region_name' => 'Overberg Primary Schools 2026']);
         $shirt = ClothingItemType::create([
-            'item_type_name' => 'Overberg Shirt Boys', 'price' => 260,
+            'item_type_name' => 'Overberg Shirt Boys', 'price' => 260, 'cost_price' => 180,
             'region_id' => $source->id, 'ordering' => 1,
         ]);
         ClothingSize::create(['size' => '9-10', 'item_type' => $shirt->id, 'ordering' => 1]);
@@ -35,7 +35,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
         ]);
 
         $rows = [
-            ['selected' => true, 'source_item_id' => $shirt->id, 'item_type_name' => 'Overberg Shirt Boys', 'price' => 395, 'ordering' => 1],
+            ['selected' => true, 'source_item_id' => $shirt->id, 'item_type_name' => 'Overberg Shirt Boys', 'price' => 395, 'cost_price' => 250, 'ordering' => 1],
             ['selected' => false, 'source_item_id' => $hoodie->id, 'item_type_name' => 'Overberg Hoodie', 'price' => 500, 'ordering' => 2],
         ];
         $service = app(RegionClothingCopyService::class);
@@ -45,6 +45,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $copy = ClothingItemType::where('region_id', $target->id)->firstOrFail();
         $this->assertSame('Overberg Shirt Boys', $copy->item_type_name);
         $this->assertSame(395, (int) $copy->price);
+        $this->assertSame(250, (int) $copy->cost_price);
+        $this->assertSame(145.0, $copy->vendor_profit);
         $this->assertSame(['9-10', '11-12'], $copy->sizes()->pluck('size')->all());
         $this->assertSame(260, (int) $shirt->fresh()->price);
         $this->assertTrue((bool) $target->fresh()->clothing_admin);
@@ -83,9 +85,11 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->actingAs($admin)
             ->get(route('backend.region.clothing.edit', $target))
             ->assertOk()
-            ->assertSee('Set the total fee')
-            ->assertSee('PayFast included')
-            ->assertSee('Net clothing amount')
+            ->assertSee('Buying amount (R)')
+            ->assertSee('Clothing amount (R)')
+            ->assertSee('Vendor profit')
+            ->assertSee('PayFast fee')
+            ->assertSee('Final amount')
             ->assertSee('Copy and review last year’s clothing')
             ->assertSee('Overberg Primary Schools 2025')
             ->assertSee('Overberg Hoodie')
@@ -202,7 +206,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
             'source_region_id' => $source->id,
             'items' => [[
                 'selected' => 1, 'source_item_id' => $item->id,
-                'item_type_name' => $item->item_type_name, 'price' => 400, 'ordering' => 3,
+                'item_type_name' => $item->item_type_name, 'price' => 400,
+                'cost_price' => 275, 'ordering' => 3,
             ]],
         ];
 
@@ -214,7 +219,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->actingAs($admin)->post(route('backend.region.clothing.copy', $target), $payload + ['confirm_prices' => 1])
             ->assertRedirect(route('backend.region.clothing.edit', $target));
         $this->assertDatabaseHas('clothing_item_types', [
-            'region_id' => $target->id, 'item_type_name' => $item->item_type_name, 'price' => 400,
+            'region_id' => $target->id, 'item_type_name' => $item->item_type_name,
+            'price' => 400, 'cost_price' => 275,
         ]);
         $this->assertFalse((bool) $target->fresh()->clothing_order);
     }
@@ -268,6 +274,7 @@ class RegionClothingCopyWorkflowTest extends TestCase
                 'id' => $item->id,
                 'item_type_name' => $item->item_type_name,
                 'price' => 300,
+                'cost_price' => 250,
                 'final_amount' => 400,
                 'pricing_source' => 'final_amount',
                 'ordering' => 1,
@@ -280,6 +287,8 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->assertSame(400.00, $pricing['total']);
         $this->assertSame($savedPrice, $pricing['subtotal']);
         $this->assertEqualsWithDelta(400.00 - $pricing['payfast_fee'], $savedPrice, 0.001);
+        $this->assertSame(250.0, (float) $item->fresh()->cost_price);
+        $this->assertEqualsWithDelta($savedPrice - 250.00, $item->fresh()->vendor_profit, 0.001);
     }
 
     private function authorizedAdminForRegion(TeamRegion $region, int $year): User

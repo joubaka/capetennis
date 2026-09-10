@@ -88,4 +88,20 @@
         }
       }
   </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const target = document.querySelector('[data-team-registration-target="true"]');
+      if (!target) return;
+
+      const pane = target.closest('.tab-pane');
+      const tab = pane ? document.querySelector('[data-bs-target="#' + pane.id + '"]') : null;
+      if (tab && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tab).show();
+
+      window.setTimeout(function () {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const register = target.querySelector('.team-registration-button');
+        if (register) register.focus({ preventScroll: true });
+      }, 150);
+    });
+  </script>
 @endonce

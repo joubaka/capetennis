@@ -113,6 +113,24 @@ class ClothingOrderIntegrityTest extends TestCase
         $this->assertStringContainsString('class="btn btn-sm btn-outline-secondary clothing-order"', $html);
     }
 
+    public function test_unpaid_roster_player_can_order_clothing_when_ordering_is_open(): void
+    {
+        $data = $this->orderContext();
+        $data['team']->update(['published' => 1]);
+        $data['team']->teamPlayers()->update(['pay_status' => 0]);
+
+        $html = view('frontend.event.partials.profile-team', [
+            'team' => $data['team']->fresh()->load('teamPlayers.player.users'),
+            'region' => $data['region']->fresh(),
+            'event' => $data['event']->fresh(),
+        ])->render();
+
+        $this->assertStringContainsString('team-registration-button', $html);
+        $this->assertStringContainsString('Register', $html);
+        $this->assertStringContainsString('Order clothing', $html);
+        $this->assertStringContainsString('class="btn btn-sm btn-outline-secondary clothing-order"', $html);
+    }
+
     public function test_clothing_modal_has_a_server_generated_request_token_and_submit_fallback(): void
     {
         $html = view('frontend.event.partials._clothing_order_modal')->render();
@@ -133,7 +151,7 @@ class ClothingOrderIntegrityTest extends TestCase
             ->post(route('get.region.clothing.items'), ['region' => $data['region']->id])
             ->assertOk()
             ->assertSee('R385.78')
-            ->assertSee('data-price="370"', false);
+            ->assertSee('data-price="370.00"', false);
     }
 
     public function test_customer_checkout_never_displays_the_internal_payment_fee_breakdown(): void

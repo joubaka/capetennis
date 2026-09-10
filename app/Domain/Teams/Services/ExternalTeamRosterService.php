@@ -127,14 +127,21 @@ class ExternalTeamRosterService
         }
     }
 
-    public function claim(User $user, Event $event, Team $team, NoProfileTeamPlayer $slot, Player $player): void
+    public function claim(
+        User $user,
+        Event $event,
+        Team $team,
+        NoProfileTeamPlayer $slot,
+        Player $player,
+        ?string $verifiedDateOfBirth = null,
+        array $verifiedContacts = [],
+    ): void
     {
         $this->assertClaimAvailable($event, $team, $slot);
+        $this->assertPlayerMatchesRosterSlot($slot, $player);
 
         if (! $this->userOwnsPlayer($user, $player) && ! $user->can('event.manage', $event)) {
-            throw ValidationException::withMessages([
-                'player_id' => 'That player profile is not linked to your account. Select one of your profiles or ask the tournament administrator for help.',
-            ]);
+            $this->assertExistingProfileVerification($player, $verifiedDateOfBirth, $verifiedContacts);
         }
 
         $this->playerEligibility->assertEligible($player, $event);
@@ -237,6 +244,51 @@ class ExternalTeamRosterService
     public function userOwnsPlayer(User $user, Player $player): bool
     {
         return (int) $player->userId === (int) $user->id || $player->users()->whereKey($user->id)->exists();
+    }
+
+    private function assertPlayerMatchesRosterSlot(NoProfileTeamPlayer $slot, Player $player): void
+    {
+        if ($this->identityName((string) $slot->name, (string) $slot->surname)
+            !== $this->identityName((string) $player->name, (string) $player->surname)) {
+            throw ValidationException::withMessages([
+                'player_id' => 'The selected profile name does not match this roster player.',
+            ]);
+        }
+
+        $slotDateOfBirth = $slot->date_of_birth?->format('Y-m-d');
+        $playerDateOfBirth = substr((string) $player->dateOfBirth, 0, 10);
+        if ($slotDateOfBirth && $slotDateOfBirth !== $playerDateOfBirth) {
+            throw ValidationException::withMessages([
+                'player_id' => 'The selected profile date of birth does not match this roster player.',
+            ]);
+        }
+    }
+
+    private function assertExistingProfileVerification(
+        Player $player,
+        ?string $dateOfBirth,
+        array $contacts,
+    ): void {
+        $dateOfBirthMatches = $dateOfBirth
+            && substr((string) $player->dateOfBirth, 0, 10) === substr($dateOfBirth, 0, 10);
+        $knownContacts = collect([$player->email, $player->cellNr])
+            ->filter()
+            ->map(fn ($contact): string => $this->normalizeContact((string) $contact));
+        $contactMatches = collect($contacts)
+            ->filter(fn ($contact): bool => trim((string) $contact) !== '')
+            ->map(fn ($contact): string => $this->normalizeContact((string) $contact))
+            ->contains(fn (string $contact): bool => $contact !== '' && $knownContacts->contains($contact));
+
+        if (! $dateOfBirthMatches || ! $contactMatches) {
+            throw ValidationException::withMessages([
+                'player_id' => 'To link this existing profile, enter the player date of birth and the email address or mobile number already recorded on that profile.',
+            ]);
+        }
+    }
+
+    private function normalizeContact(string $contact): string
+    {
+        return mb_strtolower((string) preg_replace('/[^a-z0-9+@.]/i', '', trim($contact)));
     }
 
     private function identityName(string $name, string $surname): string

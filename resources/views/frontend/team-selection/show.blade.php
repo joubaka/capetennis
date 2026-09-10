@@ -2,6 +2,8 @@
 @section('title', 'Platteland team invitation')
 @section('content')
 @php($event = $invitation->selectionImport?->event)
+@php($responseDeadline = $invitation->effectiveResponseDeadline())
+@php($paymentDeadline = $invitation->effectivePaymentDeadline())
 <div class="container-xxl flex-grow-1 container-p-y"><div class="row justify-content-center"><div class="col-xl-8 col-lg-9"><div class="card border-primary shadow-sm">
   <div class="card-header text-center py-4"><span class="badge bg-label-primary mb-2">Regional team selection</span><h4 class="mb-1">Platteland team invitation</h4><p class="text-muted mb-0">{{ $event?->name }}</p></div>
   <div class="card-body p-4 p-lg-5"><h5>Hello {{ $invitation->player?->full_name }},</h5>
@@ -11,8 +13,8 @@
     <div class="row g-2 mb-4">
       @if($event?->start_date)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Event dates</small><strong>{{ $event->start_date->format('d M Y') }}{{ $event->end_date && !$event->end_date->equalTo($event->start_date) ? ' – '.$event->end_date->format('d M Y') : '' }}</strong></div></div>@endif
       <div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Entry fee</small><strong>R{{ number_format((float) $event?->entryFee, 2) }}</strong></div></div>
-      @if($invitation->selectionImport?->response_deadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Register by</small><strong>{{ $invitation->selectionImport->response_deadline->format('d M Y H:i') }}</strong></div></div>@endif
-      @if($invitation->selectionImport?->payment_deadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Payment deadline</small><strong>{{ $invitation->selectionImport->payment_deadline->format('d M Y H:i') }}</strong></div></div>@endif
+      @if($responseDeadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Respond by</small><strong>{{ $responseDeadline->format('d M Y H:i') }}</strong></div></div>@endif
+      @if($paymentDeadline)<div class="col-sm-6"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Payment deadline</small><strong>{{ $paymentDeadline->format('d M Y H:i') }}</strong></div></div>@endif
     </div>
     @if($invitation->selectionImport?->event_information)<div class="alert alert-warning"><strong>Event information</strong><div class="mt-1">{!! nl2br(e($invitation->selectionImport->event_information)) !!}</div></div>@endif
     @if($regionAnnouncements->isNotEmpty())

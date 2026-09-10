@@ -230,13 +230,16 @@ final class TeamSelectionInvitationService
                 'declined_by_user_id' => $user->id,
                 'decline_method' => 'authenticated_invitation',
                 'payment_started_at' => null,
+                'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
             $slot = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $locked->team_id)
                 ->where('rank', $rank)->where('player_id', $locked->player_id)->lockForUpdate()->first();
             if ($slot) app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
 
-            $reserve = $this->promoteNextReserve($locked, $rank, true);
+            $reserve = $locked->selectionImport?->auto_replacement_enabled
+                ? $this->promoteNextReserve($locked, $rank, true)
+                : null;
             activity('team-selection')->performedOn($locked)->causedBy($user)
                 ->withProperties([
                     'replacement_id' => $reserve?->id,
@@ -279,9 +282,12 @@ final class TeamSelectionInvitationService
                 'status' => TeamSelectionInvitation::WITHDRAWN,
                 'declined_at' => now(),
                 'decline_reason' => 'Player withdrew from the team event.',
+                'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
-            $reserve = $this->promoteNextReserve($invitation, $rank);
+            $reserve = $invitation->selectionImport?->auto_replacement_enabled
+                ? $this->promoteNextReserve($invitation, $rank)
+                : null;
 
             $activity = activity('team-selection')->performedOn($invitation)
                 ->withProperties(['replacement_id' => $reserve?->id, 'event_id' => $eventId, 'team_id' => $teamId]);
@@ -324,6 +330,7 @@ final class TeamSelectionInvitationService
                 'declined_by_user_id' => $actor->id,
                 'decline_method' => 'regional_manager_replacement',
                 'payment_started_at' => null,
+                'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
             $replacement = $this->promoteNextReserve($locked, $rank, true);
@@ -419,11 +426,6 @@ final class TeamSelectionInvitationService
             if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages(['replacement' => 'This regional selection is no longer open for player replacement.']);
             }
-            if ($selectionImport->status === 'sent'
-                && ($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
-                && now()->gt($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)) {
-                throw ValidationException::withMessages(['replacement' => 'The replacement deadline for this regional selection has passed.']);
-            }
             if ($selectionImport->invitations()->where('player_id', $player->id)->exists()) {
                 throw ValidationException::withMessages(['replacement_player_id' => 'This player is already recorded in the regional selection.']);
             }
@@ -434,6 +436,14 @@ final class TeamSelectionInvitationService
             if (! $email) {
                 throw ValidationException::withMessages([
                     'replacement_player_id' => 'Select a Cape Tennis player profile linked to an account with a valid email address.',
+                ]);
+            }
+            $replacementDeadlines = $selectionImport->status === 'sent'
+                ? $this->replacementDeadlines($selectionImport)
+                : [null, null];
+            if ($selectionImport->status === 'sent' && ! $replacementDeadlines[0]) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'A new invitation cannot be issued because the event has already started.',
                 ]);
             }
 
@@ -462,6 +472,7 @@ final class TeamSelectionInvitationService
                 'declined_by_user_id' => $actor->id,
                 'decline_method' => 'regional_manager_custom_profile',
                 'payment_started_at' => null,
+                'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
 
@@ -493,6 +504,8 @@ final class TeamSelectionInvitationService
                 'status' => TeamSelectionInvitation::INVITED,
                 'promoted_from_id' => $locked->id,
                 'invited_at' => $selectionImport->status === 'sent' ? now() : null,
+                'response_deadline_override' => $replacementDeadlines[0],
+                'payment_deadline_override' => $replacementDeadlines[1],
                 'snapshot_json' => [
                     'selection_source' => 'manual_system_profile',
                     'player_name' => $player->full_name,
@@ -647,6 +660,28 @@ final class TeamSelectionInvitationService
         }
     }
 
+    public function updateReplacementMode(TeamSelectionImport $import, bool $automatic, User $actor): TeamSelectionImport
+    {
+        return DB::transaction(function () use ($import, $automatic, $actor): TeamSelectionImport {
+            $locked = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
+            if (! in_array($locked->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages([
+                    'replacement_mode' => 'Replacement mode can only be changed for an active invitation campaign.',
+                ]);
+            }
+
+            $before = $locked->auto_replacement_enabled ? 'automatic' : 'manual';
+            $locked->update(['auto_replacement_enabled' => $automatic]);
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'before' => $before,
+                    'after' => $automatic ? 'automatic' : 'manual',
+                ])->log('updated regional reserve replacement mode');
+
+            return $locked->fresh();
+        });
+    }
+
     public function extendDeadlines(TeamSelectionImport $import, array $deadlines, User $actor): TeamSelectionImport
     {
         return DB::transaction(function () use ($import, $deadlines, $actor) {
@@ -677,8 +712,7 @@ final class TeamSelectionInvitationService
     {
         return DB::transaction(function () use ($import, $actor): int {
             $locked = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
-            $lastDeadline = $locked->replacement_payment_deadline ?: $locked->payment_deadline ?: $locked->response_deadline;
-            if ($locked->status !== 'sent' || ($lastDeadline && now()->gt($lastDeadline))) {
+            if ($locked->status !== 'sent') {
                 throw ValidationException::withMessages(['email' => 'Failed invitations can only be retried while the response window is open.']);
             }
 
@@ -694,7 +728,7 @@ final class TeamSelectionInvitationService
             foreach ($logs as $log) {
                 $invitation = $invitations->get($log->related_id);
                 $email = $invitation ? $this->contactEmail($invitation) : null;
-                if (! $email) {
+                if (! $email || ($invitation->effectiveResponseDeadline() && now()->gt($invitation->effectiveResponseDeadline()))) {
                     continue;
                 }
                 $log->update([
@@ -725,9 +759,7 @@ final class TeamSelectionInvitationService
             ], true)) {
                 throw ValidationException::withMessages(['email' => 'Only an active unpaid invitation can be resent.']);
             }
-            $deadline = $locked->promoted_from_id
-                ? ($locked->selectionImport->replacement_payment_deadline ?: $locked->selectionImport->payment_deadline)
-                : $locked->selectionImport->response_deadline;
+            $deadline = $locked->effectiveResponseDeadline();
             if ($deadline && now()->gt($deadline)) {
                 throw ValidationException::withMessages(['email' => 'Extend the relevant invitation deadline before resending.']);
             }
@@ -844,9 +876,12 @@ final class TeamSelectionInvitationService
                         'decline_reason' => $reason,
                         'decline_method' => $method,
                         'payment_started_at' => null,
+                        'vacated_roster_rank' => $rank,
                         'roster_rank' => null,
                     ]);
-                    $replacement = $this->promoteNextReserve($locked, $rank);
+                    $replacement = $locked->selectionImport?->auto_replacement_enabled
+                        ? $this->promoteNextReserve($locked, $rank)
+                        : null;
                     activity('team-selection')->performedOn($locked)
                         ->withProperties(['replacement_id' => $replacement?->id, 'method' => $method])
                         ->log('expired regional team invitation');
@@ -860,26 +895,72 @@ final class TeamSelectionInvitationService
         return $rows;
     }
 
+    public function promoteNextReserveManually(TeamSelectionInvitation $vacated, User $actor): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($vacated, $actor): TeamSelectionInvitation {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'player'])->findOrFail($vacated->id);
+            if (! in_array($locked->status, [TeamSelectionInvitation::DECLINED, TeamSelectionInvitation::WITHDRAWN], true)
+                || ! $locked->vacated_roster_rank) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'This invitation does not have an open roster vacancy.',
+                ]);
+            }
+            $existing = TeamSelectionInvitation::query()
+                ->where('promoted_from_id', $locked->id)
+                ->whereIn('status', [
+                    TeamSelectionInvitation::INVITED,
+                    TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    TeamSelectionInvitation::PAID_CONFIRMED,
+                ])->first();
+            if ($existing) {
+                return $existing->load('player');
+            }
+
+            $replacement = $this->promoteNextReserve($locked, (int) $locked->vacated_roster_rank, true);
+            if (! $replacement) {
+                throw ValidationException::withMessages([
+                    'replacement' => 'No eligible reserve with a linked email is available, or the event has already started.',
+                ]);
+            }
+
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'replacement_id' => $replacement->id,
+                    'vacated_rank' => $locked->vacated_roster_rank,
+                    'method' => 'manual_reserve_approval',
+                ])->log('regional manager manually promoted next reserve');
+
+            return $replacement->fresh('player');
+        });
+    }
+
     private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank, bool $allowDraft = false): ?TeamSelectionInvitation
     {
         $selectionImport = $vacated->selectionImport;
         $statusAllowsReplacement = $selectionImport
             && ($selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft'));
-        if (! $rank || ! $statusAllowsReplacement
-            || ($selectionImport->status === 'sent'
-                && ($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline)
-                && now()->gt($selectionImport->replacement_payment_deadline ?: $selectionImport->payment_deadline))) {
+        if (! $rank || ! $statusAllowsReplacement) {
             return null;
         }
 
-        $reserve = TeamSelectionInvitation::query()->lockForUpdate()
+        $reserves = TeamSelectionInvitation::query()->lockForUpdate()
+            ->with(['player.user', 'player.users'])
             ->where('import_id', $vacated->import_id)
             ->where('team_id', $vacated->team_id)
             ->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')
-            ->first();
+            ->get();
+        $reserve = $reserves->first(fn (TeamSelectionInvitation $candidate) => $this->contactEmail($candidate));
         $email = $reserve ? $this->contactEmail($reserve) : null;
         if (! $reserve || ! $email) {
+            return null;
+        }
+
+        $replacementDeadlines = $selectionImport->status === 'sent'
+            ? $this->replacementDeadlines($selectionImport)
+            : [null, null];
+        if ($selectionImport->status === 'sent' && ! $replacementDeadlines[0]) {
             return null;
         }
 
@@ -906,6 +987,8 @@ final class TeamSelectionInvitationService
             'roster_rank' => $replacementRank,
             'promoted_from_id' => $vacated->id,
             'invited_at' => $selectionImport->status === 'sent' ? now() : null,
+            'response_deadline_override' => $replacementDeadlines[0],
+            'payment_deadline_override' => $replacementDeadlines[1],
         ]);
         if ($selectionImport->status === 'sent') {
             $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
@@ -1054,15 +1137,35 @@ final class TeamSelectionInvitationService
 
     private function responseDeadline(TeamSelectionInvitation $invitation): mixed
     {
-        return $invitation->promoted_from_id
-            ? ($invitation->selectionImport?->replacement_payment_deadline ?: $invitation->selectionImport?->payment_deadline)
-            : $invitation->selectionImport?->response_deadline;
+        return $invitation->effectiveResponseDeadline();
     }
 
     private function paymentDeadline(TeamSelectionInvitation $invitation): mixed
     {
-        return $invitation->promoted_from_id
-            ? ($invitation->selectionImport?->replacement_payment_deadline ?: $invitation->selectionImport?->payment_deadline)
-            : $invitation->selectionImport?->payment_deadline;
+        return $invitation->effectivePaymentDeadline();
+    }
+
+    /** @return array{0: mixed, 1: mixed} */
+    private function replacementDeadlines(TeamSelectionImport $import): array
+    {
+        $now = now();
+        $minimum = $now->copy()->addHours(24);
+        $campaignDeadline = $import->replacement_payment_deadline ?: $import->payment_deadline;
+        $deadline = $campaignDeadline && $campaignDeadline->gt($minimum)
+            ? $campaignDeadline->copy()
+            : $minimum;
+        $eventStart = $import->event?->start_date?->copy()->startOfDay();
+
+        if ($eventStart) {
+            $latest = $eventStart->copy()->subMinute();
+            if ($latest->lte($now)) {
+                return [null, null];
+            }
+            if ($deadline->gt($latest)) {
+                $deadline = $latest->copy();
+            }
+        }
+
+        return [$deadline->copy(), $deadline];
     }
 }

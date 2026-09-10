@@ -153,12 +153,19 @@
                   @php($teamInvitations = $activeImport?->invitations?->where('team_id', $regionTeam->id)->sortBy('queue_position') ?? collect())
                   @php($teamSelected = $teamInvitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
                   @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
+                  @php($eligibleTeamReserves = $teamReserves->filter(fn($reserve) => $recipientEmailFor($reserve)))
+                  @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
+                  @php($linkedImportedCount = $importedRoster->whereNotNull('player_profile')->count())
                   <div class="col-12">
                     <div class="card regional-team-card">
                       <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2" data-team-workspace-header data-team-workspace-target="#team-workspace-{{ $regionTeam->id }}">
                         <div>
                           <h6 class="mb-1">{{ $regionTeam->name }}</h6>
-                          <span class="text-muted small">{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
+                          @if($activeImport)
+                            <span class="text-muted small">{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
+                          @else
+                            <span class="text-muted small">{{ $importedRoster->count() }} roster players · {{ $linkedImportedCount }} linked · {{ $importedRoster->count() - $linkedImportedCount }} unlinked · {{ $regionTeam->num_team_members }} configured places</span>
+                          @endif
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
@@ -208,6 +215,8 @@
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
                                 @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
                                 @php($isInactive = in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) || (!$isReserve && !$invitation->roster_rank))
+                                @php($hasActiveReplacement = $teamInvitations->contains(fn($candidate) => (int) $candidate->promoted_from_id === (int) $invitation->id && in_array($candidate->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED], true)))
+                                @php($openVacancy = $isInactive && $invitation->vacated_roster_rank && !$hasActiveReplacement)
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
@@ -232,8 +241,8 @@
                                       @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                       @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)
-                                      @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($teamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
-                                      @php($replacementMode = $replacementMode === 'next_reserve' && $teamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
+                                      @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($eligibleTeamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
+                                      @php($replacementMode = $replacementMode === 'next_reserve' && $eligibleTeamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
                                       <details @if($replacementFormOpen) open @endif>
                                         <summary class="btn btn-sm btn-outline-warning">Change player</summary>
                                         <form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}"
@@ -244,8 +253,8 @@
                                           <label class="form-label small mb-1" for="replacement-mode-{{ $invitation->id }}">Replacement source</label>
                                           <select id="replacement-mode-{{ $invitation->id }}" name="replacement_mode"
                                                   class="form-select form-select-sm mb-2 replacement-mode-select" data-replacement-mode>
-                                            <option value="next_reserve" @disabled($teamReserves->isEmpty()) @selected($replacementMode === 'next_reserve')>
-                                              @if($teamReserves->isNotEmpty()) Next reserve — {{ $teamReserves->first()->player?->full_name }} @else No eligible reserve available @endif
+                                            <option value="next_reserve" @disabled($eligibleTeamReserves->isEmpty()) @selected($replacementMode === 'next_reserve')>
+                                              @if($eligibleTeamReserves->isNotEmpty()) Next reserve — {{ $eligibleTeamReserves->first()->player?->full_name }} @else No eligible reserve available @endif
                                             </option>
                                             <option value="custom_profile" @selected($replacementMode === 'custom_profile')>Choose a Cape Tennis player profile</option>
                                           </select>
@@ -268,7 +277,12 @@
                                         </form>
                                       </details>
                                     @endif
-                                    @if(!$recipientEmail && ($isReserve || !in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)))
+                                    @if($openVacancy && $eligibleTeamReserves->isNotEmpty())
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.promote-reserve', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Invite the next reserve now? Their own response and payment deadlines will start now.');">@csrf<button class="btn btn-sm btn-warning">Invite next reserve</button></form>
+                                    @elseif($openVacancy)
+                                      <span class="text-warning small">Vacancy open · no eligible reserve. Add or link a reserve below.</span>
+                                    @endif
+                                    @if(!$openVacancy && !$recipientEmail && ($isReserve || !in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)))
                                       <span class="text-muted small">No action available</span>
                                     @endif
                                     </div>
@@ -305,7 +319,7 @@
                         </div>
                         </div>
                       @else
-                        <div class="card-body text-muted">Player places will appear here after the region reviews and imports its published ranking.</div>
+                        @include('backend.team-selection._imported-roster')
                       @endif
                       </div>
                     </div>
@@ -337,6 +351,13 @@
               @endif
             @elseif($activeImport)
               <div class="regional-readonly rounded p-2 mt-3 small"><strong>Ranking snapshot:</strong> <code>{{ $activeImport->ranking_run_id }}</code> · locked to preserve the imported selection record.</div>
+              <form method="POST" action="{{ route('backend.team-selection.replacement-mode.update', [$event, $activeImport]) }}" class="border rounded p-3 mt-3">@csrf @method('PATCH')
+                <div class="row g-3 align-items-end">
+                  <div class="col-lg-8"><label class="form-label">Reserve replacement</label><select name="replacement_mode" class="form-select"><option value="automatic" @selected($activeImport->auto_replacement_enabled)>Automatic</option><option value="manual" @selected(!$activeImport->auto_replacement_enabled)>Manual approval</option></select></div>
+                  <div class="col-lg-4 d-grid"><button class="btn btn-outline-primary">Save setting</button></div>
+                  <div class="col-12 form-text">Automatic invites the next eligible reserve immediately. Manual leaves a visible vacancy with an <strong>Invite next reserve</strong> button. A replacement keeps the campaign deadline when it is still more than 24 hours away; otherwise they receive 24 hours from invitation, capped before the event starts.</div>
+                </div>
+              </form>
               @php($emailLogs = $activeImport->invitations->flatMap->emailLogs)
               @if($activeImport->status === 'sent')
                 <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
@@ -351,7 +372,7 @@
                 <form method="POST" action="{{ route('backend.team-selection.deadlines.extend', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf @method('PATCH')
                   <div class="col-md-3"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ $activeImport->response_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
                   <div class="col-md-3"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ $activeImport->payment_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
-                  <div class="col-md-3"><label class="form-label">Replacement payment deadline</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ ($activeImport->replacement_payment_deadline ?: $activeImport->payment_deadline)?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
+                  <div class="col-md-3"><label class="form-label">Last reserve promotion</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ ($activeImport->replacement_payment_deadline ?: $activeImport->payment_deadline)?->format('Y-m-d\\TH:i') }}" class="form-control" required><div class="form-text">A promoted reserve may receive their own later deadline, capped before the event.</div></div>
                   <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Extend deadlines</button></div>
                 </form>
               @endif

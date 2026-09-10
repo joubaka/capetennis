@@ -15,14 +15,16 @@ class TeamSelectionInvitation extends Model
 
     protected $fillable = [
         'import_id', 'event_id', 'region_id', 'team_id', 'player_id', 'ranking_list_id',
-        'order_id', 'ranking_position', 'queue_position', 'total_points', 'roster_rank',
+        'order_id', 'ranking_position', 'queue_position', 'total_points', 'roster_rank', 'vacated_roster_rank',
+        'response_deadline_override', 'payment_deadline_override',
         'status', 'decline_reason', 'declined_by_user_id', 'decline_method',
         'promoted_from_id', 'invited_at', 'accepted_at', 'payment_started_at',
         'paid_at', 'declined_at', 'snapshot_json',
     ];
 
     protected $casts = [
-        'total_points' => 'float', 'roster_rank' => 'integer', 'snapshot_json' => 'array',
+        'total_points' => 'float', 'roster_rank' => 'integer', 'vacated_roster_rank' => 'integer', 'snapshot_json' => 'array',
+        'response_deadline_override' => 'datetime', 'payment_deadline_override' => 'datetime',
         'invited_at' => 'datetime', 'accepted_at' => 'datetime', 'paid_at' => 'datetime',
         'payment_started_at' => 'datetime', 'declined_at' => 'datetime',
     ];
@@ -39,5 +41,21 @@ class TeamSelectionInvitation extends Model
     {
         return $this->hasMany(BulkEmailLog::class, 'related_id')
             ->where('related_type', self::class);
+    }
+
+    public function effectiveResponseDeadline(): mixed
+    {
+        return $this->response_deadline_override
+            ?: ($this->promoted_from_id
+                ? ($this->selectionImport?->replacement_payment_deadline ?: $this->selectionImport?->payment_deadline)
+                : $this->selectionImport?->response_deadline);
+    }
+
+    public function effectivePaymentDeadline(): mixed
+    {
+        return $this->payment_deadline_override
+            ?: ($this->promoted_from_id
+                ? ($this->selectionImport?->replacement_payment_deadline ?: $this->selectionImport?->payment_deadline)
+                : $this->selectionImport?->payment_deadline);
     }
 }

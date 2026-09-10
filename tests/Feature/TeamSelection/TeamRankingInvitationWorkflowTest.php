@@ -116,11 +116,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Register and pay')
             ->assertDontSee('Accept and pay');
 
-        $paymentUrl = route('team.payment.payfast', [$invitation->team_id, $invitation->player_id, $invitation->event_id]);
+        $eventRegistrationUrl = route('events.show', [
+            'event' => $invitation->event_id,
+            'team' => $invitation->team_id,
+            'player' => $invitation->player_id,
+        ]).'#team-registration-'.$invitation->team_id.'-'.$invitation->player_id;
         $this->actingAs($otherUser)
             ->get(route('team-selection.invitations.show', [$invitation, 'action' => 'pay']))
-            ->assertRedirect($paymentUrl);
+            ->assertRedirect($eventRegistrationUrl);
 
+        $paymentUrl = route('team.payment.payfast', [$invitation->team_id, $invitation->player_id, $invitation->event_id]);
         $this->actingAs($otherUser)
             ->get($paymentUrl)
             ->assertOk()
@@ -193,6 +198,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('Register and pay', $html);
         $this->assertStringContainsString('View event', $html);
         $this->assertStringContainsString('Decline invitation', $html);
+        $this->assertStringContainsString(htmlspecialchars(route('events.show', [
+            'event' => $invitation->event_id,
+            'team' => $invitation->team_id,
+            'player' => $invitation->player_id,
+        ]), ENT_QUOTES), $html);
+        $this->assertStringContainsString('Decline opens a confirmation window with an optional reason.', $html);
         $this->assertStringNotContainsString('Arrive at 08:00 at the main venue.', $html);
         $this->assertStringNotContainsString('Event information', $html);
         $this->assertStringContainsString('table-layout:fixed', $html);
@@ -230,6 +241,134 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::DECLINED, $declining->fresh()->status);
         $this->assertSame($owner->id, $declining->fresh()->declined_by_user_id);
         $this->assertSame('authenticated_invitation', $declining->fresh()->decline_method);
+    }
+
+    public function test_automatic_replacement_gets_24_hours_when_the_campaign_replacement_deadline_has_passed(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update([
+            'status' => 'sent',
+            'auto_replacement_enabled' => true,
+            'response_deadline' => now()->addHours(6),
+            'payment_deadline' => now()->addHours(12),
+            'replacement_payment_deadline' => now()->subHour(),
+        ]);
+        $declining = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $owner = User::findOrFail($declining->player->userId);
+
+        $promoted = app(TeamSelectionInvitationService::class)->decline($declining, $owner, 'Unavailable');
+        $promoted = $promoted?->fresh(['selectionImport.event', 'player', 'region', 'team']);
+
+        $this->assertNotNull($promoted);
+        $this->assertTrue($promoted->response_deadline_override->between(
+            now()->addDay()->subMinute(),
+            now()->addDay()->addMinute()
+        ));
+        $this->assertSame(
+            $promoted->response_deadline_override->toDateTimeString(),
+            $promoted->payment_deadline_override->toDateTimeString()
+        );
+        $this->assertSame(
+            $promoted->response_deadline_override->toDateTimeString(),
+            $promoted->effectiveResponseDeadline()->toDateTimeString()
+        );
+        $this->view('emails.team-selection.invitation', [
+            'invitation' => $promoted,
+            'kind' => 'replacement',
+            'campaign' => [],
+        ])->assertSee($promoted->response_deadline_override->format('d M Y H:i'))
+            ->assertSee('24 hours from this invitation');
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
+    }
+
+    public function test_manual_replacement_mode_leaves_a_visible_vacancy_until_manager_invites_the_reserve(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Manual replacement event', 'type' => 2, 'code' => 'manual-replacement-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update([
+            'status' => 'sent',
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ]);
+
+        $this->actingAs($manager)->patch(
+            route('backend.team-selection.replacement-mode.update', [$source->event, $selectionImport]),
+            [
+                'replacement_mode' => 'manual',
+            ]
+        )->assertRedirect()->assertSessionHas('success');
+        $this->assertFalse($selectionImport->fresh()->auto_replacement_enabled);
+
+        $declining = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('queue_position')->firstOrFail();
+        $owner = User::findOrFail($declining->player->userId);
+        $this->assertNull(app(TeamSelectionInvitationService::class)->decline($declining, $owner, 'Unavailable'));
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $reserve->fresh()->status);
+        $this->assertNotNull($declining->fresh()->vacated_roster_rank);
+
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()->assertSee('Manual approval')->assertSee('Invite next reserve');
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.invitations.promote-reserve', [$source->event, $selectionImport, $declining])
+        )->assertRedirect()->assertSessionHas('success');
+
+        $reserve = $reserve->fresh();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $reserve->status);
+        $this->assertNotNull($reserve->response_deadline_override);
+        $this->assertNotNull($reserve->payment_deadline_override);
+        $this->assertSame($reserve->payment_deadline_override->toDateTimeString(), $reserve->response_deadline_override->toDateTimeString());
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
+    }
+
+    public function test_automatic_replacement_leaves_an_auditable_open_vacancy_when_no_eligible_reserve_exists(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'No reserve replacement event', 'type' => 2, 'code' => 'no-reserve-replacement-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update([
+            'status' => 'sent',
+            'auto_replacement_enabled' => true,
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ]);
+        $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)->delete();
+        $declining = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $owner = User::findOrFail($declining->player->userId);
+
+        $this->assertNull(app(TeamSelectionInvitationService::class)->decline($declining, $owner, 'Unavailable'));
+
+        $declining = $declining->fresh();
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $declining->status);
+        $this->assertNotNull($declining->vacated_roster_rank);
+        Queue::assertNothingPushed();
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Vacancy open')
+            ->assertSee('no eligible reserve')
+            ->assertSee('Add or link a reserve below.');
     }
 
     public function test_declining_a_draft_invitation_cancels_every_unpaid_registration_state(): void
@@ -639,6 +778,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('R'.number_format($shirtFinalPrice, 2))
             ->assertSee('Sizes: 11-12')
             ->assertSee('How to order:')
+            ->assertSee('go to the main page and click')
+            ->assertSee('Order clothing')
+            ->assertDontSee('return to your invitation page')
             ->assertSee('Register and pay')
             ->assertSee('Decline invitation')
             ->assertDontSee('Ranking position:')

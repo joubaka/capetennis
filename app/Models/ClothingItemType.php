@@ -8,9 +8,18 @@ use Illuminate\Database\Eloquent\Model;
 class ClothingItemType extends Model
 {
   protected $table = 'clothing_item_types';
-  protected $fillable = ['item_type_name', 'price', 'region_id', 'ordering'];
+  protected $fillable = ['item_type_name', 'price', 'cost_price', 'region_id', 'ordering'];
 
-  protected $casts = ['price' => 'decimal:2'];
+  protected $casts = ['price' => 'decimal:2', 'cost_price' => 'decimal:2'];
+
+  public function getVendorProfitAttribute(): ?float
+  {
+    if ($this->cost_price === null) {
+      return null;
+    }
+
+    return round((float) $this->price - (float) $this->cost_price, 2);
+  }
 
   public function region()
   {
