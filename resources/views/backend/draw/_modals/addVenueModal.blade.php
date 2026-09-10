@@ -37,14 +37,14 @@
                   </select>
                 </div>
               </div>
-              <button type="button" class="btn btn-primary btn-sm mt-3" id="create-draw-venue">Create and select venue</button>
+              <button type="button" class="btn btn-primary btn-sm mt-3" id="create-draw-venue" data-audit-ignore="true">Create and select venue</button>
               <div class="small mt-2" id="create-draw-venue-status" role="status" aria-live="polite"></div>
             </div>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="submit" class="btn btn-primary" data-audit-ignore="true">Save</button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         </div>
       </div>
