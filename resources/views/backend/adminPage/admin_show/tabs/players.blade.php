@@ -1,6 +1,10 @@
 @php
   /** Normalize relations */
-  $regionsInEvent = $event->regions ?? collect();
+  $regionsInEvent = $regionsInEvent ?? $event->regions ?? collect();
+  $teamWorkspaceRegional = $teamWorkspaceRegional ?? false;
+  $eventRegionByRegionId = $teamWorkspaceRegional
+    ? ($eventRegions ?? collect())->keyBy('region_id')
+    : collect();
 @endphp
 
 <div class="tab-pane fade show active" id="tab-players">
@@ -21,6 +25,7 @@
   </div>
 
   {{-- GLOBAL ACTIONS --}}
+  @unless($teamWorkspaceRegional)
   <div class="player-global-actions d-flex align-items-center justify-content-between gap-2">
     <div>
       <div class="fw-semibold">Active-roster exports</div>
@@ -41,6 +46,7 @@
       </a>
     </div>
   </div>
+  @endunless
 
   {{-- REGION PANELS --}}
   <div class="tab-content region-tab-content">
@@ -55,6 +61,7 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="m-0">Players — {{ $region->region_name }}</h5>
 
+            @unless($teamWorkspaceRegional)
             <div class="region-email-actions d-flex flex-wrap gap-2">
               <button class="btn btn-sm btn-outline-secondary emailRegionBtn"
                       data-regionid="{{ $region->id }}"
@@ -69,6 +76,7 @@
                 <i class="ti ti-alert-circle"></i> Email Unpaid Active Roster
               </button>
             </div>
+            @endunless
           </div>
 
           <div class="card-body">
@@ -81,6 +89,7 @@
                 $teamReserves = $selectionInvitations
                   ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)
                   ->sortBy('queue_position');
+                $regionalEventRegion = $eventRegionByRegionId->get($region->id);
               @endphp
 
               {{-- TEAM HEADER --}}
@@ -105,6 +114,18 @@
                         <i class="ti ti-dots"></i>
                       </button>
                       <ul class="dropdown-menu dropdown-menu-end">
+                        @if($teamWorkspaceRegional)
+                          @if($regionalEventRegion && $selectionInvitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->isNotEmpty())
+                            <li>
+                              <button class="dropdown-item roster-email-button" type="button"
+                                      data-bs-toggle="modal" data-bs-target="#roster-email-{{ $regionalEventRegion->id }}"
+                                      data-target-type="team" data-team-id="{{ $team->id }}"
+                                      data-recipient="{{ $team->name }} active roster">
+                                <i class="ti ti-mail me-1"></i> Email Active Roster
+                              </button>
+                            </li>
+                          @endif
+                        @else
                         <li>
                           <a class="dropdown-item emailTeamBtn" href="#" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">
                             <i class="ti ti-mail me-1"></i> Email Active Roster
@@ -127,6 +148,7 @@
                             <i class="ti ti-shirt me-1"></i> Clothing Orders
                           </a>
                         </li>
+                        @endif
                       </ul>
                     </div>
                   </div>
@@ -163,6 +185,14 @@
                             ? trim($player->name.' '.$player->surname)
                             : ($np ? trim($np->name.' '.$np->surname) : '—');
                           $paid   = (int)($slot->pay_status ?? 0);
+                          $activeInvitation = $teamWorkspaceRegional && $player
+                            ? $selectionInvitations->first(fn ($candidate) => $candidate->status !== \App\Models\TeamSelectionInvitation::RESERVE && (int) $candidate->player_id === (int) $player->id)
+                            : null;
+                          $recipientEmail = $activeInvitation
+                            ? collect([$activeInvitation->player?->user?->email, $activeInvitation->player?->email])
+                                ->merge($activeInvitation->player?->users?->pluck('email') ?? collect())
+                                ->first(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
+                            : null;
                         @endphp
 
                         <tr data-playerteamid="{{ $slot->id }}">
@@ -193,6 +223,30 @@
                               </button>
 
                               <div class="dropdown-menu dropdown-menu-end">
+                                @if($teamWorkspaceRegional)
+                                  @if($activeInvitation && $regionalEventRegion && $recipientEmail)
+                                    <button class="dropdown-item roster-email-button" type="button"
+                                            data-bs-toggle="modal" data-bs-target="#roster-email-{{ $regionalEventRegion->id }}"
+                                            data-target-type="player" data-team-id="{{ $team->id }}"
+                                            data-invitation-id="{{ $activeInvitation->id }}"
+                                            data-recipient="{{ $name }} · {{ $recipientEmail }}">
+                                      <i class="ti ti-mail me-1"></i> Email Player
+                                    </button>
+                                  @endif
+                                  @if($activeInvitation && in_array($activeInvitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $teamReserves->isNotEmpty())
+                                    <details>
+                                      <summary class="dropdown-item">Change player</summary>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeInvitation->import_id, $activeInvitation]) }}" class="p-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">
+                                        @csrf
+                                        <input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" value="Player not available." required>
+                                        <button class="btn btn-sm btn-warning w-100">Confirm replacement</button>
+                                      </form>
+                                    </details>
+                                  @endif
+                                  @if(!$activeInvitation || (!$recipientEmail && $teamReserves->isEmpty()))
+                                    <span class="dropdown-item text-muted">No action available</span>
+                                  @endif
+                                @else
                                 @unless($rankingManaged)
                                 <a class="dropdown-item replacePlayerBtn"
                                    data-slotid="{{ $slot->id }}"
@@ -227,6 +281,7 @@
                                 @else
                                   <a class="dropdown-item" href="{{ route('backend.team-selection.index', $event) }}"><i class="ti ti-list-check me-1"></i> Manage in Team Selection</a>
                                 @endunless
+                                @endif
                               </div>
                             </div>
                           </td>
@@ -240,7 +295,7 @@
                   <div class="border rounded bg-light p-3 mt-2">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                       <div><strong>Reserve queue</strong><div class="small text-muted">Held back from the active roster, draws, exports and active-roster email until promoted.</div></div>
-                      <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Manage selection</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.index', ['event' => $event, 'view' => 'players']) }}">Manage selection</a>
                     </div>
                     @forelse($teamReserves as $reserve)
                       <div class="d-flex flex-wrap gap-2 justify-content-between border-top py-2 small">

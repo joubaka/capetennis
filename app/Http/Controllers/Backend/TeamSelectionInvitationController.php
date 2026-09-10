@@ -53,13 +53,30 @@ class TeamSelectionInvitationController extends Controller
             return $latest?->status === 'published' && filled($latest->run_id);
         })->pluck('id');
         $teams = $service->teamsForEvent($event, $eventRegions->pluck('region_id')->map(fn ($id) => (int) $id)->all())
+            ->load(['teamPlayers.player', 'team_players_no_profile'])
             ->loadCount(['team_players', 'team_players_no_profile'])->groupBy('region_id');
         $categorySetups = $eventRegions->filter(fn (EventRegion $eventRegion) => $eventRegion->rankingSource)
             ->mapWithKeys(fn (EventRegion $eventRegion) => [
                 $eventRegion->rankingSource->id => $service->categorySetup($eventRegion->rankingSource),
             ]);
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients'));
+        $workspaceRegions = $eventRegions->map(function (EventRegion $eventRegion) use ($teams) {
+            $region = $eventRegion->region;
+            if ($region) {
+                $region->setRelation('teams', $teams->get($eventRegion->region_id, collect())->values());
+            }
+
+            return $region;
+        })->filter()->values();
+        $teamSelectionInvitations = $eventRegions->flatMap(function (EventRegion $eventRegion) {
+            $activeImport = $eventRegion->rankingSource?->imports?->whereIn('status', ['draft', 'sent'])->sortByDesc('id')->first();
+
+            return $activeImport?->invitations ?? collect();
+        })->groupBy('team_id');
+
+        $view = $isEventManager ? 'backend.team-selection.index' : 'backend.team-selection.regional';
+
+        return view($view, compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'workspaceRegions', 'teamSelectionInvitations'));
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)

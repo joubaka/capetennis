@@ -1,6 +1,7 @@
 {{-- ✅ Player Order Tab --}}
 @php
-  $regionsInEvent = $event->regions ?? collect();
+  $regionsInEvent = $regionsInEvent ?? $event->regions ?? collect();
+  $teamWorkspaceRegional = $teamWorkspaceRegional ?? false;
 @endphp
 
 <style>
@@ -12,7 +13,7 @@
   }
 </style>
 
-<div class="tab-pane fade" id="tab-order">
+<div class="tab-pane fade {{ $teamWorkspaceRegional ? 'show active' : '' }}" id="tab-order">
 
   {{-- 🔹 Region Sub Tabs --}}
   <div class="subtabs-sticky">
@@ -52,6 +53,12 @@
 
               @php
                 $rankingManaged = ($teamSelectionInvitations ?? collect())->has($team->id);
+                $orderedInvitations = ($teamSelectionInvitations ?? collect())->get($team->id, collect())
+                  ->whereIn('status', [
+                    \App\Models\TeamSelectionInvitation::INVITED,
+                    \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    \App\Models\TeamSelectionInvitation::PAID_CONFIRMED,
+                  ])->sortBy('roster_rank')->values();
                 $slots = ($team->teamPlayers ?? collect())->sortBy('rank')->values();
                 $noProfiles = $team->noProfile
                   ? $team->team_players_no_profile()->orderBy('rank')->get()
@@ -87,6 +94,7 @@
                         <th>Email</th>
                         <th>Cell</th>
                         <th>Pay Status</th>
+                        @if($teamWorkspaceRegional)<th>Actions</th>@endif
                       </tr>
                     </thead>
 
@@ -104,6 +112,9 @@
                           $pivotId = $profileSlot?->id ?? $noProfile?->id;
                           $rowType = $profile ? 'profile' : 'noprofile';
                           $payStatus = $profileSlot?->pay_status ?? 0;
+                          $orderedInvitation = $teamWorkspaceRegional && $profile
+                            ? $orderedInvitations->first(fn ($candidate) => (int) $candidate->player_id === (int) $profile->id)
+                            : null;
                         @endphp
 
                         <tr
@@ -140,6 +151,27 @@
                             </span>
                           </td>
 
+                          @if($teamWorkspaceRegional)
+                            <td>
+                              @if($orderedInvitation)
+                                <div class="d-flex gap-1">
+                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}">
+                                    @csrf
+                                    <input type="hidden" name="direction" value="up">
+                                    <button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($orderedInvitations->first()?->id === $orderedInvitation->id)><i class="ti ti-arrow-up"></i></button>
+                                  </form>
+                                  <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $orderedInvitation->import_id, $orderedInvitation]) }}">
+                                    @csrf
+                                    <input type="hidden" name="direction" value="down">
+                                    <button class="btn btn-sm btn-outline-primary" title="Move down" @disabled($orderedInvitations->last()?->id === $orderedInvitation->id)><i class="ti ti-arrow-down"></i></button>
+                                  </form>
+                                </div>
+                              @else
+                                <span class="text-muted">—</span>
+                              @endif
+                            </td>
+                          @endif
+
                         </tr>
                       @endfor
 
@@ -147,7 +179,11 @@
                   </table>
                 </div>
                 @if($rankingManaged)
-                  <div class="alert alert-info py-2 small mt-2 mb-0">This order is controlled by the ranking selection. Use <a href="{{ route('backend.team-selection.index', $event) }}" class="alert-link">Team Selection & Reserves</a> to replace an unpaid player with the next reserve.</div>
+                  @if($teamWorkspaceRegional)
+                    <div class="alert alert-info py-2 small mt-2 mb-0">Change the playing order without changing the selected players, their payment state, or the original ranking snapshot. Every move is audited.</div>
+                  @else
+                    <div class="alert alert-info py-2 small mt-2 mb-0">This order is controlled by the ranking selection. Use <a href="{{ route('backend.team-selection.index', $event) }}" class="alert-link">Team Selection & Reserves</a> to replace an unpaid player with the next reserve.</div>
+                  @endif
                 @endif
               </div>
 
