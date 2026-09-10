@@ -13,8 +13,11 @@ final class TeamRefundCalculator
         $fee = SiteSetting::calculateWithdrawalFee($gross);
         $net = max(0, round($gross - $fee, 2));
 
+        $recordedPayfastGross = round((float) $order->payfast_amount_due, 2);
         $payfastGross = $order->payfast_paid
-            ? min($gross, round((float) $order->payfast_amount_due, 2))
+            ? ($recordedPayfastGross > 0
+                ? min($gross, $recordedPayfastGross)
+                : ($order->wallet_debited ? 0.0 : $gross))
             : 0.0;
         $walletGross = $order->wallet_debited
             ? min($gross - $payfastGross, round((float) $order->wallet_reserved, 2))

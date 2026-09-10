@@ -130,14 +130,6 @@ class TeamPlayerWithdrawController extends Controller
       abort(404, 'Team does not belong to this event.');
     }
 
-    $teamPlayer = TeamPlayer::where('team_id', $team->id)
-      ->where('player_id', $player->id)
-      ->first();
-
-    if (!$teamPlayer || (int) $teamPlayer->pay_status !== 1) {
-      return back()->withErrors('This paid team place is no longer available for withdrawal.');
-    }
-
     // Load payment order if exists
     $order = TeamPaymentOrder::where('team_id', $team->id)
       ->where('player_id', $player->id)
@@ -150,6 +142,14 @@ class TeamPlayerWithdrawController extends Controller
 
     if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
       abort(403, 'Only the payer may choose a refund method.');
+    }
+
+    $teamPlayer = TeamPlayer::where('team_id', $team->id)
+      ->where('player_id', $player->id)
+      ->first();
+
+    if (!$teamPlayer || (int) $teamPlayer->pay_status !== 1) {
+      return back()->withErrors('This paid team place is no longer available for withdrawal.');
     }
 
     if (! $order->withdrawn_at && now()->lte($event->withdrawalCloseAt())) {
@@ -205,18 +205,6 @@ class TeamPlayerWithdrawController extends Controller
       abort(404, 'Team does not belong to this event.');
     }
 
-    $teamPlayer = TeamPlayer::where('team_id', $team->id)
-      ->where('player_id', $player->id)
-      ->first();
-
-    if (!$teamPlayer) {
-      return back()->withErrors('Team player not found.');
-    }
-
-    if ((int) $teamPlayer->pay_status !== 1) {
-      return back()->withErrors('This paid team place is no longer available for withdrawal.');
-    }
-
     $order = TeamPaymentOrder::where('team_id', $team->id)
       ->where('player_id', $player->id)
       ->where('event_id', $eventId)
@@ -228,6 +216,18 @@ class TeamPlayerWithdrawController extends Controller
 
     if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
       abort(403, 'Only the payer may request this refund.');
+    }
+
+    $teamPlayer = TeamPlayer::where('team_id', $team->id)
+      ->where('player_id', $player->id)
+      ->first();
+
+    if (!$teamPlayer) {
+      return back()->withErrors('Team player not found.');
+    }
+
+    if ((int) $teamPlayer->pay_status !== 1) {
+      return back()->withErrors('This paid team place is no longer available for withdrawal.');
     }
 
     if (! $order->withdrawn_at && now()->lte($event->withdrawalCloseAt())) {

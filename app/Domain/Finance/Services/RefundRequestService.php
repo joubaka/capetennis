@@ -5,7 +5,6 @@ namespace App\Domain\Finance\Services;
 use App\Exceptions\RefundAlreadyProcessedException;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
-use App\Models\TeamPlayer;
 use App\Models\User;
 use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
@@ -99,13 +98,6 @@ class RefundRequestService
         }
         if ((int) $order->pay_status !== 1 && ! $order->payfast_paid && ! $order->wallet_debited) {
             throw ValidationException::withMessages(['refund' => 'No paid amount was found for this order.']);
-        }
-        if (TeamPlayer::query()
-            ->where('team_id', $order->team_id)
-            ->where('player_id', $order->player_id)
-            ->where('pay_status', 1)
-            ->exists()) {
-            throw ValidationException::withMessages(['refund' => 'Player must be withdrawn before requesting a refund.']);
         }
     }
 }
