@@ -21,11 +21,14 @@ use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Services\TeamSelection\ImportedTeamRosterService;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
+use App\Services\TeamSelection\TeamSelectionContactService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class TeamSelectionInvitationController extends Controller
 {
+    public function __construct(private TeamSelectionContactService $contacts) {}
+
     public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access)
     {
         abort_unless($event->isTeam(), 404);
@@ -65,7 +68,9 @@ class TeamSelectionInvitationController extends Controller
                 $eventRegion->rankingSource->id => $service->categorySetup($eventRegion->rankingSource),
             ]);
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients'));
+        $teamSelectionContacts = $this->contacts;
+
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'teamSelectionContacts'));
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)
@@ -371,9 +376,7 @@ class TeamSelectionInvitationController extends Controller
             })
             ->orderBy('surname')->orderBy('name')->limit(40)->get()
             ->map(function (Player $player): array {
-                $email = collect([$player->user?->email, $player->email])
-                    ->merge($player->users->pluck('email'))
-                    ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+                $email = $this->contacts->primaryEmail($player);
                 $contact = $email ?: (filled($player->cellNr) ? $player->cellNr : 'No email or cell');
 
                 return [
@@ -630,10 +633,9 @@ class TeamSelectionInvitationController extends Controller
             ->where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
             ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])
             ->whereHas('selectionImport', fn ($query) => $query->where('status', 'sent'))
-            ->get()->flatMap(fn (TeamSelectionInvitation $item) => collect([$item->player?->user?->email])
-                ->merge($item->player?->users?->pluck('email') ?? collect()))
-            ->map(fn ($email) => mb_strtolower(trim((string) $email)))
-            ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL))
+            ->get()
+            ->map(fn (TeamSelectionInvitation $item) => $this->contacts->primaryEmail($item->player))
+            ->filter()
             ->unique()->sort()->values();
     }
 
@@ -666,12 +668,7 @@ class TeamSelectionInvitationController extends Controller
             ->when($invitationId, fn ($query) => $query->whereKey($invitationId))
             ->get()
             ->map(function (TeamSelectionInvitation $invitation): array {
-                $email = collect([
-                    $invitation->player?->user?->email,
-                    $invitation->player?->email,
-                ])->merge($invitation->player?->users?->pluck('email') ?? collect())
-                    ->map(fn ($candidate) => mb_strtolower(trim((string) $candidate)))
-                    ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+                $email = $this->contacts->primaryEmail($invitation->player);
 
                 return ['email' => $email, 'name' => $invitation->player?->full_name];
             })

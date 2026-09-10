@@ -1221,22 +1221,62 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('draft', $selectionImport->fresh()->status);
     }
 
-    public function test_send_is_blocked_when_a_reserve_has_no_linked_account(): void
+    public function test_profile_email_allows_a_reserve_without_a_linked_account(): void
     {
         Queue::fake();
         [$source] = $this->selectionSource();
         $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
-        $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
-            ->firstOrFail()->player->update(['userId' => null]);
+        $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->firstOrFail();
+        $reserve->player->update(['email' => 'reserve.profile@example.test', 'userId' => null]);
+        $reserve->player->users()->detach();
 
-        $this->expectException(ValidationException::class);
         app(TeamSelectionInvitationService::class)->send($selectionImport, [
             'response_deadline' => now()->addDay(),
             'payment_deadline' => now()->addDays(2),
         ], User::factory()->create());
+
+        $this->assertSame('sent', $selectionImport->fresh()->status);
     }
 
-    public function test_selection_page_distinguishes_an_invalid_linked_account_email_from_an_unlinked_player(): void
+    public function test_profile_email_is_primary_and_linked_email_is_the_fallback(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->get();
+        $primary = $selected->firstOrFail();
+        $fallback = $selected->last();
+        $primary->player->update(['email' => 'player.primary@example.test']);
+        $primary->player->user->update(['email' => 'parent.fallback@example.test']);
+        $linkedFallback = User::factory()->create(['email' => 'linked.fallback@example.test']);
+        $fallback->player->update(['email' => null, 'userId' => null]);
+        $fallback->player->users()->sync([$linkedFallback->id]);
+
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], User::factory()->create());
+
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $primary->id,
+            'recipient_email' => 'player.primary@example.test',
+        ]);
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $fallback->id,
+            'recipient_email' => 'linked.fallback@example.test',
+        ]);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $primary->id,
+            'recipient_email' => 'parent.fallback@example.test',
+        ]);
+    }
+
+    public function test_selection_page_uses_valid_profile_email_before_an_invalid_linked_email(): void
     {
         Role::findOrCreate('admin', 'web');
         [$source, , $players] = $this->selectionSource();
@@ -1256,9 +1296,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($admin)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
-            ->assertSee('Linked account email invalid')
-            ->assertSee('tsargeant@shprite')
-            ->assertDontSee('Account link required');
+            ->assertSee('family@example.test')
+            ->assertDontSee('Profile/account email invalid')
+            ->assertDontSee('Email required');
     }
 
     public function test_link_rejects_a_series_from_another_event_year(): void

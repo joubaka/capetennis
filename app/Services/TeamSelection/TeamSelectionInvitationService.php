@@ -21,7 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 final class TeamSelectionInvitationService
 {
-    public function __construct(private ClothingPriceService $clothingPrices) {}
+    public function __construct(
+        private ClothingPriceService $clothingPrices,
+        private TeamSelectionContactService $contacts,
+    ) {}
 
     public function send(TeamSelectionImport $import, array $deadlines, User $actor): array
     {
@@ -60,7 +63,7 @@ final class TeamSelectionInvitationService
             $missing = $candidates->filter(fn ($invitation) => ! $this->contactEmail($invitation));
             if ($missing->isNotEmpty()) {
                 throw ValidationException::withMessages([
-                    'email' => $missing->count().' selected or reserve player(s) do not have a linked account with a valid email address. Link their accounts before sending any invitations.',
+                    'email' => $missing->count().' selected or reserve player(s) do not have a valid player-profile, parent, or linked-account email address. Add an email before sending invitations.',
                 ]);
             }
 
@@ -436,7 +439,7 @@ final class TeamSelectionInvitationService
                 ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
             if (! $email) {
                 throw ValidationException::withMessages([
-                    'replacement_player_id' => 'Select a Cape Tennis player profile linked to an account with a valid email address.',
+                    'replacement_player_id' => 'Select a Cape Tennis player with a valid profile, parent, or linked-account email address.',
                 ]);
             }
             $replacementDeadlines = $selectionImport->status === 'sent'
@@ -766,7 +769,7 @@ final class TeamSelectionInvitationService
             }
             $email = $this->contactEmail($locked);
             if (! $email) {
-                throw ValidationException::withMessages(['email' => 'This player does not have a valid email address on a linked account.']);
+                throw ValidationException::withMessages(['email' => 'This player does not have a valid profile, parent, or linked-account email address.']);
             }
 
             $log = BulkEmailLog::create([
@@ -1019,7 +1022,7 @@ final class TeamSelectionInvitationService
             if ($lockedImport->status === 'sent') {
                 $email = $this->contactEmail($locked);
                 if (! $email) {
-                    throw ValidationException::withMessages(['activation' => 'This reserve needs a linked valid email before activation.']);
+                    throw ValidationException::withMessages(['activation' => 'This reserve needs a valid profile, parent, or linked-account email before activation.']);
                 }
                 $this->queueMail($locked, $email, 'replacement', $this->savedCampaignSnapshot($lockedImport));
             }
@@ -1188,18 +1191,8 @@ final class TeamSelectionInvitationService
     private function contactEmail(TeamSelectionInvitation $invitation): ?string
     {
         $player = $invitation->relationLoaded('player') ? $invitation->player : $invitation->player()->first();
-        if (! $player) {
-            return null;
-        }
 
-        $emails = collect();
-        if ($player->userId) {
-            $emails->push(User::query()->whereKey($player->userId)->value('email'));
-        }
-        $emails = $emails->merge($player->users()->pluck('email'));
-        $email = $emails->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
-
-        return $email ? mb_strtolower(trim((string) $email)) : null;
+        return $this->contacts->primaryEmail($player);
     }
 
     private function queueMail(

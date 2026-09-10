@@ -78,8 +78,9 @@
       @php($regionTeams = $teams->get($eventRegion->region_id, collect()))
       @php($categorySetup = $source ? $categorySetups->get($source->id) : null)
       @php($activeImport = $source?->imports?->whereIn('status', ['draft','sent'])->sortByDesc('id')->first())
-      @php($linkedAccountEmailsFor = fn($invitation) => collect([$invitation->player?->user?->email])->merge($invitation->player?->users?->pluck('email') ?? collect())->filter(fn($email) => filled($email))->unique()->values())
-      @php($recipientEmailFor = fn($invitation) => $linkedAccountEmailsFor($invitation)->first(fn($email) => filter_var($email, FILTER_VALIDATE_EMAIL)))
+      @php($contactEmailsFor = fn($invitation) => $teamSelectionContacts->emails($invitation->player))
+      @php($rawContactEmailsFor = fn($invitation) => $teamSelectionContacts->rawEmails($invitation->player))
+      @php($recipientEmailFor = fn($invitation) => $contactEmailsFor($invitation)->first())
       @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $eventRegion->region?->clothingItems?->contains(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
@@ -206,7 +207,7 @@
                             <input id="add-player-reason-{{ $regionTeam->id }}" type="text" name="reason" class="form-control" maxlength="1000" placeholder="Why this player is being added" required>
                           </div>
                           <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary"><i class="ti ti-user-plus me-1"></i>Add as reserve</button></div>
-                          <div class="col-12 form-text">Only linked player profiles are shown. The player is appended to the reserve queue; the active roster and published ranking snapshot stay unchanged.</div>
+                          <div class="col-12 form-text">System player profiles are shown. Player-profile email is used first, followed by a parent or linked-account email. The player is appended to the reserve queue; the active roster and published ranking snapshot stay unchanged.</div>
                         </form>
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
@@ -214,7 +215,7 @@
                             <tbody>
                               @forelse($teamInvitations as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
-                                @php($linkedAccountEmails = $linkedAccountEmailsFor($invitation))
+                                @php($rawContactEmails = $rawContactEmailsFor($invitation))
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
                                 @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
                                 @php($isInactive = in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) || (!$isReserve && !$invitation->roster_rank))
@@ -228,11 +229,11 @@
                                   <td>
                                     @if($recipientEmail)
                                       <div>{{ $recipientEmail }}</div>
-                                    @elseif($linkedAccountEmails->isNotEmpty())
-                                      <div class="text-warning">Linked account email invalid</div>
-                                      <div class="small text-muted">{{ $linkedAccountEmails->first() }}</div>
+                                    @elseif($rawContactEmails->isNotEmpty())
+                                      <div class="text-warning">Profile/account email invalid</div>
+                                      <div class="small text-muted">{{ $rawContactEmails->first() }}</div>
                                     @else
-                                      <div>Account link required</div>
+                                      <div>Email required</div>
                                     @endif
                                     <div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div>
                                   </td>
@@ -283,7 +284,7 @@
                                                     @disabled($replacementMode !== 'custom_profile') @required($replacementMode === 'custom_profile')>
                                               <option value=""></option>
                                             </select>
-                                            <div class="form-text">Only profiles linked to a Cape Tennis account with a valid email are available. Existing players below this place move up, and the replacement joins the final active roster place.</div>
+                                            <div class="form-text">A valid player-profile email is used first, followed by a parent or linked-account email. Existing players below this place move up, and the replacement joins the final active roster place.</div>
                                           </div>
                                           <label class="form-label small mb-1" for="replacement-reason-{{ $invitation->id }}">Reason</label>
                                           <input id="replacement-reason-{{ $invitation->id }}" type="text" name="reason"
@@ -433,7 +434,7 @@
                 <div class="col-md-4"><label class="form-label">Reply-to email</label><input type="email" name="reply_to" value="{{ old('reply_to', $event->email) }}" class="form-control" maxlength="255"><div class="form-text">Optional contact for player replies.</div></div>
                 <div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Include optional regional clothing items, sizes, prices and ordering steps</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>
               </div>
-              <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing account/email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
+              <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-outline-primary" formaction="{{ route('backend.team-selection.email.preview', [$event, $activeImport]) }}" formtarget="_blank">Preview actual email</button><button type="submit" class="btn btn-success" onclick="return confirm('Queue these invitations for the selected players in this region?');">Confirm and send {{ $activeImport->invitations->where('status','invited')->count() }} invitations</button></div>
           </form></div>
