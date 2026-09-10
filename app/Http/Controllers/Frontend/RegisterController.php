@@ -1241,25 +1241,13 @@ class RegisterController extends Controller
       }
     }
 
-    $authUser   = Auth::user();
-    $isAdmin    = $authUser->hasAnyRole(['super-user', 'admin']);
+    $authUser = Auth::user();
 
     // ----------------------------
-    // Pre-flight: ownership context + duplicate checks (outside transaction, fail fast)
+    // Pre-flight: duplicate checks (outside transaction, fail fast)
     // ----------------------------
     $playerIds  = $request->player;
     $categoryIds = $request->category;
-
-    $ownedPlayerIds = [];
-    if (!$isAdmin) {
-      $ownedPlayerIds = array_map('intval', $authUser->ownedPlayerIds());
-
-      Log::info('[REGISTRATION OWNERSHIP CHECK]', [
-        'auth_user_id'     => $authUser->id,
-        'owned_player_ids' => $ownedPlayerIds,
-        'requested_players'=> array_map('intval', $playerIds),
-      ]);
-    }
 
     $duplicateErrors = [];
 
@@ -1268,11 +1256,6 @@ class RegisterController extends Controller
     for ($i = 0; $i < count($playerIds); $i++) {
       $playerId       = (int) $playerIds[$i];
       $categoryEventId = (int) $categoryIds[$i];
-
-      if (! $isAdmin && ! in_array($playerId, $ownedPlayerIds, true)) {
-        $duplicateErrors[] = 'You may only register a player profile linked to your account.';
-        continue;
-      }
 
       $categoryEvent = CategoryEvent::find($categoryEventId);
       if (! $categoryEvent) {
