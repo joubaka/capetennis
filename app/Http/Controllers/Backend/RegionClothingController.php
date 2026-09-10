@@ -101,7 +101,7 @@ class RegionClothingController extends Controller
     return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear', 'payfastSettings'));
   }
 
-  public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service)
+  public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service, ClothingPriceService $prices)
   {
     $this->authorize('region-clothing.manage', $region);
     abort_unless($region->usesOnlineClothingOrders(), 422, 'Select this region for online clothing orders before copying a catalogue.');
@@ -112,9 +112,12 @@ class RegionClothingController extends Controller
       'items.*.selected' => ['nullable', 'boolean'],
       'items.*.source_item_id' => ['required', 'integer', 'distinct'],
       'items.*.item_type_name' => ['nullable', 'string', 'max:191'],
-      'items.*.price' => ['nullable', 'integer', 'min:0'],
+      'items.*.price' => ['nullable', 'numeric', 'min:0'],
+      'items.*.final_amount' => ['nullable', 'numeric', 'min:0'],
+      'items.*.pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'items.*.ordering' => ['nullable', 'integer', 'min:0'],
     ]);
+    $data['items'] = $this->resolveItemPrices($data['items'], $prices);
     $result = $service->copy(
       $region,
       TeamRegion::findOrFail($data['source_region_id']),
@@ -172,15 +175,19 @@ class RegionClothingController extends Controller
    * Create a new clothing item for a region.
    * POST /backend/region/{region}/clothing/items
    */
-  public function storeItem(Request $request, TeamRegion $region)
+  public function storeItem(Request $request, TeamRegion $region, ClothingPriceService $prices)
   {
     $this->authorize('region-clothing.manage', $region);
     $data = $request->validate([
       'item_type_name' => 'required|string|max:191',
-      'price' => 'nullable|integer|min:0',
+      'price' => 'nullable|numeric|min:0',
+      'final_amount' => 'nullable|numeric|min:0',
+      'pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'ordering' => 'nullable|integer|min:0',
     ]);
 
+    $data['price'] = $this->resolvePrice($data, $prices);
+    unset($data['final_amount'], $data['pricing_source']);
     $data['region_id'] = $region->id;
 
     $item = ClothingItemType::create($data);
@@ -195,19 +202,21 @@ class RegionClothingController extends Controller
    * Bulk update items (name, price, ordering) for this region.
    * PATCH /backend/region/{region}/clothing/items/bulk
    */
-  public function bulkUpdate(Request $request, TeamRegion $region)
+  public function bulkUpdate(Request $request, TeamRegion $region, ClothingPriceService $prices)
   {
     $this->authorize('region-clothing.manage', $region);
     $data = $request->validate([
       'items' => 'required|array|min:1',
       'items.*.id' => 'required|integer|exists:clothing_item_types,id',
       'items.*.item_type_name' => 'required|string|max:191',
-      'items.*.price' => 'nullable|integer|min:0',
+      'items.*.price' => 'nullable|numeric|min:0',
+      'items.*.final_amount' => 'nullable|numeric|min:0',
+      'items.*.pricing_source' => ['nullable', Rule::in(['price', 'final_amount'])],
       'items.*.ordering' => 'nullable|integer|min:0',
     ]);
 
     // Only update rows that belong to this region
-    foreach ($data['items'] as $row) {
+    foreach ($this->resolveItemPrices($data['items'], $prices) as $row) {
       $item = ClothingItemType::where('region_id', $region->id)
         ->findOrFail($row['id']);
 
@@ -219,6 +228,25 @@ class RegionClothingController extends Controller
     }
 
     return response()->json(['ok' => true]);
+  }
+
+  private function resolveItemPrices(array $items, ClothingPriceService $prices): array
+  {
+    return collect($items)->map(function (array $item) use ($prices): array {
+      $item['price'] = $this->resolvePrice($item, $prices);
+      unset($item['final_amount'], $item['pricing_source']);
+
+      return $item;
+    })->all();
+  }
+
+  private function resolvePrice(array $item, ClothingPriceService $prices): float
+  {
+    if (($item['pricing_source'] ?? 'price') === 'final_amount' && array_key_exists('final_amount', $item)) {
+      return $prices->totalsFromFinalAmount((float) $item['final_amount'])['subtotal'];
+    }
+
+    return round((float) ($item['price'] ?? 0), 2);
   }
 
   /**

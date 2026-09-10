@@ -24,6 +24,37 @@ final class ClothingPriceService
     }
 
     /**
+     * Resolve the clothing price that produces the requested one-item total.
+     * PayFast rounds its fee to cents, so inspect the neighbouring cent values
+     * and return the closest server-calculated result.
+     *
+     * @return array{subtotal: float, payfast_fee: float, total: float}
+     */
+    public function totalsFromFinalAmount(float $finalAmount): array
+    {
+        $finalAmount = round(max(0, $finalAmount), 2);
+        if ($finalAmount === 0.0) {
+            return $this->totals(0);
+        }
+
+        $settings = $this->settings();
+        $vatMultiplier = 1 + ($settings['vat'] / 100);
+        $grossMultiplier = 1 + (($settings['percentage'] / 100) * $vatMultiplier);
+        $grossFlat = $settings['flat'] * $vatMultiplier;
+        $estimate = max(0, ($finalAmount - $grossFlat) / $grossMultiplier);
+
+        $best = $this->totals(round($estimate, 2));
+        for ($offset = -5; $offset <= 5; $offset++) {
+            $candidate = $this->totals(round($estimate + ($offset / 100), 2));
+            if (abs($candidate['total'] - $finalAmount) < abs($best['total'] - $finalAmount)) {
+                $best = $candidate;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * Values used by the browser previews. The server recalculates all payable
      * amounts and never trusts these client-side values.
      *

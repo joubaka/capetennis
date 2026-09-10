@@ -62,19 +62,19 @@
           <input type="hidden" name="source_region_id" value="{{ $copySource->id }}">
           <div class="table-responsive">
             <table class="table align-middle">
-              <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:150px">Clothing price (R)</th><th style="width:135px">PayFast fee</th><th style="width:145px">Customer pays</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
+              <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:150px">Clothing amount (R)</th><th style="width:135px">PayFast cost</th><th style="width:155px">Final amount (R)</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
               <tbody>
                 @foreach($copySource->clothingItems->sortBy([['ordering','asc'],['item_type_name','asc']])->values() as $rowIndex => $sourceItem)
-                  <tr>
+                  <tr class="clothing-pricing-row">
                     <td>
                       <input type="hidden" name="items[{{ $rowIndex }}][selected]" value="0">
                       <input class="form-check-input clothing-copy-toggle" type="checkbox" name="items[{{ $rowIndex }}][selected]" value="1" checked aria-label="Copy {{ $sourceItem->item_type_name }}">
                       <input type="hidden" name="items[{{ $rowIndex }}][source_item_id]" value="{{ $sourceItem->id }}">
                     </td>
                     <td><input class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191"></td>
-                    <td><input class="form-control clothing-preview-price" type="number" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", (int) $sourceItem->price) }}" min="0" required inputmode="numeric"></td>
+                    <td><input class="form-control clothing-preview-price" type="number" step="0.01" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", number_format((float) $sourceItem->price, 2, '.', '')) }}" min="0" required inputmode="decimal"><input class="clothing-pricing-source" type="hidden" name="items[{{ $rowIndex }}][pricing_source]" value="{{ old("items.$rowIndex.pricing_source", 'price') }}"></td>
                     <td class="text-muted clothing-preview-fee">R0.00</td>
-                    <td class="fw-semibold clothing-preview-total">R0.00</td>
+                    <td><input class="form-control fw-semibold clothing-preview-total" type="number" step="0.01" name="items[{{ $rowIndex }}][final_amount]" value="{{ old("items.$rowIndex.final_amount") }}" min="0" required inputmode="decimal" aria-label="Final customer amount for {{ $sourceItem->item_type_name }}"></td>
                     <td><input class="form-control" type="number" name="items[{{ $rowIndex }}][ordering]" value="{{ old("items.$rowIndex.ordering", $rowIndex + 1) }}" min="1"></td>
                     <td><div class="d-flex flex-wrap gap-1">@foreach($sourceItem->sizes->sortBy([['ordering','asc'],['id','asc']]) as $size)<span class="badge bg-label-primary">{{ $size->size }}</span>@endforeach</div></td>
                   </tr>
@@ -99,7 +99,7 @@
     </div>
     <div class="card-body p-0">
       <div class="alert alert-info rounded-0 border-start-0 border-end-0 mb-0">
-        <strong>Customer price preview:</strong> PayFast is calculated at {{ number_format($payfastSettings['percentage'], 2) }}% + R{{ number_format($payfastSettings['flat'], 2) }}, including {{ number_format($payfastSettings['vat'], 2) }}% VAT. The payable preview below is for one item.
+        <strong>Two-way customer pricing:</strong> edit either the clothing amount or the final amount. PayFast is calculated at {{ number_format($payfastSettings['percentage'], 2) }}% + R{{ number_format($payfastSettings['flat'], 2) }}, including {{ number_format($payfastSettings['vat'], 2) }}% VAT. The final amount is an exact one-item target; a multi-item order is calculated once on the basket total.
       </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" id="items-table">
@@ -107,9 +107,9 @@
             <tr>
               <th style="width: 40px">#</th>
               <th>Name</th>
-              <th style="width:140px">Price (R)</th>
-              <th style="width:135px">PayFast fee</th>
-              <th style="width:145px">Customer pays</th>
+              <th style="width:140px">Clothing amount (R)</th>
+              <th style="width:135px">PayFast cost</th>
+              <th style="width:155px">Final amount (R)</th>
               <th style="width:120px">Ordering</th>
               <th>Sizes</th>
               <th style="width: 80px"></th>
@@ -117,16 +117,17 @@
           </thead>
           <tbody>
             @forelse($items as $i)
-              <tr data-id="{{ $i->id }}">
+              <tr data-id="{{ $i->id }}" class="clothing-pricing-row">
                 <td class="text-muted">{{ $i->id }}</td>
                 <td>
                   <input type="text" class="form-control form-control-sm item-name" value="{{ $i->item_type_name }}">
                 </td>
                 <td>
-                  <input type="number" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ (int)($i->price ?? 0) }}">
+                  <input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}">
+                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="price">
                 </td>
                 <td class="text-muted clothing-preview-fee">R0.00</td>
-                <td class="fw-semibold clothing-preview-total">R0.00</td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" inputmode="decimal"></td>
                 <td>
                   <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
                 </td>
@@ -173,9 +174,14 @@
           <label class="form-label">Name</label>
           <input type="text" class="form-control" name="item_type_name" required>
         </div>
-        <div class="mb-2">
-          <label class="form-label">Price (R)</label>
-          <input type="number" class="form-control" name="price" min="0" value="0">
+        <div class="mb-2 clothing-pricing-row">
+          <label class="form-label">Clothing amount (R)</label>
+          <input type="number" step="0.01" class="form-control clothing-preview-price" name="price" min="0" value="0">
+          <input class="clothing-pricing-source" type="hidden" name="pricing_source" value="price">
+          <div class="row g-2 mt-1">
+            <div class="col-5"><span class="form-text">PayFast cost</span><div class="clothing-preview-fee">R0.00</div></div>
+            <div class="col-7"><label class="form-label mb-0">Final amount (R)</label><input type="number" step="0.01" class="form-control clothing-preview-total" name="final_amount" min="0" value="0"></div>
+          </div>
         </div>
         <div class="mb-2">
           <label class="form-label">Ordering</label>
@@ -193,19 +199,57 @@
   const DEBUG = true;
   const payfast = @json($payfastSettings);
 
-  function refreshPricePreview(input) {
-    const row = input.closest('tr');
-    const subtotal = Math.max(0, Number(input.value) || 0);
-    const fee = subtotal > 0
+  function feeFor(subtotal) {
+    return subtotal > 0
       ? Math.round((((subtotal * Number(payfast.percentage) / 100) + Number(payfast.flat)) * (1 + Number(payfast.vat) / 100)) * 100) / 100
       : 0;
-    row.querySelector('.clothing-preview-fee').textContent = `R${fee.toFixed(2)}`;
-    row.querySelector('.clothing-preview-total').textContent = `R${(subtotal + fee).toFixed(2)}`;
   }
 
-  document.querySelectorAll('.clothing-preview-price').forEach(input => {
-    input.addEventListener('input', () => refreshPricePreview(input));
-    refreshPricePreview(input);
+  function refreshPricePreview(input) {
+    const row = input.closest('.clothing-pricing-row');
+    const subtotal = Math.max(0, Number(input.value) || 0);
+    const fee = feeFor(subtotal);
+    row.querySelector('.clothing-preview-fee').textContent = `R${fee.toFixed(2)}`;
+    row.querySelector('.clothing-preview-total').value = (subtotal + fee).toFixed(2);
+  }
+
+  function refreshFinalAmount(input) {
+    const row = input.closest('.clothing-pricing-row');
+    const requestedTotal = Math.max(0, Number(input.value) || 0);
+    const vatMultiplier = 1 + (Number(payfast.vat) / 100);
+    const multiplier = 1 + ((Number(payfast.percentage) / 100) * vatMultiplier);
+    const estimate = Math.max(0, (requestedTotal - (Number(payfast.flat) * vatMultiplier)) / multiplier);
+    let bestSubtotal = Math.round(estimate * 100) / 100;
+    let bestTotal = bestSubtotal + feeFor(bestSubtotal);
+    for (let offset = -5; offset <= 5; offset++) {
+      const subtotal = Math.max(0, Math.round((estimate + offset / 100) * 100) / 100);
+      const total = subtotal + feeFor(subtotal);
+      if (Math.abs(total - requestedTotal) < Math.abs(bestTotal - requestedTotal)) {
+        bestSubtotal = subtotal;
+        bestTotal = total;
+      }
+    }
+    row.querySelector('.clothing-preview-price').value = bestSubtotal.toFixed(2);
+    row.querySelector('.clothing-preview-fee').textContent = `R${feeFor(bestSubtotal).toFixed(2)}`;
+  }
+
+  document.querySelectorAll('.clothing-pricing-row').forEach(row => {
+    const priceInput = row.querySelector('.clothing-preview-price');
+    const finalInput = row.querySelector('.clothing-preview-total');
+    const sourceInput = row.querySelector('.clothing-pricing-source');
+    priceInput.addEventListener('input', () => {
+      sourceInput.value = 'price';
+      refreshPricePreview(priceInput);
+    });
+    finalInput.addEventListener('input', () => {
+      sourceInput.value = 'final_amount';
+      refreshFinalAmount(finalInput);
+    });
+    if (sourceInput.value === 'final_amount' && finalInput.value !== '') {
+      refreshFinalAmount(finalInput);
+    } else {
+      refreshPricePreview(priceInput);
+    }
   });
 
   // ---------- helpers ----------
@@ -222,7 +266,7 @@
 
   $('.clothing-copy-toggle').on('change', function(){
     const disabled = !this.checked;
-    $(this).closest('tr').find('input[name$="[item_type_name]"], input[name$="[price]"], input[name$="[ordering]"]').prop('disabled', disabled);
+    $(this).closest('tr').find('input[name$="[item_type_name]"], input[name$="[price]"], input[name$="[final_amount]"], input[name$="[ordering]"]').prop('disabled', disabled);
   });
 
   function logClick(msg, extra={}) {
@@ -360,6 +404,8 @@
         id: $(this).data('id'),
         item_type_name: $(this).find('.item-name').val().trim(),
         price: Number($(this).find('.item-price').val() || 0),
+        final_amount: Number($(this).find('.item-final-amount').val() || 0),
+        pricing_source: $(this).find('.item-pricing-source').val(),
         ordering: $(this).find('.item-ordering').val() || null,
       });
     });

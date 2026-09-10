@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\TeamRegion;
 use App\Models\User;
 use App\Services\Clothing\RegionClothingCopyService;
+use App\Services\Clothing\ClothingPriceService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -252,6 +253,33 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $region->update(['clothing_admin' => 0, 'clothing_order' => 0]);
         $this->actingAs($admin)->patch(route('backend.region.clothing.toggle', $region))->assertStatus(422);
         $this->assertFalse((bool) $region->fresh()->clothing_order);
+    }
+
+    public function test_admin_can_set_the_one_item_final_amount_including_payfast_cost(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Final Price Region 2026']);
+        $admin = $this->authorizedAdminForRegion($region, 2026);
+        $item = ClothingItemType::create([
+            'item_type_name' => 'Final price shirt', 'price' => 300, 'region_id' => $region->id,
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('backend.region.clothing.items.bulkUpdate', $region), [
+            'items' => [[
+                'id' => $item->id,
+                'item_type_name' => $item->item_type_name,
+                'price' => 300,
+                'final_amount' => 400,
+                'pricing_source' => 'final_amount',
+                'ordering' => 1,
+            ]],
+        ])->assertOk()->assertJson(['ok' => true]);
+
+        $savedPrice = (float) $item->fresh()->price;
+        $pricing = app(ClothingPriceService::class)->totals($savedPrice);
+
+        $this->assertSame(400.00, $pricing['total']);
+        $this->assertSame($savedPrice, $pricing['subtotal']);
+        $this->assertEqualsWithDelta(400.00 - $savedPrice, $pricing['payfast_fee'], 0.001);
     }
 
     private function authorizedAdminForRegion(TeamRegion $region, int $year): User

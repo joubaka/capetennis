@@ -51,7 +51,7 @@ final class RegionClothingCopyService
             foreach ($selected as $row) {
                 $sourceItem = $sourceItems->get((int) $row['source_item_id']);
                 $name = trim((string) ($row['item_type_name'] ?? ''));
-                $price = (int) ($row['price'] ?? -1);
+                $price = round((float) ($row['price'] ?? -1), 2);
                 $ordering = filled($row['ordering'] ?? null) ? (int) $row['ordering'] : null;
                 if ($name === '' || $price < 0) {
                     throw ValidationException::withMessages([
@@ -100,7 +100,7 @@ final class RegionClothingCopyService
                     'reviewed_prices' => $selected->map(fn (array $row) => [
                         'source_item_id' => (int) $row['source_item_id'],
                         'name' => trim((string) ($row['item_type_name'] ?? '')),
-                        'price' => (int) ($row['price'] ?? 0),
+                        'price' => round((float) ($row['price'] ?? 0), 2),
                     ])->all(),
                 ])->log('copied reviewed clothing setup from previous region');
 

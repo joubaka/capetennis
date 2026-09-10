@@ -10,6 +10,8 @@ class ClothingItemType extends Model
   protected $table = 'clothing_item_types';
   protected $fillable = ['item_type_name', 'price', 'region_id', 'ordering'];
 
+  protected $casts = ['price' => 'decimal:2'];
+
   public function region()
   {
     return $this->belongsTo(TeamRegion::class, 'region_id');
