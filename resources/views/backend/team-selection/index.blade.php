@@ -16,6 +16,7 @@
   .regional-metric strong { display: block; margin-top: .15rem; color: #173f78; font-size: 1.25rem; }
   .regional-team-card { border: 1px solid #dbe6f4; border-top: 4px solid #2374bb; box-shadow: 0 .2rem .7rem rgba(31, 57, 104, .07); }
   .regional-team-card .card-header { background: linear-gradient(90deg, #f3f8ff, #fff8ef); }
+  .regional-team-card .card-header[data-team-workspace-header] { cursor: pointer; }
   .regional-team-card .table > :not(caption) > * > * { padding: .7rem .65rem; }
   .regional-team-card .reserve-row { background: #fffaf0; }
   .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
@@ -30,16 +31,18 @@
 @endsection
 
 @section('content')
+@include('backend.event.partials.header', [
+  'event' => $event,
+  'eventWorkspaceActive' => 'entries',
+  'eventWorkspaceRegionalOnly' => ! $isEventManager,
+  'eventWorkspaceShowHome' => $isEventManager,
+])
 <div class="container-xxl flex-grow-1 container-p-y">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
-    <div><h4 class="mb-1">Team Selection & Invitations</h4><p class="text-muted mb-0">{{ $event->name }}</p></div>
-    <div class="d-flex flex-wrap gap-2">
-      @if($isEventManager)
-        <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-      @endif
-      <a href="{{ $isEventManager ? route('admin.events.overview', $event) : route('events.show', $event) }}" class="btn btn-outline-secondary">Back to event</a>
+  @if($isEventManager)
+    <div class="d-flex justify-content-end mb-3">
+      <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
     </div>
-  </div>
+  @endif
 
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -142,7 +145,7 @@
                   @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
                   <div class="col-12">
                     <div class="card regional-team-card">
-                      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2" data-team-workspace-header data-team-workspace-target="#team-workspace-{{ $regionTeam->id }}">
                         <div>
                           <h6 class="mb-1">{{ $regionTeam->name }}</h6>
                           <span class="text-muted small">{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
@@ -214,7 +217,7 @@
                                     <div class="d-flex flex-wrap gap-1">
                                       @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $teamReserves->isNotEmpty())
-                                      <details><summary class="btn btn-sm btn-outline-warning">Change player</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<div class="small text-muted mb-1">The next eligible reserve will take this exact roster rank.</div><input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
+                                      <details><summary class="btn btn-sm btn-outline-warning">Change player</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<div class="small text-muted mb-1">The next eligible reserve will take this exact roster rank.</div><input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" value="Player not available." placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
                                     @elseif(!$recipientEmail)
                                       <span class="text-muted small">No action available</span>
                                     @endif
@@ -359,7 +362,7 @@
           <div class="modal-body">
             <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
             <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm this displayed recipient scope</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm the recipient details above are correct</label></div>
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
         </form></div>
@@ -471,8 +474,13 @@
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[id^="team-workspace-"]').forEach(function (workspace) {
     const toggle = document.querySelector(`[data-bs-target="#${workspace.id}"]`);
+    const header = document.querySelector(`[data-team-workspace-target="#${workspace.id}"]`);
     const label = toggle?.querySelector('span');
     const icon = toggle?.querySelector('i');
+    header?.addEventListener('click', function (event) {
+      if (event.target.closest('a, button, input, select, textarea, summary, details, form, label')) return;
+      toggle?.click();
+    });
     workspace.addEventListener('shown.bs.collapse', function () {
       if (label) label.textContent = 'Hide team';
       icon?.classList.replace('ti-eye', 'ti-eye-off');

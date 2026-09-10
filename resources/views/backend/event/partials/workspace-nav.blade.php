@@ -1,4 +1,5 @@
 @php
+  $eventWorkspaceRegionalOnly = $eventWorkspaceRegionalOnly ?? false;
   $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
     request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
     request()->routeIs('admin.events.results.*', 'backend.scoreboard.team.show') => 'results',
@@ -13,6 +14,9 @@
   };
 @endphp
 <x-backend.context-nav label="Event navigation">
+  @if($eventWorkspaceRegionalOnly)
+    <a href="{{ route('backend.team-selection.index', $event) }}" aria-current="page"><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+  @else
   @can('event-draw.view', $event)
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>
     <a href="{{ route($event->isTeam() ? 'admin.events.teams' : 'admin.events.entries.new', $event) }}" @if($eventWorkspaceActive === 'entries') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>{{ $event->isTeam() ? 'Teams' : 'Entries' }}</a>
@@ -59,6 +63,7 @@
         @endif
       </div>
     </div>
+  @endif
   @endif
 </x-backend.context-nav>
 @if(request('schedule') === 'applied')

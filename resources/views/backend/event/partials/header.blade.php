@@ -1,6 +1,8 @@
 @php
   $eventWorkspaceIcon = $eventWorkspaceIcon ?? 'ti-trophy';
   $eventWorkspaceSubtitle = $eventWorkspaceSubtitle ?? null;
+  $eventWorkspaceHomeUrl = $eventWorkspaceHomeUrl ?? route('admin.events.overview', $event);
+  $eventWorkspaceShowHome = $eventWorkspaceShowHome ?? true;
 @endphp
 <div class="event-workspace-chrome no-print">
   <x-backend.page-header
@@ -21,10 +23,12 @@
         <span>Public page</span>
         <i class="ti ti-external-link event-workspace-action__external" aria-hidden="true"></i>
       </a>
-      <a class="event-workspace-action" href="{{ route('admin.events.overview', $event) }}">
-        <i class="ti ti-home" aria-hidden="true"></i>
-        <span>Event home</span>
-      </a>
+      @if($eventWorkspaceShowHome)
+        <a class="event-workspace-action" href="{{ $eventWorkspaceHomeUrl }}">
+          <i class="ti ti-home" aria-hidden="true"></i>
+          <span>Event home</span>
+        </a>
+      @endif
     </x-slot:actions>
   </x-backend.page-header>
   @include('backend.event.partials.workspace-nav')
