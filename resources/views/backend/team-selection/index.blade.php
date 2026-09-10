@@ -171,6 +171,20 @@
                         </ul>
                         <div class="tab-content p-0">
                         <div class="tab-pane fade show active" id="team-players-{{ $regionTeam->id }}">
+                        <form method="POST" action="{{ route('backend.team-selection.players.add', [$event, $activeImport, $regionTeam]) }}" class="row g-2 align-items-end p-3 border-bottom">
+                          @csrf
+                          <input type="hidden" name="add_team_id" value="{{ $regionTeam->id }}">
+                          <div class="col-lg-5">
+                            <label class="form-label" for="add-player-{{ $regionTeam->id }}">Add an existing system player profile</label>
+                            <select id="add-player-{{ $regionTeam->id }}" name="player_id" class="form-select team-player-select" data-placeholder="Search player name, email or cell…" data-search-url="{{ route('backend.team-selection.players.search', [$event, $activeImport, $regionTeam]) }}" required><option value=""></option></select>
+                          </div>
+                          <div class="col-lg-5">
+                            <label class="form-label" for="add-player-reason-{{ $regionTeam->id }}">Reason</label>
+                            <input id="add-player-reason-{{ $regionTeam->id }}" type="text" name="reason" class="form-control" maxlength="1000" placeholder="Why this player is being added" required>
+                          </div>
+                          <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary"><i class="ti ti-user-plus me-1"></i>Add as reserve</button></div>
+                          <div class="col-12 form-text">Only linked player profiles are shown. The player is appended to the reserve queue; the active roster and published ranking snapshot stay unchanged.</div>
+                        </form>
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
                             <thead><tr><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
@@ -183,7 +197,7 @@
                                   <td><span class="badge {{ $isReserve ? 'bg-label-warning' : 'bg-label-primary' }}">{{ $isReserve ? 'Reserve '.$invitation->queue_position : 'Rank '.$invitation->roster_rank }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
                                   <td><div>{{ $recipientEmail ?: 'Account link required' }}</div><div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div></td>
-                                  <td><strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div></td>
+                                  <td>@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
                                   <td><span class="badge bg-label-{{ $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info') }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
                                   <td>
                                     <div>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</div>
@@ -224,7 +238,7 @@
                                   <tr>
                                     <td><span class="badge bg-label-primary">Rank {{ $orderedInvitation->roster_rank }}</span></td>
                                     <td><strong>{{ $orderedInvitation->player?->full_name }}</strong></td>
-                                    <td>#{{ $orderedInvitation->ranking_position }} <span class="text-muted">· {{ number_format((float)$orderedInvitation->total_points, 2) }} pts</span></td>
+                                    <td>@if(data_get($orderedInvitation->snapshot_json, 'selection_source') === 'manual_system_profile')Manual addition <span class="text-muted">· not in ranking snapshot</span>@else#{{ $orderedInvitation->ranking_position }} <span class="text-muted">· {{ number_format((float)$orderedInvitation->total_points, 2) }} pts</span>@endif</td>
                                     <td>{{ str($orderedInvitation->status)->replace('_',' ')->title() }}</td>
                                     <td><div class="d-flex gap-1">
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
@@ -495,6 +509,28 @@ document.addEventListener('DOMContentLoaded', function () {
         cache: true
       }
     });
+    window.jQuery('.team-player-select').each(function () {
+      const select = window.jQuery(this);
+      select.select2({
+        width: '100%',
+        placeholder: select.data('placeholder'),
+        minimumInputLength: 2,
+        ajax: {
+          url: select.data('search-url'),
+          dataType: 'json',
+          delay: 250,
+          data: function (params) { return { q: params.term }; },
+          processResults: function (data) { return data; },
+          cache: true
+        }
+      });
+    });
+  }
+
+  const addTeamId = @json(old('add_team_id'));
+  if (addTeamId && typeof bootstrap !== 'undefined') {
+    const workspace = document.getElementById(`team-workspace-${addTeamId}`);
+    if (workspace) bootstrap.Collapse.getOrCreateInstance(workspace, { toggle: false }).show();
   }
 
   const sourceId = @json(session('open_team_setup_source') ?: old('setup_source'));

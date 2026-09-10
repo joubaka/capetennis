@@ -458,6 +458,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::patch('events/{event}/regions/{eventRegion}/teams/{team}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateTeam'])->name('teams.update');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/replace', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'replace'])->name('invitations.replace');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/move', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'moveRosterRank'])->name('invitations.move');
+    Route::get('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchPlayers'])->name('players.search');
+    Route::post('events/{event}/imports/{selectionImport}/teams/{team}/players', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'addPlayer'])->name('players.add');
     Route::get('events/{event}/imports/{selectionImport}/invitations/{invitation}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'viewSentInvitation'])->name('invitations.email.view');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/email/resend', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'resendInvitation'])->name('invitations.email.resend');
     Route::post('events/{event}/regions/{eventRegion}/roster-email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendRosterMessage'])->name('roster-email.send');

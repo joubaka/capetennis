@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\EventRegionRankingSource;
 use App\Models\EventRegionManager;
+use App\Models\Player;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\Team;
@@ -291,6 +292,61 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'Regional roster order updated.');
     }
 
+    public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)
+    {
+        $this->authorizeTeamImport($event, $selectionImport, $team, $request->user());
+        $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+        $query = trim($data['q']);
+
+        $existingPlayerIds = $selectionImport->invitations()->pluck('player_id');
+        $players = Player::query()->with(['user:id,email', 'users:id,email'])
+            ->whereNotIn('id', $existingPlayerIds)
+            ->where(function ($playerQuery) use ($query): void {
+                $playerQuery->where('name', 'like', "%{$query}%")
+                    ->orWhere('surname', 'like', "%{$query}%")
+                    ->orWhere('email', 'like', "%{$query}%")
+                    ->orWhere('cellNr', 'like', "%{$query}%")
+                    ->orWhereHas('user', fn ($userQuery) => $userQuery->where('email', 'like', "%{$query}%"))
+                    ->orWhereHas('users', fn ($userQuery) => $userQuery->where('email', 'like', "%{$query}%"));
+            })
+            ->orderBy('surname')->orderBy('name')->limit(40)->get()
+            ->map(function (Player $player): ?array {
+                $email = collect([$player->user?->email])
+                    ->merge($player->users->pluck('email'))
+                    ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+                if (! $email) {
+                    return null;
+                }
+
+                return [
+                    'id' => $player->id,
+                    'text' => trim($player->full_name).' · '.$email,
+                ];
+            })->filter()->take(20)->values();
+
+        return response()->json(['results' => $players]);
+    }
+
+    public function addPlayer(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team, TeamSelectionInvitationService $service)
+    {
+        $this->authorizeTeamImport($event, $selectionImport, $team, $request->user());
+        $data = $request->validate([
+            'player_id' => ['required', 'integer', 'exists:players,id'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'add_team_id' => ['nullable', 'integer'],
+        ]);
+        $player = Player::query()->findOrFail($data['player_id']);
+        $invitation = $service->addSystemPlayerAsReserve(
+            $selectionImport,
+            $team,
+            $player,
+            $request->user(),
+            trim($data['reason'])
+        );
+
+        return back()->with('success', $invitation->player->full_name.' was added as the next reserve. The published ranking snapshot and active roster were not changed.');
+    }
+
     public function viewSentInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
@@ -462,6 +518,13 @@ class TeamSelectionInvitationController extends Controller
         $eventRegion = EventRegion::query()->with('events')->where('event_id', $event->id)
             ->where('region_id', $selectionImport->region_id)->firstOrFail();
         $this->authorizeRegion($event, $eventRegion, $user);
+    }
+
+    private function authorizeTeamImport(Event $event, TeamSelectionImport $selectionImport, Team $team, User $user): void
+    {
+        $this->authorizeImport($event, $selectionImport, $user);
+        abort_unless((int) $team->region_id === (int) $selectionImport->region_id
+            && $selectionImport->invitations()->where('team_id', $team->id)->exists(), 404);
     }
 
     private function authorizeRegion(Event $event, EventRegion $eventRegion, User $user): void

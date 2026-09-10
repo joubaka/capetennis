@@ -10,6 +10,19 @@
 <link rel="stylesheet" href="{{ asset(mix('assets/vendor/fonts/tabler-icons.css')) }}" />
 <link rel="stylesheet" href="{{ asset(mix('assets/vendor/fonts/flag-icons.css')) }}" />
 
+{{-- Keep the icon font request same-origin and independently cache-busted. The
+     stylesheet can remain cached longer than a failed/stale nested font request. --}}
+<style>
+  @font-face {
+    font-family: "tabler-icons";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("/assets/vendor/fonts/tabler/tabler-icons.woff2?v=20260910") format("woff2"),
+         url("/assets/vendor/fonts/tabler/tabler-icons.woff?v=20260910") format("woff");
+  }
+</style>
+
 {{-- The bundled Vuexy Tabler font predates a number of icon names used by
      newer screens. Keep those names working through stable local aliases. --}}
 <style>

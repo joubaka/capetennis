@@ -1137,6 +1137,73 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($manualPlayer->id, TeamPlayer::withoutGlobalScopes()->where('team_id', $otherTeam->id)->value('player_id'));
     }
 
+    public function test_manager_can_search_and_add_a_linked_system_player_as_an_audited_reserve(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Manual reserve team event', 'type' => 2, 'code' => 'manual-reserve-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $owner = User::factory()->create(['email' => 'new.reserve@example.test']);
+        $player = Player::factory()->create([
+            'name' => 'Brandnew',
+            'surname' => 'Reserveplayer',
+            'email' => 'new.reserve@example.test',
+            'userId' => $owner->id,
+        ]);
+        $unlinked = Player::factory()->create(['name' => 'Unlinked', 'surname' => 'Profile', 'userId' => null]);
+        $rosterBefore = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->orderBy('rank')->pluck('player_id')->all();
+
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('backend.team-selection.players.search', [$source->event, $selectionImport, $team, 'q' => 'Brandnew']))
+            ->assertForbidden();
+
+        $this->actingAs($manager)
+            ->getJson(route('backend.team-selection.players.search', [$source->event, $selectionImport, $team, 'q' => 'Brandnew']))
+            ->assertOk()->assertJsonPath('results.0.id', $player->id)
+            ->assertJsonPath('results.0.text', 'Brandnew Reserveplayer · new.reserve@example.test');
+        $this->actingAs($manager)
+            ->getJson(route('backend.team-selection.players.search', [$source->event, $selectionImport, $team, 'q' => 'Unlinked']))
+            ->assertOk()->assertJsonCount(0, 'results');
+
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.players.add', [$source->event, $selectionImport, $team]),
+            ['player_id' => $player->id, 'reason' => 'Late regional selection', 'add_team_id' => $team->id]
+        )->assertRedirect()->assertSessionHas('success');
+
+        $invitation = $selectionImport->invitations()->where('player_id', $player->id)->firstOrFail();
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $invitation->status);
+        $this->assertNull($invitation->roster_rank);
+        $this->assertSame('manual_system_profile', $invitation->snapshot_json['selection_source']);
+        $this->assertSame('Late regional selection', $invitation->snapshot_json['reason']);
+        $this->assertSame($rosterBefore, TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->orderBy('rank')->pluck('player_id')->all());
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $invitation->id,
+            'description' => 'regional manager added system player profile as reserve',
+        ]);
+
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Add an existing system player profile')
+            ->assertSee('Add as reserve')
+            ->assertSee('Manual addition')
+            ->assertSee('/assets/vendor/fonts/tabler/tabler-icons.woff2?v=20260910', false);
+
+        $this->actingAs($manager)->post(
+            route('backend.team-selection.players.add', [$source->event, $selectionImport, $team]),
+            ['player_id' => $player->id, 'reason' => 'Duplicate attempt', 'add_team_id' => $team->id]
+        )->assertSessionHasErrors('player_id');
+        $this->assertSame(1, $selectionImport->invitations()->where('player_id', $player->id)->count());
+        $this->assertFalse($selectionImport->invitations()->where('player_id', $unlinked->id)->exists());
+    }
+
     /** @return array{0: \App\Models\EventRegionRankingSource, 1: Team, 2: \Illuminate\Support\Collection<int, Player>} */
     private function selectionSource(): array
     {

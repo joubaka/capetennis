@@ -9,6 +9,7 @@ use App\Domain\Teams\Services\ExternalTeamRosterService;
 use App\Jobs\SendTeamSelectionInvitationEmailJob;
 use App\Models\BulkEmailLog;
 use App\Models\TeamPaymentOrder;
+use App\Models\Player;
 use App\Models\TeamPlayer;
 use App\Models\TeamSelectionImport;
 use App\Models\TeamSelectionInvitation;
@@ -400,6 +401,74 @@ final class TeamSelectionInvitationService
                     'to_rank' => $targetRank,
                     'swapped_invitation_id' => $swap->id,
                 ])->log('regional manager changed active roster order');
+        });
+    }
+
+    public function addSystemPlayerAsReserve(TeamSelectionImport $import, Team $team, Player $player, User $actor, string $reason): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($import, $team, $player, $actor, $reason): TeamSelectionInvitation {
+            $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
+            if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages(['player_id' => 'Players can only be added to the current draft or sent selection.']);
+            }
+
+            $lockedTeam = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($team->id);
+            if ((int) $lockedTeam->region_id !== (int) $lockedImport->region_id) {
+                throw ValidationException::withMessages(['player_id' => 'That team does not belong to this regional selection.']);
+            }
+            if ($lockedImport->invitations()->where('player_id', $player->id)->exists()) {
+                throw ValidationException::withMessages(['player_id' => 'This player is already recorded in the regional selection.']);
+            }
+
+            $template = $lockedImport->invitations()->where('team_id', $lockedTeam->id)
+                ->orderBy('queue_position')->lockForUpdate()->first();
+            if (! $template) {
+                throw ValidationException::withMessages(['player_id' => 'Import the ranked player list for this team before adding another system profile.']);
+            }
+
+            $player->loadMissing(['user', 'users']);
+            $email = collect([$player->user?->email])->merge($player->users->pluck('email'))
+                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+            if (! $email) {
+                throw ValidationException::withMessages(['player_id' => 'Select a player profile linked to a system account with a valid email address.']);
+            }
+
+            $queuePosition = (int) $lockedImport->invitations()->where('team_id', $lockedTeam->id)->max('queue_position') + 1;
+            $rankingPosition = (int) $lockedImport->invitations()->where('team_id', $lockedTeam->id)->max('ranking_position') + 1;
+            $invitation = TeamSelectionInvitation::create([
+                'import_id' => $lockedImport->id,
+                'event_id' => $lockedImport->event_id,
+                'region_id' => $lockedImport->region_id,
+                'team_id' => $lockedTeam->id,
+                'player_id' => $player->id,
+                'ranking_list_id' => $template->ranking_list_id,
+                'ranking_position' => $rankingPosition,
+                'queue_position' => $queuePosition,
+                'total_points' => 0,
+                'roster_rank' => null,
+                'status' => TeamSelectionInvitation::RESERVE,
+                'snapshot_json' => [
+                    'selection_source' => 'manual_system_profile',
+                    'player_name' => $player->full_name,
+                    'ranking_position' => null,
+                    'total_points' => null,
+                    'ranking_run_id' => $lockedImport->ranking_run_id,
+                    'added_by' => $actor->id,
+                    'reason' => $reason,
+                ],
+            ]);
+
+            activity('team-selection')->performedOn($invitation)->causedBy($actor)
+                ->withProperties([
+                    'event_id' => $lockedImport->event_id,
+                    'region_id' => $lockedImport->region_id,
+                    'team_id' => $lockedTeam->id,
+                    'player_id' => $player->id,
+                    'queue_position' => $queuePosition,
+                    'reason' => $reason,
+                ])->log('regional manager added system player profile as reserve');
+
+            return $invitation->fresh('player');
         });
     }
 
