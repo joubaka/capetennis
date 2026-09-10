@@ -33,8 +33,6 @@
       @if($teamWorkspaceMode === 'regional')
         <a class="nav-link {{ $teamWorkspaceActive === 'players' ? 'active' : '' }}"
            href="{{ route('backend.team-selection.index', ['event' => $event, 'view' => 'players']) }}"
-           data-regional-workspace-tab="players" role="tab"
-           aria-selected="{{ $teamWorkspaceActive === 'players' ? 'true' : 'false' }}"
            @if($teamWorkspaceActive === 'players') aria-current="page" @endif>
           <i class="ti ti-users-group ti-xs me-1"></i>
           Players
@@ -61,8 +59,6 @@
       @if($teamWorkspaceMode === 'regional')
         <a class="nav-link {{ $teamWorkspaceActive === 'order' ? 'active' : '' }}"
            href="{{ route('backend.team-selection.index', ['event' => $event, 'view' => 'order']) }}"
-           data-regional-workspace-tab="order" role="tab"
-           aria-selected="{{ $teamWorkspaceActive === 'order' ? 'true' : 'false' }}"
            @if($teamWorkspaceActive === 'order') aria-current="page" @endif>
           <i class="ti ti-list-ordered ti-xs me-1"></i>
           Player order
