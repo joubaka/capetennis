@@ -295,6 +295,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_event_admin_can_prepare_and_preview_the_actual_regional_invitation_email(): void
     {
+        Queue::fake();
         Role::findOrCreate('admin', 'web');
         [$source] = $this->selectionSource();
         $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
@@ -303,7 +304,21 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $event = $source->event;
-        $event->update(['eventType' => $teamType]);
+        $event->update([
+            'eventType' => $teamType,
+            'organizer' => 'Cape Tennis Events Team',
+            'email' => 'events@example.test',
+            'venue_notes' => 'Players must report 30 minutes before their first match.',
+        ]);
+        $region = $selectionImport->region;
+        $region->update(['clothing_admin' => true, 'clothing_order' => true]);
+        $shirt = ClothingItemType::create([
+            'region_id' => $region->id,
+            'item_type_name' => 'Regional match shirt',
+            'price' => 395,
+            'ordering' => 1,
+        ]);
+        ClothingSize::create(['item_type' => $shirt->id, 'size' => '11-12', 'ordering' => 1]);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
 
@@ -313,22 +328,52 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Preview actual email')
             ->assertSee('Invitation message');
 
-        $this->actingAs($admin)->post(route('backend.team-selection.email.preview', [$event, $selectionImport]), [
+        $payload = [
             'email_subject' => 'Regional Platteland invitation',
             'email_message' => 'A message written by the regional organiser.',
             'event_information' => 'Meet the team manager at 07:30.',
             'reply_to' => 'manager@example.test',
             'response_deadline' => now()->addDay()->format('Y-m-d H:i:s'),
             'payment_deadline' => now()->addDays(2)->format('Y-m-d H:i:s'),
-            'include_clothing' => false,
-        ])->assertOk()
+            'replacement_payment_deadline' => now()->addDays(3)->format('Y-m-d H:i:s'),
+            'include_clothing' => true,
+        ];
+
+        $this->actingAs($admin)->post(route('backend.team-selection.email.preview', [$event, $selectionImport]), $payload)
+            ->assertOk()
+            ->assertSee('Preview only — no email has been sent')
             ->assertSee('A message written by the regional organiser.')
             ->assertSee('Meet the team manager at 07:30.')
+            ->assertSee('Cape Tennis Events Team')
+            ->assertSee('Players must report 30 minutes before their first match.')
+            ->assertSee('View the published event page')
+            ->assertSee('How to accept your invitation')
+            ->assertSee('Regional match shirt')
+            ->assertSee('R395.00')
+            ->assertSee('Sizes: 11-12')
+            ->assertSee('How to order:')
             ->assertSee('Accept and pay')
             ->assertSee('Decline invitation');
 
         $this->assertSame('draft', $selectionImport->fresh()->status);
         $this->assertNull($selectionImport->fresh()->prepared_at);
+
+        $changedPayload = array_replace($payload, ['email_message' => 'This wording changed after preview.']);
+        $this->actingAs($admin)->post(route('backend.team-selection.send', [$event, $selectionImport]), $changedPayload)
+            ->assertSessionHasErrors('email_preview');
+        $this->assertSame('draft', $selectionImport->fresh()->status);
+        Queue::assertNothingPushed();
+
+        $this->actingAs($admin)->post(route('backend.team-selection.email.preview', [$event, $selectionImport]), $changedPayload)
+            ->assertOk()
+            ->assertSee('This wording changed after preview.');
+        $this->actingAs($admin)->post(route('backend.team-selection.send', [$event, $selectionImport]), $changedPayload)
+            ->assertRedirect();
+
+        $savedImport = $selectionImport->fresh();
+        $this->assertSame('sent', $savedImport->status);
+        $this->assertSame('Regional match shirt', $savedImport->communication_snapshot['clothing_items'][0]['name']);
+        $this->assertEquals(395.0, $savedImport->communication_snapshot['clothing_items'][0]['price']);
     }
 
     public function test_team_selection_setup_is_event_scoped_to_an_authorized_admin(): void
@@ -343,11 +388,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $region = TeamRegion::create(['region_name' => 'West Coast Primary Schools 2026']);
         DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $region->id, 'ordering' => 1]);
+        $secondRegion = TeamRegion::create(['region_name' => 'Cape Winelands Primary Schools 2026']);
+        DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $secondRegion->id, 'ordering' => 2]);
 
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
             ->assertSee('Team Selection &amp; Invitations', false)
-            ->assertSee('West Coast Primary Schools 2026');
+            ->assertSee('West Coast Primary Schools 2026')
+            ->assertSee('Cape Winelands Primary Schools 2026')
+            ->assertSee('data-region-tabs', false)
+            ->assertSee('data-bs-toggle="tab"', false);
 
         $otherAdmin = User::factory()->create()->assignRole('admin');
         $this->actingAs($otherAdmin)->get(route('backend.team-selection.index', $event))->assertForbidden();
@@ -386,7 +436,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame([], $manager->ownedPlayerIds());
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
-            ->assertOk()->assertSee('Assigned Region')->assertDontSee('Private Other Region');
+            ->assertOk()
+            ->assertSee('Assigned Region')
+            ->assertSee('for your assigned region')
+            ->assertDontSee('Private Other Region')
+            ->assertDontSee('data-region-tabs', false);
         $this->actingAs($manager)->getJson(route('backend.team-selection.users.search', [$event, 'q' => 'region']))
             ->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [])

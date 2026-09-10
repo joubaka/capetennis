@@ -140,7 +140,15 @@ class TeamSelectionInvitationController extends Controller
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $this->communicationData($request);
+        $campaign = $service->previewCampaign($selectionImport, $data);
+        $previewHash = $request->session()->get('team_selection_email_previews.'.$selectionImport->id);
+        if (! is_string($previewHash) || ! hash_equals($campaign['hash'], $previewHash)) {
+            throw ValidationException::withMessages([
+                'email_preview' => 'Preview this exact email before sending. If you change any message, deadline, event detail, or clothing price, preview it again.',
+            ]);
+        }
         $stats = $service->send($selectionImport, $data, $request->user());
+        $request->session()->forget('team_selection_email_previews.'.$selectionImport->id);
 
         return back()->with('success', "Queued {$stats['queued']} invitations. {$stats['missing_email']} selected players need an email address.");
     }
@@ -157,8 +165,10 @@ class TeamSelectionInvitationController extends Controller
             ->firstOrFail();
         $campaign = $service->previewCampaign($selectionImport, $data);
         $kind = 'invitation';
+        $request->session()->put('team_selection_email_previews.'.$selectionImport->id, $campaign['hash']);
+        $subject = $campaign['subject'];
 
-        return view('emails.team-selection.invitation', compact('invitation', 'campaign', 'kind'));
+        return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject'));
     }
 
     public function restart(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamRankingImportService $service)

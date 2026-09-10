@@ -25,9 +25,30 @@
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
-  <div class="alert alert-info">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+  @if($isEventManager)
+    <div class="alert alert-info">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+  @else
+    <div class="alert alert-info">You are viewing team selection, invitations and announcements for your assigned region.</div>
+  @endif
 
-  <div class="row g-3">
+  @if($eventRegions->count() > 1)
+    <div class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist" aria-label="Event regions" data-region-tabs>
+      @foreach($eventRegions as $eventRegion)
+        <button
+          type="button"
+          class="nav-link text-nowrap {{ $loop->first ? 'active' : '' }}"
+          id="region-tab-{{ $eventRegion->id }}"
+          data-bs-toggle="tab"
+          data-bs-target="#region-panel-{{ $eventRegion->id }}"
+          role="tab"
+          aria-controls="region-panel-{{ $eventRegion->id }}"
+          aria-selected="{{ $loop->first ? 'true' : 'false' }}"
+        >{{ $eventRegion->region?->region_name }}</button>
+      @endforeach
+    </div>
+  @endif
+
+  <div class="{{ $eventRegions->count() > 1 ? 'tab-content' : 'row g-3' }}">
     @foreach($eventRegions as $eventRegion)
       @php($source = $eventRegion->rankingSource)
       @php($sourceReady = $source && $readySeriesIds->contains($source->series_id))
@@ -39,7 +60,13 @@
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
-      <div class="col-12">
+      <div
+        id="region-panel-{{ $eventRegion->id }}"
+        class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
+        role="tabpanel"
+        aria-labelledby="region-tab-{{ $eventRegion->id }}"
+        tabindex="0"
+      >
         <div class="card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
             <div><h5 class="mb-1">{{ $eventRegion->region?->region_name }}</h5><span class="text-muted small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
@@ -168,7 +195,7 @@
             <input type="hidden" name="selection_import_id" value="{{ $activeImport->id }}">
             <div class="modal-header"><div><h5 class="modal-title" id="prepare-invitations-title-{{ $activeImport->id }}">Prepare regional invitations</h5><div class="text-muted small">{{ $eventRegion->region?->region_name }} · {{ $activeImport->invitations->where('status','invited')->count() }} selected recipients</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
-              <div class="alert alert-info">The actual email can be previewed before sending. The saved message is snapshotted for audit and failed-email retries.</div>
+              <div class="alert alert-info"><strong>Preview required.</strong> Open the actual sample email before sending. The exact message, event details, deadlines and clothing prices are snapshotted for audit and failed-email retries. Any change requires another preview.</div>
               <div class="row g-3">
                 <div class="col-12"><label class="form-label">Email subject</label><input type="text" name="email_subject" maxlength="180" class="form-control" value="{{ old('email_subject', 'Platteland team invitation: '.$event->name) }}" required></div>
                 <div class="col-12"><label class="form-label">Invitation message</label><textarea name="email_message" rows="4" maxlength="10000" class="form-control" required>{{ old('email_message', 'You have been selected to represent your region. Please review the event information and respond before the deadline.') }}</textarea><div class="form-text">This message appears near the top of every invitation.</div></div>
@@ -177,7 +204,7 @@
                 <div class="col-md-4"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ old('payment_deadline') }}" class="form-control" required></div>
                 <div class="col-md-4"><label class="form-label">Replacement payment deadline</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ old('replacement_payment_deadline') }}" class="form-control" required><div class="form-text">Final payment cutoff for a promoted reserve.</div></div>
                 <div class="col-md-4"><label class="form-label">Reply-to email</label><input type="email" name="reply_to" value="{{ old('reply_to', $event->email) }}" class="form-control" maxlength="255"><div class="form-text">Optional contact for player replies.</div></div>
-                <div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Mention optional regional clothing and show ordering after event payment</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>
+                <div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Include optional regional clothing items, sizes, prices and ordering steps</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>
               </div>
               <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing account/email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
             </div>

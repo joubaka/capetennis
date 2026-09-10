@@ -32,7 +32,9 @@ final class TeamSelectionInvitationService
     public function send(TeamSelectionImport $import, array $deadlines, User $actor): array
     {
         return DB::transaction(function () use ($import, $deadlines, $actor) {
-            $locked = TeamSelectionImport::query()->lockForUpdate()->with(['event', 'invitations.team'])->findOrFail($import->id);
+            $locked = TeamSelectionImport::query()->lockForUpdate()
+                ->with(['event.venues', 'region.clothingItems.sizes', 'invitations.team'])
+                ->findOrFail($import->id);
             if ($locked->status === 'sent') {
                 throw ValidationException::withMessages(['import' => 'These invitations have already been sent.']);
             }
@@ -88,6 +90,7 @@ final class TeamSelectionInvitationService
                 'reply_to' => $campaign['reply_to'],
                 'include_clothing' => $campaign['include_clothing'],
                 'communication_hash' => $campaign['hash'],
+                'communication_snapshot' => $campaign,
                 'prepared_by' => $actor->id,
                 'prepared_at' => now(),
                 'status' => 'sent',
@@ -618,7 +621,7 @@ final class TeamSelectionInvitationService
 
     public function previewCampaign(TeamSelectionImport $import, array $details): array
     {
-        $import->loadMissing(['event', 'region.clothingItems.sizes']);
+        $import->loadMissing(['event.venues', 'region.clothingItems.sizes']);
         $response = now()->parse($details['response_deadline']);
         $payment = now()->parse($details['payment_deadline']);
         $replacement = now()->parse($details['replacement_payment_deadline'] ?? $details['payment_deadline']);
@@ -648,6 +651,28 @@ final class TeamSelectionInvitationService
                 ->whereHas('sizes')
                 ->exists();
         $includeClothing = (bool) ($details['include_clothing'] ?? false) && $clothingAvailable;
+        $eventDetails = [
+            'name' => $event?->name,
+            'published' => (bool) $event?->published,
+            'start_date' => $event?->start_date?->toDateString(),
+            'end_date' => $event?->end_date?->toDateString(),
+            'entry_fee' => (float) ($event?->entryFee ?? 0),
+            'organizer' => $event?->organizer,
+            'contact_email' => $event?->email,
+            'venues' => $event?->venues?->pluck('name')->filter()->values()->all() ?? [],
+            'venue_notes' => trim((string) $event?->venue_notes),
+            'public_url' => $event?->published ? route('events.show', $event) : null,
+        ];
+        $clothingItems = $includeClothing
+            ? $region->clothingItems
+                ->filter(fn ($item) => (float) $item->price > 0 && $item->sizes->isNotEmpty())
+                ->sortBy('ordering')
+                ->map(fn ($item) => [
+                    'name' => $item->item_type_name,
+                    'price' => (float) $item->price,
+                    'sizes' => $item->sizes->sortBy('ordering')->pluck('size')->filter()->values()->all(),
+                ])->values()->all()
+            : [];
         $snapshot = [
             'subject' => $subject,
             'message' => $message,
@@ -657,6 +682,8 @@ final class TeamSelectionInvitationService
             'payment_deadline' => $payment->toIso8601String(),
             'replacement_payment_deadline' => $replacement->toIso8601String(),
             'include_clothing' => $includeClothing,
+            'event' => $eventDetails,
+            'clothing_items' => $clothingItems,
         ];
         $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
@@ -665,6 +692,10 @@ final class TeamSelectionInvitationService
 
     private function savedCampaignSnapshot(TeamSelectionImport $import): array
     {
+        if (is_array($import->communication_snapshot) && $import->communication_snapshot !== []) {
+            return $import->communication_snapshot;
+        }
+
         return [
             'subject' => $import->email_subject,
             'message' => $import->email_message,
