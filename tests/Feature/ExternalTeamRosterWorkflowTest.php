@@ -97,7 +97,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertDatabaseCount('no_profile_team_players', 0);
     }
 
-    public function test_user_can_claim_an_owned_profile_and_continue_to_payment(): void
+    public function test_confirming_a_profile_does_not_link_it_until_the_profile_review_is_saved(): void
     {
         $user = User::factory()->create();
         $owned = Player::factory()->create(['userId' => $user->id]);
@@ -115,6 +115,26 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team' => $this->team->id,
             'event' => $this->event->id,
             'noProfile' => $slot->id,
+            'confirmed_profile' => 1,
+        ])->assertRedirect(route('player.claim.review'));
+
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertDatabaseMissing('user_players', [
+            'user_id' => $user->id,
+            'player_id' => $owned->id,
+        ]);
+
+        $this->actingAs($user)->get(route('player.claim.review'))
+            ->assertOk()
+            ->assertSee($owned->name)
+            ->assertSee('Save Profile and Continue to Payment');
+
+        $this->actingAs($user)->put(route('player.claim.complete'), [
+            'dateOfBirth' => '2012-05-17',
+            'gender' => 'Male',
+            'cellNr' => '0821234567',
+            'email' => 'updated@example.test',
+            'confirmed_details' => 1,
         ])->assertRedirect(route('team.payment.payfast', [$this->team, $owned, $this->event]));
 
         $this->assertDatabaseHas('no_profile_team_players', [
@@ -130,7 +150,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_user_can_link_a_system_profile_after_private_identity_verification(): void
+    public function test_user_can_correct_stale_identity_details_then_link_the_confirmed_profile(): void
     {
         $user = User::factory()->create();
         $existingOwner = User::factory()->create();
@@ -156,7 +176,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team' => $this->team->id,
             'event' => $this->event->id,
             'noProfile' => $slot->id,
-        ])->assertSessionHasErrors('player_id');
+        ])->assertSessionHasErrors('confirmed_profile');
         $this->assertNull($slot->fresh()->player_profile);
 
         $this->actingAs($user)->post(route('player.attach'), [
@@ -164,12 +184,23 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team' => $this->team->id,
             'event' => $this->event->id,
             'noProfile' => $slot->id,
-            'date_of_birth' => '2013-01-02',
-            'contact' => 'ANA@example.test',
+            'confirmed_profile' => 1,
+        ])->assertRedirect(route('player.claim.review'));
+
+        $this->assertNull($slot->fresh()->player_profile);
+
+        $this->actingAs($user)->put(route('player.claim.complete'), [
+            'dateOfBirth' => '2013-02-03',
+            'gender' => 'Female',
+            'cellNr' => '083 555 0101',
+            'email' => 'corrected@example.test',
+            'confirmed_details' => 1,
         ])->assertRedirect(route('team.payment.payfast', [$this->team, $player, $this->event]));
 
         $this->assertDatabaseHas('user_players', ['user_id' => $user->id, 'player_id' => $player->id]);
         $this->assertSame($player->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame('2013-02-03', substr((string) $player->fresh()->dateOfBirth, 0, 10));
+        $this->assertSame('corrected@example.test', $player->fresh()->email);
     }
 
     public function test_claim_rejects_a_profile_that_does_not_match_the_roster_identity(): void
@@ -190,6 +221,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team' => $this->team->id,
             'event' => $this->event->id,
             'noProfile' => $slot->id,
+            'confirmed_profile' => 1,
         ])->assertSessionHasErrors('player_id');
 
         $this->assertNull($slot->fresh()->player_profile);
@@ -214,6 +246,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team' => $this->team->id,
             'event' => $this->event->id,
             'noProfile' => $slot->id,
+            'confirmed_profile' => 1,
         ])->assertSessionHasErrors('event');
 
         $this->expectException(\Illuminate\Validation\ValidationException::class);
@@ -357,7 +390,8 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $payload = json_encode([$firstPage->json(), $secondPage->json()]);
         $this->assertStringNotContainsString('dateOfBirth', $payload);
-        $this->assertStringNotContainsString('@example.test', $payload);
+        $this->assertStringNotContainsString('private0@example.test', $payload);
+        $this->assertStringContainsString('p***@example.test', $payload);
 
         $this->actingAs($user)->getJson(route('player.search', [
             'q' => 'private0@example.test',

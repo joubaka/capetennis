@@ -1276,6 +1276,8 @@ Route::delete(
 
 
   Route::post('team/publishTeam/{id}', [TeamController::class, 'publishTeam'])->name('publish.team');
+  Route::post('event/{event}/region/{region}/teams/publish', [TeamController::class, 'publishRegionTeams'])
+    ->name('backend.region.teams.publish');
   Route::post('team/category/change/{id}', [TeamController::class, 'changeCategory'])->name('team.change.category');
   Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast');
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');
@@ -1736,6 +1738,8 @@ Route::delete(
   //Player
   Route::get('player/search', [PlayerController::class, 'search'])->name('player.search');
   Route::post('player/attachNoProfile', [PlayerController::class, 'attachNoProfile'])->name('player.attach');
+  Route::get('player/claim-profile/review', [PlayerController::class, 'reviewNoProfileClaim'])->name('player.claim.review');
+  Route::put('player/claim-profile/review', [PlayerController::class, 'completeNoProfileClaim'])->name('player.claim.complete');
   Route::post('player/attach', [PlayerController::class, 'attach'])->name('backend.user.player.attach');
 
   Route::post(

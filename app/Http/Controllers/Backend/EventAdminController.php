@@ -78,9 +78,13 @@ class EventAdminController extends Controller
     $event = Event::with([
       'event_admins',
 
-      // Regions → Teams → Players
-      'regions.teams.players',
-      'regions.teams.team_players_no_profile',
+      // A region can belong to multiple events. Only load teams whose category
+      // belongs to this event so counts and bulk actions remain event-scoped.
+      'regions.teams' => function ($query) use ($id) {
+        $query
+          ->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('event_id', $id))
+          ->with(['players', 'team_players_no_profile', 'category.category']);
+      },
 
       // Transactions
       'transactions.order.items.player',

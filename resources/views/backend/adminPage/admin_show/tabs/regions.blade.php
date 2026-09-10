@@ -30,6 +30,10 @@
           @else
 
           @foreach ($event->regions as $region)
+            @php
+              $regionTeamCount = $region->teams->count();
+              $regionUnpublishedCount = $region->teams->where('published', false)->count();
+            @endphp
 
             {{-- 🔹 REGION WRAPPER (AJAX TARGET) --}}
             <div class="accordion-item mb-2 border rounded"
@@ -64,6 +68,16 @@
                        data-id="{{ $region->pivot->id }}">
                       <i class="ti ti-trash me-1"></i> Remove Region
                     </a>
+
+                    <button type="button"
+                            class="btn btn-sm btn-success publishRegionTeams"
+                            data-url="{{ route('backend.region.teams.publish', [$event, $region]) }}"
+                            data-team-count="{{ $regionTeamCount }}"
+                            data-unpublished-count="{{ $regionUnpublishedCount }}"
+                            @disabled($regionTeamCount === 0 || $regionUnpublishedCount === 0)>
+                      <i class="ti ti-eye me-1"></i>
+                      {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'All Teams Published' : 'Publish All Teams' }}
+                    </button>
 
                     <a href="javascript:void(0)"
                        class="btn btn-sm btn-outline-primary import-region-teams-btn"
@@ -122,15 +136,16 @@
                           <div class="text-end" style="min-width:180px">
 
                             {{-- ✅ PUBLISH / UNPUBLISH --}}
-                            <a href="javascript:void(0)"
+                            <button type="button"
                                class="publishTeam btn btn-xs w-100 mb-2
                                {{ $team->published ? 'btn-warning' : 'btn-success' }}"
                                data-id="{{ $team->id }}"
+                               data-url="{{ route('publish.team', $team) }}"
                                data-state="{{ (int)$team->published }}">
 
                               <i class="ti {{ $team->published ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
                               {{ $team->published ? 'Unpublish Team' : 'Publish Team' }}
-                            </a>
+                            </button>
 
                             {{-- ✅ NOPROFILE TOGGLE --}}
                             <a href="javascript:void(0)"

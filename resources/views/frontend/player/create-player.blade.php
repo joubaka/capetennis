@@ -60,8 +60,9 @@ $(document).ready(function() {
         $('input[name="player_surname"]').val(parts.join(' '));
       }
     } else {
-      // Attach existing player
+      // Confirm the selected profile before reviewing its current details.
       $('#attach-player-id').val(data.id);
+      $('#selected-player-summary').text(data.text);
       $('#attach-player-form').removeClass('d-none');
       $('#create-player-form').addClass('d-none');
     }
@@ -87,7 +88,7 @@ $(document).ready(function() {
 <div class="card mb-4">
   <div class="card-header">Link {{ $name ?? 'this player' }} {{ $surname ?? '' }}</div>
   <div class="card-body">
-    <p class="text-muted small">Search every Cape Tennis profile before creating a new one. Search results show only a name and profile number; private contact details and dates of birth are never displayed.</p>
+    <p class="text-muted small">Search every Cape Tennis profile before creating a new one. Results show the player name, profile number, and a masked email address to help identify the correct profile.</p>
     <select id="player-search" style="width:100%"></select>
   </div>
 </div>
@@ -100,22 +101,17 @@ $(document).ready(function() {
   <input type="hidden" name="event" value="{{ $event ?? '' }}">
   <input type="hidden" name="noProfile" value="{{ $noProfileId ?? '' }}">
   <div class="card mb-3">
-    <div class="card-header">Verify existing profile</div>
+    <div class="card-header">Confirm selected profile</div>
     <div class="card-body">
-      <p class="text-muted small">If this profile is not already linked to your account, enter the player’s date of birth and the email address or mobile number already recorded on the profile.</p>
-      <div class="row g-3">
-        <div class="col-12 col-md-5">
-          <label for="existing-player-dob" class="form-label">Date of birth</label>
-          <input id="existing-player-dob" type="date" name="date_of_birth" class="form-control">
-        </div>
-        <div class="col-12 col-md-7">
-          <label for="existing-player-contact" class="form-label">Recorded email or mobile number</label>
-          <input id="existing-player-contact" type="text" name="contact" class="form-control" maxlength="190" autocomplete="off">
-        </div>
+      <p class="fw-semibold mb-2" id="selected-player-summary">Selected Cape Tennis player profile</p>
+      <p class="text-muted small">Confirm that this is the correct player. On the next screen you must review and update the player’s full profile before continuing to payment.</p>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="1" id="confirmed-profile" name="confirmed_profile" required>
+        <label class="form-check-label" for="confirmed-profile">Yes, this is the correct player profile.</label>
       </div>
     </div>
   </div>
-  <button type="submit" class="btn btn-success">Link Profile and Continue to Payment</button>
+  <button type="submit" class="btn btn-success">Confirm Profile and Review Details</button>
 </form>
 
 {{-- 🔹 Create New Player --}}

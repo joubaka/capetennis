@@ -338,19 +338,62 @@ class TeamController extends Controller
   }
 
 
-  public function publishTeam($id)
-    {
-        $team = Team::find($id);
-        $this->authorize('team.update', $team);
+  public function publishTeam(Request $request, $id)
+  {
+    $team = Team::findOrFail($id);
+    $this->authorize('team.update', $team);
 
-        if ($team->published == 1) {
-            $team->published = 0;
-        } else {
-            $team->published = 1;
-        }
-        $team->save();
-        return $team;
-    }
+    $validated = $request->validate([
+      'published' => 'sometimes|required|boolean',
+    ]);
+
+    // Keep the legacy toggle fallback for older callers while allowing the
+    // AJAX UI to send an explicit, retry-safe target state.
+    $published = array_key_exists('published', $validated)
+      ? (bool) $validated['published']
+      : !(bool) $team->published;
+
+    $team->update(['published' => $published]);
+
+    return response()->json([
+      'success' => true,
+      'team_id' => $team->id,
+      'published' => (bool) $team->published,
+      'message' => $team->published ? 'Team published.' : 'Team unpublished.',
+    ]);
+  }
+
+  public function publishRegionTeams(Event $event, TeamRegion $region)
+  {
+    $this->authorize('event-draw.view', $event);
+
+    abort_unless(
+      $event->regions()->whereKey($region->id)->exists(),
+      404,
+      'This region does not belong to the event.'
+    );
+
+    $teams = Team::query()
+      ->where('region_id', $region->id)
+      ->whereHas('category', fn ($query) => $query->where('event_id', $event->id));
+
+    $total = (clone $teams)->count();
+    $published = (clone $teams)->where('published', false)->update(['published' => true]);
+    $message = match (true) {
+      $published === 1 => '1 team published.',
+      $published > 1 => "{$published} teams published.",
+      default => 'All teams in this region were already published.',
+    };
+
+    return response()->json([
+      'success' => true,
+      'event_id' => $event->id,
+      'region_id' => $region->id,
+      'total' => $total,
+      'published' => $published,
+      'message' => $message,
+    ]);
+  }
 
 
 

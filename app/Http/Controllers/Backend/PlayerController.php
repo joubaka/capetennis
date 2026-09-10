@@ -524,13 +524,20 @@ class PlayerController extends Controller
 
     if (($validated['format'] ?? null) === 'select2') {
       $pageSize = 20;
-      $results = $players->simplePaginate($pageSize, ['id', 'name', 'surname'], 'page', $page);
+      $results = $players->simplePaginate($pageSize, ['id', 'name', 'surname', 'email'], 'page', $page);
 
       return response()->json([
-        'results' => collect($results->items())->map(fn (Player $player): array => [
-          'id' => $player->id,
-          'text' => trim($player->name.' '.$player->surname).' · profile #'.$player->id,
-        ])->values(),
+        'results' => collect($results->items())->map(function (Player $player): array {
+          $maskedEmail = $this->maskedEmail($player->email);
+
+          return [
+            'id' => $player->id,
+            'text' => trim($player->name.' '.$player->surname)
+              .' · '.($maskedEmail ?: 'no email recorded')
+              .' · profile #'.$player->id,
+            'masked_email' => $maskedEmail,
+          ];
+        })->values(),
         'pagination' => ['more' => $results->hasMorePages()],
       ]);
     }
@@ -581,8 +588,7 @@ class PlayerController extends Controller
       'team' => 'required|integer|exists:teams,id',
       'event' => 'required|integer|exists:events,id',
       'noProfile' => 'required|integer|exists:no_profile_team_players,id',
-      'date_of_birth' => 'nullable|date_format:Y-m-d',
-      'contact' => 'nullable|string|max:190',
+      'confirmed_profile' => 'accepted',
     ]);
 
     $player = Player::findOrFail($validated['player_id']);
@@ -590,19 +596,115 @@ class PlayerController extends Controller
     $event = Event::findOrFail($validated['event']);
     $noProfile = NoProfileTeamPlayer::findOrFail($validated['noProfile']);
 
-    $this->externalRosters->claim(
-      $request->user(),
-      $event,
-      $team,
-      $noProfile,
-      $player,
-      $validated['date_of_birth'] ?? null,
-      [$validated['contact'] ?? null],
+    $this->externalRosters->assertClaimCandidate($event, $team, $noProfile, $player);
+
+    $request->session()->put('team_profile_claim', [
+      'user_id' => $request->user()->id,
+      'player_id' => $player->id,
+      'team_id' => $team->id,
+      'event_id' => $event->id,
+      'no_profile_id' => $noProfile->id,
+    ]);
+
+    return redirect()->route('player.claim.review');
+  }
+
+  public function reviewNoProfileClaim(Request $request)
+  {
+    $claim = $this->pendingTeamProfileClaim($request);
+
+    return view('frontend.player.review-team-profile', [
+      'player' => $claim['player'],
+      'team' => $claim['team'],
+      'event' => $claim['event'],
+    ]);
+  }
+
+  public function completeNoProfileClaim(Request $request)
+  {
+    $claim = $this->pendingTeamProfileClaim($request);
+    /** @var Player $player */
+    $player = $claim['player'];
+
+    $validated = $request->validate([
+      'dateOfBirth' => 'required|date|before:today',
+      'gender' => 'required|in:Male,Female',
+      'cellNr' => 'required|string|max:50',
+      'email' => 'nullable|email|max:255',
+      'confirmed_details' => 'accepted',
+    ], [
+      'dateOfBirth.required' => 'Date of birth is required.',
+      'dateOfBirth.before' => 'Date of birth must be before today.',
+      'gender.required' => 'Please select a gender.',
+      'cellNr.required' => 'Cell number is required.',
+      'confirmed_details.accepted' => 'Confirm that the player details are correct before continuing.',
+    ]);
+
+    $this->playerIdentity->ensureAvailable(
+      (string) $player->name,
+      (string) $player->surname,
+      $validated['dateOfBirth'],
+      $player->id,
     );
 
-    // Redirect to payment
-    return redirect()->route('team.payment.payfast', [$team->id, $player->id, $event->id])
-      ->with('message', 'Player attached successfully');
+    DB::transaction(function () use ($request, $claim, $player, $validated): void {
+      $player = Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
+      $player->update([
+        'dateOfBirth' => $validated['dateOfBirth'],
+        'gender' => $validated['gender'] === 'Male' ? 1 : 2,
+        'cellNr' => $validated['cellNr'],
+        'email' => $validated['email'] ?? null,
+      ]);
+      $player->markProfileUpdated();
+
+      // Keep the ownership hand-off inside the transaction so a failed claim
+      // cannot leave the selected profile linked to this account.
+      $request->user()->players()->syncWithoutDetaching([$player->id]);
+      $this->externalRosters->claim(
+        $request->user(),
+        $claim['event'],
+        $claim['team'],
+        $claim['slot'],
+        $player,
+      );
+    });
+
+    $request->session()->forget('team_profile_claim');
+
+    return redirect()->route('team.payment.payfast', [
+      $claim['team']->id,
+      $player->id,
+      $claim['event']->id,
+    ])->with('message', 'Player profile confirmed and attached successfully');
+  }
+
+  private function pendingTeamProfileClaim(Request $request): array
+  {
+    $pending = $request->session()->get('team_profile_claim');
+    abort_unless(is_array($pending) && (int) ($pending['user_id'] ?? 0) === (int) $request->user()->id, 404);
+
+    $player = Player::findOrFail((int) $pending['player_id']);
+    $team = Team::findOrFail((int) $pending['team_id']);
+    $event = Event::findOrFail((int) $pending['event_id']);
+    $slot = NoProfileTeamPlayer::findOrFail((int) $pending['no_profile_id']);
+    $this->externalRosters->assertClaimCandidate($event, $team, $slot, $player);
+
+    return compact('player', 'team', 'event', 'slot');
+  }
+
+  private function maskedEmail(?string $email): ?string
+  {
+    $email = mb_strtolower(trim((string) $email));
+    if ($email === '' || ! str_contains($email, '@')) {
+      return null;
+    }
+
+    [$local, $domain] = explode('@', $email, 2);
+    if ($local === '' || $domain === '') {
+      return null;
+    }
+
+    return mb_substr($local, 0, 1).str_repeat('*', 3).'@'.$domain;
   }
 
 }

@@ -137,8 +137,7 @@ class ExternalTeamRosterService
         array $verifiedContacts = [],
     ): void
     {
-        $this->assertClaimAvailable($event, $team, $slot);
-        $this->assertPlayerMatchesRosterSlot($slot, $player);
+        $this->assertClaimCandidate($event, $team, $slot, $player);
 
         if (! $this->userOwnsPlayer($user, $player) && ! $user->can('event.manage', $event)) {
             $this->assertExistingProfileVerification($player, $verifiedDateOfBirth, $verifiedContacts);
@@ -189,6 +188,12 @@ class ExternalTeamRosterService
                 ->withProperties(['event_id' => $event->id, 'slot_id' => $lockedSlot->id, 'rank' => $lockedSlot->rank, 'player_id' => $player->id])
                 ->log('External roster position claimed');
         });
+    }
+
+    public function assertClaimCandidate(Event $event, Team $team, NoProfileTeamPlayer $slot, Player $player): void
+    {
+        $this->assertClaimAvailable($event, $team, $slot);
+        $this->assertPlayerMatchesRosterSlot($slot, $player);
     }
 
     public function assertCanRegister(User $user, Event $event, Team $team, Player $player): TeamPlayer
@@ -255,13 +260,6 @@ class ExternalTeamRosterService
             ]);
         }
 
-        $slotDateOfBirth = $slot->date_of_birth?->format('Y-m-d');
-        $playerDateOfBirth = substr((string) $player->dateOfBirth, 0, 10);
-        if ($slotDateOfBirth && $slotDateOfBirth !== $playerDateOfBirth) {
-            throw ValidationException::withMessages([
-                'player_id' => 'The selected profile date of birth does not match this roster player.',
-            ]);
-        }
     }
 
     private function assertExistingProfileVerification(

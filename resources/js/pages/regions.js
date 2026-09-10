@@ -189,6 +189,15 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
               <i class="ti ti-trash me-1"></i> Remove Region
             </a>
 
+            <button type="button"
+                    class="btn btn-sm btn-success publishRegionTeams"
+                    data-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/teams/publish"
+                    data-team-count="0"
+                    data-unpublished-count="0"
+                    disabled>
+              <i class="ti ti-eye me-1"></i> Publish All Teams
+            </button>
+
             <a href="javascript:void(0)"
                class="btn btn-sm btn-outline-primary import-region-teams-btn"
                data-region-name="${escapeHtml(res.region_name)}"
@@ -282,6 +291,37 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
   // ===============================
   // Publish / Unpublish Team
   // ===============================
+  function renderTeamPublicationButton($btn, published) {
+    const state = published ? '1' : '0';
+    $btn.data('state', state)
+      .attr('data-state', state)
+      .toggleClass('btn-warning', published)
+      .toggleClass('btn-success', !published)
+      .html(published
+        ? '<i class="ti ti-eye-off me-1"></i> Unpublish Team'
+        : '<i class="ti ti-eye me-1"></i> Publish Team');
+  }
+
+  function syncRegionPublicationButton($regionRow) {
+    const $bulkBtn = $regionRow.find('.publishRegionTeams').first();
+    if (!$bulkBtn.length) return;
+
+    const $teamButtons = $regionRow.find('.publishTeam');
+    const unpublishedCount = $teamButtons.filter(function () {
+      return String($(this).data('state')) !== '1';
+    }).length;
+
+    $bulkBtn
+      .data('team-count', $teamButtons.length)
+      .attr('data-team-count', $teamButtons.length)
+      .data('unpublished-count', unpublishedCount)
+      .attr('data-unpublished-count', unpublishedCount)
+      .prop('disabled', $teamButtons.length === 0 || unpublishedCount === 0)
+      .html(unpublishedCount === 0 && $teamButtons.length > 0
+        ? '<i class="ti ti-check me-1"></i> All Teams Published'
+        : '<i class="ti ti-eye me-1"></i> Publish All Teams');
+  }
+
   $(document).on('click', '.publishTeam', function (e) {
     e.preventDefault();
 
@@ -292,6 +332,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     console.log('📣 publishTeam', { teamId, state });
 
     const action = state === '1' ? 'Unpublish' : 'Publish';
+    const targetState = state !== '1';
 
     Swal.fire({
       title: `${action} team?`,
@@ -301,19 +342,61 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     }).then(r => {
       if (!r.isConfirmed) return;
 
-      $.post(`${APP_URL}/backend/team/publishTeam/${teamId}`, { _token: CSRF })
-        .done(() => {
-          const newState = state === '1' ? '0' : '1';
-          $btn.data('state', newState);
+      $btn.prop('disabled', true);
 
-          $btn.toggleClass('btn-success btn-warning')
-            .html(newState === '1'
-              ? '<i class="ti ti-eye-off me-1"></i> Unpublish'
-              : '<i class="ti ti-eye me-1"></i> Publish');
-
-          toastr.success(`Team ${action.toLowerCase()}ed`);
+      $.post($btn.data('url') || `${APP_URL}/backend/team/publishTeam/${teamId}`, {
+        _token: CSRF,
+        published: targetState ? 1 : 0
+      })
+        .done(res => {
+          renderTeamPublicationButton($btn, !!res.published);
+          syncRegionPublicationButton($btn.closest('[data-region-row]'));
+          toastr.success(res.message || `Team ${action.toLowerCase()}ed.`);
         })
-        .fail(xhr => logXhrFail('Publish toggle failed', xhr));
+        .fail(xhr => {
+          logXhrFail('Publish update failed', xhr);
+          toastr.error(xhr.responseJSON?.message || 'Could not update the team publication status.');
+        })
+        .always(() => $btn.prop('disabled', false));
+    });
+  });
+
+  // ===============================
+  // Publish every team in one event region
+  // ===============================
+  $(document).on('click', '.publishRegionTeams', function (e) {
+    e.preventDefault();
+
+    const $btn = $(this);
+    const $regionRow = $btn.closest('[data-region-row]');
+    const unpublishedCount = Number($btn.data('unpublished-count')) || 0;
+
+    if ($btn.prop('disabled') || unpublishedCount === 0) return;
+
+    Swal.fire({
+      title: 'Publish all teams in this region?',
+      text: `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'team' : 'teams'} will become visible.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Publish all'
+    }).then(r => {
+      if (!r.isConfirmed) return;
+
+      $btn.prop('disabled', true);
+
+      $.post($btn.data('url'), { _token: CSRF })
+        .done(res => {
+          $regionRow.find('.publishTeam').each(function () {
+            renderTeamPublicationButton($(this), true);
+          });
+          syncRegionPublicationButton($regionRow);
+          toastr.success(res.message || 'All teams in this region are published.');
+        })
+        .fail(xhr => {
+          logXhrFail('Publish region teams failed', xhr);
+          toastr.error(xhr.responseJSON?.message || 'Could not publish the teams in this region.');
+          syncRegionPublicationButton($regionRow);
+        });
     });
   });
 
@@ -550,9 +633,9 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                 </button>
               </div>
               <div class="text-end" style="min-width:180px">
-                <a href="javascript:void(0)" class="publishTeam btn btn-xs w-100 mb-2 btn-success" data-id="${res.id}" data-state="0">
+                <button type="button" class="publishTeam btn btn-xs w-100 mb-2 btn-success" data-id="${res.id}" data-url="${APP_URL}/backend/team/publishTeam/${res.id}" data-state="0">
                   <i class="ti ti-eye me-1"></i> Publish Team
-                </a>
+                </button>
                 <a href="javascript:void(0)" class="toggleNoProfile btn btn-xs w-100 mb-2 btn-info" data-url="${APP_URL}/backend/teams/toggle-noprofile/${res.id}" data-state="0">
                   <i class="ti ti-user me-1"></i> Enable NoProfile
                 </a>
@@ -569,6 +652,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
           $teamList = $teamsContainer.find('.list-group');
         }
         $teamList.append(teamRowHtml);
+        syncRegionPublicationButton($regionRow);
 
         // Update team count
         const headerText = $regionRow.find('.ms-2.text-muted.small').text();

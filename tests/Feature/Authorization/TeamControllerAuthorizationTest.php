@@ -439,4 +439,91 @@ class TeamControllerAuthorizationTest extends TestCase
             'published' => 1,
         ]);
     }
+
+    public function test_admin_can_set_team_publication_to_an_explicit_state(): void
+    {
+        $this->team->update(['published' => false]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('publish.team', $this->team), ['published' => true])
+            ->assertOk()
+            ->assertJson([
+                'success' => true,
+                'team_id' => $this->team->id,
+                'published' => true,
+            ]);
+
+        // A repeated AJAX request is idempotent instead of toggling it back.
+        $this->actingAs($this->admin)
+            ->postJson(route('publish.team', $this->team), ['published' => true])
+            ->assertOk()
+            ->assertJson(['published' => true]);
+
+        $this->assertDatabaseHas('teams', ['id' => $this->team->id, 'published' => 1]);
+    }
+
+    public function test_admin_can_publish_all_teams_in_an_event_region_without_cross_event_changes(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Shared Region']);
+        $this->event->regions()->attach($region->id);
+        $this->otherEvent->regions()->attach($region->id);
+
+        $firstEventTeam = Team::factory()->create([
+            'category_event_id' => $this->categoryEvent->id,
+            'region_id' => $region->id,
+            'published' => false,
+        ]);
+        $alreadyPublishedTeam = Team::factory()->create([
+            'category_event_id' => $this->categoryEvent->id,
+            'region_id' => $region->id,
+            'published' => true,
+        ]);
+        $otherEventTeam = Team::factory()->create([
+            'category_event_id' => $this->otherCategoryEvent->id,
+            'region_id' => $region->id,
+            'published' => false,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.region.teams.publish', [$this->event, $region]))
+            ->assertOk()
+            ->assertJson([
+                'success' => true,
+                'event_id' => $this->event->id,
+                'region_id' => $region->id,
+                'total' => 2,
+                'published' => 1,
+            ]);
+
+        $this->assertDatabaseHas('teams', ['id' => $firstEventTeam->id, 'published' => 1]);
+        $this->assertDatabaseHas('teams', ['id' => $alreadyPublishedTeam->id, 'published' => 1]);
+        $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 0]);
+    }
+
+    public function test_admin_cannot_bulk_publish_a_region_for_another_event(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Other Event Region']);
+        $this->otherEvent->regions()->attach($region->id);
+
+        $team = Team::factory()->create([
+            'category_event_id' => $this->otherCategoryEvent->id,
+            'region_id' => $region->id,
+            'published' => false,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.region.teams.publish', [$this->otherEvent, $region]))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('teams', ['id' => $team->id, 'published' => 0]);
+    }
+
+    public function test_bulk_publish_rejects_a_region_not_attached_to_the_event(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Detached Region']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.region.teams.publish', [$this->event, $region]))
+            ->assertNotFound();
+    }
 }
