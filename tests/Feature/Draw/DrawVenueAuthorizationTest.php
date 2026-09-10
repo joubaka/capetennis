@@ -68,6 +68,22 @@ class DrawVenueAuthorizationTest extends TestCase
         ]);
     }
 
+    public function test_event_admin_can_clear_all_draw_venues(): void
+    {
+        $this->draw->venues()->attach($this->venueId, ['num_courts' => 2]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.draw.venues.store', $this->draw), [
+                'venue_id' => [],
+                'num_courts' => [],
+            ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('draw_venues', [
+            'draw_id' => $this->draw->id,
+            'venue_id' => $this->venueId,
+        ]);
+    }
+
     public function test_locked_draw_rejects_venue_changes(): void
     {
         $this->draw->update(['locked' => true]);

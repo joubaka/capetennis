@@ -210,6 +210,12 @@ class DrawWorkspaceTest extends TestCase
     {
         [$draw, $category] = $this->workspace();
         $draw->update(['drawName' => 'Draw workspace regression demo']);
+        DB::table('venues')->insert([
+            'name' => 'Browser Test Venue',
+            'event_id' => $draw->event_id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $a = $draw->groups()->create(['name' => 'A']);
         $b = $draw->groups()->create(['name' => 'B']);
         $draw->settings()->create(['boxes' => 2, 'num_sets' => 3]);
@@ -229,6 +235,10 @@ class DrawWorkspaceTest extends TestCase
             );
         }
         $response->assertSee('name="scheduled_at"', false)
+            ->assertSee('id="rr-add-venues"', false)
+            ->assertSee('id="venuesModal"', false)
+            ->assertSee('window.RR_ALL_VENUES', false)
+            ->assertDontSee('data-bs-target="#basicModal"', false)
             ->assertSee('name="score_format"', false)
             ->assertSee('One set · first to 3 games')
             ->assertSee('Best of 3 sets · first to 6 games')

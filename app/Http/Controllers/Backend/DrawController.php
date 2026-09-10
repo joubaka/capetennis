@@ -1338,9 +1338,9 @@ public function json(Draw $draw)
 
     // Validation
     $validated = $request->validate([
-      'venue_id' => 'required|array',
-      'venue_id.*' => 'required|exists:venues,id',
-      'num_courts' => 'required|array',
+      'venue_id' => 'present|array',
+      'venue_id.*' => 'required|distinct|exists:venues,id',
+      'num_courts' => 'present|array|size:'.count($venueIds),
       'num_courts.*' => 'required|integer|min:1',
     ]);
 

@@ -756,7 +756,7 @@
         <h5 class="card-title mb-0"><i class="ti ti-map-pin me-1 text-primary"></i> Venues</h5>
         <small class="text-muted">Manage venues assigned to this draw</small>
       </div>
-      <button type="button" class="btn btn-primary btn-sm addVenues" data-id="{{ $draw->id }}" data-bs-toggle="modal" data-bs-target="#basicModal">
+      <button type="button" class="btn btn-primary btn-sm addVenues" id="rr-add-venues" data-id="{{ $draw->id }}" data-draw-name="{{ $draw->drawName }}">
         <i class="ti ti-plus me-1"></i> Add Venue
       </button>
     </div>
@@ -1134,6 +1134,7 @@
     window.RR_GROUPS    = @json($groupsjson);   // THE ONLY CORRECT ONE
     window.RR_OOP       = @json($oops);
     window.RR_STANDINGS = @json($standings);
+    window.RR_ALL_VENUES = @json($venues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values());
 
     window.RR_DRAW_LOCKED    = {{ $draw->locked ? 'true' : 'false' }};
     window.RR_DRAW_PUBLISHED = {{ $draw->published ? 'true' : 'false' }};

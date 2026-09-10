@@ -20,6 +20,7 @@ let groups = initial('RR_GROUPS').map(g => ({
 const roster = initial('RR_ROSTER');
 let revision = initial('RR_ASSIGNMENT_REVISION'),
   fixtures = [],
+  assignedVenues = [],
   failSave = false;
 const calls = [];
 const json = (response, data, status = 200) => {
@@ -88,6 +89,14 @@ const server = http.createServer(async (request, response) => {
       f.score = f.all_sets.join(', ');
       return json(response, { ...hub(), oop: fixtures, fixture: f, mode: 'RR' });
     }
+    if (pathname.endsWith('/venues')) {
+      assignedVenues = (data.venue_id || []).map((id, index) => ({
+        id: Number(id),
+        name: 'Browser Test Venue',
+        num_courts: Number(data.num_courts[index])
+      }));
+      return json(response, { success: true, message: 'Venues updated successfully.', venues: assignedVenues });
+    }
     return json(response, { success: true });
   }
   if (pathname.endsWith('/groups-data')) return json(response, { groups, revision });
@@ -106,7 +115,8 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     return response.end('<svg width="500" height="150"><text x="20" y="40">Regression bracket preview</text></svg>');
   }
-  if (pathname.endsWith('/venues') || pathname.includes('/schedule/')) return json(response, []);
+  if (pathname.endsWith('/venues/json')) return json(response, assignedVenues);
+  if (pathname.includes('/schedule/')) return json(response, []);
   if (pathname === '/' || pathname.includes('/draw/roundrobin/')) {
     const base = 'http://127.0.0.1:' + server.address().port;
     let html = snapshot
@@ -285,6 +295,17 @@ async function run() {
       assert.equal(await page.locator('#autoScheduleBtn').isVisible(), true);
       assert.equal(await page.locator('#clearScheduleBtn').isVisible(), true);
       await page.locator('#scheduleModal .btn-close').click();
+    });
+    await check('Add Venue opens the rendered modal and saves the array contract', async () => {
+      await page.locator('#rr-add-venues').click();
+      await page.locator('#venuesModal.show').waitFor();
+      await page.locator('#venuesModal .venue-select').selectOption({ index: 1 });
+      await page.locator('#venuesModal input[name="num_courts[]"]').fill('4');
+      await page.locator('#venuesForm button[type="submit"]').click();
+      await page.locator('#venuesModal').waitFor({ state: 'hidden' });
+      const save = calls.findLast(call => call.path.endsWith('/venues'));
+      assert.deepEqual(save.data.venue_id.map(Number), [Number(await page.locator('#venuesModal .venue-select option').nth(1).getAttribute('value'))]);
+      assert.deepEqual(save.data.num_courts.map(Number), [4]);
     });
     await check('Mobile assignment actions and navigation fit the viewport', async () => {
       await page.setViewportSize({ width: 390, height: 844 });

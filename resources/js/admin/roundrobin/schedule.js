@@ -8,6 +8,46 @@
   'use strict';
 
   var DRAW_ID = null;
+  var ALL_VENUES = [];
+
+  function venueRow(selectedId, numCourts) {
+    var $row = $('<div class="venue-row d-flex gap-2 mb-2"></div>');
+    var $select = $('<select name="venue_id[]" class="form-select venue-select" required></select>')
+      .append($('<option></option>').val('').text('-- Select Venue --'));
+
+    ALL_VENUES.forEach(function (venue) {
+      $select.append($('<option></option>').val(venue.id).text(venue.name));
+    });
+    if (selectedId) $select.val(String(selectedId));
+
+    var $courts = $('<input type="number" name="num_courts[]" class="form-control" min="1" required>')
+      .val(numCourts || 1)
+      .css('max-width', '100px');
+    var $remove = $('<button type="button" class="btn btn-danger btn-remove-row" aria-label="Remove venue">&times;</button>');
+
+    $row.append($select, $courts, $remove);
+    $('#venues-container').append($row);
+
+    if ($.fn.select2) {
+      $select.select2({ dropdownParent: $('#venuesModal'), width: '100%' });
+    }
+  }
+
+  function showVenueModal() {
+    var element = document.getElementById('venuesModal');
+    if (!element) {
+      AdminToast.error('The venue form is unavailable. Refresh the page and try again.');
+      return;
+    }
+    bootstrap.Modal.getOrCreateInstance(element).show();
+  }
+
+  function hideVenueModal() {
+    var element = document.getElementById('venuesModal');
+    if (!element) return;
+    var modal = bootstrap.Modal.getInstance(element);
+    if (modal) modal.hide();
+  }
 
   // ─── Schedule table ───────────────────────────────────────────────
   function renderScheduleTable() {
@@ -70,23 +110,51 @@
       .catch(function () { AdminToast.warning('Could not refresh venues.'); });
   }
 
-  // ─── Add venue ────────────────────────────────────────────────────
-  function _saveVenue() {
-    var drawId   = $('#drawIdInput').val() || DRAW_ID;
-    var venueId  = $('#venueDrawSelect2').val();
-    var numCourts = $('#numCourtsInput').val();
+  // ─── Add/update venues ────────────────────────────────────────────
+  function _openVenues() {
+    var $button = $(this).prop('disabled', true);
+    var $container = $('#venues-container').empty();
+    $('#venuesForm')
+      .attr('action', AdminRoutes.drawUrl(DRAW_ID, '/venues'))
+      .data('draw-id', DRAW_ID);
+    $('#venuesModal .modal-title').text('Assign Venues to ' + ($button.data('draw-name') || 'Draw'));
 
-    AdminApi.post(AdminRoutes.appUrl() + '/backend/draw/' + drawId + '/venues', {
-      _token:     $('meta[name="csrf-token"]').attr('content'),
-      venue_id:   venueId,
+    AdminApi.get(AdminRoutes.drawUrl(DRAW_ID, '/venues/json'))
+      .then(function (venues) {
+        (venues && venues.length ? venues : [{ id: '', num_courts: 1 }]).forEach(function (venue) {
+          venueRow(venue.id, venue.num_courts);
+        });
+        showVenueModal();
+      })
+      .catch(function (err) {
+        $container.empty();
+        AdminToast.error(err.message || 'Failed to load venues');
+      })
+      .then(function () { $button.prop('disabled', false); });
+  }
+
+  function _saveVenues(event) {
+    event.preventDefault();
+    var venueIds = $('#venues-container .venue-select').map(function () { return $(this).val(); }).get();
+    var numCourts = $('#venues-container input[name="num_courts[]"]').map(function () { return $(this).val(); }).get();
+    var uniqueIds = venueIds.filter(Boolean).filter(function (id, index, values) { return values.indexOf(id) === index; });
+
+    if (uniqueIds.length !== venueIds.filter(Boolean).length) {
+      AdminToast.error('Each venue can only be assigned once.');
+      return;
+    }
+
+    var $submit = $('#venuesForm button[type="submit"]').prop('disabled', true);
+    AdminApi.postJson(AdminRoutes.drawUrl(DRAW_ID, '/venues'), {
+      venue_id: venueIds,
       num_courts: numCourts
     }).then(function (res) {
-      AdminToast.success(res.message || 'Venue added');
-      $('#basicModal').modal('hide');
+      AdminToast.success(res.message || 'Venues updated');
+      hideVenueModal();
       refreshVenuesUI();
     }).catch(function (err) {
-      AdminToast.error(err.message || 'Failed to add venue');
-    });
+      AdminToast.error(err.message || 'Failed to update venues');
+    }).then(function () { $submit.prop('disabled', false); });
   }
 
   // ─── Remove venue ────────────────────────────────────────────────
@@ -98,17 +166,15 @@
     AdminConfirm.destructive('Remove venue?').then(function (ok) {
       if (!ok) return;
 
-      AdminApi.request({
-        url:    AdminRoutes.appUrl() + '/backend/draw/' + drawId + '/venues',
-        method: 'POST',
-        data: {
-          _token:   $('meta[name="csrf-token"]').attr('content'),
-          venue_id: venueId,
-          _method:  'DELETE'
-        }
+      AdminApi.get(AdminRoutes.drawUrl(drawId, '/venues/json')).then(function (venues) {
+        var remaining = venues.filter(function (venue) { return String(venue.id) !== String(venueId); });
+        return AdminApi.postJson(AdminRoutes.drawUrl(drawId, '/venues'), {
+          venue_id: remaining.map(function (venue) { return venue.id; }),
+          num_courts: remaining.map(function (venue) { return venue.num_courts || 1; })
+        });
       }).then(function (res) {
         AdminToast.success(res.message || 'Venue removed');
-        $btn.closest('.d-flex').fadeOut(300, function () { $(this).remove(); });
+        refreshVenuesUI();
       }).catch(function (err) {
         AdminToast.error(err.message || 'Failed to remove venue');
       });
@@ -117,11 +183,15 @@
 
   // ─── Bind ─────────────────────────────────────────────────────────
   function bind() {
-    $(document).on('click', '.addVenues', function () {
-      $('#drawIdInput').val($(this).data('id'));
+    $(document).on('click', '.addVenues', _openVenues);
+    $(document).on('click', '#addVenueRow', function () { venueRow('', 1); });
+    $(document).on('click', '#venuesModal .btn-remove-row', function () {
+      var $row = $(this).closest('.venue-row');
+      var $select = $row.find('.venue-select');
+      if ($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
+      $row.remove();
     });
-
-    $(document).on('click', '#save-draw-venue-button', _saveVenue);
+    $(document).on('submit', '#venuesForm', _saveVenues);
     $(document).on('click', '.deleteVenue', _deleteVenue);
 
     // Tab activation
@@ -142,6 +212,7 @@
 
   function init(drawId) {
     DRAW_ID = drawId;
+    ALL_VENUES = root.RR_ALL_VENUES || [];
     bind();
     // Expose for legacy shims
     root.refreshVenuesUI = refreshVenuesUI;
