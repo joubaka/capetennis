@@ -7,9 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Models\ClothingItemType;
 use App\Models\ClothingSize;
 use App\Models\Event;
+use App\Models\EventRegion;
 use App\Models\TeamRegion;
 use App\Services\Clothing\RegionClothingCopyService;
 use App\Services\Clothing\ClothingPriceService;
+use App\Services\TeamSelection\RegionManagerAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -69,7 +71,7 @@ class RegionClothingController extends Controller
    * Show clothing items (with sizes) for a region, and allow inline editing.
    * View: resources/views/admin/clothing/region_items.blade.php
    */
-  public function edit(Request $request, TeamRegion $region, ClothingPriceService $prices){
+  public function edit(Request $request, TeamRegion $region, ClothingPriceService $prices, RegionManagerAccessService $access){
     $this->authorize('region-clothing.manage', $region);
    
     // Load items for this region with sizes
@@ -98,7 +100,20 @@ class RegionClothingController extends Controller
 
     $payfastSettings = $prices->settings();
 
-    return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear', 'payfastSettings'));
+    $backEvent = $request->integer('event_id')
+      ? Event::find($request->integer('event_id'))
+      : null;
+    $backEventRegion = $backEvent
+      ? EventRegion::query()->with('events')->where('event_id', $backEvent->id)->where('region_id', $region->id)->first()
+      : null;
+    if (! $backEventRegion || ! $access->canManage($request->user(), $backEventRegion)) $backEvent = null;
+    $backUrl = $backEvent
+      ? ($access->isEventManager($request->user(), $backEvent)
+        ? route('admin.events.overview', $backEvent)
+        : route('backend.team-selection.index', $backEvent))
+      : null;
+
+    return view('backend.clothing.region-items', compact('region', 'items', 'sourceRegions', 'copySource', 'targetYear', 'payfastSettings', 'backEvent', 'backUrl'));
   }
 
   public function copyFromRegion(Request $request, TeamRegion $region, RegionClothingCopyService $service, ClothingPriceService $prices)
@@ -311,7 +326,7 @@ class RegionClothingController extends Controller
     return response()->json(['ok' => true]);
   }
 
-  public function orders(TeamRegion $region)
+  public function orders(Request $request, TeamRegion $region)
   {
     $this->authorize('region-clothing.manage', $region);
 

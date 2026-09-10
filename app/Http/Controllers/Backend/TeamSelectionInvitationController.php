@@ -281,6 +281,93 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', ($replacement->player?->full_name ?? 'The next reserve').' was promoted and sent a replacement invitation.');
     }
 
+    public function moveRosterRank(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate(['direction' => ['required', 'in:up,down']]);
+        $service->moveRosterRank($invitation, $request->user(), $data['direction']);
+
+        return back()->with('success', 'Regional roster order updated.');
+    }
+
+    public function viewSentInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        abort_unless($selectionImport->status === 'sent', 404);
+        $invitation->loadMissing(['selectionImport.event', 'region', 'team', 'player']);
+        $campaign = $service->savedCampaign($selectionImport);
+        $kind = $invitation->promoted_from_id ? 'replacement' : 'invitation';
+        $subject = $campaign['subject'] ?? $selectionImport->email_subject;
+        $previewOnly = false;
+
+        return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject', 'previewOnly'));
+    }
+
+    public function resendInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $email = $service->resendInvitation($invitation, $request->user());
+
+        return back()->with('success', "Invitation re-queued for {$email} using the saved campaign message.");
+    }
+
+    public function sendRosterMessage(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
+    {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        $data = $request->validate([
+            'target_type' => ['required', 'in:team,player'],
+            'team_id' => ['required', 'integer', 'exists:teams,id'],
+            'invitation_id' => ['nullable', 'integer', 'exists:team_selection_invitations,id'],
+            'subject' => ['required', 'string', 'max:180'],
+            'message' => ['required', 'string', 'max:20000'],
+            'confirm_recipients' => ['accepted'],
+        ]);
+        $team = Team::query()->withoutGlobalScopes()->with('category.event')->findOrFail($data['team_id']);
+        abort_unless((int) $team->region_id === (int) $eventRegion->region_id
+            && (int) $team->category?->event_id === (int) $event->id, 404);
+
+        $invitations = TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
+            ->where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
+            ->where('team_id', $team->id)
+            ->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ]);
+        if ($data['target_type'] === 'player') {
+            $invitations->whereKey((int) ($data['invitation_id'] ?? 0));
+        }
+        $targets = $invitations->get();
+        abort_if($targets->isEmpty(), 404);
+        $recipients = $targets->map(function (TeamSelectionInvitation $invitation): array {
+            $email = collect([
+                $invitation->player?->user?->email,
+                $invitation->player?->email,
+            ])->merge($invitation->player?->users?->pluck('email') ?? collect())
+                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
+
+            return ['email' => $email, 'name' => $invitation->player?->full_name];
+        })->filter(fn (array $recipient) => filled($recipient['email']))->unique('email')->values();
+        if ($recipients->isEmpty()) {
+            throw ValidationException::withMessages(['message' => 'No active selected recipient has a valid email address.']);
+        }
+        $related = $data['target_type'] === 'player' ? $targets->first() : $team;
+        $stats = $mailer->dispatch('team_email', $related, $recipients, [
+            'subject' => trim($data['subject']),
+            'message' => $data['message'],
+            'from_name' => $request->user()->name ?: 'Regional team manager',
+            'reply_to' => $request->user()->email,
+        ], true);
+        activity('team-selection')->performedOn($related)->causedBy($request->user())
+            ->withProperties(['target_type' => $data['target_type'], 'queued' => $stats['queued'], 'region_id' => $eventRegion->region_id])
+            ->log('regional manager emailed selected team roster');
+
+        return back()->with('success', "Queued {$stats['queued']} roster email(s).");
+    }
+
     public function storeAnnouncement(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());

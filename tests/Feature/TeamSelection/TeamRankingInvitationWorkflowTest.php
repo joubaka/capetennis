@@ -375,6 +375,15 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('sent', $savedImport->status);
         $this->assertSame('Regional match shirt', $savedImport->communication_snapshot['clothing_items'][0]['name']);
         $this->assertEquals(395.0, $savedImport->communication_snapshot['clothing_items'][0]['price']);
+        $sentInvitation = $savedImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $this->actingAs($admin)->get(route('backend.team-selection.invitations.email.view', [$event, $savedImport, $sentInvitation]))
+            ->assertOk()
+            ->assertSee('Saved invitation email — read-only campaign snapshot')
+            ->assertSee('This wording changed after preview.');
+        $this->actingAs($admin)->post(route('backend.team-selection.invitations.email.resend', [$event, $savedImport, $sentInvitation]))
+            ->assertRedirect();
+        $this->assertSame(2, BulkEmailLog::where('related_type', TeamSelectionInvitation::class)
+            ->where('related_id', $sentInvitation->id)->count());
     }
 
     public function test_team_selection_setup_is_event_scoped_to_an_authorized_admin(): void
@@ -445,6 +454,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Assigned Region')
             ->assertSee('for your assigned region')
+            ->assertSee('Back to event')
+            ->assertSee(route('events.show', $event), false)
             ->assertDontSee('Private Other Region')
             ->assertDontSee('data-region-tabs', false);
         $this->actingAs($manager)->get(route('events.show', $event))
@@ -465,7 +476,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $second]), [
             'series_id' => $rankingSeries->id, 'reserve_count' => 2,
         ])->assertForbidden();
-        $this->actingAs($manager)->get(route('backend.region.clothing.edit', $firstRegion))->assertOk();
+        $this->actingAs($manager)->get(route('backend.region.clothing.edit', ['region' => $firstRegion, 'event_id' => $event->id]))
+            ->assertOk()
+            ->assertSee('Back to event')
+            ->assertSee(route('backend.team-selection.index', $event), false);
         $this->actingAs($manager)->get(route('backend.region.clothing.edit', $secondRegion))->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [
             'title' => 'Assigned team update', 'message' => 'Practice starts at 08:00.', 'send_email' => 0,
@@ -522,6 +536,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_regional_manager_can_complete_own_region_setup_import_and_restart_without_event_wide_access(): void
     {
+        Queue::fake();
         [$source, $team, $players] = $this->selectionSource();
         $teamType = DB::table('eventtypes')->insertGetId([
             'name' => 'Scoped regional workflow', 'type' => 2, 'code' => 'scoped-regional-workflow',
@@ -558,12 +573,32 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertRedirect(route('backend.team-selection.index', $event));
 
         $selectionImport = TeamSelectionImport::where('source_id', $source->id)->firstOrFail();
+        $ordered = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('roster_rank')->get();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.move', [$event, $selectionImport, $ordered->last()]), [
+            'direction' => 'up',
+        ])->assertRedirect();
+        $this->assertSame(1, $ordered->last()->fresh()->roster_rank);
+        $this->assertSame($ordered->last()->player_id, TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
+        $this->actingAs($manager)->post(route('backend.team-selection.roster-email.send', [$event, $eventRegion]), [
+            'target_type' => 'team',
+            'team_id' => $team->id,
+            'subject' => 'Regional team update',
+            'message' => 'Please note the updated team information.',
+            'confirm_recipients' => 1,
+        ])->assertRedirect();
+        $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_email')->where('related_id', $team->id)->count());
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
             ->assertOk()
             ->assertSee('Regional teams & players')
             ->assertSee('Region-scoped workspace')
             ->assertSee($team->name)
             ->assertSee($players->first()->full_name)
+            ->assertSee('Rank 1')
+            ->assertSee('Show team')
+            ->assertSee('Player order')
+            ->assertSee('Email team')
+            ->assertSee('Change player')
             ->assertSee('Selection / payment')
             ->assertSee('Read only')
             ->assertSee('Ranking snapshot:')

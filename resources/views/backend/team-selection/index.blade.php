@@ -36,8 +36,8 @@
     <div class="d-flex flex-wrap gap-2">
       @if($isEventManager)
         <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-        <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary">Back to event</a>
       @endif
+      <a href="{{ $isEventManager ? route('admin.events.overview', $event) : route('events.show', $event) }}" class="btn btn-outline-secondary">Back to event</a>
     </div>
   </div>
 
@@ -149,9 +149,12 @@
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
+                          @if($teamSelected->isNotEmpty())<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-1"></i>Email team</button>@endif
+                          <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
                           <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-expanded="false">Team settings</button>
                         </div>
                       </div>
+                      <div class="collapse" id="team-workspace-{{ $regionTeam->id }}">
                       <div class="collapse" id="team-settings-{{ $regionTeam->id }}">
                         <div class="card-body border-bottom">
                           <form method="POST" action="{{ route('backend.team-selection.teams.update', [$event, $eventRegion, $regionTeam]) }}" class="row g-2 align-items-end">@csrf @method('PATCH')
@@ -162,27 +165,46 @@
                         </div>
                       </div>
                       @if($activeImport)
+                        <ul class="nav nav-tabs px-3 pt-3" role="tablist">
+                          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#team-players-{{ $regionTeam->id }}" type="button"><i class="ti ti-users me-1"></i>Players</button></li>
+                          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#team-order-{{ $regionTeam->id }}" type="button"><i class="ti ti-list-numbers me-1"></i>Player order</button></li>
+                        </ul>
+                        <div class="tab-content p-0">
+                        <div class="tab-pane fade show active" id="team-players-{{ $regionTeam->id }}">
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Place</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
+                            <thead><tr><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
                             <tbody>
                               @forelse($teamInvitations as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
                                 @php($isReserve = $invitation->status === \App\Models\TeamSelectionInvitation::RESERVE)
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
-                                  <td><span class="badge {{ $isReserve ? 'bg-label-warning' : 'bg-label-primary' }}">{{ $isReserve ? 'Reserve '.$invitation->queue_position : 'Team '.$invitation->roster_rank }}</span></td>
+                                  <td><span class="badge {{ $isReserve ? 'bg-label-warning' : 'bg-label-primary' }}">{{ $isReserve ? 'Reserve '.$invitation->queue_position : 'Rank '.$invitation->roster_rank }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
                                   <td><div>{{ $recipientEmail ?: 'Account link required' }}</div><div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div></td>
                                   <td><strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div></td>
                                   <td><span class="badge bg-label-{{ $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info') }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span><div class="small text-muted mt-1">Read only</div></td>
-                                  <td>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</td>
                                   <td>
+                                    <div>{{ $delivery ? ucfirst($delivery->status) : 'Not sent' }}</div>
+                                    @if($activeImport->status === 'sent' && !$isReserve)
+                                      <div class="d-flex flex-wrap gap-1 mt-1">
+                                        <a class="btn btn-xs btn-outline-secondary" target="_blank" href="{{ route('backend.team-selection.invitations.email.view', [$event, $activeImport, $invitation]) }}">View email</a>
+                                        @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                          <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Resend the saved invitation email to this player?');">@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
+                                        @endif
+                                      </div>
+                                    @endif
+                                  </td>
+                                  <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                      @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) && $teamReserves->isNotEmpty())
-                                      <details><summary class="btn btn-sm btn-outline-warning">Use next reserve</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
-                                    @else
+                                      <details><summary class="btn btn-sm btn-outline-warning">Change player</summary><form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}" class="mt-2" onsubmit="return confirm('Replace this unpaid player with the next eligible reserve?');">@csrf<div class="small text-muted mb-1">The next eligible reserve will take this exact roster rank.</div><input type="text" name="reason" class="form-control form-control-sm mb-1" maxlength="1000" placeholder="Required reason" required><button class="btn btn-sm btn-warning w-100">Confirm replacement</button></form></details>
+                                    @elseif(!$recipientEmail)
                                       <span class="text-muted small">No action available</span>
                                     @endif
+                                    </div>
                                   </td>
                                 </tr>
                               @empty
@@ -191,9 +213,34 @@
                             </tbody>
                           </table>
                         </div>
+                        </div>
+                        <div class="tab-pane fade" id="team-order-{{ $regionTeam->id }}">
+                          <div class="p-3 border-bottom small text-muted">Change the playing order without changing the selected players, their payment state, or the original ranking snapshot. Every move is audited.</div>
+                          <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                              <thead><tr><th>Roster rank</th><th>Player</th><th>Published ranking</th><th>Selection status</th><th>Move</th></tr></thead>
+                              <tbody>
+                                @foreach($teamSelected->sortBy('roster_rank') as $orderedInvitation)
+                                  <tr>
+                                    <td><span class="badge bg-label-primary">Rank {{ $orderedInvitation->roster_rank }}</span></td>
+                                    <td><strong>{{ $orderedInvitation->player?->full_name }}</strong></td>
+                                    <td>#{{ $orderedInvitation->ranking_position }} <span class="text-muted">· {{ number_format((float)$orderedInvitation->total_points, 2) }} pts</span></td>
+                                    <td>{{ str($orderedInvitation->status)->replace('_',' ')->title() }}</td>
+                                    <td><div class="d-flex gap-1">
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-primary" title="Move down" @disabled($loop->last)><i class="ti ti-arrow-down"></i></button></form>
+                                    </div></td>
+                                  </tr>
+                                @endforeach
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        </div>
                       @else
                         <div class="card-body text-muted">Player places will appear here after the region reviews and imports its published ranking.</div>
                       @endif
+                      </div>
                     </div>
                   </div>
                 @endforeach
@@ -215,7 +262,7 @@
                 @if($sourceReady && $regionTeams->isNotEmpty())
                   <a class="btn btn-primary" href="{{ route('backend.team-selection.preview', [$event, $source]) }}"><i class="ti ti-download me-1"></i>Import ranked players</a>
                 @endif
-                <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.edit', $eventRegion->region_id) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
               </div>
               <div class="form-text">Create the event teams from the ranking categories, then review the ranked-player import.</div>
               @if(!$sourceReady)
@@ -288,6 +335,21 @@
           </form></div>
         </div>
       @endif
+
+      <div class="modal fade" id="roster-email-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.roster-email.send', [$event, $eventRegion]) }}" class="modal-content">@csrf
+          <input type="hidden" name="target_type" value="team" data-roster-email-target>
+          <input type="hidden" name="team_id" data-roster-email-team>
+          <input type="hidden" name="invitation_id" data-roster-email-invitation>
+          <div class="modal-header"><div><h5 class="modal-title">Email selected roster</h5><div class="small text-muted" data-roster-email-recipient></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
+            <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm this displayed recipient scope</label></div>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
+        </form></div>
+      </div>
 
       @if($source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
@@ -393,6 +455,31 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[id^="team-workspace-"]').forEach(function (workspace) {
+    const toggle = document.querySelector(`[data-bs-target="#${workspace.id}"]`);
+    const label = toggle?.querySelector('span');
+    const icon = toggle?.querySelector('i');
+    workspace.addEventListener('shown.bs.collapse', function () {
+      if (label) label.textContent = 'Hide team';
+      icon?.classList.replace('ti-eye', 'ti-eye-off');
+    });
+    workspace.addEventListener('hidden.bs.collapse', function () {
+      if (label) label.textContent = 'Show team';
+      icon?.classList.replace('ti-eye-off', 'ti-eye');
+    });
+  });
+
+  document.querySelectorAll('[id^="roster-email-"]').forEach(function (modal) {
+    modal.addEventListener('show.bs.modal', function (event) {
+      const button = event.relatedTarget;
+      if (!button) return;
+      modal.querySelector('[data-roster-email-target]').value = button.dataset.targetType || 'team';
+      modal.querySelector('[data-roster-email-team]').value = button.dataset.teamId || '';
+      modal.querySelector('[data-roster-email-invitation]').value = button.dataset.invitationId || '';
+      modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
+    });
+  });
+
   if (window.jQuery?.fn?.select2) {
     window.jQuery('.region-manager-select').select2({
       width: '100%',

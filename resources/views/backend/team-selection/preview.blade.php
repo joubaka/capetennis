@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
-  <div class="d-flex justify-content-between align-items-start gap-2 mb-4"><div><h4 class="mb-1">Preview ranked-player import</h4><p class="text-muted mb-0">{{ $source->region?->region_name }} · {{ $source->series?->name }}</p></div><a href="{{ route('backend.team-selection.index', $event) }}" class="btn btn-outline-secondary">Back</a></div>
+  <div class="d-flex justify-content-between align-items-start gap-2 mb-4"><div><h4 class="mb-1">Preview ranked-player import</h4><p class="text-muted mb-0">{{ $source->region?->region_name }} · {{ $source->series?->name }}</p></div><a href="{{ route('backend.team-selection.index', $event) }}" class="btn btn-outline-secondary">Back to team selection</a></div>
   <div class="alert alert-info">Published ranking snapshot: <code>{{ $preview['run_id'] }}</code>. Confirming will fill each team with the available eligible players, up to its configured size, and add available reserves.</div>
   @foreach($preview['warnings'] as $warning)<div class="alert alert-danger py-2"><strong>Import blocked:</strong> {{ $warning }}</div>@endforeach
   @foreach($preview['notices'] as $notice)<div class="alert alert-warning py-2"><strong>Incomplete roster:</strong> {{ $notice }}</div>@endforeach

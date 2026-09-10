@@ -13,7 +13,8 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h3 class="mb-0">{{ $region->region_name }} — Clothing</h3>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', $region) }}">Paid orders</a>
+      @if($backUrl)<a class="btn btn-outline-secondary" href="{{ $backUrl }}">Back to event</a>@endif
+      <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $backEvent?->id]) }}">Paid orders</a>
       @if($items->isNotEmpty())
         <form method="POST" action="{{ route('backend.region.clothing.toggle', $region) }}">@csrf @method('PATCH')
           <button class="btn btn-{{ $region->clothing_order ? 'outline-danger' : 'success' }}">{{ $region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>

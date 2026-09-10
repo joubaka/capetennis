@@ -347,6 +347,62 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function moveRosterRank(TeamSelectionInvitation $invitation, User $actor, string $direction): void
+    {
+        DB::transaction(function () use ($invitation, $actor, $direction): void {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+            if (! in_array($locked->status, [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ], true) || ! $locked->roster_rank) {
+                throw ValidationException::withMessages(['order' => 'Only an active selected player can be reordered.']);
+            }
+
+            $targetRank = (int) $locked->roster_rank + ($direction === 'up' ? -1 : 1);
+            $swap = TeamSelectionInvitation::query()->lockForUpdate()
+                ->where('import_id', $locked->import_id)
+                ->where('team_id', $locked->team_id)
+                ->where('roster_rank', $targetRank)
+                ->whereIn('status', [
+                    TeamSelectionInvitation::INVITED,
+                    TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    TeamSelectionInvitation::PAID_CONFIRMED,
+                ])->first();
+            if (! $swap) {
+                throw ValidationException::withMessages(['order' => 'That player is already at the end of the active roster.']);
+            }
+
+            $currentRank = (int) $locked->roster_rank;
+            $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+                ->where('team_id', $locked->team_id)
+                ->whereIn('rank', [$currentRank, $targetRank])
+                ->get()->keyBy('rank');
+            if ($slots->count() !== 2) {
+                throw ValidationException::withMessages(['order' => 'The roster positions no longer match the selection. Refresh and try again.']);
+            }
+
+            $currentSlot = $slots->get($currentRank);
+            $targetSlot = $slots->get($targetRank);
+            abort_unless((int) $currentSlot->player_id === (int) $locked->player_id
+                && (int) $targetSlot->player_id === (int) $swap->player_id, 409);
+
+            $currentSlot->update(['rank' => 0]);
+            $targetSlot->update(['rank' => $currentRank]);
+            $currentSlot->update(['rank' => $targetRank]);
+            $locked->update(['roster_rank' => $targetRank]);
+            $swap->update(['roster_rank' => $currentRank]);
+
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'team_id' => $locked->team_id,
+                    'from_rank' => $currentRank,
+                    'to_rank' => $targetRank,
+                    'swapped_invitation_id' => $swap->id,
+                ])->log('regional manager changed active roster order');
+        });
+    }
+
     public function assertRosterEditable(Team $team): void
     {
         $managed = TeamSelectionInvitation::query()
@@ -425,6 +481,56 @@ final class TeamSelectionInvitationService
 
             return $queued;
         });
+    }
+
+    public function resendInvitation(TeamSelectionInvitation $invitation, User $actor): string
+    {
+        return DB::transaction(function () use ($invitation, $actor): string {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'player'])->findOrFail($invitation->id);
+            if ($locked->selectionImport?->status !== 'sent' || ! in_array($locked->status, [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            ], true)) {
+                throw ValidationException::withMessages(['email' => 'Only an active unpaid invitation can be resent.']);
+            }
+            $deadline = $locked->promoted_from_id
+                ? ($locked->selectionImport->replacement_payment_deadline ?: $locked->selectionImport->payment_deadline)
+                : $locked->selectionImport->response_deadline;
+            if ($deadline && now()->gt($deadline)) {
+                throw ValidationException::withMessages(['email' => 'Extend the relevant invitation deadline before resending.']);
+            }
+            $email = $this->contactEmail($locked);
+            if (! $email) {
+                throw ValidationException::withMessages(['email' => 'This player does not have a linked account email address.']);
+            }
+
+            $log = BulkEmailLog::create([
+                'mail_type' => 'team_selection_invitation',
+                'related_type' => TeamSelectionInvitation::class,
+                'related_id' => $locked->id,
+                'recipient_email' => $email,
+                'recipient_name' => $locked->player?->full_name,
+                'status' => 'queued',
+                'payload' => [
+                    'kind' => $locked->promoted_from_id ? 'replacement' : 'invitation',
+                    'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
+                    'manual_resend' => true,
+                ],
+                'queued_at' => now(),
+            ]);
+            SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id);
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
+                ->log('regional manager resent team selection invitation');
+
+            return $email;
+        });
+    }
+
+    public function savedCampaign(TeamSelectionImport $import): array
+    {
+        return $this->savedCampaignSnapshot($import);
     }
 
     /**

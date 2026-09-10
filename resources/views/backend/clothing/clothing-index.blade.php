@@ -8,6 +8,7 @@
     <h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5>
 
     <div class="btn-group mt-2 mt-md-0">
+      <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
       <a href="{{ route('export.pdf.clothing.order', $region->id) }}" target="_blank" class="btn btn-sm btn-outline-danger">
         <i class="ti ti-file-text"></i> PDF
       </a>
