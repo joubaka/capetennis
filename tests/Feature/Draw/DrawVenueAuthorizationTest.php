@@ -76,7 +76,7 @@ class DrawVenueAuthorizationTest extends TestCase
             ->postJson(route('backend.draw.venues.store', $this->draw), [
                 'venue_id' => [],
                 'num_courts' => [],
-            ])->assertOk()->assertJsonPath('success', true);
+            ])->assertRedirect();
 
         $this->assertDatabaseMissing('draw_venues', [
             'draw_id' => $this->draw->id,
