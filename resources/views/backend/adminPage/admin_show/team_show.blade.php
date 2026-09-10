@@ -10,14 +10,163 @@
     ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
 @endphp
 
-<link rel="stylesheet" href="{{ asset('css/team-admin-workspace.css') }}?v={{ filemtime(public_path('css/team-admin-workspace.css')) }}">
 
+<style>
+  .team-admin-workspace .tabs-wrap {
+    position: sticky; top: 72px; z-index: 100;
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+  }
+  .team-admin-workspace .tabs-wrap .nav-tabs {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    gap: .25rem; scrollbar-width: thin;
+  }
+  .team-admin-workspace .tabs-wrap .nav-link {
+    white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .5rem .75rem;
+  }
+  .team-admin-workspace .tabs-wrap .nav-link .badge {
+    transform: translateY(-1px);
+  }
+  .team-admin-workspace .subtabs-sticky {
+    position: sticky; top: 124px; z-index: 90;
+    background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color);
+  }
+  .team-admin-workspace .subtabs-sticky .nav-tabs {
+    overflow-x: auto; flex-wrap: nowrap;
+  }
+  .team-admin-workspace .subtabs-sticky .nav-item {
+    flex: 1 1 0; min-width: 0;
+  }
+  .team-admin-workspace .subtabs-sticky .nav-link {
+    width: 100%; height: 100%; min-height: 3rem; margin-right: 0;
+    white-space: normal; text-align: center;
+  }
+  .team-admin-workspace .region-tab-content {
+    padding: 0; background: transparent;
+  }
+  .team-admin-workspace .player-global-actions {
+    padding: 1rem 0; border-bottom: 1px solid var(--bs-border-color);
+  }
+  .team-admin-workspace .tab-pane .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .team-admin-workspace .team-player-table {
+    width: 100%; min-width: 1200px; table-layout: fixed;
+  }
+  .team-admin-workspace .team-player-table :is(th, td) {
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .team-admin-workspace .team-player-table :is(th, td):last-child {
+    overflow: visible; text-overflow: clip;
+  }
+  /* Small device improvements */
+  @media (max-width: 576px) {
+    .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }
+    .team-admin-workspace .subtabs-sticky { top: 108px; }
+    .team-admin-workspace .tabs-wrap .nav-link { padding: .35rem .5rem; font-size: .9rem; }
+    .team-admin-workspace .tabs-wrap .nav-link .badge { font-size: .65rem; padding: .18rem .36rem; }
+    .team-admin-workspace > .nav-tabs-shadow > .tab-content { padding: .5rem !important; }
+    .team-admin-workspace .region-tab-content { padding: 0 !important; }
+    .team-admin-workspace .subtabs-sticky .nav-item { flex: 0 0 auto; }
+    .team-admin-workspace .subtabs-sticky .nav-link {
+      width: auto; height: auto; min-height: 2.75rem; white-space: nowrap;
+    }
+    .team-admin-workspace .player-global-actions {
+      align-items: stretch !important; flex-direction: column; padding: .75rem 0;
+    }
+    .team-admin-workspace .player-global-actions__buttons {
+      display: grid !important; grid-template-columns: 1fr 1fr; width: 100%;
+    }
+    .team-admin-workspace .player-global-actions__buttons .btn { width: 100%; }
+    .team-admin-workspace .region-email-actions { display: grid !important; width: 100%; }
+    .team-admin-workspace .region-email-actions .btn { width: 100%; }
+    .team-admin-workspace .tab-pane .card-header { flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
+    .team-admin-workspace .card { margin-bottom: .75rem; }
+    /* Make modals use most of the screen on small devices */
+    .modal-dialog { max-width: 100%; margin: .25rem; }
+    .modal-content { height: calc(100vh - 56px); border-radius: .25rem; }
+    .modal-body { overflow-y: auto; }
+    .modal-header .modal-title { font-size: 1rem; }
+  }
+
+  /* Very small screens: reduce clutter by hiding secondary badges */
+  @media (max-width: 420px) {
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-info,
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-warning,
+    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-primary { display: none; }
+    .team-admin-workspace .player-global-actions__buttons { grid-template-columns: 1fr; }
+  }
+</style>
 
 <div class="team-admin-workspace" data-backend-wide>
   <div class="nav-tabs-shadow mb-4">
 
-      {{-- Shared Teams workspace navigation. --}}
-      @include('backend.event.partials.team-workspace-nav')
+      {{-- ✅ Top nav --}}
+      <div class="tabs-wrap">
+        <ul class="nav nav-tabs nav-fill px-2" role="tablist">
+          @if (Auth::id() === 584)
+            <li class="nav-item" role="presentation">
+              <button type="button" class="nav-link" role="tab"
+                data-bs-toggle="tab" data-bs-target="#tab-regions"
+                aria-controls="tab-regions" aria-selected="false">
+                <i class="ti ti-home ti-xs me-1"></i>
+                Regions
+                <span class="badge rounded-pill bg-label-primary ms-1">{{ $regionCount }}</span>
+                <span class="badge rounded-pill bg-label-info ms-1">{{ $teamCount }}</span>
+              </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+              <button type="button" class="nav-link" role="tab"
+                data-bs-toggle="tab" data-bs-target="#tab-categories"
+                aria-controls="tab-categories" aria-selected="false" tabindex="-1">
+                <i class="ti ti-category ti-xs me-1"></i>
+                Categories
+                <span class="badge rounded-pill bg-label-warning ms-1">{{ $categoryCount }}</span>
+              </button>
+            </li>
+          @endif
+
+          <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link active" role="tab"
+              data-bs-toggle="tab" data-bs-target="#tab-players"
+              aria-controls="tab-players" aria-selected="true">
+              <i class="ti ti-users-group ti-xs me-1"></i>
+              Players
+              <span class="badge rounded-pill bg-label-success ms-1">{{ $playerCount }}</span>
+              @if($reserveCount > 0)
+                <span class="badge rounded-pill bg-label-warning ms-1">{{ $reserveCount }} reserves</span>
+              @endif
+            </button>
+          </li>
+
+          <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link" role="tab"
+              data-bs-toggle="tab" data-bs-target="#tab-order"
+              aria-controls="tab-order" aria-selected="false" tabindex="-1">
+              <i class="ti ti-list-ordered ti-xs me-1"></i>
+              Player order
+            </button>
+          </li>
+
+          @if (Auth::id() === 584)
+            <li class="nav-item" role="presentation">
+              <button id="result-rank-button" type="button" class="nav-link" role="tab"
+                data-bs-toggle="tab" data-bs-target="#tab-result-rank"
+                aria-controls="tab-result-rank" aria-selected="false">
+                <i class="ti ti-award ti-xs me-1"></i>
+                Result Ranks
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <a href="{{ route('headOffice.show', $event->id) }}" class="nav-link">
+                <i class="ti ti-gauge ti-xs me-1"></i> Dashboard
+              </a>
+            </li>
+          @endif
+        </ul>
+      </div>
 
       <div class="tab-content p-3">
 
