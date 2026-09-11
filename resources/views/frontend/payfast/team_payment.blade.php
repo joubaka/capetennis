@@ -14,6 +14,20 @@
           <h5 class="card-title">{{ $payfast->item_name }}</h5>
           <h6 class="card-subtitle text-muted">{{ $payfast->custom_str4 }}</h6>
 
+          <div class="border rounded bg-label-primary p-3 mt-3" aria-label="Registration details">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="text-muted small mb-1">Player</div>
+                <div class="fw-semibold">{{ $player->name }} {{ $player->surname }}</div>
+                <div class="text-muted small">Profile #{{ $player->id }}</div>
+              </div>
+              <div class="col-md-6">
+                <div class="text-muted small mb-1">Team</div>
+                <div class="fw-semibold">{{ $team->name }}</div>
+              </div>
+            </div>
+          </div>
+
           <ul class="list-group list-group-flush my-3">
             <li class="list-group-item d-flex justify-content-between">
               <span>Entry Fee</span>

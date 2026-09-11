@@ -311,7 +311,12 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             $this->team,
             $player,
             $this->event,
-        ]))->assertOk()->assertViewIs('frontend.payfast.team_payment');
+        ]))->assertOk()
+            ->assertViewIs('frontend.payfast.team_payment')
+            ->assertSee('Registration details')
+            ->assertSee($player->name.' '.$player->surname)
+            ->assertSee('Profile #'.$player->id)
+            ->assertSee($this->team->name);
 
         $this->assertDatabaseHas('team_payment_orders', [
             'user_id' => $user->id,

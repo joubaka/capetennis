@@ -37,7 +37,9 @@
   .ct-frontend #layout-navbar { border-bottom: 1px solid var(--ct-border); box-shadow: none; }
   .ct-frontend #layout-navbar .app-brand-text { color: var(--ct-ink); }
   .ct-frontend .menu-horizontal { border-bottom: 1px solid var(--ct-border); box-shadow: 0 2px 5px #172e4506; }
-  .ct-frontend .menu-inner > .menu-item.active > .menu-link { color: var(--ct-ink) !important; background: var(--ct-selected) !important; box-shadow: none !important; }
+  /* Match the theme selector's horizontal-menu specificity so active labels and
+     icons remain readable in the mobile drawer. */
+  .ct-frontend .bg-menu-theme.menu-horizontal .menu-inner > .menu-item.active > .menu-link { color: var(--ct-ink) !important; background: var(--ct-selected) !important; box-shadow: none !important; }
   .ct-frontend .menu-sub > .menu-item.active > .menu-link { color: var(--ct-accent) !important; background: #e7f3f1 !important; }
 
   .ct-frontend .card { border: 1px solid var(--ct-border); border-radius: 14px; box-shadow: 0 5px 22px #23394b08; }
