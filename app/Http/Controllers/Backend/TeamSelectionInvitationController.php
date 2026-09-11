@@ -19,6 +19,8 @@ use App\Models\User;
 use App\Services\BulkMailDispatcher;
 use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Services\TeamSelection\ImportedTeamRosterService;
+use App\Services\TeamSelection\ImportedRosterContactEnrichmentService;
+use App\Imports\ExternalTeamWorkbookParser;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\TeamSelectionContactService;
@@ -588,6 +590,47 @@ class TeamSelectionInvitationController extends Controller
         };
 
         return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.{$reserveMessage}");
+    }
+
+    public function enrichImportedContacts(
+        Request $request,
+        Event $event,
+        EventRegion $eventRegion,
+        ExternalTeamWorkbookParser $parser,
+        ImportedRosterContactEnrichmentService $contacts,
+    ) {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        $data = $request->validate([
+            'file' => ['required', 'file', 'mimes:xls,xlsx,csv', 'max:5120'],
+            'expected_players' => ['required', 'integer', 'min:1', 'max:50'],
+            'confirmed' => ['nullable', 'boolean'],
+            'preview_fingerprint' => ['nullable', 'string', 'size:64'],
+            'confirm_anomalies' => ['sometimes', 'boolean'],
+        ]);
+        $parsed = $parser->parse($request->file('file')->getRealPath(), (int) $data['expected_players']);
+        if ($parsed['errors'] !== []) {
+            throw ValidationException::withMessages(['file' => $parsed['errors']]);
+        }
+        $preview = $contacts->preview($event, $eventRegion, $parsed['teams']);
+
+        if (! $request->boolean('confirmed')) {
+            return response()->json([
+                'requires_confirmation' => true,
+                'message' => 'Review the email-only changes before applying them.',
+                'updates' => $preview['updates'],
+                'issues' => $preview['issues'],
+                'unchanged_count' => $preview['unchanged'],
+                'without_email_count' => $preview['withoutEmail'],
+                'preview_fingerprint' => $preview['fingerprint'],
+            ]);
+        }
+        if ($preview['issues'] !== [] && ! $request->boolean('confirm_anomalies')) {
+            throw ValidationException::withMessages(['confirm_anomalies' => 'Review and acknowledge the flagged rows. They will be skipped, not changed.']);
+        }
+
+        $updated = $contacts->apply($event, $eventRegion, $preview, (string) ($data['preview_fingerprint'] ?? ''), $request->user());
+
+        return response()->json(['requires_confirmation' => false, 'message' => "Added {$updated} missing roster email(s). No other roster data was changed."]);
     }
 
     public function updateImportedPlayer(

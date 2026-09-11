@@ -326,6 +326,47 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_contact_reimport_only_fills_blank_email_and_requires_review_for_anomalies(): void
+    {
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Contact enrichment event', 'type' => EventType::TEAM, 'code' => 'contact-enrichment-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $region = TeamRegion::create(['region_name' => 'Contact Test Region']);
+        $this->event->update(['eventType' => $teamEventType]);
+        $this->team->update(['region_id' => $region->id, 'noProfile' => true]);
+        $eventRegion = new EventRegion();
+        $eventRegion->event_id = $this->event->id;
+        $eventRegion->region_id = $region->id;
+        $eventRegion->ordering = 1;
+        $eventRegion->save();
+        $safe = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Ana', 'surname' => 'One', 'email' => null, 'pay_status' => 0]);
+        $conflict = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Ben', 'surname' => 'Two', 'email' => 'keep@example.test', 'pay_status' => 1]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => 0, 'pay_status' => 1]);
+        $file = fn () => $this->roster("Category,Rank,Name,Surname,Email\nBoys U10,1,Ana,One,ana@example.test\nBoys U10,2,Ben,Two,different@example.test\n");
+
+        $preview = $this->actingAs($this->admin)->postJson(route('backend.team-selection.imported-contacts.enrich', [$this->event, $eventRegion]), [
+            'file' => $file(), 'expected_players' => 2,
+        ])->assertOk()->assertJsonCount(1, 'updates')->assertJsonCount(1, 'issues');
+        $this->assertNull($safe->fresh()->email);
+
+        $payload = [
+            'file' => $file(), 'expected_players' => 2, 'confirmed' => 1,
+            'preview_fingerprint' => $preview->json('preview_fingerprint'),
+        ];
+        $this->actingAs($this->admin)->postJson(route('backend.team-selection.imported-contacts.enrich', [$this->event, $eventRegion]), $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('confirm_anomalies');
+        $this->actingAs($this->admin)->postJson(route('backend.team-selection.imported-contacts.enrich', [$this->event, $eventRegion]), $payload + ['confirm_anomalies' => 1])
+            ->assertOk()->assertJsonPath('requires_confirmation', false);
+
+        $this->assertSame('ana@example.test', $safe->fresh()->email);
+        $this->assertSame('keep@example.test', $conflict->fresh()->email);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 2, 'pay_status' => 1]);
+        $this->assertSame('Ben', $conflict->fresh()->name);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+    }
+
     public function test_creating_a_profile_claims_the_slot_and_links_the_profile_to_the_account(): void
     {
         $user = User::factory()->create();

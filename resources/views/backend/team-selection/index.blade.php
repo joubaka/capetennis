@@ -474,17 +474,19 @@
       @if($isEventManager)
         <div class="modal fade" id="reimport-roster-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <form class="modal-content roster-contact-import-form" method="POST" enctype="multipart/form-data" action="{{ route('backend.region.teams.import.no.profile', [$event, $eventRegion->region]) }}">
+            <form class="modal-content roster-contact-import-form" method="POST" enctype="multipart/form-data" action="{{ route('backend.team-selection.imported-contacts.enrich', [$event, $eventRegion]) }}">
               @csrf
               <input type="hidden" name="confirmed" value="0" data-import-confirmed>
+              <input type="hidden" name="preview_fingerprint" value="" data-import-fingerprint>
               <input type="hidden" name="expected_players" value="{{ max(1, (int) ($regionTeams->first()?->num_team_members ?: 8)) }}">
               <input type="hidden" name="team_prefix" value="{{ $eventRegion->region?->short_name ?: $eventRegion->region?->region_name }}">
               <div class="modal-header"><div><h5 class="modal-title">Re-import roster names and contacts</h5><div class="small text-muted">{{ $eventRegion->region?->region_name }}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
               <div class="modal-body">
-                <div class="alert alert-info">Upload the original workbook. The preview combines the selected-team sheet with matching email and cellphone details from its guest-list sheet. Existing profile links and payment state are retained.</div>
+                <div class="alert alert-info">Upload the original workbook. This action can only add an email to a blank imported roster email field after one unique name match. It cannot create, delete, rename or reorder players, and cannot change links, DOBs, phones or payment state.</div>
                 <label class="form-label">Excel workbook</label><input class="form-control" type="file" name="file" accept=".xls,.xlsx,.csv" required data-import-file>
                 <div class="alert alert-danger d-none mt-3" data-import-errors></div>
-                <div class="table-responsive d-none mt-3" data-import-preview><table class="table table-sm align-middle"><thead><tr><th></th><th>Team</th><th>Roster contacts found</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+                <div class="table-responsive d-none mt-3" data-import-preview><table class="table table-sm align-middle"><thead><tr><th>Existing player</th><th>Email to add</th></tr></thead><tbody></tbody></table></div>
+                <div class="alert alert-warning d-none mt-3" data-import-anomalies><strong>Review required — these rows will be skipped.</strong><ul class="mb-2 mt-1"></ul><div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_anomalies" value="1" id="confirm-import-anomalies-{{ $eventRegion->id }}"><label class="form-check-label" for="confirm-import-anomalies-{{ $eventRegion->id }}">I have reviewed these exceptions and understand they will not be changed</label></div></div>
               </div>
               <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-import-submit>Preview workbook</button></div>
             </form>
@@ -709,12 +711,19 @@ document.addEventListener('DOMContentLoaded', function () {
     const preview = form.querySelector('[data-import-preview]');
     const previewBody = preview.querySelector('tbody');
     const errors = form.querySelector('[data-import-errors]');
+    const anomalies = form.querySelector('[data-import-anomalies]');
+    const fingerprint = form.querySelector('[data-import-fingerprint]');
     const submit = form.querySelector('[data-import-submit]');
     const resetPreview = function () {
       confirmed.value = '0';
       preview.classList.add('d-none');
       previewBody.innerHTML = '';
       errors.classList.add('d-none');
+      anomalies.classList.add('d-none');
+      anomalies.querySelector('ul').innerHTML = '';
+      anomalies.querySelector('input').checked = false;
+      anomalies.querySelector('input').required = false;
+      fingerprint.value = '';
       submit.textContent = 'Preview workbook';
     };
     file.addEventListener('change', resetPreview);
@@ -730,14 +739,20 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!response.ok) throw await AppFeedback.responseError(response, 'The workbook could not be processed.');
         const data = await response.json();
         if (data.requires_confirmation) {
-          previewBody.innerHTML = (data.teams || []).map(function (team) {
-            const contactCount = (team.players || []).filter(player => player.email).length;
-            return `<tr><td><input class="form-check-input" type="checkbox" name="selected_team_keys[]" value="${escape(team.key)}" ${team.selectable ? 'checked' : 'disabled'}></td><td><strong>${escape(team.team_name)}</strong><div class="small text-muted">${escape(team.category)}</div></td><td>${contactCount} of ${team.player_count}</td><td>${team.selectable ? '<span class="badge bg-label-success">Ready</span>' : '<span class="badge bg-label-danger">Review errors</span>'}</td></tr>`;
-          }).join('');
+          previewBody.innerHTML = (data.updates || []).map(row => `<tr><td>${escape(row.name)}</td><td>${escape(row.email)}</td></tr>`).join('')
+            || '<tr><td colspan="2" class="text-center text-muted">No blank emails can be safely enriched.</td></tr>';
           preview.classList.remove('d-none');
+          fingerprint.value = data.preview_fingerprint || '';
+          if ((data.issues || []).length) {
+            anomalies.querySelector('ul').innerHTML = data.issues.map(message => `<li>${escape(message)}</li>`).join('');
+            anomalies.classList.remove('d-none');
+            anomalies.querySelector('input').required = true;
+          } else {
+            anomalies.querySelector('input').required = false;
+          }
           confirmed.value = '1';
-          submit.textContent = 'Confirm re-import';
-          AppFeedback.info('Review the teams and contact counts, then confirm the re-import.');
+          submit.textContent = `Add ${data.updates.length} missing email${data.updates.length === 1 ? '' : 's'}`;
+          AppFeedback.info(`${data.updates.length} safe email update(s) found. Review before applying.`);
         } else {
           AppFeedback.success(data.message);
           bootstrap.Modal.getInstance(form.closest('.modal'))?.hide();
