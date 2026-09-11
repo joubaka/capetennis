@@ -23,6 +23,7 @@ use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\TeamSelectionContactService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class TeamSelectionInvitationController extends Controller
@@ -52,6 +53,9 @@ class TeamSelectionInvitationController extends Controller
         $regionRosterRecipients = $eventRegions->mapWithKeys(fn (EventRegion $item) => [
             $item->id => $this->rosterRecipients($event, $item),
         ]);
+        $pendingImportedRecipients = $eventRegions->mapWithKeys(fn (EventRegion $item) => [
+            $item->id => $this->pendingImportedRecipients($event, $item),
+        ]);
         $eventYear = (int) ($event->start_date?->format('Y') ?: date('Y'));
         $series = Series::query()->where('year', $eventYear)->orderBy('name')->get();
         $readySeriesIds = $series->filter(function (Series $item): bool {
@@ -70,7 +74,7 @@ class TeamSelectionInvitationController extends Controller
 
         $teamSelectionContacts = $this->contacts;
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'teamSelectionContacts'));
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'pendingImportedRecipients', 'teamSelectionContacts'));
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)
@@ -435,8 +439,8 @@ class TeamSelectionInvitationController extends Controller
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
         $data = $request->validate([
-            'target_type' => ['required', 'in:region,team,player'],
-            'team_id' => ['nullable', 'required_unless:target_type,region', 'integer', 'exists:teams,id'],
+            'target_type' => ['required', 'in:region,team,player,pending_imported'],
+            'team_id' => ['nullable', 'required_if:target_type,team,player', 'integer', 'exists:teams,id'],
             'invitation_id' => ['nullable', 'integer', 'exists:team_selection_invitations,id'],
             'subject' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:20000'],
@@ -445,30 +449,32 @@ class TeamSelectionInvitationController extends Controller
         ]);
 
         $team = null;
-        if ($data['target_type'] !== 'region') {
+        if (in_array($data['target_type'], ['team', 'player'], true)) {
             $team = Team::query()->withoutGlobalScopes()->with('category.event')->findOrFail($data['team_id']);
             abort_unless((int) $team->region_id === (int) $eventRegion->region_id
                 && (int) $team->category?->event_id === (int) $event->id, 404);
         }
 
         $invitationId = $data['target_type'] === 'player' ? (int) ($data['invitation_id'] ?? 0) : null;
-        $recipients = $this->rosterRecipients($event, $eventRegion, $team?->id, $invitationId);
+        $recipients = $data['target_type'] === 'pending_imported'
+            ? $this->pendingImportedRecipients($event, $eventRegion)
+            : $this->rosterRecipients($event, $eventRegion, $team?->id, $invitationId);
         if ($recipients->isEmpty()) {
-            throw ValidationException::withMessages(['message' => 'No active selected recipient has a valid email address.']);
+            throw ValidationException::withMessages(['message' => 'No matching recipient has a valid email address.']);
         }
-        if ($data['target_type'] === 'region') {
+        if (in_array($data['target_type'], ['region', 'pending_imported'], true)) {
             $currentHash = hash('sha256', $recipients->pluck('email')->toJson());
             if (! hash_equals($currentHash, (string) ($data['recipient_hash'] ?? ''))) {
                 throw ValidationException::withMessages(['confirm_recipients' => 'The regional recipient list changed. Review the current list and confirm again.']);
             }
         }
 
-        $related = $data['target_type'] === 'region'
+        $related = in_array($data['target_type'], ['region', 'pending_imported'], true)
             ? $eventRegion
             : ($data['target_type'] === 'player'
                 ? TeamSelectionInvitation::query()->findOrFail($invitationId)
                 : $team);
-        $mailType = $data['target_type'] === 'region' ? 'region_email' : 'team_email';
+        $mailType = in_array($data['target_type'], ['region', 'pending_imported'], true) ? 'region_email' : 'team_email';
         $stats = $mailer->dispatch($mailType, $related, $recipients, [
             'subject' => trim($data['subject']),
             'message' => $data['message'],
@@ -477,11 +483,13 @@ class TeamSelectionInvitationController extends Controller
         ], true);
         activity('team-selection')->performedOn($related)->causedBy($request->user())
             ->withProperties(['target_type' => $data['target_type'], 'queued' => $stats['queued'], 'region_id' => $eventRegion->region_id])
-            ->log($data['target_type'] === 'region'
-                ? 'regional manager emailed all active selected players in region'
-                : 'regional manager emailed selected team roster');
+            ->log(match ($data['target_type']) {
+                'pending_imported' => 'regional manager emailed imported players still needing account or payment completion',
+                'region' => 'regional manager emailed all active selected players in region',
+                default => 'regional manager emailed selected team roster',
+            });
 
-        return back()->with('success', "Queued {$stats['queued']} email(s) for active selected player(s).");
+        return back()->with('success', "Queued {$stats['queued']} email(s) for the reviewed recipient list.");
     }
 
     public function storeAnnouncement(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
@@ -597,7 +605,10 @@ class TeamSelectionInvitationController extends Controller
         ]);
         $rosters->rename($event, $noProfileTeamPlayer, $data['name'], $data['surname'], $request->user());
 
-        return back()->with('success', 'The imported roster name was updated. Its profile-link status was not changed.');
+        $message = 'The imported roster name was updated. Its profile-link status was not changed.';
+        return $request->expectsJson()
+            ? response()->json(['message' => $message, 'player' => ['id' => $noProfileTeamPlayer->id, 'name' => trim($data['name']), 'surname' => trim($data['surname'])]])
+            : back()->with('success', $message);
     }
 
     public function moveImportedPlayer(
@@ -613,6 +624,24 @@ class TeamSelectionInvitationController extends Controller
         $rosters->move($event, $noProfileTeamPlayer, $data['direction'], $request->user());
 
         return back()->with('success', 'The imported roster order was updated.');
+    }
+
+    public function reorderImportedPlayers(
+        Request $request,
+        Event $event,
+        EventRegion $eventRegion,
+        Team $team,
+        ImportedTeamRosterService $rosters,
+    ) {
+        $firstSlot = $team->team_players_no_profile()->orderBy('rank')->firstOrFail();
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $firstSlot, $request->user());
+        $data = $request->validate([
+            'slot_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'slot_ids.*' => ['required', 'integer'],
+        ]);
+        $rosters->reorder($event, $team->id, $data['slot_ids'], $request->user());
+
+        return response()->json(['message' => 'The imported roster order was updated.']);
     }
 
     public function destroyAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement)
@@ -697,6 +726,28 @@ class TeamSelectionInvitationController extends Controller
             ->unique('email')
             ->sortBy('email')
             ->values();
+    }
+
+    private function pendingImportedRecipients(Event $event, EventRegion $eventRegion)
+    {
+        return NoProfileTeamPlayer::query()->with('team.category')
+            ->whereHas('team', fn ($query) => $query->where('region_id', $eventRegion->region_id)
+                ->whereHas('category', fn ($category) => $category->where('event_id', $event->id)))
+            ->where(function ($query): void {
+                $query->whereNull('player_profile')->orWhereNotExists(function ($payment): void {
+                    $payment->select(DB::raw(1))->from('team_players')
+                        ->whereColumn('team_players.team_id', 'no_profile_team_players.team_id')
+                        ->whereColumn('team_players.rank', 'no_profile_team_players.rank')
+                        ->where('team_players.pay_status', 1);
+                });
+            })
+            ->get()
+            ->map(fn (NoProfileTeamPlayer $slot): array => [
+                'email' => mb_strtolower(trim((string) $slot->email)),
+                'name' => trim($slot->name.' '.$slot->surname),
+            ])
+            ->filter(fn (array $recipient) => filter_var($recipient['email'], FILTER_VALIDATE_EMAIL))
+            ->unique('email')->sortBy('email')->values();
     }
 
     private function communicationData(Request $request): array

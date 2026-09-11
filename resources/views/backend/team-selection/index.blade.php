@@ -21,6 +21,9 @@
   .regional-team-card .reserve-row { background: #fffaf0; }
   .regional-team-card .replacement-player-form { min-width: 20rem; max-width: min(26rem, 80vw); }
   .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
+  .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
+  .imported-roster-sortable tr.is-dragging { opacity: .45; }
+  .imported-roster-sortable .drag-handle { cursor: grab; touch-action: none; }
   @media (max-width: 767.98px) {
     .regional-team-card .table { min-width: 760px; }
   }
@@ -86,6 +89,7 @@
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
       @php($regionRosterEmailRecipients = $regionRosterRecipients->get($eventRegion->id, collect()))
+      @php($regionPendingImportedRecipients = $pendingImportedRecipients->get($eventRegion->id, collect()))
       <div
         id="region-panel-{{ $eventRegion->id }}"
         class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
@@ -139,11 +143,17 @@
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Regional teams &amp; players</strong><div class="small text-muted">This mirrors the host roster view. Ranking positions, selection history and payment state are shown as read-only records.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
+                @if($isEventManager)
+                  <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#reimport-roster-{{ $eventRegion->id }}"><i class="ti ti-file-spreadsheet me-1"></i>Re-import roster contacts</button>
+                @endif
                 @if($activeImport?->status === 'draft')
                   <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
                 @endif
                 @if($regionRosterEmailRecipients->isNotEmpty())
                   <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="region" data-recipient="{{ $regionRosterEmailRecipients->count() }} active selected player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $regionRosterEmailRecipients->pluck('email')->toJson()) }}"><i class="ti ti-mail me-1"></i>Email all players in region</button>
+                @endif
+                @if($regionPendingImportedRecipients->isNotEmpty())
+                  <button class="btn btn-sm btn-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="pending_imported" data-recipient="{{ $regionPendingImportedRecipients->count() }} imported player email(s) still needing account linking, registration or payment" data-recipient-hash="{{ hash('sha256', $regionPendingImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-mail-forward me-1"></i>Email players still to complete</button>
                 @endif
                 <span class="badge bg-label-warning">Region-scoped workspace</span>
               </div>
@@ -454,11 +464,33 @@
             <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
             <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
             <details class="mb-3 d-none" data-roster-region-review><summary>Review all {{ $regionRosterEmailRecipients->count() }} exact regional recipient(s)</summary><div class="small text-muted mt-2">@foreach($regionRosterEmailRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
+            <details class="mb-3 d-none" data-roster-pending-review><summary>Review all {{ $regionPendingImportedRecipients->count() }} imported recipient(s)</summary><div class="small text-muted mt-2">@foreach($regionPendingImportedRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
             <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm the recipient details above are correct</label></div>
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
         </form></div>
       </div>
+
+      @if($isEventManager)
+        <div class="modal fade" id="reimport-roster-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <form class="modal-content roster-contact-import-form" method="POST" enctype="multipart/form-data" action="{{ route('backend.region.teams.import.no.profile', [$event, $eventRegion->region]) }}">
+              @csrf
+              <input type="hidden" name="confirmed" value="0" data-import-confirmed>
+              <input type="hidden" name="expected_players" value="{{ max(1, (int) ($regionTeams->first()?->num_team_members ?: 8)) }}">
+              <input type="hidden" name="team_prefix" value="{{ $eventRegion->region?->short_name ?: $eventRegion->region?->region_name }}">
+              <div class="modal-header"><div><h5 class="modal-title">Re-import roster names and contacts</h5><div class="small text-muted">{{ $eventRegion->region?->region_name }}</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+              <div class="modal-body">
+                <div class="alert alert-info">Upload the original workbook. The preview combines the selected-team sheet with matching email and cellphone details from its guest-list sheet. Existing profile links and payment state are retained.</div>
+                <label class="form-label">Excel workbook</label><input class="form-control" type="file" name="file" accept=".xls,.xlsx,.csv" required data-import-file>
+                <div class="alert alert-danger d-none mt-3" data-import-errors></div>
+                <div class="table-responsive d-none mt-3" data-import-preview><table class="table table-sm align-middle"><thead><tr><th></th><th>Team</th><th>Roster contacts found</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+              </div>
+              <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-import-submit>Preview workbook</button></div>
+            </form>
+          </div>
+        </div>
+      @endif
 
       @if($source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
@@ -594,6 +626,134 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  document.querySelectorAll('.imported-name-form').forEach(function (form) {
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"], button:not([type])');
+      button?.setAttribute('disabled', 'disabled');
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(form),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The player name could not be saved.');
+        const data = await response.json();
+        const orderName = document.querySelector(`.imported-roster-sortable [data-slot-id="${form.dataset.slotId}"] [data-imported-player-name]`);
+        if (orderName) orderName.textContent = `${data.player.name} ${data.player.surname}`.trim();
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'The player name could not be saved.');
+      } finally {
+        button?.removeAttribute('disabled');
+      }
+    });
+  });
+
+  document.querySelectorAll('.imported-roster-sortable').forEach(function (tbody) {
+    let dragged = null;
+    tbody.addEventListener('dragstart', function (event) {
+      dragged = event.target.closest('tr[data-slot-id]');
+      if (!dragged) return;
+      dragged.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+    });
+    tbody.addEventListener('dragover', function (event) {
+      if (!dragged) return;
+      event.preventDefault();
+      const target = event.target.closest('tr[data-slot-id]');
+      if (!target || target === dragged) return;
+      const below = event.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
+      tbody.insertBefore(dragged, below ? target.nextSibling : target);
+    });
+    tbody.addEventListener('dragend', async function () {
+      if (!dragged) return;
+      dragged.classList.remove('is-dragging');
+      dragged = null;
+      const rows = Array.from(tbody.querySelectorAll('tr[data-slot-id]'));
+      rows.forEach(function (row, index) { row.querySelector('.badge').textContent = `Rank ${index + 1}`; });
+      try {
+        const response = await fetch(tbody.dataset.reorderUrl, {
+          method: 'PUT',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+          },
+          body: JSON.stringify({ slot_ids: rows.map(row => Number(row.dataset.slotId)) }),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The player order could not be saved.');
+        const data = await response.json();
+        const playersBody = tbody.closest('.tab-content')?.querySelector('.imported-roster-players');
+        if (playersBody) {
+          rows.forEach(function (row, index) {
+            const playerRow = playersBody.querySelector(`tr[data-slot-id="${row.dataset.slotId}"]`);
+            if (!playerRow) return;
+            playerRow.querySelector('.badge').textContent = `Rank ${index + 1}`;
+            playersBody.appendChild(playerRow);
+          });
+        }
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'The player order could not be saved. Refreshing the current roster.');
+        window.setTimeout(() => window.location.reload(), 900);
+      }
+    });
+  });
+
+  document.querySelectorAll('.roster-contact-import-form').forEach(function (form) {
+    const escape = value => { const node = document.createElement('div'); node.textContent = value ?? ''; return node.innerHTML; };
+    const confirmed = form.querySelector('[data-import-confirmed]');
+    const file = form.querySelector('[data-import-file]');
+    const preview = form.querySelector('[data-import-preview]');
+    const previewBody = preview.querySelector('tbody');
+    const errors = form.querySelector('[data-import-errors]');
+    const submit = form.querySelector('[data-import-submit]');
+    const resetPreview = function () {
+      confirmed.value = '0';
+      preview.classList.add('d-none');
+      previewBody.innerHTML = '';
+      errors.classList.add('d-none');
+      submit.textContent = 'Preview workbook';
+    };
+    file.addEventListener('change', resetPreview);
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      submit.disabled = true;
+      errors.classList.add('d-none');
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: new FormData(form),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The workbook could not be processed.');
+        const data = await response.json();
+        if (data.requires_confirmation) {
+          previewBody.innerHTML = (data.teams || []).map(function (team) {
+            const contactCount = (team.players || []).filter(player => player.email).length;
+            return `<tr><td><input class="form-check-input" type="checkbox" name="selected_team_keys[]" value="${escape(team.key)}" ${team.selectable ? 'checked' : 'disabled'}></td><td><strong>${escape(team.team_name)}</strong><div class="small text-muted">${escape(team.category)}</div></td><td>${contactCount} of ${team.player_count}</td><td>${team.selectable ? '<span class="badge bg-label-success">Ready</span>' : '<span class="badge bg-label-danger">Review errors</span>'}</td></tr>`;
+          }).join('');
+          preview.classList.remove('d-none');
+          confirmed.value = '1';
+          submit.textContent = 'Confirm re-import';
+          AppFeedback.info('Review the teams and contact counts, then confirm the re-import.');
+        } else {
+          AppFeedback.success(data.message);
+          bootstrap.Modal.getInstance(form.closest('.modal'))?.hide();
+          window.setTimeout(() => window.location.reload(), 700);
+        }
+      } catch (error) {
+        const messages = error?.messages?.length ? error.messages : [error?.message || 'The workbook could not be processed.'];
+        errors.innerHTML = `<strong>Nothing was imported.</strong><ul class="mb-0 mt-1">${messages.map(message => `<li>${escape(message)}</li>`).join('')}</ul>`;
+        errors.classList.remove('d-none');
+        AppFeedback.fromError(error, 'The workbook could not be processed.');
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  });
+
   document.querySelectorAll('[id^="roster-email-"]').forEach(function (modal) {
     modal.addEventListener('show.bs.modal', function (event) {
       const button = event.relatedTarget;
@@ -604,6 +764,7 @@ document.addEventListener('DOMContentLoaded', function () {
       modal.querySelector('[data-roster-email-hash]').value = button.dataset.recipientHash || '';
       modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
       modal.querySelector('[data-roster-region-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'region');
+      modal.querySelector('[data-roster-pending-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'pending_imported');
     });
   });
 

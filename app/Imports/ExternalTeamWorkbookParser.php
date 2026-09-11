@@ -30,6 +30,22 @@ class ExternalTeamWorkbookParser
             ];
         }
 
+        $contactIndex = $this->contactIndex($workbook->getAllSheets());
+        foreach ($parsedSheets as &$parsedSheet) {
+            foreach ($parsedSheet['teams'] as &$team) {
+                foreach ($team['players'] as &$player) {
+                    $contact = $contactIndex[$this->personKey($player['name'], $player['surname'])] ?? null;
+                    if ($contact) {
+                        $player['email'] ??= $contact['email'];
+                        $player['cell_nr'] ??= $contact['cell_nr'];
+                    }
+                }
+                unset($player);
+            }
+            unset($team);
+        }
+        unset($parsedSheet);
+
         $selected = $requestedSheet
             ? collect($parsedSheets)->firstWhere('name', $requestedSheet)
             : collect($parsedSheets)->sortByDesc(fn (array $sheet): int =>
@@ -296,7 +312,68 @@ class ExternalTeamWorkbookParser
 
     private function headingKey(string $value): string
     {
-        return strtolower((string) preg_replace('/[^a-z0-9_]+/', '', str_replace(' ', '_', $value)));
+        return (string) preg_replace('/[^a-z0-9_]+/', '', str_replace(' ', '_', strtolower($value)));
+    }
+
+    /**
+     * Build a unique name-to-contact map from guest-list style worksheets. The
+     * curated team sheet often contains only names, while another sheet in the
+     * same workbook contains the email and cellphone captured at entry.
+     */
+    private function contactIndex(array $sheets): array
+    {
+        $contacts = [];
+
+        foreach ($sheets as $sheet) {
+            $highestColumn = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+            $header = null;
+            for ($row = 1; $row <= min(20, $sheet->getHighestDataRow()); $row++) {
+                $columns = [];
+                for ($column = 1; $column <= $highestColumn; $column++) {
+                    $key = $this->headingKey($this->cellText($sheet, $column, $row));
+                    if ($key !== '') $columns[$key] = $column;
+                }
+                $nameColumn = $columns['firstname'] ?? $columns['first_name'] ?? $columns['name'] ?? null;
+                $surnameColumn = $columns['surname'] ?? $columns['lastname'] ?? $columns['last_name'] ?? null;
+                $emailColumn = $columns['email'] ?? $columns['emailaddress'] ?? $columns['email_address'] ?? null;
+                if ($nameColumn && $surnameColumn && $emailColumn) {
+                    $header = compact('row', 'nameColumn', 'surnameColumn', 'emailColumn', 'columns');
+                    break;
+                }
+            }
+            if (! $header) continue;
+
+            $cellColumn = $header['columns']['cellphone'] ?? $header['columns']['cell']
+                ?? $header['columns']['cellnr'] ?? $header['columns']['cell_nr'] ?? null;
+            for ($row = $header['row'] + 1; $row <= $sheet->getHighestDataRow(); $row++) {
+                $name = $this->cellText($sheet, $header['nameColumn'], $row);
+                $surname = $this->cellText($sheet, $header['surnameColumn'], $row);
+                $email = mb_strtolower($this->cellText($sheet, $header['emailColumn'], $row));
+                if ($name === '' || $surname === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+
+                $key = $this->personKey($name, $surname);
+                $candidate = [
+                    'email' => $email,
+                    'cell_nr' => $cellColumn ? ($this->cellText($sheet, $cellColumn, $row) ?: null) : null,
+                ];
+                if (! isset($contacts[$key])) {
+                    $contacts[$key] = $candidate;
+                } elseif ($contacts[$key] !== $candidate) {
+                    // Do not guess when duplicate names have conflicting contact details.
+                    $contacts[$key] = null;
+                }
+            }
+        }
+
+        return array_filter($contacts);
+    }
+
+    private function personKey(string $name, string $surname): string
+    {
+        $value = mb_strtolower(trim($name.' '.$surname));
+        $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
+
+        return preg_replace('/[^a-z0-9]+/', '', $value) ?: '';
     }
 
     private function optionalCell(Worksheet $sheet, array $columns, array $keys, int $row): ?string

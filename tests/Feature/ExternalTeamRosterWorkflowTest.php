@@ -17,6 +17,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class ExternalTeamRosterWorkflowTest extends TestCase
@@ -303,13 +304,26 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_profile' => $player->id,
             'pay_status' => 0,
         ]);
+        TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 1,
+        ]);
 
         $this->actingAs($this->admin)->postJson(
             route('backend.team.import.no.profile', [$this->event, $this->team]),
-            ['file' => $this->roster("Rank,Name,Surname\n1,Ana,One\n2,Ben,Two\n"), 'confirmed' => 1]
+            ['file' => $this->roster("Rank,Name,Surname,Email\n1,Ana,One,ana.parent@example.test\n2,Ben,Two,ben.parent@example.test\n"), 'confirmed' => 1]
         )->assertOk();
 
         $this->assertSame($player->id, NoProfileTeamPlayer::where('team_id', $this->team->id)->where('rank', 1)->value('player_profile'));
+        $this->assertSame('ana.parent@example.test', NoProfileTeamPlayer::where('team_id', $this->team->id)->where('rank', 1)->value('email'));
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 1,
+        ]);
     }
 
     public function test_creating_a_profile_claims_the_slot_and_links_the_profile_to_the_account(): void
@@ -443,6 +457,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
     public function test_regional_workspace_shows_and_manages_imported_roster_names_and_order(): void
     {
+        Queue::fake();
         $teamEventType = DB::table('eventtypes')->insertGetId([
             'name' => 'Imported regional team event',
             'type' => EventType::TEAM,
@@ -495,14 +510,34 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->assertSee('imported.player@example.test')
             ->assertSee('0837654321')
             ->assertSee('value="Imported"', false)
-            ->assertSee('Player order');
+            ->assertSee('Player order')
+            ->assertSee('Email players still to complete')
+            ->assertSee('class="row g-1 align-items-center imported-name-form"', false)
+            ->assertSee('class="imported-roster-players"', false)
+            ->assertSee('class="imported-roster-sortable"', false)
+            ->assertSee('draggable="true"', false);
 
-        $this->actingAs($this->admin)->patch(route('backend.team-selection.imported-players.update', [
+        $this->actingAs($this->admin)->post(route('backend.team-selection.roster-email.send', [$this->event, $eventRegion]), [
+            'target_type' => 'pending_imported',
+            'subject' => 'Complete your Cape Tennis registration',
+            'message' => 'Please link your account, register and complete payment.',
+            'confirm_recipients' => 1,
+            'recipient_hash' => hash('sha256', collect(['imported.player@example.test'])->toJson()),
+        ])->assertRedirect()->assertSessionHas('success');
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'mail_type' => 'region_email',
+            'related_type' => EventRegion::class,
+            'related_id' => $eventRegion->id,
+            'recipient_email' => 'imported.player@example.test',
+            'status' => 'queued',
+        ]);
+
+        $this->actingAs($this->admin)->patchJson(route('backend.team-selection.imported-players.update', [
             $this->event, $eventRegion, $this->team, $unlinkedSlot,
         ]), [
             'name' => 'Corrected',
             'surname' => 'Surname',
-        ])->assertRedirect()->assertSessionHas('success');
+        ])->assertOk()->assertJsonPath('player.name', 'Corrected');
         $this->assertDatabaseHas('no_profile_team_players', [
             'id' => $unlinkedSlot->id,
             'name' => 'Corrected',
@@ -520,6 +555,19 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'team_id' => $this->team->id,
             'player_id' => $linkedPlayer->id,
             'rank' => 2,
+        ]);
+
+        $this->actingAs($this->admin)->putJson(route('backend.team-selection.imported-players.reorder', [
+            $this->event, $eventRegion, $this->team,
+        ]), ['slot_ids' => [$linkedSlot->id, $unlinkedSlot->id]])
+            ->assertOk()->assertJsonPath('message', 'The imported roster order was updated.');
+        $this->assertSame(1, (int) $linkedSlot->fresh()->rank);
+        $this->assertSame(2, (int) $unlinkedSlot->fresh()->rank);
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $this->team->id,
+            'player_id' => $linkedPlayer->id,
+            'rank' => 1,
+            'pay_status' => 0,
         ]);
         $this->assertDatabaseHas('activity_log', [
             'subject_type' => Team::class,

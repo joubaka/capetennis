@@ -10,15 +10,15 @@
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead><tr><th>Rank</th><th>Imported roster name</th><th>Profile status</th><th>Contact</th></tr></thead>
-        <tbody>
+        <tbody class="imported-roster-players" data-team-id="{{ $regionTeam->id }}">
           @forelse($importedRoster as $slot)
             @php($linkedProfile = $slot->player_profile ? $slot->profile : null)
             @php($contactEmail = $linkedProfile ? ($teamSelectionContacts->primaryEmail($linkedProfile) ?: $slot->email) : $slot->email)
             @php($contactCell = $linkedProfile?->cellNr ?: $slot->cell_nr)
-            <tr>
+            <tr data-slot-id="{{ $slot->id }}">
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
               <td style="min-width:320px">
-                <form method="POST" action="{{ route('backend.team-selection.imported-players.update', [$event, $eventRegion, $regionTeam, $slot]) }}" class="row g-1 align-items-center">
+                <form method="POST" action="{{ route('backend.team-selection.imported-players.update', [$event, $eventRegion, $regionTeam, $slot]) }}" class="row g-1 align-items-center imported-name-form" data-slot-id="{{ $slot->id }}">
                   @csrf @method('PATCH')
                   <div class="col"><label class="visually-hidden" for="imported-name-{{ $slot->id }}">First name</label><input id="imported-name-{{ $slot->id }}" name="name" value="{{ $slot->name }}" class="form-control form-control-sm" maxlength="100" required></div>
                   <div class="col"><label class="visually-hidden" for="imported-surname-{{ $slot->id }}">Surname</label><input id="imported-surname-{{ $slot->id }}" name="surname" value="{{ $slot->surname }}" class="form-control form-control-sm" maxlength="100" required></div>
@@ -48,16 +48,13 @@
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead><tr><th>Roster rank</th><th>Player</th><th>Profile status</th><th>Move</th></tr></thead>
-        <tbody>
+        <tbody class="imported-roster-sortable" data-reorder-url="{{ route('backend.team-selection.imported-players.reorder', [$event, $eventRegion, $regionTeam]) }}">
           @foreach($importedRoster as $slot)
-            <tr>
+            <tr draggable="true" data-slot-id="{{ $slot->id }}">
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
-              <td><strong>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
+              <td><span class="drag-handle me-2" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span><strong data-imported-player-name>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
               <td><span class="badge {{ $slot->player_profile ? 'bg-label-success' : 'bg-label-info' }}">{{ $slot->player_profile ? 'Imported · Linked' : 'Imported · Unlinked' }}</span></td>
-              <td><div class="d-flex gap-1">
-                <form method="POST" action="{{ route('backend.team-selection.imported-players.move', [$event, $eventRegion, $regionTeam, $slot]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
-                <form method="POST" action="{{ route('backend.team-selection.imported-players.move', [$event, $eventRegion, $regionTeam, $slot]) }}">@csrf<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-primary" title="Move down" @disabled($loop->last)><i class="ti ti-arrow-down"></i></button></form>
-              </div></td>
+              <td><span class="small text-muted"><i class="ti ti-grip-vertical me-1"></i>Drag row</span></td>
             </tr>
           @endforeach
         </tbody>

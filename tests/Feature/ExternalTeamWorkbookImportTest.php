@@ -90,6 +90,8 @@ class ExternalTeamWorkbookImportTest extends TestCase
             'rank' => 8,
             'name' => 'Gracie',
             'surname' => 'Verhamme',
+            'email' => 'gracie.parent@example.test',
+            'cell_nr' => '27820000008',
             'pay_status' => 0,
         ]);
     }
@@ -243,11 +245,13 @@ class ExternalTeamWorkbookImportTest extends TestCase
         $spreadsheet = new Spreadsheet();
         $guestList = $spreadsheet->getActiveSheet();
         $guestList->setTitle('Guest list');
+        $guestList->fromArray(['Rank', 'First name', 'Surname', 'School', null, 'Cellphone', 'Email'], null, 'A1');
         $guestList->setCellValue('B3', 'Seuns o10');
         $guestList->fromArray([
             [1, 'Only', 'One'],
             [2, 'Only', 'Two'],
         ], null, 'A4');
+        $guestList->fromArray([8, 'Gracie', 'Verhamme', 'LON', null, '27820000008', 'GRACIE.PARENT@example.test'], null, 'A12');
 
         $selected = $spreadsheet->createSheet();
         $selected->setTitle('Selected squads');
