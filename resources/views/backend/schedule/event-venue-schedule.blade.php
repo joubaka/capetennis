@@ -42,6 +42,8 @@
   .schedule-workspace .court-choices { padding:.75rem 0 0 1.8rem; }
   .schedule-workspace .court-choice { display:inline-flex; align-items:center; gap:.35rem; padding:.38rem .55rem; margin:0 .35rem .35rem 0; border:1px solid var(--schedule-border); border-radius:.45rem; background:#fff; color:var(--bs-body-color); font-size:.78rem; font-weight:500; }
   .schedule-workspace .venue-management { border:1px solid var(--schedule-border); border-radius:.75rem; background:var(--schedule-soft); }
+  .schedule-workspace #court-allocation-step > .section-body { display:flex; flex-direction:column; }
+  .schedule-workspace #court-allocation-step .venue-management { order:-1; }
   .schedule-workspace .venue-management > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:1rem; cursor:pointer; }
   .schedule-workspace .venue-management-body { padding:0 1rem 1rem; }
   .schedule-workspace .venue-editor { border-top:1px solid var(--schedule-border); }
@@ -179,7 +181,7 @@
                         <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}
                       </button>
                     @endif
-                    <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
+                    <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
                   </div>
                 </div>
                 <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
@@ -219,7 +221,7 @@
           @endforelse
       </div>
 
-      <details class="venue-management mt-3" id="venue-management">
+      <details class="venue-management mb-3" id="venue-management">
         <summary><i class="ti ti-settings" aria-hidden="true"></i><span class="flex-grow-1"><strong>Manage venues and court setup</strong><span class="d-block small text-muted">{{ $venues->count() }} venues · {{ $venues->sum('courts') }} courts available</span></span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
         <div class="venue-management-body">
           <div class="border rounded p-3 mb-2 bg-white">
@@ -270,15 +272,15 @@
         <div class="workspace-footer">
           <span id="allocation-status" class="small text-muted" role="status" aria-live="polite">Save changes before creating a preview.</span>
           <div class="d-flex flex-wrap gap-2">
-            <button type="button" id="save-allocations" class="btn btn-outline-primary"><i class="ti ti-device-floppy me-1"></i>Save allocations</button>
-            <button type="button" id="continue-to-rules" class="btn btn-primary">Next: timing rules<i class="ti ti-arrow-right ms-1"></i></button>
+            <button type="button" id="save-allocations" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Save allocations & timing</button>
+            <button type="button" id="continue-to-rules" class="btn btn-outline-primary">Save & next: timing<i class="ti ti-arrow-right ms-1"></i></button>
           </div>
         </div>
       @endif
     </div>
   </details>
 
-  <details class="workspace-section mb-3" id="schedule-rules-step">
+  <details class="workspace-section mb-3 d-none" id="schedule-rules-step">
     <summary>
       <span class="step-number">2</span>
       <span class="section-title"><h5>Scheduling rules</h5><small class="text-muted">Set the event window, match length and player rest.</small></span>
@@ -286,17 +288,23 @@
     </summary>
     <div class="section-body">
       <div class="row g-3">
-        <div class="col-md-3"><label class="form-label" for="schedule-start">Schedule starts</label><input id="schedule-start" type="datetime-local" class="form-control" value="{{ optional($event->start_date)->format('Y-m-d') }}T08:00"></div>
-        <div class="col-md-3"><label class="form-label" for="schedule-end">Schedule ends</label><input id="schedule-end" type="datetime-local" class="form-control" value="{{ optional($event->start_date)->format('Y-m-d') }}T18:00"></div>
-        <div class="col-6 col-md-2"><label class="form-label" for="schedule-duration">Match minutes</label><input id="schedule-duration" type="number" class="form-control" value="75" min="15" max="480"></div>
-        <div class="col-6 col-md-2"><label class="form-label" for="schedule-wave">Round wave</label><input id="schedule-wave" type="number" class="form-control" value="90" min="15" max="480"></div>
-        <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="5" min="0" max="120"></div>
-        <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="60" min="0" max="480"></div>
+        <div class="col-md-3"><label class="form-label" for="schedule-start">Schedule starts</label><input id="schedule-start" type="datetime-local" class="form-control" value="{{ $scheduleDraft['start'] }}"></div>
+        <div class="col-md-3"><label class="form-label" for="schedule-end">Schedule ends</label><input id="schedule-end" type="datetime-local" class="form-control" value="{{ $scheduleDraft['end'] }}"></div>
+        <div class="col-6 col-md-2"><label class="form-label" for="schedule-duration">Match minutes</label><input id="schedule-duration" type="number" class="form-control" value="{{ $scheduleDraft['duration'] }}" min="15" max="480"></div>
+        <div class="col-6 col-md-2"><label class="form-label" for="schedule-wave">Round wave</label><input id="schedule-wave" type="number" class="form-control" value="{{ $scheduleDraft['wave_minutes'] }}" min="15" max="480"></div>
+        <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="{{ $scheduleDraft['court_gap'] }}" min="0" max="120"></div>
+        <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="{{ $scheduleDraft['player_rest'] }}" min="0" max="480"></div>
       </div>
+      <label class="form-check mt-3 p-3 border rounded bg-light" for="reschedule-existing">
+        <input class="form-check-input" type="checkbox" id="reschedule-existing" {{ $scheduleDraft['reschedule_existing'] ? 'checked' : '' }}>
+        <span class="form-check-label fw-semibold">Include already scheduled matches and start a fresh reschedule</span>
+        <span class="d-block small text-muted ms-4">The existing saved schedule stays unchanged until you review and apply the replacement.</span>
+      </label>
       <div class="compact-note small text-muted mt-3" role="note"><strong class="text-body">How byes are timed:</strong> a bye uses no court but still advances through its round wave. A player with two byes first appears in the third wave.</div>
       <div class="d-flex flex-wrap gap-2 mt-3">
+        <button type="button" id="back-to-allocations" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: allocations</button>
+        <button type="button" id="save-timing" class="btn btn-outline-primary"><i class="ti ti-device-floppy me-1"></i>Save timing</button>
         <button type="button" id="generate-preview" class="btn btn-primary"><i class="ti ti-wand me-1"></i>Generate combined preview</button>
-        <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
         <span id="schedule-status" class="align-self-center text-muted small" role="status" aria-live="polite">Preview the full event before applying.</span>
       </div>
       <div id="schedule-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
@@ -315,6 +323,17 @@
     </div>
   </details>
 
+  <details class="workspace-section mb-3 d-none" id="schedule-review-step">
+    <summary>
+      <span class="step-number">3</span>
+      <span class="section-title"><h5>Review & apply</h5><small class="text-muted">Check every suggested time before saving the schedule.</small></span>
+    </summary>
+    <div class="section-body">
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button type="button" id="back-to-rules" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: timing</button>
+        <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
+        <span id="review-status" class="align-self-center text-muted small" role="status" aria-live="polite">Review every venue before applying.</span>
+      </div>
   <div id="schedule-display" class="schedule-display">
     <div id="preview-summary" class="row g-3 mb-3 d-none"></div>
     <div id="preview-warnings"></div>
@@ -336,6 +355,8 @@
     <div id="venue-timelines"></div>
     <div id="venue-slot-grids" class="d-none"></div>
   </div>
+    </div>
+  </details>
 </div>
 
 <div class="modal fade" id="manualMatchPickerModal" tabindex="-1" aria-labelledby="manualMatchPickerLabel" aria-hidden="true">
@@ -425,6 +446,7 @@
   let revision = null;
   let replanVenueIds = [];
   let allocationsDirty = false;
+  let scheduleDirty = false;
   let scheduleActivityTimer = null;
   let scheduleActivityHideTimer = null;
   let scheduleActivityStartedAt = 0;
@@ -462,6 +484,35 @@
     element.textContent = message;
     element.classList.remove('text-muted', 'text-danger', 'text-success', 'text-warning');
     element.classList.add(`text-${tone}`);
+  };
+  const notify = (message, tone = 'success') => {
+    if (window.toastr && typeof window.toastr[tone] === 'function') {
+      window.toastr[tone](message);
+      return;
+    }
+    const container = document.getElementById('schedule-toast-container') || Object.assign(document.createElement('div'), {
+      id: 'schedule-toast-container',
+      className: 'toast-container position-fixed top-0 end-0 p-3',
+    });
+    if (!container.isConnected) document.body.appendChild(container);
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-bg-${tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'success'} border-0`;
+    toast.setAttribute('role', 'status');
+    const row = document.createElement('div');
+    row.className = 'd-flex';
+    const body = document.createElement('div');
+    body.className = 'toast-body';
+    body.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close btn-close-white me-2 m-auto';
+    close.dataset.bsDismiss = 'toast';
+    close.setAttribute('aria-label', 'Close');
+    row.append(body, close);
+    toast.appendChild(row);
+    container.appendChild(toast);
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    bootstrap.Toast.getOrCreateInstance(toast, {delay: 3500}).show();
   };
   const updateScheduleActivity = () => {
     const elapsed = Math.max(0, performance.now() - scheduleActivityStartedAt);
@@ -523,8 +574,21 @@
     setStatus(document.getElementById('allocation-status'), 'Unsaved court allocation changes.', 'warning');
     invalidatePreview('Save the court allocations, then generate a new preview.');
   };
+  const markScheduleDirty = () => {
+    scheduleDirty = true;
+    setStatus(document.getElementById('schedule-status'), 'Unsaved timing changes.', 'warning');
+    invalidatePreview('Save the timing changes, then generate a new preview.');
+  };
   const setWorkflowStep = step => {
     document.querySelectorAll('.workflow-step').forEach((item, index) => item.classList.toggle('is-active', index === step - 1));
+  };
+  const showWorkflowStep = step => {
+    ['court-allocation-step', 'schedule-rules-step', 'schedule-review-step'].forEach((id, index) => {
+      const section = document.getElementById(id);
+      section.classList.toggle('d-none', index !== step - 1);
+      if (index === step - 1) section.open = true;
+    });
+    setWorkflowStep(step);
   };
   const updateCourtSummary = (drawId, venueId) => {
     const venue = document.querySelector(`.assignment-choice[data-draw="${drawId}"][value="${venueId}"]`);
@@ -562,15 +626,23 @@
       .sort((left, right) => Number(right.checkbox.checked) - Number(left.checkbox.checked) || left.index - right.index)
       .forEach(({item}) => { if (item) container.appendChild(item); });
   };
-  const buildPayload = () => ({
+  const buildScheduleDraft = () => ({
     start: document.getElementById('schedule-start').value,
     end: document.getElementById('schedule-end').value || null,
     duration: Number(document.getElementById('schedule-duration').value),
     wave_minutes: Number(document.getElementById('schedule-wave').value),
     court_gap: Number(document.getElementById('schedule-gap').value),
     player_rest: Number(document.getElementById('schedule-rest').value),
+    draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
+    reschedule_existing: document.getElementById('reschedule-existing').checked,
+  });
+  const selectedAssignedVenueIds = () => [...new Set(
+    values('.draw-choice').flatMap(drawId => [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value)))
+  )];
+  const buildPayload = () => ({
+    ...buildScheduleDraft(),
     draw_ids: values('.draw-choice'),
-    replan_venue_ids: replanVenueIds,
+    replan_venue_ids: document.getElementById('reschedule-existing').checked ? selectedAssignedVenueIds() : replanVenueIds,
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value}))
   });
   const post = async (url, body) => {
@@ -628,23 +700,8 @@
       sortCheckedFirst(choices, '.court-allocation', '.court-choice');
     });
   });
-  document.getElementById('court-allocation-step')?.addEventListener('toggle', event => {
-    if (event.currentTarget.open) setWorkflowStep(1);
-  });
-  document.getElementById('schedule-rules-step')?.addEventListener('toggle', event => {
-    if (event.currentTarget.open) setWorkflowStep(2);
-  });
-  document.getElementById('continue-to-rules')?.addEventListener('click', () => {
-    if (allocationsDirty) {
-      setStatus(document.getElementById('allocation-status'), 'Save the court allocations before continuing.', 'danger');
-      document.getElementById('save-allocations')?.focus();
-      return;
-    }
-    const rules = document.getElementById('schedule-rules-step');
-    rules.open = true;
-    document.getElementById('court-allocation-step').open = false;
-    setWorkflowStep(2);
-    rules.scrollIntoView({behavior:'smooth', block:'start'});
+  ['court-allocation-step', 'schedule-rules-step', 'schedule-review-step'].forEach(id => {
+    document.querySelector(`#${id} > summary`)?.addEventListener('click', event => event.preventDefault());
   });
   document.querySelectorAll('.assignment-choice').forEach(input => input.addEventListener('change', () => {
     document.querySelectorAll(`.court-allocation[data-draw="${input.dataset.draw}"][data-venue="${input.value}"]`)
@@ -661,8 +718,12 @@
     updateDrawSummary(input.dataset.draw);
     markAllocationsDirty();
   }));
-  document.querySelectorAll('.draw-choice, .draw-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest')
-    .forEach(input => input.addEventListener('change', () => invalidatePreview()));
+  document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => invalidatePreview()));
+  document.querySelectorAll('.draw-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #reschedule-existing')
+    .forEach(input => input.addEventListener('change', markScheduleDirty));
+  document.getElementById('reschedule-existing')?.addEventListener('change', event => {
+    if (!event.currentTarget.checked) replanVenueIds = [];
+  });
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => {
     const start = document.querySelector(`.draw-start[data-draw="${input.value}"]`);
     if (start) start.disabled = !input.checked;
@@ -758,7 +819,7 @@
     lastScheduleResult = result;
     revision = result.revision;
     replanVenueIds = (result.input.replan_venue_ids || []).map(Number);
-    setWorkflowStep(3);
+    showWorkflowStep(3);
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length + (result.existing_matches || []).length, 'Court bookings', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
@@ -781,9 +842,12 @@
     replanAll.classList.toggle('d-none', !appliedVenueIds.length || appliedVenueIds.every(id => replanVenueIds.includes(id)));
     keepAll.classList.toggle('d-none', replanVenueIds.length === 0);
     document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
-    setStatus(document.getElementById('schedule-status'), result.unscheduled.length
+    const previewMessage = result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
-      : 'Preview ready. Review every venue before applying.', result.unscheduled.length ? 'danger' : 'success');
+      : 'Preview ready. Review every venue before applying.';
+    const previewTone = result.unscheduled.length ? 'danger' : 'success';
+    setStatus(document.getElementById('schedule-status'), previewMessage, previewTone);
+    setStatus(document.getElementById('review-status'), previewMessage, previewTone);
     if (manualMode) {
       document.querySelector('[data-preview-view="grid"]')?.click();
       document.querySelector('#venue-slot-grids [data-preview-venue]')?.setAttribute('open', 'open');
@@ -1018,6 +1082,7 @@
     } else {
       replanVenueIds = [];
     }
+    document.getElementById('reschedule-existing').checked = replanning;
     payload = {...buildPayload(), replan_venue_ids:replanVenueIds};
     revision = null;
     setStatus(document.getElementById('schedule-status'), replanning ? 'Replanning every applied venue…' : 'Restoring every current applied venue schedule…');
@@ -1103,11 +1168,7 @@
   }));
 
   document.getElementById('generate-preview').addEventListener('click', async event => {
-    if (allocationsDirty) {
-      setStatus(document.getElementById('schedule-status'), 'Save the court allocations before generating a preview.', 'danger');
-      document.getElementById('save-allocations')?.focus();
-      return;
-    }
+    if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(event.currentTarget)) return;
     const button = event.currentTarget; payload = buildPayload(); revision = null; button.disabled = true;
     const originalButtonHtml = button.innerHTML;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
@@ -1119,18 +1180,42 @@
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
   });
-  document.getElementById('save-allocations')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
+  const saveAllocationsAndTiming = async button => {
     const venues = @json($venues->map(fn($venue) => ['id' => $venue['id'], 'courts' => $venue['courts']])->values());
     const assignments = drawIds.map(drawId => {
       const venueIds = [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value));
       const courtAllocations = venueIds.map(venueId => ({venue_id:venueId, court_labels:[...document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venueId}"]:checked`)].map(input => input.value)}));
       return {draw_id:Number(drawId), venue_ids:venueIds, court_allocations:courtAllocations};
     });
-    button.disabled = true; setStatus(document.getElementById('allocation-status'), 'Saving…');
-    try { const result = await post(assignmentUrl, {venues, assignments}); allocationsDirty = false; setStatus(document.getElementById('allocation-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }
-    catch (error) { setStatus(document.getElementById('allocation-status'), error.message, 'danger'); button.disabled = false; }
+    const buttons = [document.getElementById('save-allocations'), document.getElementById('continue-to-rules'), document.getElementById('save-timing')].filter(Boolean);
+    buttons.forEach(control => { control.disabled = true; });
+    setStatus(document.getElementById('allocation-status'), 'Saving court allocations and timing…');
+    try {
+      const result = await post(assignmentUrl, {venues, assignments, schedule:buildScheduleDraft()});
+      allocationsDirty = false;
+      scheduleDirty = false;
+      setStatus(document.getElementById('allocation-status'), result.message, 'success');
+      setStatus(document.getElementById('schedule-status'), result.message, 'success');
+      notify(result.message, 'success');
+      return true;
+    } catch (error) {
+      setStatus(document.getElementById('allocation-status'), error.message, 'danger');
+      setStatus(document.getElementById('schedule-status'), error.message, 'danger');
+      notify(error.message, 'danger');
+      return false;
+    } finally {
+      buttons.forEach(control => { control.disabled = false; });
+    }
+  };
+  document.getElementById('save-allocations')?.addEventListener('click', event => saveAllocationsAndTiming(event.currentTarget));
+  document.getElementById('save-timing')?.addEventListener('click', event => saveAllocationsAndTiming(event.currentTarget));
+  document.getElementById('continue-to-rules')?.addEventListener('click', async event => {
+    if (! await saveAllocationsAndTiming(event.currentTarget)) return;
+    showWorkflowStep(2);
+    document.getElementById('schedule-rules-step').scrollIntoView({behavior:'smooth', block:'start'});
   });
+  document.getElementById('back-to-allocations')?.addEventListener('click', () => showWorkflowStep(1));
+  document.getElementById('back-to-rules')?.addEventListener('click', () => showWorkflowStep(2));
   document.getElementById('add-venue')?.addEventListener('click', async event => {
     const button = event.currentTarget; button.disabled = true;
     try { const result = await post(venueUrl, {venue_id:Number(document.getElementById('new-venue-id').value) || null, name:document.getElementById('new-venue-name').value || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value}); setStatus(document.getElementById('venue-add-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }
@@ -1166,6 +1251,7 @@
     button.disabled = true;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Applying schedule…';
     setStatus(document.getElementById('schedule-status'), 'Applying and revalidating…');
+    setStatus(document.getElementById('review-status'), 'Applying and revalidating…');
     startScheduleActivity(applyActivityStages, 'Progress is estimated while the server applies the fixtures and rebuilds the final schedule.');
     let completed = false;
     try {
@@ -1175,19 +1261,16 @@
       setScheduleActivityPhase(revalidationActivityStages);
       render(await post(previewUrl, payload));
       setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures. Opening tournament draws…`, 'success');
+      setStatus(document.getElementById('review-status'), `Applied ${applied.count} fixtures. Opening tournament draws…`, 'success');
+      notify(`Applied ${applied.count} fixtures.`, 'success');
       completed = true;
       finishScheduleActivity('Schedule applied. Opening tournament draws…');
       window.setTimeout(() => window.location.assign(drawsUrl), 1000);
     }
-    catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); button.disabled = false; }
+    catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); setStatus(document.getElementById('review-status'), error.message, 'danger'); notify(error.message, 'danger'); button.disabled = false; }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; }
   });
-  if (manualMode) {
-    document.getElementById('court-allocation-step').open = false;
-    document.getElementById('schedule-rules-step').open = true;
-    setWorkflowStep(2);
-    window.requestAnimationFrame(() => document.getElementById('generate-preview').click());
-  }
+  showWorkflowStep(1);
 })();
 </script>
 @endsection

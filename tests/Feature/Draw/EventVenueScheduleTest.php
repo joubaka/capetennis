@@ -547,9 +547,17 @@ class EventVenueScheduleTest extends TestCase
                 'draw_id' => $draw->id, 'venue_ids' => [$venue->id],
                 'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['2', '8']]],
             ])->all(),
+            'schedule' => $this->schedulingOptions() + [
+                'draw_starts' => [['draw_id' => $draws->last()->id, 'start' => '2026-09-10 10:30:00']],
+                'reschedule_existing' => true,
+            ],
         ]);
 
-        $response->assertOk();
+        $response->assertOk()->assertJsonPath('message', 'Court allocations and timing saved.');
+        $this->assertDatabaseHas('event_venue_schedule_drafts', [
+            'event_id' => $event->id,
+            'updated_by' => $admin->id,
+        ]);
         foreach ($draws as $draw) {
             $this->assertDatabaseHas('draw_venues', [
                 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 8,
@@ -570,7 +578,14 @@ class EventVenueScheduleTest extends TestCase
             ->assertDontSee('<details class="card preview-venue mb-4" open>', false)
             ->assertSee('open only the one you are editing')
             ->assertSee('id="court-allocation-step"', false)
-            ->assertSee('id="schedule-rules-step"', false)
+            ->assertSee('class="workspace-section mb-3 d-none" id="schedule-rules-step"', false)
+            ->assertSee('id="schedule-review-step"', false)
+            ->assertSee('Save allocations & timing', false)
+            ->assertSee('Save & next: timing', false)
+            ->assertSee('Include already scheduled matches and start a fresh reschedule')
+            ->assertSee('value="2026-09-10T10:30"', false)
+            ->assertSee('id="reschedule-existing" checked', false)
+            ->assertSee('showWorkflowStep(3)', false)
             ->assertSee('id="schedule-activity"', false)
             ->assertSee('id="schedule-activity-bar"', false)
             ->assertSee('Applying schedule…')
@@ -605,9 +620,9 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('result?.unscheduled')
             ->assertSee('Participants determined by feeder path')
             ->assertSee('openMatchPicker(slot)', false)
-            ->assertSee("document.getElementById('generate-preview').click()", false)
+            ->assertDontSee("document.getElementById('generate-preview').click()", false)
             ->assertSee('venue-schedule\/unapply', false)
-            ->assertSee('Next: timing rules');
+            ->assertSee('Save & next: timing', false);
     }
 
     public function test_an_admin_of_another_event_cannot_open_or_generate_the_schedule(): void

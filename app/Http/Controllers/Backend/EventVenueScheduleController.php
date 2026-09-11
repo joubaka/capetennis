@@ -75,8 +75,29 @@ final class EventVenueScheduleController extends Controller
 
         $announcementDraft = $announcements->venueAssignmentDraft($event);
 
+        $storedScheduleDraft = json_decode((string) DB::table('event_venue_schedule_drafts')
+            ->where('event_id', $event->id)->value('options'), true) ?: [];
+        $scheduleDraft = array_replace([
+            'start' => optional($event->start_date)->format('Y-m-d').'T08:00',
+            'end' => optional($event->start_date)->format('Y-m-d').'T18:00',
+            'duration' => 75,
+            'wave_minutes' => 90,
+            'court_gap' => 5,
+            'player_rest' => 60,
+            'draw_starts' => [],
+            'reschedule_existing' => false,
+        ], $storedScheduleDraft);
+        foreach (['start', 'end'] as $key) {
+            if (! empty($scheduleDraft[$key])) {
+                $scheduleDraft[$key] = \Carbon\Carbon::parse($scheduleDraft[$key])->format('Y-m-d\TH:i');
+            }
+        }
+        $scheduleDraft['draw_starts'] = collect($scheduleDraft['draw_starts'] ?? [])
+            ->filter(fn ($row) => isset($row['draw_id'], $row['start']) && $eventDraws->contains('id', (int) $row['draw_id']))
+            ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
+
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft'
         ));
     }
 
@@ -196,9 +217,24 @@ final class EventVenueScheduleController extends Controller
             'assignments.*.court_allocations.*.venue_id' => ['required', 'integer'],
             'assignments.*.court_allocations.*.court_labels' => ['required', 'array', 'min:1'],
             'assignments.*.court_allocations.*.court_labels.*' => ['string', 'max:50'],
+            'schedule' => ['required', 'array'],
+            'schedule.start' => ['required', 'date'],
+            'schedule.end' => ['nullable', 'date', 'after:schedule.start'],
+            'schedule.duration' => ['required', 'integer', 'min:15', 'max:480'],
+            'schedule.wave_minutes' => ['required', 'integer', 'min:15', 'max:480'],
+            'schedule.court_gap' => ['required', 'integer', 'min:0', 'max:120'],
+            'schedule.player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'schedule.draw_starts' => ['present', 'array'],
+            'schedule.draw_starts.*.draw_id' => ['required', 'integer', 'distinct'],
+            'schedule.draw_starts.*.start' => ['required', 'date'],
+            'schedule.reschedule_existing' => ['required', 'boolean'],
         ]);
         $draws = $event->draws()->whereIn('id', collect($data['assignments'])->pluck('draw_id'))->get()->keyBy('id');
         if ($draws->count() !== count($data['assignments'])) abort(422, 'One or more draws do not belong to this event.');
+        $eventDrawIds = $event->draws()->pluck('id')->map(fn ($id) => (int) $id);
+        if (collect($data['schedule']['draw_starts'])->pluck('draw_id')->map(fn ($id) => (int) $id)->diff($eventDrawIds)->isNotEmpty()) {
+            abort(422, 'An age-group start time does not belong to this event.');
+        }
         $courtCounts = collect($data['venues'])->mapWithKeys(fn ($venue) => [(int) $venue['id'] => (int) $venue['courts']]);
         $allowedVenueIds = $event->venues()->pluck('venues.id')
             ->merge(DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->pluck('venue_id'))
@@ -207,7 +243,7 @@ final class EventVenueScheduleController extends Controller
 
         $unscheduled = 0;
         try {
-            DB::transaction(function () use ($data, $draws, $courtCounts, &$unscheduled) {
+            DB::transaction(function () use ($data, $draws, $courtCounts, $event, $request, &$unscheduled) {
                 foreach ($data['assignments'] as $assignment) {
                     $draw = $draws[(int) $assignment['draw_id']];
                     if ($draw->locked || $draw->published) {
@@ -262,12 +298,21 @@ final class EventVenueScheduleController extends Controller
                         'before' => $before, 'after' => $venueIds, 'unscheduled_matches' => $affectedFixtureIds->count(),
                     ]);
                 }
+                DB::table('event_venue_schedule_drafts')->updateOrInsert(
+                    ['event_id' => $event->id],
+                    [
+                        'options' => json_encode($data['schedule'], JSON_THROW_ON_ERROR),
+                        'updated_by' => $request->user()?->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ],
+                );
             });
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        return response()->json(['message' => 'Age-group venue allocations saved.', 'unscheduled' => $unscheduled]);
+        return response()->json(['message' => 'Court allocations and timing saved.', 'unscheduled' => $unscheduled]);
     }
 
     public function preview(Request $request, Event $event, EventVenueScheduleService $scheduler,
