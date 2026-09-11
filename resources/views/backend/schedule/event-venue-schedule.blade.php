@@ -8,8 +8,9 @@
   .schedule-workspace .workspace-header { max-width: 52rem; }
   .schedule-workspace .workspace-actions .btn { white-space: nowrap; }
   .schedule-workspace .workflow-rail { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); border:1px solid var(--schedule-border); border-radius:.85rem; background:#fff; overflow:hidden; }
-  .schedule-workspace .workflow-step { display:flex; align-items:center; gap:.75rem; min-width:0; padding:.9rem 1rem; color:var(--schedule-muted); }
+  .schedule-workspace .workflow-step { display:flex; align-items:center; gap:.75rem; min-width:0; padding:.9rem 1rem; border:0; border-radius:0; color:var(--schedule-muted); background:#fff; text-align:left; cursor:pointer; }
   .schedule-workspace .workflow-step + .workflow-step { border-left:1px solid var(--schedule-border); }
+  .schedule-workspace .workflow-step:hover, .schedule-workspace .workflow-step:focus-visible { color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .035); outline:0; }
   .schedule-workspace .workflow-step.is-active { color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .055); }
   .schedule-workspace .step-number { display:grid; place-items:center; flex:0 0 1.75rem; width:1.75rem; height:1.75rem; border-radius:50%; background:var(--schedule-soft); font-size:.78rem; font-weight:700; }
   .schedule-workspace .is-active .step-number { color:#fff; background:var(--bs-primary); }
@@ -27,8 +28,16 @@
   .schedule-workspace .section-body { border-top:1px solid var(--schedule-border); padding:1.25rem; }
   .schedule-workspace .draw-list { border:1px solid var(--schedule-border); border-radius:.75rem; overflow:hidden; }
   .schedule-workspace .draw-panel + .draw-panel { border-top:1px solid var(--schedule-border); }
-  .schedule-workspace .draw-panel > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; cursor:pointer; background:#fff; }
-  .schedule-workspace .draw-panel[open] > summary { background:var(--schedule-soft); }
+  .schedule-workspace .draw-panel { --draw-accent:#2563eb; --draw-soft:#eff6ff; --draw-open:#dbeafe; }
+  .schedule-workspace .draw-panel.draw-accent-1 { --draw-accent:#c2410c; --draw-soft:#fff7ed; --draw-open:#ffedd5; }
+  .schedule-workspace .draw-panel.draw-accent-2 { --draw-accent:#7c3aed; --draw-soft:#f5f3ff; --draw-open:#ede9fe; }
+  .schedule-workspace .draw-panel.draw-accent-3 { --draw-accent:#047857; --draw-soft:#ecfdf5; --draw-open:#d1fae5; }
+  .schedule-workspace .draw-panel.draw-accent-4 { --draw-accent:#be123c; --draw-soft:#fff1f2; --draw-open:#ffe4e6; }
+  .schedule-workspace .draw-panel.draw-accent-5 { --draw-accent:#0e7490; --draw-soft:#ecfeff; --draw-open:#cffafe; }
+  .schedule-workspace .draw-panel > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; border-left:4px solid var(--draw-accent); cursor:pointer; background:var(--draw-soft); }
+  .schedule-workspace .draw-panel[open] > summary { background:var(--draw-open); }
+  .schedule-workspace .draw-panel .draw-name { color:var(--draw-accent); }
+  .schedule-workspace .draw-panel .draw-preview .badge { color:var(--draw-accent) !important; border:1px solid var(--draw-accent); background:rgba(255,255,255,.72) !important; }
   .schedule-workspace .draw-heading { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex:1; min-width:0; }
   .schedule-workspace .draw-name { min-width:0; }
   .schedule-workspace .draw-preview { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.35rem; }
@@ -131,9 +140,9 @@
   </div>
 
   <div class="workflow-rail mb-3" aria-label="Schedule workflow">
-    <div class="workflow-step is-active"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></div>
-    <div class="workflow-step"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></div>
-    <div class="workflow-step"><span class="step-number">3</span><span class="workflow-label">Review & apply</span></div>
+    <button type="button" class="workflow-step is-active" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
+    <button type="button" class="workflow-step" data-workflow-nav="2" data-audit-ignore="true"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></button>
+    <button type="button" class="workflow-step" data-workflow-nav="3" data-audit-ignore="true"><span class="step-number">3</span><span class="workflow-label">Review & apply</span></button>
   </div>
 
   <details class="workspace-section mb-3" id="court-allocation-step" open>
@@ -148,7 +157,7 @@
     <div class="section-body">
       <div class="draw-list">
           @forelse($draws as $draw)
-            <details class="draw-panel {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $firstSelectedDrawId === $draw['id'] ? 'open' : '' }}>
+            <details class="draw-panel draw-accent-{{ $loop->index % 6 }} {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $firstSelectedDrawId === $draw['id'] ? 'open' : '' }}>
               <summary>
                 <span class="draw-heading">
                   <span class="draw-name fw-semibold">{{ $draw['name'] }}</span>
@@ -294,6 +303,18 @@
         <div class="col-6 col-md-2"><label class="form-label" for="schedule-wave">Round wave</label><input id="schedule-wave" type="number" class="form-control" value="{{ $scheduleDraft['wave_minutes'] }}" min="15" max="480"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="{{ $scheduleDraft['court_gap'] }}" min="0" max="120"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="{{ $scheduleDraft['player_rest'] }}" min="0" max="480"></div>
+      </div>
+      <div class="mt-4">
+        <div class="fw-semibold">Venue opening times</div>
+        <div class="small text-muted mb-2">Leave blank to use the main schedule start. A later age-group start still takes priority.</div>
+        <div class="row g-2">
+          @foreach($venues as $venue)
+            <div class="col-md-6 col-xl-4">
+              <label class="form-label small" for="venue-start-{{ $venue['id'] }}">{{ $venue['name'] }}</label>
+              <input id="venue-start-{{ $venue['id'] }}" class="form-control venue-start" data-venue="{{ $venue['id'] }}" type="datetime-local" value="{{ $scheduleDraft['venue_starts']->get($venue['id'], '') }}">
+            </div>
+          @endforeach
+        </div>
       </div>
       <label class="form-check mt-3 p-3 border rounded bg-light" for="reschedule-existing">
         <input class="form-check-input" type="checkbox" id="reschedule-existing" {{ $scheduleDraft['reschedule_existing'] ? 'checked' : '' }}>
@@ -581,7 +602,12 @@
     invalidatePreview('Save the timing changes, then generate a new preview.');
   };
   const setWorkflowStep = step => {
-    document.querySelectorAll('.workflow-step').forEach((item, index) => item.classList.toggle('is-active', index === step - 1));
+    document.querySelectorAll('.workflow-step').forEach((item, index) => {
+      const active = index === step - 1;
+      item.classList.toggle('is-active', active);
+      if (active) item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
+    });
   };
   const showWorkflowStep = step => {
     ['court-allocation-step', 'schedule-rules-step', 'schedule-review-step'].forEach((id, index) => {
@@ -635,6 +661,7 @@
     court_gap: Number(document.getElementById('schedule-gap').value),
     player_rest: Number(document.getElementById('schedule-rest').value),
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
+    venue_starts: [...document.querySelectorAll('.venue-start')].filter(input => input.value).map(input => ({venue_id:Number(input.dataset.venue), start:input.value})),
     reschedule_existing: document.getElementById('reschedule-existing').checked,
   });
   const selectedAssignedVenueIds = () => [...new Set(
@@ -720,7 +747,7 @@
     markAllocationsDirty();
   }));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => invalidatePreview()));
-  document.querySelectorAll('.draw-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #reschedule-existing')
+  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #reschedule-existing')
     .forEach(input => input.addEventListener('change', markScheduleDirty));
   document.getElementById('reschedule-existing')?.addEventListener('change', event => {
     if (!event.currentTarget.checked) replanVenueIds = [];
@@ -1217,6 +1244,17 @@
   });
   document.getElementById('back-to-allocations')?.addEventListener('click', () => showWorkflowStep(1));
   document.getElementById('back-to-rules')?.addEventListener('click', () => showWorkflowStep(2));
+  document.querySelectorAll('[data-workflow-nav]').forEach(control => control.addEventListener('click', async event => {
+    const step = Number(event.currentTarget.dataset.workflowNav);
+    if (step === 1) return showWorkflowStep(1);
+    if (step === 2) {
+      if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(event.currentTarget)) return;
+      return showWorkflowStep(2);
+    }
+    if (payload && revision) return showWorkflowStep(3);
+    showWorkflowStep(2);
+    document.getElementById('generate-preview').click();
+  }));
   document.getElementById('add-venue')?.addEventListener('click', async event => {
     const button = event.currentTarget; button.disabled = true;
     try { const result = await post(venueUrl, {venue_id:Number(document.getElementById('new-venue-id').value) || null, name:document.getElementById('new-venue-name').value || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value}); setStatus(document.getElementById('venue-add-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }

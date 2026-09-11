@@ -85,6 +85,7 @@ final class EventVenueScheduleController extends Controller
             'court_gap' => 5,
             'player_rest' => 60,
             'draw_starts' => [],
+            'venue_starts' => [],
             'reschedule_existing' => false,
         ], $storedScheduleDraft);
         foreach (['start', 'end'] as $key) {
@@ -95,6 +96,9 @@ final class EventVenueScheduleController extends Controller
         $scheduleDraft['draw_starts'] = collect($scheduleDraft['draw_starts'] ?? [])
             ->filter(fn ($row) => isset($row['draw_id'], $row['start']) && $eventDraws->contains('id', (int) $row['draw_id']))
             ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
+        $scheduleDraft['venue_starts'] = collect($scheduleDraft['venue_starts'] ?? [])
+            ->filter(fn ($row) => isset($row['venue_id'], $row['start']) && $availableVenues->contains('id', (int) $row['venue_id']))
+            ->mapWithKeys(fn ($row) => [(int) $row['venue_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
 
         return view('backend.schedule.event-venue-schedule', compact(
             'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft'
@@ -227,6 +231,9 @@ final class EventVenueScheduleController extends Controller
             'schedule.draw_starts' => ['present', 'array'],
             'schedule.draw_starts.*.draw_id' => ['required', 'integer', 'distinct'],
             'schedule.draw_starts.*.start' => ['required', 'date'],
+            'schedule.venue_starts' => ['present', 'array'],
+            'schedule.venue_starts.*.venue_id' => ['required', 'integer', 'distinct'],
+            'schedule.venue_starts.*.start' => ['required', 'date'],
             'schedule.reschedule_existing' => ['required', 'boolean'],
         ]);
         $draws = $event->draws()->whereIn('id', collect($data['assignments'])->pluck('draw_id'))->get()->keyBy('id');
@@ -240,6 +247,9 @@ final class EventVenueScheduleController extends Controller
             ->merge(DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->pluck('venue_id'))
             ->unique()->map(fn ($id) => (int) $id)->all();
         if (array_diff($courtCounts->keys()->all(), $allowedVenueIds)) abort(422, 'A venue does not belong to this event.');
+        if (collect($data['schedule']['venue_starts'])->pluck('venue_id')->map(fn ($id) => (int) $id)->diff($allowedVenueIds)->isNotEmpty()) {
+            abort(422, 'A venue start time does not belong to this event.');
+        }
 
         $unscheduled = 0;
         try {
@@ -488,6 +498,9 @@ final class EventVenueScheduleController extends Controller
             'draw_starts' => ['nullable', 'array'],
             'draw_starts.*.draw_id' => ['required', 'integer'],
             'draw_starts.*.start' => ['nullable', 'date'],
+            'venue_starts' => ['nullable', 'array'],
+            'venue_starts.*.venue_id' => ['required', 'integer'],
+            'venue_starts.*.start' => ['nullable', 'date'],
         ]);
     }
 }

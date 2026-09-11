@@ -25,6 +25,8 @@ final class EventVenueScheduleService
         $replanVenues = array_values(array_unique(array_map('intval', $options['replan_venue_ids'] ?? [])));
         $drawStarts = collect($options['draw_starts'] ?? [])->filter(fn ($row) => ! empty($row['start']))
             ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => Carbon::parse($row['start'])])->sortKeys();
+        $venueStarts = collect($options['venue_starts'] ?? [])->filter(fn ($row) => ! empty($row['start']))
+            ->mapWithKeys(fn ($row) => [(int) $row['venue_id'] => Carbon::parse($row['start'])])->sortKeys();
         if (array_key_exists('draw_ids', $options) && ! $selectedDraws) {
             throw new \InvalidArgumentException('Select at least one age group or draw.');
         }
@@ -53,6 +55,9 @@ final class EventVenueScheduleService
         if ($selectedVenues) $venueIds = $venueIds->filter(fn ($id) => in_array((int) $id, $selectedVenues, true))->values();
         if (array_diff($replanVenues, $venueIds->map(fn ($id) => (int) $id)->all())) {
             throw new \InvalidArgumentException('One or more venues selected for replanning are not available in this preview.');
+        }
+        if ($venueStarts->keys()->diff($venueIds->map(fn ($id) => (int) $id))->isNotEmpty()) {
+            throw new \InvalidArgumentException('A venue start time belongs to a venue outside this preview.');
         }
         $venues = Venue::whereIn('id', $venueIds)->orderBy('name')->get()->keyBy('id');
         $courtLabels = $this->courtLabels($event, $draws, $venues);
@@ -125,8 +130,9 @@ final class EventVenueScheduleService
                     $release = $release->max($finished[$dependency])->copy();
                 }
                 foreach ($node['venue_courts'] as $venueId => $courts) {
+                    $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
                     foreach ($courts as $court) {
-                        $at = $calendar->nextAvailableForMatch($release, $duration + $courtGap,
+                        $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
@@ -216,6 +222,8 @@ final class EventVenueScheduleService
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
+                'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
+            'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
         ];
 

@@ -549,6 +549,7 @@ class EventVenueScheduleTest extends TestCase
             ])->all(),
             'schedule' => $this->schedulingOptions() + [
                 'draw_starts' => [['draw_id' => $draws->last()->id, 'start' => '2026-09-10 10:30:00']],
+                'venue_starts' => [['venue_id' => $venue->id, 'start' => '2026-09-10 09:15:00']],
                 'reschedule_existing' => true,
             ],
         ]);
@@ -584,7 +585,10 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Save & next: timing', false)
             ->assertSee('Include already scheduled matches and start a fresh reschedule')
             ->assertSee('value="2026-09-10T10:30"', false)
+            ->assertSee('value="2026-09-10T09:15"', false)
             ->assertSee('id="reschedule-existing" checked', false)
+            ->assertSee('data-workflow-nav="3"', false)
+            ->assertSee('draw-accent-0', false)
             ->assertSee('showWorkflowStep(3)', false)
             ->assertSee('id="schedule-activity"', false)
             ->assertSee('id="schedule-activity-bar"', false)
@@ -804,6 +808,35 @@ class EventVenueScheduleTest extends TestCase
 
         $this->assertSame('2026-09-10 08:00:00', $matches[$draws[0]->id]['scheduled_at']);
         $this->assertSame('2026-09-10 11:00:00', $matches[$draws[1]->id]['scheduled_at']);
+    }
+
+    public function test_each_venue_can_have_a_different_opening_time(): void
+    {
+        $event = Event::factory()->create();
+        $venues = collect([
+            $this->venue($event, 'Early Venue'),
+            $this->venue($event, 'Late Venue'),
+        ]);
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
+        foreach ($draws as $index => $draw) {
+            $draw->venues()->attach($venues[$index]->id, ['num_courts' => 1]);
+            Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+        }
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + [
+            'venue_starts' => [
+                ['venue_id' => $venues[0]->id, 'start' => '2026-09-10 08:30:00'],
+                ['venue_id' => $venues[1]->id, 'start' => '2026-09-10 11:00:00'],
+            ],
+        ]);
+        $matches = collect($preview['matches'])->keyBy('venue_id');
+
+        $this->assertSame('2026-09-10 08:30:00', $matches[$venues[0]->id]['scheduled_at']);
+        $this->assertSame('2026-09-10 11:00:00', $matches[$venues[1]->id]['scheduled_at']);
     }
 
     public function test_event_admin_can_add_a_venue_and_named_ball_type_courts_from_the_schedule_page(): void
