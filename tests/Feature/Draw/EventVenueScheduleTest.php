@@ -920,7 +920,10 @@ class EventVenueScheduleTest extends TestCase
         ]);
         $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()
-            ->assertSee('Manage venues and court setup')
+            ->assertSee('Venues & courts', false)
+            ->assertSee('Assigned to this event')
+            ->assertSee('Edit venues & courts', false)
+            ->assertSee('id="venue-management-modal"', false)
             ->assertSee('value="yellow" selected', false)
             ->assertSee('value="standard"', false)
             ->assertDontSee('<option value="'.$venue->id.'">'.$venue->name.'</option>', false);
