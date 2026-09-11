@@ -924,6 +924,11 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Assigned to this event')
             ->assertSee('Edit venues & courts', false)
             ->assertSee('id="venue-management-modal"', false)
+            ->assertSee('id="use-existing-venue"', false)
+            ->assertSee('id="create-new-venue"', false)
+            ->assertSee('id="existing-venue-panel"', false)
+            ->assertSee('id="new-venue-panel"', false)
+            ->assertSee('id="add-venue-label"', false)
             ->assertSee('value="yellow" selected', false)
             ->assertSee('value="standard"', false)
             ->assertDontSee('<option value="'.$venue->id.'">'.$venue->name.'</option>', false);

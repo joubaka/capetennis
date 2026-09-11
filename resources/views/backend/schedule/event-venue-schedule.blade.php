@@ -66,6 +66,10 @@
   .schedule-workspace .assigned-venue-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .55rem; border:1px solid rgba(var(--bs-primary-rgb), .16); border-radius:.55rem; background:#fff; color:var(--bs-body-color); font-size:.76rem; font-weight:600; }
   .schedule-workspace .venue-management-body { padding:1rem; }
   .schedule-workspace .venue-management-modal .modal-body { background:var(--schedule-soft); }
+  .schedule-workspace .venue-add-mode { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.5rem; padding:.3rem; border:1px solid var(--schedule-border); border-radius:.7rem; background:var(--schedule-soft); }
+  .schedule-workspace .venue-add-mode .btn { display:flex; align-items:center; justify-content:center; gap:.4rem; border:0; border-radius:.5rem; color:var(--schedule-muted); background:transparent; box-shadow:none; }
+  .schedule-workspace .venue-add-mode .btn.active { color:var(--bs-primary); background:#fff; box-shadow:0 .15rem .5rem rgba(31,42,68,.09); }
+  .schedule-workspace .venue-add-panel { padding-top:1rem; }
   .schedule-workspace .venue-editor { border-top:1px solid var(--schedule-border); }
   .schedule-workspace .venue-editor > summary { list-style:none; display:flex; align-items:center; gap:.75rem; padding:.9rem 0; cursor:pointer; }
   .schedule-workspace .venue-editor-body { padding:0 0 1rem; }
@@ -121,6 +125,7 @@
     .schedule-workspace .venue-management-summary { align-items:flex-start; flex-wrap:wrap; }
     .schedule-workspace .assigned-venue-list { flex-basis:100%; justify-content:flex-start; order:3; }
     .schedule-workspace .venue-management-summary .btn { margin-left:auto; }
+    .schedule-workspace .venue-add-mode { grid-template-columns:1fr; }
   }
 </style>
 @endsection
@@ -257,7 +262,7 @@
           <span><strong>Venues & courts</strong><span class="d-block small text-muted">Assigned to this event</span></span>
           <span class="assigned-venue-list" aria-label="Assigned venues">
             @forelse($venues as $venue)
-              <span class="assigned-venue-chip"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ $venue['name'] }} <span class="text-muted">· {{ $venue['courts'] }} {{ Str::plural('court', $venue['courts']) }} · {{ ucfirst($venue['common_ball_type']) }}</span></span>
+              <span class="assigned-venue-chip"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ $venue['name'] }} <span class="text-muted">· {{ $venue['courts'] }} {{ Str::plural('court', $venue['courts']) }} · {{ ucfirst($venue['common_ball_type'] ?? 'standard') }}</span></span>
             @empty
               <span class="small text-warning">No venues assigned yet</span>
             @endforelse
@@ -276,15 +281,24 @@
             <div class="modal-body venue-management-body">
           <div class="border rounded p-3 mb-2 bg-white">
             <h6>Add another venue</h6>
-            <label class="form-label small" for="new-venue-id">Use an existing venue</label>
-            <select id="new-venue-id" class="form-select form-select-sm mb-2"><option value="">Create a new venue instead…</option>@foreach($allVenues as $option)<option value="{{ $option->id }}">{{ $option->name }}</option>@endforeach</select>
-            <label class="form-label small" for="new-venue-name">New venue name</label>
-            <input id="new-venue-name" class="form-control form-control-sm mb-2" maxlength="191" placeholder="Enter a venue name">
+            <p class="small text-muted mb-2">Choose an existing venue, or create one if it is not listed.</p>
+            <div class="venue-add-mode" role="group" aria-label="How to add a venue">
+              <button type="button" class="btn btn-sm active" id="use-existing-venue" data-venue-mode="existing" aria-pressed="true"><i class="ti ti-map-pin" aria-hidden="true"></i>Existing venue</button>
+              <button type="button" class="btn btn-sm" id="create-new-venue" data-venue-mode="new" aria-pressed="false"><i class="ti ti-plus" aria-hidden="true"></i>Create new venue</button>
+            </div>
+            <div id="existing-venue-panel" class="venue-add-panel">
+              <label class="form-label small" for="new-venue-id">Select venue</label>
+              <select id="new-venue-id" class="form-select form-select-sm"><option value="">Choose a venue…</option>@foreach($allVenues as $option)<option value="{{ $option->id }}">{{ $option->name }}</option>@endforeach</select>
+            </div>
+            <div id="new-venue-panel" class="venue-add-panel d-none" hidden>
+              <label class="form-label small" for="new-venue-name">New venue name</label>
+              <input id="new-venue-name" class="form-control form-control-sm" maxlength="191" placeholder="Enter a venue name" disabled>
+            </div>
             <div class="row g-2">
               <div class="col-sm-6"><label class="form-label small" for="new-venue-courts">Number of courts</label><input id="new-venue-courts" type="number" class="form-control form-control-sm" value="1" min="1" max="100"></div>
               <div class="col-sm-6"><label class="form-label small" for="new-venue-ball">Court type</label><select id="new-venue-ball" class="form-select form-select-sm"><option value="standard">Standard</option><option value="yellow">Yellow ball</option><option value="orange">Orange ball</option><option value="green">Green ball</option><option value="red">Red ball</option></select></div>
             </div>
-            <button type="button" id="add-venue" class="btn btn-sm btn-primary mt-3"><i class="ti ti-plus me-1"></i>Add venue and courts</button>
+            <button type="button" id="add-venue" class="btn btn-sm btn-primary mt-3" data-audit-ignore="true"><i class="ti ti-plus me-1"></i><span id="add-venue-label">Add existing venue</span></button>
             <div id="venue-add-status" class="small text-muted mt-2" role="status" aria-live="polite"></div>
           </div>
           @forelse($venues as $venue)
@@ -808,11 +822,28 @@
   }));
   const existingVenue = document.getElementById('new-venue-id');
   const newVenueName = document.getElementById('new-venue-name');
-  existingVenue?.addEventListener('change', () => {
-    newVenueName.disabled = Boolean(existingVenue.value);
-    if (existingVenue.value) newVenueName.value = '';
-    newVenueName.placeholder = existingVenue.value ? 'Using the selected venue' : 'Enter a venue name';
-  });
+  const setVenueMode = mode => {
+    const creating = mode === 'new';
+    document.querySelectorAll('[data-venue-mode]').forEach(button => {
+      const active = button.dataset.venueMode === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    const existingPanel = document.getElementById('existing-venue-panel');
+    const newPanel = document.getElementById('new-venue-panel');
+    existingPanel.classList.toggle('d-none', creating);
+    existingPanel.hidden = creating;
+    newPanel.classList.toggle('d-none', !creating);
+    newPanel.hidden = !creating;
+    existingVenue.disabled = creating;
+    newVenueName.disabled = !creating;
+    if (creating) existingVenue.value = '';
+    else newVenueName.value = '';
+    document.getElementById('add-venue-label').textContent = creating ? 'Create venue and courts' : 'Add existing venue';
+    document.getElementById('venue-add-status').textContent = '';
+    (creating ? newVenueName : existingVenue).focus();
+  };
+  document.querySelectorAll('[data-venue-mode]').forEach(button => button.addEventListener('click', () => setVenueMode(button.dataset.venueMode)));
   const card = (value, label, tone='primary') => `<div class="col-6 col-md-3"><div class="card"><div class="card-body py-3"><div class="fs-4 fw-bold text-${tone}">${value}</div><small class="text-muted">${label}</small></div></div></div>`;
   const asDate = value => new Date(String(value).replace(' ', 'T'));
   const dateKey = value => asDate(value).getTime();
@@ -1325,7 +1356,15 @@
   }));
   document.getElementById('add-venue')?.addEventListener('click', async event => {
     const button = event.currentTarget; button.disabled = true;
-    try { const result = await post(venueUrl, {venue_id:Number(document.getElementById('new-venue-id').value) || null, name:document.getElementById('new-venue-name').value || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value}); setStatus(document.getElementById('venue-add-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }
+    const creating = !newVenueName.disabled;
+    if ((!creating && !existingVenue.value) || (creating && !newVenueName.value.trim())) {
+      setStatus(document.getElementById('venue-add-status'), creating ? 'Enter a name for the new venue.' : 'Choose an existing venue.', 'danger');
+      (creating ? newVenueName : existingVenue).focus();
+      button.disabled = false;
+      return;
+    }
+    setStatus(document.getElementById('venue-add-status'), creating ? 'Creating the venue and courts…' : 'Adding the venue and courts…');
+    try { const result = await post(venueUrl, {venue_id:Number(existingVenue.value) || null, name:newVenueName.value.trim() || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value}); setStatus(document.getElementById('venue-add-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }
     catch (error) { setStatus(document.getElementById('venue-add-status'), error.message, 'danger'); button.disabled = false; }
   });
   document.querySelectorAll('.add-court').forEach(button => button.addEventListener('click', async event => {
