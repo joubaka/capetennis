@@ -154,6 +154,25 @@ class ClothingOrderIntegrityTest extends TestCase
             ->assertSee('data-price="370.00"', false);
     }
 
+    public function test_configured_final_unit_amount_remains_exact_for_multiple_quantities(): void
+    {
+        $data = $this->orderContext();
+        $data['item']->update([
+            'price' => app(\App\Services\Clothing\ClothingPriceService::class)
+                ->totalsFromFinalAmount(275.00)['subtotal'],
+        ]);
+
+        $order = app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 2]], (string) str()->uuid()
+        );
+
+        $this->assertSame('550.00', $order->total);
+        $this->assertSame('550.00', $order->payfast_amount_due);
+        $this->assertSame('275.00', $order->items()->firstOrFail()->price);
+        $this->assertSame('550.00', $order->items()->firstOrFail()->line_total);
+    }
+
     public function test_customer_checkout_never_displays_the_internal_payment_fee_breakdown(): void
     {
         $data = $this->orderContext();
