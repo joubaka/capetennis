@@ -411,6 +411,7 @@
       <div class="d-flex flex-wrap gap-2 mb-3">
         <button type="button" id="back-to-rules" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: timing</button>
         <button type="button" id="apply-preview" class="btn btn-success" data-audit-ignore="true" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
+        <a id="continue-to-draws" class="btn btn-primary d-none" href="{{ route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']) }}"><i class="ti ti-arrow-right me-1"></i>Continue to tournament draws</a>
         <span id="review-status" class="align-self-center text-muted small" role="status" aria-live="polite">Review every venue before applying.</span>
       </div>
   <div id="schedule-display" class="schedule-display">
@@ -967,10 +968,18 @@
     replanAll.dataset.venueIds = JSON.stringify(appliedVenueIds);
     replanAll.classList.toggle('d-none', !appliedVenueIds.length || appliedVenueIds.every(id => replanVenueIds.includes(id)));
     keepAll.classList.toggle('d-none', replanVenueIds.length === 0);
-    document.getElementById('apply-preview').disabled = result.unscheduled.length > 0 || result.matches.length === 0;
+    const hasSuggestions = result.matches.length > 0;
+    const scheduleComplete = !result.unscheduled.length && !hasSuggestions && (result.existing_matches || []).length > 0;
+    const applyPreview = document.getElementById('apply-preview');
+    const continueToDraws = document.getElementById('continue-to-draws');
+    applyPreview.disabled = result.unscheduled.length > 0 || !hasSuggestions;
+    applyPreview.classList.toggle('d-none', scheduleComplete);
+    continueToDraws.classList.toggle('d-none', !scheduleComplete);
     const previewMessage = result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
-      : 'Preview ready. Review every venue before applying.';
+      : scheduleComplete
+        ? 'Schedule already saved. Continue to the tournament draws.'
+        : 'Preview ready. Review every venue before applying.';
     const previewTone = result.unscheduled.length ? 'danger' : 'success';
     setStatus(document.getElementById('schedule-status'), previewMessage, previewTone);
     setStatus(document.getElementById('review-status'), previewMessage, previewTone);
