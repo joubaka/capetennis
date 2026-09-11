@@ -701,18 +701,18 @@ $(document).ready(function () {
         return;
       }
 
-      const itemTotal = price * qty;
+      const settings = document.getElementById('clothingPricingSettings')?.dataset;
+      const unitFee = price > 0 && settings
+        ? Math.round((((price * Number(settings.payfastPercentage) / 100) + Number(settings.payfastFlat)) * (1 + Number(settings.payfastVat) / 100)) * 100) / 100
+        : 0;
+      const itemTotal = (price + unitFee) * qty;
       total += itemTotal;
 
       card.find('.item-total').text('R' + itemTotal.toFixed(2));
     });
 
-    const settings = document.getElementById('clothingPricingSettings')?.dataset;
-    const fee = total > 0 && settings
-      ? Math.round((((total * Number(settings.payfastPercentage) / 100) + Number(settings.payfastFlat)) * (1 + Number(settings.payfastVat) / 100)) * 100) / 100
-      : 0;
-    console.log('[ClothingModal] customer total updated:', total + fee);
-    $('#orderTotal').text('R' + (total + fee).toFixed(2));
+    console.log('[ClothingModal] customer total updated:', total);
+    $('#orderTotal').text('R' + total.toFixed(2));
   }
 
   /* -------------------------------

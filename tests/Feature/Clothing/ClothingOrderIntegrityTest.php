@@ -37,15 +37,15 @@ class ClothingOrderIntegrityTest extends TestCase
 
         $this->assertSame('pending', $order->status);
         $this->assertSame('740.00', $order->subtotal);
-        $this->assertSame('29.28', $order->payfast_fee);
-        $this->assertSame('769.28', $order->total);
-        $this->assertSame('769.28', $order->payfast_amount_due);
+        $this->assertSame('31.56', $order->payfast_fee);
+        $this->assertSame('771.56', $order->total);
+        $this->assertSame('771.56', $order->payfast_amount_due);
         $line = $order->items()->firstOrFail();
         $this->assertSame('West Coast Shirt', $line->item_name);
         $this->assertSame('11-12', $line->size_name);
         $this->assertSame(2, (int) $line->qty);
-        $this->assertEquals(370.00, (float) $line->price);
-        $this->assertEquals(740.00, (float) $line->line_total);
+        $this->assertEquals(385.78, (float) $line->price);
+        $this->assertEquals(771.56, (float) $line->line_total);
 
         $same = $service->create(
             $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],

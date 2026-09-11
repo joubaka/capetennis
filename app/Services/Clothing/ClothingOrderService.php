@@ -87,7 +87,8 @@ final class ClothingOrderService
             }
 
             $rows = [];
-            $total = 0.0;
+            $subtotal = 0.0;
+            $customerTotal = 0.0;
             foreach ($normalised as $line) {
                 $item = $items->get($line['item_id']);
                 $size = $item->sizes->firstWhere('id', $line['size_id']);
@@ -98,14 +99,21 @@ final class ClothingOrderService
                 if ($price <= 0) {
                     throw ValidationException::withMessages(['items' => "{$item->item_type_name} does not have an approved selling price."]);
                 }
-                $lineTotal = round($price * $line['qty'], 2);
-                $total += $lineTotal;
-                $rows[] = compact('item', 'size', 'price', 'lineTotal', 'line');
+                // The catalogue's final amount is an exact customer unit price.
+                // Resolve it per unit before applying quantity so a configured
+                // R275 item remains R275 (and two remain R550) at PayFast.
+                $unitPricing = $this->prices->totals($price);
+                $customerPrice = $unitPricing['total'];
+                $lineSubtotal = round($price * $line['qty'], 2);
+                $lineTotal = round($customerPrice * $line['qty'], 2);
+                $subtotal += $lineSubtotal;
+                $customerTotal += $lineTotal;
+                $rows[] = compact('item', 'size', 'customerPrice', 'lineTotal', 'line');
             }
 
-            // Calculate the PayFast amount once on the complete basket. The
-            // stored catalogue values remain the approved clothing amounts.
-            $pricing = $this->prices->totals($total);
+            $subtotal = round($subtotal, 2);
+            $customerTotal = round($customerTotal, 2);
+            $payfastFee = round($customerTotal - $subtotal, 2);
             $order = ClothingOrder::create([
                 'player_id' => $player->id,
                 'team_id' => $team->id,
@@ -114,9 +122,9 @@ final class ClothingOrderService
                 'request_token' => $requestToken,
                 'pay_status' => 0,
                 'status' => 'pending',
-                'subtotal' => $pricing['subtotal'],
-                'payfast_fee' => $pricing['payfast_fee'],
-                'total' => $pricing['total'],
+                'subtotal' => $subtotal,
+                'payfast_fee' => $payfastFee,
+                'total' => $customerTotal,
             ]);
             foreach ($rows as $row) {
                 ClothingOrderItem::create([
@@ -126,12 +134,12 @@ final class ClothingOrderService
                     'clothing_item_size' => $row['size']->id,
                     'size_name' => $row['size']->size,
                     'qty' => $row['line']['qty'],
-                    'price' => $row['price'],
+                    'price' => $row['customerPrice'],
                     'line_total' => $row['lineTotal'],
                 ]);
             }
 
-            return $this->payments->initiatePayment($order, 0, $pricing['total']);
+            return $this->payments->initiatePayment($order, 0, $customerTotal);
         });
     }
 }
