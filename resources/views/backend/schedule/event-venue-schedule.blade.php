@@ -272,8 +272,8 @@
         <div class="workspace-footer">
           <span id="allocation-status" class="small text-muted" role="status" aria-live="polite">Save changes before creating a preview.</span>
           <div class="d-flex flex-wrap gap-2">
-            <button type="button" id="save-allocations" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Save allocations & timing</button>
-            <button type="button" id="continue-to-rules" class="btn btn-outline-primary">Save & next: timing<i class="ti ti-arrow-right ms-1"></i></button>
+            <button type="button" id="save-allocations" class="btn btn-primary" data-audit-ignore="true"><i class="ti ti-device-floppy me-1"></i>Save allocations & timing</button>
+            <button type="button" id="continue-to-rules" class="btn btn-outline-primary" data-audit-ignore="true">Save & next: timing<i class="ti ti-arrow-right ms-1"></i></button>
           </div>
         </div>
       @endif
@@ -303,8 +303,8 @@
       <div class="compact-note small text-muted mt-3" role="note"><strong class="text-body">How byes are timed:</strong> a bye uses no court but still advances through its round wave. A player with two byes first appears in the third wave.</div>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button type="button" id="back-to-allocations" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: allocations</button>
-        <button type="button" id="save-timing" class="btn btn-outline-primary"><i class="ti ti-device-floppy me-1"></i>Save timing</button>
-        <button type="button" id="generate-preview" class="btn btn-primary"><i class="ti ti-wand me-1"></i>Generate combined preview</button>
+        <button type="button" id="save-timing" class="btn btn-outline-primary" data-audit-ignore="true"><i class="ti ti-device-floppy me-1"></i>Save timing</button>
+        <button type="button" id="generate-preview" class="btn btn-primary" data-audit-ignore="true"><i class="ti ti-wand me-1"></i>Generate combined preview</button>
         <span id="schedule-status" class="align-self-center text-muted small" role="status" aria-live="polite">Preview the full event before applying.</span>
       </div>
       <div id="schedule-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
@@ -331,7 +331,7 @@
     <div class="section-body">
       <div class="d-flex flex-wrap gap-2 mb-3">
         <button type="button" id="back-to-rules" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: timing</button>
-        <button type="button" id="apply-preview" class="btn btn-success" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
+        <button type="button" id="apply-preview" class="btn btn-success" data-audit-ignore="true" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
         <span id="review-status" class="align-self-center text-muted small" role="status" aria-live="polite">Review every venue before applying.</span>
       </div>
   <div id="schedule-display" class="schedule-display">
@@ -576,6 +576,7 @@
   };
   const markScheduleDirty = () => {
     scheduleDirty = true;
+    setStatus(document.getElementById('allocation-status'), 'Unsaved timing changes.', 'warning');
     setStatus(document.getElementById('schedule-status'), 'Unsaved timing changes.', 'warning');
     invalidatePreview('Save the timing changes, then generate a new preview.');
   };
