@@ -83,6 +83,10 @@ final class EventVenueScheduleService
                     $node['venue_courts'][$venueId] = $restricted ?: $courtLabels[$venueId];
                 }
                 $slot = $node['fixture']->orderOfPlay;
+                if ($slot?->time && in_array((int) $slot->venue_id, $replanVenues, true)) {
+                    $node['venue_courts'] = collect($node['venue_courts'])
+                        ->only([(int) $slot->venue_id])->all();
+                }
                 $node['fixed'] = ! $node['played'] && $slot?->time
                     && ! in_array((int) $slot->venue_id, $replanVenues, true);
                 $nodes[$id] = $node;

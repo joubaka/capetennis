@@ -38,6 +38,13 @@
   .schedule-workspace .draw-panel[open] > summary { background:var(--draw-open); }
   .schedule-workspace .draw-panel .draw-name { color:var(--draw-accent); }
   .schedule-workspace .draw-panel .draw-preview .badge { color:var(--draw-accent) !important; border:1px solid var(--draw-accent); background:rgba(255,255,255,.72) !important; }
+  .schedule-workspace .venue-age-group-summary { display:flex; flex:1; flex-wrap:wrap; justify-content:flex-end; gap:.35rem; }
+  .schedule-workspace .age-group-schedule-chip { padding:.28rem .45rem; border-radius:.4rem; background:#eef2ff; color:#3730a3; font-size:.72rem; font-weight:600; white-space:nowrap; }
+  .schedule-workspace .age-group-schedule-chip:nth-child(6n+2) { background:#fff7ed; color:#9a3412; }
+  .schedule-workspace .age-group-schedule-chip:nth-child(6n+3) { background:#f5f3ff; color:#6d28d9; }
+  .schedule-workspace .age-group-schedule-chip:nth-child(6n+4) { background:#ecfdf5; color:#047857; }
+  .schedule-workspace .age-group-schedule-chip:nth-child(6n+5) { background:#fff1f2; color:#be123c; }
+  .schedule-workspace .age-group-schedule-chip:nth-child(6n+6) { background:#ecfeff; color:#0e7490; }
   .schedule-workspace .draw-heading { display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex:1; min-width:0; }
   .schedule-workspace .draw-name { min-width:0; }
   .schedule-workspace .draw-preview { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.35rem; }
@@ -88,7 +95,9 @@
   body.schedule-full-page-active #layout-menu,
   body.schedule-full-page-active .content-footer { display:none !important; }
   .schedule-workspace .schedule-display.is-full-page { position:fixed; inset:0; z-index:1035; overflow:auto; padding:1rem; background:var(--bs-body-bg); }
-  .schedule-workspace .schedule-display.is-full-page #preview-view-controls { position:sticky; top:-1rem; z-index:6; margin-inline:-1rem; padding:1rem; border-bottom:1px solid var(--schedule-border); background:rgba(var(--bs-body-bg-rgb), .97); box-shadow:0 .35rem 1rem rgba(31,42,68,.08); backdrop-filter:blur(8px); }
+  .schedule-workspace .full-page-stepper { display:none; }
+  .schedule-workspace .schedule-display.is-full-page .full-page-stepper { position:sticky; top:-1rem; z-index:7; display:grid; margin:-1rem -1rem 1rem; border-width:0 0 1px; border-radius:0; box-shadow:0 .35rem 1rem rgba(31,42,68,.08); }
+  .schedule-workspace .schedule-display.is-full-page #preview-view-controls { position:relative; top:auto; z-index:6; margin-inline:-1rem; padding:1rem; border-bottom:1px solid var(--schedule-border); background:rgba(var(--bs-body-bg-rgb), .97); box-shadow:0 .35rem 1rem rgba(31,42,68,.08); backdrop-filter:blur(8px); }
   .schedule-workspace .schedule-display.is-full-page .court-grid-scroll { max-height:calc(100vh - 15rem); }
   .manual-match-picker-option { text-align:left; }
   .manual-match-picker-option .match-picker-meta { color:var(--bs-secondary-color); font-size:.78rem; }
@@ -190,6 +199,11 @@
                         <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}
                       </button>
                     @endif
+                    @can('event.score', $event)
+                      <a class="btn btn-sm btn-outline-success" href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw['id'], 'all_venues' => 1]) }}" title="Open this age group for scoring even when its matches are not scheduled">
+                        <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Score this age group
+                      </a>
+                    @endcan
                     <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
                   </div>
                 </div>
@@ -356,6 +370,11 @@
         <span id="review-status" class="align-self-center text-muted small" role="status" aria-live="polite">Review every venue before applying.</span>
       </div>
   <div id="schedule-display" class="schedule-display">
+    <div class="workflow-rail full-page-stepper" aria-label="Schedule workflow">
+      <button type="button" class="workflow-step" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
+      <button type="button" class="workflow-step" data-workflow-nav="2" data-audit-ignore="true"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></button>
+      <button type="button" class="workflow-step is-active" data-workflow-nav="3" data-audit-ignore="true"><span class="step-number">3</span><span class="workflow-label">Review & apply</span></button>
+    </div>
     <div id="preview-summary" class="row g-3 mb-3 d-none"></div>
     <div id="preview-warnings"></div>
     <div id="preview-view-controls" class="d-none flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -602,8 +621,8 @@
     invalidatePreview('Save the timing changes, then generate a new preview.');
   };
   const setWorkflowStep = step => {
-    document.querySelectorAll('.workflow-step').forEach((item, index) => {
-      const active = index === step - 1;
+    document.querySelectorAll('.workflow-step').forEach(item => {
+      const active = Number(item.dataset.workflowNav) === step;
       item.classList.toggle('is-active', active);
       if (active) item.setAttribute('aria-current', 'step');
       else item.removeAttribute('aria-current');
@@ -779,6 +798,24 @@
     ...(result.existing_matches || []).map(match => ({...match, fixed:true}))]
     .filter(match => Number(match.venue_id) === Number(venueId))
     .sort((a, b) => dateKey(a.scheduled_at) - dateKey(b.scheduled_at) || String(a.court).localeCompare(String(b.court), undefined, {numeric:true}));
+  const ageGroupScheduleSummary = rows => {
+    const groups = new Map();
+    rows.forEach(row => {
+      const key = Number(row.draw_id);
+      if (!groups.has(key)) groups.set(key, {name:row.draw_name, rows:[]});
+      groups.get(key).rows.push(row);
+    });
+    return [...groups.values()].map(group => {
+      const ordered = group.rows.sort((left, right) => dateKey(left.scheduled_at) - dateKey(right.scheduled_at));
+      const first = asDate(ordered[0].scheduled_at);
+      const last = asDate(ordered[ordered.length - 1].scheduled_at);
+      const firstLabel = first.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      const lastLabel = first.toDateString() === last.toDateString()
+        ? last.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        : last.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      return `<span class="age-group-schedule-chip">${escapeHtml(group.name)} · ${ordered.length} · ${escapeHtml(firstLabel)}–${escapeHtml(lastLabel)}</span>`;
+    }).join('');
+  };
   const permittedCourts = (match, venueId) => match?.venue_courts?.[String(venueId)] || [];
   const canUseCourt = (match, venueId, court) => permittedCourts(match, venueId).map(String).includes(String(court));
   const unresolvedAtVenue = (result, venueId) => (result.unscheduled || [])
@@ -840,7 +877,7 @@
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Scroll sideways to see every court. Court headings and start times remain visible while you scroll.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule; scroll horizontally and vertically"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
+    return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Scroll sideways to see every court. Court headings and start times remain visible while you scroll.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule; scroll horizontally and vertically"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function render(result) {
@@ -849,7 +886,7 @@
     replanVenueIds = (result.input.replan_venue_ids || []).map(Number);
     showWorkflowStep(3);
     document.getElementById('preview-summary').classList.remove('d-none');
-    document.getElementById('preview-summary').innerHTML = card(result.matches.length + (result.existing_matches || []).length, 'Court bookings', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
+    document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Suggested · not saved', 'primary') + card((result.existing_matches || []).length, 'Saved · kept fixed', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
     if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue can only be applied when none of its selected matches remain unresolved.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
@@ -857,7 +894,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap gap-2"><h5 class="mb-0 flex-grow-1">${escapeHtml(venue.name)}</h5><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -1246,6 +1283,7 @@
   document.getElementById('back-to-rules')?.addEventListener('click', () => showWorkflowStep(2));
   document.querySelectorAll('[data-workflow-nav]').forEach(control => control.addEventListener('click', async event => {
     const step = Number(event.currentTarget.dataset.workflowNav);
+    if (step < 3 && scheduleDisplay.classList.contains('is-full-page')) setFullPage(false);
     if (step === 1) return showWorkflowStep(1);
     if (step === 2) {
       if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(event.currentTarget)) return;

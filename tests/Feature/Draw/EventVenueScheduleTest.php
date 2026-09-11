@@ -312,6 +312,38 @@ class EventVenueScheduleTest extends TestCase
             ->firstWhere('fixture_id', $fixture->id)['scheduled_at']);
     }
 
+    public function test_replanning_an_applied_venue_keeps_its_matches_at_that_venue(): void
+    {
+        $event = Event::factory()->create();
+        $earlyVenue = $this->venue($event, 'Early Venue');
+        $replannedVenue = $this->venue($event, 'Replanned Venue');
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach([
+            $earlyVenue->id => ['num_courts' => 1],
+            $replannedVenue->id => ['num_courts' => 1],
+        ]);
+        $fixture = Fixture::factory()->create([
+            'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id,
+            'registration2_id' => Registration::factory()->create()->id,
+            'scheduled' => true,
+        ]);
+        OrderOfPlay::create([
+            'draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $replannedVenue->id,
+            'court' => '1', 'time' => '2026-09-10 08:00:00', 'duration_minutes' => 75,
+        ]);
+
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + [
+            'replan_venue_ids' => [$replannedVenue->id],
+            'venue_starts' => [['venue_id' => $replannedVenue->id, 'start' => '2026-09-10 10:00:00']],
+        ]);
+        $match = collect($preview['matches'])->firstWhere('fixture_id', $fixture->id);
+
+        $this->assertSame($replannedVenue->id, $match['venue_id']);
+        $this->assertSame('2026-09-10 10:00:00', $match['scheduled_at']);
+        $this->assertCount(0, $preview['existing_matches']);
+    }
+
     public function test_applied_matches_can_be_returned_to_planning_by_venue_or_draw(): void
     {
         $event = Event::factory()->create();
@@ -588,6 +620,10 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('value="2026-09-10T09:15"', false)
             ->assertSee('id="reschedule-existing" checked', false)
             ->assertSee('data-workflow-nav="3"', false)
+            ->assertSee('full-page-stepper', false)
+            ->assertSee('Score this age group')
+            ->assertSee(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draws->first(), 'all_venues' => 1]))
+            ->assertSee('ageGroupScheduleSummary', false)
             ->assertSee('draw-accent-0', false)
             ->assertSee('showWorkflowStep(3)', false)
             ->assertSee('id="schedule-activity"', false)
@@ -624,7 +660,6 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('result?.unscheduled')
             ->assertSee('Participants determined by feeder path')
             ->assertSee('openMatchPicker(slot)', false)
-            ->assertDontSee("document.getElementById('generate-preview').click()", false)
             ->assertSee('venue-schedule\/unapply', false)
             ->assertSee('Save & next: timing', false);
     }

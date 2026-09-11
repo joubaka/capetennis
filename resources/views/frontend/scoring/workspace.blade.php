@@ -189,9 +189,9 @@
             <div class="scoring-hero-eyebrow mb-2">Tournament operations</div>
             <h1 class="scoring-title h3 mb-2" id="scoring-workspace-title">{{ $event->name }}</h1>
             <div class="scoring-hero-context small">
-              <i class="ti ti-device-mobile me-1" aria-hidden="true"></i> Venue scoring
+              <i class="ti ti-device-mobile me-1" aria-hidden="true"></i> {{ $selectedDraw && !$selectedVenue ? 'Draw scoring' : 'Venue scoring' }}
               <span aria-hidden="true"> · </span>
-              {{ $selectedVenue?->name ?? 'All scheduled venues' }}
+              {{ $selectedVenue?->name ?? ($selectedDraw ? 'No schedule required' : 'All scheduled venues') }}
               @if($selectedDraw) · {{ $selectedDraw->drawName }} @endif
             </div>
           </div>
@@ -237,7 +237,7 @@
           <label class="scoring-filter-label mb-1" for="venue-filter">Venue</label>
           <select class="form-select scoring-select" id="venue-filter" data-nav-select>
             @unless($venueRestricted ?? false)
-              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}" @selected(!$selectedVenue)>All venues</option>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}" @selected(!$selectedVenue)>{{ $selectedDraw ? 'All venues / unscheduled' : 'All venues' }}</option>
             @endunless
             @foreach($venues as $venue)
               <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}" @selected($selectedVenue?->id === $venue->id)>{{ $venue->name }}</option>

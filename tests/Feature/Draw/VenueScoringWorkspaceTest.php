@@ -63,6 +63,26 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertNotSame($venue->id, $otherVenue->id);
     }
 
+    public function test_specific_draw_can_be_scored_without_scheduling_its_matches(): void
+    {
+        [$event, $draw, , $fixture] = $this->scheduledFixture('Unscheduled Venue');
+        $fixture->orderOfPlay()->delete();
+        $fixture->update(['scheduled' => 0]);
+
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event,
+            'draw' => $draw,
+            'all_venues' => 1,
+        ]));
+
+        $response->assertOk()
+            ->assertSee('Draw scoring')
+            ->assertSee('No schedule required')
+            ->assertSee('All venues / unscheduled')
+            ->assertSee('Match '.$fixture->match_nr)
+            ->assertSee('Enter score');
+    }
+
     public function test_venue_queue_uses_canonical_time_then_natural_court_order(): void
     {
         [$event, $draw, $venue, $courtTen] = $this->scheduledFixture('Canonical Venue');
