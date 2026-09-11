@@ -89,7 +89,10 @@
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
       @php($regionRosterEmailRecipients = $regionRosterRecipients->get($eventRegion->id, collect()))
-      @php($regionPendingImportedRecipients = $pendingImportedRecipients->get($eventRegion->id, collect()))
+      @php($regionImportedCohorts = $importedRecipientCohorts->get($eventRegion->id, collect()))
+      @php($unlinkedImportedRecipients = $regionImportedCohorts->get('unlinked_imported', collect()))
+      @php($linkedUnpaidRecipients = $regionImportedCohorts->get('linked_unpaid', collect()))
+      @php($allLinkedImportedRecipients = $regionImportedCohorts->get('linked_all', collect()))
       <div
         id="region-panel-{{ $eventRegion->id }}"
         class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
@@ -149,11 +152,14 @@
                 @if($activeImport?->status === 'draft')
                   <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
                 @endif
-                @if($regionRosterEmailRecipients->isNotEmpty())
-                  <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="region" data-recipient="{{ $regionRosterEmailRecipients->count() }} active selected player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $regionRosterEmailRecipients->pluck('email')->toJson()) }}"><i class="ti ti-mail me-1"></i>Email all players in region</button>
+                @if($unlinkedImportedRecipients->isNotEmpty())
+                  <button class="btn btn-sm btn-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="unlinked_imported" data-recipient="{{ $unlinkedImportedRecipients->count() }} unlinked imported player email(s)" data-recipient-hash="{{ hash('sha256', $unlinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-user-question me-1"></i>Email unlinked / not registered</button>
                 @endif
-                @if($regionPendingImportedRecipients->isNotEmpty())
-                  <button class="btn btn-sm btn-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="pending_imported" data-recipient="{{ $regionPendingImportedRecipients->count() }} imported player email(s) still needing account linking, registration or payment" data-recipient-hash="{{ hash('sha256', $regionPendingImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-mail-forward me-1"></i>Email players still to complete</button>
+                @if($linkedUnpaidRecipients->isNotEmpty())
+                  <button class="btn btn-sm btn-outline-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_unpaid" data-recipient="{{ $linkedUnpaidRecipients->count() }} linked player email(s) still not registered/paid" data-recipient-hash="{{ hash('sha256', $linkedUnpaidRecipients->pluck('email')->toJson()) }}"><i class="ti ti-credit-card-off me-1"></i>Email linked, not registered / paid</button>
+                @endif
+                @if($allLinkedImportedRecipients->isNotEmpty())
+                  <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-1"></i>Email all linked players</button>
                 @endif
                 <span class="badge bg-label-warning">Region-scoped workspace</span>
               </div>
@@ -464,7 +470,9 @@
             <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
             <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
             <details class="mb-3 d-none" data-roster-region-review><summary>Review all {{ $regionRosterEmailRecipients->count() }} exact regional recipient(s)</summary><div class="small text-muted mt-2">@foreach($regionRosterEmailRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
-            <details class="mb-3 d-none" data-roster-pending-review><summary>Review all {{ $regionPendingImportedRecipients->count() }} imported recipient(s)</summary><div class="small text-muted mt-2">@foreach($regionPendingImportedRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
+            @foreach(['unlinked_imported' => $unlinkedImportedRecipients, 'linked_unpaid' => $linkedUnpaidRecipients, 'linked_all' => $allLinkedImportedRecipients] as $cohortKey => $cohortRecipients)
+              <details class="mb-3 d-none" data-roster-cohort-review="{{ $cohortKey }}"><summary>Review all {{ $cohortRecipients->count() }} exact recipient(s)</summary><div class="small text-muted mt-2">@foreach($cohortRecipients as $recipient)<div>{{ $recipient['name'] ?: 'Player' }} · {{ $recipient['email'] }}</div>@endforeach</div></details>
+            @endforeach
             <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm the recipient details above are correct</label></div>
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
@@ -652,6 +660,35 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  document.querySelectorAll('.imported-email-form').forEach(function (form) {
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      button.disabled = true;
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(form),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The email could not be saved.');
+        const data = await response.json();
+        form.querySelector('input[name="email"]').value = data.imported_email;
+        const row = form.closest('tr[data-slot-id]');
+        row.querySelector('[data-effective-email]').textContent = data.effective_email || 'No email';
+        const source = row.querySelector('[data-effective-email-source]');
+        source.textContent = data.effective_email_source;
+        source.classList.toggle('bg-label-success', data.effective_email_source === 'Linked profile email');
+        source.classList.toggle('bg-label-info', data.effective_email_source !== 'Linked profile email');
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'The email could not be saved.');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
   document.querySelectorAll('.imported-roster-sortable').forEach(function (tbody) {
     let dragged = null;
     tbody.addEventListener('dragstart', function (event) {
@@ -779,7 +816,9 @@ document.addEventListener('DOMContentLoaded', function () {
       modal.querySelector('[data-roster-email-hash]').value = button.dataset.recipientHash || '';
       modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
       modal.querySelector('[data-roster-region-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'region');
-      modal.querySelector('[data-roster-pending-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'pending_imported');
+      modal.querySelectorAll('[data-roster-cohort-review]').forEach(function (review) {
+        review.classList.toggle('d-none', review.dataset.rosterCohortReview !== button.dataset.targetType);
+      });
     });
   });
 

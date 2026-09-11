@@ -10,6 +10,7 @@ use App\Models\TeamPlayer;
 use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Services\PlayerEligibilityService;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -291,6 +292,8 @@ class ExternalTeamRosterService
 
     private function identityName(string $name, string $surname): string
     {
-        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $name.' '.$surname)));
+        $fullName = trim((string) preg_replace('/\s+/u', ' ', $name.' '.$surname));
+
+        return mb_strtolower(Str::ascii($fullName));
     }
 }

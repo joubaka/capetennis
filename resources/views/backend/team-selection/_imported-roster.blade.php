@@ -13,7 +13,8 @@
         <tbody class="imported-roster-players" data-team-id="{{ $regionTeam->id }}">
           @forelse($importedRoster as $slot)
             @php($linkedProfile = $slot->player_profile ? $slot->profile : null)
-            @php($contactEmail = $linkedProfile ? ($teamSelectionContacts->primaryEmail($linkedProfile) ?: $slot->email) : $slot->email)
+            @php($linkedEmail = $linkedProfile ? $teamSelectionContacts->primaryEmail($linkedProfile) : null)
+            @php($contactEmail = $linkedEmail ?: $slot->email)
             @php($contactCell = $linkedProfile?->cellNr ?: $slot->cell_nr)
             <tr data-slot-id="{{ $slot->id }}">
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
@@ -24,6 +25,15 @@
                   <div class="col"><label class="visually-hidden" for="imported-surname-{{ $slot->id }}">Surname</label><input id="imported-surname-{{ $slot->id }}" name="surname" value="{{ $slot->surname }}" class="form-control form-control-sm" maxlength="100" required></div>
                   <div class="col-auto"><button class="btn btn-sm btn-outline-primary">Save name</button></div>
                 </form>
+                @if(!$linkedProfile)
+                  <form method="POST" action="{{ route('backend.team-selection.imported-players.email.update', [$event, $eventRegion, $regionTeam, $slot]) }}" class="d-flex align-items-center gap-1 mt-2 imported-email-form" data-slot-id="{{ $slot->id }}">
+                    @csrf @method('PATCH')
+                    <span class="badge bg-label-info text-nowrap">No-profile email</span>
+                    <label class="visually-hidden" for="imported-email-{{ $slot->id }}">No-profile email</label>
+                    <input id="imported-email-{{ $slot->id }}" type="email" name="email" value="{{ $slot->email }}" class="form-control form-control-sm" maxlength="255" placeholder="Click to add email" required>
+                    <button class="btn btn-sm btn-outline-primary text-nowrap">Save email</button>
+                  </form>
+                @endif
               </td>
               <td>
                 @if($linkedProfile)
@@ -34,7 +44,12 @@
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
               </td>
-              <td><div>{{ $contactEmail ?: 'No email' }}</div><div class="small text-muted">{{ $contactCell ?: 'No cell number' }}</div></td>
+              <td data-effective-contact>
+                <div data-effective-email>{{ $contactEmail ?: 'No email' }}</div>
+                <span class="badge {{ $linkedEmail ? 'bg-label-success' : 'bg-label-info' }}" data-effective-email-source>{{ $linkedEmail ? 'Linked profile email' : ($linkedProfile ? 'No-profile fallback email' : 'No-profile email') }}</span>
+                <div class="small text-muted mt-1">{{ $contactCell ?: 'No cell number' }}</div>
+                @if($contactCell)<span class="badge {{ $linkedProfile?->cellNr ? 'bg-label-success' : 'bg-label-info' }}">{{ $linkedProfile?->cellNr ? 'Linked profile cell' : 'No-profile cell' }}</span>@endif
+              </td>
             </tr>
           @empty
             <tr><td colspan="4" class="text-center text-muted py-4">No imported roster players have been added to this team yet.</td></tr>

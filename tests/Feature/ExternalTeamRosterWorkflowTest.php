@@ -242,6 +242,34 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertNull($slot->fresh()->player_profile);
     }
 
+    public function test_claim_accepts_equivalent_roster_and_profile_names_with_diacritics(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create([
+            'name' => 'Zione',
+            'surname' => 'Van Zyl',
+            'userId' => $user->id,
+        ]);
+        $slot = NoProfileTeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'name' => 'Zioné',
+            'surname' => 'Van Zyl',
+            'pay_status' => 0,
+        ]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+
+        $this->actingAs($user)->post(route('player.attach'), [
+            'player_id' => $player->id,
+            'team' => $this->team->id,
+            'event' => $this->event->id,
+            'noProfile' => $slot->id,
+            'confirmed_profile' => 1,
+        ])->assertRedirect(route('player.claim.review'));
+
+        $this->assertNull($slot->fresh()->player_profile);
+    }
+
     public function test_closed_event_blocks_claiming_and_self_service_registration(): void
     {
         $this->event->update(['signUp' => false]);
@@ -552,14 +580,21 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->assertSee('0837654321')
             ->assertSee('value="Imported"', false)
             ->assertSee('Player order')
-            ->assertSee('Email players still to complete')
+            ->assertSee('Email unlinked / not registered')
+            ->assertSee('Email linked, not registered / paid')
+            ->assertSee('Email all linked players')
             ->assertSee('class="row g-1 align-items-center imported-name-form"', false)
+            ->assertSee('class="d-flex align-items-center gap-1 mt-2 imported-email-form"', false)
+            ->assertDontSee('id="imported-email-'.$linkedSlot->id.'"', false)
+            ->assertSee('id="imported-email-'.$unlinkedSlot->id.'"', false)
+            ->assertSee('Linked profile email')
+            ->assertSee('No-profile email')
             ->assertSee('class="imported-roster-players"', false)
             ->assertSee('class="imported-roster-sortable"', false)
             ->assertSee('draggable="true"', false);
 
         $this->actingAs($this->admin)->post(route('backend.team-selection.roster-email.send', [$this->event, $eventRegion]), [
-            'target_type' => 'pending_imported',
+            'target_type' => 'unlinked_imported',
             'subject' => 'Complete your Cape Tennis registration',
             'message' => 'Please link your account, register and complete payment.',
             'confirm_recipients' => 1,
@@ -572,6 +607,38 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'recipient_email' => 'imported.player@example.test',
             'status' => 'queued',
         ]);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_id' => $eventRegion->id,
+            'recipient_email' => 'linked.player@example.test',
+        ]);
+
+        $this->actingAs($this->admin)->patchJson(route('backend.team-selection.imported-players.email.update', [
+            $this->event, $eventRegion, $this->team, $linkedSlot,
+        ]), ['email' => 'linked.fallback@example.test'])
+            ->assertOk()
+            ->assertJsonPath('imported_email', 'linked.fallback@example.test')
+            ->assertJsonPath('effective_email', 'linked.player@example.test')
+            ->assertJsonPath('effective_email_source', 'Linked profile email');
+        $this->assertSame('linked.fallback@example.test', $linkedSlot->fresh()->email);
+        $this->actingAs($this->admin)->post(route('backend.team-selection.roster-email.send', [$this->event, $eventRegion]), [
+            'target_type' => 'linked_unpaid',
+            'subject' => 'Complete payment',
+            'message' => 'Please complete registration and payment.',
+            'confirm_recipients' => 1,
+            'recipient_hash' => hash('sha256', collect(['linked.player@example.test'])->toJson()),
+        ])->assertRedirect()->assertSessionHas('success');
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'related_id' => $eventRegion->id,
+            'recipient_email' => 'linked.player@example.test',
+            'status' => 'queued',
+        ]);
+
+        $this->actingAs($this->admin)->patchJson(route('backend.team-selection.imported-players.email.update', [
+            $this->event, $eventRegion, $this->team, $unlinkedSlot,
+        ]), ['email' => 'UPDATED.ROSTER@example.test'])
+            ->assertOk()
+            ->assertJsonPath('imported_email', 'updated.roster@example.test')
+            ->assertJsonPath('effective_email_source', 'No-profile email');
 
         $this->actingAs($this->admin)->patchJson(route('backend.team-selection.imported-players.update', [
             $this->event, $eventRegion, $this->team, $unlinkedSlot,

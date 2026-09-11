@@ -106,6 +106,28 @@ final class ImportedTeamRosterService
         });
     }
 
+    public function updateEmail(Event $event, NoProfileTeamPlayer $slot, string $email, User $actor): NoProfileTeamPlayer
+    {
+        return DB::transaction(function () use ($event, $slot, $email, $actor): NoProfileTeamPlayer {
+            $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
+            $before = $locked->email;
+            $after = mb_strtolower(trim($email));
+            $locked->update(['email' => $after]);
+
+            activity('team-roster')->performedOn($locked->team)->causedBy($actor)
+                ->withProperties([
+                    'event_id' => $event->id,
+                    'slot_id' => $locked->id,
+                    'rank' => $locked->rank,
+                    'linked_player_id' => $locked->player_profile,
+                    'before_email' => $before,
+                    'after_email' => $after,
+                ])->log('regional manager updated imported roster email');
+
+            return $locked->fresh('profile');
+        });
+    }
+
     public function reorder(Event $event, int $teamId, array $slotIds, User $actor): void
     {
         DB::transaction(function () use ($event, $teamId, $slotIds, $actor): void {
