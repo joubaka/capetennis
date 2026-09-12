@@ -7,7 +7,6 @@ use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPlayer;
-use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Services\PlayerEligibilityService;
 use Illuminate\Support\Str;
@@ -134,15 +133,9 @@ class ExternalTeamRosterService
         Team $team,
         NoProfileTeamPlayer $slot,
         Player $player,
-        ?string $verifiedDateOfBirth = null,
-        array $verifiedContacts = [],
     ): void
     {
         $this->assertClaimCandidate($event, $team, $slot, $player);
-
-        if (! $this->userOwnsPlayer($user, $player) && ! $user->can('event.manage', $event)) {
-            $this->assertExistingProfileVerification($player, $verifiedDateOfBirth, $verifiedContacts);
-        }
 
         $this->playerEligibility->assertEligible($player, $event);
 
@@ -199,14 +192,7 @@ class ExternalTeamRosterService
 
     public function assertCanRegister(User $user, Event $event, Team $team, Player $player): TeamPlayer
     {
-        $teamPlayer = $this->assertSelectedPlayerCanRegister($event, $team, $player);
-        if (! $this->userOwnsPlayer($user, $player)
-            && ! $user->can('event.manage', $event)
-            && ! $this->hasAcceptedSelectionInvitation($user, $event, $team, $player)) {
-            throw ValidationException::withMessages(['player' => 'You may only register a player linked to your account.']);
-        }
-
-        return $teamPlayer;
+        return $this->assertSelectedPlayerCanRegister($event, $team, $player);
     }
 
     public function assertSelectedPlayerCanRegister(Event $event, Team $team, Player $player): TeamPlayer
@@ -225,31 +211,12 @@ class ExternalTeamRosterService
         return $teamPlayer;
     }
 
-    private function hasAcceptedSelectionInvitation(User $user, Event $event, Team $team, Player $player): bool
-    {
-        return TeamSelectionInvitation::query()
-            ->where('event_id', $event->id)
-            ->where('team_id', $team->id)
-            ->where('player_id', $player->id)
-            ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
-            ->where(function ($query) use ($user) {
-                $query->whereNull('order_id')
-                    ->orWhereHas('order', fn ($order) => $order->where('user_id', $user->id));
-            })
-            ->exists();
-    }
-
     public function registrationIsOpen(Event $event): bool
     {
         if (! $event->published || ! $event->signUp || in_array($event->status, ['closed', 'draft'], true)) return false;
         $closesAt = $event->registrationClosesAt();
 
         return ! $closesAt || now()->lte($closesAt->endOfDay());
-    }
-
-    public function userOwnsPlayer(User $user, Player $player): bool
-    {
-        return (int) $player->userId === (int) $user->id || $player->users()->whereKey($user->id)->exists();
     }
 
     private function assertPlayerMatchesRosterSlot(NoProfileTeamPlayer $slot, Player $player): void
@@ -261,33 +228,6 @@ class ExternalTeamRosterService
             ]);
         }
 
-    }
-
-    private function assertExistingProfileVerification(
-        Player $player,
-        ?string $dateOfBirth,
-        array $contacts,
-    ): void {
-        $dateOfBirthMatches = $dateOfBirth
-            && substr((string) $player->dateOfBirth, 0, 10) === substr($dateOfBirth, 0, 10);
-        $knownContacts = collect([$player->email, $player->cellNr])
-            ->filter()
-            ->map(fn ($contact): string => $this->normalizeContact((string) $contact));
-        $contactMatches = collect($contacts)
-            ->filter(fn ($contact): bool => trim((string) $contact) !== '')
-            ->map(fn ($contact): string => $this->normalizeContact((string) $contact))
-            ->contains(fn (string $contact): bool => $contact !== '' && $knownContacts->contains($contact));
-
-        if (! $dateOfBirthMatches || ! $contactMatches) {
-            throw ValidationException::withMessages([
-                'player_id' => 'To link this existing profile, enter the player date of birth and the email address or mobile number already recorded on that profile.',
-            ]);
-        }
-    }
-
-    private function normalizeContact(string $contact): string
-    {
-        return mb_strtolower((string) preg_replace('/[^a-z0-9+@.]/i', '', trim($contact)));
     }
 
     private function identityName(string $name, string $surname): string

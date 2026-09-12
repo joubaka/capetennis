@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamPlayer;
 use App\Models\TeamPaymentOrder;
 use App\Models\TeamFixturePlayer;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -34,18 +35,15 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('Withdrawals are currently disabled. Please contact support@capetennis.co.za for assistance.');
     }
 
-    // allow profile owner OR super-user id 584 OR role 'super-user'
-    $isOwner = $player->users->contains('id', $user->id);
-    $isSuperUser = ((int) $user->id === 584)
-      || (method_exists($user, 'hasRole') && $user->hasRole('super-user'));
-
-    if (!($isOwner || $isSuperUser)) {
-      return back()->withErrors('You do not own this player profile.');
-    }
-
     $event = \App\Models\Event::findOrFail($eventId);
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
+    }
+
+    $withdrawalOrder = $this->paymentOrder($team, $player, (int) $eventId);
+    $access = $this->withdrawalAccess($user, $player, $withdrawalOrder);
+    if (! $access['allowed']) {
+      return back()->withErrors('Only the payer or a user linked to this player may withdraw the team entry.');
     }
 
     // Find the team slot for this player
@@ -64,10 +62,6 @@ class TeamPlayerWithdrawController extends Controller
     // method. Opening the choice screen must not alter the roster, fixtures,
     // payment badge or canonical invitation state.
     if ((int) $teamPlayer->pay_status === 1) {
-      $withdrawalOrder = TeamPaymentOrder::where('team_id', $team->id)
-        ->where('player_id', $player->id)
-        ->where('event_id', $eventId)
-        ->first();
       if ($withdrawalOrder && ! $withdrawalOrder->withdrawn_at) {
         $withdrawalOrder = app(\App\Domain\Payments\Services\TeamPaymentService::class)
           ->recordWithdrawal($withdrawalOrder, $user);
@@ -117,30 +111,22 @@ class TeamPlayerWithdrawController extends Controller
       return redirect()->route('login');
     }
 
-    // Ownership check: player owner or super-user
-    $isOwner = $player->users->contains('id', $user->id);
-    $isSuperUser = ((int) $user->id === 584) || (method_exists($user, 'hasRole') && $user->hasRole('super-user'));
-
-    if (!($isOwner || $isSuperUser)) {
-      abort(403);
-    }
-
     $event = \App\Models\Event::findOrFail($eventId);
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
 
     // Load payment order if exists
-    $order = TeamPaymentOrder::where('team_id', $team->id)
-      ->where('player_id', $player->id)
-      ->where('event_id', $eventId)
-      ->first();
+    $order = $this->paymentOrder($team, $player, (int) $eventId);
 
     if (!$order) {
       return back()->withErrors('The paid team place has no payment order. No withdrawal changes were made; please contact support.');
     }
 
-    if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
+    $access = $this->withdrawalAccess($user, $player, $order);
+    abort_unless($access['allowed'], 403);
+
+    if (! $access['payer'] && ! $access['super_user']) {
       abort(403, 'Only the payer may choose a refund method.');
     }
 
@@ -192,29 +178,21 @@ class TeamPlayerWithdrawController extends Controller
       return redirect()->route('login');
     }
 
-    // ownership
-    $isOwner = $player->users->contains('id', $user->id);
-    $isSuperUser = ((int) $user->id === 584) || (method_exists($user, 'hasRole') && $user->hasRole('super-user'));
-
-    if (!($isOwner || $isSuperUser)) {
-      abort(403);
-    }
-
     $event = \App\Models\Event::findOrFail($eventId);
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
 
-    $order = TeamPaymentOrder::where('team_id', $team->id)
-      ->where('player_id', $player->id)
-      ->where('event_id', $eventId)
-      ->first();
+    $order = $this->paymentOrder($team, $player, (int) $eventId);
 
     if (!$order) {
       return back()->withErrors('Payment order not found.');
     }
 
-    if ((int) $order->user_id !== (int) $user->id && ! $isSuperUser) {
+    $access = $this->withdrawalAccess($user, $player, $order);
+    abort_unless($access['allowed'], 403);
+
+    if (! $access['payer'] && ! $access['super_user']) {
       abort(403, 'Only the payer may request this refund.');
     }
 
@@ -505,6 +483,36 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     return redirect()->route('events.show', [$eventId])->with('success', 'Bank refund request submitted. It will be processed manually.');
+  }
+
+  private function paymentOrder(Team $team, Player $player, int $eventId): ?TeamPaymentOrder
+  {
+    return TeamPaymentOrder::query()
+      ->where('team_id', $team->id)
+      ->where('player_id', $player->id)
+      ->where('event_id', $eventId)
+      ->first();
+  }
+
+  /**
+   * A payer or any account linked to the player may initiate withdrawal.
+   * Financial refund choices remain restricted to the payer or a super-user.
+   *
+   * @return array{allowed: bool, payer: bool, linked: bool, super_user: bool}
+   */
+  private function withdrawalAccess(User $user, Player $player, ?TeamPaymentOrder $order): array
+  {
+    $payer = $order && (int) $order->user_id === (int) $user->id;
+    $linked = in_array((int) $player->id, $user->ownedPlayerIds(), true);
+    $superUser = (int) $user->id === 584
+      || (method_exists($user, 'hasRole') && $user->hasRole('super-user'));
+
+    return [
+      'allowed' => $payer || $linked || $superUser,
+      'payer' => $payer,
+      'linked' => $linked,
+      'super_user' => $superUser,
+    ];
   }
 
   private function finalizeTeamWithdrawal(

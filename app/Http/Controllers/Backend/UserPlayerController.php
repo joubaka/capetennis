@@ -16,27 +16,7 @@ class UserPlayerController extends Controller
 
     $data = $request->validate([
       'player_id' => ['required', 'exists:players,id'],
-      'date_of_birth' => ['nullable', 'date_format:Y-m-d'],
-      'contact' => ['nullable', 'string', 'max:190'],
     ]);
-
-    $player = Player::findOrFail($data['player_id']);
-    $actor = auth()->user();
-    $isPrivileged = $actor && method_exists($actor, 'hasAnyRole')
-      && $actor->hasAnyRole(['super-user', 'admin']);
-
-    if (!$isPrivileged && !$user->players()->where('player_id', $data['player_id'])->exists()) {
-      $dobMatches = $data['date_of_birth']
-        && substr((string) $player->dateOfBirth, 0, 10) === $data['date_of_birth'];
-      $submittedContact = mb_strtolower(trim((string) ($data['contact'] ?? '')));
-      $normalise = fn ($value) => mb_strtolower(preg_replace('/[^a-z0-9+@.]/i', '', (string) $value));
-      $knownContacts = collect([$player->email, $player->cellNr])->filter()->map($normalise);
-      $contactMatches = $submittedContact !== '' && $knownContacts->contains($normalise($submittedContact));
-
-      if (!$dobMatches || !$contactMatches) {
-        return response()->json(['message' => 'For your protection, enter the player date of birth and the email address or mobile number recorded for that player profile.'], 422);
-      }
-    }
 
     if ($user->players()->where('player_id', $data['player_id'])->exists()) {
       return response()->json([

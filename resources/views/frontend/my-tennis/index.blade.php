@@ -131,15 +131,14 @@
       <div class="mb-3" id="my-tennis-link-feedback" role="status" aria-live="polite"></div>
       <div class="collapse" id="link-player-panel">
         <div class="border rounded p-3 mb-3">
-          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-shield-check fs-4" aria-hidden="true"></i><div><strong>Safe linking</strong><br><span class="small">Search finds the profile, but it is only linked after you verify the player’s date of birth and the email or mobile number recorded for that profile. We never display that private value in search results. A player may be linked to more than one parent or guardian account.</span></div></div>
-          <label for="my-tennis-player-search" class="form-label">1. Find the player profile</label>
+          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Search for and link the player you manage. A player may be linked to more than one account.</span></div></div>
+          <label for="my-tennis-player-search" class="form-label">Find the player profile</label>
           <div class="input-group">
             <input id="my-tennis-player-search" class="form-control" type="search" minlength="2" maxlength="100" placeholder="Search by name or email">
             <button id="my-tennis-player-search-button" class="btn btn-outline-primary" type="button">Search</button>
           </div>
           <div id="my-tennis-player-results" class="list-group mt-3"></div>
-          <div class="row g-2 mt-2"><div class="col-12 col-md-5"><label for="my-tennis-link-dob" class="form-label small mb-1">2. Player date of birth</label><input id="my-tennis-link-dob" type="date" class="form-control"></div><div class="col-12 col-md-7"><label for="my-tennis-link-contact" class="form-label small mb-1">3. Recorded email or mobile number</label><input id="my-tennis-link-contact" type="text" class="form-control" placeholder="Enter it exactly as recorded"></div></div>
-          <p class="form-text mb-0 mt-2">If the details are outdated or you do not recognise the profile, contact Cape Tennis support.</p>
+          <p class="form-text mb-0 mt-2">Linking does not remove the player from any other account.</p>
         </div>
       </div>
       <div id="my-tennis-linked-players">
@@ -187,8 +186,6 @@
   const searchButton = document.getElementById('my-tennis-player-search-button');
   const results = document.getElementById('my-tennis-player-results');
   const feedback = document.getElementById('my-tennis-link-feedback');
-  const linkDob = document.getElementById('my-tennis-link-dob');
-  const linkContact = document.getElementById('my-tennis-link-contact');
   const linkedPlayers = document.getElementById('my-tennis-linked-players');
   const bulkButton = document.getElementById('my-tennis-bulk-unlink');
   const loadMoreButton = document.getElementById('my-tennis-load-more');
@@ -275,7 +272,7 @@
   const linkPlayer = async (player, button) => {
     button.disabled = true;
     try {
-      const response = await fetch(linkUrl, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: player.id, date_of_birth: linkDob?.value || '', contact: linkContact?.value || '' }) });
+      const response = await fetch(linkUrl, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: player.id }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to link player');
       showFeedback(`${player.name} ${player.surname || ''} is now linked to your account.`, 'success');

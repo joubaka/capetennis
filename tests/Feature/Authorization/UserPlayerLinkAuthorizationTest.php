@@ -50,7 +50,7 @@ class UserPlayerLinkAuthorizationTest extends TestCase
             ->assertOk();
     }
 
-    public function test_verified_player_can_be_linked_to_more_than_one_family_account(): void
+    public function test_player_can_be_linked_to_more_than_one_account_without_identity_verification(): void
     {
         $owner = User::factory()->create();
         $claimant = User::factory()->create();
@@ -63,8 +63,6 @@ class UserPlayerLinkAuthorizationTest extends TestCase
         $this->actingAs($claimant)
             ->postJson(route('backend.user.players.store', $claimant), [
                 'player_id' => $player->id,
-                'date_of_birth' => '2012-05-17',
-                'contact' => 'family@example.test',
             ])
             ->assertOk();
 

@@ -296,10 +296,10 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         app(ExternalTeamRosterService::class)->assertCanRegister($user, $this->event->fresh(), $this->team, $player);
     }
 
-    public function test_profile_owner_can_open_team_payment_without_team_management_permission(): void
+    public function test_any_user_can_open_team_payment_for_an_eligible_unlinked_player(): void
     {
         $user = User::factory()->create();
-        $player = Player::factory()->create(['userId' => $user->id]);
+        $player = Player::factory()->create(['userId' => User::factory()->create()->id]);
         TeamPlayer::create([
             'team_id' => $this->team->id,
             'rank' => 1,

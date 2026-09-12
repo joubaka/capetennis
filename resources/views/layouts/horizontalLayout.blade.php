@@ -98,6 +98,9 @@ $containerNav = ($containerNav ?? 'container-xxl');
               document.documentElement.classList.toggle('layout-menu-expanded', open);
               toggle.setAttribute('aria-expanded', String(open));
               toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+              if (open) {
+                window.requestAnimationFrame(() => menu.querySelector('a, button')?.focus());
+              }
             });
 
             document.addEventListener('click', function (event) {
@@ -114,6 +117,20 @@ $containerNav = ($containerNav ?? 'container-xxl');
               if (event.key === 'Escape' && layout.classList.contains('mobile-menu-open')) {
                 closeMenu();
                 toggle.focus();
+              }
+              if (event.key === 'Tab' && layout.classList.contains('mobile-menu-open')) {
+                const focusable = [...menu.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+                  .filter(element => element.offsetParent !== null);
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first.focus();
+                }
               }
             });
 

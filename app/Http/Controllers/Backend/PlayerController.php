@@ -209,8 +209,6 @@ class PlayerController extends Controller
           $claimContext['team'],
           $claimContext['slot'],
           $result['player'],
-          $validated['dob'],
-          [$validated['email'] ?? null, $validated['cell_nr'] ?? null],
         );
       }
 

@@ -93,6 +93,56 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         $this->assertSame($player->id, $assignment->fresh()->team1_id);
     }
 
+    public function test_unlinked_payer_can_initiate_withdrawal_and_open_refund_choice(): void
+    {
+        [$payer, $event, $team, $player] = $this->paidTeamPlayer();
+        $player->users()->detach($payer->id);
+        $player->forceFill(['userId' => User::factory()->create()->id])->save();
+        $event->update(['withdrawal_deadline' => now()->addDay()]);
+        $order = TeamPaymentOrder::create([
+            'user_id' => $payer->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
+
+        $refundChoice = route('team.player.refund.choose', [$team->id, $player->id, $event->id]);
+        $this->actingAs($payer)
+            ->post(route('team.player.withdraw', [$team, $player, $event]))
+            ->assertRedirect($refundChoice);
+
+        $this->assertSame($payer->id, $order->fresh()->withdrawn_by);
+        $this->get($refundChoice)->assertOk();
+    }
+
+    public function test_unlinked_non_payer_cannot_withdraw_team_player(): void
+    {
+        [$payer, $event, $team, $player] = $this->paidTeamPlayer();
+        $stranger = User::factory()->create();
+        TeamPaymentOrder::create([
+            'user_id' => $payer->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
+
+        $this->actingAs($stranger)
+            ->post(route('team.player.withdraw', [$team, $player, $event]))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'pay_status' => 1,
+        ]);
+    }
+
     public function test_withdrawal_clears_future_fixture_assignments_but_preserves_completed_history(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
