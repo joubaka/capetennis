@@ -177,6 +177,65 @@
     </div>
   </div>
 
+  {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Registration Transactions</h5>
+        <small class="text-muted">Payments, refunds and no-refund withdrawals attributed to each user.</small>
+      </div>
+      <span class="badge bg-label-secondary">{{ $eventTransactions->count() }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th>User / participant</th>
+            <th>Type</th>
+            <th>Method</th>
+            <th>Reference</th>
+            <th class="text-end">Gross</th>
+            <th class="text-end">Fees</th>
+            <th class="text-end">Net to event</th>
+          </tr>
+        </thead>
+        <tbody>
+          @forelse($eventTransactions as $transaction)
+            @php
+              $isWithdrawal = $transaction->type === 'withdrawal';
+              $gross = $isWithdrawal ? ($transaction->original_gross ?? 0) : ($transaction->gross ?? 0);
+              $fees = ($transaction->fee ?? 0) + ($transaction->capeFee ?? 0);
+            @endphp
+            <tr>
+              <td class="text-nowrap">{{ optional($transaction->created_at)->format('d M Y H:i') ?? '—' }}</td>
+              <td>
+                <span class="fw-semibold">{{ $transaction->user_name ?? $transaction->player ?? '—' }}</span>
+                @if(($transaction->type ?? null) === 'payment' && ($transaction->entryCount ?? 1) > 1)
+                  <small class="text-muted d-block">{{ $transaction->entryCount }} entries</small>
+                @endif
+              </td>
+              <td>
+                <span class="badge bg-label-{{ $transaction->status_colour ?? 'secondary' }}">
+                  {{ $transaction->type === 'payment' ? 'Payment' : ($transaction->status_label ?? ucfirst($transaction->type)) }}
+                </span>
+              </td>
+              <td>{{ $transaction->method ?? $transaction->payment_method ?? '—' }}</td>
+              <td><small class="text-muted">{{ $transaction->source_pf_id ?? $transaction->pf_payment_id ?? ($transaction->source_tx_id ? '#'.$transaction->source_tx_id : '—') }}</small></td>
+              <td class="text-end text-nowrap {{ !$isWithdrawal && $gross < 0 ? 'text-danger' : '' }}">R {{ number_format(abs($gross), 2) }}</td>
+              <td class="text-end text-nowrap {{ $fees < 0 ? 'text-danger' : '' }}">{{ $fees < 0 ? '−' : '' }}R {{ number_format(abs($fees), 2) }}</td>
+              <td class="text-end text-nowrap fw-semibold {{ ($transaction->net ?? 0) < 0 ? 'text-danger' : 'text-success' }}">
+                {{ ($transaction->net ?? 0) < 0 ? '−' : '' }}R {{ number_format(abs($transaction->net ?? 0), 2) }}
+              </td>
+            </tr>
+          @empty
+            <tr><td colspan="8" class="text-center text-muted py-4">No registration transactions have been recorded for this event.</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 – INCOME
   ══════════════════════════════════════════════════════════════════════ --}}

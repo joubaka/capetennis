@@ -9,6 +9,7 @@ use App\Models\EventExpense;
 use App\Models\EventIncomeItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -44,6 +45,34 @@ class EventFinanceControllerAuthorizationTest extends TestCase
     public function test_view_guest_redirect() { $this->get(route('admin.events.finances', $this->eventA->id))->assertRedirect('login'); }
 
     public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
+
+    public function test_view_uses_canonical_ledger_and_lists_user_transactions(): void
+    {
+        $payer = User::factory()->create(['name' => 'Finance Payer']);
+
+        DB::table('transactions_pf')->insert([
+            'pf_payment_id' => 'PF-ADMIN-VIEW-1',
+            'event_id' => $this->eventA->id,
+            'transaction_type' => 'Registration',
+            'amount_gross' => 300.00,
+            'custom_int4' => $payer->id,
+            'is_test' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.events.finances', $this->eventA->id));
+
+        $response
+            ->assertSuccessful()
+            ->assertViewHas('totalGross', 300.00)
+            ->assertViewHas('eventTransactions', fn ($rows) => $rows->count() === 1
+                && $rows->first()->user_name === 'Finance Payer')
+            ->assertSee('Registration Transactions')
+            ->assertSee('Finance Payer')
+            ->assertSee('PF-ADMIN-VIEW-1');
+    }
 
     public function test_view_cross_event_forbidden() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventB->id))->assertStatus(403); }
 
