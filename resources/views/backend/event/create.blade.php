@@ -29,7 +29,26 @@
     </div>
   @endif
 
-  <form method="POST"
+  @unless($isCopy)
+    <div class="card border-primary mb-4" id="event-brief-card" data-preview-url="{{ route('backend.events.preview-brief') }}">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-2">
+          <div>
+            <h5 class="mb-1"><i class="ti ti-sparkles me-1" aria-hidden="true"></i>Paste event information</h5>
+            <p class="text-muted mb-0">Paste the notice, email or WhatsApp message. AI will fill the form for you, then show a preview before anything is created.</p>
+          </div>
+          <button type="button" class="btn btn-primary align-self-md-start" id="fill-event-brief">
+            Fill event details
+          </button>
+        </div>
+        <label class="visually-hidden" for="event-brief">Event information to extract</label>
+        <textarea id="event-brief" class="form-control mt-3" rows="7" placeholder="Example:&#10;Event: Cape Town Junior Open&#10;Dates: 18–20 October 2026&#10;Type: Individual&#10;Entry fee: R350&#10;Entries close: 7 days before the event&#10;Venue: Bellville Tennis Club&#10;Contact: tournaments@example.org"></textarea>
+        <div class="form-text" id="event-brief-status" aria-live="polite">You can edit every extracted field before previewing.</div>
+      </div>
+    </div>
+  @endunless
+
+  <form method="POST" id="event-create-form"
         action="{{ route('backend.events.store') }}"
         enctype="multipart/form-data">
 
@@ -229,12 +248,35 @@
         Cancel
       </a>
       <button type="submit" class="btn btn-primary">
-        {{ $isCopy ? 'Save Copied Event' : 'Create Event' }}
+        {{ $isCopy ? 'Save Copied Event' : 'Preview Event' }}
       </button>
     </div>
 
   </form>
 </div>
+
+@unless($isCopy)
+<div class="modal fade" id="eventPreviewModal" tabindex="-1" aria-labelledby="eventPreviewTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="eventPreviewTitle">Review event before creating</h5>
+          <div class="small text-muted">Nothing has been saved yet.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="event-preview-content"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep editing</button>
+        <button type="button" class="btn btn-primary" id="confirm-create-event">
+          <i class="ti ti-check me-1" aria-hidden="true"></i>Create Event
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+@endunless
 @endsection
 
 @section('page-script')
@@ -242,5 +284,101 @@
   $(document).ready(function () {
     $('.select2').select2();
   });
+
+  (() => {
+    const form = document.getElementById('event-create-form');
+    const brief = document.getElementById('event-brief');
+    if (!form || !brief) return;
+
+    const value = name => form.elements[name]?.value?.trim() || '';
+    const setValue = (name, next) => {
+      if (next === null || next === undefined || next === '') return false;
+      const control = form.elements[name];
+      if (!control) return false;
+      control.value = next;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    };
+    const escapeHtml = text => String(text ?? '').replace(/[&<>'"]/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
+    })[char]);
+    document.getElementById('fill-event-brief').addEventListener('click', async event => {
+      const text = brief.value.trim();
+      const status = document.getElementById('event-brief-status');
+      if (text.length < 20) {
+        status.textContent = 'Paste at least a short event notice first.';
+        brief.focus();
+        return;
+      }
+
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Reading with AI…';
+      status.textContent = 'AI is preparing an editable draft…';
+
+      try {
+        const response = await fetch(document.getElementById('event-brief-card').dataset.previewUrl, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': form.querySelector('[name="_token"]').value,
+          },
+          body: JSON.stringify({ brief: text }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'The AI event assistant could not prepare a draft.');
+
+        const draft = payload.draft || {};
+        let filled = 0;
+        for (const field of ['name', 'start_date', 'end_date', 'information', 'venue_notes', 'entryFee', 'deadline', 'withdrawal_deadline', 'organizer', 'email']) {
+          filled += setValue(field, draft[field]) ? 1 : 0;
+        }
+        filled += setValue('eventType', draft.event_type_id) ? 1 : 0;
+        form.elements.published.checked = draft.published === true;
+        form.elements.signUp.checked = draft.signUp === true;
+
+        const notes = Array.isArray(draft.review_notes) && draft.review_notes.length
+          ? ` Please review: ${draft.review_notes.join(' ')}`
+          : '';
+        status.textContent = `${filled} field${filled === 1 ? '' : 's'} filled by AI. Check the draft, then preview the event.${notes}`;
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (error) {
+        status.textContent = error.message || 'The AI event assistant could not prepare a draft.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Fill event details';
+      }
+    });
+
+    form.addEventListener('submit', event => {
+      if (form.dataset.confirmed === 'true') return;
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+
+      const type = form.elements.eventType.options[form.elements.eventType.selectedIndex]?.text || 'Not selected';
+      const admins = [...form.querySelectorAll('[name="admins[]"] option:checked')].map(option => option.text);
+      const rows = [
+        ['Event name', value('name')], ['Dates', [value('start_date'), value('end_date')].filter(Boolean).join(' to ')],
+        ['Event type', type], ['Entry fee', value('entryFee') ? `R${value('entryFee')}` : 'Not set'],
+        ['Registration deadline', value('deadline') ? `${value('deadline')} days before start` : 'Not set'],
+        ['Withdrawal deadline', value('withdrawal_deadline') || 'Not set'], ['Organizer', value('organizer') || 'Not set'],
+        ['Contact email', value('email') || 'Not set'], ['Event admins', admins.join(', ') || 'None selected'],
+        ['Published', form.elements.published.checked ? 'Yes' : 'No'], ['Allow sign-up', form.elements.signUp.checked ? 'Yes' : 'No']
+      ];
+      document.getElementById('event-preview-content').innerHTML = `
+        <dl class="row mb-0">${rows.map(([label, content]) => `<dt class="col-sm-4">${escapeHtml(label)}</dt><dd class="col-sm-8">${escapeHtml(content || 'Not set')}</dd>`).join('')}</dl>
+        ${value('information') ? `<hr><h6>Information</h6><p class="mb-3" style="white-space:pre-wrap">${escapeHtml(value('information'))}</p>` : ''}
+        ${value('venue_notes') ? `<h6>Venue notes</h6><p class="mb-0" style="white-space:pre-wrap">${escapeHtml(value('venue_notes'))}</p>` : ''}`;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('eventPreviewModal')).show();
+    });
+
+    document.getElementById('confirm-create-event').addEventListener('click', event => {
+      event.currentTarget.disabled = true;
+      event.currentTarget.textContent = 'Creating…';
+      form.dataset.confirmed = 'true';
+      form.requestSubmit();
+    });
+  })();
 </script>
 @endsection

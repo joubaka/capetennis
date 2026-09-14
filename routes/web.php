@@ -1831,6 +1831,11 @@ Route::delete(
 )->name('backend.events.create');
 
   Route::post(
+    'backend/events/preview-brief',
+    [\App\Http\Controllers\Backend\EventController::class, 'previewBrief']
+  )->middleware('throttle:10,1')->name('backend.events.preview-brief');
+
+  Route::post(
     'backend/events',
     [\App\Http\Controllers\Backend\EventController::class, 'store']
   )->name('backend.events.store');

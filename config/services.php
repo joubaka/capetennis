@@ -54,4 +54,14 @@ return [
     'recipient' => env('PAYMENT_FAILURE_ALERT_EMAIL', 'hermanustennisacademy@gmail.com'),
   ],
 
+  // Same environment-managed Gemini contract used by the JTA project.
+  'gemini' => [
+    'api_key' => env('GEMINI_API_KEY', ''),
+    'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+    'model_fast' => env('GEMINI_MODEL_FAST', 'gemini-2.5-flash-lite'),
+    'attempts' => (int) env('GEMINI_ATTEMPTS', 2),
+    'timeout' => (int) env('GEMINI_TIMEOUT', 50),
+    'verify_ssl' => env('GEMINI_VERIFY_SSL', true),
+  ],
+
 ];

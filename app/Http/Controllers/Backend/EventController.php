@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Models\EventType;
 use App\Models\User;
+use App\Services\EventBriefAiService;
+use Illuminate\Http\JsonResponse;
 
 
 class EventController extends Controller
@@ -176,6 +178,32 @@ class EventController extends Controller
       'sourceEvent' => null,
       'isCopy'      => false,
     ]);
+  }
+
+  public function previewBrief(Request $request, EventBriefAiService $assistant): JsonResponse
+  {
+    $data = $request->validate([
+      'brief' => 'required|string|min:20|max:10000',
+    ]);
+
+    $eventTypes = EventType::query()
+      ->orderBy('name')
+      ->get(['id', 'name'])
+      ->map(fn (EventType $type) => ['id' => $type->id, 'name' => $type->name])
+      ->all();
+
+    try {
+      $draft = $assistant->extract($data['brief'], $eventTypes, (int) auth()->id());
+    } catch (\RuntimeException $exception) {
+      Log::warning('AI event brief extraction failed', [
+        'user_id' => auth()->id(),
+        'message' => $exception->getMessage(),
+      ]);
+
+      return response()->json(['message' => $exception->getMessage()], 503);
+    }
+
+    return response()->json(['draft' => $draft]);
   }
 
   public function store(Request $request)
