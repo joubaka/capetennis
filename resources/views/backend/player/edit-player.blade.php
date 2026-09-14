@@ -39,13 +39,15 @@
                 </div>
                 @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
                 <div class="mb-3">
-                    <div class="form-check form-switch">
-                        <input type="hidden" name="is_poc_development_player" value="0">
-                        <input class="form-check-input" type="checkbox" name="is_poc_development_player" value="1" id="is-poc-development-player" @checked($player->is_poc_development_player)>
-                        <label class="form-check-label fw-semibold" for="is-poc-development-player">POC development player</label>
-                    </div>
-                    <small class="text-muted">Internal administrator marker used for player development planning.</small>
+                    <label class="form-label fw-semibold" for="is-player-of-colour">Player of colour (POC)</label>
+                    <select class="form-select" name="is_player_of_colour" id="is-player-of-colour">
+                        <option value="" @selected($player->is_player_of_colour === null)>Not declared</option>
+                        <option value="1" @selected($player->is_player_of_colour === true)>Yes</option>
+                        <option value="0" @selected($player->is_player_of_colour === false)>No</option>
+                    </select>
+                    <small class="text-muted">For transformation and player development planning.</small>
                 </div>
+                @endif
                 <div class="mb-3 row">
                     <label for="html5-text-input" class="col-md-4 col-form-label">Player Surname</label>
                     <div class="col-md-8">

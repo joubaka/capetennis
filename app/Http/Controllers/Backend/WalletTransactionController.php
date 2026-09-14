@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use App\Domain\Payments\Services\LedgerService;
+use App\Services\Wallet\ManualWalletAdjustmentService;
 use Illuminate\Http\Request;
 
 class WalletTransactionController extends Controller
@@ -37,6 +37,7 @@ class WalletTransactionController extends Controller
             'type' => 'required|in:credit,debit',
             'amount' => 'required|numeric|min:0.01',
             'reference' => 'nullable|string|max:255',
+            'idempotency_key' => 'required|uuid',
         ]);
 
         $user = User::findOrFail($id);
@@ -56,13 +57,16 @@ class WalletTransactionController extends Controller
             'initiated_by' => 'manual_wallet_controller',
         ];
 
-        if ($request->type === 'credit') {
-            app(LedgerService::class)->appendWalletCredit($wallet, $amount, 'manual', auth()->id(), $meta);
-        } else {
-            app(LedgerService::class)->appendWalletDebit($wallet, $amount, 'manual', auth()->id(), $meta);
-        }
+        $transaction = app(ManualWalletAdjustmentService::class)->apply(
+            $wallet,
+            $request->type,
+            (float) $amount,
+            $request->string('idempotency_key')->toString(),
+            $meta
+        );
 
-        activity('wallet')
+        if ($transaction->wasRecentlyCreated) {
+            activity('wallet')
           ->performedOn($wallet)
           ->causedBy(auth()->user())
           ->withProperties([
@@ -71,7 +75,8 @@ class WalletTransactionController extends Controller
             'reference' => $request->reference,
             'user_id' => $user->id,
           ])
-          ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+              ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+        }
 
         if ($request->expectsJson()) {
             return response()->json([

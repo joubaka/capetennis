@@ -328,7 +328,7 @@ class PlayerController extends Controller
       'cell_nr' => 'nullable|string|max:50',
       'gender' => 'nullable|string|max:10',
       'coach' => 'nullable|string|max:255',
-      'is_poc_development_player' => 'sometimes|boolean',
+      'is_player_of_colour' => 'sometimes|nullable|boolean',
     ]);
 
     $this->playerIdentity->ensureAvailable(
@@ -349,20 +349,26 @@ class PlayerController extends Controller
     ]);
 
     if (auth()->user()->hasAnyRole(['super-user', 'admin'])) {
-      $previousPocStatus = (bool) $player->is_poc_development_player;
-      $newPocStatus = $request->boolean('is_poc_development_player');
+      $previousPocStatus = $player->is_player_of_colour;
+      $newPocStatus = $request->filled('is_player_of_colour')
+        ? $request->boolean('is_player_of_colour')
+        : null;
 
       if ($previousPocStatus !== $newPocStatus) {
-        $player->update(['is_poc_development_player' => $newPocStatus]);
+        $player->update([
+          'is_player_of_colour' => $newPocStatus,
+          'player_of_colour_declared_at' => now(),
+          'player_of_colour_declared_by_user_id' => $request->user()->id,
+        ]);
 
         activity('player')
           ->performedOn($player)
           ->causedBy($request->user())
           ->withProperties([
-            'is_poc_development_player_from' => $previousPocStatus,
-            'is_poc_development_player_to' => $newPocStatus,
+            'is_player_of_colour_from' => $previousPocStatus,
+            'is_player_of_colour_to' => $newPocStatus,
           ])
-          ->log($newPocStatus ? 'Marked player as POC development player' : 'Removed POC development marker');
+          ->log('Updated player of colour declaration');
       }
     }
 

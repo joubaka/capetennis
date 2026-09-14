@@ -365,9 +365,11 @@
 @if($canWithdraw['ok'])
   <button type="button"
           class="btn btn-danger btn-sm m-1 withDrawPlayer"
-          data-url="{{ route('registrations.withdraw', $registration) }}">
-    <i class="ti ti-x"></i>
-    Withdraw {{ $registration->display_name }}
+          data-url="{{ route('registrations.withdraw', $registration) }}"
+          aria-label="Withdraw entry for {{ $registration->display_name }}"
+          title="Withdraw this player from the event">
+    <i class="ti ti-x me-1" aria-hidden="true"></i>
+    <span class="small">Withdraw</span>
   </button>
 @endif
 @if($registration->status === 'withdrawn')

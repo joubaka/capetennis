@@ -1803,6 +1803,7 @@
       </div>
       <form id="form-wallet-add-tx" method="POST">
         @csrf
+        <input type="hidden" name="idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
         <div class="modal-body">
           <p id="wallet-add-tx-user-label" class="mb-3 text-muted"></p>
           <div class="mb-3">

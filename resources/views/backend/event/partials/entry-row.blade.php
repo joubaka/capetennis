@@ -22,8 +22,20 @@
   {{-- Cell --}}
   <td class="col-cell">{{ $player?->cellNr ?? '—' }}</td>
 
+  @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+    <td class="col-poc">
+      @if($player?->is_player_of_colour === true)
+        <span class="badge bg-info">Yes</span>
+      @elseif($player?->is_player_of_colour === false)
+        <span class="badge bg-light text-dark">No</span>
+      @else
+        <span class="text-muted">—</span>
+      @endif
+    </td>
+  @endif
+
   {{-- Status --}}
-  <td>
+  <td class="col-status">
     <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
       {{ ucfirst($reg->status ?? 'active') }}
     </span>

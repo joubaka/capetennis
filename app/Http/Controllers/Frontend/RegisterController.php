@@ -174,6 +174,8 @@ class RegisterController extends Controller
     $request->validate(['player_id' => 'required|integer|exists:players,id']);
 
     $player = Player::findOrFail($request->player_id);
+    $canDeclarePlayerOfColour = in_array($player->id, $request->user()->ownedPlayerIds(), true)
+      || $request->user()->hasAnyRole(['super-user', 'admin']);
 
     // Only pre-fill date of birth if the profile was confirmed in 2026 or later
     $confirmedIn2026 = $player->profile_updated_at
@@ -187,6 +189,8 @@ class RegisterController extends Controller
       'cellNr'      => $player->cellNr,
       'dateOfBirth' => $confirmedIn2026 ? $player->dateOfBirth : null,
       'gender'      => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
+      'can_declare_player_of_colour' => $canDeclarePlayerOfColour,
+      'is_player_of_colour' => $canDeclarePlayerOfColour ? $player->is_player_of_colour : null,
     ]);
   }
 
@@ -203,9 +207,12 @@ class RegisterController extends Controller
       'cellNr'      => 'required|string|max:50',
       'dateOfBirth' => 'required|date|before:today',
       'gender'      => 'required|in:Male,Female',
+      'is_player_of_colour' => 'sometimes|nullable|boolean',
     ]);
 
     $player = Player::findOrFail($validated['player_id']);
+    $canDeclarePlayerOfColour = in_array($player->id, $request->user()->ownedPlayerIds(), true)
+      || $request->user()->hasAnyRole(['super-user', 'admin']);
 
     $player->update([
       'name'        => $validated['name'],
@@ -215,6 +222,27 @@ class RegisterController extends Controller
       'dateOfBirth' => $validated['dateOfBirth'],
       'gender'      => $validated['gender'] === 'Male' ? 1 : 2,
     ]);
+
+    if ($canDeclarePlayerOfColour && array_key_exists('is_player_of_colour', $validated)) {
+      $previousPlayerOfColour = $player->is_player_of_colour;
+      $player->update([
+        'is_player_of_colour' => $validated['is_player_of_colour'],
+        'player_of_colour_declared_at' => now(),
+        'player_of_colour_declared_by_user_id' => $request->user()->id,
+      ]);
+
+      if ($previousPlayerOfColour !== $player->is_player_of_colour) {
+        activity('player')
+          ->performedOn($player)
+          ->causedBy($request->user())
+          ->withProperties([
+            'is_player_of_colour_from' => $previousPlayerOfColour,
+            'is_player_of_colour_to' => $player->is_player_of_colour,
+            'source' => 'event_registration_confirmation',
+          ])
+          ->log('Updated player of colour declaration');
+      }
+    }
 
     $player->markProfileUpdated();
 

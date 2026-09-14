@@ -114,10 +114,18 @@ $(function () {
                 '<input type="tel" class="form-control pd-cell" value="' + (res.cellNr || '') + '" required></div>' +
               '<div class="col-md-6"><label class="form-label">Email</label>' +
                 '<input type="email" class="form-control pd-email" value="' + (res.email || '') + '"></div>' +
+              (res.can_declare_player_of_colour ?
+                '<div class="col-12"><label class="form-label">Does this player identify as a player of colour (POC)?</label>' +
+                  '<select class="form-select pd-player-of-colour">' +
+                    '<option value=""' + (res.is_player_of_colour === null ? ' selected' : '') + '>Prefer not to answer</option>' +
+                    '<option value="1"' + (res.is_player_of_colour === true ? ' selected' : '') + '>Yes</option>' +
+                    '<option value="0"' + (res.is_player_of_colour === false ? ' selected' : '') + '>No</option>' +
+                  '</select>' +
+                  '<div class="form-text">Optional. Used by Cape Tennis for transformation and player development planning. In South African sport, POC generally includes Black African, Coloured and Indian players.</div></div>' : '') +
             '</div>' +
             '<div class="d-flex gap-2 justify-content-end mt-3">' +
-              '<button type="button" class="btn btn-outline-success btn-confirm-player" data-player-id="' + res.id + '">' +
-                '<i class="ti ti-check me-1"></i> Confirm Details</button>'  +
+              '<button type="button" class="btn btn-outline-success btn-save-player" data-player-id="' + res.id + '">' +
+                '<i class="ti ti-check me-1"></i> Save &amp; Confirm</button>'  +
             '</div>'
           );
 
@@ -206,6 +214,9 @@ $(function () {
       cellNr: $form.find('.pd-cell').val(),
       email: $form.find('.pd-email').val()
     };
+    if ($form.find('.pd-player-of-colour').length) {
+      formData.is_player_of_colour = $form.find('.pd-player-of-colour').val();
+    }
 
     // Basic validation
     var valid = true;

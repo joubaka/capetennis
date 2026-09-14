@@ -295,6 +295,9 @@
     <th class="col-player">Player</th>
     <th class="col-email">Email</th>
     <th class="col-cell">Cell</th>
+    @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+      <th class="col-poc">POC</th>
+    @endif
     <th class="col-status">Status</th>
     <th class="col-payment">Payment</th>
     <th class="col-actions text-end">Actions</th>
@@ -325,7 +328,19 @@
   {{ $player?->cellNr ?? $player?->cellNr ?? '—' }}
 </td>
 
-                <td>
+                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+                  <td class="col-poc">
+                    @if($player?->is_player_of_colour === true)
+                      <span class="badge bg-info">Yes</span>
+                    @elseif($player?->is_player_of_colour === false)
+                      <span class="badge bg-light text-dark">No</span>
+                    @else
+                      <span class="text-muted">—</span>
+                    @endif
+                  </td>
+                @endif
+
+                <td class="col-status">
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
                     {{ ucfirst($reg->status ?? 'active') }}
                   </span>
@@ -962,7 +977,7 @@ document.addEventListener('click', function(e) {
             if (row) {
                 row.classList.remove('table-danger', 'text-muted');
                 // Update status badge
-                const statusCell = row.querySelector('td:nth-child(5)');
+                const statusCell = row.querySelector('.col-status');
                 if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Active</span>';
                 // Remove the "Not refunded" badge if present
                 const refundBadge = row.querySelector('.badge.bg-secondary');

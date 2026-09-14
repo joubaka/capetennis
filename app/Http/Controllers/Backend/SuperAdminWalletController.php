@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Domain\Payments\Services\LedgerService;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\Wallet\ManualWalletAdjustmentService;
 use Illuminate\Http\Request;
 
 class SuperAdminWalletController extends Controller
@@ -20,6 +20,7 @@ class SuperAdminWalletController extends Controller
             'type'      => 'required|in:credit,debit',
             'amount'    => 'required|numeric|min:0.01',
             'reference' => 'nullable|string|max:255',
+            'idempotency_key' => 'required|uuid',
         ]);
 
         $wallet = $user->wallet ?? $user->wallet()->create();
@@ -35,13 +36,16 @@ class SuperAdminWalletController extends Controller
             'initiated_by' => 'super_admin_wallet_controller',
         ];
 
-        if ($request->type === 'credit') {
-            app(LedgerService::class)->appendWalletCredit($wallet, $amount, 'manual', auth()->id(), $meta);
-        } else {
-            app(LedgerService::class)->appendWalletDebit($wallet, $amount, 'manual', auth()->id(), $meta);
-        }
+        $transaction = app(ManualWalletAdjustmentService::class)->apply(
+            $wallet,
+            $request->type,
+            $amount,
+            $request->string('idempotency_key')->toString(),
+            $meta
+        );
 
-        activity('wallet')
+        if ($transaction->wasRecentlyCreated) {
+            activity('wallet')
             ->performedOn($wallet)
             ->causedBy(auth()->user())
             ->withProperties([
@@ -50,7 +54,8 @@ class SuperAdminWalletController extends Controller
                 'reference' => $request->reference,
                 'user_id'   => $user->id,
             ])
-            ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+                ->log("Manual wallet {$request->type} R{$amount} for {$user->name}");
+        }
 
         return back()->with('wallet_success', "Transaction recorded for {$user->name}.");
     }

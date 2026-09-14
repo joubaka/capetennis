@@ -139,6 +139,7 @@
   <div class="modal-dialog modal-dialog-centered">
     <form id="form-wallet-add-tx" method="POST" action="{{ route('superadmin.wallets.transaction.store', $user) }}" class="modal-content">
       @csrf
+      <input type="hidden" name="idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
       <div class="modal-header">
         <h5 class="modal-title"><i class="ti ti-plus-circle me-1 text-success"></i>Add Transaction</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
