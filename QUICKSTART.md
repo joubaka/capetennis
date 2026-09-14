@@ -51,6 +51,14 @@ deploy main --skip-migrations
 deploy main --skip-migrations --skip-deps
 ```
 
+For a small code, Blade, or already-built asset update that must keep the site online:
+
+```bash
+deploy-ct main --live
+```
+
+Live mode automatically skips Composer installation but runs the explicitly approved `MIGRATION_PATHS` migrations. It refuses to deploy when `composer.json` or `composer.lock` changed. Only use backward-compatible, online-safe migrations in live mode; use the normal `deploy-ct main` command for dependency or disruptive schema releases.
+
 **First time setup:**
 1. Confirm `APP_PATH`, `PUBLIC_HTML`, `GIT_BRANCH`, `DEPLOY_BRANCHES`, and the explicit `MIGRATION_PATHS` allowlist in `deploy.config`.
 2. Run `chmod +x deploy.sh && ./deploy.sh --install-command`.

@@ -9,11 +9,11 @@ GIT_BRANCH="${GIT_BRANCH:-main}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 SYNC_FOLDERS="${SYNC_FOLDERS:-css js images vendors assets}"
 SYNC_ROOT_FILES="${SYNC_ROOT_FILES:-firebase-messaging-sw.js manifest.json manifest.webmanifest mix-manifest.json favicon.ico offline.html service-worker.js robots.txt}"
-SKIP_MIGRATIONS=false; SKIP_DEPS=false; INSTALL_COMMAND=false; SHOW_HELP=false; REQUESTED_BRANCH=""; APP_IS_DOWN=0
+SKIP_MIGRATIONS=false; SKIP_DEPS=false; LIVE_DEPLOY=false; INSTALL_COMMAND=false; SHOW_HELP=false; REQUESTED_BRANCH=""; APP_IS_DOWN=0
 log() { echo "==> [$1] $2"; }
 fail() { log ERROR "$1" >&2; exit 1; }
 run_php() { php -d display_errors=Off "$@"; }
-usage() { echo 'Usage: deploy main [--skip-migrations] [--skip-deps]'; echo '       ./deploy.sh --install-command'; }
+usage() { echo 'Usage: deploy main [--skip-migrations] [--skip-deps] [--live]'; echo '       ./deploy.sh --install-command'; echo; echo '  --live  Keep the site online; runs approved migrations but rejects Composer dependency changes.'; }
 install_command() {
     local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
     local path="$dir/deploy-ct"
@@ -33,7 +33,7 @@ install_command() {
     log INFO "Deployment shortcut ready: deploy-ct main"
 }
 while [ "$#" -gt 0 ]; do case "$1" in
-    --install-command) INSTALL_COMMAND=true ;; --skip-migrations) SKIP_MIGRATIONS=true ;; --skip-deps) SKIP_DEPS=true ;; -h|--help) SHOW_HELP=true ;;
+    --install-command) INSTALL_COMMAND=true ;; --skip-migrations) SKIP_MIGRATIONS=true ;; --skip-deps) SKIP_DEPS=true ;; --live) LIVE_DEPLOY=true ;; -h|--help) SHOW_HELP=true ;;
     --branch) [ "$#" -ge 2 ] || fail 'Missing value for --branch'; REQUESTED_BRANCH="$2"; shift ;; --branch=*) REQUESTED_BRANCH="${1#*=}" ;;
     -*) fail "Unknown option: $1" ;; *) [ -z "$REQUESTED_BRANCH" ] || fail 'Only one deployment branch may be supplied'; REQUESTED_BRANCH="$1" ;;
 esac; shift; done
@@ -53,7 +53,17 @@ sync_public_html() {
     for file in $SYNC_ROOT_FILES; do [ -f "$APP_PATH/public/$file" ] && cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"; done
 }
 git -C "$APP_PATH" fetch origin main
-run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap restore_online EXIT
+if [ "$LIVE_DEPLOY" = true ]; then
+    LIVE_CHANGED_FILES="$(git -C "$APP_PATH" diff --name-only HEAD..origin/main)"
+    if printf '%s\n' "$LIVE_CHANGED_FILES" | grep -Eq '^composer\.(json|lock)$'; then
+        printf '%s\n' "$LIVE_CHANGED_FILES" | grep -E '^composer\.(json|lock)$' || true
+        fail 'Live deploy rejected: Composer dependency changes require the normal maintenance deployment'
+    fi
+    SKIP_DEPS=true
+    log INFO 'Live deployment selected; the site will remain online and approved migrations will run'
+else
+    run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap restore_online EXIT
+fi
 git -C "$APP_PATH" merge --ff-only origin/main
 # Read the migration list shipped with the release we just pulled.
 [ -f "$APP_PATH/deploy.config" ] && source "$APP_PATH/deploy.config"
@@ -69,9 +79,12 @@ if [ "$SKIP_MIGRATIONS" = false ] && [ "$RUN_MIGRATIONS" = true ]; then
         fail 'Pending migrations remain after the approved migration list ran; add each reviewed path to MIGRATION_PATHS'
     fi
 fi
-log INFO 'Reconciling completed Masters payments with their invitations'
-run_php "$APP_PATH/artisan" masters:reconcile-payments --apply
+if [ "$LIVE_DEPLOY" = false ]; then
+    log INFO 'Reconciling completed Masters payments with their invitations'
+    run_php "$APP_PATH/artisan" masters:reconcile-payments --apply
+fi
 run_php "$APP_PATH/artisan" storage:link 2>&1 | grep -v 'already exists' || true
 run_php "$APP_PATH/artisan" config:cache; run_php "$APP_PATH/artisan" route:cache; run_php "$APP_PATH/artisan" view:cache
-sync_public_html; run_php "$APP_PATH/artisan" queue:restart; run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0; trap - EXIT
+sync_public_html; run_php "$APP_PATH/artisan" queue:restart
+if [ "$LIVE_DEPLOY" = false ]; then run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0; trap - EXIT; fi
 echo "Deployment complete: $REMOTE_HEAD"

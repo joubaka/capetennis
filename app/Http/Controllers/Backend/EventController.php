@@ -17,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\File;
 use App\Models\EventType;
 use App\Models\User;
 use App\Services\EventBriefAiService;
@@ -177,6 +178,7 @@ class EventController extends Controller
       'adminIds'    => [],
       'sourceEvent' => null,
       'isCopy'      => false,
+      'logoFiles'   => $this->availableEventLogos(),
     ]);
   }
 
@@ -225,6 +227,16 @@ class EventController extends Controller
       'email'               => 'nullable|email',
       'organizer'           => 'nullable|string|max:191',
       'logo_upload'         => 'nullable|image|max:2048',
+      'logo_existing'       => [
+        'nullable',
+        'string',
+        'max:255',
+        function (string $attribute, mixed $value, \Closure $fail): void {
+          if ($value !== null && ! is_file(public_path('assets/img/logos/'.basename($value)))) {
+            $fail('The selected event logo is no longer available.');
+          }
+        },
+      ],
       'admins'              => 'nullable|array',
       'admins.*'            => 'integer|exists:users,id',
       'source_event_id'     => 'nullable|integer|exists:events,id',
@@ -240,7 +252,9 @@ class EventController extends Controller
 
     // Production's legacy schema requires a non-null logo. A copied event
     // keeps the source logo unless the user uploads a replacement.
-    $logo = $sourceEvent?->logo ?? '';
+    $logo = !empty($data['logo_existing'])
+      ? basename($data['logo_existing'])
+      : ($sourceEvent?->logo ?? '');
     if ($request->hasFile('logo_upload')) {
       $file     = $request->file('logo_upload');
       $filename = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME))
@@ -268,7 +282,7 @@ class EventController extends Controller
         'information'         => $data['information'] ?? null,
         'venue_notes'         => $data['venue_notes'] ?? null,
         'entryFee'            => $data['entryFee'] ?? null,
-        'deadline'            => $data['deadline'] ?? null,
+        'deadline'            => $data['deadline'] ?? 7,
         'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
         'eventType'           => $data['eventType'],
         'email'               => $data['email'] ?? null,
@@ -437,7 +451,24 @@ class EventController extends Controller
       'adminIds'    => $adminIds,
       'sourceEvent' => $event,
       'isCopy'      => true,
+      'logoFiles'   => $this->availableEventLogos(),
     ]);
+  }
+
+  private function availableEventLogos(): array
+  {
+    $directory = public_path('assets/img/logos');
+
+    if (! File::isDirectory($directory)) {
+      return [];
+    }
+
+    return collect(File::files($directory))
+      ->filter(fn ($file) => in_array(strtolower($file->getExtension()), ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'], true))
+      ->map(fn ($file) => $file->getFilename())
+      ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+      ->values()
+      ->all();
   }
 
 }

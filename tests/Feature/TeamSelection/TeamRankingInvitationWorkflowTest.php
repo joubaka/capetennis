@@ -1044,6 +1044,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $event = $source->event;
         $event->update(['eventType' => $teamType]);
         $eventRegion = EventRegion::where('event_id', $event->id)->where('region_id', $source->region_id)->firstOrFail();
+        $eventRegion->region()->update(['clothing_admin' => true]);
         $manager = User::factory()->create();
         EventRegionManager::create([
             'event_id' => $event->id,
@@ -1147,6 +1148,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Email team')
             ->assertSee('Email linked, not registered / paid')
             ->assertSee('Email all linked players')
+            ->assertSee(route('backend.region.clothing.edit', [
+                'region' => $eventRegion->region_id,
+                'event_id' => $event->id,
+            ]), false)
+            ->assertSee('Clothing setup')
             ->assertSee('Send all invitations')
             ->assertSee('data-bs-target="#prepare-invitations-'.$selectionImport->id.'"', false)
             ->assertSee('Change player')

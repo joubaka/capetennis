@@ -96,5 +96,11 @@ class EventBriefAiServiceTest extends TestCase
         );
 
         $this->assertNull($result['event_type_id']);
+        $this->assertSame(7, $result['deadline']);
+
+        Http::assertSent(fn ($request) => str_contains(
+            $request->data()['contents'][0]['parts'][0]['text'],
+            'Use 7 when the source does not state a deadline'
+        ));
     }
 }

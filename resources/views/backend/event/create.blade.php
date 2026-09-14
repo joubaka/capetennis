@@ -141,11 +141,33 @@
 
             {{-- Logo --}}
             <div class="mb-3">
-              <label class="form-label">Logo</label>
+              <label class="form-label" for="logo-existing">Use Existing Logo</label>
+              @php($selectedLogo = old('logo_existing', $isCopy ? $sourceEvent?->logo : ''))
+              <select id="logo-existing"
+                      name="logo_existing"
+                      class="form-select @error('logo_existing') is-invalid @enderror"
+                      data-logo-base="{{ asset('assets/img/logos') }}">
+                <option value="">— No existing logo selected —</option>
+                @foreach($logoFiles as $logoFile)
+                  <option value="{{ $logoFile }}" @selected($selectedLogo === $logoFile)>{{ $logoFile }}</option>
+                @endforeach
+              </select>
+              @error('logo_existing')<div class="invalid-feedback">{{ $message }}</div>@enderror
+              <div class="form-text">Choose a logo already used on the website, or upload a new one below.</div>
+
+              <img id="logo-preview"
+                   src="{{ $selectedLogo ? asset('assets/img/logos/'.$selectedLogo) : '' }}"
+                   alt="Selected event logo preview"
+                   class="img-thumbnail mt-2 {{ $selectedLogo ? '' : 'd-none' }}"
+                   style="width: 160px; height: 100px; object-fit: contain;">
+
+              <label class="form-label mt-3" for="logo-upload">Upload New Logo</label>
               <input type="file"
+                     id="logo-upload"
                      name="logo_upload"
                      class="form-control @error('logo_upload') is-invalid @enderror"
                      accept="image/*">
+              <div class="form-text">A newly uploaded logo takes priority over the selected existing logo.</div>
               @error('logo_upload')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
@@ -177,7 +199,8 @@
               <input type="number"
                      name="deadline"
                      class="form-control"
-                     value="{{ old('deadline', $sourceEvent?->deadline ?? '') }}">
+                     value="{{ old('deadline', $sourceEvent?->deadline ?? 7) }}">
+              <div class="form-text">Defaults to 7 days before the event unless the event material states otherwise.</div>
             </div>
 
             {{-- Withdrawal Deadline --}}
@@ -297,6 +320,27 @@
     const form = document.getElementById('event-create-form');
     if (!form) return;
     const informationInput = document.getElementById('information-input');
+    const existingLogo = document.getElementById('logo-existing');
+    const logoUpload = document.getElementById('logo-upload');
+    const logoPreview = document.getElementById('logo-preview');
+    let uploadedLogoPreviewUrl = null;
+    const showLogoPreview = source => {
+      logoPreview.src = source || '';
+      logoPreview.classList.toggle('d-none', !source);
+    };
+    existingLogo?.addEventListener('change', () => {
+      if (uploadedLogoPreviewUrl) {
+        URL.revokeObjectURL(uploadedLogoPreviewUrl);
+        uploadedLogoPreviewUrl = null;
+      }
+      logoUpload.value = '';
+      showLogoPreview(existingLogo.value ? `${existingLogo.dataset.logoBase}/${encodeURIComponent(existingLogo.value)}` : '');
+    });
+    logoUpload?.addEventListener('change', () => {
+      if (uploadedLogoPreviewUrl) URL.revokeObjectURL(uploadedLogoPreviewUrl);
+      uploadedLogoPreviewUrl = logoUpload.files[0] ? URL.createObjectURL(logoUpload.files[0]) : null;
+      showLogoPreview(uploadedLogoPreviewUrl || (existingLogo.value ? `${existingLogo.dataset.logoBase}/${encodeURIComponent(existingLogo.value)}` : ''));
+    });
     const informationEditor = new Quill('#information-editor', {
       theme: 'snow',
       modules: {
