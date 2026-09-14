@@ -8,6 +8,8 @@ use RuntimeException;
 
 class EventBriefAiService
 {
+    public function __construct(private readonly RichTextSanitizer $sanitizer) {}
+
     public function extract(string $brief, array $eventTypes, int $userId): array
     {
         $apiKey = (string) config('services.gemini.api_key', '');
@@ -31,7 +33,11 @@ class EventBriefAiService
             'Deadline is the integer number of days before the start date.',
             'Choose event_type_id only from the supplied allowed event types; otherwise use null.',
             'Publishing and sign-up must be false unless the source explicitly requests them.',
-            'Put useful remaining event description in information and location or court details in venue_notes.',
+            'Format information as clean semantic HTML for a public event page.',
+            'Use short <p> paragraphs, <h3> or <h4> headings when useful, and <ul><li> lists for rules or schedules.',
+            'Use only p, br, strong, em, ul, ol, li, blockquote, h3 and h4 tags. Do not use inline styles, scripts, images or links.',
+            'Do not repeat contact, fee, deadline or venue fields in information unless context requires it.',
+            'Put location or court details in venue_notes.',
             'Return only one valid JSON object matching this shape:',
             json_encode($this->responseShape(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'Allowed event types: '.json_encode($allowedTypes, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
@@ -82,7 +88,7 @@ class EventBriefAiService
             'start_date' => $this->date($draft['start_date'] ?? null),
             'end_date' => $this->date($draft['end_date'] ?? null),
             'event_type_id' => $eventTypeId,
-            'information' => $this->text($draft['information'] ?? null, 10000),
+            'information' => $this->informationHtml($draft['information'] ?? null),
             'venue_notes' => $this->text($draft['venue_notes'] ?? null, 5000),
             'entryFee' => $this->nonNegativeInteger($draft['entryFee'] ?? null),
             'deadline' => $this->nonNegativeInteger($draft['deadline'] ?? null),
@@ -144,6 +150,17 @@ class EventBriefAiService
     {
         $text = trim((string) $value);
         return $text === '' ? null : Str::limit($text, $limit, '');
+    }
+
+    private function informationHtml(mixed $value): ?string
+    {
+        $html = $this->text($value, 10000);
+        if ($html === null) {
+            return null;
+        }
+
+        $sanitized = trim((string) $this->sanitizer->sanitize($html));
+        return filled(strip_tags($sanitized)) ? $sanitized : null;
     }
 
     private function date(mixed $value): ?string

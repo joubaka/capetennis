@@ -26,7 +26,7 @@ class EventBriefAiServiceTest extends TestCase
             'start_date' => '2026-10-18',
             'end_date' => '2026-10-20',
             'event_type_id' => 4,
-            'information' => 'Junior singles tournament.',
+            'information' => '<h3>Tournament format</h3><p>Junior singles tournament.</p><script>alert(1)</script>',
             'venue_notes' => 'Bellville Tennis Club',
             'entryFee' => 350,
             'deadline' => 7,
@@ -52,7 +52,9 @@ class EventBriefAiServiceTest extends TestCase
             123
         );
 
-        $this->assertSame($draft, $result);
+        $this->assertSame('<h3>Tournament format</h3><p>Junior singles tournament.</p>', $result['information']);
+        $this->assertStringNotContainsString('script', $result['information']);
+        $this->assertSame(collect($draft)->except('information')->all(), collect($result)->except('information')->all());
 
         Http::assertSent(function ($request) {
             $payload = $request->data();

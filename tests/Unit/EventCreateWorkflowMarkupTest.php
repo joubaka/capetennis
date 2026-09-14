@@ -14,6 +14,9 @@ class EventCreateWorkflowMarkupTest extends TestCase
 
         $this->assertStringContainsString('id="event-brief"', $view);
         $this->assertStringContainsString('id="fill-event-brief"', $view);
+        $this->assertStringContainsString('id="information-editor"', $view);
+        $this->assertStringContainsString("new Quill('#information-editor'", $view);
+        $this->assertStringContainsString('informationEditor.clipboard.dangerouslyPasteHTML', $view);
         $this->assertStringContainsString("fetch(document.getElementById('event-brief-card').dataset.previewUrl", $view);
         $this->assertStringContainsString('id="eventPreviewModal"', $view);
         $this->assertStringContainsString('Nothing has been saved yet.', $view);

@@ -3,11 +3,14 @@
 @section('title', $isCopy ? 'Copy Event' : 'Create Event')
 
 @section('vendor-style')
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/toastr/toastr.min.css') }}">
 @endsection
 
 @section('vendor-script')
+  <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
 @endsection
@@ -115,12 +118,17 @@
               @error('eventType')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
-            {{-- Information --}}
+            {{-- Rich information --}}
             <div class="mb-3">
               <label class="form-label">Information</label>
-              <textarea name="information"
-                        class="form-control"
-                        rows="4">{{ old('information', $sourceEvent?->information ?? '') }}</textarea>
+              <div id="information-editor" class="border rounded">
+                {!! old('information', $sourceEvent?->information ?? '') !!}
+              </div>
+              <input type="hidden"
+                     name="information"
+                     id="information-input"
+                     value="{{ old('information', $sourceEvent?->information ?? '') }}">
+              <div class="form-text">AI formats this into readable paragraphs and lists. You can edit the result before previewing.</div>
             </div>
 
             {{-- Venue Notes --}}
@@ -287,12 +295,32 @@
 
   (() => {
     const form = document.getElementById('event-create-form');
+    if (!form) return;
+    const informationInput = document.getElementById('information-input');
+    const informationEditor = new Quill('#information-editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [[{ header: [3, 4, false] }], ['bold', 'italic'], [{ list: 'ordered' }, { list: 'bullet' }], ['clean']]
+      }
+    });
     const brief = document.getElementById('event-brief');
-    if (!form || !brief) return;
+    const syncInformation = () => {
+      informationInput.value = informationEditor.getText().trim() ? informationEditor.root.innerHTML : '';
+    };
+    informationEditor.on('text-change', syncInformation);
+    form.addEventListener('submit', syncInformation);
 
-    const value = name => form.elements[name]?.value?.trim() || '';
+    const value = name => {
+      if (name === 'information') syncInformation();
+      return form.elements[name]?.value?.trim() || '';
+    };
     const setValue = (name, next) => {
       if (next === null || next === undefined || next === '') return false;
+      if (name === 'information') {
+        informationEditor.clipboard.dangerouslyPasteHTML(String(next));
+        syncInformation();
+        return true;
+      }
       const control = form.elements[name];
       if (!control) return false;
       control.value = next;
@@ -302,6 +330,7 @@
     const escapeHtml = text => String(text ?? '').replace(/[&<>'"]/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
     })[char]);
+    if (!brief) return;
     document.getElementById('fill-event-brief').addEventListener('click', async event => {
       const text = brief.value.trim();
       const status = document.getElementById('event-brief-status');
@@ -368,7 +397,7 @@
       ];
       document.getElementById('event-preview-content').innerHTML = `
         <dl class="row mb-0">${rows.map(([label, content]) => `<dt class="col-sm-4">${escapeHtml(label)}</dt><dd class="col-sm-8">${escapeHtml(content || 'Not set')}</dd>`).join('')}</dl>
-        ${value('information') ? `<hr><h6>Information</h6><p class="mb-3" style="white-space:pre-wrap">${escapeHtml(value('information'))}</p>` : ''}
+        ${value('information') ? `<hr><h6>Information</h6><div class="event-information-content mb-3">${value('information')}</div>` : ''}
         ${value('venue_notes') ? `<h6>Venue notes</h6><p class="mb-0" style="white-space:pre-wrap">${escapeHtml(value('venue_notes'))}</p>` : ''}`;
       bootstrap.Modal.getOrCreateInstance(document.getElementById('eventPreviewModal')).show();
     });
@@ -377,6 +406,7 @@
       event.currentTarget.disabled = true;
       event.currentTarget.textContent = 'Creating…';
       form.dataset.confirmed = 'true';
+      syncInformation();
       form.requestSubmit();
     });
   })();
