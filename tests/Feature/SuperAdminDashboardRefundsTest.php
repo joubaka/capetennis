@@ -9,8 +9,8 @@ use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
- * Feature tests for the Super Admin Dashboard — specifically the new
- * "Pending Bank Refunds" widget added to backend.superadmin.index.
+ * Feature tests for the lightweight Super Admin landing page and its
+ * bank-refund attention summary.
  */
 class SuperAdminDashboardRefundsTest extends TestCase
 {
@@ -54,8 +54,10 @@ class SuperAdminDashboardRefundsTest extends TestCase
 
         $response = $this->get(route('backend.superadmin.index'));
 
-        $response->assertOk();
-        $response->assertSee('Pending Bank Refunds');
+        $response->assertOk()
+            ->assertSee('Needs attention')
+            ->assertSee('Platform pulse')
+            ->assertSee('Workspaces');
     }
 
     public function test_event_quick_actions_link_to_the_dashboard_event_list(): void
@@ -94,21 +96,21 @@ class SuperAdminDashboardRefundsTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
-    // "All clear" shown when no pending bank refunds
+    // The attention queue is quiet when no supported operational issue exists
     // -----------------------------------------------------------------------
 
-    public function test_dashboard_shows_all_clear_when_no_pending_bank_refunds(): void
+    public function test_dashboard_shows_no_urgent_items_when_attention_queues_are_clear(): void
     {
         $this->actingAs($this->superUser());
 
         $response = $this->get(route('backend.superadmin.index'));
 
         $response->assertOk();
-        $response->assertSee('All clear');
+        $response->assertSee('No urgent operational items');
     }
 
     // -----------------------------------------------------------------------
-    // Pending bank refund appears in the table
+    // Pending bank refunds are summarized without exposing bank details
     // -----------------------------------------------------------------------
 
     public function test_pending_bank_refund_appears_on_dashboard(): void
@@ -131,11 +133,12 @@ class SuperAdminDashboardRefundsTest extends TestCase
 
         $response = $this->get(route('backend.superadmin.index'));
 
-        $response->assertOk();
-        $response->assertSee('Test Owner');
-        $response->assertSee('FNB');
-        // Badge count > 0
-        $response->assertSeeText('1');
+        $response->assertOk()
+            ->assertSee('1 bank refund requires processing')
+            ->assertSee(route('admin.registration.refunds.bank.index'), false)
+            ->assertDontSee('Test Owner')
+            ->assertDontSee('FNB')
+            ->assertDontSee('1234567890');
     }
 
     // -----------------------------------------------------------------------
@@ -161,14 +164,14 @@ class SuperAdminDashboardRefundsTest extends TestCase
 
         $response->assertOk();
         $response->assertDontSee('Completed Owner');
-        $response->assertSee('All clear');
+        $response->assertSee('No urgent operational items');
     }
 
     // -----------------------------------------------------------------------
-    // PF Status button only shows for registrations with pf_transaction_id
+    // Provider controls stay in the specialist refund workspace
     // -----------------------------------------------------------------------
 
-    public function test_pf_status_button_shown_for_paid_registration(): void
+    public function test_paid_refund_is_summarized_without_provider_controls_on_landing_page(): void
     {
         $owner = User::factory()->create();
         CategoryEventRegistration::factory()
@@ -185,8 +188,9 @@ class SuperAdminDashboardRefundsTest extends TestCase
 
         $response = $this->get(route('backend.superadmin.index'));
 
-        $response->assertOk();
-        $response->assertSee('PF Status');
+        $response->assertOk()
+            ->assertSee('1 bank refund requires processing')
+            ->assertDontSee('PF Status');
     }
 
     public function test_pf_status_button_not_shown_for_unpaid_registration(): void
@@ -211,7 +215,7 @@ class SuperAdminDashboardRefundsTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
-    // "Bank Refunds" counter in Quick Actions reflects pending count
+    // Finance workspace reflects the canonical pending count
     // -----------------------------------------------------------------------
 
     public function test_quick_actions_counter_reflects_pending_bank_refunds(): void
@@ -230,7 +234,18 @@ class SuperAdminDashboardRefundsTest extends TestCase
 
         $response = $this->get(route('backend.superadmin.index'));
 
-        $response->assertOk();
-        $response->assertSee('Bank Refunds');
+        $response->assertOk()
+            ->assertSee('Bank refunds')
+            ->assertSee('1 bank refund requires processing');
+    }
+
+    public function test_legacy_workspace_remains_super_user_only(): void
+    {
+        $this->get(route('backend.superadmin.workspace'))->assertRedirect(route('login'));
+
+        $ordinaryUser = User::factory()->create();
+        $this->actingAs($ordinaryUser)
+            ->get(route('backend.superadmin.workspace'))
+            ->assertForbidden();
     }
 }

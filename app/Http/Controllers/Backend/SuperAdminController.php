@@ -29,9 +29,68 @@ class SuperAdminController extends Controller
     public function __construct(private FinancialLedgerService $ledger) {}
 
     /**
-     * Show the consolidated Super Admin Dashboard.
+     * Show the lightweight Super Admin landing page.
      */
     public function index(Request $request)
+    {
+        $today = Carbon::today();
+        $currentYear = (int) $today->year;
+
+        $activeEvents = Event::where('start_date', '<=', $today)
+            ->where('end_date', '>=', $today)
+            ->count();
+
+        $recentRegistrations = Registration::where('created_at', '>=', Carbon::now()->subDays(30))->count();
+        $newUsersThisWeek = User::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
+
+        $pendingIndividualRefunds = CategoryEventRegistration::where('status', 'withdrawn')
+            ->where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->count();
+        $pendingTeamRefunds = TeamPaymentOrder::where('refund_method', 'bank')
+            ->where('refund_status', 'pending')
+            ->count();
+        $pendingRefunds = $pendingIndividualRefunds + $pendingTeamRefunds;
+
+        $activeSuspensions = PlayerSuspension::whereNull('lifted_at')
+            ->where('ends_at', '>', $today->toDateString())
+            ->count();
+
+        $oneYearAgo = Carbon::now()->subYear();
+        $playersNeedingAttention = Player::where(function ($query) use ($oneYearAgo) {
+            $query->whereNull('profile_updated_at')
+                ->orWhere('profile_updated_at', '<', $oneYearAgo)
+                ->orWhere('profile_complete', false)
+                ->orWhereNull('profile_complete');
+        })->count();
+
+        $eventsForYear = Event::with('incomeItems')
+            ->whereYear('start_date', $currentYear)
+            ->get();
+        $currentBalance = round($eventsForYear->sum(
+            fn (Event $event) => $this->ledger->buildFySummaryRow($event)['balance']
+        ), 2);
+
+        $recentActivity = Activity::with('causer')->latest()->limit(5)->get();
+
+        return view('backend.superadmin.home', compact(
+            'activeEvents',
+            'recentRegistrations',
+            'newUsersThisWeek',
+            'pendingRefunds',
+            'activeSuspensions',
+            'playersNeedingAttention',
+            'currentBalance',
+            'currentYear',
+            'recentActivity',
+        ));
+    }
+
+    /**
+     * Show the legacy consolidated workspace while its remaining specialist
+     * tools are moved to dedicated pages.
+     */
+    public function workspace(Request $request)
     {
         $oneYearAgo = Carbon::now()->subYear();
 

@@ -547,6 +547,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')
     ->name('backend.superadmin.index');
 
+  Route::get('superadmin/workspace', [\App\Http\Controllers\Backend\SuperAdminController::class, 'workspace'])
+    ->middleware('role:super-user')
+    ->name('backend.superadmin.workspace');
+
   // PayFast signature debug tool (super-user only)
   Route::get('superadmin/payfast-signature-check', [\App\Http\Controllers\Backend\SuperAdminController::class, 'payfastSignatureCheck'])
     ->middleware('role:super-user')

@@ -2153,17 +2153,14 @@ $(function () {
     if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   }
 
-  // Open Finance tab if ?tab=finance is in the URL
+  // Open a requested legacy workspace tab from the URL.
   (function () {
     var params = new URLSearchParams(window.location.search);
-    if (params.get('tab') === 'finance') {
-      var el = document.getElementById('sa-tab-finance');
-      if (el) bootstrap.Tab.getOrCreateInstance(el).show();
-    }
-    if (params.get('tab') === 'disciplinary') {
-      var el = document.getElementById('sa-tab-disciplinary');
-      if (el) bootstrap.Tab.getOrCreateInstance(el).show();
-    }
+    var allowedTabs = ['overview', 'finance', 'withdrawals', 'agreements', 'players', 'audit', 'settings', 'wallets', 'disciplinary'];
+    var requestedTab = params.get('tab');
+    if (!allowedTabs.includes(requestedTab)) return;
+    var el = document.getElementById('sa-tab-' + requestedTab);
+    if (el) bootstrap.Tab.getOrCreateInstance(el).show();
   })();
 
   // ── Wallets DataTable (lazy init on tab show) ─────────────────
