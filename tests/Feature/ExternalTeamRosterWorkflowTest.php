@@ -382,6 +382,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $this->get($paymentRoute)
             ->assertOk()
+            ->assertSee('Wallet Balance After Payment:</strong> R769.38', false)
             ->assertSee('No additional payment required')
             ->assertSee('Confirm Wallet Payment')
             ->assertDontSee('Pay now with Payfast');

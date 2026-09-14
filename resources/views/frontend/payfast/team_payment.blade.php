@@ -64,6 +64,10 @@
             <div class="alert alert-success mb-3" role="alert">
               <i class="ti ti-circle-check me-2"></i>
               <strong>Wallet Applied:</strong> R{{ number_format($walletReserved, 2) }}
+              <div class="small mt-1 ms-4">
+                <strong>Wallet Balance After Payment:</strong>
+                R{{ number_format(max(0, $walletBalance - $walletReserved), 2) }}
+              </div>
             </div>
           @endif
 
