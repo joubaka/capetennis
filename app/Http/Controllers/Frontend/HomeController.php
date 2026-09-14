@@ -288,12 +288,24 @@ class HomeController extends Controller
     // 📅 PERIOD FILTER
     if ($period === 'past') {
       $query
-        ->whereDate('start_date', '<', Carbon::today())
+        ->where(function ($query) {
+          $query->whereDate('end_date', '<', Carbon::today())
+            ->orWhere(function ($query) {
+              $query->whereNull('end_date')
+                ->whereDate('start_date', '<', Carbon::today());
+            });
+        })
         ->orderBy('start_date', 'desc');
 
     } elseif ($period === 'upcoming') {
       $query
-        ->whereDate('start_date', '>=', Carbon::today())
+        ->where(function ($query) {
+          $query->whereDate('end_date', '>=', Carbon::today())
+            ->orWhere(function ($query) {
+              $query->whereNull('end_date')
+                ->whereDate('start_date', '>=', Carbon::today());
+            });
+        })
         ->orderBy('start_date', 'asc');
 
     } else {

@@ -71,6 +71,30 @@ class TournamentListVisibilityTest extends TestCase
             ->assertJsonPath('meta.total', 25);
     }
 
+    public function test_event_remains_upcoming_until_its_end_date_has_passed(): void
+    {
+        $ongoing = Event::factory()->create([
+            'name' => 'Ongoing Week Tournament',
+            'start_date' => today()->subDays(3),
+            'end_date' => today()->addDays(4),
+        ]);
+        $ended = Event::factory()->create([
+            'name' => 'Ended Tournament',
+            'start_date' => today()->subDays(8),
+            'end_date' => today()->subDay(),
+        ]);
+
+        $this->getJson(route('home.events.get', ['period' => 'upcoming']))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $ongoing->id])
+            ->assertJsonMissing(['id' => $ended->id]);
+
+        $this->getJson(route('home.events.get', ['period' => 'past']))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $ended->id])
+            ->assertJsonMissing(['id' => $ongoing->id]);
+    }
+
     public function test_assigned_admin_sees_their_draft_but_not_another_tournament_draft(): void
     {
         $admin = User::factory()->create();
