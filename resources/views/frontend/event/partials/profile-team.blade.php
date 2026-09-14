@@ -52,7 +52,7 @@
                 </div>
 
                 {{-- RIGHT: STATUS / ACTIONS --}}
-                <div class="d-flex align-items-center gap-1">
+                <div class="d-flex align-items-center justify-content-sm-end flex-wrap gap-1">
 
                   @if($player)
 
@@ -68,14 +68,15 @@
                       @endphp
                       @if($canWithdraw && auth()->check() && ($player->users->contains('id', auth()->id()) || (int)auth()->id() === 584))
                         <button type="button"
-                                class="btn btn-xs btn-outline-danger withDrawPlayer"
+                                class="btn btn-sm btn-outline-danger withDrawPlayer"
                                 title="Cancel registration and withdraw from event"
+                                aria-label="Withdraw {{ $playerName }} from this team"
                                 data-id="{{ $slot->id }}"
                                 data-team="{{ $team->id }}"
                                 data-player="{{ $player->id }}"
                                 data-event="{{ $event->id }}"
                                 data-url="{{ route('team.player.withdraw', [$team->id, $player->id, $event->id]) }}">
-                          <i class="ti ti-x"></i>
+                          <i class="ti ti-x me-1" aria-hidden="true"></i>Withdraw
                         </button>
                       @endif
 
