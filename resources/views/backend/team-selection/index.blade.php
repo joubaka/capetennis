@@ -84,7 +84,9 @@
       @php($contactEmailsFor = fn($invitation) => $teamSelectionContacts->emails($invitation->player))
       @php($rawContactEmailsFor = fn($invitation) => $teamSelectionContacts->rawEmails($invitation->player))
       @php($recipientEmailFor = fn($invitation) => $contactEmailsFor($invitation)->first())
-      @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $eventRegion->region?->clothingItems?->contains(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
+      @php($regionClothingItems = $eventRegion->region?->clothingItems ?? collect())
+      @php($clothingCatalogueReady = $regionClothingItems->isNotEmpty() && $regionClothingItems->every(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
+      @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $clothingCatalogueReady)
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
@@ -162,7 +164,16 @@
                   <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-1"></i>Email all linked players</button>
                 @endif
                 @if($eventRegion->region?->usesOnlineClothingOrders())
-                  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event.clothing.index', $event) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                  <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="d-inline-flex">
+                    @csrf @method('PATCH')
+                    <button
+                      type="submit"
+                      class="btn btn-sm btn-{{ $eventRegion->region->clothing_order ? 'danger' : ($clothingCatalogueReady ? 'success' : 'warning') }}"
+                      @disabled(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady)
+                      @if(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) title="Finish clothing setup before opening orders" @endif
+                    ><i class="ti ti-{{ $eventRegion->region->clothing_order ? 'lock' : 'shopping-cart' }} me-1"></i>{{ $eventRegion->region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
+                  </form>
                 @endif
                 <span class="badge bg-label-warning">Region-scoped workspace</span>
               </div>

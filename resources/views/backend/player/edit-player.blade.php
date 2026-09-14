@@ -37,6 +37,15 @@
                         <input class="form-control" type="text" name="player_name" value="{{$player->name}}" id="html5-text-input">
                     </div>
                 </div>
+                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input type="hidden" name="is_poc_development_player" value="0">
+                        <input class="form-check-input" type="checkbox" name="is_poc_development_player" value="1" id="is-poc-development-player" @checked($player->is_poc_development_player)>
+                        <label class="form-check-label fw-semibold" for="is-poc-development-player">POC development player</label>
+                    </div>
+                    <small class="text-muted">Internal administrator marker used for player development planning.</small>
+                </div>
                 <div class="mb-3 row">
                     <label for="html5-text-input" class="col-md-4 col-form-label">Player Surname</label>
                     <div class="col-md-8">

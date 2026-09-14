@@ -22,6 +22,7 @@ class Player extends Model
     'email',
     'dateOfBirth',
     'coach',
+    'is_poc_development_player',
     'profile_updated_at',
     'profile_complete',
   ];
@@ -29,12 +30,14 @@ class Player extends Model
   protected $casts = [
     'profile_updated_at' => 'datetime',
     'profile_complete' => 'boolean',
+    'is_poc_development_player' => 'boolean',
   ];
 
   protected $hidden = [
     'identity_name_hash',
     'identity_email_dob_hash',
     'identity_cell_dob_hash',
+    'is_poc_development_player',
   ];
 
   protected $appends = ['full_name'];

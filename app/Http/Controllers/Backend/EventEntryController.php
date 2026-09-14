@@ -149,6 +149,47 @@ class EventEntryController extends Controller
   }
 
   /**
+   * Update the persistent, internal POC development marker for an entry's player.
+   */
+  public function updatePocDevelopmentStatus(Request $request, CategoryEventRegistration $entry)
+  {
+    abort_unless($request->user()?->hasAnyRole(['super-user', 'admin']), 403);
+
+    $entry->loadMissing('registration.players');
+    $player = $entry->registration?->players?->first();
+    abort_unless($player, 404);
+
+    $data = $request->validate([
+      'is_poc_development_player' => ['required', 'boolean'],
+    ]);
+
+    $previous = (bool) $player->is_poc_development_player;
+    $current = (bool) $data['is_poc_development_player'];
+
+    if ($previous !== $current) {
+      $player->update(['is_poc_development_player' => $current]);
+
+      activity('player')
+        ->performedOn($player)
+        ->causedBy($request->user())
+        ->withProperties([
+          'is_poc_development_player_from' => $previous,
+          'is_poc_development_player_to' => $current,
+          'entry_id' => $entry->id,
+        ])
+        ->log($current ? 'Marked player as POC development player' : 'Removed POC development marker');
+    }
+
+    return response()->json([
+      'success' => true,
+      'is_poc_development_player' => $current,
+      'message' => $current
+        ? 'Player marked as a POC development player.'
+        : 'POC development marker removed.',
+    ]);
+  }
+
+  /**
    * Remove a registration from a category.
    */
   public function removePlayer(CategoryEvent $categoryEvent, Registration $registration)

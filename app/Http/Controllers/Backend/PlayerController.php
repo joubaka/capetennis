@@ -328,6 +328,7 @@ class PlayerController extends Controller
       'cell_nr' => 'nullable|string|max:50',
       'gender' => 'nullable|string|max:10',
       'coach' => 'nullable|string|max:255',
+      'is_poc_development_player' => 'sometimes|boolean',
     ]);
 
     $this->playerIdentity->ensureAvailable(
@@ -346,6 +347,24 @@ class PlayerController extends Controller
       'gender' => $validated['gender'] ?? $player->gender,
       'coach' => $validated['coach'] ?? $player->coach,
     ]);
+
+    if (auth()->user()->hasAnyRole(['super-user', 'admin'])) {
+      $previousPocStatus = (bool) $player->is_poc_development_player;
+      $newPocStatus = $request->boolean('is_poc_development_player');
+
+      if ($previousPocStatus !== $newPocStatus) {
+        $player->update(['is_poc_development_player' => $newPocStatus]);
+
+        activity('player')
+          ->performedOn($player)
+          ->causedBy($request->user())
+          ->withProperties([
+            'is_poc_development_player_from' => $previousPocStatus,
+            'is_poc_development_player_to' => $newPocStatus,
+          ])
+          ->log($newPocStatus ? 'Marked player as POC development player' : 'Removed POC development marker');
+      }
+    }
 
     return redirect()->route('backend.player.profile', $player->id)
       ->with('success', 'Player updated successfully.');

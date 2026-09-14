@@ -949,6 +949,11 @@ Route::delete(
     [EventEntryController::class, 'updateAdminPaymentStatus']
   )->name('admin.entry.admin-payment-status');
 
+  Route::patch(
+    'event/entry/{entry}/poc-development-status',
+    [EventEntryController::class, 'updatePocDevelopmentStatus']
+  )->middleware('role:super-user|admin')->name('admin.entry.poc-development-status');
+
   Route::delete(
     'event/category/{categoryEvent}/remove-player/{registration}',
     [EventEntryController::class, 'removePlayer']
