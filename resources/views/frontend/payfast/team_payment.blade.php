@@ -67,7 +67,7 @@
             </div>
           @endif
 
-          @if($walletBalance > 0 && $walletReserved <= 0 && $payfastDue > 0)
+          @if($payfastDue > 0 && round($walletBalance - $walletReserved, 2) > 0)
             <form id="teamHybridForm" action="{{ route('team.hybrid.pay') }}" method="post" class="mb-3">
               @csrf
               <input type="hidden" name="custom_int5" value="{{ $order->id }}">
@@ -75,7 +75,8 @@
               <input type="hidden" name="remaining_amount" value="{{ number_format(max(0, $total - min($walletBalance, $total)), 2, '.', '') }}">
               <input type="hidden" name="type" value="team">
               <button type="submit" class="btn btn-primary w-100" id="applyWalletBtn">
-                <i class="ti ti-wallet me-1"></i> Apply Wallet Balance
+                <i class="ti ti-wallet me-1"></i>
+                {{ $walletBalance >= $total ? 'Use Wallet for Full Payment' : 'Apply Updated Wallet Balance' }}
               </button>
             </form>
           @endif

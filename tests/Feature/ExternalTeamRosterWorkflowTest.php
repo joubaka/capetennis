@@ -11,9 +11,12 @@ use App\Models\EventType;
 use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
 use App\Models\Team;
+use App\Models\TeamPaymentOrder;
 use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -324,6 +327,64 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_id' => $player->id,
             'event_id' => $this->event->id,
         ]);
+    }
+
+    public function test_team_payment_can_reapply_an_increased_wallet_balance_to_cover_the_full_order(): void
+    {
+        $this->event->update(['entryFee' => 490]);
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $wallet = Wallet::factory()->forUser($user)->create();
+        WalletTransaction::create([
+            'wallet_id' => $wallet->id,
+            'type' => 'credit',
+            'amount' => 1259.38,
+            'source_type' => 'test_seed',
+            'source_id' => 1,
+            'meta' => [],
+        ]);
+        $order = TeamPaymentOrder::create([
+            'user_id' => $user->id,
+            'team_id' => $this->team->id,
+            'player_id' => $player->id,
+            'event_id' => $this->event->id,
+            'total_amount' => 490,
+            'wallet_reserved' => 259.38,
+            'payfast_amount_due' => 230.62,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+
+        $paymentRoute = route('team.payment.payfast', [$this->team, $player, $this->event]);
+
+        $this->actingAs($user)->get($paymentRoute)
+            ->assertOk()
+            ->assertSee('Wallet Applied:</strong> R259.38', false)
+            ->assertSee('Use Wallet for Full Payment')
+            ->assertSee('name="wallet_applied" value="490.00"', false);
+
+        $this->post(route('team.hybrid.pay'), [
+            'custom_int5' => $order->id,
+        ])->assertRedirect($paymentRoute);
+
+        $this->assertDatabaseHas('team_payment_orders', [
+            'id' => $order->id,
+            'wallet_reserved' => 490,
+            'payfast_amount_due' => 0,
+        ]);
+
+        $this->get($paymentRoute)
+            ->assertOk()
+            ->assertSee('No additional payment required')
+            ->assertSee('Confirm Wallet Payment')
+            ->assertDontSee('Pay now with Payfast');
     }
 
     public function test_import_preserves_an_existing_link_when_the_same_roster_is_reimported(): void
