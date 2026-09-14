@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Domain\Finance\Services\FinancialLedgerService;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\Player;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -337,6 +338,36 @@ class FinancialLedgerServiceTest extends TestCase
 
         $paymentRows = $this->service->buildPaymentRows($this->event, 10.00);
         $this->assertEmpty($paymentRows, 'Archived PayFast row must be excluded from payment rows');
+    }
+
+    public function test_admin_entry_exposes_registered_player_and_category_details(): void
+    {
+        $player = Player::factory()->create(['name' => 'Jamie', 'surname' => 'Player']);
+        $categoryId = $this->insertCategory();
+        $categoryEventId = DB::table('category_events')->insertGetId([
+            'event_id' => $this->event->id,
+            'category_id' => $categoryId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('transactions_pf')->insert([
+            'event_id' => $this->event->id,
+            'transaction_type' => 'Registration',
+            'amount_gross' => 0,
+            'player_id' => $player->id,
+            'category_event_id' => $categoryEventId,
+            'is_test' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $row = $this->service->buildPaymentRows($this->event, 10.00)->first();
+        $detail = $row->registrationDetails->first();
+
+        $this->assertSame('Jamie Player', $detail['player']);
+        $this->assertSame('Test Category', $detail['category']);
+        $this->assertSame(0.0, $detail['price']);
     }
 
     public function test_hardcoded_fee_not_present_in_blade(): void

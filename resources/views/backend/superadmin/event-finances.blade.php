@@ -251,11 +251,15 @@
                   'net'            => number_format($tx->net, 2),
                 ]
               ])->merge(
-                collect($tx->order->items ?? [])->map(fn ($item) => [
-                  'mode'     => 'payment_item',
-                  'player'   => trim(($item->player?->name ?? '') . ' ' . ($item->player?->surname ?? '')),
+                collect($tx->registrationDetails ?? collect($tx->order->items ?? [])->map(fn ($item) => [
+                  'player' => trim(($item->player?->name ?? '') . ' ' . ($item->player?->surname ?? '')),
                   'category' => $item->category_event?->category?->name ?? '—',
-                  'price'    => number_format($item->item_price ?? 0, 2),
+                  'price' => $item->item_price ?? 0,
+                ]))->map(fn ($item) => [
+                  'mode'     => 'payment_item',
+                  'player'   => $item['player'] ?? '—',
+                  'category' => $item['category'] ?? '—',
+                  'price'    => number_format($item['price'] ?? 0, 2),
                 ])
               );
             }
@@ -339,7 +343,10 @@
               @endif
             </td>
 
-            <td>{{ $tx->player ?? '—' }}</td>
+            <td class="{{ $payload->count() ? 'dt-toggle' : '' }}">
+              <span class="{{ $payload->count() ? 'text-primary fw-semibold' : '' }}">{{ $tx->player ?? '—' }}</span>
+              @if($payload->count())<small class="text-muted d-block">Click for transaction details</small>@endif
+            </td>
             <td>
               @if($tx->type === 'withdrawal')
                 <span class="text-muted small">No Refund
@@ -459,39 +466,51 @@
         <form method="POST" action="{{ route('superadmin.finances.payout.store', $event) }}">
           @csrf
           <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label">Convenor</label>
-              <select name="convenor_id" class="form-select">
-                <option value="">— Select convenor —</option>
+            <div class="col-md-6">
+              <label class="form-label">Recipient</label>
+              <select id="payoutRecipient" class="form-select" required>
+                <option value="">— Select recipient —</option>
                 @foreach($convenors as $c)
-                  <option value="{{ $c->id }}">{{ $c->user->name ?? 'Unknown' }} ({{ ucfirst($c->role) }})</option>
+                  <option value="convenor:{{ $c->id }}"
+                          data-convenor-id="{{ $c->id }}"
+                          data-recipient-name=""
+                          @selected((string) old('convenor_id', $defaultConvenor?->id) === (string) $c->id)>
+                    {{ $c->user->name ?? 'Unknown' }} (Convenor{{ $c->role ? ' · '.ucfirst($c->role) : '' }})
+                  </option>
+                @endforeach
+                @foreach($eventAdmins->reject(fn ($admin) => $convenors->contains('user_id', $admin->id)) as $admin)
+                  <option value="admin:{{ $admin->id }}"
+                          data-convenor-id=""
+                          data-recipient-name="{{ $admin->name }}"
+                          @selected(!$defaultConvenor && (string) $defaultAdmin?->id === (string) $admin->id)>
+                    {{ $admin->name }} (Event admin)
+                  </option>
                 @endforeach
               </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Recipient Name <small class="text-muted">(if no convenor)</small></label>
-              <input type="text" name="recipient_name" class="form-control" placeholder="Optional">
+              <input type="hidden" id="payoutConvenorId" name="convenor_id" value="{{ old('convenor_id', $defaultConvenor?->id) }}">
+              <input type="hidden" id="payoutRecipientName" name="recipient_name" value="{{ old('recipient_name', $defaultAdmin?->name) }}">
             </div>
             <div class="col-md-2">
               <label class="form-label">Amount (R) <span class="text-danger">*</span></label>
-              <input type="number" name="amount" step="0.01" min="0.01" class="form-control" required>
+              <input type="number" name="amount" step="0.01" min="0.01" class="form-control"
+                     value="{{ old('amount', $defaultPayoutAmount > 0 ? number_format($defaultPayoutAmount, 2, '.', '') : '') }}" required>
             </div>
             <div class="col-md-2">
               <label class="form-label">Payment Method <span class="text-danger">*</span></label>
               <select name="payment_method" class="form-select" required>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cash">Cash</option>
-                <option value="eft">EFT</option>
-                <option value="other">Other</option>
+                <option value="bank_transfer" @selected(old('payment_method', 'bank_transfer') === 'bank_transfer')>Bank Transfer</option>
+                <option value="cash" @selected(old('payment_method') === 'cash')>Cash</option>
+                <option value="eft" @selected(old('payment_method') === 'eft')>EFT</option>
+                <option value="other" @selected(old('payment_method') === 'other')>Other</option>
               </select>
             </div>
             <div class="col-md-2">
               <label class="form-label">Date</label>
-              <input type="date" name="paid_at" class="form-control" value="{{ now()->format('Y-m-d') }}">
+              <input type="date" name="paid_at" class="form-control" value="{{ old('paid_at', now()->format('Y-m-d')) }}">
             </div>
             <div class="col-md-4">
               <label class="form-label">Description</label>
-              <input type="text" name="description" class="form-control" placeholder="e.g. Tournament payout – expenses">
+              <input type="text" name="description" class="form-control" value="{{ old('description', 'Entry fees') }}">
             </div>
             <div class="col-md-3">
               <label class="form-label">Reference / Proof</label>
@@ -889,6 +908,19 @@ $(function () {
       : (row.child(renderItems(items)).show(), tr.addClass('shown'));
   });
 });
+
+// Full Player Refunds search filter
+const payoutRecipient = document.getElementById('payoutRecipient');
+if (payoutRecipient) {
+  const syncPayoutRecipient = () => {
+    const option = payoutRecipient.options[payoutRecipient.selectedIndex];
+    document.getElementById('payoutConvenorId').value = option?.dataset.convenorId || '';
+    document.getElementById('payoutRecipientName').value = option?.dataset.recipientName || '';
+  };
+
+  payoutRecipient.addEventListener('change', syncPayoutRecipient);
+  syncPayoutRecipient();
+}
 
 // Full Player Refunds search filter
 const fullRefundSearch = document.getElementById('fullRefundSearch');

@@ -71,7 +71,10 @@ class EventFinanceControllerAuthorizationTest extends TestCase
                 && $rows->first()->user_name === 'Finance Payer')
             ->assertSee('Registration Transactions')
             ->assertSee('Finance Payer')
-            ->assertSee('PF-ADMIN-VIEW-1');
+            ->assertSee('PF-ADMIN-VIEW-1')
+            ->assertSee('Registered player')
+            ->assertSee('Category')
+            ->assertSee('Entry amount');
     }
 
     public function test_view_cross_event_forbidden() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventB->id))->assertStatus(403); }

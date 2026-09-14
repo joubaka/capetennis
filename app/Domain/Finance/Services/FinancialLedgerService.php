@@ -102,6 +102,7 @@ class FinancialLedgerService
         $rawTransactions = Transaction::with([
             'user',
             'player',
+            'category_event.category',
             'order.items.player',
             'order.items.category_event.category',
         ])
@@ -229,6 +230,11 @@ class FinancialLedgerService
                     'net'           => $isNoRefund ? 0 : round(-$grossRefund + $payfastFee + $feePerEntry, 2),
                     // For display: original amount paid (shown on withdrawal rows)
                     'original_gross' => $originalPaymentGross,
+                    'registrationDetails' => $reg->players->map(fn ($player) => [
+                        'player' => trim($player->name . ' ' . $player->surname),
+                        'category' => $reg->categoryEvent?->category?->name ?? '—',
+                        'price' => $originalPaymentGross,
+                    ])->values(),
                 ];
             })
             ->values();
@@ -373,6 +379,20 @@ class FinancialLedgerService
             ? trim(optional($tx->player)->name . ' ' . optional($tx->player)->surname)
             : optional($tx->user)->name;
 
+        $registrationDetails = $items->map(fn ($item) => [
+            'player' => trim(($item->player?->name ?? '') . ' ' . ($item->player?->surname ?? '')) ?: '—',
+            'category' => $item->category_event?->category?->name ?? '—',
+            'price' => (float) ($item->item_price ?? 0),
+        ])->values();
+
+        if ($registrationDetails->isEmpty() && $tx->player) {
+            $registrationDetails = collect([[
+                'player' => trim($tx->player->name . ' ' . $tx->player->surname),
+                'category' => $tx->category_event?->category?->name ?? '—',
+                'price' => $grossTx,
+            ]]);
+        }
+
         return (object) [
             // ── Canonical normalized fields ───────────────────────────────
             'type'             => 'payment',
@@ -405,6 +425,7 @@ class FinancialLedgerService
             'entryCount'    => $entryCount,
             'payfastGross'  => $payfastGross,
             'walletUsed'    => $walletUsed,
+            'registrationDetails' => $registrationDetails,
         ];
     }
 
@@ -425,7 +446,7 @@ class FinancialLedgerService
             ->where('type', 'debit')
             ->get()
             ->map(function ($wt) use ($feePerEntry) {
-                $order      = RegistrationOrder::with('items')->find($wt->source_id);
+                $order      = RegistrationOrder::with(['items.player', 'items.category_event.category'])->find($wt->source_id);
                 $entryCount = max(1, $order?->items?->count() ?? 1);
                 $gross      = round((float) $wt->amount, 2);
                 $capeFeeTx  = -1 * round($feePerEntry * $entryCount, 2);
@@ -463,6 +484,11 @@ class FinancialLedgerService
                     'entryCount'    => $entryCount,
                     'payfastGross'  => 0,
                     'walletUsed'    => $gross,
+                    'registrationDetails' => collect($order?->items ?? [])->map(fn ($item) => [
+                        'player' => trim(($item->player?->name ?? '') . ' ' . ($item->player?->surname ?? '')) ?: '—',
+                        'category' => $item->category_event?->category?->name ?? '—',
+                        'price' => (float) ($item->item_price ?? 0),
+                    ])->values(),
                 ];
             });
     }
@@ -488,7 +514,7 @@ class FinancialLedgerService
             ->where('type', 'debit')
             ->get()
             ->map(function ($wt) use ($feePerEntry) {
-                $order = TeamPaymentOrder::find($wt->source_id);
+                $order = TeamPaymentOrder::with(['player', 'team.category'])->find($wt->source_id);
                 $gross = round((float) $wt->amount, 2);
                 $capeFeeTx = -1 * round($feePerEntry, 2);
                 $user = $wt->wallet?->payable;
@@ -530,6 +556,11 @@ class FinancialLedgerService
                     'entryCount'    => 1,
                     'payfastGross'  => 0,
                     'walletUsed'    => $gross,
+                    'registrationDetails' => collect([[
+                        'player' => $playerName ?: '—',
+                        'category' => $order?->team?->category?->name ?? 'Team entry',
+                        'price' => $gross,
+                    ]]),
                 ];
             });
     }

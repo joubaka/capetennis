@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 use App\Mail\WalletRefundConfirmationMail;
 
 class SuperAdminFinanceController extends Controller
@@ -141,6 +142,11 @@ class SuperAdminFinanceController extends Controller
             ->orderByRaw("FIELD(role, 'hoof', 'hulp', 'admin')")
             ->get();
 
+        $eventAdmins = $event->admins()->orderBy('name')->get();
+        $defaultConvenor = $convenors->first();
+        $defaultAdmin = $defaultConvenor ? null : $eventAdmins->first();
+        $defaultPayoutAmount = max(0, round($balance, 2));
+
         // ── Registrations eligible for super-admin full refund ─────────────
         $eligibleForRefund = CategoryEventRegistration::with([
                 'players',
@@ -173,6 +179,10 @@ class SuperAdminFinanceController extends Controller
             'transactions',
             'payoutModels',
             'convenors',
+            'eventAdmins',
+            'defaultConvenor',
+            'defaultAdmin',
+            'defaultPayoutAmount',
             'feePerEntry',
             'isTeamEvent',
             'totalEntries',
@@ -205,7 +215,10 @@ class SuperAdminFinanceController extends Controller
     public function storePayout(Request $request, Event $event)
     {
         $validated = $request->validate([
-            'convenor_id'    => 'nullable|exists:event_convenors,id',
+            'convenor_id'    => [
+                'nullable',
+                Rule::exists('event_convenors', 'id')->where('event_id', $event->id),
+            ],
             'recipient_name' => 'nullable|string|max:150',
             'amount'         => 'required|numeric|min:0.01',
             'description'    => 'nullable|string|max:255',

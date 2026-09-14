@@ -179,14 +179,17 @@
 
   {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
   <div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <button class="card-header d-flex justify-content-between align-items-center border-0 bg-transparent text-start"
+            type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
+            aria-expanded="false" aria-controls="registrationTransactionsCollapse">
       <div>
         <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Registration Transactions</h5>
-        <small class="text-muted">Payments, refunds and no-refund withdrawals attributed to each user.</small>
+        <small class="text-muted">Payments, refunds and registered players attributed to each user. Click to open.</small>
       </div>
-      <span class="badge bg-label-secondary">{{ $eventTransactions->count() }}</span>
-    </div>
-    <div class="table-responsive">
+      <span><span class="badge bg-label-secondary me-2">{{ $eventTransactions->count() }}</span><i class="ti ti-chevron-down"></i></span>
+    </button>
+    <div class="collapse" id="registrationTransactionsCollapse">
+    <div class="table-responsive border-top">
       <table class="table table-hover mb-0">
         <thead class="table-light">
           <tr>
@@ -206,11 +209,17 @@
               $isWithdrawal = $transaction->type === 'withdrawal';
               $gross = $isWithdrawal ? ($transaction->original_gross ?? 0) : ($transaction->gross ?? 0);
               $fees = ($transaction->fee ?? 0) + ($transaction->capeFee ?? 0);
+              $details = collect($transaction->registrationDetails ?? []);
+              $detailId = 'event-transaction-detail-'.$loop->index;
             @endphp
             <tr>
               <td class="text-nowrap">{{ optional($transaction->created_at)->format('d M Y H:i') ?? '—' }}</td>
               <td>
-                <span class="fw-semibold">{{ $transaction->user_name ?? $transaction->player ?? '—' }}</span>
+                <button type="button" class="btn btn-link p-0 text-start fw-semibold"
+                        data-bs-toggle="collapse" data-bs-target="#{{ $detailId }}"
+                        aria-expanded="false" aria-controls="{{ $detailId }}">
+                  <i class="ti ti-chevron-right me-1"></i>{{ $transaction->user_name ?? $transaction->player ?? '—' }}
+                </button>
                 @if(($transaction->type ?? null) === 'payment' && ($transaction->entryCount ?? 1) > 1)
                   <small class="text-muted d-block">{{ $transaction->entryCount }} entries</small>
                 @endif
@@ -228,11 +237,42 @@
                 {{ ($transaction->net ?? 0) < 0 ? '−' : '' }}R {{ number_format(abs($transaction->net ?? 0), 2) }}
               </td>
             </tr>
+            <tr class="border-0">
+              <td colspan="8" class="p-0 border-0">
+                <div class="collapse" id="{{ $detailId }}">
+                  <div class="p-3 bg-light border-bottom">
+                    <div class="row g-2 mb-3 small">
+                      <div class="col-md-3"><span class="text-muted">Payment reference</span><div class="fw-semibold">{{ $transaction->source_pf_id ?? $transaction->pf_payment_id ?? '—' }}</div></div>
+                      <div class="col-md-3"><span class="text-muted">Transaction ID</span><div class="fw-semibold">{{ $transaction->source_tx_id ? '#'.$transaction->source_tx_id : '—' }}</div></div>
+                      <div class="col-md-3"><span class="text-muted">Payment method</span><div class="fw-semibold">{{ $transaction->method ?? $transaction->payment_method ?? '—' }}</div></div>
+                      <div class="col-md-3"><span class="text-muted">Entries</span><div class="fw-semibold">{{ $details->count() ?: ($transaction->entryCount ?? 1) }}</div></div>
+                    </div>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered bg-white mb-0">
+                        <thead><tr><th>Registered player</th><th>Category</th><th class="text-end">Entry amount</th></tr></thead>
+                        <tbody>
+                          @forelse($details as $detail)
+                            <tr>
+                              <td>{{ $detail['player'] ?? '—' }}</td>
+                              <td>{{ $detail['category'] ?? '—' }}</td>
+                              <td class="text-end">R {{ number_format($detail['price'] ?? 0, 2) }}</td>
+                            </tr>
+                          @empty
+                            <tr><td colspan="3" class="text-center text-muted">No linked player details were recorded for this transaction.</td></tr>
+                          @endforelse
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
           @empty
             <tr><td colspan="8" class="text-center text-muted py-4">No registration transactions have been recorded for this event.</td></tr>
           @endforelse
         </tbody>
       </table>
+    </div>
     </div>
   </div>
 
