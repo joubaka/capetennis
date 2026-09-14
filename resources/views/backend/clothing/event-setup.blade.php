@@ -4,7 +4,7 @@
 
 @section('content')
 @php
-  $selectedRegions = $event->regions->filter(fn($region) => $region->usesOnlineClothingOrders());
+  $selectedRegions = $visibleRegions->filter(fn($region) => $region->usesOnlineClothingOrders());
   $openRegions = $selectedRegions->filter(fn($region) => (bool) $region->clothing_order);
   $readyRegions = $selectedRegions->filter(fn($region) => $region->clothingItems->isNotEmpty());
 @endphp
@@ -12,11 +12,11 @@
 <div class="container-xxl py-4 clothing-setup">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
-      <div class="text-uppercase text-muted small fw-semibold mb-1">Event administration</div>
+      <div class="text-uppercase text-muted small fw-semibold mb-1">{{ $isEventManager ? 'Event administration' : 'Regional administration' }}</div>
       <h3 class="mb-1">Clothing orders</h3>
       <p class="text-muted mb-0">{{ $event->name }}</p>
     </div>
-    <a href="{{ route('admin.events.overview', $event) }}" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back to event</a>
+    <a href="{{ $isEventManager ? route('admin.events.overview', $event) : route('backend.team-selection.index', $event) }}" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back to event</a>
   </div>
 
   @if(session('success'))
@@ -28,11 +28,11 @@
       <div class="row g-3 align-items-center">
         <div class="col-12 col-lg">
           <h5 class="mb-1">Setup overview</h5>
-          <p class="text-muted small mb-0">Choose participating regions, prepare each catalogue, then open ordering when it is ready.</p>
+          <p class="text-muted small mb-0">{{ $isEventManager ? 'Choose participating regions, prepare each catalogue, then open ordering when it is ready.' : 'Prepare your assigned catalogue, then open ordering when it is ready.' }}</p>
         </div>
         <div class="col-12 col-lg-auto">
           <div class="d-flex flex-wrap gap-2 clothing-summary" aria-label="Clothing setup summary">
-            <span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $event->regions->count() }} regions selected</span>
+            @if($isEventManager)<span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>@endif
             <span class="badge bg-label-info"><strong>{{ $readyRegions->count() }}</strong> catalogues prepared</span>
             <span class="badge bg-label-success"><strong>{{ $openRegions->count() }}</strong> ordering open</span>
           </div>
@@ -41,6 +41,7 @@
     </div>
   </div>
 
+  @if($isEventManager)
   <form method="POST" action="{{ route('backend.event.clothing.regions.update', $event) }}" class="card mb-4">
     @csrf @method('PATCH')
     <div class="card-header d-flex gap-3 align-items-start">
@@ -49,7 +50,7 @@
     </div>
     <div class="card-body">
       <div class="row g-2">
-        @foreach($event->regions as $region)
+        @foreach($visibleRegions as $region)
           <div class="col-12 col-md-6 col-xl-4">
             <label class="region-choice d-flex align-items-start gap-2 border rounded p-3 h-100" for="online-clothing-region-{{ $region->id }}">
               <input class="form-check-input flex-shrink-0 mt-0" type="checkbox" name="region_ids[]" value="{{ $region->id }}" id="online-clothing-region-{{ $region->id }}" @checked($region->usesOnlineClothingOrders())>
@@ -64,15 +65,16 @@
       <button class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Save region selection</button>
     </div>
   </form>
+  @endif
 
   <section aria-labelledby="catalogue-heading">
     <div class="d-flex gap-3 align-items-start mb-3 px-1">
-      <span class="setup-step">2</span>
+      <span class="setup-step">{{ $isEventManager ? 2 : 1 }}</span>
       <div><h5 class="mb-1" id="catalogue-heading">Prepare catalogues</h5><p class="text-muted small mb-0">Open a region to review its items, prices, sizes, orders, and ordering status.</p></div>
     </div>
 
     <div class="accordion clothing-regions" id="clothing-regions">
-      @foreach($event->regions as $region)
+      @foreach($visibleRegions as $region)
         @php($items = $region->clothingItems)
         @php($usesOnlineClothing = $region->usesOnlineClothingOrders())
         @php($recommended = $recommendedSources->get($region->id))

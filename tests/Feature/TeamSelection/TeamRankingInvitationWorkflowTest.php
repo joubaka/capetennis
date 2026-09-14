@@ -912,6 +912,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Back to event')
             ->assertSee(route('backend.team-selection.index', $event), false);
+        $this->actingAs($manager)->get(route('backend.event.clothing.index', $event))
+            ->assertOk()
+            ->assertSee('Regional administration')
+            ->assertSee('Assigned Region')
+            ->assertDontSee('Private Other Region')
+            ->assertDontSee('Choose regions')
+            ->assertDontSee('Save region selection')
+            ->assertSee(route('backend.team-selection.index', $event), false);
         $this->actingAs($manager)->get(route('backend.region.clothing.edit', $secondRegion))->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [
             'title' => 'Assigned team update', 'message' => 'Practice starts at 08:00.', 'send_email' => 0,

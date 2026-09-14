@@ -162,7 +162,7 @@
                   <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-1"></i>Email all linked players</button>
                 @endif
                 @if($eventRegion->region?->usesOnlineClothingOrders())
-                  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event.clothing.index', $event) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
                 @endif
                 <span class="badge bg-label-warning">Region-scoped workspace</span>
               </div>

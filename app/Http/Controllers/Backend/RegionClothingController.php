@@ -18,13 +18,25 @@ use Illuminate\Validation\Rule;
 
 class RegionClothingController extends Controller
 {
-  public function eventSetup(Event $event)
+  public function eventSetup(Event $event, RegionManagerAccessService $access)
   {
     abort_unless($event->isTeam(), 404);
-    $this->authorize('event-draw.view', $event);
     $event->load(['regions.clothingItems.sizes']);
+    $isEventManager = $access->isEventManager(request()->user(), $event);
+    $manageableRegionIds = EventRegion::query()
+      ->with('events')
+      ->where('event_id', $event->id)
+      ->get()
+      ->filter(fn (EventRegion $eventRegion) => $access->canManage(request()->user(), $eventRegion))
+      ->pluck('region_id');
+
+    abort_if($manageableRegionIds->isEmpty(), 403);
+
+    $visibleRegions = $isEventManager
+      ? $event->regions
+      : $event->regions->whereIn('id', $manageableRegionIds)->values();
     $sourceRegions = $this->clothingSourceRegions();
-    $recommendedSources = $event->regions->mapWithKeys(function (TeamRegion $region) use ($sourceRegions) {
+    $recommendedSources = $visibleRegions->mapWithKeys(function (TeamRegion $region) use ($sourceRegions) {
       $recommended = $sourceRegions
         ->where('id', '!=', $region->id)
         ->sortByDesc(fn (TeamRegion $candidate) => $this->sourceMatchScore($region, $candidate))
@@ -34,7 +46,7 @@ class RegionClothingController extends Controller
       return [$region->id => $recommended];
     });
 
-    return view('backend.clothing.event-setup', compact('event', 'recommendedSources'));
+    return view('backend.clothing.event-setup', compact('event', 'visibleRegions', 'recommendedSources', 'isEventManager'));
   }
 
   public function updateEventRegions(Request $request, Event $event)
