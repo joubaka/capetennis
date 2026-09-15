@@ -158,6 +158,8 @@ class SendBulkEmailJob implements ShouldQueue
             case 'bulk_event_mail':
             case 'team_email':
             case 'region_email':
+            case 'team_selection_registration_clothing_reminder':
+            case 'team_selection_incomplete_clothing_reminder':
                 return (new \App\Mail\BulkEventMail(
                     $payload['subject'] ?? 'Event Update',
                     $payload['body'] ?? $payload['message'] ?? '',

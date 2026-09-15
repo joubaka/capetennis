@@ -17,7 +17,7 @@ class TeamSelectionInvitation extends Model
         'import_id', 'event_id', 'region_id', 'team_id', 'player_id', 'ranking_list_id',
         'order_id', 'ranking_position', 'queue_position', 'total_points', 'roster_rank', 'vacated_roster_rank',
         'response_deadline_override', 'payment_deadline_override',
-        'status', 'decline_reason', 'declined_by_user_id', 'decline_method',
+        'status', 'clothing_decision', 'clothing_decided_at', 'decline_reason', 'declined_by_user_id', 'decline_method',
         'promoted_from_id', 'invited_at', 'accepted_at', 'payment_started_at',
         'paid_at', 'declined_at', 'snapshot_json',
     ];
@@ -26,7 +26,7 @@ class TeamSelectionInvitation extends Model
         'total_points' => 'float', 'roster_rank' => 'integer', 'vacated_roster_rank' => 'integer', 'snapshot_json' => 'array',
         'response_deadline_override' => 'datetime', 'payment_deadline_override' => 'datetime',
         'invited_at' => 'datetime', 'accepted_at' => 'datetime', 'paid_at' => 'datetime',
-        'payment_started_at' => 'datetime', 'declined_at' => 'datetime',
+        'payment_started_at' => 'datetime', 'clothing_decided_at' => 'datetime', 'declined_at' => 'datetime',
     ];
 
     public function selectionImport() { return $this->belongsTo(TeamSelectionImport::class, 'import_id'); }

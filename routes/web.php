@@ -143,6 +143,7 @@ Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->gr
   Route::get('invitations/{invitation}/clothing', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'clothing'])->name('invitations.clothing');
   Route::post('invitations/{invitation}/accept', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'accept'])->name('invitations.accept');
   Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'decline'])->name('invitations.decline');
+  Route::post('invitations/{invitation}/clothing-decision', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'clothingDecision'])->name('invitations.clothing-decision');
 });
 
 Route::get('masters/invitations/{invitation}/confirm-decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'confirmDecline'])
@@ -472,6 +473,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('events/{event}/imports/{selectionImport}/invitations/{invitation}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'viewSentInvitation'])->name('invitations.email.view');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/email/resend', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'resendInvitation'])->name('invitations.email.resend');
     Route::post('events/{event}/regions/{eventRegion}/roster-email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendRosterMessage'])->name('roster-email.send');
+    Route::post('events/{event}/final-reminders', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendFinalReminder'])->name('final-reminders.send');
     Route::post('events/{event}/regions/{eventRegion}/imported-contacts', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'enrichImportedContacts'])->name('imported-contacts.enrich');
   });
 

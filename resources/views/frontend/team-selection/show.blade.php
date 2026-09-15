@@ -27,7 +27,16 @@
       <div class="alert alert-warning"><strong>Your place is not confirmed yet.</strong> Complete payment before the deadline, or decline so the reserve can be invited.</div><div class="d-flex flex-wrap gap-2"><a class="btn btn-success btn-lg" href="{{ route('team.payment.payfast', [$invitation->team_id,$invitation->player_id,$invitation->event_id]) }}"><i class="ti ti-credit-card me-1"></i>Continue payment</a><button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#decline-team-invitation">Decline invitation</button></div>
     @elseif($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
       <div class="alert alert-success"><i class="ti ti-circle-check me-1"></i><strong>Registration and payment confirmed.</strong> Your team place is secured.</div>
-      @if($canOrderClothing)<a class="btn btn-outline-primary" href="{{ route('team-selection.invitations.clothing', $invitation) }}"><i class="ti ti-shirt me-1"></i>Order optional clothing</a>@endif
+      @if($canOrderClothing)
+        @if($invitation->clothing_decision === 'not_required')
+          <div class="alert alert-secondary mb-0"><i class="ti ti-shirt-off me-1"></i>No clothing required has been recorded.</div>
+        @else
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-primary" href="{{ route('team-selection.invitations.clothing', $invitation) }}"><i class="ti ti-shirt me-1"></i>Order optional clothing</a>
+            <form method="POST" action="{{ route('team-selection.invitations.clothing-decision', $invitation) }}" onsubmit="return confirm('Confirm that no clothing is required for this player?');">@csrf<input type="hidden" name="decision" value="not_required"><button class="btn btn-outline-secondary"><i class="ti ti-shirt-off me-1"></i>No clothing required</button></form>
+          </div>
+        @endif
+      @endif
       @if($clothingOrders->isNotEmpty())<div class="mt-3"><strong>Clothing orders</strong>@foreach($clothingOrders as $order)<div class="small text-muted">Order #{{ $order->id }} · R{{ number_format((float)$order->total, 2) }} · {{ $order->pay_status ? 'Paid' : 'Payment pending' }}</div>@endforeach</div>@endif
     @else<div class="alert alert-secondary mb-0">This invitation is {{ str_replace('_',' ',$invitation->status) }}.</div>@endif
   </div>

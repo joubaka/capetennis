@@ -24,6 +24,7 @@ use App\Imports\ExternalTeamWorkbookParser;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\TeamSelectionContactService;
+use App\Services\TeamSelection\TeamSelectionReminderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -32,7 +33,7 @@ class TeamSelectionInvitationController extends Controller
 {
     public function __construct(private TeamSelectionContactService $contacts) {}
 
-    public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access)
+    public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)
     {
         abort_unless($event->isTeam(), 404);
         $isEventManager = $access->isEventManager(request()->user(), $event);
@@ -85,8 +86,33 @@ class TeamSelectionInvitationController extends Controller
             ]);
 
         $teamSelectionContacts = $this->contacts;
+        $reminderSummaries = $isEventManager ? $reminders->summaries($event) : [];
+        $reminderHashes = [];
+        if ($isEventManager) {
+            foreach (['registration_clothing', 'incomplete_clothing'] as $kind) {
+                foreach (['all', 'registered', 'unregistered'] as $audience) {
+                    $reminderHashes[$kind][$audience] = $reminders->recipientHash($event, $kind, $audience);
+                }
+            }
+        }
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts'));
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts', 'reminderSummaries', 'reminderHashes'));
+    }
+
+    public function sendFinalReminder(Request $request, Event $event, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)
+    {
+        abort_unless($event->isTeam(), 404);
+        abort_unless($access->isEventManager($request->user(), $event), 403);
+        $data = $request->validate([
+            'kind' => ['required', 'in:registration_clothing,incomplete_clothing'],
+            'audience' => ['required', 'in:all,registered,unregistered'],
+            'send_token' => ['required', 'uuid'],
+            'recipient_hash' => ['required', 'string', 'size:64'],
+            'confirm_recipients' => ['accepted'],
+        ]);
+        $stats = $reminders->send($event, $data['kind'], $data['audience'], $data['send_token'], $data['recipient_hash'], $request->user());
+
+        return back()->with('success', "Queued {$stats['queued']} reminder email(s) covering {$stats['players']} player(s).");
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)

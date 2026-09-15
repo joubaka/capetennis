@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\CategoryEvent;
 use App\Models\BulkEmailLog;
 use App\Models\ClothingItemType;
+use App\Models\ClothingOrder;
 use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventAdmin;
@@ -28,6 +29,7 @@ use App\Models\Venue;
 use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\RegionManagerAccessService;
+use App\Services\TeamSelection\TeamSelectionReminderService;
 use App\Services\Clothing\ClothingPriceService;
 use App\Mail\TeamSelectionInvitationMail;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -2055,6 +2057,75 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
             $source->event, $selectionImport, $thirdReserve,
         ]))->assertSessionHasErrors('activation');
+    }
+
+    public function test_final_reminder_cohorts_separate_registration_and_incomplete_clothing_states(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update(['status' => 'sent', 'include_clothing' => true]);
+        $invitations = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('id')->get();
+        $registered = $invitations->first();
+        $registered->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+
+        $service = app(TeamSelectionReminderService::class);
+        $this->assertSame(1, $service->recipients($source->event, 'registration_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(1, $service->recipients($source->event, 'registration_clothing', 'unregistered')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(2, $service->recipients($source->event, 'registration_clothing', 'all')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(1, $service->recipients($source->event, 'incomplete_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
+
+        ClothingOrder::create([
+            'event_id' => $registered->event_id, 'team_id' => $team->id, 'player_id' => $registered->player_id,
+            'user_id' => $registered->player->userId, 'pay_status' => 1, 'status' => 'paid',
+            'subtotal' => 100, 'payfast_fee' => 0, 'total' => 100,
+        ]);
+        $this->assertSame(0, $service->recipients($source->event, 'incomplete_clothing', 'registered')->count());
+
+        ClothingOrder::where('event_id', $registered->event_id)->delete();
+        $registered->update(['clothing_decision' => 'not_required', 'clothing_decided_at' => now()]);
+        $this->assertSame(0, $service->recipients($source->event, 'incomplete_clothing', 'registered')->count());
+    }
+
+    public function test_player_can_confirm_no_clothing_and_event_manager_only_can_send_final_reminders(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $event = $source->event;
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Final reminder team event', 'type' => 2, 'code' => 'final-reminder-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event->update(['eventType' => $teamType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update(['status' => 'sent', 'include_clothing' => true]);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = $invitation->player->user;
+        $invitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+
+        $this->actingAs(User::factory()->create())->post(route('team-selection.invitations.clothing-decision', $invitation), [
+            'decision' => 'not_required',
+        ])->assertForbidden();
+        $this->actingAs($owner)->post(route('team-selection.invitations.clothing-decision', $invitation), [
+            'decision' => 'not_required',
+        ])->assertRedirect()->assertSessionHas('success');
+        $this->assertSame('not_required', $invitation->fresh()->clothing_decision);
+
+        $reminders = app(TeamSelectionReminderService::class);
+        $hash = $reminders->recipientHash($event, 'registration_clothing', 'all');
+        $payload = [
+            'kind' => 'registration_clothing', 'audience' => 'all',
+            'send_token' => (string) \Illuminate\Support\Str::uuid(),
+            'recipient_hash' => $hash, 'confirm_recipients' => 1,
+        ];
+        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.final-reminders.send', $event), $payload)->assertForbidden();
+        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', $event), $payload)
+            ->assertRedirect()->assertSessionHas('success');
+        $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
+        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', $event), $payload)
+            ->assertRedirect()->assertSessionHas('success');
+        $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
     }
 
     /** @return array{0: \App\Models\EventRegionRankingSource, 1: Team, 2: \Illuminate\Support\Collection<int, Player>} */

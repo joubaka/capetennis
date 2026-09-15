@@ -104,6 +104,26 @@ class TeamSelectionInvitationController extends Controller
         return view('frontend.team-selection.clothing', compact('invitation', 'items', 'requestToken', 'payfastSettings'));
     }
 
+    public function clothingDecision(Request $request, TeamSelectionInvitation $invitation)
+    {
+        $invitation->loadMissing(['player.user', 'player.users', 'selectionImport', 'region.clothingItems.sizes']);
+        abort_unless($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED, 403);
+        abort_unless($invitation->player && (
+            (int) $invitation->player->userId === (int) $request->user()->id
+            || $invitation->player->users->contains(fn ($user) => (int) $user->id === (int) $request->user()->id)
+        ), 403);
+        $data = $request->validate(['decision' => ['required', 'in:not_required']]);
+        $hasPaidOrder = ClothingOrder::query()->where('event_id', $invitation->event_id)
+            ->where('team_id', $invitation->team_id)->where('player_id', $invitation->player_id)
+            ->where(fn ($query) => $query->where('pay_status', 1)->orWhere('payfast_paid', true))->exists();
+        if ($hasPaidOrder) {
+            return back()->with('success', 'Your paid clothing order is already recorded.');
+        }
+        $invitation->update(['clothing_decision' => $data['decision'], 'clothing_decided_at' => now()]);
+
+        return back()->with('success', 'Thank you. We recorded that no clothing is required.');
+    }
+
     private function canOrderClothing(TeamSelectionInvitation $invitation): bool
     {
         $region = $invitation->region;
