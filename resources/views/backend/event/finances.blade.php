@@ -21,6 +21,33 @@
   .recon-table th { background: #343a40; color: #fff; }
   .cat-summary-badge { font-size: 0.75rem; min-width: 4rem; }
 
+  .registration-transactions-toggle {
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .registration-transactions-toggle:hover { background: #f4fbfb !important; }
+  .registration-transactions-toggle:focus-visible {
+    outline: 3px solid rgba(0, 150, 136, 0.25);
+    outline-offset: -3px;
+  }
+  .registration-transactions-action {
+    color: var(--bs-primary);
+    background: var(--bs-primary-bg-subtle, #e8f7f5);
+    border: 1px solid rgba(0, 150, 136, 0.25);
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    white-space: nowrap;
+  }
+  .registration-transactions-toggle .ti-chevron-down { transition: transform 0.2s ease; }
+  .registration-transactions-toggle[aria-expanded="true"] .ti-chevron-down { transform: rotate(180deg); }
+  .registration-transactions-toggle[aria-expanded="true"] .registration-transactions-action-label::before { content: 'Hide registrations'; }
+  .registration-transactions-toggle[aria-expanded="false"] .registration-transactions-action-label::before { content: 'View registrations'; }
+
+  @media (max-width: 575.98px) {
+    .registration-transactions-toggle { align-items: flex-start !important; gap: 0.75rem; }
+    .registration-transactions-action-label { display: none; }
+  }
+
   /* Print styles */
   @media print {
     .no-print, .btn, .modal, .card-header .btn, nav, .navbar,
@@ -179,14 +206,18 @@
 
   {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
   <div class="card mb-4">
-    <button class="card-header d-flex justify-content-between align-items-center border-0 bg-transparent text-start"
+    <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
             aria-expanded="false" aria-controls="registrationTransactionsCollapse">
-      <div>
+      <div class="pe-2">
         <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Registration Transactions</h5>
-        <small class="text-muted">Payments, refunds and registered players attributed to each user. Click to open.</small>
+        <small class="text-muted">Open to see registered players, payment status and method, amounts paid, fees and refunds.</small>
       </div>
-      <span><span class="badge bg-label-secondary me-2">{{ $eventTransactions->count() }}</span><i class="ti ti-chevron-down"></i></span>
+      <span class="registration-transactions-action d-inline-flex align-items-center gap-2">
+        <span class="badge bg-primary">{{ $eventTransactions->count() }}</span>
+        <span class="registration-transactions-action-label fw-semibold"></span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </span>
     </button>
     <div class="collapse" id="registrationTransactionsCollapse">
     <div class="table-responsive border-top">

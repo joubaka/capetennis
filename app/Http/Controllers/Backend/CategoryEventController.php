@@ -79,9 +79,6 @@ class CategoryEventController extends Controller
 
       // Keep the Masters invitation lifecycle in sync for admin withdrawals
       // as well as player self-withdrawals (including replacement handling).
-      app(\App\Services\Masters\MastersInvitationService::class)
-        ->handlePaidWithdrawal((int) $registration->id, $user);
-
       // Only super-users may issue refunds, and only before the deadline.
       if ($refundAllowed && ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
         $refundUrl = route('admin.registration.refund.choose', [$event, $registration]);

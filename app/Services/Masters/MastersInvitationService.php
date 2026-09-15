@@ -891,19 +891,35 @@ final class MastersInvitationService
             ->each->delete();
     }
 
-    public function handlePaidWithdrawal(int $registrationId, ?User $actor = null): ?MastersInvitation
+    public function handlePaidWithdrawal(
+        int $registrationId,
+        ?User $actor = null,
+        bool $sendNotifications = true
+    ): ?MastersInvitation
     {
-        return DB::transaction(function () use ($registrationId, $actor) {
+        return DB::transaction(function () use ($registrationId, $actor, $sendNotifications) {
             $invitation = MastersInvitation::query()->lockForUpdate()
                 ->where('registration_id', $registrationId)->where('status', MastersInvitation::PAID_CONFIRMED)->first();
             if (!$invitation) return null;
-            $invitation->update(['status' => MastersInvitation::WITHDRAWN, 'withdrawn_at' => now()]);
+            $entry = CategoryEventRegistration::query()
+                ->where('registration_id', $registrationId)
+                ->where('category_event_id', $invitation->category_event_id)
+                ->first();
+            if (!$entry || $entry->status !== 'withdrawn') {
+                throw new \RuntimeException('A paid Masters invitation can only be withdrawn after its entry is withdrawn.');
+            }
+            $invitation->update([
+                'status' => MastersInvitation::WITHDRAWN,
+                'withdrawn_at' => $entry->withdrawn_at ?: now(),
+            ]);
             if ($actor) $this->recordActor($invitation, $actor, 'withdrew Masters registration');
-            DB::afterCommit(function () use ($invitation) {
-                $fresh = $invitation->fresh(['player', 'batch.event', 'categoryEvent.category']);
-                $this->queuePlayerMail($fresh, 'withdrawn');
-                $this->queueAdminMail($fresh, 'withdrawn');
-            });
+            if ($sendNotifications) {
+                DB::afterCommit(function () use ($invitation) {
+                    $fresh = $invitation->fresh(['player', 'batch.event', 'categoryEvent.category']);
+                    $this->queuePlayerMail($fresh, 'withdrawn');
+                    $this->queueAdminMail($fresh, 'withdrawn');
+                });
+            }
             return $this->replacementAfter($invitation);
         });
     }

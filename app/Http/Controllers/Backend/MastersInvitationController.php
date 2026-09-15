@@ -241,8 +241,6 @@ class MastersInvitationController extends Controller
 
             app(\App\Domain\Entries\Services\EntryService::class)->withdrawEntryAsAdmin($registration, $request->user());
             $registration->sendWithdrawalEmails('admin');
-            $service->handlePaidWithdrawal((int) $registration->id, $request->user());
-
             if ($event->canWithdraw()) {
                 return redirect()->route('admin.registration.refund.choose', [$event, $registration])
                     ->with('success', 'Paid player removed by admin. Choose whether a refund should be issued.');

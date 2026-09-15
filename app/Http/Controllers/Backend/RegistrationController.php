@@ -154,7 +154,8 @@ class RegistrationController extends Controller
       /**
        * 🧾 Canonical withdrawal transition
        */
-      $categoryEventRegistration->markWithdrawn(auth()->user(), 'admin');
+      app(\App\Domain\Entries\Services\EntryService::class)
+        ->withdrawEntryAsAdmin($categoryEventRegistration, auth()->user());
 
       return response()->json([
         'status' => 'success',
@@ -186,7 +187,8 @@ class RegistrationController extends Controller
     $user->deposit(($categoryEventRegistration->categoryEvent->entry_fee) - 10);
     $order = 'withdrawel_before_deadline';
     $trans = RegisterController::update_transaction($request, $order);
-    $categoryEventRegistration->markWithdrawn(auth()->user(), 'admin');
+    app(\App\Domain\Entries\Services\EntryService::class)
+      ->withdrawEntryAsAdmin($categoryEventRegistration, auth()->user());
 
     // have to send mail to admin and owner
 

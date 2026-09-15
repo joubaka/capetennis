@@ -13,6 +13,8 @@ use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\User;
 use App\Services\Masters\MastersInvitationService;
+use App\Domain\Entries\Events\EntryWithdrawn;
+use App\Listeners\SyncMastersInvitationWithdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -152,6 +154,43 @@ class MastersPaymentReconciliationTest extends TestCase
             'category_event_id' => $invitation->category_event_id,
         ]);
         $this->assertSame(0.0, (float) $duplicateOrder->fresh()->payfast_amount_due);
+    }
+
+    public function test_canonical_withdrawal_event_synchronizes_paid_masters_invitation(): void
+    {
+        Queue::fake();
+        [$invitation, $user] = $this->invitationScenario();
+        [$order, $registration] = $this->orderFor($invitation, $user, paid: true);
+        $entry = CategoryEventRegistration::query()
+            ->where('registration_id', $registration->id)
+            ->where('category_event_id', $invitation->category_event_id)
+            ->firstOrFail();
+        $entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()->subHour()]);
+        $invitation->update([
+            'status' => MastersInvitation::PAID_CONFIRMED,
+            'registration_id' => $registration->id,
+            'order_id' => $order->id,
+        ]);
+
+        app(SyncMastersInvitationWithdrawal::class)->handle(new EntryWithdrawn($entry->fresh(), $user, 'admin'));
+
+        $invitation->refresh();
+        $this->assertSame(MastersInvitation::WITHDRAWN, $invitation->status);
+        $this->assertTrue($invitation->withdrawn_at->equalTo($entry->fresh()->withdrawn_at));
+    }
+
+    public function test_masters_invitation_cannot_be_withdrawn_before_entry_transition(): void
+    {
+        [$invitation, $user] = $this->invitationScenario();
+        [$order, $registration] = $this->orderFor($invitation, $user, paid: true);
+        $invitation->update([
+            'status' => MastersInvitation::PAID_CONFIRMED,
+            'registration_id' => $registration->id,
+            'order_id' => $order->id,
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        app(MastersInvitationService::class)->handlePaidWithdrawal($registration->id, $user, false);
     }
 
     private function invitationScenario(): array

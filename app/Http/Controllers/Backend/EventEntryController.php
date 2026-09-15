@@ -170,7 +170,8 @@ class EventEntryController extends Controller
       return response()->json(['success' => false, 'message' => 'Registration not found'], 404);
     }
 
-    $cer->markWithdrawn(auth()->user(), 'admin');
+    app(\App\Domain\Entries\Services\EntryService::class)
+      ->withdrawEntryAsAdmin($cer, auth()->user());
 
     return response()->json([
       'success' => true,

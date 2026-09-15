@@ -1227,7 +1227,8 @@ class EventAdminController extends Controller
       ->first();
 
     if ($cer) {
-      $cer->markWithdrawn(auth()->user(), 'admin');
+      app(\App\Domain\Entries\Services\EntryService::class)
+        ->withdrawEntryAsAdmin($cer, auth()->user());
     }
 
     return response()->json([

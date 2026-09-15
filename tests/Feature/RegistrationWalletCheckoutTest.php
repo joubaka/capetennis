@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
+use App\Models\Registration;
+use App\Models\Player;
 use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\User;
@@ -165,6 +167,53 @@ class RegistrationWalletCheckoutTest extends TestCase
         $this->assertSame('wallet', $order->fresh()->payment_method);
         $this->assertDatabaseCount('wallet_transactions', 2);
         $this->assertEquals(0.0, $wallet->fresh()->balance);
+    }
+
+    public function test_paid_wallet_order_metadata_is_copied_to_the_category_entry(): void
+    {
+        $user = User::factory()->create();
+        $event = Event::factory()->create();
+        $categoryEvent = CategoryEvent::factory()->for($event)->create();
+        $player = Player::factory()->create();
+        $registration = Registration::create([]);
+        $registration->players()->sync([$player->id]);
+        $walletTransaction = WalletTransaction::create([
+            'wallet_id' => Wallet::factory()->forUser($user)->create()->id,
+            'type' => 'debit',
+            'amount' => 285,
+            'source_type' => 'event_registration_wallet_payment',
+            'source_id' => 123,
+            'meta' => [],
+        ]);
+        $registration->categoryEvents()->attach($categoryEvent->id, [
+            'user_id' => $user->id,
+            'status' => 'active',
+            'payment_status_id' => 0,
+        ]);
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id,
+            'pay_status' => true,
+            'status' => 'completed',
+            'payment_method' => 'wallet',
+            'wallet_transaction_id' => $walletTransaction->id,
+        ]);
+        (new RegistrationOrderItems())->forceFill([
+            'order_id' => $order->id,
+            'registration_id' => $registration->id,
+            'player_id' => $player->id,
+            'category_event_id' => $categoryEvent->id,
+            'item_price' => 285,
+        ])->save();
+
+        app(RegistrationPaymentService::class)->markOrderRegistrationsPaid($order, null, $user->id);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'registration_id' => $registration->id,
+            'category_event_id' => $categoryEvent->id,
+            'payment_status_id' => 1,
+            'payment_method' => 'wallet',
+            'wallet_transaction_id' => $walletTransaction->id,
+        ]);
     }
 
     public function test_registration_success_rejects_another_users_order(): void

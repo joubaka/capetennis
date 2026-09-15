@@ -4,8 +4,10 @@ namespace App\Domain\Refunds\Services;
 
 use App\Domain\Payments\Services\LedgerService;
 use App\Events\RefundCompleted;
+use App\Models\User;
 use App\Models\Wallet;
 use App\Support\FinanceMutationScope;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -147,6 +149,98 @@ class RefundExecutionService
             app()->runningUnitTests()
                 ? $dispatchFn()
                 : DB::afterCommit($dispatchFn);
+        }
+
+        return $completed;
+    }
+
+    /**
+     * Record a refund that PayFast has already completed outside this app.
+     *
+     * This method never contacts PayFast or moves money. It only reconciles an
+     * exact, independently verified reversal against the paid withdrawn entry.
+     */
+    public function recordExternalPayfastRefund(
+        Model $refundEntity,
+        string $pfPaymentId,
+        float $grossAmount,
+        string $refundedAt,
+        ?User $actor = null,
+        array $evidence = []
+    ): Model {
+        $entityClass = get_class($refundEntity);
+        $expectedGross = round($grossAmount, 2);
+        $effectiveAt = CarbonImmutable::parse($refundedAt);
+        $transitioned = false;
+
+        if ($expectedGross <= 0) {
+            throw ValidationException::withMessages(['refund' => 'External refund amount must be positive.']);
+        }
+
+        $completed = FinanceMutationScope::run('refund_state_write', function () use (
+            $entityClass,
+            $refundEntity,
+            $pfPaymentId,
+            $expectedGross,
+            $effectiveAt,
+            &$transitioned
+        ) {
+            return DB::transaction(function () use (
+                $entityClass,
+                $refundEntity,
+                $pfPaymentId,
+                $expectedGross,
+                $effectiveAt,
+                &$transitioned
+            ) {
+                /** @var Model $locked */
+                $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+
+                if (($locked->refund_status ?? null) === 'completed') {
+                    $sameRefund = ($locked->refund_method ?? null) === 'payfast'
+                        && round((float) ($locked->refund_gross ?? 0), 2) === $expectedGross
+                        && (string) ($locked->pf_transaction_id ?? '') === $pfPaymentId;
+                    if (! $sameRefund) {
+                        throw ValidationException::withMessages(['refund' => 'A different completed refund is already recorded.']);
+                    }
+
+                    return $locked;
+                }
+
+                if (($locked->status ?? null) !== 'withdrawn'
+                    || (int) ($locked->payment_status_id ?? 0) !== 1
+                    || (string) ($locked->pf_transaction_id ?? '') !== $pfPaymentId) {
+                    throw ValidationException::withMessages([
+                        'refund' => 'External PayFast evidence does not match a paid withdrawn entry.',
+                    ]);
+                }
+
+                $transitioned = true;
+                $locked->refund_method = 'payfast';
+                $locked->refund_status = 'completed';
+                $locked->refund_gross = $expectedGross;
+                $locked->refund_fee = 0;
+                $locked->refund_net = $expectedGross;
+                $locked->refunded_at = $effectiveAt;
+                $locked->save();
+
+                return $locked;
+            });
+        });
+
+        if ($transitioned) {
+            $payload = ['type' => 'external_payfast', 'pf_payment_id' => $pfPaymentId] + $evidence;
+            $activity = activity('refund')->performedOn($completed);
+            if ($actor) {
+                $activity->causedBy($actor);
+            }
+            $activity->withProperties($payload + [
+                    'refund_gross' => $expectedGross,
+                    'refunded_at' => $effectiveAt->toDateTimeString(),
+                ])
+                ->log('Reconciled externally completed PayFast refund');
+            $dispatchFn = fn () => event(new RefundCompleted($completed, $payload));
+            app()->runningUnitTests() ? $dispatchFn() : DB::afterCommit($dispatchFn);
         }
 
         return $completed;

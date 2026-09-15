@@ -167,6 +167,63 @@ class RefundExecutionTest extends TestCase
         $this->assertEquals(120.0, (float) $reg->refund_gross, 'Bank refund gross must not be overwritten on second call');
     }
 
+    public function test_external_payfast_refund_records_verified_reversal_without_wallet_movement(): void
+    {
+        Event::fake([RefundCompleted::class]);
+        [$reg, $wallet] = $this->makeRegistration();
+        $reg->update([
+            'payment_status_id' => 1,
+            'pf_transaction_id' => 'PF-EXTERNAL-1',
+            'refund_status' => 'not_refunded',
+        ]);
+
+        $before = WalletTransaction::where('wallet_id', $wallet->id)->count();
+        $this->service->recordExternalPayfastRefund(
+            $reg,
+            'PF-EXTERNAL-1',
+            285,
+            '2026-09-09 13:38:08'
+        );
+
+        $reg->refresh();
+        $this->assertSame('completed', $reg->refund_status);
+        $this->assertSame('payfast', $reg->refund_method);
+        $this->assertSame(285.0, (float) $reg->refund_gross);
+        $this->assertSame(285.0, (float) $reg->refund_net);
+        $this->assertSame($before, WalletTransaction::where('wallet_id', $wallet->id)->count());
+        Event::assertDispatchedTimes(RefundCompleted::class, 1);
+    }
+
+    public function test_external_payfast_refund_is_exactly_idempotent(): void
+    {
+        Event::fake([RefundCompleted::class]);
+        [$reg] = $this->makeRegistration();
+        $reg->update([
+            'payment_status_id' => 1,
+            'pf_transaction_id' => 'PF-EXTERNAL-2',
+            'refund_status' => 'not_refunded',
+        ]);
+
+        $this->service->recordExternalPayfastRefund($reg, 'PF-EXTERNAL-2', 285, '2026-09-09 13:38:08');
+        $this->service->recordExternalPayfastRefund($reg->fresh(), 'PF-EXTERNAL-2', 285, '2026-09-09 13:38:08');
+
+        Event::assertDispatchedTimes(RefundCompleted::class, 1);
+        $this->assertSame(285.0, (float) $reg->fresh()->refund_gross);
+    }
+
+    public function test_external_payfast_refund_rejects_mismatched_payment_evidence(): void
+    {
+        [$reg] = $this->makeRegistration();
+        $reg->update([
+            'payment_status_id' => 1,
+            'pf_transaction_id' => 'PF-CORRECT',
+            'refund_status' => 'not_refunded',
+        ]);
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->service->recordExternalPayfastRefund($reg, 'PF-WRONG', 285, '2026-09-09 13:38:08');
+    }
+
     // -------------------------------------------------------------------------
     // 4. Rejected (already-completed) refund does not credit wallet
     // -------------------------------------------------------------------------

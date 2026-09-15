@@ -122,6 +122,8 @@ class RegistrationPaymentService
                             'payment_status_id' => 1,
                             'user_id' => $userId,
                             'pf_transaction_id' => $pfPaymentId,
+                            'payment_method' => $lockedOrder->payment_method,
+                            'wallet_transaction_id' => $lockedOrder->wallet_transaction_id,
                         ],
                     ]);
                 }
