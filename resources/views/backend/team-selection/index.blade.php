@@ -24,6 +24,7 @@
   .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
   .imported-roster-sortable tr.is-dragging { opacity: .45; }
   .imported-roster-sortable .drag-handle { cursor: grab; touch-action: none; }
+  .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
     .regional-team-card .table { min-width: 760px; }
   }
@@ -148,6 +149,9 @@
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Regional teams &amp; players</strong><div class="small text-muted">This mirrors the host roster view. Ranking positions, selection history and payment state are shown as read-only records.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
+                @if($regionTeams->isNotEmpty())
+                  <button type="button" class="btn btn-sm btn-success publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-1"></i>Publish all teams</button>
+                @endif
                 @if($isEventManager)
                   <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#reimport-roster-{{ $eventRegion->id }}"><i class="ti ti-file-spreadsheet me-1"></i>Re-import roster contacts</button>
                 @endif
@@ -165,11 +169,13 @@
                 @endif
                 @if($eventRegion->region?->usesOnlineClothingOrders())
                   <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-                  <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="d-inline-flex">
+                  <span class="badge {{ $eventRegion->region->clothing_order ? 'bg-label-success' : 'bg-label-secondary' }}" data-clothing-status>{{ $eventRegion->region->clothing_order ? 'Clothing ordering open' : 'Clothing ordering closed' }}</span>
+                  <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="d-inline-flex clothing-order-form">
                     @csrf @method('PATCH')
                     <button
                       type="submit"
-                      class="btn btn-sm btn-{{ $eventRegion->region->clothing_order ? 'danger' : ($clothingCatalogueReady ? 'success' : 'warning') }}"
+                      class="btn btn-sm btn-{{ $eventRegion->region->clothing_order ? 'danger' : ($clothingCatalogueReady ? 'success' : 'warning') }} clothing-order-toggle"
+                      data-catalogue-ready="{{ $clothingCatalogueReady ? '1' : '0' }}"
                       @disabled(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady)
                       @if(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) title="Finish clothing setup before opening orders" @endif
                     ><i class="ti ti-{{ $eventRegion->region->clothing_order ? 'lock' : 'shopping-cart' }} me-1"></i>{{ $eventRegion->region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
@@ -201,7 +207,8 @@
                           @endif
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
-                          <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
+                          <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication-status>{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
+                          <button type="button" class="btn btn-sm {{ $regionTeam->published ? 'btn-outline-danger' : 'btn-outline-success' }} team-publication-button" data-url="{{ route('backend.team-selection.teams.publication.update', [$event, $eventRegion, $regionTeam]) }}" data-team-id="{{ $regionTeam->id }}" data-published="{{ $regionTeam->published ? '1' : '0' }}"><i class="ti ti-{{ $regionTeam->published ? 'world-off' : 'world-upload' }} me-1"></i><span>{{ $regionTeam->published ? 'Unpublish' : 'Publish' }}</span></button>
                           @if($teamSelected->isNotEmpty())<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-1"></i>Email team</button>@endif
                           <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
                           <button class="btn btn-sm btn-outline-primary team-settings-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-controls="team-settings-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-settings me-1"></i><span>Team settings</span></button>
@@ -619,6 +626,101 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const ajaxHeaders = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-CSRF-TOKEN': csrfToken,
+  };
+  const renderTeamPublication = function (button, published) {
+    const card = button.closest('.regional-team-card');
+    const badge = card?.querySelector('[data-team-publication-status]');
+    const settingsCheckbox = card?.querySelector('input[name="published"][type="checkbox"]');
+    button.dataset.published = published ? '1' : '0';
+    button.classList.toggle('btn-outline-danger', published);
+    button.classList.toggle('btn-outline-success', !published);
+    button.querySelector('span').textContent = published ? 'Unpublish' : 'Publish';
+    button.querySelector('i').className = `ti ti-${published ? 'world-off' : 'world-upload'} me-1`;
+    if (badge) {
+      badge.textContent = published ? 'Published' : 'Not published';
+      badge.classList.toggle('bg-label-success', published);
+      badge.classList.toggle('bg-label-secondary', !published);
+    }
+    if (settingsCheckbox) settingsCheckbox.checked = published;
+  };
+
+  document.querySelectorAll('.team-publication-button').forEach(function (button) {
+    button.addEventListener('click', async function () {
+      const published = button.dataset.published !== '1';
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.url, {
+          method: 'PATCH', headers: ajaxHeaders, body: JSON.stringify({ published }),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The team publication could not be changed.');
+        const data = await response.json();
+        renderTeamPublication(button, data.published);
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'The team publication could not be changed.');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('.publish-all-teams').forEach(function (button) {
+    button.addEventListener('click', async function () {
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.url, { method: 'POST', headers: ajaxHeaders, body: '{}' });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The teams could not be published.');
+        const data = await response.json();
+        const teamIds = new Set((data.team_ids || []).map(String));
+        button.closest('.region-workspace-card')?.querySelectorAll('.team-publication-button').forEach(function (teamButton) {
+          if (teamIds.has(teamButton.dataset.teamId)) renderTeamPublication(teamButton, true);
+        });
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'The teams could not be published.');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('.clothing-order-form').forEach(function (form) {
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const button = form.querySelector('.clothing-order-toggle');
+      const status = form.parentElement.querySelector('[data-clothing-status]');
+      button.disabled = true;
+      try {
+        const response = await fetch(form.action, {
+          method: 'PATCH',
+          headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: new FormData(form),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'Clothing ordering could not be changed.');
+        const data = await response.json();
+        const open = Boolean(data.state);
+        status.textContent = open ? 'Clothing ordering open' : 'Clothing ordering closed';
+        status.classList.toggle('bg-label-success', open);
+        status.classList.toggle('bg-label-secondary', !open);
+        button.classList.toggle('btn-danger', open);
+        button.classList.toggle('btn-success', !open);
+        button.classList.remove('btn-warning');
+        button.innerHTML = `<i class="ti ti-${open ? 'lock' : 'shopping-cart'} me-1"></i>${open ? 'Close ordering' : 'Open ordering'}`;
+        AppFeedback.success(data.message);
+      } catch (error) {
+        AppFeedback.fromError(error, 'Clothing ordering could not be changed.');
+      } finally {
+        button.disabled = !Boolean(Number(button.dataset.catalogueReady)) && button.textContent.includes('Open');
+      }
+    });
+  });
+
   document.querySelectorAll('[id^="team-workspace-"]').forEach(function (workspace) {
     const toggle = document.querySelector(`[data-bs-target="#${workspace.id}"]`);
     const header = document.querySelector(`[data-team-workspace-target="#${workspace.id}"]`);

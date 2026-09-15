@@ -111,6 +111,9 @@ class ClothingOrderIntegrityTest extends TestCase
 
         $this->assertStringContainsString('Order clothing', $html);
         $this->assertStringContainsString('class="btn btn-sm btn-outline-secondary clothing-order"', $html);
+        $this->assertStringContainsString('col-12 col-xl-6 team-roster-column', $html);
+        $this->assertStringContainsString('team-player-actions', $html);
+        $this->assertStringContainsString('@media (max-width: 1199.98px)', $html);
     }
 
     public function test_unpaid_roster_player_can_order_clothing_when_ordering_is_open(): void

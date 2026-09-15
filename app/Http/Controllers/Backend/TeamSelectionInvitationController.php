@@ -605,6 +605,50 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.{$reserveMessage}");
     }
 
+    public function updateTeamPublication(Request $request, Event $event, EventRegion $eventRegion, Team $team)
+    {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        $this->ensureTeamBelongsToRegion($event, $eventRegion, $team);
+        $data = $request->validate(['published' => ['required', 'boolean']]);
+
+        $team->update(['published' => (bool) $data['published']]);
+
+        return response()->json([
+            'success' => true,
+            'team_id' => $team->id,
+            'published' => (bool) $team->published,
+            'message' => $team->published ? 'Team published.' : 'Team unpublished.',
+        ]);
+    }
+
+    public function publishAllTeams(Request $request, Event $event, EventRegion $eventRegion)
+    {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+
+        $teams = Team::query()
+            ->where('region_id', $eventRegion->region_id)
+            ->whereHas('category', fn ($query) => $query->where('event_id', $event->id));
+        $teamIds = (clone $teams)->pluck('id');
+        $changed = (clone $teams)->where('published', false)->update(['published' => true]);
+
+        return response()->json([
+            'success' => true,
+            'team_ids' => $teamIds,
+            'total' => $teamIds->count(),
+            'changed' => $changed,
+            'message' => $changed > 0
+                ? $changed.' '.str('team')->plural($changed).' published.'
+                : 'All teams in this region are already published.',
+        ]);
+    }
+
+    private function ensureTeamBelongsToRegion(Event $event, EventRegion $eventRegion, Team $team): void
+    {
+        $team->loadMissing('category.event');
+        abort_unless((int) $team->region_id === (int) $eventRegion->region_id
+            && (int) $team->category?->event_id === (int) $event->id, 404);
+    }
+
     public function enrichImportedContacts(
         Request $request,
         Event $event,

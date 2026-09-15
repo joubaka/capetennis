@@ -1,6 +1,6 @@
 {{-- resources/views/frontend/event/partials/profile-team.blade.php --}}
 
-<div class="col-12 col-md-6">
+<div class="col-12 col-xl-6 team-roster-column">
   <div class="card h-100 shadow-sm">
 
     {{-- HEADER --}}
@@ -46,7 +46,7 @@
             <li id="team-registration-{{ $team->id }}-{{ $player?->id ?? 0 }}"
                 class="list-group-item {{ $isDummy ? 'bg-light' : '' }} {{ $isInvitationTarget ? 'border border-success rounded bg-success-subtle' : '' }}"
                 @if($isInvitationTarget) data-team-registration-target="true" @endif>
-              <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+              <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-2 team-player-row">
 
                 {{-- LEFT: RANK + NAME --}}
                 <div class="d-flex align-items-center">
@@ -59,7 +59,7 @@
                 </div>
 
                 {{-- RIGHT: STATUS / ACTIONS --}}
-                <div class="d-flex align-items-center justify-content-sm-end flex-wrap gap-1">
+                <div class="d-flex align-items-center justify-content-xl-end flex-wrap gap-1 team-player-actions">
 
                   @if($player)
 
@@ -191,4 +191,31 @@
 
   </div>
 </div>
+
+@once
+  <style>
+    @media (max-width: 1199.98px) {
+      .team-player-actions {
+        width: 100%;
+      }
+
+      .team-player-actions > .btn,
+      .team-player-actions > .badge {
+        display: inline-flex;
+        flex: 1 1 10rem;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.375rem;
+        white-space: normal;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .team-player-actions > .btn,
+      .team-player-actions > .badge {
+        flex-basis: 100%;
+      }
+    }
+  </style>
+@endonce
 

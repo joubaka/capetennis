@@ -859,7 +859,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $manager = User::factory()->create(['email' => 'region.manager@example.test']);
-        $firstRegion = TeamRegion::create(['region_name' => 'Assigned Region']);
+        $firstRegion = TeamRegion::create(['region_name' => 'Assigned Region', 'clothing_admin' => true, 'clothing_order' => false]);
         $secondRegion = TeamRegion::create(['region_name' => 'Private Other Region']);
         $first = new EventRegion();
         $first->event_id = $event->id; $first->region_id = $firstRegion->id; $first->ordering = 1;
@@ -941,6 +941,24 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1,
         ])->assertRedirect();
         $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1]);
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
+            ->assertOk()
+            ->assertSee('Publish all teams')
+            ->assertSee('Unpublish')
+            ->assertSee('Clothing ordering closed');
+        $this->actingAs($manager)->patchJson(route('backend.team-selection.teams.publication.update', [$event, $first, $assignedTeam]), [
+            'published' => false,
+        ])->assertOk()->assertJson(['team_id' => $assignedTeam->id, 'published' => false]);
+        $this->assertFalse((bool) $assignedTeam->fresh()->published);
+        $secondAssignedTeam = new Team();
+        $secondAssignedTeam->forceFill(['name' => 'Second assigned team', 'region_id' => $firstRegion->id,
+            'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
+            'user_id' => $admin->id, 'personal_team' => false])->save();
+        $this->actingAs($manager)->postJson(route('backend.team-selection.teams.publish-all', [$event, $first]))
+            ->assertOk()
+            ->assertJson(['total' => 2, 'changed' => 2]);
+        $this->assertTrue((bool) $assignedTeam->fresh()->published);
+        $this->assertTrue((bool) $secondAssignedTeam->fresh()->published);
 
         $selectionSource = $first->fresh()->rankingSource;
         $selectionImport = TeamSelectionImport::create([
@@ -1007,6 +1025,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $second, $otherTeam]), [
             'name' => 'Must stay private', 'num_team_members' => 4, 'published' => 1,
         ])->assertForbidden();
+        $this->actingAs($manager)->patchJson(route('backend.team-selection.teams.publication.update', [$event, $second, $otherTeam]), [
+            'published' => true,
+        ])->assertForbidden();
+        $this->actingAs($manager)->postJson(route('backend.team-selection.teams.publish-all', [$event, $second]))
+            ->assertForbidden();
         $this->assertDatabaseHas('teams', ['id' => $otherTeam->id, 'name' => 'Private team', 'published' => 0]);
         $this->actingAs($manager)->get(route('backend.team.availablePlayers', ['team_id' => $assignedTeam->id]))
             ->assertForbidden();
