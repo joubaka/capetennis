@@ -34,6 +34,13 @@
               $isInvitationTarget = $player
                 && request()->integer('team') === (int) $team->id
                 && request()->integer('player') === (int) $player->id;
+              $playerClothingOrders = $player
+                ? ($myPaidClothingOrdersByPlayer ?? collect())->get($team->id.'-'.$player->id, collect())
+                : collect();
+              $clothingQuantity = $playerClothingOrders->sum(
+                fn ($order) => $order->items->sum(fn ($item) => max(1, (int) ($item->qty ?? 1)))
+              );
+              $clothingDetailsId = 'clothing-orders-'.$event->id.'-'.$team->id.'-'.($player?->id ?? 0);
             @endphp
 
             <li id="team-registration-{{ $team->id }}-{{ $player?->id ?? 0 }}"
@@ -111,6 +118,18 @@
                       </a>
                     @endif
 
+                    @if($playerClothingOrders->isNotEmpty())
+                      <button type="button"
+                              class="btn btn-sm btn-outline-success"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#{{ $clothingDetailsId }}"
+                              aria-expanded="false"
+                              aria-controls="{{ $clothingDetailsId }}">
+                        <i class="ti ti-shopping-bag-check me-1" aria-hidden="true"></i>
+                        {{ $clothingQuantity }} {{ Str::plural('item', $clothingQuantity) }} ordered
+                      </button>
+                    @endif
+
                   @else
                     {{-- EMPTY SLOT --}}
                     <span class="badge bg-light text-muted border">
@@ -120,6 +139,37 @@
 
                 </div>
               </div>
+
+              @if($playerClothingOrders->isNotEmpty())
+                <div class="collapse mt-2" id="{{ $clothingDetailsId }}">
+                  <div class="border rounded bg-light-subtle p-2" aria-label="Clothing ordered for {{ $playerName }}">
+                    <div class="small fw-semibold mb-1">Your clothing order for {{ $playerName }}</div>
+                    <ul class="list-unstyled small mb-0">
+                      @foreach($playerClothingOrders as $clothingOrder)
+                        @foreach($clothingOrder->items as $clothingItem)
+                          @php
+                            $clothingItemName = $clothingItem->item_name
+                              ?: ($clothingItem->itemType?->item_type_name ?? 'Clothing item');
+                            $clothingSizeName = $clothingItem->size_name
+                              ?: $clothingItem->size?->size;
+                            $itemQuantity = max(1, (int) ($clothingItem->qty ?? 1));
+                          @endphp
+                          <li class="d-flex flex-wrap justify-content-between gap-2 py-1">
+                            <span>
+                              <i class="ti ti-shirt me-1 text-success" aria-hidden="true"></i>
+                              {{ $clothingItemName }}
+                              @if($clothingSizeName)
+                                <span class="text-muted">({{ $clothingSizeName }})</span>
+                              @endif
+                            </span>
+                            <span class="fw-semibold">Qty {{ $itemQuantity }}</span>
+                          </li>
+                        @endforeach
+                      @endforeach
+                    </ul>
+                  </div>
+                </div>
+              @endif
             </li>
 
           @empty

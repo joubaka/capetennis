@@ -131,6 +131,48 @@ class ClothingOrderIntegrityTest extends TestCase
         $this->assertStringContainsString('class="btn btn-sm btn-outline-secondary clothing-order"', $html);
     }
 
+    public function test_roster_shows_the_signed_in_users_paid_clothing_beside_the_matching_player(): void
+    {
+        $data = $this->orderContext();
+        $data['team']->update(['published' => 1]);
+        $order = app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 2]], (string) str()->uuid()
+        );
+        $order->update(['pay_status' => 1, 'status' => 'completed']);
+        $ordersByPlayer = collect([$order->fresh()->load('items.itemType', 'items.size')])
+            ->groupBy(fn (ClothingOrder $clothingOrder) => $clothingOrder->team_id.'-'.$clothingOrder->player_id);
+
+        $html = view('frontend.event.partials.profile-team', [
+            'team' => $data['team']->fresh()->load('teamPlayers.player.users'),
+            'region' => $data['region']->fresh(),
+            'event' => $data['event']->fresh(),
+            'myPaidClothingOrdersByPlayer' => $ordersByPlayer,
+        ])->render();
+
+        $this->assertStringContainsString('2 items ordered', $html);
+        $this->assertStringContainsString('Your clothing order for', $html);
+        $this->assertStringContainsString('West Coast Shirt', $html);
+        $this->assertStringContainsString('(11-12)', $html);
+        $this->assertStringContainsString('Qty 2', $html);
+    }
+
+    public function test_roster_does_not_show_unpaid_clothing_as_ordered(): void
+    {
+        $data = $this->orderContext();
+        $data['team']->update(['published' => 1]);
+
+        $html = view('frontend.event.partials.profile-team', [
+            'team' => $data['team']->fresh()->load('teamPlayers.player.users'),
+            'region' => $data['region']->fresh(),
+            'event' => $data['event']->fresh(),
+            'myPaidClothingOrdersByPlayer' => collect(),
+        ])->render();
+
+        $this->assertStringNotContainsString('items ordered', $html);
+        $this->assertStringNotContainsString('Your clothing order for', $html);
+    }
+
     public function test_clothing_modal_has_a_server_generated_request_token_and_submit_fallback(): void
     {
         $html = view('frontend.event.partials._clothing_order_modal')->render();

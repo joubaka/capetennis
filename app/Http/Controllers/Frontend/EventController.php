@@ -410,6 +410,7 @@ class EventController extends Controller
     // USER CLOTHING ORDERS
     // ---------------------------------------------------------
     $myClothingOrders = collect();
+    $myPaidClothingOrdersByPlayer = collect();
 
     if (Auth::check()) {
       $regionIds = $regions->pluck('id');
@@ -417,6 +418,7 @@ class EventController extends Controller
       $myClothingOrders = ClothingOrder::with([
         'items.itemType',
         'items.size',
+        'player',
         'team.regions',
       ])
         ->where('user_id', Auth::id())
@@ -424,6 +426,10 @@ class EventController extends Controller
         ->whereHas('team', fn($q) => $q->whereIn('region_id', $regionIds))
         ->latest()
         ->get();
+
+      $myPaidClothingOrdersByPlayer = $myClothingOrders
+        ->where('pay_status', 1)
+        ->groupBy(fn (ClothingOrder $order) => $order->team_id.'-'.$order->player_id);
     }
 
     // ---------------------------------------------------------
@@ -511,6 +517,7 @@ return view('frontend.event.show', compact(
       'formatEntryLine',
       'formatWithdrawalLine',
       'myClothingOrders',
+      'myPaidClothingOrdersByPlayer',
       'nomRegisteredLookup',
       'canEnter',
       'canWithdraw',
