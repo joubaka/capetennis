@@ -1168,7 +1168,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Show team')
             ->assertSee('data-team-workspace-header', false)
             ->assertSee('data-team-workspace-target="#team-workspace-'.$team->id.'"', false)
-            ->assertSee('class="btn btn-sm btn-outline-primary team-settings-toggle"', false)
+            ->assertSee('Region actions')
+            ->assertSee('class="dropdown-item team-settings-toggle"', false)
             ->assertSee('aria-controls="team-settings-'.$team->id.'"', false)
             ->assertSeeInOrder([
                 'id="team-settings-'.$team->id.'"',
@@ -1187,7 +1188,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ]), false)
             ->assertSee('Clothing setup')
             ->assertSee(route('backend.region.clothing.toggle', $eventRegion->region_id), false)
-            ->assertSee('btn btn-sm btn-danger', false)
+            ->assertSee('dropdown-item clothing-order-toggle', false)
             ->assertSee('Close ordering')
             ->assertSee('Send all invitations')
             ->assertSee('data-bs-target="#prepare-invitations-'.$selectionImport->id.'"', false)

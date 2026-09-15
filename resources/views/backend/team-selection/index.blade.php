@@ -11,9 +11,9 @@
   .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
   .region-workspace-card > .card-header { background: linear-gradient(115deg, #173f78, #2563a9); color: #fff; }
   .region-workspace-card > .card-header .text-muted { color: rgba(255,255,255,.76) !important; }
-  .regional-metric { height: 100%; border: 1px solid #dbe6f4; border-radius: .65rem; padding: .85rem 1rem; background: linear-gradient(145deg, #fff, #f5f9ff); }
-  .regional-metric small { display: block; color: #68778c; }
-  .regional-metric strong { display: block; margin-top: .15rem; color: #173f78; font-size: 1.25rem; }
+  .regional-summary { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; padding: .7rem 1rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #f8fbff; }
+  .regional-summary-item { color: #68778c; white-space: nowrap; }
+  .regional-summary-item strong { color: #173f78; font-size: 1rem; }
   .regional-team-card { border: 1px solid #dbe6f4; border-top: 4px solid #2374bb; box-shadow: 0 .2rem .7rem rgba(31, 57, 104, .07); }
   .regional-team-card .card-header { background: linear-gradient(90deg, #f3f8ff, #fff8ef); }
   .regional-team-card .card-header[data-team-workspace-header] { cursor: pointer; }
@@ -21,6 +21,8 @@
   .regional-team-card .reserve-row { background: #fffaf0; }
   .regional-team-card .replacement-player-form { min-width: 20rem; max-width: min(26rem, 80vw); }
   .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
+  .regional-readonly .dropdown-menu, .regional-team-card .dropdown-menu { min-width: 15rem; }
+  .region-action-status { padding: .45rem 1rem .3rem; color: #68778c; font-size: .75rem; }
   .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
   .imported-roster-sortable tr.is-dragging { opacity: .45; }
   .imported-roster-sortable .drag-handle { cursor: grab; touch-action: none; }
@@ -161,50 +163,51 @@
             </div>
             @if($activeImport)
               @php($selectedInvitations = $activeImport->invitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
-              <div class="row g-2 mb-3" aria-label="Regional roster summary">
-                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Active selection</small><strong>{{ $selectedInvitations->count() }}</strong></div></div>
-                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Reserve queue</small><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count() }}</strong></div></div>
-                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Registration paid</small><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)->count() }}</strong></div></div>
-                <div class="col-6 col-lg-3"><div class="regional-metric"><small>Contact needed</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div>
+              <div class="regional-summary mb-3" aria-label="Regional roster summary">
+                <span class="regional-summary-item"><strong>{{ $selectedInvitations->count() }}</strong> selected</span>
+                <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count() }}</strong> reserves</span>
+                <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)->count() }}</strong> paid</span>
+                <span class="regional-summary-item"><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong> need contact</span>
               </div>
             @endif
 
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-              <div><strong>Regional teams &amp; players</strong><div class="small text-muted">This mirrors the host roster view. Ranking positions, selection history and payment state are shown as read-only records.</div></div>
+              <div><strong>Regional teams &amp; players</strong><div class="small text-muted">Region-scoped workspace · ranking positions, selection history and payment state are read-only records.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
-                @if($regionTeams->isNotEmpty())
-                  <button type="button" class="btn btn-sm btn-success publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-1"></i>Publish all teams</button>
-                @endif
-                @if($isEventManager)
-                  <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#reimport-roster-{{ $eventRegion->id }}"><i class="ti ti-file-spreadsheet me-1"></i>Re-import roster contacts</button>
-                @endif
                 @if($activeImport?->status === 'draft')
                   <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
+                @elseif($regionTeams->isNotEmpty())
+                  <button type="button" class="btn btn-sm btn-success publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-1"></i>Publish all teams</button>
                 @endif
-                @if($unlinkedImportedRecipients->isNotEmpty())
-                  <button class="btn btn-sm btn-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="unlinked_imported" data-recipient="{{ $unlinkedImportedRecipients->count() }} unlinked imported player email(s)" data-recipient-hash="{{ hash('sha256', $unlinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-user-question me-1"></i>Email unlinked / not registered</button>
-                @endif
-                @if($linkedUnpaidRecipients->isNotEmpty())
-                  <button class="btn btn-sm btn-outline-warning roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_unpaid" data-recipient="{{ $linkedUnpaidRecipients->count() }} linked player email(s) still not registered/paid" data-recipient-hash="{{ hash('sha256', $linkedUnpaidRecipients->pluck('email')->toJson()) }}"><i class="ti ti-credit-card-off me-1"></i>Email linked, not registered / paid</button>
-                @endif
-                @if($allLinkedImportedRecipients->isNotEmpty())
-                  <button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-1"></i>Email all linked players</button>
-                @endif
-                @if($eventRegion->region?->usesOnlineClothingOrders())
-                  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-                  <span class="badge {{ $eventRegion->region->clothing_order ? 'bg-label-success' : 'bg-label-secondary' }}" data-clothing-status>{{ $eventRegion->region->clothing_order ? 'Clothing ordering open' : 'Clothing ordering closed' }}</span>
-                  <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="d-inline-flex clothing-order-form">
-                    @csrf @method('PATCH')
-                    <button
-                      type="submit"
-                      class="btn btn-sm btn-{{ $eventRegion->region->clothing_order ? 'danger' : ($clothingCatalogueReady ? 'success' : 'warning') }} clothing-order-toggle"
-                      data-catalogue-ready="{{ $clothingCatalogueReady ? '1' : '0' }}"
-                      @disabled(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady)
-                      @if(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) title="Finish clothing setup before opening orders" @endif
-                    ><i class="ti ti-{{ $eventRegion->region->clothing_order ? 'lock' : 'shopping-cart' }} me-1"></i>{{ $eventRegion->region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
-                  </form>
-                @endif
-                <span class="badge bg-label-warning">Region-scoped workspace</span>
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="ti ti-dots me-1"></i>Region actions</button>
+                  <div class="dropdown-menu dropdown-menu-end">
+                    @if($activeImport?->status === 'draft' && $regionTeams->isNotEmpty())
+                      <button type="button" class="dropdown-item publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-2"></i>Publish all teams</button>
+                    @endif
+                    @if($isEventManager)
+                      <button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#reimport-roster-{{ $eventRegion->id }}"><i class="ti ti-file-spreadsheet me-2"></i>Re-import roster contacts</button>
+                    @endif
+                    @if($unlinkedImportedRecipients->isNotEmpty())
+                      <button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="unlinked_imported" data-recipient="{{ $unlinkedImportedRecipients->count() }} unlinked imported player email(s)" data-recipient-hash="{{ hash('sha256', $unlinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-user-question me-2"></i>Email unlinked / not registered</button>
+                    @endif
+                    @if($linkedUnpaidRecipients->isNotEmpty())
+                      <button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_unpaid" data-recipient="{{ $linkedUnpaidRecipients->count() }} linked player email(s) still not registered/paid" data-recipient-hash="{{ hash('sha256', $linkedUnpaidRecipients->pluck('email')->toJson()) }}"><i class="ti ti-credit-card-off me-2"></i>Email linked, not registered / paid</button>
+                    @endif
+                    @if($allLinkedImportedRecipients->isNotEmpty())
+                      <button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-2"></i>Email all linked players</button>
+                    @endif
+                    @if($eventRegion->region?->usesOnlineClothingOrders())
+                      <div class="dropdown-divider"></div>
+                      <div class="region-action-status" data-clothing-status>{{ $eventRegion->region->clothing_order ? 'Clothing ordering open' : 'Clothing ordering closed' }}</div>
+                      <a class="dropdown-item" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-2"></i>Clothing setup</a>
+                      <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="clothing-order-form">
+                        @csrf @method('PATCH')
+                        <button type="submit" class="dropdown-item clothing-order-toggle" data-catalogue-ready="{{ $clothingCatalogueReady ? '1' : '0' }}" @disabled(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) @if(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) title="Finish clothing setup before opening orders" @endif><i class="ti ti-{{ $eventRegion->region->clothing_order ? 'lock' : 'shopping-cart' }} me-2"></i>{{ $eventRegion->region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
+                      </form>
+                    @endif
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -231,10 +234,15 @@
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication-status>{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
-                          <button type="button" class="btn btn-sm {{ $regionTeam->published ? 'btn-outline-danger' : 'btn-outline-success' }} team-publication-button" data-url="{{ route('backend.team-selection.teams.publication.update', [$event, $eventRegion, $regionTeam]) }}" data-team-id="{{ $regionTeam->id }}" data-published="{{ $regionTeam->published ? '1' : '0' }}"><i class="ti ti-{{ $regionTeam->published ? 'world-off' : 'world-upload' }} me-1"></i><span>{{ $regionTeam->published ? 'Unpublish' : 'Publish' }}</span></button>
-                          @if($teamSelected->isNotEmpty())<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-1"></i>Email team</button>@endif
                           <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
-                          <button class="btn btn-sm btn-outline-primary team-settings-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-controls="team-settings-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-settings me-1"></i><span>Team settings</span></button>
+                          <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ $regionTeam->name }}"><i class="ti ti-dots-vertical"></i></button>
+                            <div class="dropdown-menu dropdown-menu-end">
+                              <button type="button" class="dropdown-item team-publication-button" data-url="{{ route('backend.team-selection.teams.publication.update', [$event, $eventRegion, $regionTeam]) }}" data-team-id="{{ $regionTeam->id }}" data-published="{{ $regionTeam->published ? '1' : '0' }}"><i class="ti ti-{{ $regionTeam->published ? 'world-off' : 'world-upload' }} me-2"></i><span>{{ $regionTeam->published ? 'Unpublish' : 'Publish' }}</span></button>
+                              @if($teamSelected->isNotEmpty())<button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-2"></i>Email team</button>@endif
+                              <button class="dropdown-item team-settings-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-controls="team-settings-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-settings me-2"></i><span>Team settings</span></button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div class="collapse" id="team-settings-{{ $regionTeam->id }}">
@@ -687,8 +695,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const badge = card?.querySelector('[data-team-publication-status]');
     const settingsCheckbox = card?.querySelector('input[name="published"][type="checkbox"]');
     button.dataset.published = published ? '1' : '0';
-    button.classList.toggle('btn-outline-danger', published);
-    button.classList.toggle('btn-outline-success', !published);
+    if (button.classList.contains('btn')) {
+      button.classList.toggle('btn-outline-danger', published);
+      button.classList.toggle('btn-outline-success', !published);
+    }
     button.querySelector('span').textContent = published ? 'Unpublish' : 'Publish';
     button.querySelector('i').className = `ti ti-${published ? 'world-off' : 'world-upload'} me-1`;
     if (badge) {
@@ -755,12 +765,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const data = await response.json();
         const open = Boolean(data.state);
         status.textContent = open ? 'Clothing ordering open' : 'Clothing ordering closed';
-        status.classList.toggle('bg-label-success', open);
-        status.classList.toggle('bg-label-secondary', !open);
-        button.classList.toggle('btn-danger', open);
-        button.classList.toggle('btn-success', !open);
-        button.classList.remove('btn-warning');
-        button.innerHTML = `<i class="ti ti-${open ? 'lock' : 'shopping-cart'} me-1"></i>${open ? 'Close ordering' : 'Open ordering'}`;
+        if (status.classList.contains('badge')) {
+          status.classList.toggle('bg-label-success', open);
+          status.classList.toggle('bg-label-secondary', !open);
+        }
+        if (button.classList.contains('btn')) {
+          button.classList.toggle('btn-danger', open);
+          button.classList.toggle('btn-success', !open);
+          button.classList.remove('btn-warning');
+        }
+        button.innerHTML = `<i class="ti ti-${open ? 'lock' : 'shopping-cart'} me-2"></i>${open ? 'Close ordering' : 'Open ordering'}`;
         AppFeedback.success(data.message);
       } catch (error) {
         AppFeedback.fromError(error, 'Clothing ordering could not be changed.');
