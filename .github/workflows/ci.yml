@@ -123,9 +123,8 @@ jobs:
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php artisan test --testsuite=Feature \
+          php -d memory_limit=512M artisan test --testsuite=Feature \
             --filter="Draw|Bracket|Fixture|Progression|Standing|RoundRobin|Engine|Parity|Golden" \
-            --memory-limit=512M \
             --stop-on-failure
 
   # ---------------------------------------------------------------
@@ -153,9 +152,8 @@ jobs:
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php artisan test --testsuite=Feature \
+          php -d memory_limit=256M artisan test --testsuite=Feature \
             --filter="Cleanup|ProductionDataCleanup" \
-            --memory-limit=256M \
             --stop-on-failure
 
   # ---------------------------------------------------------------
@@ -183,9 +181,8 @@ jobs:
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php artisan test --testsuite=Feature \
+          php -d memory_limit=256M artisan test --testsuite=Feature \
             --filter="Platform|HealthCheck|FeatureFlag|Audit" \
-            --memory-limit=256M \
             --stop-on-failure
 
   # ---------------------------------------------------------------
@@ -213,5 +210,4 @@ jobs:
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php artisan test --testsuite=Feature \
-            --memory-limit=512M
+          php -d memory_limit=512M artisan test --testsuite=Feature
