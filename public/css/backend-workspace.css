@@ -41,7 +41,11 @@
   /* Navigation and page identity */
   .ct-backend #layout-navbar { box-shadow: none; border-bottom: 1px solid var(--ct-border); }
   .ct-backend #layout-navbar .app-brand-text { color: var(--ct-ink); }
-  .ct-backend .menu-horizontal { box-shadow: 0 2px 5px #172e4506; border-bottom: 1px solid var(--ct-border); }
+  .ct-backend .menu-horizontal {
+    z-index: 1020;
+    box-shadow: 0 2px 5px #172e4506;
+    border-bottom: 1px solid var(--ct-border);
+  }
   .ct-backend .menu-inner > .menu-item.active > .menu-link { background: var(--ct-selected) !important; color: var(--ct-ink) !important; box-shadow: none !important; }
   .ct-backend .menu-sub > .menu-item.active > .menu-link { color: var(--ct-accent) !important; background: #eaf4f2 !important; }
   .ct-page-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 12px 0 26px; }

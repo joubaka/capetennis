@@ -6,6 +6,16 @@ use PHPUnit\Framework\TestCase;
 
 class BackendWorkspaceStylesTest extends TestCase
 {
+    public function test_backend_horizontal_menu_stays_above_sticky_page_navigation(): void
+    {
+        $css = file_get_contents(dirname(__DIR__, 2).'/public/css/backend-workspace.css');
+
+        $this->assertMatchesRegularExpression(
+            '/\.ct-backend \.menu-horizontal\s*\{[^}]*z-index:\s*1020;/s',
+            $css
+        );
+    }
+
     public function test_event_more_menu_stays_above_page_toolbars(): void
     {
         $css = file_get_contents(dirname(__DIR__, 2).'/public/css/backend-workspace.css');
