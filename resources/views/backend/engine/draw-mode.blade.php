@@ -40,7 +40,7 @@
           <p class="fw-semibold mb-1">Current Effective Mode</p>
           @php $eff = $draw->effectiveEngineMode(); @endphp
           <span class="badge fs-5 bg-{{ $eff === 'canonical' ? 'success' : ($eff === 'hybrid' ? 'warning' : 'secondary') }}">
-            {{ strtoupper($eff) }}
+            {{ $eff === 'canonical' ? 'PRIMARY' : strtoupper($eff) }}
           </span>
           @if($draw->engine_mode)
             <p class="text-muted small mt-2 mb-0"><i class="bx bx-pin me-1"></i>Draw-level override: <strong>{{ $draw->engine_mode }}</strong></p>
@@ -57,10 +57,10 @@
     <div class="col-md-4">
       <div class="card h-100 border-{{ $safetyCheck['allowed'] ? 'success' : 'danger' }}">
         <div class="card-body">
-          <p class="fw-semibold mb-1">Canonical Safety</p>
+          <p class="fw-semibold mb-1">Primary engine safety</p>
           @if($safetyCheck['allowed'])
             <span class="badge bg-success">SAFE</span>
-            <p class="text-muted small mt-2 mb-0">No blocking mismatches. Canonical mode may be enabled.</p>
+            <p class="text-muted small mt-2 mb-0">No blocking mismatches. The primary engine may be enabled.</p>
           @else
             <span class="badge bg-danger">BLOCKED</span>
             <p class="text-danger small mt-2 mb-0">{{ $safetyCheck['reason'] }}</p>
@@ -104,7 +104,7 @@
               <option value="hybrid"    {{ $draw->engine_mode === 'hybrid'    ? 'selected' : '' }}>Hybrid (shadow)</option>
               <option value="canonical" {{ $draw->engine_mode === 'canonical' ? 'selected' : '' }}
                 {{ ! $safetyCheck['allowed'] ? 'disabled' : '' }}>
-                Canonical {{ ! $safetyCheck['allowed'] ? '(blocked — mismatches)' : '' }}
+                Primary {{ ! $safetyCheck['allowed'] ? '(blocked — mismatches)' : '' }}
               </option>
             </select>
             <div class="form-text">Draw-level override takes precedence over event and global settings.</div>
@@ -134,7 +134,7 @@
               <option value="" {{ ! $draw->event->engine_mode ? 'selected' : '' }}>— Inherit global config —</option>
               <option value="legacy"    {{ $draw->event->engine_mode === 'legacy'    ? 'selected' : '' }}>Legacy</option>
               <option value="hybrid"    {{ $draw->event->engine_mode === 'hybrid'    ? 'selected' : '' }}>Hybrid (shadow)</option>
-              <option value="canonical" {{ $draw->event->engine_mode === 'canonical' ? 'selected' : '' }}>Canonical</option>
+              <option value="canonical" {{ $draw->event->engine_mode === 'canonical' ? 'selected' : '' }}>Primary</option>
             </select>
             <div class="form-text">Applies to all draws in this event unless a draw-level override is set.</div>
           </div>
@@ -161,7 +161,7 @@
         <tbody>
           @foreach($runStats as $row)
           <tr>
-            <td><span class="badge bg-{{ $row->engine_mode === 'canonical' ? 'success' : ($row->engine_mode === 'hybrid' ? 'warning text-dark' : 'secondary') }}">{{ strtoupper($row->engine_mode) }}</span></td>
+            <td><span class="badge bg-{{ $row->engine_mode === 'canonical' ? 'success' : ($row->engine_mode === 'hybrid' ? 'warning text-dark' : 'secondary') }}">{{ $row->engine_mode === 'canonical' ? 'PRIMARY' : strtoupper($row->engine_mode) }}</span></td>
             <td class="text-end">{{ $row->total }}</td>
             <td class="text-end text-{{ $row->canon_ok == $row->total ? 'success' : 'warning' }}">{{ $row->canon_ok }}</td>
             <td class="text-end text-{{ $row->fallbacks > 0 ? 'warning' : 'muted' }}">{{ $row->fallbacks }}</td>

@@ -494,7 +494,7 @@ class RankingController extends Controller
     $series = Series::findOrFail($series_id);
     $this->authorize('update', $series);
 
-    abort(410, 'Legacy ranking-list generation has been retired. Create canonical ranking lists explicitly.');
+    abort(410, 'Legacy ranking-list generation has been retired. Create ranking lists through the current ranking workflow.');
   }
 
   public function storeList(Request $request, Series $series)

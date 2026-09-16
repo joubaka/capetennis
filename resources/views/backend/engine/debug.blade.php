@@ -29,7 +29,7 @@
           <p class="fw-semibold mb-1">Engine Mode</p>
           @php $mode = config('capetennis_engine.mode', 'hybrid'); @endphp
           <span class="badge bg-{{ $mode === 'canonical' ? 'success' : ($mode === 'hybrid' ? 'warning' : 'secondary') }} fs-6">
-            {{ strtoupper($mode) }}
+            {{ $mode === 'canonical' ? 'PRIMARY' : strtoupper($mode) }}
           </span>
           <p class="text-muted small mt-2 mb-0">Auto-fallback: {{ config('capetennis_engine.auto_fallback') ? 'ON' : 'OFF' }}</p>
         </div>
@@ -38,7 +38,7 @@
     <div class="col-sm-6 col-xl-3">
       <div class="card h-100">
         <div class="card-body">
-          <p class="fw-semibold mb-1">Canonical Confidence</p>
+          <p class="fw-semibold mb-1">Primary engine confidence</p>
           @if($confidence['confidence_score'] !== null)
             @php $score = $confidence['confidence_score']; $cls = $score >= 98 ? 'success' : ($score >= 90 ? 'info' : ($score >= 75 ? 'warning' : 'danger')); @endphp
             <h3 class="text-{{ $cls }} mb-0">{{ $score }}%</h3>
@@ -53,7 +53,7 @@
     <div class="col-sm-6 col-xl-3">
       <div class="card h-100">
         <div class="card-body">
-          <p class="fw-semibold mb-1">Canonical Runs</p>
+          <p class="fw-semibold mb-1">Primary engine runs</p>
           <h3 class="mb-0">{{ number_format($runStats['canonical']) }}</h3>
           <small class="text-muted">of {{ number_format($runStats['total']) }} total</small>
         </div>
@@ -188,14 +188,14 @@
   </div>
   @else
   <div class="alert alert-success mb-4">
-    <i class="bx bx-check-circle me-1"></i> No unresolved mismatches. Canonical and legacy in parity.
+    <i class="bx bx-check-circle me-1"></i> No unresolved mismatches. Primary and legacy engines are in parity.
   </div>
   @endif
 
   {{-- ---- Recent canonical failures ---------------------------------- --}}
   @if($recentFailedRuns->isNotEmpty())
   <div class="card mb-4">
-    <div class="card-header"><h5 class="mb-0">Recent Canonical Failures</h5></div>
+    <div class="card-header"><h5 class="mb-0">Recent primary-engine failures</h5></div>
     <div class="table-responsive">
       <table class="table table-sm mb-0">
         <thead class="table-light">

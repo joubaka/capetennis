@@ -1536,7 +1536,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $sourceId = $eventRegion->fresh('rankingSource')->rankingSource->id;
         $response->assertRedirect(route('backend.team-selection.index', $event))
             ->assertSessionMissing('open_team_setup_source')
-            ->assertSessionHas('success', 'The region is linked. Publish its canonical ranking before creating categories and teams.');
+            ->assertSessionHas('success', 'The region is linked. Publish its ranking before creating categories and teams.');
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
             ->assertSee('Team setup is waiting for a published ranking')

@@ -139,7 +139,7 @@ class TeamSelectionInvitationController extends Controller
                 ->with('open_team_setup_source', $source->id);
         }
 
-        return $redirect->with('success', 'The region is linked. Publish its canonical ranking before creating categories and teams.');
+        return $redirect->with('success', 'The region is linked. Publish its ranking before creating categories and teams.');
     }
 
     public function createTeams(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)

@@ -104,7 +104,7 @@ class DrawEngineModeController extends Controller
             if ($blocked->isNotEmpty()) {
                 $ids = $blocked->pluck('id')->join(', ');
                 return back()->withErrors([
-                    'engine_mode' => "Canonical blocked: draws [{$ids}] have unresolved HIGH/MEDIUM mismatches.",
+                    'engine_mode' => "Primary engine blocked: draws [{$ids}] have unresolved HIGH/MEDIUM mismatches.",
                 ]);
             }
         }

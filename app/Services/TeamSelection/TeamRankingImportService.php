@@ -129,7 +129,7 @@ final class TeamRankingImportService
     {
         if (! $this->hasPublishedRanking((int) $source->series_id)) {
             throw ValidationException::withMessages([
-                'categories' => 'Publish the current canonical ranking before creating event categories and teams.',
+                'categories' => 'Publish the current ranking before creating event categories and teams.',
             ]);
         }
 

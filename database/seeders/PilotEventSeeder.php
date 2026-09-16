@@ -73,8 +73,8 @@ class PilotEventSeeder extends Seeder
     private function seedRREvent(User $admin): void
     {
         $event = Event::factory()->create([
-            'name'               => '[PILOT] RR Canonical Test ' . now()->format('Ymd-His'),
-            'information'        => 'Internal RR pilot — canonical engine.',
+            'name'               => '[PILOT] RR Engine Test ' . now()->format('Ymd-His'),
+            'information'        => 'Internal RR pilot — primary engine.',
             'email'              => 'pilot@internal.capetennis.test',
             'entryFee'           => 0,
             'published'          => false,
