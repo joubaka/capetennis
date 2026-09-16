@@ -12,6 +12,10 @@ return new class extends Migration
             return;
         }
 
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
         DB::statement(
             'ALTER TABLE `audit_events` MODIFY `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT'
         );

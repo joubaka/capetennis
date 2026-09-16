@@ -43,6 +43,11 @@ return new class extends Migration
             ))->isNotEmpty();
         }
 
+        if (DB::getDriverName() === 'sqlite') {
+            return collect(DB::select('PRAGMA index_list("series_rankings")'))
+                ->contains(fn (object $index) => $index->name === $indexName);
+        }
+
         return false;
     }
 };
