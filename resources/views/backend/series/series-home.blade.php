@@ -29,6 +29,73 @@
     </div>
   </div>
 
+  @php
+    $seriesNextStep = match (true) {
+      $stats['events'] === 0 => [
+        'title' => 'Add the first event',
+        'message' => 'Use Manage Events to add the tournaments that must count towards this series.',
+      ],
+      $activeRankingStatus === 'calculated' => [
+        'title' => 'Check the ranking, then mark it reviewed',
+        'message' => 'Open Audit Rankings to check results and tie decisions. When everything is correct, use Mark Rankings Reviewed.',
+      ],
+      $activeRankingStatus === 'reviewed' => [
+        'title' => $reviewCampaign ? 'Finalize and publish the ranking' : 'Share the ranking for participant review',
+        'message' => $reviewCampaign
+          ? 'Open Participant Review to check replies and delivery, then finalize and publish when the review is complete.'
+          : 'Open Ranking Lists and use Share for Review. Publishing does not send ranking emails automatically.',
+      ],
+      $activeRankingStatus === 'published' && ! $series->leaderboard_published => [
+        'title' => 'Make the published ranking visible',
+        'message' => 'The ranking is published but its public leaderboard is off. Open Series Settings to switch on public visibility when you are ready.',
+      ],
+      $series->leaderboard_published => [
+        'title' => 'The ranking is live',
+        'message' => 'Use View Published Rankings to check the public page. Recalculate only when event results or ranking rules have changed.',
+      ],
+      default => [
+        'title' => 'Complete the setup, then calculate',
+        'message' => 'Confirm the events, series settings and points allocation. Then use Recalculate Rankings to build the first ranking.',
+      ],
+    };
+  @endphp
+
+  <div class="card mb-4 border-primary-subtle">
+    <div class="card-body">
+      <div class="d-flex align-items-start gap-3 mb-3">
+        <span class="avatar avatar-sm flex-shrink-0">
+          <span class="avatar-initial rounded bg-label-primary">
+            <i class="ti ti-route"></i>
+          </span>
+        </span>
+        <div>
+          <h5 class="mb-1">How to manage this series</h5>
+          <p class="text-muted mb-0">Follow these steps in order. Return here after each step to continue.</p>
+        </div>
+      </div>
+
+      <div class="row g-3 small">
+        <div class="col-md-4">
+          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">1</span> Set up the series</div>
+          <div class="text-muted">Add the events, choose how many results count, and confirm the points allocation.</div>
+        </div>
+        <div class="col-md-4">
+          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">2</span> Calculate and check</div>
+          <div class="text-muted">Recalculate after results change, then use Audit Rankings to check scores, exclusions and ties.</div>
+        </div>
+        <div class="col-md-4">
+          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">3</span> Review and publish</div>
+          <div class="text-muted">Mark the ranking reviewed, share it with participants if required, then finalize and publish it.</div>
+        </div>
+      </div>
+
+      <div class="alert alert-primary d-flex align-items-start gap-2 mt-3 mb-0 py-2" role="status">
+        <i class="ti ti-arrow-right mt-1"></i>
+        <div><strong>What to do next: {{ $seriesNextStep['title'] }}.</strong> {{ $seriesNextStep['message'] }}</div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-3">
 
     {{-- RANKINGS --}}

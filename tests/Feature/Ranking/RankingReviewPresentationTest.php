@@ -44,6 +44,14 @@ class RankingReviewPresentationTest extends TestCase
         $this->assertStringContainsString('Share Rankings for Review', $home);
         $this->assertStringContainsString('Finalize & Publish Rankings', $home);
         $this->assertStringContainsString('No ranking email will be sent.', $home);
+        $this->assertStringContainsString('How to manage this series', $home);
+        $this->assertStringContainsString('Set up the series', $home);
+        $this->assertStringContainsString('Calculate and check', $home);
+        $this->assertStringContainsString('Review and publish', $home);
+        $this->assertStringContainsString('What to do next:', $home);
+        $this->assertStringContainsString("\$activeRankingStatus === 'calculated'", $home);
+        $this->assertStringContainsString("\$activeRankingStatus === 'reviewed'", $home);
+        $this->assertStringContainsString('The ranking is published but its public leaderboard is off.', $home);
         $this->assertStringContainsString('No ranking email will be sent.', $settings);
     }
 
