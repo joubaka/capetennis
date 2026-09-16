@@ -117,12 +117,18 @@
             @endif
           </div>
           <div class="card-body">
-            @if($isEventManager)
+            @if($isEventManager || $eventRegion->region?->usesOnlineClothingOrders())
               <div class="d-flex flex-wrap justify-content-end gap-2 mb-3" aria-label="Actions for {{ $eventRegion->region?->region_name }}">
-                <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
-                <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
-                <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                @if($isEventManager)
+                  <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
+                  <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
+                @endif
+                @if($eventRegion->region?->usesOnlineClothingOrders())
+                  <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                @endif
               </div>
+            @endif
+            @if($isEventManager)
               <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
                   <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">

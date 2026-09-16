@@ -2072,7 +2072,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $service = app(TeamSelectionReminderService::class);
         $eventRegion = EventRegion::findOrFail($source->event_region_id);
         $otherRegion = TeamRegion::create(['region_name' => 'Other reminder region 2026']);
-        EventRegion::create(['event_id' => $source->event_id, 'region_id' => $otherRegion->id, 'ordering' => 2]);
+        $otherEventRegion = new EventRegion();
+        $otherEventRegion->event_id = $source->event_id;
+        $otherEventRegion->region_id = $otherRegion->id;
+        $otherEventRegion->ordering = 2;
+        $otherEventRegion->save();
         $foreignInvitation = $invitations->last()->replicate();
         $foreignInvitation->region_id = $otherRegion->id;
         $foreignInvitation->player_id = Player::factory()->create()->id;
