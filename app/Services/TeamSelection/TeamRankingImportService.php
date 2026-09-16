@@ -127,6 +127,12 @@ final class TeamRankingImportService
      */
     public function createTeamsFromRankingCategories(EventRegionRankingSource $source, array $categories, User $actor): array
     {
+        if (! $this->hasPublishedRanking((int) $source->series_id)) {
+            throw ValidationException::withMessages([
+                'categories' => 'Publish the current canonical ranking before creating event categories and teams.',
+            ]);
+        }
+
         $selected = collect($categories)->filter(fn (array $row) => (bool) ($row['selected'] ?? false))->values();
         if ($selected->isEmpty()) {
             throw ValidationException::withMessages(['categories' => 'Select at least one ranking category.']);

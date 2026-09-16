@@ -848,6 +848,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('West Coast Primary Schools 2026')
             ->assertSee('Cape Winelands Primary Schools 2026')
             ->assertSee('data-region-tabs', false)
+            ->assertSee('data-region-id="', false)
             ->assertSee('data-region-task-tabs', false)
             ->assertSee('Selection progress')
             ->assertSee('Teams &amp; players', false)
@@ -1503,7 +1504,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->whereNotNull('category_event_id')->count());
     }
 
-    public function test_link_redirect_opens_the_ranking_category_team_setup_popup(): void
+    public function test_link_to_unpublished_ranking_shows_the_required_next_step_and_blocks_team_setup(): void
     {
         Role::findOrCreate('admin', 'web');
         $teamEventType = DB::table('eventtypes')->insertGetId([
@@ -1522,7 +1523,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $series = Series::factory()->create([
             'year' => (int) $event->start_date->format('Y'),
         ]);
-        RankingList::factory()->create([
+        $rankingList = RankingList::factory()->create([
             'series_id' => $series->id,
             'category_id' => Category::factory()->create(['name' => 'u/10 Girls'])->id,
         ]);
@@ -1534,14 +1535,25 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $sourceId = $eventRegion->fresh('rankingSource')->rankingSource->id;
         $response->assertRedirect(route('backend.team-selection.index', $event))
-            ->assertSessionHas('open_team_setup_source', $sourceId);
+            ->assertSessionMissing('open_team_setup_source')
+            ->assertSessionHas('success', 'The region is linked. Publish its canonical ranking before creating categories and teams.');
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
-            ->assertSee('Create teams from ranking categories')
-            ->assertSee('Default team size')
-            ->assertSee('Apply to checked teams')
-            ->assertSee('Team size')
-            ->assertSee('u/10 Girls');
+            ->assertSee('Team setup is waiting for a published ranking')
+            ->assertSee('Open ranking workflow')
+            ->assertSee(route('ranking.series.list', $series), false)
+            ->assertDontSee('Create teams from ranking categories')
+            ->assertDontSee('Create categories &amp; teams', false);
+
+        $this->actingAs($admin)->post(route('backend.team-selection.teams.create', [$event, $sourceId]), [
+            'categories' => [[
+                'selected' => 1,
+                'ranking_list_id' => $rankingList->id,
+                'team_name' => 'Boland u/10 Girls',
+                'num_players' => 8,
+            ]],
+        ])->assertSessionHasErrors('categories');
+        $this->assertDatabaseCount('category_events', 0);
     }
 
     public function test_unlink_preserves_event_categories_and_teams_before_an_import_starts(): void

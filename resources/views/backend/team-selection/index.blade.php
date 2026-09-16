@@ -26,8 +26,8 @@
   .regional-help > summary { cursor: pointer; list-style: none; padding: .85rem 1rem; }
   .regional-help > summary::-webkit-details-marker { display: none; }
   .regional-help-step { border-left: 3px solid #80aee0; padding-left: .75rem; }
-  .region-task-tabs { gap: .35rem; padding: .4rem; border: 1px solid #dbe6f4; border-radius: .75rem; background: #f7faff; }
-  .region-task-tabs .nav-link { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.75rem; border: 0; border-radius: .55rem; color: #506176; font-weight: 600; white-space: nowrap; }
+  .region-task-tabs { display: flex; flex-direction: row !important; flex-wrap: nowrap; gap: .35rem; padding: .4rem; border: 1px solid #dbe6f4; border-radius: .75rem; background: #f7faff; }
+  .region-task-tabs .nav-link { display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: .4rem; min-width: 0; min-height: 2.75rem; border: 0; border-radius: .55rem; color: #506176; font-weight: 600; white-space: nowrap; }
   .region-task-tabs .nav-link.active { color: #173f78; background: #fff; box-shadow: 0 .15rem .5rem rgba(31, 57, 104, .12); }
   .region-task-panel { padding-top: 1rem; }
   .selection-progress { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
@@ -48,7 +48,7 @@
   @media (max-width: 767.98px) {
     .regional-team-card .table { min-width: 760px; }
     .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
-    .region-task-tabs .nav-link { min-width: max-content; scroll-snap-align: start; }
+    .region-task-tabs .nav-link { flex: 0 0 auto; min-width: max-content; scroll-snap-align: start; }
     .selection-progress { grid-template-columns: 1fr; }
     .selection-progress-step { display: grid; grid-template-columns: 2rem 1fr; column-gap: .65rem; align-items: start; }
     .selection-progress-step::before { grid-row: 1 / span 2; margin-bottom: 0; }
@@ -86,6 +86,7 @@
           id="region-tab-{{ $eventRegion->id }}"
           data-bs-toggle="tab"
           data-bs-target="#region-panel-{{ $eventRegion->id }}"
+          data-region-id="{{ $eventRegion->id }}"
           role="tab"
           aria-controls="region-panel-{{ $eventRegion->id }}"
           aria-selected="{{ $loop->first ? 'true' : 'false' }}"
@@ -525,24 +526,30 @@
 
               <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-setup" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-setup-tab" tabindex="0">
                 <div class="mb-3"><h6 class="mb-1">Ranking and team setup</h6><p class="text-muted small mb-0">Link the regional ranking source and create its event categories and teams.</p></div>
-            <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
-              <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" {{ $activeImport ? 'disabled' : '' }} required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}" @selected($source?->series_id === $item->id)>{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · latest ranking published' : ' · ranking not ready' }}</option>@endforeach</select></div>
-              <div class="col-sm-5 col-lg-2"><label class="form-label">Reserves per team</label><input type="number" name="reserve_count" min="0" max="20" value="{{ $source?->reserve_count ?? 2 }}" class="form-control" {{ $activeImport ? 'disabled' : '' }} required></div>
-              <div class="col-sm-7 col-lg-3 d-grid"><button class="btn btn-outline-primary" {{ $activeImport ? 'disabled' : '' }}>Link series</button></div>
-            </form>
-
-            @if($source && !$activeImport)
-              <div class="d-flex flex-wrap gap-2 mt-3">
-                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#ranking-category-setup-{{ $source->id }}">
-                  <i class="ti ti-category-plus me-1"></i>Set up categories &amp; teams
-                </button>
-                @if($sourceReady && $regionTeams->isNotEmpty())
-                  <a class="btn btn-primary" href="{{ route('backend.team-selection.preview', [$event, $source]) }}"><i class="ti ti-download me-1"></i>Import ranked players</a>
-                @endif
+            @if(!$source)
+              <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
+                <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}">{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · published and ready' : ' · not published' }}</option>@endforeach</select></div>
+                <div class="col-sm-5 col-lg-2"><label class="form-label">Reserves per team</label><input type="number" name="reserve_count" min="0" max="20" value="2" class="form-control" required></div>
+                <div class="col-sm-7 col-lg-3 d-grid"><button class="btn btn-primary">Link ranking series</button></div>
+              </form>
+              <div class="form-text">Choose the regional series that will supply the official player rankings.</div>
+            @else
+              <div class="border rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div><small class="text-muted d-block">Linked ranking series</small><strong>{{ $source->series?->name }}</strong><div class="small text-muted">{{ $source->reserve_count }} reserves per team</div></div>
+                <span class="badge bg-label-{{ $sourceReady ? 'success' : 'warning' }}">{{ $sourceReady ? 'Published and ready' : 'Ranking not published' }}</span>
               </div>
-              <div class="form-text">Create the event teams from the ranking categories, then review the ranked-player import.</div>
               @if(!$sourceReady)
-                <div class="alert alert-warning mt-3 mb-0"><strong>Player import unavailable:</strong> review and publish a canonical ranking for {{ $source->series?->name }} first. You can still create its categories and teams now.</div>
+                <div class="alert alert-warning mb-0" role="alert">
+                  <div class="d-flex gap-3 align-items-start"><i class="ti ti-alert-triangle fs-3 mt-1"></i><div class="flex-grow-1"><h6 class="alert-heading mb-1">Team setup is waiting for a published ranking</h6><p class="mb-2">The linked series does not have a current canonical published ranking. Categories, teams and player imports are intentionally unavailable so this event cannot be built from draft or unreviewed positions.</p><div class="small mb-3"><strong>Next step:</strong> open the ranking, resolve any audit or tie issues, mark it reviewed, and publish it. Then return here to create the event teams.</div>@if($isEventManager)<a class="btn btn-warning" href="{{ route('ranking.series.list', $source->series) }}"><i class="ti ti-trophy me-1"></i>Open ranking workflow</a>@else<span class="fw-semibold">Ask the event administrator to publish this ranking.</span>@endif</div></div>
+                </div>
+              @elseif(!$activeImport)
+                <div class="alert alert-success"><strong>Ranking ready.</strong> The canonical ranking is published. Create the event teams from its categories, then review the player import.</div>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ranking-category-setup-{{ $source->id }}"><i class="ti ti-category-plus me-1"></i>{{ $regionTeams->isEmpty() ? 'Create categories & teams' : 'Review categories & teams' }}</button>
+                  @if($regionTeams->isNotEmpty())<a class="btn btn-outline-primary" href="{{ route('backend.team-selection.preview', [$event, $source]) }}"><i class="ti ti-download me-1"></i>Review ranked-player import</a>@endif
+                </div>
+              @else
+                <div class="alert alert-success mb-0"><strong>Setup complete.</strong> The published ranking snapshot has already been imported. Continue in Invitations or Teams &amp; players.</div>
               @endif
             @endif
               </div>
@@ -646,7 +653,7 @@
         </div>
       @endif
 
-      @if($source && !$activeImport && $categorySetup)
+      @if($sourceReady && $source && !$activeImport && $categorySetup)
         @php($setupRows = $categorySetup['rows'])
         @php($missingSetupRows = $setupRows->reject(fn($row) => $row['ready']))
         <div class="modal fade" id="ranking-category-setup-{{ $source->id }}" tabindex="-1" aria-labelledby="ranking-category-setup-title-{{ $source->id }}" aria-hidden="true">
@@ -774,6 +781,15 @@ document.addEventListener('DOMContentLoaded', function () {
     taskTab.addEventListener('shown.bs.tab', function () {
       const regionId = taskTab.closest('[data-region-task-tabs]')?.dataset.regionTaskTabs;
       if (regionId) openWorkspace(regionId, taskTab.dataset.regionTask);
+    });
+  });
+  document.querySelectorAll('[data-region-tabs] [data-region-id]').forEach(function (regionTab) {
+    regionTab.addEventListener('shown.bs.tab', function () {
+      const regionId = regionTab.dataset.regionId;
+      const activeTask = document.querySelector(`#region-panel-${regionId} [data-region-task].active`)?.dataset.regionTask || 'overview';
+      const state = `${regionId}/${activeTask}`;
+      sessionStorage.setItem(workspaceStateKey, state);
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#region-${state}`);
     });
   });
   document.querySelectorAll('[data-open-region-task]').forEach(function (button) {

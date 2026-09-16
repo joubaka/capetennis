@@ -132,9 +132,14 @@ class TeamSelectionInvitationController extends Controller
 
         $source = $eventRegion->fresh('rankingSource')->rankingSource;
 
-        return redirect()->route('backend.team-selection.index', $event)
-            ->with('success', 'The region is linked. Select the ranking categories that must become event teams.')
-            ->with('open_team_setup_source', $source?->id);
+        $redirect = redirect()->route('backend.team-selection.index', $event);
+        if ($source && $service->hasPublishedRanking((int) $source->series_id)) {
+            return $redirect
+                ->with('success', 'The region is linked to a published ranking. Create the event categories and teams next.')
+                ->with('open_team_setup_source', $source->id);
+        }
+
+        return $redirect->with('success', 'The region is linked. Publish its canonical ranking before creating categories and teams.');
     }
 
     public function createTeams(Request $request, Event $event, EventRegionRankingSource $source, TeamRankingImportService $service)
