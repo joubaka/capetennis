@@ -500,6 +500,70 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 0]);
     }
 
+    public function test_event_admin_can_rename_a_region_attached_only_to_their_event(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Cavaliers - North 2026']);
+        $this->event->regions()->attach($region->id);
+        $pivot = $this->event->regions()->whereKey($region->id)->firstOrFail()->pivot;
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('eventRegion.update', $pivot->id), [
+                'region_name' => 'Cavaliers North 2026',
+            ])
+            ->assertOk()
+            ->assertJson([
+                'region_id' => $region->id,
+                'region_name' => 'Cavaliers North 2026',
+                'event_count' => 1,
+            ]);
+
+        $this->assertDatabaseHas('team_regions', [
+            'id' => $region->id,
+            'region_name' => 'Cavaliers North 2026',
+        ]);
+    }
+
+    public function test_event_admin_cannot_rename_a_region_for_another_event(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Protected Region']);
+        $this->otherEvent->regions()->attach($region->id);
+        $pivot = $this->otherEvent->regions()->whereKey($region->id)->firstOrFail()->pivot;
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('eventRegion.update', $pivot->id), ['region_name' => 'Changed'])
+            ->assertForbidden();
+
+        $this->assertSame('Protected Region', $region->fresh()->region_name);
+    }
+
+    public function test_event_admin_cannot_rename_a_region_shared_with_another_event(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Shared Rename Region']);
+        $this->event->regions()->attach($region->id);
+        $this->otherEvent->regions()->attach($region->id);
+        $pivot = $this->event->regions()->whereKey($region->id)->firstOrFail()->pivot;
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('eventRegion.update', $pivot->id), ['region_name' => 'Changed'])
+            ->assertStatus(409);
+
+        $this->assertSame('Shared Rename Region', $region->fresh()->region_name);
+    }
+
+    public function test_region_rename_rejects_an_existing_name_case_insensitively(): void
+    {
+        TeamRegion::create(['region_name' => 'Existing Region']);
+        $region = TeamRegion::create(['region_name' => 'Region With Typo']);
+        $this->event->regions()->attach($region->id);
+        $pivot = $this->event->regions()->whereKey($region->id)->firstOrFail()->pivot;
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('eventRegion.update', $pivot->id), ['region_name' => 'existing region'])
+            ->assertUnprocessable();
+
+        $this->assertSame('Region With Typo', $region->fresh()->region_name);
+    }
+
     public function test_admin_cannot_bulk_publish_a_region_for_another_event(): void
     {
         $region = TeamRegion::create(['region_name' => 'Other Event Region']);

@@ -173,7 +173,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                 data-bs-toggle="collapse"
                 data-bs-target="#collapse-${res.id}">
           <span class="badge bg-label-secondary me-2">#${res.id}</span>
-          ${res.region_name}
+          <span class="region-name">${escapeHtml(res.region_name)}</span>
           <span class="ms-2 text-muted small">(0 Teams)</span>
         </button>
       </h2>
@@ -183,6 +183,14 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
         <div class="accordion-body pt-2">
 
           <div class="d-flex justify-content-end mb-2 gap-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary renameRegionEvent"
+                    data-id="${res.pivot_id}"
+                    data-name="${escapeHtml(res.region_name)}"
+                    data-event-count="1">
+              <i class="ti ti-edit me-1"></i> Rename Region
+            </button>
+
             <a href="javascript:void(0)"
                class="text-danger removeRegionEvent"
                data-id="${res.pivot_id}">
@@ -250,6 +258,52 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       .always(() => {
         $button.prop('disabled', false);
       });
+  });
+
+  // ===============================
+  // Rename Region
+  // ===============================
+  $(document).on('click', '.renameRegionEvent', function (e) {
+    e.preventDefault();
+
+    const $button = $(this);
+    const pivotId = $button.data('id');
+    const currentName = String($button.attr('data-name') || '');
+    const eventCount = Number($button.data('event-count') || 1);
+    const sharedWarning = eventCount > 1
+      ? `<div class="alert alert-warning py-2 mt-3 mb-0">This shared region is used by ${eventCount} events. Renaming it changes the name in all of them.</div>`
+      : '<div class="text-muted small mt-2">Teams, clothing and event links will stay unchanged.</div>';
+
+    Swal.fire({
+      title: 'Rename region',
+      html: sharedWarning,
+      input: 'text',
+      inputValue: currentName,
+      inputLabel: 'Region name',
+      inputAttributes: { maxlength: 255, autocapitalize: 'words' },
+      showCancelButton: true,
+      confirmButtonText: 'Save name',
+      showLoaderOnConfirm: true,
+      inputValidator: value => !String(value || '').trim() ? 'Enter a region name.' : undefined,
+      preConfirm: regionName => $.ajax({
+        url: `${APP_URL}/backend/eventRegion/${pivotId}`,
+        method: 'PATCH',
+        data: { _token: CSRF, region_name: regionName }
+      }).catch(xhr => {
+        Swal.showValidationMessage(xhr.responseJSON?.message || 'Failed to rename region.');
+      }),
+      allowOutsideClick: () => !Swal.isLoading()
+    }).then(result => {
+      if (!result.isConfirmed || !result.value) return;
+
+      const response = result.value;
+      const name = response.region_name;
+      const $row = $button.closest('[data-region-row]');
+      $row.find('.region-name').first().text(name);
+      $row.find('.renameRegionEvent').attr('data-name', name);
+      $row.find('.import-region-teams-btn').attr('data-region-name', name);
+      toastr.success(response.message || 'Region renamed.');
+    });
   });
 
   // ===============================

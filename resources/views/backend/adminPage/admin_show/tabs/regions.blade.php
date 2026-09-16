@@ -48,7 +48,7 @@
                         data-bs-target="#collapse-{{ $region->id }}"
                         aria-expanded="false">
                   <span class="badge bg-label-secondary me-2">#{{ $region->id }}</span>
-                  {{ $region->region_name }}
+                  <span class="region-name">{{ $region->region_name }}</span>
                   <span class="ms-2 text-muted small">
                     ({{ $region->teams->count() }} Teams)
                   </span>
@@ -63,6 +63,14 @@
 
                   {{-- 🔹 REGION ACTIONS --}}
                   <div class="d-flex flex-wrap justify-content-end align-items-center mb-2 gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary renameRegionEvent"
+                            data-id="{{ $region->pivot->id }}"
+                            data-name="{{ $region->region_name }}"
+                            data-event-count="{{ $region->events()->count() }}">
+                      <i class="ti ti-edit me-1"></i> Rename Region
+                    </button>
+
                     <a href="javascript:void(0)"
                        class="text-danger removeRegionEvent"
                        data-id="{{ $region->pivot->id }}">

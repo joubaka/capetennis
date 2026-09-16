@@ -112,10 +112,49 @@ class EventRegionController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
-    {
-        //
+  public function update(Request $request, $id)
+  {
+    $eventRegion = EventRegion::with(['events', 'region'])->findOrFail($id);
+    $event = $eventRegion->events;
+    $region = $eventRegion->region;
+    $this->authorize('event-draw.view', $event);
+
+    $validated = $request->validate([
+      'region_name' => ['required', 'string', 'max:255'],
+    ]);
+    $name = preg_replace('/\s+/u', ' ', trim($validated['region_name']));
+    if ($name === '') {
+      return response()->json(['message' => 'A region name is required.'], 422);
     }
+
+    $duplicate = TeamRegion::query()
+      ->whereKeyNot($region->id)
+      ->whereRaw('LOWER(region_name) = ?', [mb_strtolower($name)])
+      ->exists();
+    if ($duplicate) {
+      return response()->json([
+        'message' => 'Another region already uses this name. Choose a different name.',
+      ], 422);
+    }
+
+    $eventCount = $region->events()->count();
+    if ($eventCount > 1 && ! $request->user()->hasRole('super-user')) {
+      return response()->json([
+        'message' => "This region is shared by {$eventCount} events. Ask a super-user to rename it safely.",
+      ], 409);
+    }
+
+    $region->update(['region_name' => $name]);
+
+    return response()->json([
+      'message' => $eventCount > 1
+        ? "Region renamed across {$eventCount} events."
+        : 'Region renamed.',
+      'region_id' => $region->id,
+      'region_name' => $region->region_name,
+      'event_count' => $eventCount,
+    ]);
+  }
 
     /**
      * Remove the specified resource from storage.
