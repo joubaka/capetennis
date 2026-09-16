@@ -9,8 +9,10 @@
 @section('page-style')
 <style>
   .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
-  .region-workspace-card > .card-header { background: linear-gradient(115deg, #173f78, #2563a9); color: #fff; }
-  .region-workspace-card > .card-header .text-muted { color: rgba(255,255,255,.76) !important; }
+  .region-workspace-card > .card-header { background: linear-gradient(115deg, #12345f, #1f5c9d); color: #fff; --bs-heading-color: #fff; }
+  .region-workspace-card > .card-header h5 { color: #fff; font-weight: 700; text-shadow: 0 1px 1px rgba(0,0,0,.18); }
+  .region-workspace-card > .card-header .region-workspace-meta { color: rgba(255,255,255,.9); font-weight: 600; }
+  .region-workspace-card > .card-header .badge { border: 1px solid rgba(255,255,255,.5); }
   .regional-summary { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; padding: .7rem 1rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #f8fbff; }
   .regional-summary-item { color: #68778c; white-space: nowrap; }
   .regional-summary-item strong { color: #173f78; font-size: 1rem; }
@@ -158,7 +160,7 @@
       >
         <div class="card region-workspace-card">
           <div class="card-header d-flex flex-wrap justify-content-between gap-2">
-            <div><h5 class="mb-1">{{ $eventRegion->region?->region_name }}</h5><span class="text-muted small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
+            <div><h5 class="mb-1">{{ $eventRegion->region?->region_name }}</h5><span class="region-workspace-meta small">{{ $regionTeams->count() }} teams · {{ $regionTeams->sum('num_team_members') }} configured places</span></div>
             @if($activeImport)
               <span class="badge bg-label-{{ $activeImport->status === 'sent' ? 'success' : 'warning' }}">{{ ucfirst($activeImport->status) }}</span>
             @elseif($source)
