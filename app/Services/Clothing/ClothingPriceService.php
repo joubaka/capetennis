@@ -51,7 +51,14 @@ final class ClothingPriceService
             }
         }
 
-        return $best;
+        // The requested customer amount is authoritative. A cent-based fee can
+        // jump over a value at a rounding boundary, so retain the nearest base
+        // amount and allocate the remaining cents to the displayed fee.
+        return [
+            'subtotal' => $best['subtotal'],
+            'payfast_fee' => round($finalAmount - $best['subtotal'], 2),
+            'total' => $finalAmount,
+        ];
     }
 
     /**

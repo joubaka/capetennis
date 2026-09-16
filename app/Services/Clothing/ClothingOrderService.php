@@ -103,7 +103,9 @@ final class ClothingOrderService
                 // Resolve it per unit before applying quantity so a configured
                 // R275 item remains R275 (and two remain R550) at PayFast.
                 $unitPricing = $this->prices->totals($price);
-                $customerPrice = $unitPricing['total'];
+                $customerPrice = $item->final_amount !== null
+                    ? round((float) $item->final_amount, 2)
+                    : $unitPricing['total'];
                 $lineSubtotal = round($price * $line['qty'], 2);
                 $lineTotal = round($customerPrice * $line['qty'], 2);
                 $subtotal += $lineSubtotal;

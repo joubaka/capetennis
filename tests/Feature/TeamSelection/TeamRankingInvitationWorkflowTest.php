@@ -2070,21 +2070,29 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $registered->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
 
         $service = app(TeamSelectionReminderService::class);
-        $this->assertSame(1, $service->recipients($source->event, 'registration_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
-        $this->assertSame(1, $service->recipients($source->event, 'registration_clothing', 'unregistered')->sum(fn ($row) => count($row['players'])));
-        $this->assertSame(2, $service->recipients($source->event, 'registration_clothing', 'all')->sum(fn ($row) => count($row['players'])));
-        $this->assertSame(1, $service->recipients($source->event, 'incomplete_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
+        $eventRegion = EventRegion::findOrFail($source->event_region_id);
+        $otherRegion = TeamRegion::create(['region_name' => 'Other reminder region 2026']);
+        EventRegion::create(['event_id' => $source->event_id, 'region_id' => $otherRegion->id, 'ordering' => 2]);
+        $foreignInvitation = $invitations->last()->replicate();
+        $foreignInvitation->region_id = $otherRegion->id;
+        $foreignInvitation->player_id = Player::factory()->create()->id;
+        $foreignInvitation->save();
+
+        $this->assertSame(1, $service->recipients($source->event, $eventRegion, 'registration_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(1, $service->recipients($source->event, $eventRegion, 'registration_clothing', 'unregistered')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(2, $service->recipients($source->event, $eventRegion, 'registration_clothing', 'all')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(1, $service->recipients($source->event, $eventRegion, 'incomplete_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
 
         ClothingOrder::create([
             'event_id' => $registered->event_id, 'team_id' => $team->id, 'player_id' => $registered->player_id,
             'user_id' => $registered->player->userId, 'pay_status' => 1, 'status' => 'paid',
             'subtotal' => 100, 'payfast_fee' => 0, 'total' => 100,
         ]);
-        $this->assertSame(0, $service->recipients($source->event, 'incomplete_clothing', 'registered')->count());
+        $this->assertSame(0, $service->recipients($source->event, $eventRegion, 'incomplete_clothing', 'registered')->count());
 
         ClothingOrder::where('event_id', $registered->event_id)->delete();
         $registered->update(['clothing_decision' => 'not_required', 'clothing_decided_at' => now()]);
-        $this->assertSame(0, $service->recipients($source->event, 'incomplete_clothing', 'registered')->count());
+        $this->assertSame(0, $service->recipients($source->event, $eventRegion, 'incomplete_clothing', 'registered')->count());
     }
 
     public function test_player_can_confirm_no_clothing_and_event_manager_only_can_send_final_reminders(): void
@@ -2114,17 +2122,18 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('not_required', $invitation->fresh()->clothing_decision);
 
         $reminders = app(TeamSelectionReminderService::class);
-        $hash = $reminders->recipientHash($event, 'registration_clothing', 'all');
+        $eventRegion = EventRegion::findOrFail($source->event_region_id);
+        $hash = $reminders->recipientHash($event, $eventRegion, 'registration_clothing', 'all');
         $payload = [
             'kind' => 'registration_clothing', 'audience' => 'all',
             'send_token' => (string) \Illuminate\Support\Str::uuid(),
             'recipient_hash' => $hash, 'confirm_recipients' => 1,
         ];
-        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.final-reminders.send', $event), $payload)->assertForbidden();
-        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', $event), $payload)
+        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)->assertForbidden();
+        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)
             ->assertRedirect()->assertSessionHas('success');
         $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
-        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', $event), $payload)
+        $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)
             ->assertRedirect()->assertSessionHas('success');
         $this->assertSame(2, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
     }

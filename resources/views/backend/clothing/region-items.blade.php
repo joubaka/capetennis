@@ -32,11 +32,15 @@
   @endif
 
   <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2">
+      <div>
       <h5 class="mb-1">Copy and review last year’s clothing</h5>
       <p class="text-muted mb-0">Load another region’s items and sizes, review every selling price, then copy only the selected items. Existing items are never overwritten.</p>
+      </div>
+      @if($items->isNotEmpty())<button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#copy-clothing-panel" aria-expanded="{{ $copySource ? 'true' : 'false' }}">Copy another setup</button>@endif
     </div>
-    <div class="card-body">
+    <div id="copy-clothing-panel" class="collapse {{ $items->isEmpty() || $copySource ? 'show' : '' }}">
+    <div class="card-body border-top">
       <form method="GET" action="{{ route('backend.region.clothing.edit', $region) }}" class="row g-2 align-items-end mb-3">
         <div class="col-lg-8">
           <label class="form-label" for="source-region">Previous clothing setup</label>
@@ -96,6 +100,7 @@
         </form>
       @endif
     </div>
+    </div>
   </div>
 
   <div class="card">
@@ -135,11 +140,11 @@
                 </td>
                 <td>
                   <input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
-                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="price">
+                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="{{ $i->final_amount !== null ? 'final_amount' : 'price' }}">
                 </td>
                 <td class="fw-semibold clothing-preview-profit">—</td>
                 <td class="text-muted clothing-preview-fee">R0.00</td>
-                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
+                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" value="{{ $i->final_amount !== null ? number_format((float) $i->final_amount, 2, '.', '') : '' }}" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
                 <td>
                   <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
                 </td>
@@ -243,7 +248,11 @@
       }
     }
 
-    return { subtotal: bestSubtotal, fee: bestFee, total: bestTotal };
+    return {
+      subtotal: bestSubtotal,
+      fee: Math.round((requestedTotal - bestSubtotal) * 100) / 100,
+      total: requestedTotal
+    };
   }
 
   function refreshProfit(row, subtotal) {

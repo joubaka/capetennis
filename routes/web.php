@@ -473,7 +473,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('events/{event}/imports/{selectionImport}/invitations/{invitation}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'viewSentInvitation'])->name('invitations.email.view');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/email/resend', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'resendInvitation'])->name('invitations.email.resend');
     Route::post('events/{event}/regions/{eventRegion}/roster-email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendRosterMessage'])->name('roster-email.send');
-    Route::post('events/{event}/final-reminders', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendFinalReminder'])->name('final-reminders.send');
+    Route::post('events/{event}/regions/{eventRegion}/final-reminders', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'sendFinalReminder'])->name('final-reminders.send');
     Route::post('events/{event}/regions/{eventRegion}/imported-contacts', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'enrichImportedContacts'])->name('imported-contacts.enrich');
   });
 

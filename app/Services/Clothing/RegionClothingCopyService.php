@@ -71,6 +71,9 @@ final class RegionClothingCopyService
                 $newItem = ClothingItemType::create([
                     'item_type_name' => $name,
                     'price' => $price,
+                    'final_amount' => array_key_exists('final_amount', $row)
+                        ? round((float) $row['final_amount'], 2)
+                        : null,
                     'cost_price' => $costPrice,
                     'region_id' => $lockedTarget->id,
                     'ordering' => $ordering,

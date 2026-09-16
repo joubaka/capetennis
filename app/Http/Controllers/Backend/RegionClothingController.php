@@ -232,8 +232,8 @@ class RegionClothingController extends Controller
       'ordering' => 'nullable|integer|min:0',
     ]);
 
-    $data['price'] = $this->resolvePrice($data, $prices);
-    unset($data['final_amount'], $data['pricing_source']);
+    $data = $this->resolveItemPrice($data, $prices);
+    unset($data['pricing_source']);
     $data['region_id'] = $region->id;
 
     $item = ClothingItemType::create($data);
@@ -270,6 +270,7 @@ class RegionClothingController extends Controller
       $item->update([
         'item_type_name' => $row['item_type_name'],
         'price' => $row['price'] ?? 0,
+        'final_amount' => $row['final_amount'] ?? 0,
         'cost_price' => $row['cost_price'] ?? null,
         'ordering' => $row['ordering'] ?? null,
       ]);
@@ -281,10 +282,7 @@ class RegionClothingController extends Controller
   private function resolveItemPrices(array $items, ClothingPriceService $prices): array
   {
     return collect($items)->map(function (array $item) use ($prices): array {
-      $item['price'] = $this->resolvePrice($item, $prices);
-      unset($item['final_amount'], $item['pricing_source']);
-
-      return $item;
+      return $this->resolveItemPrice($item, $prices);
     })->all();
   }
 
@@ -295,6 +293,19 @@ class RegionClothingController extends Controller
     }
 
     return round((float) ($item['price'] ?? 0), 2);
+  }
+
+  private function resolveItemPrice(array $item, ClothingPriceService $prices): array
+  {
+    $usesFinalAmount = ($item['pricing_source'] ?? 'price') === 'final_amount'
+      && array_key_exists('final_amount', $item);
+    $item['price'] = $this->resolvePrice($item, $prices);
+    $item['final_amount'] = $usesFinalAmount
+      ? round((float) $item['final_amount'], 2)
+      : $prices->totals((float) $item['price'])['total'];
+    unset($item['pricing_source']);
+
+    return $item;
   }
 
   /**

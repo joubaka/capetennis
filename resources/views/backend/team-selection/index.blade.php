@@ -45,40 +45,11 @@
   'eventWorkspaceShowHome' => $isEventManager,
 ])
 <div class="container-xxl flex-grow-1 container-p-y">
-  @if($isEventManager)
-    <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
-      <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
-      <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
-      <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-    </div>
-  @endif
-
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
   @if($isEventManager)
     <div class="alert alert-info">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
-    <div class="modal fade" id="final-team-reminders" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', $event) }}" class="modal-content" data-final-reminder-form>@csrf
-        <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
-        <input type="hidden" name="recipient_hash" data-reminder-hash>
-        <div class="modal-header"><div><h5 class="modal-title">Send final event reminders</h5><div class="small text-muted">Recipients are selected from active invitations across every region in this event.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">Reminder</label><select class="form-select" name="kind" data-reminder-kind required><option value="registration_clothing">Registration and clothing reminder</option><option value="incomplete_clothing">Incomplete clothing reminder</option></select></div>
-            <div class="col-md-6"><label class="form-label">Send to</label><select class="form-select" name="audience" data-reminder-audience required><option value="all">All active players</option><option value="registered">Registered players</option><option value="unregistered">Unregistered players</option></select></div>
-          </div>
-          <div class="alert alert-primary mt-3 mb-3" data-reminder-summary></div>
-          <div class="border rounded p-3 bg-light">
-            <strong data-reminder-preview-title>Registration is closing</strong>
-            <p class="mb-1 mt-2" data-reminder-preview-copy>Unregistered players receive their registration/payment link. Registered players receive their clothing action link.</p>
-            <small class="text-muted">One email is sent per address. Where a parent receives mail for several players, all affected players and their individual links are included.</small>
-          </div>
-          <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-final-reminders" required><label class="form-check-label" for="confirm-final-reminders">I reviewed this reminder and recipient group.</label></div>
-        </div>
-        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-reminder-submit onclick="return confirm('Queue this final reminder for the reviewed recipients?');">Send reminder</button></div>
-      </form></div>
-    </div>
   @else
     <div class="alert alert-info">You are viewing team selection, invitations and announcements for your assigned region.</div>
   @endif
@@ -146,6 +117,30 @@
             @endif
           </div>
           <div class="card-body">
+            @if($isEventManager)
+              <div class="d-flex flex-wrap justify-content-end gap-2 mb-3" aria-label="Actions for {{ $eventRegion->region?->region_name }}">
+                <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
+                <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
+                <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+              </div>
+              <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
+                  <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
+                  <input type="hidden" name="recipient_hash" data-reminder-hash>
+                  <div class="modal-header"><div><h5 class="modal-title">Send {{ $eventRegion->region?->region_name }} reminders</h5><div class="small text-muted">Only active invitations in this region are included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                  <div class="modal-body">
+                    <div class="row g-3">
+                      <div class="col-md-6"><label class="form-label">Reminder</label><select class="form-select" name="kind" data-reminder-kind required><option value="registration_clothing">Registration and clothing reminder</option><option value="incomplete_clothing">Incomplete clothing reminder</option></select></div>
+                      <div class="col-md-6"><label class="form-label">Send to</label><select class="form-select" name="audience" data-reminder-audience required><option value="all">All active players in this region</option><option value="registered">Registered players in this region</option><option value="unregistered">Unregistered players in this region</option></select></div>
+                    </div>
+                    <div class="alert alert-primary mt-3 mb-3" data-reminder-summary></div>
+                    <div class="border rounded p-3 bg-light"><strong data-reminder-preview-title>Registration is closing</strong><p class="mb-1 mt-2" data-reminder-preview-copy>Unregistered players receive their registration/payment link. Registered players receive their clothing action link.</p><small class="text-muted">One email is sent per address. Where a parent receives mail for several players in this region, all affected players and their individual links are included.</small></div>
+                    <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-final-reminders-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-final-reminders-{{ $eventRegion->id }}">I reviewed this region’s reminder and recipient group.</label></div>
+                  </div>
+                  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-reminder-submit onclick="return confirm('Queue this reminder for the reviewed regional recipients?');">Send reminder</button></div>
+                </form></div>
+              </div>
+            @endif
             <div class="border rounded p-3 mb-3">
               <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
                 <div><small class="text-muted d-block">Regional organizer</small><strong>{{ $regionManager?->name ?: trim(($regionManager?->userName ?? '').' '.($regionManager?->userSurname ?? '')) ?: $regionManager?->email ?: 'Not assigned' }}</strong>@if($regionManager?->email)<div class="small text-muted">{{ $regionManager->email }} · player profile not required</div>@endif</div>
@@ -200,7 +195,6 @@
                     @if($eventRegion->region?->usesOnlineClothingOrders())
                       <div class="dropdown-divider"></div>
                       <div class="region-action-status" data-clothing-status>{{ $eventRegion->region->clothing_order ? 'Clothing ordering open' : 'Clothing ordering closed' }}</div>
-                      <a class="dropdown-item" href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}"><i class="ti ti-shirt me-2"></i>Clothing setup</a>
                       <form method="POST" action="{{ route('backend.region.clothing.toggle', $eventRegion->region_id) }}" class="clothing-order-form">
                         @csrf @method('PATCH')
                         <button type="submit" class="dropdown-item clothing-order-toggle" data-catalogue-ready="{{ $clothingCatalogueReady ? '1' : '0' }}" @disabled(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) @if(! $eventRegion->region->clothing_order && ! $clothingCatalogueReady) title="Finish clothing setup before opening orders" @endif><i class="ti ti-{{ $eventRegion->region->clothing_order ? 'lock' : 'shopping-cart' }} me-2"></i>{{ $eventRegion->region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
@@ -657,10 +651,9 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const reminderForm = document.querySelector('[data-final-reminder-form]');
-  if (reminderForm) {
-    const summaries = @json($reminderSummaries);
-    const hashes = @json($reminderHashes);
+  document.querySelectorAll('[data-final-reminder-form]').forEach(function (reminderForm) {
+    const summaries = JSON.parse(reminderForm.dataset.reminderSummaries || '{}');
+    const hashes = JSON.parse(reminderForm.dataset.reminderHashes || '{}');
     const kind = reminderForm.querySelector('[data-reminder-kind]');
     const audience = reminderForm.querySelector('[data-reminder-audience]');
     const refreshReminder = function () {
@@ -676,13 +669,13 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     kind.addEventListener('change', refreshReminder);
     audience.addEventListener('change', refreshReminder);
-    document.getElementById('final-team-reminders')?.addEventListener('show.bs.modal', function (event) {
+    reminderForm.closest('.modal')?.addEventListener('show.bs.modal', function (event) {
       const selectedKind = event.relatedTarget?.dataset?.reminderOpenKind;
       if (selectedKind) kind.value = selectedKind;
       refreshReminder();
     });
     refreshReminder();
-  }
+  });
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const ajaxHeaders = {
     Accept: 'application/json',

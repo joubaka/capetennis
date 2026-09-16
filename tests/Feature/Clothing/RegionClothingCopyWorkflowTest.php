@@ -5,6 +5,7 @@ namespace Tests\Feature\Clothing;
 use App\Models\ClothingItemType;
 use App\Models\ClothingSize;
 use App\Models\Event;
+use App\Models\SiteSetting;
 use App\Models\TeamRegion;
 use App\Models\User;
 use App\Services\Clothing\RegionClothingCopyService;
@@ -296,6 +297,29 @@ class RegionClothingCopyWorkflowTest extends TestCase
         $this->assertEqualsWithDelta(400.00 - $pricing['payfast_fee'], $savedPrice, 0.001);
         $this->assertSame(250.0, (float) $item->fresh()->cost_price);
         $this->assertEqualsWithDelta($savedPrice - 250.00, $item->fresh()->vendor_profit, 0.001);
+    }
+
+    public function test_admin_can_set_an_exact_final_amount_across_a_fee_rounding_boundary(): void
+    {
+        SiteSetting::set('payfast_fee_percentage', 3.2, SiteSetting::GROUP_PAYFAST);
+        SiteSetting::set('payfast_fee_flat', 2.00, SiteSetting::GROUP_PAYFAST);
+        SiteSetting::set('payfast_vat_rate', 14, SiteSetting::GROUP_PAYFAST);
+        $region = TeamRegion::create(['region_name' => 'Exact Final Price Region 2026']);
+        $admin = $this->authorizedAdminForRegion($region, 2026);
+        $item = ClothingItemType::create([
+            'item_type_name' => 'Exact shirt', 'price' => 280, 'region_id' => $region->id,
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('backend.region.clothing.items.bulkUpdate', $region), [
+            'items' => [[
+                'id' => $item->id, 'item_type_name' => $item->item_type_name,
+                'price' => 280, 'final_amount' => 295, 'pricing_source' => 'final_amount',
+            ]],
+        ])->assertOk();
+
+        $item->refresh();
+        $this->assertSame('295.00', $item->final_amount);
+        $this->assertSame(295.00, app(ClothingPriceService::class)->totalsFromFinalAmount(295)['total']);
     }
 
     private function authorizedAdminForRegion(TeamRegion $region, int $year): User
