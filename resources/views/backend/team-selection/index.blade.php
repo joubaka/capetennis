@@ -68,7 +68,24 @@
   'eventWorkspaceShowHome' => $isEventManager,
 ])
 <div class="container-xxl flex-grow-1 container-p-y">
-  @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+  @if(session('replacement_confirmation'))
+    @php($replacementConfirmation = session('replacement_confirmation'))
+    @php($replacementDeliveryStatus = $replacementConfirmation['delivery_status'] ?? 'queued')
+    <div class="alert alert-{{ $replacementDeliveryStatus === 'failed' ? 'danger' : 'success' }} d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Player replaced.</strong>
+        {{ $replacementConfirmation['player_name'] }} was added and the invitation email was
+        <strong>{{ $replacementDeliveryStatus === 'sent' ? 'sent' : $replacementDeliveryStatus }}</strong>
+        to {{ $replacementConfirmation['recipient_email'] }}.
+        @if($replacementDeliveryStatus === 'queued')
+          <span class="d-block small mt-1">The application has queued it for the mail service. The player row below will change to Sent or Failed when processing finishes.</span>
+        @elseif($replacementDeliveryStatus === 'failed')
+          <span class="d-block small mt-1">Delivery failed. Review the saved email and use Resend after the mail issue is resolved.</span>
+        @endif
+      </div>
+      <a class="btn btn-sm btn-outline-success" target="_blank" href="{{ $replacementConfirmation['preview_url'] }}">View email</a>
+    </div>
+  @elseif(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
   @if($isEventManager)

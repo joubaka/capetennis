@@ -624,6 +624,66 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
     }
 
+    public function test_sent_replacement_confirms_recipient_delivery_status_and_email_preview(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Replacement confirmation', 'type' => 2, 'code' => 'replacement-confirmation',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update([
+            'status' => 'sent',
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+            'email_subject' => 'Saved regional invitation',
+            'email_message' => 'Please confirm your team place.',
+        ]);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->first();
+        $this->assertNotNull($selected);
+        $owner = User::factory()->create(['email' => 'replacement.confirmation@example.test']);
+        $customPlayer = Player::factory()->create([
+            'name' => 'Replacement', 'surname' => 'Confirmation',
+            'email' => 'replacement.confirmation@example.test', 'userId' => $owner->id,
+        ]);
+
+        $response = $this->actingAs($manager)->post(
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $selected]),
+            [
+                'replacement_mode' => 'custom_profile',
+                'replacement_player_id' => $customPlayer->id,
+                'replacement_invitation_id' => $selected->id,
+                'reason' => 'Confirm replacement delivery feedback',
+            ]
+        );
+
+        $response->assertRedirect()->assertSessionHasNoErrors();
+        $replacement = $selectionImport->invitations()->where('player_id', $customPlayer->id)->first();
+        $this->assertNotNull($replacement);
+        $previewUrl = route('backend.team-selection.invitations.email.view', [
+            $source->event, $selectionImport, $replacement,
+        ]);
+        $response->assertRedirect()
+            ->assertSessionHas('replacement_confirmation', fn (array $confirmation): bool =>
+                $confirmation['player_name'] === 'Replacement Confirmation'
+                && $confirmation['recipient_email'] === 'replacement.confirmation@example.test'
+                && $confirmation['delivery_status'] === 'queued'
+                && $confirmation['preview_url'] === $previewUrl
+            );
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Player replaced.')
+            ->assertSee('replacement.confirmation@example.test')
+            ->assertSee('The application has queued it for the mail service.')
+            ->assertSee($previewUrl, false);
+    }
+
     public function test_player_can_decline_after_starting_payment_and_unpaid_order_is_cancelled(): void
     {
         Queue::fake();

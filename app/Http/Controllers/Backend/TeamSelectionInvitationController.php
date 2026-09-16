@@ -367,9 +367,31 @@ class TeamSelectionInvitationController extends Controller
             )
             : $service->replaceWithNextReserve($invitation, $request->user(), trim($data['reason']));
 
-        $delivery = $selectionImport->status === 'sent' ? ' and queued for a replacement invitation' : '';
+        $replacement->loadMissing('player');
+        $deliveryLog = $replacement->emailLogs()->latest('id')->first();
+        $delivery = $deliveryLog
+            ? ' and the replacement invitation was '.($deliveryLog->status === 'sent' ? 'sent' : $deliveryLog->status)
+            : '';
 
-        return back()->with('success', ($replacement->player?->full_name ?? 'The replacement player').' was selected'.$delivery.'.');
+        $redirect = back()->with(
+            'success',
+            ($replacement->player?->full_name ?? 'The replacement player').' was selected'.$delivery.'.'
+        );
+
+        if ($deliveryLog) {
+            $redirect->with('replacement_confirmation', [
+                'player_name' => $replacement->player?->full_name ?? 'The replacement player',
+                'recipient_email' => $deliveryLog->recipient_email,
+                'delivery_status' => $deliveryLog->status,
+                'preview_url' => route('backend.team-selection.invitations.email.view', [
+                    $event,
+                    $selectionImport,
+                    $replacement,
+                ]),
+            ]);
+        }
+
+        return $redirect;
     }
 
     public function moveRosterRank(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
