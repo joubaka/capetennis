@@ -724,6 +724,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'organizer' => 'Cape Tennis Events Team',
             'email' => 'events@example.test',
             'venue_notes' => 'Players must report 30 minutes before their first match.',
+            'information' => '<h3>Venues</h3><ul><li>u/10: Hermanus</li><li>u/11: Robertson</li></ul><p>Arrive 30 minutes early.</p>',
         ]);
         $venue = new Venue();
         $venue->name = 'Boland Park Tennis Centre';
@@ -742,11 +743,19 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
 
+        $invitationService = app(TeamSelectionInvitationService::class);
+        $this->assertSame(
+            "Venues\n• u/10: Hermanus\n• u/11: Robertson\n\nArrive 30 minutes early.",
+            $invitationService->defaultEventInformation($event->fresh())
+        );
+
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
             ->assertSee('Prepare invitations')
             ->assertSee('Preview actual email')
-            ->assertSee('Invitation message');
+            ->assertSee('Invitation message')
+            ->assertSee('Information shown on the player invitation page')
+            ->assertSee("Venues\n• u/10: Hermanus\n• u/11: Robertson", false);
 
         $payload = [
             'email_subject' => 'Regional Platteland invitation',

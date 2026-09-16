@@ -282,6 +282,32 @@ final class TeamSelectionInvitationService
         return $invitation;
     }
 
+    public function defaultEventInformation(Event $event): string
+    {
+        $html = (string) $event->information;
+        if (trim($html) === '') {
+            return '';
+        }
+
+        $withStructure = preg_replace(
+            [
+                '/<\s*br\s*\/?>/i',
+                '/<\s*li\b[^>]*>/i',
+                '/<\s*\/\s*li\s*>/i',
+                '/<\s*\/\s*(?:p|div|section|article|h[1-6]|ul|ol|table|tr)\s*>/i',
+                '/<\s*\/\s*(?:td|th)\s*>/i',
+            ],
+            ["\n", '• ', "\n", "\n", "\t"],
+            $html,
+        );
+        $text = html_entity_decode(strip_tags((string) $withStructure), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace("\u{00A0}", ' ', $text);
+        $lines = collect(preg_split('/\R/u', $text) ?: [])
+            ->map(fn (string $line) => trim((string) preg_replace('/[\t ]+/u', ' ', $line)));
+
+        return trim((string) preg_replace('/\n{3,}/u', "\n\n", $lines->implode("\n")));
+    }
+
     public function confirmPaidOrder(TeamPaymentOrder $order): void
     {
         DB::transaction(function () use ($order) {
@@ -1353,7 +1379,9 @@ final class TeamSelectionInvitationService
         $region = $import->region;
         $subject = trim((string) preg_replace('/[\r\n]+/', ' ', (string) ($details['email_subject'] ?? 'Platteland team invitation: '.$event?->name)));
         $message = trim((string) ($details['email_message'] ?? 'You have been selected to represent your region. Please respond before the deadline.'));
-        $eventInformation = trim((string) ($details['event_information'] ?? strip_tags((string) $event?->information)));
+        $eventInformation = array_key_exists('event_information', $details)
+            ? trim((string) $details['event_information'])
+            : ($event ? $this->defaultEventInformation($event) : '');
         $replyCandidate = filled($details['reply_to'] ?? null) ? mb_strtolower(trim((string) $details['reply_to'])) : null;
         $replyTo = $replyCandidate && filter_var($replyCandidate, FILTER_VALIDATE_EMAIL) ? $replyCandidate : null;
         $clothingAvailable = $region

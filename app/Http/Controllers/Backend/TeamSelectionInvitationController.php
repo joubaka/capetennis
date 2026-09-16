@@ -33,7 +33,7 @@ class TeamSelectionInvitationController extends Controller
 {
     public function __construct(private TeamSelectionContactService $contacts) {}
 
-    public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)
+    public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
     {
         abort_unless($event->isTeam(), 404);
         $isEventManager = $access->isEventManager(request()->user(), $event);
@@ -86,6 +86,7 @@ class TeamSelectionInvitationController extends Controller
             ]);
 
         $teamSelectionContacts = $this->contacts;
+        $defaultInvitationEventInformation = $invitations->defaultEventInformation($event);
         $reminderSummaries = [];
         $reminderHashes = [];
         if ($isEventManager) {
@@ -99,7 +100,7 @@ class TeamSelectionInvitationController extends Controller
             }
         }
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts', 'reminderSummaries', 'reminderHashes'));
+        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts', 'reminderSummaries', 'reminderHashes', 'defaultInvitationEventInformation'));
     }
 
     public function sendFinalReminder(Request $request, Event $event, EventRegion $eventRegion, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)

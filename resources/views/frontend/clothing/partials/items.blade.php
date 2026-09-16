@@ -22,13 +22,14 @@
 
       <div class="row g-2 mt-2 item-options d-none">
         <div class="col-md-6">
-          <label class="form-label small">Size</label>
+          <label class="form-label small">Size <span class="text-danger">(required)</span></label>
           <select class="form-select form-select-sm size-select">
-            <option value="">Select size</option>
+            <option value="">Select size to calculate price</option>
             @foreach($item->sizes as $size)
               <option value="{{ $size->id }}">{{ $size->size }}</option>
             @endforeach
           </select>
+          <div class="form-text">The item total remains R0.00 until a size is selected.</div>
         </div>
 
         <div class="col-md-3">
