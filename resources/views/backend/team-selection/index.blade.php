@@ -26,6 +26,19 @@
   .regional-help > summary { cursor: pointer; list-style: none; padding: .85rem 1rem; }
   .regional-help > summary::-webkit-details-marker { display: none; }
   .regional-help-step { border-left: 3px solid #80aee0; padding-left: .75rem; }
+  .region-task-tabs { gap: .35rem; padding: .4rem; border: 1px solid #dbe6f4; border-radius: .75rem; background: #f7faff; }
+  .region-task-tabs .nav-link { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.75rem; border: 0; border-radius: .55rem; color: #506176; font-weight: 600; white-space: nowrap; }
+  .region-task-tabs .nav-link.active { color: #173f78; background: #fff; box-shadow: 0 .15rem .5rem rgba(31, 57, 104, .12); }
+  .region-task-panel { padding-top: 1rem; }
+  .selection-progress { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
+  .selection-progress-step { position: relative; min-width: 0; padding: .85rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #fff; }
+  .selection-progress-step::before { display: inline-grid; place-items: center; width: 1.65rem; height: 1.65rem; margin-bottom: .55rem; border-radius: 50%; content: attr(data-step); background: #edf2f7; color: #68778c; font-weight: 700; }
+  .selection-progress-step.is-complete { border-color: #b7e2ca; background: #f2fbf6; }
+  .selection-progress-step.is-complete::before { content: '\2713'; background: #20a464; color: #fff; }
+  .selection-progress-step.is-current { border-color: #80aee0; background: #f3f8ff; box-shadow: inset 0 0 0 1px #80aee0; }
+  .selection-progress-step.is-current::before { background: #2374bb; color: #fff; }
+  .selection-progress-step .btn-link { padding: 0; color: #173f78; font-weight: 600; text-align: left; text-decoration: none; }
+  .selection-progress-step small { display: block; margin-top: .2rem; color: #68778c; }
   .regional-attention { display: flex; flex-wrap: wrap; gap: .5rem; }
   .region-action-status { padding: .45rem 1rem .3rem; color: #68778c; font-size: .75rem; }
   .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
@@ -34,6 +47,11 @@
   .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
     .regional-team-card .table { min-width: 760px; }
+    .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
+    .region-task-tabs .nav-link { min-width: max-content; scroll-snap-align: start; }
+    .selection-progress { grid-template-columns: 1fr; }
+    .selection-progress-step { display: grid; grid-template-columns: 2rem 1fr; column-gap: .65rem; align-items: start; }
+    .selection-progress-step::before { grid-row: 1 / span 2; margin-bottom: 0; }
   }
 </style>
 @endsection
@@ -98,6 +116,20 @@
       @php($linkedUnpaidRecipients = $regionImportedCohorts->get('linked_unpaid', collect()))
       @php($allLinkedImportedRecipients = $regionImportedCohorts->get('linked_all', collect()))
       @php($unpublishedTeamCount = $regionTeams->where('published', false)->count())
+      @php($selectionSent = $activeImport?->status === 'sent')
+      @php($selectedInvitations = $activeImport?->invitations?->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]) ?? collect())
+      @php($outstandingRegistrationCount = $selectedInvitations->whereNotIn('status', [\App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->count())
+      @php($regionalOpenPlaces = $regionTeams->sum(fn($team) => max(0, (int) $team->num_team_members - $selectedInvitations->where('team_id', $team->id)->count())))
+      @php($missingContactCount = $activeImport?->invitations?->filter(fn($invitation) => ! $recipientEmailFor($invitation))->count() ?? 0)
+      @php($selectionSteps = collect([
+        ['label' => 'Link ranking series', 'tab' => 'setup', 'complete' => (bool) $source],
+        ['label' => 'Create teams', 'tab' => 'setup', 'complete' => $regionTeams->isNotEmpty()],
+        ['label' => 'Import players', 'tab' => 'invitations', 'complete' => (bool) $activeImport],
+        ['label' => 'Send invitations', 'tab' => 'invitations', 'complete' => $selectionSent],
+        ['label' => 'Resolve exceptions', 'tab' => 'teams', 'complete' => $selectionSent && $outstandingRegistrationCount === 0 && $regionalOpenPlaces === 0 && $missingContactCount === 0],
+        ['label' => 'Publish teams', 'tab' => 'teams', 'complete' => $regionTeams->isNotEmpty() && $unpublishedTeamCount === 0],
+      ]))
+      @php($currentSelectionStep = $selectionSteps->search(fn($step) => ! $step['complete']))
       <div
         id="region-panel-{{ $eventRegion->id }}"
         class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
@@ -123,17 +155,25 @@
             @endif
           </div>
           <div class="card-body">
-            @if($isEventManager || $eventRegion->region?->usesOnlineClothingOrders())
-              <div class="d-flex flex-wrap justify-content-end gap-2 mb-3" aria-label="Actions for {{ $eventRegion->region?->region_name }}">
-                @if($isEventManager)
-                  <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
-                  <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
-                @endif
-                @if($eventRegion->region?->usesOnlineClothingOrders())
-                  <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
-                @endif
-              </div>
-            @endif
+            <div class="nav nav-pills region-task-tabs" role="tablist" aria-label="{{ $eventRegion->region?->region_name }} workspace" data-region-task-tabs="{{ $eventRegion->id }}">
+              @foreach(['overview' => ['ti-layout-dashboard', 'Overview'], 'teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-mail-forward', 'Invitations'], 'messages' => ['ti-message-circle', 'Messages & clothing'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
+                <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="region-{{ $eventRegion->id }}-{{ $taskKey }}-tab" data-bs-toggle="tab" data-bs-target="#region-{{ $eventRegion->id }}-{{ $taskKey }}" type="button" role="tab" aria-controls="region-{{ $eventRegion->id }}-{{ $taskKey }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" data-region-task="{{ $taskKey }}"><i class="ti {{ $taskIcon }}"></i>{{ $taskLabel }}@if($taskKey === 'teams' && $unpublishedTeamCount)<span class="badge bg-label-warning">{{ $unpublishedTeamCount }}</span>@endif</button>
+              @endforeach
+            </div>
+            <div class="tab-content">
+              <div class="tab-pane fade show active region-task-panel" id="region-{{ $eventRegion->id }}-overview" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-overview-tab" tabindex="0">
+                <div class="mb-3">
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h6 class="mb-1">Selection progress</h6><p class="text-muted small mb-0">Follow the regional workflow, or open any available area directly.</p></div>@if($currentSelectionStep === false)<span class="badge bg-label-success"><i class="ti ti-circle-check me-1"></i>Workflow complete</span>@else<span class="badge bg-label-primary">Step {{ $currentSelectionStep + 1 }} of {{ count($selectionSteps) }}</span>@endif</div>
+                  <ol class="selection-progress" aria-label="Regional selection progress">
+                    @foreach($selectionSteps as $stepIndex => $selectionStep)
+                      @php($stepState = $selectionStep['complete'] ? 'is-complete' : ($currentSelectionStep === $stepIndex ? 'is-current' : 'is-upcoming'))
+                      <li class="selection-progress-step {{ $stepState }}" data-step="{{ $stepIndex + 1 }}">
+                        <button type="button" class="btn btn-link" data-open-region-task="{{ $selectionStep['tab'] }}">{{ $selectionStep['label'] }}</button>
+                        <small>{{ $selectionStep['complete'] ? 'Complete' : ($currentSelectionStep === $stepIndex ? 'Next action' : 'Not started') }}</small>
+                      </li>
+                    @endforeach
+                  </ol>
+                </div>
             @if($isEventManager)
               <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
@@ -169,22 +209,19 @@
               @endif
             </div>
             @if($activeImport)
-              @php($selectedInvitations = $activeImport->invitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
-              @php($outstandingRegistrationCount = $selectedInvitations->whereNotIn('status', [\App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->count())
-              @php($regionalOpenPlaces = $regionTeams->sum(fn($team) => max(0, (int) $team->num_team_members - $selectedInvitations->where('team_id', $team->id)->count())))
               <div class="regional-summary mb-3" aria-label="Regional roster summary">
                 <span class="regional-summary-item"><strong>{{ $selectedInvitations->count() }}</strong> selected</span>
                 <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count() }}</strong> reserves</span>
                 <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)->count() }}</strong> paid</span>
-                <span class="regional-summary-item"><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong> need contact</span>
+                <span class="regional-summary-item"><strong>{{ $missingContactCount }}</strong> need contact</span>
               </div>
-              @if($outstandingRegistrationCount || $regionalOpenPlaces || $selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count())
+              @if($outstandingRegistrationCount || $regionalOpenPlaces || $missingContactCount)
                 <div class="alert alert-warning mb-3">
                   <strong class="d-block mb-2">What needs attention</strong>
                   <div class="regional-attention">
                     @if($outstandingRegistrationCount)<span class="badge bg-label-warning">{{ $outstandingRegistrationCount }} registration/payment {{ \Illuminate\Support\Str::plural('response', $outstandingRegistrationCount) }} outstanding</span>@endif
                     @if($regionalOpenPlaces)<span class="badge bg-label-danger">{{ $regionalOpenPlaces }} open team {{ \Illuminate\Support\Str::plural('place', $regionalOpenPlaces) }}</span>@endif
-                    @if($selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count())<span class="badge bg-label-danger">{{ $selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count() }} without contact email</span>@endif
+                    @if($missingContactCount)<span class="badge bg-label-danger">{{ $missingContactCount }} without contact email</span>@endif
                   </div>
                 </div>
               @endif
@@ -203,6 +240,9 @@
                 </div>
               </div>
             </details>
+
+              </div>
+              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-teams" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-teams-tab" tabindex="0">
 
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Regional teams &amp; players</strong><div class="small text-muted">Region-scoped workspace · ranking positions, selection history and payment state are read-only records.</div></div>
@@ -452,6 +492,39 @@
             @else
               <div class="alert alert-warning">No regional teams exist yet. Link a ranking series and set up the region’s categories and teams below.</div>
             @endif
+              </div>
+
+              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-invitations" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-invitations-tab" tabindex="0">
+                @if(!$activeImport)
+                  <div class="alert alert-info mb-0">Complete the ranking and team setup first, then import the ranked players to prepare invitations.</div>
+                @else
+                  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3"><div><h6 class="mb-1">Invitation campaign</h6><div class="text-muted small">Manage reserve promotion, delivery, response and payment deadlines.</div></div><span class="badge bg-label-{{ $activeImport->status === 'sent' ? 'success' : 'warning' }}">{{ ucfirst($activeImport->status) }}</span></div>
+                  <div class="regional-readonly rounded p-2 mb-3 small"><strong>Ranking snapshot:</strong> <code>{{ $activeImport->ranking_run_id }}</code> · locked to preserve the imported selection record.</div>
+                  <form method="POST" action="{{ route('backend.team-selection.replacement-mode.update', [$event, $activeImport]) }}" class="border rounded p-3">@csrf @method('PATCH')
+                    <div class="row g-3 align-items-end">
+                      <div class="col-lg-8"><label class="form-label">Reserve replacement</label><select name="replacement_mode" class="form-select"><option value="automatic" @selected($activeImport->auto_replacement_enabled)>Automatic</option><option value="manual" @selected(!$activeImport->auto_replacement_enabled)>Manual approval</option></select></div>
+                      <div class="col-lg-4 d-grid"><button class="btn btn-outline-primary">Save setting</button></div>
+                      <div class="col-12 form-text">Automatic invites the next eligible reserve immediately. Manual leaves a visible vacancy with an <strong>Invite next reserve</strong> button. A replacement keeps the campaign deadline when it is still more than 24 hours away; otherwise they receive 24 hours from invitation, capped before the event starts.</div>
+                    </div>
+                  </form>
+                  @php($emailLogs = $activeImport->invitations->flatMap->emailLogs)
+                  @if($activeImport->status === 'sent')
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Sent: {{ $emailLogs->where('status','sent')->count() }}</span><span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span><span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>@if($emailLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>@endif</div>
+                    <form method="POST" action="{{ route('backend.team-selection.deadlines.extend', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf @method('PATCH')
+                      <div class="col-md-3"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ $activeImport->response_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
+                      <div class="col-md-3"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ $activeImport->payment_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
+                      <div class="col-md-3"><label class="form-label">Last reserve promotion</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ ($activeImport->replacement_payment_deadline ?: $activeImport->payment_deadline)?->format('Y-m-d\\TH:i') }}" class="form-control" required><div class="form-text">A promoted reserve may receive their own later deadline, capped before the event.</div></div>
+                      <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Extend deadlines</button></div>
+                    </form>
+                  @else
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-mail-cog me-1"></i>Prepare invitations</button><span class="text-muted small">Review the message, deadlines and exact recipients before sending.</span></div>
+                    <form method="POST" action="{{ route('backend.team-selection.restart', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Remove this unsent import and clear its generated roster places?');">@csrf<button class="btn btn-sm btn-outline-danger">Restart draft import</button></form>
+                  @endif
+                @endif
+              </div>
+
+              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-setup" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-setup-tab" tabindex="0">
+                <div class="mb-3"><h6 class="mb-1">Ranking and team setup</h6><p class="text-muted small mb-0">Link the regional ranking source and create its event categories and teams.</p></div>
             <form method="POST" action="{{ route('backend.team-selection.link', [$event, $eventRegion]) }}" class="row g-2 align-items-end">@csrf
               <div class="col-lg-7"><label class="form-label">Ranking series</label><select name="series_id" class="form-select" {{ $activeImport ? 'disabled' : '' }} required><option value="">Choose {{ $event->start_date?->format('Y') }} series…</option>@foreach($series as $item)<option value="{{ $item->id }}" @selected($source?->series_id === $item->id)>{{ $item->name }}{{ $readySeriesIds->contains($item->id) ? ' · latest ranking published' : ' · ranking not ready' }}</option>@endforeach</select></div>
               <div class="col-sm-5 col-lg-2"><label class="form-label">Reserves per team</label><input type="number" name="reserve_count" min="0" max="20" value="{{ $source?->reserve_count ?? 2 }}" class="form-control" {{ $activeImport ? 'disabled' : '' }} required></div>
@@ -471,40 +544,22 @@
               @if(!$sourceReady)
                 <div class="alert alert-warning mt-3 mb-0"><strong>Player import unavailable:</strong> review and publish a canonical ranking for {{ $source->series?->name }} first. You can still create its categories and teams now.</div>
               @endif
-            @elseif($activeImport)
-              <div class="regional-readonly rounded p-2 mt-3 small"><strong>Ranking snapshot:</strong> <code>{{ $activeImport->ranking_run_id }}</code> · locked to preserve the imported selection record.</div>
-              <form method="POST" action="{{ route('backend.team-selection.replacement-mode.update', [$event, $activeImport]) }}" class="border rounded p-3 mt-3">@csrf @method('PATCH')
-                <div class="row g-3 align-items-end">
-                  <div class="col-lg-8"><label class="form-label">Reserve replacement</label><select name="replacement_mode" class="form-select"><option value="automatic" @selected($activeImport->auto_replacement_enabled)>Automatic</option><option value="manual" @selected(!$activeImport->auto_replacement_enabled)>Manual approval</option></select></div>
-                  <div class="col-lg-4 d-grid"><button class="btn btn-outline-primary">Save setting</button></div>
-                  <div class="col-12 form-text">Automatic invites the next eligible reserve immediately. Manual leaves a visible vacancy with an <strong>Invite next reserve</strong> button. A replacement keeps the campaign deadline when it is still more than 24 hours away; otherwise they receive 24 hours from invitation, capped before the event starts.</div>
-                </div>
-              </form>
-              @php($emailLogs = $activeImport->invitations->flatMap->emailLogs)
-              @if($activeImport->status === 'sent')
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-                  <span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span>
-                  <span class="badge bg-label-success">Sent: {{ $emailLogs->where('status','sent')->count() }}</span>
-                  <span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span>
-                  <span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>
-                  @if($emailLogs->where('status','failed')->isNotEmpty())
-                    <form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>
-                  @endif
-                </div>
-                <form method="POST" action="{{ route('backend.team-selection.deadlines.extend', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf @method('PATCH')
-                  <div class="col-md-3"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ $activeImport->response_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
-                  <div class="col-md-3"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ $activeImport->payment_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
-                  <div class="col-md-3"><label class="form-label">Last reserve promotion</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ ($activeImport->replacement_payment_deadline ?: $activeImport->payment_deadline)?->format('Y-m-d\\TH:i') }}" class="form-control" required><div class="form-text">A promoted reserve may receive their own later deadline, capped before the event.</div></div>
-                  <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Extend deadlines</button></div>
-                </form>
-              @endif
-              @if($activeImport->status === 'draft')
-                <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-mail-cog me-1"></i>Prepare invitations</button><span class="text-muted small">Review the message, deadlines and exact recipients before sending.</span></div>
-                <form method="POST" action="{{ route('backend.team-selection.restart', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Remove this unsent import and clear its generated roster places?');">@csrf<button class="btn btn-sm btn-outline-danger">Restart draft import</button></form>
-              @endif
             @endif
+              </div>
 
-            <hr class="my-4">
+              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-messages" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-messages-tab" tabindex="0">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+              <div><h6 class="mb-1">Messages &amp; clothing</h6><p class="text-muted small mb-0">Contact selected players and manage the regional clothing workflow.</p></div>
+              <div class="d-flex flex-wrap gap-2">
+                @if($isEventManager)
+                  <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
+                  <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
+                @endif
+                @if($eventRegion->region?->usesOnlineClothingOrders())
+                  <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                @endif
+              </div>
+            </div>
             <h6>Regional announcements</h6>
             <p class="text-muted small">Visible only to this region’s invited players. Email, when selected, is sent only to active selected players in this region.</p>
             @foreach($eventRegion->announcements as $announcement)
@@ -518,6 +573,8 @@
               <div class="col-12"><details><summary>Review {{ $regionAnnouncementRecipients->count() }} exact email recipient(s)</summary><div class="small text-muted mt-1">@forelse($regionAnnouncementRecipients as $email)<div>{{ $email }}</div>@empty No active selected players currently have a valid email address. @endforelse</div></details></div>
               <div class="col-12 d-flex flex-wrap gap-3 align-items-center"><div><div class="form-check"><input type="hidden" name="send_email" value="0"><input class="form-check-input" type="checkbox" name="send_email" value="1" id="send-region-announcement-{{ $eventRegion->id }}" @disabled($regionAnnouncementRecipients->isEmpty())><label class="form-check-label" for="send-region-announcement-{{ $eventRegion->id }}">Also email these {{ $regionAnnouncementRecipients->count() }} recipient(s)</label></div><div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-region-announcement-{{ $eventRegion->id }}"><label class="form-check-label" for="confirm-region-announcement-{{ $eventRegion->id }}">I reviewed and confirm this exact recipient list</label></div></div><button class="btn btn-outline-primary ms-auto">Publish regional announcement</button></div>
             </form>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -693,6 +750,39 @@
 @section('page-script')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[id^="final-team-reminders-"]').forEach(function (modal) {
+    document.body.appendChild(modal);
+  });
+  const workspaceStateKey = 'team-selection-workspace-{{ $event->id }}';
+  const openWorkspace = function (regionId, taskKey, updateLocation = true) {
+    const regionTab = document.querySelector(`[data-bs-target="#region-panel-${regionId}"]`);
+    const taskTab = document.querySelector(`#region-${regionId}-${taskKey}-tab`);
+    if (!taskTab || !window.bootstrap?.Tab) return;
+    if (regionTab) bootstrap.Tab.getOrCreateInstance(regionTab).show();
+    bootstrap.Tab.getOrCreateInstance(taskTab).show();
+    const state = `${regionId}/${taskKey}`;
+    sessionStorage.setItem(workspaceStateKey, state);
+    if (updateLocation) history.replaceState(null, '', `${window.location.pathname}${window.location.search}#region-${state}`);
+  };
+  const requestedWorkspace = window.location.hash.match(/^#region-(\d+)\/(overview|teams|invitations|messages|setup)$/)?.slice(1).join('/')
+    || sessionStorage.getItem(workspaceStateKey);
+  if (requestedWorkspace) {
+    const [requestedRegion, requestedTask] = requestedWorkspace.replace(/^region-/, '').split('/');
+    openWorkspace(requestedRegion, requestedTask, false);
+  }
+  document.querySelectorAll('[data-region-task]').forEach(function (taskTab) {
+    taskTab.addEventListener('shown.bs.tab', function () {
+      const regionId = taskTab.closest('[data-region-task-tabs]')?.dataset.regionTaskTabs;
+      if (regionId) openWorkspace(regionId, taskTab.dataset.regionTask);
+    });
+  });
+  document.querySelectorAll('[data-open-region-task]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const regionId = button.closest('[data-region-task-tabs]')?.dataset.regionTaskTabs
+        || button.closest('.region-workspace-card')?.querySelector('[data-region-task-tabs]')?.dataset.regionTaskTabs;
+      if (regionId) openWorkspace(regionId, button.dataset.openRegionTask);
+    });
+  });
   document.querySelectorAll('[data-final-reminder-form]').forEach(function (reminderForm) {
     const summaries = JSON.parse(reminderForm.dataset.reminderSummaries || '{}');
     const hashes = JSON.parse(reminderForm.dataset.reminderHashes || '{}');

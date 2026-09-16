@@ -7,6 +7,7 @@
   .audit-ok   { color: #28a745; }
   .audit-warn { color: #ffc107; }
   .audit-fail { color: #dc3545; }
+  .audit-snapshot-meta { overflow-wrap: anywhere; }
 </style>
 @endsection
 
@@ -15,12 +16,12 @@
 
   {{-- HEADER --}}
   <div class="card mb-4">
-    <div class="card-body d-flex justify-content-between align-items-center">
+    <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
       <div>
         <h4 class="mb-1">Ranking Audit</h4>
         <div class="text-muted">{{ $series->name }} ({{ $series->year }})</div>
       </div>
-      <div class="d-flex gap-2">
+      <div class="d-flex flex-wrap gap-2">
         <a href="{{ route('ranking.series.list', $series) }}" class="btn btn-outline-secondary">
           <i class="ti ti-arrow-left me-1"></i> Back to Ranking List
         </a>
@@ -29,6 +30,23 @@
         </a>
       </div>
     </div>
+  </div>
+
+  <div class="alert alert-primary d-flex flex-column flex-md-row justify-content-between gap-2" role="status">
+    <div>
+      <strong>Active ranking snapshot</strong>
+      @if($activeRunId)
+        <span class="badge bg-primary ms-1">{{ ucfirst($activeStatus) }}</span>
+        <div class="small audit-snapshot-meta mt-1">Run {{ $activeRunId }}</div>
+      @else
+        <div class="small mt-1">No calculated, reviewed or published ranking is currently available.</div>
+      @endif
+    </div>
+    @if($archivedRankingRows > 0)
+      <div class="small align-self-md-center">
+        {{ $archivedRankingRows }} archived {{ Str::plural('row', $archivedRankingRows) }} excluded from the totals below.
+      </div>
+    @endif
   </div>
 
   {{-- SUMMARY STATS --}}
@@ -95,7 +113,7 @@
     <div class="card-header">
       <h5 class="mb-0"><i class="ti ti-calendar-event me-1"></i> Events & Results</h5>
     </div>
-    <div class="card-body p-0">
+    <div class="card-body p-0 table-responsive">
       <table class="table table-sm table-striped align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -143,7 +161,7 @@
     <div class="card-header">
       <h5 class="mb-0"><i class="ti ti-trophy me-1"></i> Category Ranking Audit</h5>
     </div>
-    <div class="card-body p-0">
+    <div class="card-body p-0 table-responsive">
       <table class="table table-sm table-striped align-middle mb-0">
         <thead class="table-light">
           <tr>
@@ -207,7 +225,7 @@
   @if($rankingsByCategory->isNotEmpty())
     <div class="card mb-4">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ti ti-list me-1"></i> Current Rankings Snapshot</h5>
+        <h5 class="mb-0"><i class="ti ti-list me-1"></i> Active Rankings Snapshot</h5>
       </div>
       <div class="card-body">
         <div class="row g-3">
@@ -218,7 +236,7 @@
                   <strong>{{ optional($rows->first()->category)->name ?? 'Category '.$categoryId }}</strong>
                   <span class="badge bg-secondary float-end">{{ $rows->count() }} players</span>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0 table-responsive">
                   <table class="table table-sm mb-0">
                     <thead class="table-light">
                       <tr>

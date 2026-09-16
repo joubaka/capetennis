@@ -848,6 +848,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('West Coast Primary Schools 2026')
             ->assertSee('Cape Winelands Primary Schools 2026')
             ->assertSee('data-region-tabs', false)
+            ->assertSee('data-region-task-tabs', false)
+            ->assertSee('Selection progress')
+            ->assertSee('Teams &amp; players', false)
+            ->assertSee('Messages &amp; clothing', false)
+            ->assertSee('data-open-region-task="setup"', false)
             ->assertSee('data-bs-toggle="tab"', false);
         $this->actingAs($admin)->get(route('events.show', $event))
             ->assertOk()
@@ -900,7 +905,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertDontSee('Back to event')
             ->assertSee(route('events.show', $event), false)
             ->assertDontSee('Private Other Region')
-            ->assertDontSee('data-region-tabs', false);
+            ->assertDontSee('data-region-tabs', false)
+            ->assertSee('data-region-task-tabs', false)
+            ->assertSee('Selection progress');
         $this->actingAs($manager)->get(route('events.show', $event))
             ->assertOk()
             ->assertSee('Regional administration')

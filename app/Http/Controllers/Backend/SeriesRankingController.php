@@ -550,14 +550,31 @@ class SeriesRankingController extends Controller
       ];
     })->values();
 
-    // Existing ranking rows
+    // Show one canonical, active snapshot only. Archived snapshots are retained
+    // for rollback/audit history and must not be mixed into the current totals.
+    $activeRunId = SeriesRanking::where('series_id', $series->id)
+      ->whereIn('status', ['calculated', 'reviewed', 'published'])
+      ->whereNotNull('run_id')
+      ->orderByDesc('updated_at')
+      ->value('run_id');
+
     $existingRankings = SeriesRanking::where('series_id', $series->id)
+      ->whereIn('status', ['calculated', 'reviewed', 'published'])
+      ->when(
+        $activeRunId,
+        fn($query) => $query->where('run_id', $activeRunId),
+        fn($query) => $query->whereRaw('1 = 0')
+      )
       ->orderBy('category_id')
       ->orderBy('rank_position')
       ->with(['player', 'category'])
       ->get();
 
     $rankingsByCategory = $existingRankings->groupBy('category_id');
+    $activeStatus = $existingRankings->first()?->status;
+    $archivedRankingRows = SeriesRanking::where('series_id', $series->id)
+      ->where('status', 'archived')
+      ->count();
 
     return view('backend.ranking.series.audit', [
       'series'           => $series,
@@ -566,6 +583,9 @@ class SeriesRankingController extends Controller
       'pointsMap'        => $pointsMap,
       'rankingsByCategory' => $rankingsByCategory,
       'totalRankingRows' => $existingRankings->count(),
+      'activeRunId'      => $activeRunId,
+      'activeStatus'     => $activeStatus,
+      'archivedRankingRows' => $archivedRankingRows,
     ]);
   }
 }

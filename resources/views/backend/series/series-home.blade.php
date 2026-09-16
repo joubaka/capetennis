@@ -30,14 +30,21 @@
   </div>
 
   @php
+    $seriesWorkflowStep = match (true) {
+      $stats['events'] === 0 => 1,
+      ! $activeRankingStatus => 2,
+      $activeRankingStatus === 'calculated' => 3,
+      $series->leaderboard_published => 5,
+      default => 4,
+    };
     $seriesNextStep = match (true) {
       $stats['events'] === 0 => [
         'title' => 'Add the first event',
         'message' => 'Use Manage Events to add the tournaments that must count towards this series.',
       ],
       $activeRankingStatus === 'calculated' => [
-        'title' => 'Check the ranking, then mark it reviewed',
-        'message' => 'Open Audit Rankings to check results and tie decisions. When everything is correct, use Mark Rankings Reviewed.',
+        'title' => 'Review the ranking, then accept it as correct',
+        'message' => 'Use Review Rankings to inspect the totals, scores and tie decisions. Only use Mark Rankings Reviewed after you are satisfied that it is correct.',
       ],
       $activeRankingStatus === 'reviewed' => [
         'title' => $reviewCampaign ? 'Finalize and publish the ranking' : 'Share the ranking for participant review',
@@ -69,23 +76,91 @@
           </span>
         </span>
         <div>
-          <h5 class="mb-1">How to manage this series</h5>
-          <p class="text-muted mb-0">Follow these steps in order. Return here after each step to continue.</p>
+          <h5 class="mb-1">Ranking progress</h5>
+          <p class="text-muted mb-0">Your current stage and the available next actions are shown below.</p>
         </div>
       </div>
 
       <div class="row g-3 small">
-        <div class="col-md-4">
-          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">1</span> Set up the series</div>
+        @php
+          $stepBadgeClass = fn (int $step) => match (true) {
+            $step < $seriesWorkflowStep => 'bg-label-success',
+            $step === $seriesWorkflowStep => 'bg-primary',
+            default => 'bg-label-secondary',
+          };
+          $stepState = fn (int $step) => match (true) {
+            $step < $seriesWorkflowStep => 'Done',
+            $step === $seriesWorkflowStep => 'Current',
+            default => 'Next',
+          };
+        @endphp
+
+        <div class="col-xl-3 col-md-6">
+          <div class="border rounded h-100 p-3 {{ $seriesWorkflowStep === 1 ? 'border-primary bg-label-primary' : '' }}">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <div class="fw-semibold"><span class="badge {{ $stepBadgeClass(1) }} me-1">1</span> Set up</div>
+            <span class="badge {{ $stepBadgeClass(1) }}">{{ $stepState(1) }}</span>
+          </div>
           <div class="text-muted">Add the events, choose how many results count, and confirm the points allocation.</div>
+          @if($seriesWorkflowStep === 1)
+            <div class="d-grid gap-1 mt-3">
+              <a href="{{ route('series.events', $series) }}" class="btn btn-sm btn-primary">Manage Events</a>
+              <a href="{{ route('series.settings', $series) }}" class="btn btn-sm btn-outline-primary">Series Settings</a>
+              <a href="{{ route('ranking.points', $series) }}" class="btn btn-sm btn-outline-primary">Points Allocation</a>
+            </div>
+          @endif
+          </div>
         </div>
-        <div class="col-md-4">
-          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">2</span> Calculate and check</div>
-          <div class="text-muted">Recalculate after results change, then use Audit Rankings to check scores, exclusions and ties.</div>
+        <div class="col-xl-3 col-md-6">
+          <div class="border rounded h-100 p-3 {{ $seriesWorkflowStep === 2 ? 'border-primary bg-label-primary' : '' }}">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <div class="fw-semibold"><span class="badge {{ $stepBadgeClass(2) }} me-1">2</span> Calculate</div>
+            <span class="badge {{ $stepBadgeClass(2) }}">{{ $stepState(2) }}</span>
+          </div>
+          <div class="text-muted">Build the ranking after the event results and ranking rules are ready.</div>
+          @if($seriesWorkflowStep === 2)
+            <div class="alert alert-primary py-2 px-3 mt-3 mb-0">Use <strong>Recalculate Rankings</strong> in the Rankings panel below.</div>
+          @endif
+          </div>
         </div>
-        <div class="col-md-4">
-          <div class="fw-semibold mb-1"><span class="badge bg-label-primary me-1">3</span> Review and publish</div>
-          <div class="text-muted">Mark the ranking reviewed, share it with participants if required, then finalize and publish it.</div>
+        <div class="col-xl-3 col-md-6">
+          <div class="border rounded h-100 p-3 {{ $seriesWorkflowStep === 3 ? 'border-primary bg-label-primary' : '' }}">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <div class="fw-semibold"><span class="badge {{ $stepBadgeClass(3) }} me-1">3</span> Review</div>
+            <span class="badge {{ $stepBadgeClass(3) }}">{{ $stepState(3) }}</span>
+          </div>
+          <div class="text-muted">Inspect totals, scores, exclusions and tie decisions, then accept the ranking as correct.</div>
+          @if($seriesWorkflowStep === 3)
+            <div class="d-grid gap-1 mt-3">
+              <a href="{{ route('ranking.series.list', $series) }}" class="btn btn-sm btn-primary">Review Rankings</a>
+              <a href="{{ route('ranking.series.audit', $series) }}" class="btn btn-sm btn-outline-primary">Audit Rankings</a>
+              <div class="text-primary mt-1"><i class="ti ti-arrow-down me-1"></i>Then mark it reviewed below.</div>
+            </div>
+          @endif
+          </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+          <div class="border rounded h-100 p-3 {{ $seriesWorkflowStep === 4 ? 'border-primary bg-label-primary' : '' }}">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <div class="fw-semibold"><span class="badge {{ $stepBadgeClass(4) }} me-1">4</span> Publish</div>
+            <span class="badge {{ $stepBadgeClass(4) }}">{{ $stepState(4) }}</span>
+          </div>
+          <div class="text-muted">Share for participant review if required, finalize, publish and control public visibility.</div>
+          @if($seriesWorkflowStep >= 4)
+            <div class="d-grid gap-1 mt-3">
+              @if($activeRankingStatus === 'reviewed')
+                <a href="{{ route('ranking.series.list', $series) }}" class="btn btn-sm btn-primary">
+                  {{ $reviewCampaign ? 'Open Participant Review' : 'Share for Review' }}
+                </a>
+                <div class="text-primary mt-1"><i class="ti ti-arrow-down me-1"></i>Publish from the Rankings panel below.</div>
+              @elseif($series->leaderboard_published)
+                <a href="{{ route('frontend.ranking.show', $series) }}" class="btn btn-sm btn-success">View Published Rankings</a>
+              @else
+                <a href="{{ route('series.settings', $series) }}" class="btn btn-sm btn-primary">Open Series Settings</a>
+              @endif
+            </div>
+          @endif
+          </div>
         </div>
       </div>
 
@@ -123,13 +198,19 @@
               <i class="ti ti-world-upload me-1"></i>{{ $reviewCampaign ? 'Finalize & Publish Rankings' : 'Publish Rankings' }}
             </button>
           @elseif($activeRankingStatus === 'calculated')
+            <a href="{{ route('ranking.series.list', $series) }}"
+               class="btn btn-outline-info">
+              <i class="ti ti-list-check me-1"></i>Review Rankings
+            </a>
             <button type="button"
                     class="btn btn-info ranking-lifecycle-action"
                     data-url="{{ route('ranking.series.ranking.review', $series) }}"
-                    data-confirm="Mark this calculated ranking as reviewed? You can publish it here after review.">
+                    data-modal-title="Accept ranking as correct?"
+                    data-confirm="This confirms that you have reviewed the ranking totals, scores and tie decisions and accept them as correct. You can publish the ranking after this step."
+                    data-confirm-label="Yes, Mark as Reviewed">
               <i class="ti ti-check me-1"></i>Mark Rankings Reviewed
             </button>
-            <small class="text-muted">Review is required before rankings can be published.</small>
+            <small class="text-muted">Review the details first. Marking reviewed records your acceptance and unlocks publication.</small>
           @else
             <button type="button" class="btn btn-outline-secondary" disabled>
               No Rankings Ready to Publish
@@ -255,6 +336,27 @@
 
 </div>
 
+{{-- RANKING LIFECYCLE CONFIRMATION MODAL --}}
+<div class="modal fade" id="rankingLifecycleModal" tabindex="-1" aria-labelledby="rankingLifecycleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rankingLifecycleModalLabel">Confirm ranking action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="rankingLifecycleModalMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+        <button type="button" class="btn btn-info" id="confirmRankingLifecycleAction">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{-- EMAIL ALL PLAYERS MODAL --}}
 <div class="modal fade" id="seriesEmailModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -299,11 +401,32 @@
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const lifecycleModalElement = document.getElementById('rankingLifecycleModal');
+  const lifecycleModal = new bootstrap.Modal(lifecycleModalElement);
+  const lifecycleModalTitle = document.getElementById('rankingLifecycleModalLabel');
+  const lifecycleModalMessage = document.getElementById('rankingLifecycleModalMessage');
+  const lifecycleConfirmButton = document.getElementById('confirmRankingLifecycleAction');
+  let pendingLifecycleButton = null;
+
   document.querySelectorAll('.ranking-lifecycle-action').forEach(button => {
-    button.addEventListener('click', async function () {
-      if (!window.confirm(button.dataset.confirm)) return;
+    button.addEventListener('click', function () {
+      pendingLifecycleButton = button;
+      lifecycleModalTitle.textContent = button.dataset.modalTitle || 'Confirm ranking action';
+      lifecycleModalMessage.textContent = button.dataset.confirm;
+      lifecycleConfirmButton.textContent = button.dataset.confirmLabel || 'Confirm';
+      lifecycleConfirmButton.className = button.classList.contains('btn-success')
+        ? 'btn btn-success'
+        : 'btn btn-info';
+      lifecycleModal.show();
+    });
+  });
+
+  lifecycleConfirmButton.addEventListener('click', async function () {
+      const button = pendingLifecycleButton;
+      if (!button) return;
 
       button.disabled = true;
+      lifecycleConfirmButton.disabled = true;
 
       try {
         const response = await fetch(button.dataset.url, {
@@ -317,12 +440,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!response.ok) throw new Error(payload.message || 'Ranking action failed.');
 
         toastr.success(payload.message);
+        lifecycleModal.hide();
         window.location.reload();
       } catch (error) {
         toastr.error(error.message || 'Ranking action failed.');
         button.disabled = false;
+        lifecycleConfirmButton.disabled = false;
       }
-    });
+  });
+
+  lifecycleModalElement.addEventListener('hidden.bs.modal', function () {
+    pendingLifecycleButton = null;
+    lifecycleConfirmButton.disabled = false;
   });
 
   const quill = new Quill('#seriesEmailEditor', {
