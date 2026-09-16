@@ -624,6 +624,33 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
     }
 
+    public function test_team_selection_email_uses_public_event_logo_and_falls_back_when_it_is_missing(): void
+    {
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->firstOrFail();
+        $invitation->load(['selectionImport.event', 'region', 'team', 'player']);
+
+        $source->event->update(['logo' => 'cavaliers-logo.png']);
+        $invitation->selectionImport->event->refresh();
+        $this->view('emails.team-selection.invitation', [
+            'invitation' => $invitation,
+            'kind' => 'invitation',
+            'campaign' => [],
+        ])->assertSee(asset('assets/img/logos/cavaliers-logo.png'), false)
+            ->assertDontSee(asset('storage/cavaliers-logo.png'), false);
+
+        $source->event->update(['logo' => 'missing-event-logo.png']);
+        $invitation->selectionImport->event->refresh();
+        $this->view('emails.team-selection.invitation', [
+            'invitation' => $invitation,
+            'kind' => 'invitation',
+            'campaign' => [],
+        ])->assertSee(asset('assets/img/logos/cape-tennis-logo-transparent.png'), false)
+            ->assertDontSee(asset('assets/img/logos/missing-event-logo.png'), false);
+    }
+
     public function test_sent_replacement_confirms_recipient_delivery_status_and_email_preview(): void
     {
         Queue::fake();

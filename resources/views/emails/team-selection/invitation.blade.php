@@ -2,7 +2,11 @@
   $event = $invitation->selectionImport?->event;
   $campaign = $campaign ?? [];
   $responseUrl = route('team-selection.invitations.show', $invitation);
-  $logo = $event?->logo ? asset('storage/'.$event->logo) : asset('assets/img/logos/cape-tennis-logo-transparent.png');
+  $eventLogo = basename((string) $event?->logo);
+  $eventLogoPath = $eventLogo !== '' ? 'assets/img/logos/'.$eventLogo : null;
+  $logo = $eventLogoPath && is_file(public_path($eventLogoPath))
+    ? asset($eventLogoPath)
+    : asset('assets/img/logos/cape-tennis-logo-transparent.png');
   $message = $campaign['message'] ?? $invitation->selectionImport?->email_message;
   $includeClothing = (bool) ($campaign['include_clothing'] ?? $invitation->selectionImport?->include_clothing);
   $eventDetails = $campaign['event'] ?? [];
