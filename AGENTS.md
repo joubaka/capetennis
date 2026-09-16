@@ -31,3 +31,11 @@
 - Run focused tests first and the complete feature suite for cross-cutting registration or payment changes.
 - Verify `git diff --check`, route registration, and Blade compilation before committing.
 - Do not run all pending production migrations blindly; inspect and run only those required for deployment.
+
+## Cape Tennis caretaker authority
+
+- For recurring repository care, use the project skill at `.codex/skills/cape-tennis-engineering/SKILL.md` and the specification in `docs/caretaker/AGENT_SPEC.md`.
+- The caretaker may inspect the repository and run read-only diagnostics automatically. Code and test edits must remain local and supervised.
+- Committing, pushing, opening pull requests, changing dependencies, and preparing a release require explicit approval.
+- Deployment, production migrations or data changes, publication, outbound communication, and payment or security configuration always require a fresh explicit authorization.
+- A daily check reports evidence and risks; it does not repair findings, mutate data, send mail, or deploy.

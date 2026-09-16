@@ -36,14 +36,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Check for dd() / dump() / var_dump()
-        run: |
-          if grep -rn --include="*.php" \
-            -e '\bdd(' -e '\bdump(' -e '\bvar_dump(' \
-            app/ database/ routes/ 2>/dev/null | grep -v "/vendor/"; then
-            echo "::error::Found dd()/dump()/var_dump() in committed code — remove before merging"
-            exit 1
-          fi
-          echo "✅ No debug output calls found"
+        run: php scripts/check-debug-calls.php app database routes
 
       - name: Check for direct financial mutations (raw DB on wallet tables)
         run: |

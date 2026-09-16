@@ -208,7 +208,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('Decline opens a confirmation window with an optional reason.', $html);
         $this->assertStringNotContainsString('Arrive at 08:00 at the main venue.', $html);
         $this->assertStringNotContainsString('Event information', $html);
-        $this->assertStringContainsString('table-layout:fixed', $html);
+        $this->assertStringContainsString('max-width:640px', $html);
+        $this->assertStringContainsString('overflow-wrap:anywhere', $html);
         $this->assertStringContainsString('word-break:break-word', $html);
     }
 
@@ -998,7 +999,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertDontSee('Back to event')
             ->assertSee(route('events.show', $event), false)
             ->assertDontSee('Private Other Region')
-            ->assertDontSee('data-region-tabs', false)
+            ->assertDontSee('aria-label="Event regions" data-region-tabs', false)
             ->assertSee('data-region-task-tabs', false)
             ->assertSee('Selection progress');
         $this->actingAs($manager)->get(route('events.show', $event))

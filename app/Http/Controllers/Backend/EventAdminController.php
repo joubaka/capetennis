@@ -215,10 +215,14 @@ class EventAdminController extends Controller
       ->map(fn ($teamId) => (int) $teamId)
       ->unique();
     if ($explicitTeamIds->isNotEmpty()) {
-      $event->regions->each(function (TeamRegion $region) use ($explicitTeamIds): void {
-        $region->setRelation('teams', $region->teams
-          ->filter(fn (Team $team) => $explicitTeamIds->contains((int) $team->id))
-          ->values());
+      $explicitTeamsByRegion = Team::query()->withoutGlobalScopes()
+        ->whereIn('id', $explicitTeamIds)
+        ->with(['players', 'team_players_no_profile', 'category.category'])
+        ->get()
+        ->groupBy(fn (Team $team) => (int) $team->region_id);
+
+      $event->regions->each(function (TeamRegion $region) use ($explicitTeamsByRegion): void {
+        $region->setRelation('teams', $explicitTeamsByRegion->get((int) $region->id, collect())->values());
       });
     }
 
