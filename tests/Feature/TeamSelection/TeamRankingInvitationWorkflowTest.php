@@ -945,7 +945,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertDatabaseHas('teams', ['id' => $assignedTeam->id, 'name' => 'Managed safely', 'num_team_members' => 4, 'published' => 1]);
         $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
             ->assertOk()
-            ->assertSee('Publish all teams')
+            ->assertSee('All teams published')
             ->assertSee('Unpublish')
             ->assertSee('Clothing ordering closed');
         $this->actingAs($manager)->patchJson(route('backend.team-selection.teams.publication.update', [$event, $first, $assignedTeam]), [
@@ -1162,6 +1162,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertDontSee('>More</button>', false)
             ->assertSee('Regional teams & players')
             ->assertSee('Region-scoped workspace')
+            ->assertSee('How to manage teams in this region')
+            ->assertSee('Replace an unpaid player')
+            ->assertSee('Paid players cannot be replaced here')
+            ->assertSee('Fill an open place')
+            ->assertSee('Change player order')
+            ->assertSee('Manage clothing')
             ->assertSee($team->name)
             ->assertSee($players->first()->full_name)
             ->assertSee('Rank 1')

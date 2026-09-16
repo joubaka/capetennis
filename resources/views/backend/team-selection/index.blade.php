@@ -22,6 +22,11 @@
   .regional-team-card .replacement-player-form { min-width: 20rem; max-width: min(26rem, 80vw); }
   .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
   .regional-readonly .dropdown-menu, .regional-team-card .dropdown-menu { min-width: 15rem; }
+  .regional-help { border: 1px solid #cfe0f4; border-radius: .65rem; background: #f7fbff; }
+  .regional-help > summary { cursor: pointer; list-style: none; padding: .85rem 1rem; }
+  .regional-help > summary::-webkit-details-marker { display: none; }
+  .regional-help-step { border-left: 3px solid #80aee0; padding-left: .75rem; }
+  .regional-attention { display: flex; flex-wrap: wrap; gap: .5rem; }
   .region-action-status { padding: .45rem 1rem .3rem; color: #68778c; font-size: .75rem; }
   .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
   .imported-roster-sortable tr.is-dragging { opacity: .45; }
@@ -92,6 +97,7 @@
       @php($unlinkedImportedRecipients = $regionImportedCohorts->get('unlinked_imported', collect()))
       @php($linkedUnpaidRecipients = $regionImportedCohorts->get('linked_unpaid', collect()))
       @php($allLinkedImportedRecipients = $regionImportedCohorts->get('linked_all', collect()))
+      @php($unpublishedTeamCount = $regionTeams->where('published', false)->count())
       <div
         id="region-panel-{{ $eventRegion->id }}"
         class="{{ $eventRegions->count() > 1 ? 'tab-pane fade'.($loop->first ? ' show active' : '') : 'col-12' }}"
@@ -164,26 +170,54 @@
             </div>
             @if($activeImport)
               @php($selectedInvitations = $activeImport->invitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
+              @php($outstandingRegistrationCount = $selectedInvitations->whereNotIn('status', [\App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->count())
+              @php($regionalOpenPlaces = $regionTeams->sum(fn($team) => max(0, (int) $team->num_team_members - $selectedInvitations->where('team_id', $team->id)->count())))
               <div class="regional-summary mb-3" aria-label="Regional roster summary">
                 <span class="regional-summary-item"><strong>{{ $selectedInvitations->count() }}</strong> selected</span>
                 <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count() }}</strong> reserves</span>
                 <span class="regional-summary-item"><strong>{{ $activeImport->invitations->where('status', \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)->count() }}</strong> paid</span>
                 <span class="regional-summary-item"><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong> need contact</span>
               </div>
+              @if($outstandingRegistrationCount || $regionalOpenPlaces || $selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count())
+                <div class="alert alert-warning mb-3">
+                  <strong class="d-block mb-2">What needs attention</strong>
+                  <div class="regional-attention">
+                    @if($outstandingRegistrationCount)<span class="badge bg-label-warning">{{ $outstandingRegistrationCount }} registration/payment {{ \Illuminate\Support\Str::plural('response', $outstandingRegistrationCount) }} outstanding</span>@endif
+                    @if($regionalOpenPlaces)<span class="badge bg-label-danger">{{ $regionalOpenPlaces }} open team {{ \Illuminate\Support\Str::plural('place', $regionalOpenPlaces) }}</span>@endif
+                    @if($selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count())<span class="badge bg-label-danger">{{ $selectedInvitations->filter(fn($i) => !$recipientEmailFor($i))->count() }} without contact email</span>@endif
+                  </div>
+                </div>
+              @endif
             @endif
+
+            <details class="regional-help mb-3">
+              <summary class="d-flex justify-content-between align-items-center gap-2"><span><strong><i class="ti ti-help-circle me-1"></i>How to manage teams in this region</strong><span class="d-block small text-muted mt-1">Replacement, reserves, reminders, clothing and publishing instructions.</span></span><span class="badge bg-label-primary">View steps</span></summary>
+              <div class="border-top p-3">
+                <div class="row g-3 small">
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Replace an unpaid player</strong><div class="text-muted">Select <strong>Show team</strong>, find the player, choose <strong>Change player</strong>, select the next reserve or another player profile, give a reason, then confirm. Paid players cannot be replaced here.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Fill an open place</strong><div class="text-muted">Select <strong>Show team</strong>. A withdrawn or declined place shows <strong>Invite next reserve</strong>; an eligible reserve may also show <strong>Activate as Rank</strong>.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then drag players into the required order.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong> or <strong>Incomplete clothing reminder</strong> above. Review the regional audience and exact recipient count before sending.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Manage clothing</strong><div class="text-muted">Use <strong>Clothing setup</strong> above to review items and sizes. Use <strong>Region actions</strong> to open or close clothing ordering.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Publish teams</strong><div class="text-muted">Resolve open places first, review each team, then select <strong>Publish all teams</strong>. Published teams can still be opened and reviewed.</div></div>
+                </div>
+              </div>
+            </details>
 
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Regional teams &amp; players</strong><div class="small text-muted">Region-scoped workspace · ranking positions, selection history and payment state are read-only records.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
                 @if($activeImport?->status === 'draft')
                   <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
-                @elseif($regionTeams->isNotEmpty())
+                @elseif($unpublishedTeamCount > 0)
                   <button type="button" class="btn btn-sm btn-success publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-1"></i>Publish all teams</button>
+                @elseif($regionTeams->isNotEmpty())
+                  <span class="badge bg-label-success"><i class="ti ti-circle-check me-1"></i>All teams published</span>
                 @endif
                 <div class="dropdown">
                   <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="ti ti-dots me-1"></i>Region actions</button>
                   <div class="dropdown-menu dropdown-menu-end">
-                    @if($activeImport?->status === 'draft' && $regionTeams->isNotEmpty())
+                    @if($activeImport?->status === 'draft' && $unpublishedTeamCount > 0)
                       <button type="button" class="dropdown-item publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-2"></i>Publish all teams</button>
                     @endif
                     @if($isEventManager)
@@ -216,6 +250,7 @@
                 @foreach($regionTeams as $regionTeam)
                   @php($teamInvitations = $activeImport?->invitations?->where('team_id', $regionTeam->id)->sortBy('queue_position') ?? collect())
                   @php($teamSelected = $teamInvitations->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]))
+                  @php($teamOpenPlaceCount = max(0, (int) $regionTeam->num_team_members - $teamSelected->count()))
                   @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
                   @php($eligibleTeamReserves = $teamReserves->filter(fn($reserve) => $recipientEmailFor($reserve)))
                   @php($openRosterRanks = (int) $regionTeam->num_team_members > 0 ? collect(range(1, (int) $regionTeam->num_team_members))->reject(fn($rank) => $teamSelected->contains(fn($selected) => (int) $selected->roster_rank === $rank))->values() : collect())
@@ -233,6 +268,7 @@
                           @endif
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
+                          @if($activeImport && $teamOpenPlaceCount > 0)<span class="badge bg-label-danger">{{ $teamOpenPlaceCount }} open {{ \Illuminate\Support\Str::plural('place', $teamOpenPlaceCount) }}</span>@endif
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication-status>{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
                           <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
                           <div class="dropdown">
