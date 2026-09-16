@@ -105,9 +105,10 @@
       @php($contactEmailsFor = fn($invitation) => $teamSelectionContacts->emails($invitation->player))
       @php($rawContactEmailsFor = fn($invitation) => $teamSelectionContacts->rawEmails($invitation->player))
       @php($recipientEmailFor = fn($invitation) => $contactEmailsFor($invitation)->first())
+      @php($usesRegionalClothing = (bool) $eventRegion->region?->usesOnlineClothingOrders())
       @php($regionClothingItems = $eventRegion->region?->clothingItems ?? collect())
       @php($clothingCatalogueReady = $regionClothingItems->isNotEmpty() && $regionClothingItems->every(fn($item) => (float)$item->price > 0 && $item->sizes->isNotEmpty()))
-      @php($clothingAvailable = $eventRegion->region?->usesOnlineClothingOrders() && (bool)$eventRegion->region?->clothing_order && $clothingCatalogueReady)
+      @php($clothingAvailable = $usesRegionalClothing && (bool)$eventRegion->region?->clothing_order && $clothingCatalogueReady)
       @php($regionManager = $regionManagers->get($eventRegion->id))
       @php($defaultCandidates = $defaultRegionManagerCandidates->get($eventRegion->id, collect()))
       @php($regionAnnouncementRecipients = $announcementRecipients->get($eventRegion->id, collect()))
@@ -157,14 +158,14 @@
           </div>
           <div class="card-body">
             <div class="nav nav-pills region-task-tabs" role="tablist" aria-label="{{ $eventRegion->region?->region_name }} workspace" data-region-task-tabs="{{ $eventRegion->id }}">
-              @foreach(['overview' => ['ti-layout-dashboard', 'Overview'], 'teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-mail-forward', 'Invitations'], 'messages' => ['ti-message-circle', 'Messages & clothing'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
+              @foreach(['overview' => ['ti-layout-dashboard', 'Overview'], 'teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-mail-forward', 'Invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
                 <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="region-{{ $eventRegion->id }}-{{ $taskKey }}-tab" data-bs-toggle="tab" data-bs-target="#region-{{ $eventRegion->id }}-{{ $taskKey }}" type="button" role="tab" aria-controls="region-{{ $eventRegion->id }}-{{ $taskKey }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" data-region-task="{{ $taskKey }}"><i class="ti {{ $taskIcon }}"></i>{{ $taskLabel }}@if($taskKey === 'teams' && $unpublishedTeamCount)<span class="badge bg-label-warning">{{ $unpublishedTeamCount }}</span>@endif</button>
               @endforeach
             </div>
             <div class="tab-content">
               <div class="tab-pane fade show active region-task-panel" id="region-{{ $eventRegion->id }}-overview" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-overview-tab" tabindex="0">
                 <div class="mb-3">
-                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h6 class="mb-1">Selection progress</h6><p class="text-muted small mb-0">Follow the regional workflow, or open any available area directly.</p></div>@if($currentSelectionStep === false)<span class="badge bg-label-success"><i class="ti ti-circle-check me-1"></i>Workflow complete</span>@else<span class="badge bg-label-primary">Step {{ $currentSelectionStep + 1 }} of {{ count($selectionSteps) }}</span>@endif</div>
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h6 class="mb-1">Selection progress</h6><p class="text-muted small mb-0">Click the highlighted next step to open the next available options, or open any available area directly.</p></div>@if($currentSelectionStep === false)<span class="badge bg-label-success"><i class="ti ti-circle-check me-1"></i>Workflow complete</span>@else<span class="badge bg-label-primary">Step {{ $currentSelectionStep + 1 }} of {{ count($selectionSteps) }}</span>@endif</div>
                   <ol class="selection-progress" aria-label="Regional selection progress">
                     @foreach($selectionSteps as $stepIndex => $selectionStep)
                       @php($stepState = $selectionStep['complete'] ? 'is-complete' : ($currentSelectionStep === $stepIndex ? 'is-current' : 'is-upcoming'))
@@ -177,17 +178,17 @@
                 </div>
             @if($isEventManager)
               <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
+                <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-clothing-enabled="{{ $usesRegionalClothing ? '1' : '0' }}" data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
                   <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
                   <input type="hidden" name="recipient_hash" data-reminder-hash>
                   <div class="modal-header"><div><h5 class="modal-title">Send {{ $eventRegion->region?->region_name }} reminders</h5><div class="small text-muted">Only active invitations in this region are included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                   <div class="modal-body">
                     <div class="row g-3">
-                      <div class="col-md-6"><label class="form-label">Reminder</label><select class="form-select" name="kind" data-reminder-kind required><option value="registration_clothing">Registration and clothing reminder</option><option value="incomplete_clothing">Incomplete clothing reminder</option></select></div>
-                      <div class="col-md-6"><label class="form-label">Send to</label><select class="form-select" name="audience" data-reminder-audience required><option value="all">All active players in this region</option><option value="registered">Registered players in this region</option><option value="unregistered">Unregistered players in this region</option></select></div>
+                      <div class="col-md-6"><label class="form-label">Reminder</label><select class="form-select" name="kind" data-reminder-kind required><option value="registration_clothing">{{ $usesRegionalClothing ? 'Registration and clothing reminder' : 'Registration reminder' }}</option>@if($usesRegionalClothing)<option value="incomplete_clothing">Incomplete clothing reminder</option>@endif</select></div>
+                      <div class="col-md-6"><label class="form-label">Send to</label><select class="form-select" name="audience" data-reminder-audience required>@if($usesRegionalClothing)<option value="all">All active players in this region</option><option value="registered">Registered players in this region</option>@endif<option value="unregistered">Unregistered players in this region</option></select></div>
                     </div>
                     <div class="alert alert-primary mt-3 mb-3" data-reminder-summary></div>
-                    <div class="border rounded p-3 bg-light"><strong data-reminder-preview-title>Registration is closing</strong><p class="mb-1 mt-2" data-reminder-preview-copy>Unregistered players receive their registration/payment link. Registered players receive their clothing action link.</p><small class="text-muted">One email is sent per address. Where a parent receives mail for several players in this region, all affected players and their individual links are included.</small></div>
+                    <div class="border rounded p-3 bg-light"><strong data-reminder-preview-title>Registration is closing</strong><p class="mb-1 mt-2" data-reminder-preview-copy>{{ $usesRegionalClothing ? 'Unregistered players receive their registration/payment link. Registered players receive their clothing action link.' : 'Unregistered players receive their registration/payment link.' }}</p><small class="text-muted">One email is sent per address. Where a parent receives mail for several players in this region, all affected players and their individual links are included.</small></div>
                     <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-final-reminders-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-final-reminders-{{ $eventRegion->id }}">I reviewed this region’s reminder and recipient group.</label></div>
                   </div>
                   <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-reminder-submit onclick="return confirm('Queue this reminder for the reviewed regional recipients?');">Send reminder</button></div>
@@ -229,14 +230,14 @@
             @endif
 
             <details class="regional-help mb-3">
-              <summary class="d-flex justify-content-between align-items-center gap-2"><span><strong><i class="ti ti-help-circle me-1"></i>How to manage teams in this region</strong><span class="d-block small text-muted mt-1">Replacement, reserves, reminders, clothing and publishing instructions.</span></span><span class="badge bg-label-primary">View steps</span></summary>
+              <summary class="d-flex justify-content-between align-items-center gap-2"><span><strong><i class="ti ti-help-circle me-1"></i>How to manage teams in this region</strong><span class="d-block small text-muted mt-1">Replacement, reserves, reminders{{ $usesRegionalClothing ? ', clothing' : '' }} and publishing instructions.</span></span><span class="badge bg-label-primary">View steps</span></summary>
               <div class="border-top p-3">
                 <div class="row g-3 small">
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Replace an unpaid player</strong><div class="text-muted">Select <strong>Show team</strong>, find the player, choose <strong>Change player</strong>, select the next reserve or another player profile, give a reason, then confirm. Paid players cannot be replaced here.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Fill an open place</strong><div class="text-muted">Select <strong>Show team</strong>. A withdrawn or declined place shows <strong>Invite next reserve</strong>; an eligible reserve may also show <strong>Activate as Rank</strong>.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then drag players into the required order.</div></div>
-                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong> or <strong>Incomplete clothing reminder</strong> above. Review the regional audience and exact recipient count before sending.</div></div>
-                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Manage clothing</strong><div class="text-muted">Use <strong>Clothing setup</strong> above to review items and sizes. Use <strong>Region actions</strong> to open or close clothing ordering.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong>@if($usesRegionalClothing) or <strong>Incomplete clothing reminder</strong>@endif above. Review the regional audience and exact recipient count before sending.</div></div>
+                  @if($usesRegionalClothing)<div class="col-md-6 col-xl-4 regional-help-step"><strong>Manage clothing</strong><div class="text-muted">Use <strong>Clothing setup</strong> above to review items and sizes. Use <strong>Region actions</strong> to open or close clothing ordering.</div></div>@endif
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Publish teams</strong><div class="text-muted">Resolve open places first, review each team, then select <strong>Publish all teams</strong>. Published teams can still be opened and reviewed.</div></div>
                 </div>
               </div>
@@ -556,13 +557,13 @@
 
               <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-messages" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-messages-tab" tabindex="0">
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
-              <div><h6 class="mb-1">Messages &amp; clothing</h6><p class="text-muted small mb-0">Contact selected players and manage the regional clothing workflow.</p></div>
+              <div><h6 class="mb-1">{{ $usesRegionalClothing ? 'Messages & clothing' : 'Messages' }}</h6><p class="text-muted small mb-0">{{ $usesRegionalClothing ? 'Contact selected players and manage the regional clothing workflow.' : 'Contact selected players in this region.' }}</p></div>
               <div class="d-flex flex-wrap gap-2">
                 @if($isEventManager)
                   <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
-                  <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>
+                  @if($usesRegionalClothing)<button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>@endif
                 @endif
-                @if($eventRegion->region?->usesOnlineClothingOrders())
+                @if($usesRegionalClothing)
                   <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
                 @endif
               </div>
@@ -592,7 +593,7 @@
             <input type="hidden" name="selection_import_id" value="{{ $activeImport->id }}">
             <div class="modal-header"><div><h5 class="modal-title" id="prepare-invitations-title-{{ $activeImport->id }}">Prepare regional invitations</h5><div class="text-muted small">{{ $eventRegion->region?->region_name }} · {{ $activeImport->invitations->where('status','invited')->count() }} selected recipients</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
-              <div class="alert alert-info"><strong>Preview required.</strong> Open the actual sample email before sending. The exact message, event details, deadlines and clothing prices are snapshotted for audit and failed-email retries. Any change requires another preview.</div>
+              <div class="alert alert-info"><strong>Preview required.</strong> Open the actual sample email before sending. The exact message, event details and deadlines{{ $usesRegionalClothing ? ', including clothing prices,' : '' }} are snapshotted for audit and failed-email retries. Any change requires another preview.</div>
               <div class="row g-3">
                 <div class="col-12"><label class="form-label">Email subject</label><input type="text" name="email_subject" maxlength="180" class="form-control" value="{{ old('email_subject', 'Platteland team invitation: '.$event->name) }}" required></div>
                 <div class="col-12"><label class="form-label">Invitation message</label><textarea name="email_message" rows="4" maxlength="10000" class="form-control" required>{{ old('email_message', 'You have been selected to represent your region. Please review the event information and respond before the deadline.') }}</textarea><div class="form-text">This message appears near the top of every invitation.</div></div>
@@ -601,7 +602,7 @@
                 <div class="col-md-4"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ old('payment_deadline') }}" class="form-control" required></div>
                 <div class="col-md-4"><label class="form-label">Replacement payment deadline</label><input type="datetime-local" name="replacement_payment_deadline" value="{{ old('replacement_payment_deadline') }}" class="form-control" required><div class="form-text">Final payment cutoff for a promoted reserve.</div></div>
                 <div class="col-md-4"><label class="form-label">Reply-to email</label><input type="email" name="reply_to" value="{{ old('reply_to', $event->email) }}" class="form-control" maxlength="255"><div class="form-text">Optional contact for player replies.</div></div>
-                <div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Include optional regional clothing items, sizes, prices and ordering steps</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>
+                @if($usesRegionalClothing)<div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Include optional regional clothing items, sizes, prices and ordering steps</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>@else<input type="hidden" name="include_clothing" value="0">@endif
               </div>
               <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
             </div>
@@ -802,6 +803,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-final-reminder-form]').forEach(function (reminderForm) {
     const summaries = JSON.parse(reminderForm.dataset.reminderSummaries || '{}');
     const hashes = JSON.parse(reminderForm.dataset.reminderHashes || '{}');
+    const clothingEnabled = reminderForm.dataset.clothingEnabled === '1';
     const kind = reminderForm.querySelector('[data-reminder-kind]');
     const audience = reminderForm.querySelector('[data-reminder-audience]');
     const refreshReminder = function () {
@@ -812,7 +814,9 @@ document.addEventListener('DOMContentLoaded', function () {
       reminderForm.querySelector('[data-reminder-preview-title]').textContent = incomplete ? 'Clothing ordering is closing' : 'Registration is closing';
       reminderForm.querySelector('[data-reminder-preview-copy]').textContent = incomplete
         ? 'Registered players without a completed clothing decision are reminded to order, finish payment, or confirm that no clothing is required. Unregistered recipients are told to register first.'
-        : 'Unregistered players receive their registration/payment link. Registered players receive their clothing action link.';
+        : (clothingEnabled
+          ? 'Unregistered players receive their registration/payment link. Registered players receive their clothing action link.'
+          : 'Unregistered players receive their registration/payment link.');
       reminderForm.querySelector('[data-reminder-submit]').disabled = summary.emails === 0;
     };
     kind.addEventListener('change', refreshReminder);

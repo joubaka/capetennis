@@ -851,8 +851,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('data-region-id="', false)
             ->assertSee('data-region-task-tabs', false)
             ->assertSee('Selection progress')
+            ->assertSee('Click the highlighted next step to open the next available options')
             ->assertSee('Teams &amp; players', false)
-            ->assertSee('Messages &amp; clothing', false)
+            ->assertSee('Messages</button>', false)
+            ->assertDontSee('Messages &amp; clothing', false)
+            ->assertDontSee('>Incomplete clothing reminder</button>', false)
+            ->assertDontSee('>Clothing setup</a>', false)
+            ->assertDontSee('<strong>Manage clothing</strong>', false)
             ->assertSee('data-open-region-task="setup"', false)
             ->assertSee('data-bs-toggle="tab"', false);
         $this->actingAs($admin)->get(route('events.show', $event))
@@ -2105,6 +2110,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $service = app(TeamSelectionReminderService::class);
         $eventRegion = EventRegion::findOrFail($source->event_region_id);
+        $eventRegion->region()->update(['clothing_admin' => true]);
+        $eventRegion->unsetRelation('region');
         $otherRegion = TeamRegion::create(['region_name' => 'Other reminder region 2026']);
         $otherEventRegion = new EventRegion();
         $otherEventRegion->event_id = $source->event_id;
@@ -2131,6 +2138,23 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ClothingOrder::where('event_id', $registered->event_id)->delete();
         $registered->update(['clothing_decision' => 'not_required', 'clothing_decided_at' => now()]);
         $this->assertSame(0, $service->recipients($source->event, $eventRegion, 'incomplete_clothing', 'registered')->count());
+    }
+
+    public function test_region_without_clothing_excludes_clothing_reminders_and_registered_players(): void
+    {
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update(['status' => 'sent']);
+        $registered = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $registered->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+
+        $service = app(TeamSelectionReminderService::class);
+        $eventRegion = EventRegion::findOrFail($source->event_region_id);
+
+        $this->assertFalse($eventRegion->region->usesOnlineClothingOrders());
+        $this->assertSame(1, $service->recipients($source->event, $eventRegion, 'registration_clothing', 'all')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(0, $service->recipients($source->event, $eventRegion, 'registration_clothing', 'registered')->sum(fn ($row) => count($row['players'])));
+        $this->assertSame(0, $service->recipients($source->event, $eventRegion, 'incomplete_clothing', 'all')->count());
     }
 
     public function test_player_can_confirm_no_clothing_and_event_manager_only_can_send_final_reminders(): void
@@ -2161,6 +2185,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $reminders = app(TeamSelectionReminderService::class);
         $eventRegion = EventRegion::findOrFail($source->event_region_id);
+        $eventRegion->region()->update(['clothing_admin' => true]);
+        $eventRegion->unsetRelation('region');
         $hash = $reminders->recipientHash($event, $eventRegion, 'registration_clothing', 'all');
         $payload = [
             'kind' => 'registration_clothing', 'audience' => 'all',

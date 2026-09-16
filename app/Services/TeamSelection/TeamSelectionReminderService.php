@@ -44,6 +44,13 @@ final class TeamSelectionReminderService
 
     public function send(Event $event, EventRegion $eventRegion, string $kind, string $audience, string $token, string $expectedHash, $actor): array
     {
+        $usesRegionalClothing = (bool) $eventRegion->region?->usesOnlineClothingOrders();
+        if ($kind === 'incomplete_clothing' && ! $usesRegionalClothing) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'kind' => 'Clothing reminders are not available because this region does not use clothing ordering.',
+            ]);
+        }
+
         $recipients = $this->recipients($event, $eventRegion, $kind, $audience);
         if (! hash_equals($this->recipientHash($event, $eventRegion, $kind, $audience), $expectedHash)) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -65,7 +72,7 @@ final class TeamSelectionReminderService
                 $stats['skipped']++;
                 continue;
             }
-            $content = $this->content($event, $kind, $recipient['players']);
+            $content = $this->content($event, $kind, $recipient['players'], $usesRegionalClothing);
             $sent = $this->mailer->dispatch($mailType, $event, [[
                 'email' => $recipient['email'], 'name' => $recipient['name'],
             ]], [
@@ -90,6 +97,20 @@ final class TeamSelectionReminderService
     /** @return Collection<int, array{email:string,name:?string,players:array}> */
     public function recipients(Event $event, EventRegion $eventRegion, string $kind, string $audience): Collection
     {
+        $usesRegionalClothing = (bool) $eventRegion->region?->usesOnlineClothingOrders();
+        if ($kind === 'incomplete_clothing' && ! $usesRegionalClothing) {
+            return collect();
+        }
+
+        if ($kind === 'registration_clothing' && ! $usesRegionalClothing) {
+            if ($audience === 'registered') {
+                return collect();
+            }
+            if ($audience === 'all') {
+                $audience = 'unregistered';
+            }
+        }
+
         $invitations = TeamSelectionInvitation::query()
             ->with(['player.user', 'player.users', 'team', 'region', 'selectionImport'])
             ->where('event_id', $event->id)
@@ -148,7 +169,7 @@ final class TeamSelectionReminderService
         };
     }
 
-    private function content(Event $event, string $kind, array $players): array
+    private function content(Event $event, string $kind, array $players, bool $usesRegionalClothing): array
     {
         $eventName = e($event->name);
         $subject = $kind === 'incomplete_clothing'
@@ -157,18 +178,20 @@ final class TeamSelectionReminderService
         $intro = $kind === 'incomplete_clothing'
             ? "Clothing ordering for <strong>{$eventName}</strong> is closing soon. Please complete the action shown below."
             : "Registration for <strong>{$eventName}</strong> is closing soon. Please complete the action shown below.";
-        $rows = collect($players)->map(function (array $player) use ($kind): string {
+        $rows = collect($players)->map(function (array $player) use ($kind, $usesRegionalClothing): string {
             $name = e($player['name']);
             $team = e($player['team'] ?: 'Team event');
             if (! $player['registered']) $action = 'Complete registration and payment';
             elseif ($kind === 'incomplete_clothing' && $player['pending_clothing']) $action = 'Review your pending clothing order';
-            else $action = 'Order clothing or confirm that no clothing is required';
+            else $action = $usesRegionalClothing ? 'Order clothing or confirm that no clothing is required' : 'Review registration';
             $url = e($player['url']);
             return "<li style=\"margin-bottom:14px\"><strong>{$name}</strong> · {$team}<br><a href=\"{$url}\">".e($action).'</a></li>';
         })->implode('');
-        $note = $kind === 'registration_clothing'
+        $note = $kind === 'registration_clothing' && $usesRegionalClothing
             ? '<p>Optional clothing can be ordered after event registration and payment are confirmed.</p>'
-            : '<p>If you do not require clothing, please use the link and select <strong>No clothing required</strong>.</p>';
+            : ($kind === 'incomplete_clothing'
+                ? '<p>If you do not require clothing, please use the link and select <strong>No clothing required</strong>.</p>'
+                : '');
 
         return ['subject' => $subject, 'html' => "<p>{$intro}</p><ul>{$rows}</ul>{$note}<p>Regards<br>Cape Tennis</p>"];
     }
