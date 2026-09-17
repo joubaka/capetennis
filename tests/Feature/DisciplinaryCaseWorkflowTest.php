@@ -133,7 +133,7 @@ class DisciplinaryCaseWorkflowTest extends TestCase
         ])->assertOk();
 
         $this->assertFalse(SiteSetting::disciplinarySystemEnabled());
-        $this->actingAs($super)->get(route('backend.superadmin.index'))
+        $this->actingAs($super)->get(route('backend.superadmin.workspace'))
             ->assertOk()
             ->assertSee('Disciplinary Case System');
     }

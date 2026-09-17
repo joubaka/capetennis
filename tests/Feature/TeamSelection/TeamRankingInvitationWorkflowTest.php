@@ -32,7 +32,7 @@ use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Services\TeamSelection\TeamSelectionReminderService;
 use App\Services\Clothing\ClothingPriceService;
 use App\Mail\TeamSelectionInvitationMail;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -41,7 +41,7 @@ use Spatie\Permission\Models\Role;
 
 class TeamRankingInvitationWorkflowTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_region_import_fills_configured_team_and_creates_two_reserves_from_published_ranking(): void
     {

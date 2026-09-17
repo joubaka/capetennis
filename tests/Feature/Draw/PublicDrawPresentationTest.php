@@ -3,11 +3,14 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\{Draw, DrawSetting, Event, User};
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
 
 class PublicDrawPresentationTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_round_robin_draft_preview_uses_shared_navigation_and_schedule_contract(): void
     {
         Gate::before(fn (?User $user) => true);

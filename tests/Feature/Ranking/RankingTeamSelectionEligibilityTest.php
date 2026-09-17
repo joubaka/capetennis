@@ -13,12 +13,12 @@ use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\User;
 use App\Services\Masters\MastersInvitationService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class RankingTeamSelectionEligibilityTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_masters_generation_skips_one_event_player_and_fills_the_team_from_eligible_rankings(): void
     {

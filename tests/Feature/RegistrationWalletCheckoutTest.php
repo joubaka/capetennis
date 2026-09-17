@@ -23,6 +23,9 @@ class RegistrationWalletCheckoutTest extends TestCase
 
     public function test_applying_wallet_reduces_existing_orders_payfast_amount_without_creating_an_order(): void
     {
+        config()->set('services.payfast.merchant_id', 'test-merchant');
+        config()->set('services.payfast.merchant_key', 'test-key');
+
         $user = User::factory()->create();
         $wallet = Wallet::factory()->forUser($user)->create();
         WalletTransaction::create([

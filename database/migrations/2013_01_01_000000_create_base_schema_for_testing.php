@@ -37,6 +37,13 @@ return new class extends Migration
                 $table->string('remember_token', 100)->nullable();
                 $table->string('profile_photo_path')->nullable();
                 $table->unsignedBigInteger('current_team_id')->nullable();
+                $table->string('userName')->nullable();
+                $table->string('userSurname')->nullable();
+                $table->string('cell_nr')->nullable();
+                $table->string('userType')->nullable();
+                $table->string('image')->nullable();
+                $table->unsignedBigInteger('wallet_id')->nullable();
+                $table->string('priviledge')->nullable();
                 $table->timestamps();
             });
         }

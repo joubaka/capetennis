@@ -10,7 +10,7 @@ use App\Models\TeamRegion;
 use App\Models\User;
 use App\Services\Clothing\RegionClothingCopyService;
 use App\Services\Clothing\ClothingPriceService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
@@ -18,7 +18,7 @@ use Tests\TestCase;
 
 class RegionClothingCopyWorkflowTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_reviewed_items_prices_and_sizes_are_copied_without_changing_the_source(): void
     {

@@ -14,14 +14,14 @@ use App\Models\Registration;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class RankingHeadToHeadConfirmationTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_applied_head_to_head_must_be_confirmed_before_review(): void
     {

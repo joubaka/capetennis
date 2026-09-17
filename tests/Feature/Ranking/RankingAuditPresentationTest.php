@@ -8,14 +8,14 @@ use App\Models\Player;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class RankingAuditPresentationTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_audit_shows_only_the_active_snapshot_and_excludes_archived_rows(): void
     {

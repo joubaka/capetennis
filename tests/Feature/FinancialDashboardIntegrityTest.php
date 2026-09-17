@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -31,6 +32,9 @@ class FinancialDashboardIntegrityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        if (DB::getDriverName() === 'sqlite' && ! Schema::hasTable('users')) {
+            $this->artisan('migrate:fresh', ['--force' => true])->assertExitCode(0);
+        }
         $this->restoreUniquePfIndex();
         $this->truncateTestTables();
     }
@@ -44,7 +48,7 @@ class FinancialDashboardIntegrityTest extends TestCase
 
     private function truncateTestTables(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        Schema::disableForeignKeyConstraints();
         foreach ($this->truncateTables as $table) {
             try {
                 DB::table($table)->truncate();
@@ -52,13 +56,17 @@ class FinancialDashboardIntegrityTest extends TestCase
                 // table may not exist in this environment
             }
         }
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        Schema::enableForeignKeyConstraints();
     }
 
     private function dropUniquePfIndex(): void
     {
         try {
-            DB::statement('ALTER TABLE transactions_pf DROP INDEX transactions_pf_pf_payment_id_unique');
+            if (DB::getDriverName() === 'sqlite') {
+                DB::statement('DROP INDEX IF EXISTS transactions_pf_pf_payment_id_unique');
+            } else {
+                DB::statement('ALTER TABLE transactions_pf DROP INDEX transactions_pf_pf_payment_id_unique');
+            }
         } catch (\Exception $e) {
             // already absent
         }
@@ -67,7 +75,11 @@ class FinancialDashboardIntegrityTest extends TestCase
     private function restoreUniquePfIndex(): void
     {
         try {
-            DB::statement('ALTER TABLE transactions_pf ADD UNIQUE INDEX transactions_pf_pf_payment_id_unique (pf_payment_id)');
+            if (DB::getDriverName() === 'sqlite') {
+                DB::statement('CREATE UNIQUE INDEX IF NOT EXISTS transactions_pf_pf_payment_id_unique ON transactions_pf (pf_payment_id)');
+            } else {
+                DB::statement('ALTER TABLE transactions_pf ADD UNIQUE INDEX transactions_pf_pf_payment_id_unique (pf_payment_id)');
+            }
         } catch (\Exception $e) {
             // duplicates still present; command should have cleaned them already
         }

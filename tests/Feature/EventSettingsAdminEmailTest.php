@@ -42,12 +42,20 @@ class EventSettingsAdminEmailTest extends TestCase
         @$document->loadHTML($response->getContent());
         $xpath = new \DOMXPath($document);
 
-        foreach ([$linked, $unlinked] as $admin) {
-            $option = $xpath->query('//select[@name="admins"]/option[@value="'.$admin->id.'"]')->item(0);
-            $this->assertNotNull($option);
-            $this->assertSame($admin->name.' ('.$admin->email.')', trim($option->textContent));
-            $this->assertSame($admin->is($linked), $option->hasAttribute('selected'));
-            $this->assertSame(0, $option->getElementsByTagName('admin')->length);
-        }
+        $linkedOption = $xpath->query('//select[@name="admins"]/option[@value="'.$linked->id.'"]')->item(0);
+        $this->assertNotNull($linkedOption);
+        $this->assertSame($linked->name.' ('.$linked->email.')', trim($linkedOption->textContent));
+        $this->assertTrue($linkedOption->hasAttribute('selected'));
+        $this->assertSame(0, $linkedOption->getElementsByTagName('admin')->length);
+
+        $this->assertSame(
+            0,
+            $xpath->query('//select[@name="admins"]/option[@value="'.$unlinked->id.'"]')->length,
+        );
+        $this->actingAs($viewer)
+            ->getJson(route('admin.events.settings.users', ['event' => $event, 'q' => 'unlinked@example.test']))
+            ->assertOk()
+            ->assertJsonPath('results.0.id', $unlinked->id)
+            ->assertJsonPath('results.0.text', $unlinked->name.' ('.$unlinked->email.')');
     }
 }

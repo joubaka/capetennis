@@ -15,14 +15,14 @@ use App\Models\TeamRegion;
 use App\Models\User;
 use App\Services\Clothing\ClothingOrderService;
 use App\Services\Clothing\ClothingPaymentService;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ClothingOrderIntegrityTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_valid_order_uses_locked_catalogue_values_snapshots_and_idempotency(): void
     {

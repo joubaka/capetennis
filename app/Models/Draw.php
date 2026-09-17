@@ -269,7 +269,9 @@ public function getAllPlayersAttribute()
 
     public function venues()
     {
-        return $this->belongsToMany(Venue::class, 'draw_venues', 'draw_id', 'venue_id') ->orderBy('id')->withPivot('num_courts');
+        return $this->belongsToMany(Venue::class, 'draw_venues', 'draw_id', 'venue_id')
+            ->orderBy('venues.id')
+            ->withPivot('num_courts');
     }
 
     public function draw_venue()

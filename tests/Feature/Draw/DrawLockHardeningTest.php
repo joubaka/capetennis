@@ -132,7 +132,7 @@ class DrawLockHardeningTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_save_score_blocked_when_published(): void
+    public function test_save_score_allowed_when_published(): void
     {
         $draw    = Draw::factory()->create(['locked' => 0, 'published' => 1]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
@@ -141,7 +141,7 @@ class DrawLockHardeningTest extends TestCase
             ->postJson(route('backend.roundrobin.score.store', $fixture), [
                 'sets' => ['6-3'],
             ])
-            ->assertForbidden();
+            ->assertOk();
     }
 
     // ─── deleteScore (RoundRobinController) ──────────────────────────
@@ -186,9 +186,9 @@ class DrawLockHardeningTest extends TestCase
             ->assertOk();
     }
 
-    // ─── updateNotes — allowed even when locked ───────────────────────
+    // ─── updateNotes — competition rules stay frozen when locked ─────
 
-    public function test_update_notes_allowed_when_locked(): void
+    public function test_update_notes_blocked_when_locked(): void
     {
         $draw = $this->lockedDraw();
 
@@ -196,7 +196,7 @@ class DrawLockHardeningTest extends TestCase
             ->postJson(route('backend.draw.update-notes', $draw), [
                 'notes' => ['general' => 'Test note'],
             ])
-            ->assertOk();
+            ->assertForbidden();
     }
 
     public function test_schedule_visibility_can_be_changed_with_rules_when_locked(): void
@@ -204,14 +204,13 @@ class DrawLockHardeningTest extends TestCase
         $draw = $this->lockedDraw();
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.draw.update-notes', $draw), [
-                'notes' => ['general' => 'Test note'],
-                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND,
+            ->postJson(route('backend.events.schedule-visibility', $draw->event_id), [
+                'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
             ])
             ->assertOk();
 
         $this->assertSame(
-            DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND,
+            DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
             $draw->fresh()->settings->schedule_visibility
         );
     }

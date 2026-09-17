@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class ClothingOrderItem extends Model
 {
     use HasFactory;
-     protected $fillable = [
+    protected $fillable = [
         'clothing_order_id',
         'clothing_order_item_id',
         'clothing_item_size',
@@ -17,6 +17,12 @@ class ClothingOrderItem extends Model
         'line_total',
         'item_name',
         'size_name',
+    ];
+
+    protected $casts = [
+        'qty' => 'integer',
+        'price' => 'decimal:2',
+        'line_total' => 'decimal:2',
     ];
 
     public function order(){

@@ -11,7 +11,8 @@ const path = require('path');
 
 mix
   .setPublicPath('public')
-  .setResourceRoot('/ct/public/');
+  .setResourceRoot('/ct/public/')
+  .disableNotifications();
 
 /*
  |--------------------------------------------------------------------------

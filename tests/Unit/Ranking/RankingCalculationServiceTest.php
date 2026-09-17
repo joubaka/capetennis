@@ -13,7 +13,7 @@ use App\Models\Registration;
 use App\Models\Draw;
 use App\Models\Fixture;
 use App\Models\FixtureResult;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -41,7 +41,7 @@ use Tests\TestCase;
  */
 class RankingCalculationServiceTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     private Series $series;
     private RankingList $list;

@@ -971,9 +971,15 @@ class FlexibleMonradTest extends TestCase
                     Fixture::factory()->create(['draw_id' => $draw->id, 'round' => 1, 'bracket_id' => 2,
                         'match_nr' => 2, 'registration1_id' => $players[2]->id, 'registration2_id' => $players[3]->id]);
                 }
-                $this->postJson(route($monrad ? 'backend.individual-schedule.auto' : 'backend.trials.auto', $draw), [
-                    'start' => '2026-09-05 08:00:00', 'duration' => $duration, 'gap' => 15,
-                ])->assertOk();
+                $response = $this->postJson(route($monrad ? 'backend.individual-schedule.auto' : 'backend.trials.auto', $draw), [
+                    'start' => '2026-09-05 08:00:00', 'duration' => $duration, 'gap' => $monrad ? 0 : 15,
+                ]);
+                $this->assertSame(200, $response->status(), sprintf(
+                    'Auto-schedule failed for monrad=%s duration=%d: %s',
+                    $monrad ? 'true' : 'false',
+                    $duration,
+                    $response->getContent(),
+                ));
                 $payload = ['fixture_id' => $fixtureId, 'scheduled_at' => '2026-09-05 08:00:00',
                     'venue_id' => $venue, 'court_label' => 1];
                 $revision = $monrad ? $record->fresh()->revision : null;

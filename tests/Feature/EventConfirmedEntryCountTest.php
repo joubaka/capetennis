@@ -9,13 +9,13 @@ use App\Models\EventType;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPlayer;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class EventConfirmedEntryCountTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_team_event_counts_paid_players_not_team_or_roster_rows_and_stays_event_scoped(): void
     {

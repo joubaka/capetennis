@@ -139,7 +139,7 @@ class SuperAdminFinanceController extends Controller
 
         // ── Convenors for payout form ─────────────────────────────────────
         $convenors = $event->convenors()->with('user')
-            ->orderByRaw("FIELD(role, 'hoof', 'hulp', 'admin')")
+            ->orderByRaw("CASE role WHEN 'hoof' THEN 1 WHEN 'hulp' THEN 2 WHEN 'admin' THEN 3 ELSE 4 END")
             ->get();
 
         $eventAdmins = $event->admins()->orderBy('name')->get();

@@ -11,13 +11,13 @@ use App\Models\RankingList;
 use App\Models\Registration;
 use App\Models\Series;
 use App\Models\SeriesRanking;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class RankingRebuildBootstrapTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_rebuild_bootstraps_canonical_lists_for_a_series_with_saved_results(): void
     {

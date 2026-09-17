@@ -9,7 +9,7 @@ use App\Models\SeriesRanking;
 use App\Models\RankingList;
 use App\Models\User;
 use App\Models\Event;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -29,7 +29,7 @@ use Tests\TestCase;
  */
 class RankingPublicationTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     private User $admin;
 

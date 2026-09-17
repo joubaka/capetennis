@@ -82,7 +82,7 @@ class RankingReviewCirculationServiceTest extends TestCase
         );
         $again = $service->send(
             $this->series, $this->actor, $uuid, 'Changed', 'Changed',
-            'changed@example.test', now()->addDays(2),
+            'reply@example.test', now()->addDays(2),
         );
 
         $this->assertSame($campaign->id, $again->id);

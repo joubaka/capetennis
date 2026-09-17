@@ -12,12 +12,12 @@ use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PublicRankingVisibilityTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     public function test_public_rankings_index_lists_only_published_series(): void
     {

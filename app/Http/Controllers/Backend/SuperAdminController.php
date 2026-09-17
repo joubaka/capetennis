@@ -271,9 +271,12 @@ class SuperAdminController extends Controller
             ->count();
 
         // ── Financial Dashboard (all events) — uses canonical FinancialLedgerService ──
+        $financeYearExpression = DB::getDriverName() === 'sqlite'
+            ? "strftime('%Y', start_date)"
+            : 'YEAR(start_date)';
         $financeYears = Event::query()
             ->whereNotNull('start_date')
-            ->selectRaw('YEAR(start_date) as finance_year')
+            ->selectRaw("{$financeYearExpression} as finance_year")
             ->distinct()
             ->orderBy('finance_year')
             ->pluck('finance_year')
