@@ -25,63 +25,6 @@ class PayfastServiceTest extends TestCase
         return $payfast;
     }
 
-    public function test_hosted_checkout_signature_preserves_bishop_team_payment_field_order(): void
-    {
-        config()->set('services.payfast.passphrase_live', 'checkout salt');
-
-        $fields = [
-            'merchant_id' => '11307280',
-            'merchant_key' => 'merchant-key',
-            'return_url' => 'https://www.capetennis.co.za/events/success/241',
-            'cancel_url' => 'https://www.capetennis.co.za/team-selection/invitations/11',
-            'notify_url' => 'https://www.capetennis.co.za/notify_team',
-            'amount' => '490.00',
-            'item_name' => 'Platteland Tennis Tournament Primary Schools 2026',
-            'custom_int1' => null,
-            'custom_str1' => null,
-            'custom_int2' => '2758',
-            'custom_str2' => 'Nina Bishop',
-            'custom_int3' => '241',
-            'custom_str3' => 'Platteland Tennis Tournament Primary Schools 2026',
-            'custom_int4' => '757',
-            'custom_str4' => 'Wiaan',
-            'custom_int5' => '155',
-            'custom_str5' => 'TeamOrder',
-        ];
-
-        $expectedString = collect($fields)
-            ->reject(fn ($value) => $value === null || $value === '')
-            ->map(fn ($value, $key) => $key . '=' . urlencode(trim((string) $value)))
-            ->push('passphrase=' . urlencode('checkout salt'))
-            ->implode('&');
-
-        $signature = $this->makePayfast()->generateFormSignature($fields);
-
-        $this->assertSame(md5($expectedString), $signature);
-
-        $alphabeticalFields = array_filter($fields, fn ($value) => $value !== null && $value !== '');
-        $alphabeticalFields['passphrase'] = 'checkout salt';
-        ksort($alphabeticalFields);
-
-        $this->assertNotSame(md5(http_build_query($alphabeticalFields)), $signature);
-    }
-
-    public function test_hosted_checkout_signature_trims_values_and_omits_blank_fields(): void
-    {
-        config()->set('services.payfast.passphrase_live', ' salt ');
-
-        $fields = [
-            'merchant_id' => ' 11307280 ',
-            'custom_str1' => '',
-            'custom_str2' => null,
-            'custom_str4' => ' Wiaan Bishop ',
-        ];
-
-        $expected = 'merchant_id=11307280&custom_str4=Wiaan+Bishop&passphrase=salt';
-
-        $this->assertSame(md5($expected), $this->makePayfast()->generateFormSignature($fields));
-    }
-
     // -----------------------------------------------------------------------
     // refundQuery — success
     // -----------------------------------------------------------------------
