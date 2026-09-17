@@ -212,18 +212,23 @@ class Payfast
       ? (config('services.payfast.passphrase_sandbox') ?: config('services.payfast.passphrase'))
       : (config('services.payfast.passphrase_live') ?: config('services.payfast.passphrase'));
 
-    // Remove empty values and signature/passphrase
-    $data = array_filter($fields, fn($v) => $v !== null && $v !== '');
-    unset($data['signature'], $data['passphrase']);
+    // Hosted checkout signatures use the fields in their posted/documented
+    // order. Alphabetical sorting belongs to PayFast's API signatures only
+    // (see buildApiHeaders()).
+    $pairs = [];
+    foreach ($fields as $key => $value) {
+      if ($key === 'signature' || $key === 'passphrase' || $value === null || $value === '') {
+        continue;
+      }
 
-    // Add passphrase into the array, sort alphabetically, then http_build_query
-    // per PayFast docs: sort all variables alphabetically before hashing
-    if (!empty($passphrase)) {
-      $data['passphrase'] = trim($passphrase);
+      $pairs[] = $key . '=' . urlencode(trim((string) $value));
     }
-    ksort($data);
 
-    return md5(http_build_query($data));
+    if (!empty($passphrase)) {
+      $pairs[] = 'passphrase=' . urlencode(trim($passphrase));
+    }
+
+    return md5(implode('&', $pairs));
   }
 
 
