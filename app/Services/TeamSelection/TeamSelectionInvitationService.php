@@ -573,14 +573,7 @@ final class TeamSelectionInvitationService
                 throw ValidationException::withMessages(['replacement_player_id' => 'This player is already recorded for this team.']);
             }
 
-            $player->loadMissing(['user', 'users']);
-            $email = collect([$player->user?->email])->merge($player->users->pluck('email'))
-                ->first(fn ($candidate) => filter_var($candidate, FILTER_VALIDATE_EMAIL));
-            if (! $email) {
-                throw ValidationException::withMessages([
-                    'replacement_player_id' => 'Select a Cape Tennis player with a valid profile, parent, or linked-account email address.',
-                ]);
-            }
+            $email = $this->contacts->primaryEmail($player);
             $replacementDeadlines = $selectionImport->status === 'sent'
                 ? $this->replacementDeadlines($selectionImport)
                 : [null, null];
@@ -660,7 +653,7 @@ final class TeamSelectionInvitationService
                     'reason' => $reason,
                 ],
             ]);
-            if ($selectionImport->status === 'sent') {
+            if ($selectionImport->status === 'sent' && $email) {
                 $this->queueMail($replacement, mb_strtolower(trim((string) $email)), 'replacement', $this->savedCampaignSnapshot($selectionImport));
             }
             activity('team-selection')->performedOn($locked)->causedBy($actor)

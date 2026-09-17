@@ -451,7 +451,7 @@
                                                     @disabled($replacementMode !== 'custom_profile') @required($replacementMode === 'custom_profile')>
                                               <option value=""></option>
                                             </select>
-                                            <div class="form-text">A valid player-profile email is used first, followed by a parent or linked-account email. Existing players below this place move up, and the replacement joins the final active roster place.</div>
+                                            <div class="form-text">Any Cape Tennis player profile can be selected; no parent or linked account is required. If a valid contact email is available, it is used for a sent campaign. Existing players below this place move up, and the replacement joins the final active roster place.</div>
                                           </div>
                                           <label class="form-label small mb-1" for="replacement-reason-{{ $invitation->id }}">Reason</label>
                                           <input id="replacement-reason-{{ $invitation->id }}" type="text" name="reason"

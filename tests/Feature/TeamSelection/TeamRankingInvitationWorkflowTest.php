@@ -487,7 +487,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_manager_can_replace_an_unpaid_player_with_a_custom_linked_profile(): void
+    public function test_manager_can_replace_an_unpaid_player_with_any_system_profile(): void
     {
         Queue::fake();
         [$source, $team] = $this->selectionSource();
@@ -570,17 +570,24 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 'replacement_mode' => 'custom_profile',
                 'replacement_player_id' => $unlinkedPlayer->id,
                 'replacement_invitation_id' => $replacement->id,
-                'reason' => 'Unlinked profile attempt',
+                'reason' => 'Unlinked system profile selected',
             ]
-        )->assertSessionHasErrors('replacement_player_id');
-        $this->assertSame(TeamSelectionInvitation::INVITED, $replacement->fresh()->status);
+        )->assertRedirect()->assertSessionHas('success');
+        $unlinkedReplacement = $selectionImport->invitations()->where('player_id', $unlinkedPlayer->id)->firstOrFail();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $unlinkedReplacement->status);
+        $this->assertSame($finalRank, $unlinkedReplacement->roster_rank);
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $replacement->fresh()->status);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $unlinkedReplacement->id,
+        ]);
 
         $this->actingAs($manager)->post(
-            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $replacement]),
+            route('backend.team-selection.invitations.replace', [$source->event, $selectionImport, $unlinkedReplacement]),
             [
                 'replacement_mode' => 'custom_profile',
                 'replacement_player_id' => $customPlayer->id,
-                'replacement_invitation_id' => $replacement->id,
+                'replacement_invitation_id' => $unlinkedReplacement->id,
                 'reason' => 'Duplicate profile attempt',
             ]
         )->assertSessionHasErrors('replacement_player_id');
@@ -623,6 +630,38 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'status' => 'queued',
         ]);
         Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
+    }
+
+    public function test_sent_custom_profile_replacement_allows_a_player_without_an_account_or_email(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update([
+            'status' => 'sent',
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ]);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('queue_position')->firstOrFail();
+        $unlinkedPlayer = Player::factory()->create(['userId' => null, 'email' => null]);
+
+        $replacement = app(TeamSelectionInvitationService::class)->replaceWithSystemPlayer(
+            $selected,
+            $unlinkedPlayer,
+            User::factory()->create(),
+            'Sent selection correction without account link'
+        );
+
+        $this->assertSame($unlinkedPlayer->id, $replacement->player_id);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $replacement->status);
+        $this->assertNotNull($replacement->invited_at);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $replacement->id,
+        ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_team_selection_email_uses_public_event_logo_and_falls_back_when_it_is_missing(): void
