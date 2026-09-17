@@ -1498,9 +1498,29 @@
         </div>
       @endif
 
-      <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
         <h5 class="mb-0"><i class="ti ti-wallet me-2 text-success"></i>All User Wallets</h5>
+        <form method="GET" action="{{ route('backend.superadmin.workspace') }}" class="d-flex flex-column flex-sm-row gap-2" role="search">
+          <input type="hidden" name="tab" value="wallets">
+          <label for="wallet-search" class="visually-hidden">Search user wallets</label>
+          <div class="input-group">
+            <span class="input-group-text" aria-hidden="true"><i class="ti ti-search"></i></span>
+            <input type="search" id="wallet-search" name="wallet_search" class="form-control"
+                   value="{{ $walletSearch }}" placeholder="Search name or email" maxlength="100">
+          </div>
+          <button type="submit" class="btn btn-primary">Search</button>
+          @if($walletSearch !== '')
+            <a href="{{ route('backend.superadmin.workspace', ['tab' => 'wallets']) }}" class="btn btn-outline-secondary">Clear</a>
+          @endif
+        </form>
       </div>
+
+      @if($walletSearch !== '')
+        <p class="text-muted small mb-3">
+          {{ $wallets->count() }} {{ \Illuminate\Support\Str::plural('wallet', $wallets->count()) }} found for
+          <strong>&ldquo;{{ $walletSearch }}&rdquo;</strong>
+        </p>
+      @endif
 
       <div class="table-responsive">
         <table class="table table-hover mb-0" id="dt-wallets">
@@ -1559,7 +1579,9 @@
               </tr>
             @empty
               <tr>
-                <td colspan="5" class="text-center text-muted py-3">No wallets found.</td>
+                <td colspan="5" class="text-center text-muted py-4">
+                  {{ $walletSearch !== '' ? 'No wallets match that name or email.' : 'No wallets found.' }}
+                </td>
               </tr>
             @endforelse
           </tbody>

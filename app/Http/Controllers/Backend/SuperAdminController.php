@@ -313,6 +313,8 @@ class SuperAdminController extends Controller
         $registrationSettings = SiteSetting::where('group', SiteSetting::GROUP_REGISTRATION)->get()->pluck('value', 'key')->toArray();
 
         // ── Wallets (for the Wallets tab) ─────────────────────────────────────
+        $walletSearch = trim($request->string('wallet_search')->toString());
+
         $wallets = Wallet::query()
             ->with('payable')
             ->withCount('transactions')
@@ -323,6 +325,14 @@ class SuperAdminController extends Controller
                     ->whereColumn('wallet_transactions.wallet_id', 'wallets.id');
             }, 'computed_balance')
             ->where('payable_type', 'like', '%User%')
+            ->when($walletSearch !== '', function ($query) use ($walletSearch) {
+                $query->whereHasMorph('payable', [User::class], function ($userQuery) use ($walletSearch) {
+                    $userQuery->where(function ($matchingUser) use ($walletSearch) {
+                        $matchingUser->where('name', 'like', "%{$walletSearch}%")
+                            ->orWhere('email', 'like', "%{$walletSearch}%");
+                    });
+                });
+            })
             ->orderByDesc('computed_balance')
             ->limit(500)
             ->get()
@@ -394,6 +404,7 @@ class SuperAdminController extends Controller
             'emailSettings',
             'registrationSettings',
             'wallets',
+            'walletSearch',
             'disciplinaryStats',
             'recentViolations',
             'activeSuspensions'
