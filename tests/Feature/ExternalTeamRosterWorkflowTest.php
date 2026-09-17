@@ -354,6 +354,30 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_team_payment_trims_legacy_payer_name_before_signing_and_posting(): void
+    {
+        $user = User::factory()->create(['name' => 'Wiaan ']);
+        $player = Player::factory()->create([
+            'name' => 'Nina',
+            'surname' => 'Bishop',
+            'userId' => $user->id,
+        ]);
+        TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+
+        $this->actingAs($user)->get(route('team.payment.payfast', [
+            $this->team,
+            $player,
+            $this->event,
+        ]))->assertOk()
+            ->assertSee('name="custom_str4" value="Wiaan"', false)
+            ->assertDontSee('name="custom_str4" value="Wiaan "', false);
+    }
+
     public function test_team_payment_can_reapply_an_increased_wallet_balance_to_cover_the_full_order(): void
     {
         $this->event->update(['entryFee' => 490]);

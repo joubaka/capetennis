@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\User;
 use App\Services\Payfast;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,15 @@ class PayfastServiceTest extends TestCase
         $payfast = new Payfast();
         $payfast->setMode(1); // live
         return $payfast;
+    }
+
+    public function test_payer_name_is_trimmed_before_form_signature_fields_are_built(): void
+    {
+        $payfast = $this->makePayfast();
+
+        $payfast->setPayer(new User(['name' => "  Wiaan Bishop \t"]));
+
+        $this->assertSame('Wiaan Bishop', $payfast->custom_str4);
     }
 
     // -----------------------------------------------------------------------

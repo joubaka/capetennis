@@ -165,7 +165,7 @@ class Payfast
 
   public function setPayer(User $user): void
   {
-    $this->custom_str4 = $user->name;
+    $this->custom_str4 = trim((string) $user->name);
   }
 
   public function setPlayerInfo(?Player $player): void
