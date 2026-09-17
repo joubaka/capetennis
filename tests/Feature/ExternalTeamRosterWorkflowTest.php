@@ -299,6 +299,31 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         app(ExternalTeamRosterService::class)->assertCanRegister($user, $this->event->fresh(), $this->team, $player);
     }
 
+    public function test_open_team_event_accepts_registration_after_legacy_deadline(): void
+    {
+        $this->event->update([
+            'start_date' => now()->addDay(),
+            'deadline' => 7,
+            'signUp' => true,
+        ]);
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+
+        $this->assertTrue(app(ExternalTeamRosterService::class)->registrationIsOpen($this->event->fresh()));
+        $this->assertSame(
+            $player->id,
+            app(ExternalTeamRosterService::class)
+                ->assertCanRegister($user, $this->event->fresh(), $this->team, $player)
+                ->player_id
+        );
+    }
+
     public function test_any_user_can_open_team_payment_for_an_eligible_unlinked_player(): void
     {
         $user = User::factory()->create();

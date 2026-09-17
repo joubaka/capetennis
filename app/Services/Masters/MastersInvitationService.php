@@ -591,19 +591,10 @@ final class MastersInvitationService
             if ($locked->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
                 return RegistrationOrder::findOrFail($locked->order_id);
             }
-            $now = now();
-            $paymentDeadline = $locked->promoted_from_id
-                ? $locked->batch->replacement_payment_deadline
-                : $locked->batch->payment_deadline;
-            $responseDeadline = $locked->promoted_from_id
-                ? $locked->batch->replacement_payment_deadline
-                : $locked->batch->response_deadline;
             if (!$locked->batch->registration_open && (int) $locked->batch->event?->signUp !== 1) {
                 throw ValidationException::withMessages(['invitation' => 'Masters registration is currently closed.']);
             }
-            if ($locked->status !== MastersInvitation::INVITED
-                || ($responseDeadline && $now->gt($responseDeadline))
-                || ($paymentDeadline && $now->gt($paymentDeadline))) {
+            if ($locked->status !== MastersInvitation::INVITED) {
                 throw ValidationException::withMessages(['invitation' => 'This invitation is no longer available.']);
             }
 

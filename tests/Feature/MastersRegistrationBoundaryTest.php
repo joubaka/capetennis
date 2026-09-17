@@ -15,6 +15,7 @@ use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Masters\MastersInvitationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -161,6 +162,36 @@ class MastersRegistrationBoundaryTest extends TestCase
             ->actingAs($user)
             ->get(route('registration.checkout', $order))
             ->assertOk();
+    }
+
+    public function test_open_masters_registration_accepts_invitation_after_batch_deadlines(): void
+    {
+        [$event, $categoryEvent, $user, $player] = $this->mastersEvent();
+        $batch = MastersInvitationBatch::create([
+            'event_id' => $event->id,
+            'series_id' => 1,
+            'ranking_run_id' => 'open-after-deadline',
+            'top_x' => 8,
+            'status' => 'sent',
+            'registration_open' => true,
+            'response_deadline' => now()->subDays(2),
+            'payment_deadline' => now()->subDay(),
+            'replacement_payment_deadline' => now()->subHour(),
+        ]);
+        $invitation = MastersInvitation::create([
+            'batch_id' => $batch->id,
+            'event_id' => $event->id,
+            'category_event_id' => $categoryEvent->id,
+            'player_id' => $player->id,
+            'ranking_position' => 1,
+            'queue_position' => 1,
+            'status' => MastersInvitation::INVITED,
+        ]);
+
+        $order = app(MastersInvitationService::class)->accept($invitation, $user);
+
+        $this->assertSame(MastersInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($order->id, $invitation->fresh()->order_id);
     }
 
     private function mastersEvent(): array

@@ -1867,6 +1867,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')->firstOrFail();
         $selectionImport->update(['response_deadline' => now()->subMinute()]);
+        $selectionImport->event->update(['signUp' => false]);
 
         $rows = $service->processExpiredInvitations($selectionImport->event_id, true);
 
@@ -2026,6 +2027,31 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(1, $selectionImport->invitations()->where('team_id', $team->id)
             ->where('player_id', $player->id)->count());
         $this->assertTrue($selectionImport->invitations()->where('player_id', $unlinked->id)->exists());
+    }
+
+    public function test_open_team_registration_keeps_expired_invitation_available(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ], $actor);
+        $invitation = $selectionImport->invitations()
+            ->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $selectionImport->update([
+            'response_deadline' => now()->subDays(2),
+            'payment_deadline' => now()->subDay(),
+        ]);
+
+        $this->assertSame([], $service->processExpiredInvitations($selectionImport->event_id, true));
+        $accepted = $service->accept($invitation->fresh(), User::factory()->create());
+
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
     }
 
     public function test_ranked_primary_reserve_can_help_another_team_and_returns_to_real_team_when_promoted(): void

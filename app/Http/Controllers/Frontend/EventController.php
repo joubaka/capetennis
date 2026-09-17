@@ -224,11 +224,16 @@ class EventController extends Controller
     // FLAGS
     $eventClosed = in_array($event->status, ['closed', 'draft']);
 
-    $signUp = (!$eventClosed && now()->lte($entryCloseAt) && $event->signUp == 1)
+    // Team and Masters registration is controlled explicitly by the organiser.
+    // Their legacy calendar deadline must not contradict an open registration switch.
+    $deadlineAppliesToRegistration = ! $event->isTeam() && ! $event->isMasters();
+    $registrationWindowOpen = ! $deadlineAppliesToRegistration || now()->lte($entryCloseAt);
+
+    $signUp = (!$eventClosed && $registrationWindowOpen && $event->signUp == 1)
       ? 'open'
       : 'closed';
 
-    $canEnter = !$eventClosed && now()->lte($entryCloseAt);
+    $canEnter = !$eventClosed && $registrationWindowOpen;
     $canWithdraw = now()->lte($withdrawalCloseAt);
 
     // FORMATTED OUTPUT

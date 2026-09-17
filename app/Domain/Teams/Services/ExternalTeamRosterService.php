@@ -213,10 +213,9 @@ class ExternalTeamRosterService
 
     public function registrationIsOpen(Event $event): bool
     {
-        if (! $event->published || ! $event->signUp || in_array($event->status, ['closed', 'draft'], true)) return false;
-        $closesAt = $event->registrationClosesAt();
-
-        return ! $closesAt || now()->lte($closesAt->endOfDay());
+        return $event->published
+            && (bool) $event->signUp
+            && ! in_array($event->status, ['closed', 'draft'], true);
     }
 
     private function assertPlayerMatchesRosterSlot(NoProfileTeamPlayer $slot, Player $player): void
