@@ -54,4 +54,16 @@ class ManualWalletAdjustmentTest extends TestCase
         $this->assertSame(1, $user->wallet->transactions()->where('type', 'credit')->count());
         $this->assertSame(75.0, $user->wallet->balance);
     }
+
+    public function test_user_wallet_modal_submits_an_idempotency_key(): void
+    {
+        $admin = User::factory()->create()->assignRole('super-user');
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($admin)->get(route('user.show', $user));
+
+        $response->assertOk();
+        $response->assertSee('id="txn-idempotency-key"', false);
+        $response->assertSee('idempotency_key: idempotencyKey', false);
+    }
 }

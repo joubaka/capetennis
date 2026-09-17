@@ -305,6 +305,7 @@
       </div>
 
       <div class="modal-body">
+        <input type="hidden" id="txn-idempotency-key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
         <div class="mb-3">
           <label for="txn-type" class="form-label">Transaction Type</label>
           <select id="txn-type" class="form-select">
@@ -404,6 +405,7 @@ $(function () {
     const type      = $('#txn-type').val();
     const amount    = $('#txn-amount').val();
     const reference = $('#txn-reference').val();
+    const idempotencyKey = $('#txn-idempotency-key').val();
 
     if (!amount || parseFloat(amount) <= 0) {
       toastr.warning('Please enter a valid amount');
@@ -422,7 +424,8 @@ $(function () {
       data: {
         type: type,
         amount: amount,
-        reference: reference
+        reference: reference,
+        idempotency_key: idempotencyKey
       },
       headers: { 'Accept': 'application/json' },
       success: res => {
