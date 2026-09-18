@@ -374,6 +374,22 @@ class RegionClothingController extends Controller
   {
     $this->authorize('region-clothing.manage', $region);
 
+    $eventId = $request->validate([
+      'event_id' => ['nullable', 'integer', 'exists:events,id'],
+    ])['event_id'] ?? null;
+
+    abort_if(! $eventId && ! $request->user()->hasRole('super-user'), 403);
+
+    if ($eventId) {
+      $eventRegion = EventRegion::query()
+        ->with('events')
+        ->where('region_id', $region->id)
+        ->where('event_id', $eventId)
+        ->firstOrFail();
+
+      abort_unless(app(RegionManagerAccessService::class)->canManage($request->user(), $eventRegion), 403);
+    }
+
     $clothings = \App\Models\ClothingOrder::with([
       'items.itemType',
       'items.size',
@@ -381,6 +397,8 @@ class RegionClothingController extends Controller
       'team'
     ])
       ->whereHas('team', fn($q) => $q->where('region_id', $region->id))
+      ->where('pay_status', 1)
+      ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
       ->orderByDesc('created_at')
       ->get();
 

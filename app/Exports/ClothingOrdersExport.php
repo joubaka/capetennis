@@ -14,7 +14,7 @@ class ClothingOrdersExport implements FromCollection, WithHeadings, WithMapping
     public function __construct($clothings)
     {
         $this->clothings = $clothings->loadMissing(['items.itemType', 'items.size', 'player', 'team'])
-            ->flatMap(fn ($order) => $order->items->map(fn ($item) => compact('order', 'item')))
+            ->flatMap(fn ($order) => $order->items->map(fn ($item) => ['order' => $order, 'item' => $item]))
             ->values();
     }
 
@@ -39,16 +39,22 @@ class ClothingOrdersExport implements FromCollection, WithHeadings, WithMapping
         return [
             $order->id,
             $item->created_at ? $item->created_at->format('d M Y') : 'N/A',
-            optional($order->player)->getFullNameAttribute(),
-            $item->item_name ?: optional($item->itemType)->item_type_name,
-            $item->size_name ?: optional($item->size)->size,
-            optional($order->team)->name,
+            $this->safeText(optional($order->player)->getFullNameAttribute()),
+            $this->safeText($item->item_name ?: optional($item->itemType)->item_type_name),
+            $this->safeText($item->size_name ?: optional($item->size)->size),
+            $this->safeText(optional($order->team)->name),
             $item->qty ?: 1,
             (float) $item->price,
             (float) $item->line_total,
-            $order->pf_id,
+            $this->safeText($order->pf_id),
             $order->pay_status ? 'Paid' : 'Unpaid',
         ];
     }
-}
 
+    private function safeText(?string $value): ?string
+    {
+        return $value !== null && preg_match('/^[=+\-@]/u', $value)
+            ? "'".$value
+            : $value;
+    }
+}

@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\TeamRegion;
 use App\Models\Event;
+use App\Models\EventRegion;
 use App\Models\Player;
 use App\Models\Team;
 use App\Services\Clothing\ClothingOrderService;
@@ -210,15 +211,11 @@ class ClothingOrderController extends Controller
 
 
 
-  public function exportPdf($id)
+  public function exportPdf(Request $request, $id)
   {
     $region = TeamRegion::findOrFail($id);
     $this->authorize('region-clothing.manage', $region);
-    $teams = $region->teams->pluck('id');
-
-    $clothings = ClothingOrder::whereIn('team_id', $teams)
-      ->where('pay_status', 1)
-      ->get();
+    $clothings = $this->paidOrdersForRegion($request, $region)->get();
 
     //dd($clothings[0]);
     // Load view and pass data
@@ -229,19 +226,42 @@ class ClothingOrderController extends Controller
   }
 
 
-  public function exportExcel($id)
+  public function exportExcel(Request $request, $id)
   {
     $region = TeamRegion::findOrFail($id);
     $this->authorize('region-clothing.manage', $region);
-    $teams = $region->teams->pluck('id');
-
-    $clothings = ClothingOrder::whereIn('team_id', $teams)
-      ->where('pay_status', 1)
-      ->get();
+    $clothings = $this->paidOrdersForRegion($request, $region)->get();
 
 
     // Pass data to the export class
     return Excel::download(new ClothingOrdersExport($clothings), 'clothing_orders.xlsx');
+  }
+
+  private function paidOrdersForRegion(Request $request, TeamRegion $region)
+  {
+    $eventId = $request->validate([
+      'event_id' => ['nullable', 'integer', 'exists:events,id'],
+    ])['event_id'] ?? null;
+
+    abort_if(! $eventId && ! $request->user()->hasRole('super-user'), 403);
+
+    if ($eventId) {
+      $eventRegion = EventRegion::query()
+        ->with('events')
+        ->where('region_id', $region->id)
+        ->where('event_id', $eventId)
+        ->firstOrFail();
+
+      abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)
+        ->canManage($request->user(), $eventRegion), 403);
+    }
+
+    return ClothingOrder::query()
+      ->with(['items.itemType', 'items.size', 'player', 'team'])
+      ->where('pay_status', 1)
+      ->whereHas('team', fn ($query) => $query->where('region_id', $region->id))
+      ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
+      ->orderByDesc('created_at');
   }
 
   public function sheet(TeamRegion $region, Request $request)

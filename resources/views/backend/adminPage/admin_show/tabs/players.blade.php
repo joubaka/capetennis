@@ -123,7 +123,7 @@
                           </a>
                         </li>
                         <li>
-                          <a class="dropdown-item" href="{{ route('backend.region.clothing.orders', $region->id) }}" target="_blank">
+                          <a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}" target="_blank">
                             <i class="ti ti-shirt me-1"></i> Clothing Orders
                           </a>
                         </li>

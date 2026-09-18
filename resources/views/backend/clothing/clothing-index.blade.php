@@ -9,10 +9,10 @@
 
     <div class="btn-group mt-2 mt-md-0">
       <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
-      <a href="{{ route('export.pdf.clothing.order', $region->id) }}" target="_blank" class="btn btn-sm btn-outline-danger">
+      <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-danger">
         <i class="ti ti-file-text"></i> PDF
       </a>
-      <a href="{{ route('export.excel.clothing', $region->id) }}" target="_blank" class="btn btn-sm btn-outline-success">
+      <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-success">
         <i class="ti ti-file-spreadsheet"></i> Excel
       </a>
     </div>
@@ -43,8 +43,7 @@
           @endphp
 
           @forelse($clothings as $order)
-            @if($order->pay_status == 1)
-              @foreach($order->items as $item)
+            @foreach($order->items as $item)
                 @php
                   $price = (float) $item->price;
                   $qty = (int) ($item->qty ?: 1);
@@ -67,8 +66,7 @@
                 @php
                   $grandTotal += $lineTotal;
                 @endphp
-              @endforeach
-            @endif
+            @endforeach
           @empty
             <tr>
               <td colspan="11" class="text-center text-muted py-3">No clothing orders found for this region</td>
