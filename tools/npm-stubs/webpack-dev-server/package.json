@@ -1,0 +1,7 @@
+{
+  "name": "ct-webpack-dev-server-disabled",
+  "version": "4.15.2",
+  "private": true,
+  "description": "Cape Tennis compatibility stub; the insecure Laravel Mix hot server is intentionally disabled.",
+  "main": "index.js"
+}

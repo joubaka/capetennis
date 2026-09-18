@@ -12,6 +12,7 @@ use App\Models\Event;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPlayer;
+use App\Models\TeamSelectionInvitation;
 use App\Models\TeamRegion;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +70,19 @@ final class ClothingOrderService
         }
 
         return DB::transaction(function () use ($user, $event, $region, $team, $player, $normalised, $requestToken) {
+            $invitation = TeamSelectionInvitation::query()
+                ->where('event_id', $event->id)
+                ->where('team_id', $team->id)
+                ->where('player_id', $player->id)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+            if ($invitation?->clothing_decision === 'not_required') {
+                throw ValidationException::withMessages([
+                    'items' => 'The player has already confirmed that no clothing is required.',
+                ]);
+            }
+
             $existing = ClothingOrder::query()->where('request_token', $requestToken)
                 ->where('user_id', $user->id)->lockForUpdate()->first();
             if ($existing) {

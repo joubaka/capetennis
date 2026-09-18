@@ -12,6 +12,7 @@ concurrency:
 
 env:
   PHP_VERSION: "8.5"
+  NODE_VERSION: "18.20.8"
   DB_CONNECTION: sqlite
   DB_DATABASE: ":memory:"
 
@@ -46,6 +47,25 @@ jobs:
             app/Http app/Console 2>/dev/null; then
             echo "::warning::Direct DB mutations on financial tables detected — ensure these go through service layer"
           fi
+
+  frontend:
+    name: Frontend Security and Build
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend gate
+        run: npm run gate:frontend
 
   # ---------------------------------------------------------------
   # Migration safety

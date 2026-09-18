@@ -7,12 +7,15 @@ use App\Models\TeamSelectionInvitation;
 use App\Models\ClothingOrder;
 use App\Models\TeamSelectionRegionAnnouncement;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
+use App\Services\TeamSelection\TeamSelectionInvitationDecisionAccessService;
 use App\Services\Clothing\ClothingPriceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class TeamSelectionInvitationController extends Controller
 {
+    public function __construct(private TeamSelectionInvitationDecisionAccessService $decisionAccess) {}
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -79,6 +82,7 @@ class TeamSelectionInvitationController extends Controller
 
     public function decline(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
+        $this->decisionAccess->authorizePlayerDecision($request->user(), $invitation);
         $data = $request->validate(['reason' => ['nullable', 'string', 'max:1000']]);
         $replacement = $service->decline($invitation, $request->user(), $data['reason'] ?? null);
 
@@ -104,22 +108,21 @@ class TeamSelectionInvitationController extends Controller
         return view('frontend.team-selection.clothing', compact('invitation', 'items', 'requestToken', 'payfastSettings'));
     }
 
-    public function clothingDecision(Request $request, TeamSelectionInvitation $invitation)
+    public function clothingDecision(
+        Request $request,
+        TeamSelectionInvitation $invitation,
+        TeamSelectionInvitationService $service,
+    )
     {
-        $invitation->loadMissing(['player.user', 'player.users', 'selectionImport', 'region.clothingItems.sizes']);
-        abort_unless($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED, 403);
-        abort_unless($invitation->player && (
-            (int) $invitation->player->userId === (int) $request->user()->id
-            || $invitation->player->users->contains(fn ($user) => (int) $user->id === (int) $request->user()->id)
-        ), 403);
+        $this->decisionAccess->authorizePlayerDecision($request->user(), $invitation);
         $data = $request->validate(['decision' => ['required', 'in:not_required']]);
-        $hasPaidOrder = ClothingOrder::query()->where('event_id', $invitation->event_id)
-            ->where('team_id', $invitation->team_id)->where('player_id', $invitation->player_id)
-            ->where(fn ($query) => $query->where('pay_status', 1)->orWhere('payfast_paid', true))->exists();
-        if ($hasPaidOrder) {
+        $result = $service->recordClothingDecision($invitation, $request->user(), $data['decision']);
+        if ($result === 'paid_order') {
             return back()->with('success', 'Your paid clothing order is already recorded.');
         }
-        $invitation->update(['clothing_decision' => $data['decision'], 'clothing_decided_at' => now()]);
+        if ($result === 'order_in_progress') {
+            return back()->with('success', 'A clothing order is already in progress. Complete or cancel it before choosing no clothing.');
+        }
 
         return back()->with('success', 'Thank you. We recorded that no clothing is required.');
     }

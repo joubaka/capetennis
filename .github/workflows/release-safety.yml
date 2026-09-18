@@ -20,6 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.20.8"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend security and build gate
+        run: npm run gate:frontend
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:

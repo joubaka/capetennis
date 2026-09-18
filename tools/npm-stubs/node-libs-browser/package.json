@@ -1,0 +1,7 @@
+{
+  "name": "ct-node-libs-browser-disabled",
+  "version": "2.2.1",
+  "private": true,
+  "description": "Cape Tennis compatibility stub for Laravel Mix's unused Webpack 4 browser polyfills.",
+  "main": "index.js"
+}

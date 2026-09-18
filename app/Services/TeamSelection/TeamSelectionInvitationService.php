@@ -9,6 +9,7 @@ use App\Domain\Teams\Services\ExternalTeamRosterService;
 use App\Services\Clothing\ClothingPriceService;
 use App\Jobs\SendTeamSelectionInvitationEmailJob;
 use App\Models\BulkEmailLog;
+use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\TeamPaymentOrder;
 use App\Models\Player;
@@ -17,6 +18,7 @@ use App\Models\TeamSelectionImport;
 use App\Models\TeamSelectionInvitation;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -25,6 +27,7 @@ final class TeamSelectionInvitationService
     public function __construct(
         private ClothingPriceService $clothingPrices,
         private TeamSelectionContactService $contacts,
+        private TeamSelectionInvitationDecisionAccessService $decisionAccess,
     ) {}
 
     /**
@@ -339,6 +342,7 @@ final class TeamSelectionInvitationService
     {
         return DB::transaction(function () use ($invitation, $user, $reason) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
+            $this->decisionAccess->authorizePlayerDecision($user, $locked);
             if (! in_array($locked->status, [
                 TeamSelectionInvitation::INVITED,
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -391,6 +395,48 @@ final class TeamSelectionInvitationService
                 ->log('declined regional team invitation');
 
             return $reserve?->fresh();
+        });
+    }
+
+    public function recordClothingDecision(
+        TeamSelectionInvitation $invitation,
+        User $user,
+        string $decision,
+    ): string {
+        if ($decision !== 'not_required') {
+            throw ValidationException::withMessages([
+                'decision' => 'The clothing decision is invalid.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($invitation, $user, $decision): string {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+            $this->decisionAccess->authorizePlayerDecision($user, $locked);
+            if ($locked->status !== TeamSelectionInvitation::PAID_CONFIRMED) {
+                throw new AuthorizationException('Complete event payment before recording a clothing decision.');
+            }
+
+            $orders = ClothingOrder::query()
+                ->where('event_id', $locked->event_id)
+                ->where('team_id', $locked->team_id)
+                ->where('player_id', $locked->player_id)
+                ->lockForUpdate()
+                ->get(['id', 'pay_status', 'payfast_paid']);
+            if ($orders->contains(fn (ClothingOrder $order): bool => (int) $order->pay_status === 1 || (bool) $order->payfast_paid)) {
+                return 'paid_order';
+            }
+            if ($orders->isNotEmpty()) {
+                return 'order_in_progress';
+            }
+
+            if ($locked->clothing_decision !== $decision || $locked->clothing_decided_at === null) {
+                $locked->update([
+                    'clothing_decision' => $decision,
+                    'clothing_decided_at' => now(),
+                ]);
+            }
+
+            return 'recorded';
         });
     }
 

@@ -1,4 +1,4 @@
-const { EnvironmentPlugin } = require('webpack');
+const { EnvironmentPlugin, ProvidePlugin } = require('webpack');
 const mix = require('laravel-mix');
 const glob = require('glob');
 const path = require('path');
@@ -35,9 +35,21 @@ mix.webpackConfig({
   output: {
     libraryTarget: 'umd'
   },
+  resolve: {
+    alias: {
+      'process/browser': require.resolve('process/browser')
+    },
+    fallback: {
+      buffer: require.resolve('buffer/')
+    }
+  },
   plugins: [
     new EnvironmentPlugin({
       BASE_URL: '/ct/public/'
+    }),
+    new ProvidePlugin({
+      Buffer: ['buffer', 'Buffer'],
+      process: 'process/browser'
     })
   ],
   module: {
@@ -56,7 +68,7 @@ mix.webpackConfig({
           ],
           plugins: [
             '@babel/plugin-transform-destructuring',
-            '@babel/plugin-proposal-object-rest-spread',
+            '@babel/plugin-transform-object-rest-spread',
             '@babel/plugin-transform-template-literals'
           ],
           babelrc: false
@@ -81,6 +93,12 @@ mix.webpackConfig({
   stats: {
     children: true
   }
+});
+
+// Laravel Mix 6 injects a legacy bare "*" extension that Webpack 5.105+
+// rejects. Replace the generated list after Mix has assembled the config.
+mix.override(config => {
+  config.resolve.extensions = ['.wasm', '.mjs', '.js', '.jsx', '.json'];
 });
 
 /*

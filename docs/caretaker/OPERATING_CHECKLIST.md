@@ -28,6 +28,7 @@
 ## Verification and handoff
 
 - [ ] Run focused checks first and record exact commands/results.
+- [ ] Run `npm run gate:frontend` when frontend dependencies or build configuration changed.
 - [ ] Run `git diff --check`, route checks, and Blade compilation when applicable.
 - [ ] Complete responsive browser QA when the rendered interaction changed.
 - [ ] Recheck the final diff and worktree scope.

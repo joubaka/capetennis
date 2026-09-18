@@ -39,3 +39,12 @@
 - Committing, pushing, opening pull requests, changing dependencies, and preparing a release require explicit approval.
 - Deployment, production migrations or data changes, publication, outbound communication, and payment or security configuration always require a fresh explicit authorization.
 - A daily check reports evidence and risks; it does not repair findings, mutate data, send mail, or deploy.
+
+## Agent delegation
+
+- The primary agent remains accountable for scope, coordination, final verification, and the user-facing result.
+- Use `ct_caretaker` for recurring read-only repository health checks and `ct_lead` for bounded investigation and work planning.
+- Use `ct_developer` for one approved implementation scope at a time. Do not run parallel write-heavy agents against overlapping files.
+- After implementation, use `ct_quality` for independent verification. Add `ct_financial_security` whenever payment, wallet, refund, withdrawal, identity, authorization, secrets, or other sensitive state is involved.
+- Use `ct_release_guardian` only after the user explicitly requests release preparation, commit, push, pull request, or deployment work.
+- Parallel delegation is preferred for independent read-heavy exploration, test analysis, and review. Keep code ownership non-overlapping and preserve all unrelated worktree changes.

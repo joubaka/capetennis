@@ -31,8 +31,11 @@ use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Services\TeamSelection\TeamSelectionReminderService;
 use App\Services\Clothing\ClothingPriceService;
+use App\Services\Clothing\ClothingOrderService;
+use App\Services\Clothing\ClothingPaymentService;
 use App\Mail\TeamSelectionInvitationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -148,6 +151,41 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)
                 ->assertCanRegister($otherUser, $accepted->selectionImport->event, $accepted->team, $accepted->player)
                 ->player_id
+        );
+    }
+
+    public function test_unrelated_user_can_register_but_cannot_make_the_players_private_decisions(): void
+    {
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update([
+            'status' => 'prepared',
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ]);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $unrelated = User::factory()->create();
+
+        $this->actingAs($unrelated)->get(route('team-selection.invitations.show', $invitation))->assertOk();
+        $this->actingAs($unrelated)->post(route('team-selection.invitations.decline', $invitation), [
+            'reason' => 'Not my invitation',
+        ])->assertForbidden();
+        $this->actingAs($unrelated)->post(route('team-selection.invitations.clothing-decision', $invitation), [
+            'decision' => 'not_required',
+        ])->assertForbidden();
+        $service = app(TeamSelectionInvitationService::class);
+        try {
+            $service->decline($invitation->fresh(), $unrelated, 'Not my invitation');
+            $this->fail('Expected invitation decision access to be denied.');
+        } catch (AuthorizationException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+        $this->assertSame(
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            $service->beginRegistration($invitation->event_id, $invitation->team_id, $invitation->player_id, $unrelated)?->status,
         );
     }
 
@@ -383,7 +421,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->orderBy('queue_position')->firstOrFail();
         $reserve = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
             ->orderBy('queue_position')->firstOrFail();
-        $owner = User::factory()->create();
+        $owner = User::findOrFail($invitation->player->userId);
 
         app(TeamSelectionInvitationService::class)->accept($invitation, $owner);
         $order = app(TeamPaymentService::class)->ensureOrder(
@@ -804,7 +842,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->where('team_id', $team->id)->where('rank', $invitation->roster_rank)->value('player_id'));
     }
 
-    public function test_any_signed_in_user_can_open_an_enabled_paid_player_clothing_catalogue(): void
+    public function test_any_authenticated_buyer_can_open_clothing_while_orders_remain_payer_scoped(): void
     {
         [$source] = $this->selectionSource();
         $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
@@ -821,6 +859,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         ClothingSize::create(['item_type' => $item->id, 'size' => 'Medium', 'ordering' => 1]);
         $owner = User::findOrFail($invitation->player->userId);
+        $guardian = User::factory()->create();
+        $invitation->player->users()->attach($guardian->id);
+        $buyer = User::factory()->create();
         $customerPrice = app(ClothingPriceService::class)->totals((float) $item->price)['total'];
 
         $this->actingAs($owner)->get(route('team-selection.invitations.clothing', $invitation))
@@ -829,10 +870,80 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('R'.number_format($customerPrice, 2))
             ->assertDontSee('PayFast fee')
             ->assertSee('Total payable');
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($buyer)
             ->get(route('team-selection.invitations.clothing', $invitation))
             ->assertOk()
-            ->assertSee('R'.number_format($customerPrice, 2));
+            ->assertSee('Regional tracksuit');
+        $this->actingAs($buyer)
+            ->get(route('team-selection.invitations.show', $invitation))
+            ->assertOk();
+        $this->actingAs($buyer)
+            ->post(route('team-selection.invitations.clothing-decision', $invitation), [
+                'decision' => 'not_required',
+            ])->assertForbidden();
+
+        $buyerOrder = ClothingOrder::create([
+            'event_id' => $invitation->event_id,
+            'team_id' => $invitation->team_id,
+            'player_id' => $invitation->player_id,
+            'user_id' => $buyer->id,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+            'status' => 'paid',
+            'subtotal' => 4321.09,
+            'payfast_fee' => 0,
+            'total' => 4321.09,
+        ]);
+        $pendingBuyerOrder = ClothingOrder::create([
+            'event_id' => $invitation->event_id,
+            'team_id' => $invitation->team_id,
+            'player_id' => $invitation->player_id,
+            'user_id' => $buyer->id,
+            'pay_status' => 0,
+            'payfast_paid' => false,
+            'status' => 'pending',
+            'subtotal' => 1234.56,
+            'payfast_fee' => 0,
+            'total' => 1234.56,
+        ]);
+
+        $this->actingAs($buyer)->get(route('team-selection.invitations.show', $invitation))
+            ->assertOk()
+            ->assertSee('Order #'.$buyerOrder->id)
+            ->assertSee('R4,321.09')
+            ->assertSee('Order #'.$pendingBuyerOrder->id)
+            ->assertSee('R1,234.56');
+        $this->actingAs($owner)->get(route('team-selection.invitations.show', $invitation))
+            ->assertOk()
+            ->assertDontSee('Order #'.$buyerOrder->id)
+            ->assertDontSee('R4,321.09')
+            ->assertDontSee('Order #'.$pendingBuyerOrder->id)
+            ->assertDontSee('R1,234.56');
+        $this->actingAs($guardian)->get(route('team-selection.invitations.show', $invitation))
+            ->assertOk()
+            ->assertDontSee('Order #'.$buyerOrder->id)
+            ->assertDontSee('R4,321.09')
+            ->assertDontSee('Order #'.$pendingBuyerOrder->id)
+            ->assertDontSee('R1,234.56');
+
+        $this->actingAs($owner)
+            ->post(route('team-selection.invitations.clothing-decision', $invitation), [
+                'decision' => 'not_required',
+            ])->assertRedirect()
+            ->assertSessionHas('success', 'Your paid clothing order is already recorded.');
+        $this->assertSame('paid_order', app(TeamSelectionInvitationService::class)->recordClothingDecision(
+            $invitation->fresh(),
+            $guardian,
+            'not_required',
+        ));
+        $this->assertNull($invitation->fresh()->clothing_decision);
+        $buyerOrder->delete();
+        $this->assertSame('order_in_progress', app(TeamSelectionInvitationService::class)->recordClothingDecision(
+            $invitation->fresh(),
+            $guardian,
+            'not_required',
+        ));
+        $this->assertNull($invitation->fresh()->clothing_decision);
     }
 
     public function test_event_admin_can_prepare_and_preview_the_actual_regional_invitation_email(): void
@@ -2088,7 +2199,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
 
         $this->assertSame([], $service->processExpiredInvitations($selectionImport->event_id, true));
-        $accepted = $service->accept($invitation->fresh(), User::factory()->create());
+        $accepted = $service->accept($invitation->fresh(), User::findOrFail($invitation->player->userId));
 
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
     }
@@ -2313,7 +2424,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     public function test_player_can_confirm_no_clothing_and_event_manager_only_can_send_final_reminders(): void
     {
         Queue::fake();
-        [$source] = $this->selectionSource();
+        [$source, $team] = $this->selectionSource();
         $event = $source->event;
         $teamType = DB::table('eventtypes')->insertGetId([
             'name' => 'Final reminder team event', 'type' => 2, 'code' => 'final-reminder-team-event',
@@ -2326,18 +2437,76 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $selectionImport->update(['status' => 'sent', 'include_clothing' => true]);
         $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
         $owner = $invitation->player->user;
+        $guardian = User::factory()->create();
+        $invitation->player->users()->attach($guardian->id);
         $invitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
 
         $this->actingAs(User::factory()->create())->post(route('team-selection.invitations.clothing-decision', $invitation), [
             'decision' => 'not_required',
         ])->assertForbidden();
+        $this->actingAs($guardian)->post(route('team-selection.invitations.clothing-decision', $invitation), [
+            'decision' => 'not_required',
+        ])->assertRedirect()->assertSessionHas('success');
+        $refreshedInvitation = $invitation->fresh();
+        $firstDecisionAt = $refreshedInvitation->clothing_decided_at;
+        $this->assertSame('not_required', $refreshedInvitation->clothing_decision);
+
+        $this->travel(5)->minutes();
         $this->actingAs($owner)->post(route('team-selection.invitations.clothing-decision', $invitation), [
             'decision' => 'not_required',
         ])->assertRedirect()->assertSessionHas('success');
-        $this->assertSame('not_required', $invitation->fresh()->clothing_decision);
+        $this->assertSame($firstDecisionAt?->toISOString(), $invitation->fresh()->clothing_decided_at?->toISOString());
+
+        $eventRegion = EventRegion::findOrFail($source->event_region_id);
+        $eventRegion->region()->update(['clothing_admin' => true, 'clothing_order' => true]);
+        $categoryEvent = CategoryEvent::firstOrCreate([
+            'event_id' => $event->id,
+            'category_id' => RankingList::findOrFail($invitation->ranking_list_id)->category_id,
+        ]);
+        $team->update(['category_event_id' => $categoryEvent->id]);
+        $item = ClothingItemType::create([
+            'region_id' => $invitation->region_id,
+            'item_type_name' => 'Decision integrity shirt',
+            'price' => 250,
+        ]);
+        $size = ClothingSize::create(['item_type' => $item->id, 'size' => 'Medium']);
+        try {
+            app(ClothingOrderService::class)->create(
+                User::factory()->create(),
+                $event,
+                $eventRegion->region->fresh(),
+                $team,
+                $invitation->player,
+                [$item->id => ['size' => $size->id, 'qty' => 1]],
+                (string) str()->uuid(),
+            );
+            $this->fail('Expected the no-clothing decision to block order creation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('items', $exception->errors());
+        }
+
+        $pendingOrder = ClothingOrder::create([
+            'event_id' => $invitation->event_id,
+            'team_id' => $invitation->team_id,
+            'player_id' => $invitation->player_id,
+            'user_id' => $owner->id,
+            'status' => 'pending',
+            'pay_status' => 0,
+            'payfast_paid' => false,
+            'subtotal' => 250,
+            'payfast_fee' => 0,
+            'total' => 250,
+            'payfast_amount_due' => 250,
+        ]);
+        try {
+            app(ClothingPaymentService::class)->finalizePayfast($pendingOrder->id, 'PF-BLOCKED-BY-DECISION', 250);
+            $this->fail('Expected the no-clothing decision to block payment finalization.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+        $this->assertSame(0, (int) $pendingOrder->fresh()->pay_status);
 
         $reminders = app(TeamSelectionReminderService::class);
-        $eventRegion = EventRegion::findOrFail($source->event_region_id);
         $eventRegion->region()->update(['clothing_admin' => true]);
         $eventRegion->unsetRelation('region');
         $hash = $reminders->recipientHash($event, $eventRegion, 'registration_clothing', 'all');
