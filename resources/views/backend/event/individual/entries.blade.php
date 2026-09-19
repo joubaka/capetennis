@@ -125,10 +125,26 @@
     z-index: 2;
   }
 
+  .category-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   /* ============================
    MOBILE OPTIMISATION
 ============================ */
   @media (max-width: 768px) {
+
+    .category-card .card-header {
+      align-items: flex-start !important;
+      flex-wrap: wrap;
+      gap: .75rem;
+    }
+
+    .category-actions {
+      justify-content: flex-start;
+      width: 100%;
+    }
 
     /* Hide email column */
     .col-email {
@@ -276,7 +292,7 @@
             class="btn btn-outline-success btn-sm add-player-btn"
             data-category="{{ $categoryEvent->id }}"
             data-locked="0">
-      <i class="ti ti-plus me-1"></i>Add Player
+      <i class="ti ti-plus me-1"></i>Register offline
     </button>
   @endunless
 
@@ -441,19 +457,19 @@
 @include('backend.event.partials.email-modal')
 
 {{-- ADD PLAYER MODAL (SINGLE) --}}
-<div class="modal fade" id="addPlayerModal" tabindex="-1">
+<div class="modal fade" id="addPlayerModal" tabindex="-1" aria-labelledby="addPlayerModalTitle" aria-hidden="true">
   <div class="modal-dialog modal-md modal-dialog-centered">
     <form id="addPlayerForm" class="modal-content">
       @csrf
       <input type="hidden" id="add_player_category_id">
 
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">Add Player</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="addPlayerModalTitle">Register without online payment</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
       <div class="modal-body">
-        <label class="form-label fw-semibold">Registration</label>
+        <label class="form-label fw-semibold" for="addPlayerRegistration">Player</label>
      <select name="registration_id"
         id="addPlayerRegistration"
         class="form-select select2-player"
@@ -462,6 +478,15 @@
 
           <option value="">Select player</option>
         </select>
+
+        <label class="form-label fw-semibold mt-3" for="offlineCollectionStatus">Payment collection</label>
+        <select name="collection_status" id="offlineCollectionStatus" class="form-select" required>
+          <option value="unpaid">Unpaid</option>
+          <option value="paid_privately">Paid privately (cash/EFT)</option>
+        </select>
+        <div class="form-text">
+          Tracking only: the cash/EFT amount is not recorded as payment income. The admin entry remains visible in event Finances for Cape Tennis fee reporting and creates no online payment or refund record.
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -470,7 +495,7 @@
         data-bs-dismiss="modal">
   Cancel
 </button>
-     <button class="btn btn-primary">Add Player</button>
+     <button type="submit" class="btn btn-primary" data-register-offline-submit>Register offline</button>
       </div>
     </form>
   </div>
@@ -651,15 +676,29 @@ if (document.getElementById('messageEditor')) {
 /* =====================
    SELECT2 INIT
 ===================== */
-function initPlayerSelect2() {
+function initPlayerSelect2(url) {
     const select = $('#addPlayerRegistration');
     if (!select.length) return;
 
     select.select2({
         dropdownParent: $('#addPlayerModal'),
-        placeholder: 'Search player...',
+        placeholder: 'Search by player name...',
         allowClear: true,
-        width: '100%'
+        width: '100%',
+        minimumInputLength: 2,
+        ajax: {
+            url,
+            dataType: 'json',
+            delay: 250,
+            data: params => ({
+                q: params.term || '',
+                page: params.page || 1
+            }),
+            processResults: data => ({
+                results: data.results || [],
+                pagination: data.pagination || { more: false }
+            })
+        }
     });
 }
 
@@ -775,7 +814,7 @@ document.addEventListener('click', function(e) {
                     newBtn.className = 'btn btn-outline-success btn-sm add-player-btn';
                     newBtn.dataset.category = card.dataset.categoryId;
                     newBtn.dataset.locked = '0';
-                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>Add Player';
+                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>Register offline';
                     btn.parentElement.appendChild(newBtn);
                 }
             }
@@ -1016,6 +1055,7 @@ document.addEventListener('click', function(e) {
 
     const categoryId = btn.dataset.category;
     document.getElementById('add_player_category_id').value = categoryId;
+    document.getElementById('offlineCollectionStatus').value = 'unpaid';
 
     const select = $('#addPlayerRegistration');
 
@@ -1023,28 +1063,11 @@ document.addEventListener('click', function(e) {
         select.select2('destroy');
     }
 
-    select.html('<option>Loading…</option>');
+    select.empty().append(new Option('', '', false, false));
 
     const url = window.routes.availableRegistrations.replace(':id', categoryId);
-
-    fetch(url, { headers: { 'Accept': 'application/json' } })
-    .then(r => r.json())
-    .then(list => {
-
-        select.empty();
-
-        if (!list.length) {
-            select.append('<option disabled>No available players</option>');
-        } else {
-            list.forEach(p => {
-                select.append(new Option(p.name, p.id, false, false));
-            });
-        }
-
-        initPlayerSelect2();
-        addPlayerModal.show();
-    })
-    .catch(() => toastr.error('Failed to load available registrations.'));
+    initPlayerSelect2(url);
+    addPlayerModal.show();
 });
 
     /* =====================
@@ -1057,6 +1080,13 @@ if (addForm) {
 
         const categoryId = document.getElementById('add_player_category_id').value;
         const url = window.routes.addPlayer.replace(':id', categoryId);
+        const submitButton = addForm.querySelector('[data-register-offline-submit]');
+
+        if (submitButton?.disabled) return;
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registering…';
+        }
 
         fetch(url, {
             method: 'POST',
@@ -1066,14 +1096,26 @@ if (addForm) {
             },
             body: new FormData(addForm)
         })
-        .then(r => r.json())
+        .then(async response => {
+            const res = await response.json();
+
+            if (!response.ok) {
+                const firstValidationError = res.errors
+                    ? Object.values(res.errors).flat()[0]
+                    : null;
+
+                throw new Error(firstValidationError || res.message || 'Offline registration failed.');
+            }
+
+            return res;
+        })
         .then(res => {
             if (!res.success) {
                 toastr.error(res.message || 'Add player failed.');
                 return;
             }
             addPlayerModal.hide();
-            toastr.success('Player added successfully.');
+            toastr.success('Player registered offline successfully.');
             // Find the category card
             const categoryId = document.getElementById('add_player_category_id').value;
             const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
@@ -1086,7 +1128,13 @@ if (addForm) {
                 }
             }
         })
-        .catch(() => toastr.error('Add player failed. Please try again.'));
+        .catch(error => toastr.error(error.message || 'Offline registration failed. Please try again.'))
+        .finally(() => {
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Register offline';
+            }
+        });
     });
 }
 

@@ -13,10 +13,12 @@ use App\Models\Draw;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
+use App\Models\Registration;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -541,11 +543,18 @@ class EntryServiceTest extends TestCase
         // First add succeeds
         app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
 
-        // Second add must be blocked
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessageMatches('/already registered/i');
+        // Second add must be blocked without leaving any partial records.
+        try {
+            app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+            $this->fail('Expected duplicate registration exception was not thrown.');
+        } catch (\RuntimeException $exception) {
+            $this->assertMatchesRegularExpression('/already registered/i', $exception->getMessage());
+        }
 
-        app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin);
+        $this->assertSame(1, Registration::count());
+        $this->assertSame(1, \App\Models\PlayerRegistration::count());
+        $this->assertSame(1, CategoryEventRegistration::count());
+        $this->assertSame(1, DB::table('transactions_pf')->count());
     }
 
     public function test_admin_add_creates_audit_transaction_record(): void
@@ -562,7 +571,48 @@ class EntryServiceTest extends TestCase
             'category_event_id' => $ce->id,
             'player_id'         => $player->id,
             'item_name'         => 'Admin Entry',
+            'amount_gross'      => 0,
+            'amount_net'        => 0,
+            'amount_fee'        => 0,
+            'pf_payment_id'     => null,
         ]);
+    }
+
+    public function test_admin_add_can_record_private_collection_and_creates_exactly_one_record_set(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+
+        $entry = app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin, 'paid_privately');
+
+        $this->assertSame('paid', $entry->admin_payment_status);
+        $this->assertSame(1, (int) $entry->payment_status_id);
+        $this->assertSame(1, Registration::count());
+        $this->assertSame(1, \App\Models\PlayerRegistration::count());
+        $this->assertSame(1, CategoryEventRegistration::count());
+        $this->assertSame(1, DB::table('transactions_pf')->count());
+    }
+
+    public function test_admin_add_rejects_invalid_collection_status_before_writes(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+
+        try {
+            app(EntryService::class)->addPlayerAsAdmin($ce, $player->id, $admin, 'online');
+            $this->fail('Expected validation exception was not thrown.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('collection_status', $exception->errors());
+        }
+
+        $this->assertSame(0, Registration::count());
+        $this->assertSame(0, \App\Models\PlayerRegistration::count());
+        $this->assertSame(0, CategoryEventRegistration::count());
+        $this->assertSame(0, DB::table('transactions_pf')->count());
     }
 
     public function test_admin_add_is_canonically_paid_but_private_collection_starts_unpaid(): void

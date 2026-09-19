@@ -21,7 +21,8 @@ use App\Exports\CategoryEntriesExport;
 use App\Services\BulkMailDispatcher;
 
   use App\Models\Transaction;
-  use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use App\Domain\Entries\Services\EntryService;
 
 class EventEntryController extends Controller
@@ -85,16 +86,22 @@ class EventEntryController extends Controller
 
   public function addPlayer(Request $request, CategoryEvent $categoryEvent)
   {
-    $this->authorize('category.manage', $categoryEvent);
+    $this->authorize('event-draw.view', $categoryEvent->event);
 
     $data = $request->validate([
       'registration_id' => ['required', 'exists:players,id'],
+      'collection_status' => ['sometimes', Rule::in(['unpaid', 'paid_privately'])],
     ]);
 
     $playerId = $data['registration_id'];
 
     try {
-      $entry = $this->entryService->addPlayerAsAdmin($categoryEvent, $playerId, auth()->user());
+      $entry = $this->entryService->addPlayerAsAdmin(
+        $categoryEvent,
+        $playerId,
+        auth()->user(),
+        $data['collection_status'] ?? 'unpaid'
+      );
     } catch (\RuntimeException $e) {
       $status = str_contains($e->getMessage(), 'locked') ? 403 : 422;
       return response()->json(['success' => false, 'message' => $e->getMessage()], $status);
@@ -105,6 +112,7 @@ class EventEntryController extends Controller
     return response()->json([
       'success' => true,
       'count' => $categoryEvent->activeRegistrations()->count(),
+      'admin_payment_status' => $entry->admin_payment_status,
       'row' => view('backend.event.partials.entry-row', [
         'reg' => $entry,
       ])->render(),
@@ -346,20 +354,51 @@ class EventEntryController extends Controller
 
 
 
-  public function availableRegistrations(CategoryEvent $categoryEvent)
+  public function availableRegistrations(Request $request, CategoryEvent $categoryEvent)
   {
-    $this->authorize('category.manage', $categoryEvent);
+    $this->authorize('event-draw.view', $categoryEvent->event);
 
-    return Player::query()
-      ->orderBy('name')
-      ->orderBy('surname')
-      ->get()
-      ->map(function ($player) {
+    $data = $request->validate([
+      'q' => ['nullable', 'string', 'max:100'],
+      'page' => ['nullable', 'integer', 'min:1'],
+    ]);
+    $search = trim((string) ($data['q'] ?? ''));
+    $page = (int) ($data['page'] ?? 1);
+
+    $players = Player::query()
+      ->select(['players.id', 'players.name', 'players.surname'])
+      ->whereNotExists(function ($query) use ($categoryEvent) {
+        $query->selectRaw('1')
+          ->from('player_registrations')
+          ->join('category_event_registrations', 'category_event_registrations.registration_id', '=', 'player_registrations.registration_id')
+          ->whereColumn('player_registrations.player_id', 'players.id')
+          ->where('category_event_registrations.category_event_id', $categoryEvent->id)
+          ->where('category_event_registrations.payment_status_id', 1)
+          ->where('category_event_registrations.status', '!=', 'withdrawn');
+      })
+      ->when($search !== '', function ($query) use ($search) {
+        foreach (preg_split('/\s+/', $search) as $term) {
+          $escaped = addcslashes($term, '\\%_');
+          $query->where(function ($nameQuery) use ($escaped) {
+            $nameQuery->where('players.name', 'like', "%{$escaped}%")
+              ->orWhere('players.surname', 'like', "%{$escaped}%");
+          });
+        }
+      })
+      ->orderBy('players.surname')
+      ->orderBy('players.name')
+      ->orderBy('players.id')
+      ->simplePaginate(20, ['players.id', 'players.name', 'players.surname'], 'page', $page);
+
+    return response()->json([
+      'results' => collect($players->items())->map(function (Player $player) {
         return [
-          'id' => $player->id,   // now this is player_id
-          'name' => trim($player->name . ' ' . $player->surname),
+          'id' => $player->id,
+          'text' => trim($player->name . ' ' . $player->surname) . ' · profile #' . $player->id,
         ];
-      });
+      })->values(),
+      'pagination' => ['more' => $players->hasMorePages()],
+    ]);
   }
 
   public function movePlayer(Request $request, $entryId)

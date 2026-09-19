@@ -61,11 +61,25 @@ class EntryService
     public function addPlayerAsAdmin(
         CategoryEvent $categoryEvent,
         int $playerId,
-        User $actingUser
+        User $actingUser,
+        string $collectionStatus = 'unpaid'
     ): CategoryEventRegistration {
-        $this->eligibility->assertCanAddAdmin($categoryEvent, $playerId);
+        if (! in_array($collectionStatus, ['unpaid', 'paid_privately'], true)) {
+            throw ValidationException::withMessages([
+                'collection_status' => 'The collection status must be unpaid or paid privately.',
+            ]);
+        }
 
-        return DB::transaction(function () use ($categoryEvent, $playerId, $actingUser) {
+        return DB::transaction(function () use ($categoryEvent, $playerId, $actingUser, $collectionStatus) {
+            // Serialize category mutations before checking for an existing active entry.
+            $lockedCategoryEvent = CategoryEvent::query()
+                ->whereKey($categoryEvent->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->eligibility->assertCanAddAdmin($lockedCategoryEvent, $playerId);
+
+            $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
             $registration = Registration::create([]);
 
             PlayerRegistration::create([
@@ -74,12 +88,12 @@ class EntryService
             ]);
 
             /** @var CategoryEventRegistration $entry */
-            $entry = $categoryEvent->categoryEventRegistrations()->create([
+            $entry = $lockedCategoryEvent->categoryEventRegistrations()->create([
                 'registration_id'   => $registration->id,
                 'user_id'           => $actingUser->id,
                 'status'            => 'active',
                 'payment_status_id' => 1,
-                'admin_payment_status' => 'unpaid',
+                'admin_payment_status' => $adminPaymentStatus,
             ]);
 
             DB::table('transactions_pf')->insert([
@@ -102,11 +116,23 @@ class EntryService
                 'custom_str3'       => optional($categoryEvent->event)->name,
             ]);
 
+            activity('registration')
+                ->performedOn($entry)
+                ->causedBy($actingUser)
+                ->withProperties([
+                    'entry_source' => 'admin_offline',
+                    'collection_status' => $collectionStatus,
+                    'canonical_payment_status_id' => 1,
+                    'transaction_amount' => 0,
+                ])
+                ->log('Player registered offline by admin');
+
             Log::info('[EntryService] Admin entry created', [
                 'category_event_id' => $categoryEvent->id,
                 'player_id'         => $playerId,
                 'entry_id'          => $entry->id,
                 'actor'             => $actingUser->id,
+                'collection_status' => $collectionStatus,
             ]);
 
             DB::afterCommit(fn () => event(new EntryCreated($entry, $actingUser, 'admin')));

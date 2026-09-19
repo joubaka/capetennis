@@ -193,6 +193,45 @@ class EventEntryAuthorizationTest extends TestCase
         $this->assertNotEquals(401, $response->status());
     }
 
+    public function test_available_registration_search_is_bounded_private_and_excludes_active_entries(): void
+    {
+        Player::factory()->count(24)->create([
+            'name' => 'Searchable',
+            'surname' => 'Player',
+        ]);
+        $enteredPlayer = Player::factory()->create([
+            'name' => 'Searchable',
+            'surname' => 'Entered',
+            'email' => 'private@example.test',
+        ]);
+        $registration = Registration::factory()->create();
+        PlayerRegistration::create([
+            'registration_id' => $registration->id,
+            'player_id' => $enteredPlayer->id,
+        ]);
+        CategoryEventRegistration::factory()->create([
+            'category_event_id' => $this->categoryEvent->id,
+            'registration_id' => $registration->id,
+            'payment_status_id' => 1,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->getJson(route('admin.category.availableRegistrations', [
+                'categoryEvent' => $this->categoryEvent,
+                'q' => 'Searchable',
+                'page' => 1,
+            ]))
+            ->assertOk()
+            ->assertJsonCount(20, 'results')
+            ->assertJsonPath('pagination.more', true);
+
+        $results = collect($response->json('results'));
+        $this->assertFalse($results->contains('id', $enteredPlayer->id));
+        $this->assertTrue($results->every(fn (array $result) => array_keys($result) === ['id', 'text']));
+        $this->assertFalse(str_contains($response->getContent(), 'private@example.test'));
+    }
+
     // ── addPlayer ────────────────────────────────────────────────────────────
 
     public function test_guest_is_redirected_from_add_player(): void
@@ -206,6 +245,104 @@ class EventEntryAuthorizationTest extends TestCase
         $this->actingAs($this->ordinaryUser)
             ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [])
             ->assertForbidden();
+    }
+
+    public function test_event_admin_can_register_player_offline_as_unpaid(): void
+    {
+        $player = Player::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [
+                'registration_id' => $player->id,
+                'collection_status' => 'unpaid',
+            ])
+            ->assertOk()
+            ->assertJsonPath('admin_payment_status', 'unpaid');
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $this->categoryEvent->id,
+            'payment_status_id' => 1,
+            'status' => 'active',
+            'admin_payment_status' => 'unpaid',
+        ]);
+    }
+
+    public function test_legacy_add_player_request_without_collection_status_defaults_to_unpaid(): void
+    {
+        $player = Player::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [
+                'registration_id' => $player->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('admin_payment_status', 'unpaid');
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $this->categoryEvent->id,
+            'payment_status_id' => 1,
+            'status' => 'active',
+            'admin_payment_status' => 'unpaid',
+        ]);
+    }
+
+    public function test_event_admin_can_register_player_paid_privately(): void
+    {
+        $player = Player::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [
+                'registration_id' => $player->id,
+                'collection_status' => 'paid_privately',
+            ])
+            ->assertOk()
+            ->assertJsonPath('admin_payment_status', 'paid');
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $this->categoryEvent->id,
+            'payment_status_id' => 1,
+            'status' => 'active',
+            'admin_payment_status' => 'paid',
+        ]);
+    }
+
+    public function test_offline_registration_rejects_invalid_collection_status_without_partial_records(): void
+    {
+        $player = Player::factory()->create();
+        $registrationCount = Registration::count();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [
+                'registration_id' => $player->id,
+                'collection_status' => 'payfast',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('collection_status');
+
+        $this->assertSame($registrationCount, Registration::count());
+        $this->assertDatabaseCount('category_event_registrations', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_event_admin_cannot_list_or_add_players_for_another_event(): void
+    {
+        $otherEvent = Event::factory()->create(['eventType' => 1]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $player = Player::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.category.availableRegistrations', $otherCategory))
+            ->assertForbidden();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.addPlayer', $otherCategory), [
+                'registration_id' => $player->id,
+                'collection_status' => 'unpaid',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('category_event_registrations', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
     }
 
     // ── admin private payment note ──────────────────────────────────────────
