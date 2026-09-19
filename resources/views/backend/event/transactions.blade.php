@@ -106,7 +106,7 @@
             </small>
             <small class="text-warning d-block mt-1">
               <i class="ti ti-cash text-warning me-1"></i>
-              {{ $adminEntriesCount }} collected privately · <strong>R 0.00 to event</strong>
+              {{ $adminEntriesCount }} admin-entry fee {{ $adminEntriesCount === 1 ? 'liability' : 'liabilities' }} · <strong>R 0.00 received or reconciled</strong>
             </small>
           @endif
         </div>
@@ -206,10 +206,10 @@
           <small class="text-muted d-block mb-1">Net Tournament Income</small>
           <h4 class="{{ $netTournamentIncome >= 0 ? 'text-success' : 'text-danger' }} mb-1">R {{ number_format($netTournamentIncome, 2) }}</h4>
           @if($adminEntriesCount > 0)
-            @php $privatelyCollected = round($adminEntriesCount * (float) $event->entryFee, 2); @endphp
+            @php $unreconciledNominalValue = round($adminEntriesCount * (float) $event->entryFee, 2); @endphp
             <small class="text-warning d-block">
               <i class="ti ti-alert-triangle me-1"></i>
-              Excludes R {{ number_format($privatelyCollected, 2) }} privately collected
+              Nominal admin-entry value excluded: R {{ number_format($unreconciledNominalValue, 2) }} (not received; not payment or refund evidence)
             </small>
           @endif
           <small class="text-muted d-block">After all fees &amp; payouts</small>
@@ -304,9 +304,9 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             }
           @endphp
 
-          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'withdrawal' ? 'withdrawal-row text-muted' : ($tx->method === 'Admin Entry' ? 'admin-entry-row' : '')) }}"
+          <tr class="{{ $tx->type === 'refund' ? 'refund-row' : ($tx->type === 'withdrawal' ? 'withdrawal-row text-muted' : ($tx->type === 'admin_entry_fee' ? 'admin-entry-row' : '')) }}"
               @if($payload->count()) data-items='@json($payload)' @endif
-              @if($tx->method === 'Admin Entry') title="Collected privately — no refund possible" @endif
+              @if($tx->type === 'admin_entry_fee') title="Operational admin-entry fee liability only — no received payment or refund evidence" @endif
               @if($tx->type === 'withdrawal') title="Withdrawn — no refund issued" @endif>
 
             <td class="dt-toggle">
@@ -318,8 +318,8 @@ if ($tx->type === 'payment' && isset($tx->order)) {
             <td>{{ \Carbon\Carbon::parse($tx->created_at)->format('Y-m-d') }}</td>
 
             <td>
-              @if($tx->type === 'payment' && $tx->method === 'Admin Entry')
-                <span class="badge bg-secondary">Admin</span>
+              @if($tx->type === 'admin_entry_fee')
+                <span class="badge bg-warning text-dark">Admin fee liability</span>
               @elseif($tx->type === 'payment')
                 <span class="badge bg-success">Payment</span>
               @elseif($tx->type === 'refund')
@@ -341,15 +341,15 @@ if ($tx->type === 'payment' && isset($tx->order)) {
               @php
                 $m = $tx->method ?? '';
               @endphp
-              @if($m === 'PayFast')
+              @if($tx->type === 'admin_entry_fee')
+                <span class="badge bg-secondary">No payment evidence</span>
+              @elseif($m === 'PayFast')
                 <span class="badge bg-success">PayFast</span>
               @elseif($m === 'Wallet')
                 <span class="badge bg-info text-dark">Wallet</span>
               @elseif(str_contains($m, 'Wallet'))
                 <span class="badge bg-success">PayFast</span>
                 <span class="badge bg-info text-dark">+ Wallet</span>
-              @elseif($m === 'Admin Entry')
-                <span class="badge bg-secondary">Admin</span>
               @elseif($m)
                 <span class="badge bg-light text-dark border">{{ $m }}</span>
               @else

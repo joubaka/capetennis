@@ -40,7 +40,7 @@ class FinancialLedgerService
      * Build the complete ledger for a single event.
      *
      * Returns an associative array:
-     *  - payment_rows        : Collection of stdClass (type='payment')
+     *  - payment_rows        : Collection of received-payment rows plus admin-entry fee liabilities
      *  - refund_rows         : Collection of stdClass (type='refund'|'withdrawal', refund_status on each)
      *  - payout_rows         : Collection of stdClass (type='payout')
      *  - totals              : array (see buildTotals)
@@ -74,9 +74,10 @@ class FinancialLedgerService
         $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
 
         $isTeamEvent  = $event->isTeam();
+        $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $isTeamEvent
-            ? $paymentRows->count()
-            : $paymentRows->sum(fn($r) => $r->entryCount ?? 1);
+            ? $entryRows->count()
+            : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
         return [
             'event'            => $event,
@@ -88,7 +89,7 @@ class FinancialLedgerService
             'total_entries'    => $totalEntries,
             'total_paid_out'   => $totals['total_paid_out'],
             'balance'          => $totals['balance'],
-            'has_transactions' => $paymentRows->isNotEmpty(),
+            'has_transactions' => $entryRows->isNotEmpty(),
         ];
     }
 
@@ -360,9 +361,21 @@ class FinancialLedgerService
         $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
         $grossTx      = $payfastGross + $walletUsed;
 
-        if ($tx->pf_payment_id === null && $walletUsed == 0) {
+        $isAdminEntry = $tx->item_name === 'Admin Entry'
+            && $tx->pf_payment_id === null
+            && $walletUsed == 0
+            && $payfastGross == 0;
+        $isUnmarkedZeroValue = ! $isAdminEntry
+            && $tx->pf_payment_id === null
+            && $walletUsed == 0
+            && $payfastGross == 0;
+
+        if ($isAdminEntry) {
             $pfFeeTx = 0;
             $method  = 'Admin Entry';
+        } elseif ($isUnmarkedZeroValue) {
+            $pfFeeTx = 0;
+            $method  = 'Unreconciled';
         } elseif ($walletUsed > 0 && $payfastGross > 0) {
             $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
             $method  = 'PayFast + Wallet';
@@ -371,8 +384,17 @@ class FinancialLedgerService
             $method  = 'PayFast';
         }
 
-        // Admin entries are privately collected, but still carry Cape Tennis fee per entry
-        $capeFeeTx = -1 * round($feePerEntry * $entryCount, 2);
+        // Transaction rows retain the fee captured when the transaction was created.
+        // Legacy paid/admin rows without a snapshot fall back to the event fee that
+        // was supplied by the caller. Unmarked zero-value rows carry no liability.
+        $hasFinancialValue = $grossTx > 0;
+        $capturedCapeFee = $tx->cape_tennis_fee;
+        $capeFeeAmount = ($isAdminEntry || $hasFinancialValue)
+            ? ($capturedCapeFee !== null
+                ? abs(round((float) $capturedCapeFee, 2))
+                : round($feePerEntry * $entryCount, 2))
+            : 0.0;
+        $capeFeeTx = -1 * $capeFeeAmount;
         $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
         $playerName = ($tx->pf_payment_id === null)
@@ -395,16 +417,22 @@ class FinancialLedgerService
 
         return (object) [
             // ── Canonical normalized fields ───────────────────────────────
-            'type'             => 'payment',
-            'subtype'          => strtolower(str_replace(' ', '_', $method)),
+            'type'             => $isAdminEntry
+                ? 'admin_entry_fee'
+                : ($isUnmarkedZeroValue ? 'unreconciled' : 'payment'),
+            'subtype'          => $isAdminEntry
+                ? 'admin_entry_fee_liability'
+                : ($isUnmarkedZeroValue ? 'unreconciled_zero_value' : strtolower(str_replace(' ', '_', $method))),
             'amount_gross'     => $grossTx,
             'amount_fee'       => $pfFeeTx,
             'amount_net'       => $netTx,
-            'payment_method'   => $method,
+            'payment_method'   => ($isAdminEntry || $isUnmarkedZeroValue) ? null : $method,
             'refund_status'    => null,
             'withdrawal_status'=> null,
-            'status_label'     => $method,
-            'status_colour'    => 'primary',
+            'status_label'     => $isAdminEntry
+                ? 'Admin entry fee liability'
+                : ($isUnmarkedZeroValue ? 'Unreconciled zero-value record' : $method),
+            'status_colour'    => ($isAdminEntry || $isUnmarkedZeroValue) ? 'warning' : 'primary',
             'source_tx_id'     => $tx->id,
             'source_order_id'  => optional($tx->order)->id,
             'source_pf_id'     => $tx->pf_payment_id,
@@ -420,7 +448,7 @@ class FinancialLedgerService
             'net'           => $netTx,
             'pf_payment_id' => $tx->pf_payment_id,
             'tx_id'         => $tx->id,
-            'paid_at'       => $tx->created_at,
+            'paid_at'       => ($isAdminEntry || $isUnmarkedZeroValue) ? null : $tx->created_at,
             'order'         => $tx->order,
             'entryCount'    => $entryCount,
             'payfastGross'  => $payfastGross,

@@ -561,6 +561,7 @@ class EntryServiceTest extends TestCase
     {
         $admin  = User::factory()->create();
         $event  = Event::factory()->create();
+        DB::table('events')->where('id', $event->id)->update(['cape_tennis_fee' => 27.50]);
         $ce     = CategoryEvent::factory()->for($event)->create();
         $player = \App\Models\Player::factory()->create();
 
@@ -574,7 +575,13 @@ class EntryServiceTest extends TestCase
             'amount_gross'      => 0,
             'amount_net'        => 0,
             'amount_fee'        => 0,
+            'cape_tennis_fee'   => 27.50,
             'pf_payment_id'     => null,
+        ]);
+
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $ce->id,
+            'pf_transaction_id' => null,
         ]);
     }
 
@@ -647,8 +654,114 @@ class EntryServiceTest extends TestCase
         $this->assertDatabaseHas('activity_log', [
             'subject_type' => CategoryEventRegistration::class,
             'subject_id' => $entry->id,
-            'description' => 'Admin entry private payment marked paid',
+            'description' => 'Admin entry private collection note marked paid (not reconciled)',
         ]);
+
+        $activity = DB::table('activity_log')
+            ->where('subject_type', CategoryEventRegistration::class)
+            ->where('subject_id', $entry->id)
+            ->where('description', 'Admin entry private collection note marked paid (not reconciled)')
+            ->first();
+        $properties = json_decode((string) $activity->properties, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(true, $properties['operational_note_only']);
+        $this->assertSame(false, $properties['reconciled_payment']);
+        $this->assertSame(false, $properties['financial_amount_recorded']);
+    }
+
+    public function test_admin_private_collection_update_uses_locked_database_status_for_audit(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $service = app(EntryService::class);
+        $entry = $service->addPlayerAsAdmin($ce, $player->id, $admin);
+        $staleEntry = $entry->fresh();
+
+        DB::table('category_event_registrations')
+            ->where('id', $entry->id)
+            ->update(['admin_payment_status' => 'paid']);
+
+        $updated = $service->setAdminPaymentStatus($staleEntry, false, $admin);
+
+        $this->assertSame('unpaid', $updated->admin_payment_status);
+        $activity = DB::table('activity_log')
+            ->where('subject_type', CategoryEventRegistration::class)
+            ->where('subject_id', $entry->id)
+            ->where('description', 'Admin entry private collection note marked unpaid (not reconciled)')
+            ->first();
+        $this->assertNotNull($activity);
+
+        $properties = json_decode((string) $activity->properties, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('paid', $properties['admin_payment_status_from']);
+        $this->assertSame('unpaid', $properties['admin_payment_status_to']);
+        $this->assertSame(false, $properties['reconciled_payment']);
+    }
+
+    public function test_admin_private_collection_update_is_idempotent_against_locked_database_status(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $service = app(EntryService::class);
+        $entry = $service->addPlayerAsAdmin($ce, $player->id, $admin);
+        $staleEntry = $entry->fresh();
+
+        DB::table('category_event_registrations')
+            ->where('id', $entry->id)
+            ->update(['admin_payment_status' => 'paid']);
+        $activityCount = DB::table('activity_log')->count();
+
+        $updated = $service->setAdminPaymentStatus($staleEntry, true, $admin);
+
+        $this->assertSame('paid', $updated->admin_payment_status);
+        $this->assertSame($activityCount, DB::table('activity_log')->count());
+    }
+
+    public function test_admin_private_collection_update_rechecks_eligibility_after_locking(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $service = app(EntryService::class);
+        $entry = $service->addPlayerAsAdmin($ce, $player->id, $admin);
+        $staleEntry = $entry->fresh();
+
+        DB::table('category_event_registrations')
+            ->where('id', $entry->id)
+            ->update(['admin_payment_status' => null]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Only admin-created entries have a private collection note.');
+
+        $service->setAdminPaymentStatus($staleEntry, true, $admin);
+    }
+
+    public function test_admin_entry_remains_canonically_paid_but_cannot_request_refund(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        $ce = CategoryEvent::factory()->for($event)->create();
+        $player = \App\Models\Player::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin(
+            $ce,
+            $player->id,
+            $admin,
+            'paid_privately'
+        );
+
+        $entry->update([
+            'status' => 'withdrawn',
+            'refund_status' => 'not_refunded',
+        ]);
+
+        $this->assertSame(1, (int) $entry->payment_status_id);
+        $this->assertTrue($entry->is_paid);
+        $this->assertTrue($entry->isAdminEntry());
+        $this->assertFalse($entry->canRequestRefund());
     }
 
     public function test_admin_payment_note_migration_backfills_legacy_admin_entries_as_unpaid(): void

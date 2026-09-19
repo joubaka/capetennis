@@ -3,6 +3,7 @@
 # --------------------------------------
 /node_modules
 /public/hot
+/.codex-remote-attachments/
 
 # Local payment exports and diagnostic dumps may contain personal or financial data.
 /payfast_export.csv

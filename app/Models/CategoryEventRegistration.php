@@ -594,6 +594,7 @@ class CategoryEventRegistration extends Model
   {
     return $this->status === 'withdrawn'
       && $this->is_paid
+      && ! $this->isAdminEntry()
       && in_array($this->refund_status, [null, '', 'not_refunded']);
   }
 

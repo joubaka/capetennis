@@ -289,6 +289,7 @@ class EventEntryAuthorizationTest extends TestCase
     public function test_event_admin_can_register_player_paid_privately(): void
     {
         $player = Player::factory()->create();
+        DB::table('events')->where('id', $this->event->id)->update(['cape_tennis_fee' => 23.75]);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.category.addPlayer', $this->categoryEvent), [
@@ -303,6 +304,16 @@ class EventEntryAuthorizationTest extends TestCase
             'payment_status_id' => 1,
             'status' => 'active',
             'admin_payment_status' => 'paid',
+            'pf_transaction_id' => null,
+        ]);
+        $this->assertDatabaseHas('transactions_pf', [
+            'event_id' => $this->event->id,
+            'category_event_id' => $this->categoryEvent->id,
+            'amount_gross' => 0,
+            'amount_net' => 0,
+            'amount_fee' => 0,
+            'cape_tennis_fee' => 23.75,
+            'pf_payment_id' => null,
         ]);
     }
 

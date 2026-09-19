@@ -162,7 +162,7 @@
                                                                             @if(in_array($registration->pivot->admin_payment_status, ['unpaid', 'paid'], true))
                                                                                 @php $adminCollectionPaid = $registration->pivot->admin_payment_status === 'paid'; @endphp
                                                                                 <span class="badge {{ $adminCollectionPaid ? 'bg-success' : 'bg-warning text-dark' }}">
-                                                                                    Admin entry {{ $adminCollectionPaid ? 'paid' : 'unpaid' }}
+                                                                                    Private collection {{ $adminCollectionPaid ? 'noted paid' : 'not marked paid' }} (not reconciled)
                                                                                 </span>
                                                                                 <form method="POST"
                                                                                       action="{{ route('admin.entry.admin-payment-status', $registration->pivot->id) }}"
@@ -171,7 +171,7 @@
                                                                                     @method('PATCH')
                                                                                     <input type="hidden" name="paid" value="{{ $adminCollectionPaid ? '0' : '1' }}">
                                                                                     <button type="submit" class="btn btn-xs {{ $adminCollectionPaid ? 'btn-outline-warning' : 'btn-outline-success' }}">
-                                                                                        {{ $adminCollectionPaid ? 'Mark unpaid' : 'Mark paid' }}
+                                                                                        {{ $adminCollectionPaid ? 'Mark note unpaid' : 'Mark note paid' }}
                                                                                     </button>
                                                                                 </form>
                                                                             @else

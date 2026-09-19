@@ -1,0 +1,145 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: Exact 40-character main commit SHA to deploy
+        required: true
+        type: string
+      approved_migrations:
+        description: Exact pending migration paths, comma-separated with no spaces; enter none only when none are pending
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: cape-tennis-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy approved main commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ inputs.deploy_sha }}
+      APPROVED_MIGRATIONS: ${{ inputs.approved_migrations }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate requested commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::deploy_sha must be a full lowercase 40-character commit SHA.'
+            exit 1
+          }
+
+          MAIN_SHA="$(git -c http.extraHeader="AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" refs/heads/main \
+            | awk '{print $1}')"
+          [ "$MAIN_SHA" = "$DEPLOY_SHA" ] || {
+            echo "::error::Requested SHA is not the current origin/main commit."
+            exit 1
+          }
+
+          [ -n "$APPROVED_MIGRATIONS" ] || {
+            echo '::error::approved_migrations must be none or exact comma-separated migration paths.'
+            exit 1
+          }
+          if [ "$APPROVED_MIGRATIONS" != none ]; then
+            migration_path='database/migrations/[A-Za-z0-9][A-Za-z0-9_.-]*\.php'
+            [[ "$APPROVED_MIGRATIONS" =~ ^${migration_path}(,${migration_path})*$ ]] || {
+              echo '::error::approved_migrations contains an invalid path or separator.'
+              exit 1
+            }
+          fi
+
+      - name: Require successful CI for the exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNS="$(curl --fail-with-body --silent --show-error \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&head_sha=$DEPLOY_SHA&per_page=20")"
+          jq -e --arg sha "$DEPLOY_SHA" \
+            '.workflow_runs | any(.head_sha == $sha and .head_branch == "main" and .event == "push" and .conclusion == "success")' \
+            <<<"$RUNS" >/dev/null || {
+              echo '::error::No successful CI — Full Test Suite push run exists for this exact main commit.'
+              exit 1
+            }
+
+      - name: Configure locked-down SSH
+        shell: bash
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SERVER_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Deploy exact approved commit
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_APP_PATH: ${{ secrets.SERVER_APP_PATH }}
+        run: |
+          set -euo pipefail
+          [[ "$SERVER_PORT" =~ ^[0-9]{1,5}$ ]] || {
+            echo '::error::SERVER_PORT must be numeric.'
+            exit 1
+          }
+          [[ "$SERVER_USER" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo '::error::SERVER_USER contains unsupported characters.'
+            exit 1
+          }
+          [[ "$SERVER_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || {
+            echo '::error::SERVER_HOST contains unsupported characters.'
+            exit 1
+          }
+          [[ "$SERVER_APP_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] \
+            && [[ "$SERVER_APP_PATH" != *'/../'* ]] \
+            && [[ "$SERVER_APP_PATH" != */.. ]] || {
+              echo '::error::SERVER_APP_PATH must be a normalized absolute path.'
+              exit 1
+            }
+          APPROVED_MIGRATIONS_B64="$(printf '%s' "$APPROVED_MIGRATIONS" | base64 -w 0)"
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -p "$SERVER_PORT" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash -s -- '$DEPLOY_SHA' '$SERVER_APP_PATH' '$APPROVED_MIGRATIONS_B64'" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+          DEPLOY_SHA="$1"
+          APP_PATH="$2"
+          APPROVED_MIGRATIONS_B64="$3"
+          cd "$APP_PATH"
+          git fetch origin main
+          FETCHED_MAIN="$(git rev-parse origin/main)"
+          [ "$FETCHED_MAIN" = "$DEPLOY_SHA" ] || {
+            echo "origin/main is $FETCHED_MAIN, not requested commit $DEPLOY_SHA" >&2
+            exit 1
+          }
+          EXACT_DEPLOY_SCRIPT="$(mktemp)"
+          trap 'rm -f "$EXACT_DEPLOY_SCRIPT"' EXIT
+          git show "$DEPLOY_SHA:deploy.sh" > "$EXACT_DEPLOY_SCRIPT"
+          chmod 700 "$EXACT_DEPLOY_SCRIPT"
+          DEPLOY_APP_PATH="$APP_PATH" "$EXACT_DEPLOY_SCRIPT" main \
+            --expected-sha "$DEPLOY_SHA" \
+            --approved-migrations-b64 "$APPROVED_MIGRATIONS_B64"
+          REMOTE_DEPLOY

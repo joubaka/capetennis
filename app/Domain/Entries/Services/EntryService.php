@@ -80,6 +80,8 @@ class EntryService
             $this->eligibility->assertCanAddAdmin($lockedCategoryEvent, $playerId);
 
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
+            $capeTennisFee = round((float) $lockedCategoryEvent->event()
+                ->value('cape_tennis_fee'), 2);
             $registration = Registration::create([]);
 
             PlayerRegistration::create([
@@ -103,17 +105,17 @@ class EntryService
                 'amount_gross'      => 0.00,
                 'amount_net'        => 0.00,
                 'amount_fee'        => 0.00,
-                'cape_tennis_fee'   => 15.00,
-                'event_id'          => $categoryEvent->event_id,
+                'cape_tennis_fee'   => $capeTennisFee,
+                'event_id'          => $lockedCategoryEvent->event_id,
                 'player_id'         => $playerId,
-                'category_event_id' => $categoryEvent->id,
+                'category_event_id' => $lockedCategoryEvent->id,
                 'pf_payment_id'     => null,
                 'is_test'           => 0,
                 'item_name'         => 'Admin Entry',
-                'custom_int3'       => $categoryEvent->event_id,
+                'custom_int3'       => $lockedCategoryEvent->event_id,
                 'custom_int4'       => $actingUser->id,
-                'custom_str1'       => optional($categoryEvent->category)->name,
-                'custom_str3'       => optional($categoryEvent->event)->name,
+                'custom_str1'       => optional($lockedCategoryEvent->category)->name,
+                'custom_str3'       => optional($lockedCategoryEvent->event)->name,
             ]);
 
             activity('registration')
@@ -124,11 +126,14 @@ class EntryService
                     'collection_status' => $collectionStatus,
                     'canonical_payment_status_id' => 1,
                     'transaction_amount' => 0,
+                    'operational_note_only' => true,
+                    'reconciled_payment' => false,
+                    'financial_amount_recorded' => false,
                 ])
-                ->log('Player registered offline by admin');
+                ->log('Player registered offline by admin (private collection not reconciled)');
 
             Log::info('[EntryService] Admin entry created', [
-                'category_event_id' => $categoryEvent->id,
+                'category_event_id' => $lockedCategoryEvent->id,
                 'player_id'         => $playerId,
                 'entry_id'          => $entry->id,
                 'actor'             => $actingUser->id,
@@ -142,47 +147,59 @@ class EntryService
     }
 
     /**
-     * Update only the private-collection note for an admin-created entry.
+     * Update only the non-reconciled private-collection note for an admin-created entry.
      * The canonical paid state stays unchanged so draws and event eligibility
-     * continue to treat the registration as a normal paid entry.
+     * continue to treat the registration as a normal paid entry. This note is
+     * operational metadata and is not evidence that money was reconciled.
      */
     public function setAdminPaymentStatus(
         CategoryEventRegistration $entry,
         bool $paid,
         User $actingUser
     ): CategoryEventRegistration {
-        if (! $entry->isAdminEntry()) {
-            throw new \RuntimeException('Only admin-created entries have a private payment note.');
-        }
-
-        $previousStatus = $entry->admin_payment_status;
         $newStatus = $paid ? 'paid' : 'unpaid';
 
-        if ($previousStatus === $newStatus) {
-            return $entry;
-        }
+        return DB::transaction(function () use ($entry, $actingUser, $newStatus) {
+            /** @var CategoryEventRegistration $lockedEntry */
+            $lockedEntry = CategoryEventRegistration::query()
+                ->whereKey($entry->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return DB::transaction(function () use ($entry, $actingUser, $previousStatus, $newStatus) {
-            $entry->update(['admin_payment_status' => $newStatus]);
+            if (! $lockedEntry->isAdminEntry()) {
+                throw new \RuntimeException('Only admin-created entries have a private collection note.');
+            }
+
+            $previousStatus = $lockedEntry->admin_payment_status;
+
+            if ($previousStatus === $newStatus) {
+                return $lockedEntry;
+            }
+
+            $lockedEntry->update(['admin_payment_status' => $newStatus]);
 
             activity('registration')
-                ->performedOn($entry)
+                ->performedOn($lockedEntry)
                 ->causedBy($actingUser)
                 ->withProperties([
                     'admin_payment_status_from' => $previousStatus,
                     'admin_payment_status_to' => $newStatus,
-                    'canonical_payment_status_id' => $entry->payment_status_id,
+                    'canonical_payment_status_id' => $lockedEntry->payment_status_id,
+                    'operational_note_only' => true,
+                    'reconciled_payment' => false,
+                    'financial_amount_recorded' => false,
                 ])
-                ->log("Admin entry private payment marked {$newStatus}");
+                ->log("Admin entry private collection note marked {$newStatus} (not reconciled)");
 
-            Log::info('[EntryService] Admin entry private payment note updated', [
-                'entry_id' => $entry->id,
+            Log::info('[EntryService] Admin entry private collection note updated', [
+                'entry_id' => $lockedEntry->id,
                 'from' => $previousStatus,
                 'to' => $newStatus,
                 'actor' => $actingUser->id,
+                'reconciled_payment' => false,
             ]);
 
-            return $entry->refresh();
+            return $lockedEntry->refresh();
         });
     }
 

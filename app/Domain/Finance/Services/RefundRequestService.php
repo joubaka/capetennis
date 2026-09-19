@@ -78,6 +78,11 @@ class RefundRequestService
         if (! $registration->is_paid) {
             throw ValidationException::withMessages(['refund' => 'Only a paid registration can be refunded.']);
         }
+        if ($registration->isAdminEntry()) {
+            throw ValidationException::withMessages([
+                'refund' => 'Admin-created entries have no reconciled payment to refund.',
+            ]);
+        }
         if (! $event || ! $registration->withdrawn_at || $registration->withdrawn_at->gt($event->withdrawalCloseAt())) {
             throw ValidationException::withMessages(['refund' => 'The withdrawal deadline passed before this entry was withdrawn.']);
         }

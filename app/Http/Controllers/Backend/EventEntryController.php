@@ -120,7 +120,7 @@ class EventEntryController extends Controller
   }
 
   /**
-   * Toggle the private payment note on an admin-created entry.
+   * Toggle the non-reconciled private-collection note on an admin-created entry.
    * This never changes payment_status_id or any financial ledger record.
    */
   public function updateAdminPaymentStatus(Request $request, CategoryEventRegistration $entry)
@@ -150,7 +150,10 @@ class EventEntryController extends Controller
     ];
 
     if (! $request->expectsJson()) {
-      return back()->with('success', "Admin entry marked {$entry->admin_payment_status}.");
+      return back()->with(
+        'success',
+        "Private collection note marked {$entry->admin_payment_status}; no payment was reconciled."
+      );
     }
 
     return response()->json($result);

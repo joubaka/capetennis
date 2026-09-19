@@ -482,10 +482,10 @@
         <label class="form-label fw-semibold mt-3" for="offlineCollectionStatus">Payment collection</label>
         <select name="collection_status" id="offlineCollectionStatus" class="form-select" required>
           <option value="unpaid">Unpaid</option>
-          <option value="paid_privately">Paid privately (cash/EFT)</option>
+          <option value="paid_privately">Paid privately — note only (not reconciled)</option>
         </select>
         <div class="form-text">
-          Tracking only: the cash/EFT amount is not recorded as payment income. The admin entry remains visible in event Finances for Cape Tennis fee reporting and creates no online payment or refund record.
+          Operational note only: no cash/EFT amount or provider payment is reconciled. The admin entry remains canonically eligible and visible in event Finances for Cape Tennis fee reporting, but this note is not financial evidence and creates no online payment or refund record.
         </div>
       </div>
 
@@ -1163,7 +1163,7 @@ document.addEventListener('click', function(e) {
     .then(async response => {
         const result = await response.json();
         if (!response.ok || !result.success) {
-            throw new Error(result.message || 'Payment note could not be updated.');
+            throw new Error(result.message || 'Private collection note could not be updated.');
         }
         return result;
     })
@@ -1173,16 +1173,16 @@ document.addEventListener('click', function(e) {
         const badge = container?.querySelector('[data-admin-payment-badge]');
 
         if (badge) {
-            badge.textContent = `Admin entry ${isPaid ? 'paid' : 'unpaid'}`;
+            badge.textContent = `Private collection ${isPaid ? 'noted paid' : 'not marked paid'} (not reconciled)`;
             badge.className = `badge ${isPaid ? 'bg-success' : 'bg-warning text-dark'}`;
         }
 
         btn.dataset.nextPaid = isPaid ? '0' : '1';
-        btn.textContent = isPaid ? 'Mark unpaid' : 'Mark paid';
+        btn.textContent = isPaid ? 'Mark note unpaid' : 'Mark note paid';
         btn.className = `btn btn-xs ${isPaid ? 'btn-outline-warning' : 'btn-outline-success'} admin-payment-toggle-btn`;
-        toastr.success(`Admin entry marked ${isPaid ? 'paid' : 'unpaid'}.`);
+        toastr.success(`Private collection note marked ${isPaid ? 'paid' : 'unpaid'}; no payment was reconciled.`);
     })
-    .catch(error => toastr.error(error.message || 'Payment note could not be updated.'))
+    .catch(error => toastr.error(error.message || 'Private collection note could not be updated.'))
     .finally(() => { btn.disabled = false; });
 });
 

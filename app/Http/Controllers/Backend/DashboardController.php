@@ -3,10 +3,8 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
-use App\Models\Event;
 use App\Models\EventType;
-use App\Models\Player;
-use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\Auth;
 use Spatie\Activitylog\Models\Activity;
 
@@ -19,16 +17,19 @@ class DashboardController extends Controller
       'players',
     ]);
 
-    // Only needed for the sidebar player-link modal
-    $players = Player::select('id', 'name', 'surname', 'email')->get();
-
     // Only needed for the create-event modal (super-admin)
     $eventTypes = $user->can('superUser') ? EventType::all() : collect();
-    $users      = $user->can('superUser') ? User::select('id', 'name')->orderBy('name')->get() : collect();
 
-    // Wallet transactions
+    // Keep the dashboard bounded; the wallet balance remains ledger-derived.
     $wallet = $user->wallet;
-    $transactions = $wallet ? $wallet->transactions()->latest()->get() : collect();
+    $transactions = WalletTransaction::query()
+      ->when(
+        $wallet,
+        fn ($query) => $query->where('wallet_id', $wallet->id),
+        fn ($query) => $query->whereRaw('1 = 0')
+      )
+      ->latest()
+      ->paginate(10, ['*'], 'wallet_page');
 
     // Activity log (last 50 entries for super users)
     $activityLogs = $user->can('superUser')
@@ -72,9 +73,7 @@ class DashboardController extends Controller
 
     return view('backend.dashboard', compact(
       'user',
-      'players',
       'eventTypes',
-      'users',
       'transactions',
       'activityLogs',
       'activityByUser',

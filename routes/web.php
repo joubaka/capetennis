@@ -1212,6 +1212,9 @@ Route::delete(
   //user
   Route::get('user/addRole/{id}', [UserController::class, 'addRole'])->name('user.add.role');
   Route::get('user/removeRole/{id}', [UserController::class, 'removeRole'])->name('user.remove.role');
+  Route::get('user/search', [UserController::class, 'search'])
+    ->middleware('role:super-user')
+    ->name('backend.user.search');
   Route::resource('user', UserController::class);
 
   Route::get('export-clothing-orders-excel/{id}', [ClothingOrderController::class, 'exportExcel'])->name('export.excel.clothing');

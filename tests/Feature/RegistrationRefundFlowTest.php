@@ -128,6 +128,43 @@ class RegistrationRefundFlowTest extends TestCase
         }
     }
 
+    public function test_refund_service_rejects_admin_entry_without_creating_a_request(): void
+    {
+        $user = User::factory()->create();
+        $reg = CategoryEventRegistration::factory()->withdrawn()->create([
+            'user_id' => $user->id,
+            'payment_status_id' => 1,
+            'pf_transaction_id' => null,
+            'payment_method' => null,
+            'admin_payment_status' => 'paid',
+            'refund_status' => 'not_refunded',
+            'withdrawn_at' => now(),
+        ]);
+        $reg->categoryEvent->event->update(['withdrawal_deadline' => now()->addDay()]);
+        $registrationCount = CategoryEventRegistration::count();
+
+        try {
+            app(RefundRequestService::class)->requestRegistrationRefund($reg, [
+                'refund_method' => 'bank',
+                'refund_status' => 'pending',
+                'refund_gross' => 100,
+            ], $user);
+            $this->fail('Admin entry refund request should be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Admin-created entries have no reconciled payment to refund.'],
+                $exception->errors()['refund']
+            );
+        }
+
+        $this->assertSame($registrationCount, CategoryEventRegistration::count());
+        $reg->refresh();
+        $this->assertSame('not_refunded', $reg->refund_status);
+        $this->assertNull($reg->refund_method);
+        $this->assertSame(0.0, (float) $reg->refund_gross);
+        $this->assertSame(1, (int) $reg->payment_status_id);
+    }
+
     public function test_invalid_refund_method_fails_validation(): void
     {
         $user = User::factory()->create();

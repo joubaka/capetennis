@@ -252,6 +252,11 @@
             </tbody>
           </table>
         </div>
+        @if($transactions?->hasPages())
+          <div class="px-3 py-3 border-top">
+            {{ $transactions->links('pagination::bootstrap-5') }}
+          </div>
+        @endif
       </div>
     </div>
   </div>
@@ -275,11 +280,6 @@
       <div class="modal-body">
         <select id="player-select" class="form-select">
           <option></option>
-          @foreach($players as $player)
-            <option value="{{ $player->id }}">
-              {{ $player->name }} {{ $player->surname }}
-            </option>
-          @endforeach
         </select>
       </div>
 
@@ -722,11 +722,26 @@ $(function () {
   // 🟦 SELECT2 (modal-safe)
   // ==========================================================
  $('#addProfileModal').on('shown.bs.modal', function () {
+  if ($('#player-select').hasClass('select2-hidden-accessible')) return;
+
   $('#player-select').select2({
     dropdownParent: $('#addProfileModal'),
-    placeholder: 'Select a player',
+    placeholder: 'Search for a player',
     width: '100%',
-    allowClear: true
+    allowClear: true,
+    minimumInputLength: 2,
+    ajax: {
+      url: @json(route('player.search')),
+      dataType: 'json',
+      delay: 250,
+      data: params => ({
+        q: params.term || '',
+        page: params.page || 1,
+        format: 'select2'
+      }),
+      processResults: data => data,
+      cache: true
+    }
   });
 });
 
@@ -870,11 +885,25 @@ $('#linkPlayerBtn').on('click', function () {
 
     // Select2 for admin picker inside modal
     $('#addEvent').on('shown.bs.modal', function () {
+      if ($('.select2user').hasClass('select2-hidden-accessible')) return;
+
       $('.select2user').select2({
         dropdownParent: $('#addEvent'),
-        placeholder: 'Select admin',
+        placeholder: 'Search for an admin',
         width: '100%',
-        allowClear: true
+        allowClear: true,
+        minimumInputLength: 2,
+        ajax: {
+          url: @json(route('backend.user.search')),
+          dataType: 'json',
+          delay: 250,
+          data: params => ({
+            q: params.term || '',
+            page: params.page || 1
+          }),
+          processResults: data => data,
+          cache: true
+        }
       });
     });
 

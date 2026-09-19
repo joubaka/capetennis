@@ -355,19 +355,94 @@ class FinancialLedgerServiceTest extends TestCase
             'event_id' => $this->event->id,
             'transaction_type' => 'Registration',
             'amount_gross' => 0,
+            'cape_tennis_fee' => 10.00,
             'player_id' => $player->id,
             'category_event_id' => $categoryEventId,
+            'item_name' => 'Admin Entry',
             'is_test' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        $row = $this->service->buildPaymentRows($this->event, 10.00)->first();
+        $built = $this->service->buildForEvent($this->event->refresh());
+        $row = $built['paymentRows']->first();
         $detail = $row->registrationDetails->first();
 
+        $this->assertSame('admin_entry_fee', $row->type);
+        $this->assertSame('admin_entry_fee_liability', $row->subtype);
+        $this->assertNull($row->payment_method);
+        $this->assertSame(0.0, $row->amount_gross);
+        $this->assertSame(0, $row->amount_fee);
+        $this->assertSame(-10.0, $row->amount_net);
+        $this->assertNull($row->source_pf_id);
+        $this->assertNull($row->pf_payment_id);
+        $this->assertNull($row->paid_at);
+        $this->assertSame(0.0, $row->gross);
+        $this->assertSame(0, $row->fee);
+        $this->assertSame(-10.0, $row->capeFee);
+        $this->assertSame(0.0, $row->payfastGross);
+        $this->assertSame(0.0, $row->walletUsed);
         $this->assertSame('Jamie Player', $detail['player']);
         $this->assertSame('Test Category', $detail['category']);
         $this->assertSame(0.0, $detail['price']);
+
+        $totals = $built['totals'];
+        $this->assertSame(0.0, $totals['gross_payments']);
+        $this->assertSame(0.0, $totals['pf_fees']);
+        $this->assertSame(-10.0, $totals['cape_fees']);
+        $this->assertSame(-10.0, $totals['net_revenue']);
+    }
+
+    public function test_transaction_fee_snapshot_does_not_change_when_event_fee_changes(): void
+    {
+        DB::table('transactions_pf')->insert([
+            'event_id' => $this->event->id,
+            'transaction_type' => 'Registration',
+            'amount_gross' => 0,
+            'cape_tennis_fee' => 10.00,
+            'item_name' => 'Admin Entry',
+            'is_test' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->event->update(['cape_tennis_fee' => 25.00]);
+        $built = $this->service->buildForEvent($this->event->refresh());
+        $row = $built['paymentRows']->first();
+
+        $this->assertSame('admin_entry_fee', $row->type);
+        $this->assertSame(-10.0, $row->capeFee);
+        $this->assertSame(-10.0, $built['totals']['cape_fees']);
+        $this->assertSame(-10.0, $built['totals']['net_revenue']);
+    }
+
+    public function test_unmarked_zero_value_transaction_is_not_an_admin_fee_liability(): void
+    {
+        DB::table('transactions_pf')->insert([
+            'event_id' => $this->event->id,
+            'transaction_type' => 'Registration',
+            'amount_gross' => 0,
+            'cape_tennis_fee' => 10.00,
+            'item_name' => 'Legacy incomplete registration',
+            'is_test' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $built = $this->service->buildForEvent($this->event->refresh());
+        $row = $built['paymentRows']->first();
+
+        $this->assertSame('unreconciled', $row->type);
+        $this->assertSame('unreconciled_zero_value', $row->subtype);
+        $this->assertNull($row->payment_method);
+        $this->assertNull($row->paid_at);
+        $this->assertSame(0.0, $row->capeFee);
+        $this->assertSame(0.0, $row->amount_net);
+        $this->assertSame(0.0, $built['totals']['cape_fees']);
+        $this->assertSame(0.0, $built['totals']['net_revenue']);
+        $summary = $this->service->buildFySummaryRow($this->event->refresh());
+        $this->assertSame(0, $summary['total_entries']);
+        $this->assertFalse($summary['has_transactions']);
     }
 
     public function test_hardcoded_fee_not_present_in_blade(): void
@@ -379,6 +454,19 @@ class FinancialLedgerServiceTest extends TestCase
             file_get_contents($bladePath),
             'Hardcoded 285 entry fee must not appear in transactions Blade'
         );
+    }
+
+    public function test_admin_entry_transaction_copy_is_explicitly_not_reconciled(): void
+    {
+        $blade = file_get_contents(resource_path('views/backend/event/transactions.blade.php'));
+
+        $this->assertStringContainsString('admin-entry fee liability', strtolower($blade));
+        $this->assertStringContainsString('r 0.00 received or reconciled', strtolower($blade));
+        $this->assertStringContainsString('not payment or refund evidence', strtolower($blade));
+        $this->assertStringContainsString("\$tx->type === 'admin_entry_fee'", $blade);
+        $this->assertStringNotContainsString('collected privately', strtolower($blade));
+        $this->assertStringNotContainsString('privately collected', strtolower($blade));
+        $this->assertStringNotContainsString("\$tx->type === 'payment' && \$tx->method === 'Admin Entry'", $blade);
     }
 
     public function test_transactions_view_renders_payment_items_with_missing_relations(): void

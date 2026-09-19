@@ -123,13 +123,7 @@
 
 
                                 <div class="position-relative" data-select2-id="128">
-                                    <select name="admins" id="select2user" class=" select2user select2 form-select select2-hidden-accessible"  data-select2-id="select2Basic" tabindex="-1" aria-hidden="true">
-                                 
-                                    @foreach($users as $user)
-                                        <option value="{{$user->id}}">{{$user->name}} {{$user->surname}}</option>
-                                        @endforeach
-
-
+                                    <select name="admins" id="select2user" class="select2user form-select">
                                     </select>
 
                                 </div>

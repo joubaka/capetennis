@@ -11,10 +11,7 @@ class EventTransactionController extends Controller
 {
   public function index(Event $event)
   {
-    $user = auth()->user();
-    if (!$user || !$user->hasAnyRole(['super-user', 'admin', 'convenor'])) {
-      abort(403, 'Unauthorized.');
-    }
+    $this->authorize('event-finance.view', $event);
 
     /** @var FinancialLedgerService $ledgerService */
     $ledgerService = app(FinancialLedgerService::class);
@@ -36,9 +33,10 @@ class EventTransactionController extends Controller
       ->values();
 
     // Entry count
+    $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
     $totalEntries = $isTeamEvent
-      ? $paymentRows->count()
-      : $paymentRows->sum(fn($r) => $r->entryCount ?? 1);
+      ? $entryRows->count()
+      : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
     // Refund / withdrawal breakdown
     // type='refund'     → completed or pending — these affect accounting
@@ -57,15 +55,16 @@ class EventTransactionController extends Controller
     $pendingWithdrawalsTotal   = round($accountingRefundRows->where('refund_status', CategoryEventRegistration::REFUND_PENDING)->sum('refund_gross'), 2);
     $noRefundRetainedTotal     = round($noRefundRows->sum('original_gross'), 2); // what was paid and kept
 
-    // Admin entry breakdown (privately collected)
-    $adminPaymentRows    = $paymentRows->filter(fn($r) => $r->method === 'Admin Entry');
-    $adminEntriesCount   = $adminPaymentRows->count();
-    $adminEntriesCapeFee = abs($adminPaymentRows->sum('capeFee'));
-    $adminGrossPrivate   = $adminEntriesCount * (float) $event->entryFee;
+    // Admin entries are fee-liability rows, not received payments.
+    $adminFeeRows        = $paymentRows->where('type', 'admin_entry_fee');
+    $adminEntriesCount   = $adminFeeRows->count();
+    $adminEntriesCapeFee = abs($adminFeeRows->sum('capeFee'));
 
-    // PayFast breakdown
-    $payfastPaymentRows  = $paymentRows->filter(fn($r) => $r->method !== 'Admin Entry');
-    $payfastEntriesCount = $totalEntries - $adminEntriesCount;
+    // Received-payment breakdown
+    $payfastPaymentRows  = $paymentRows->where('type', 'payment');
+    $payfastEntriesCount = $isTeamEvent
+      ? $payfastPaymentRows->count()
+      : $payfastPaymentRows->sum(fn($r) => $r->entryCount ?? 1);
     $payfastGrossTotal   = $payfastPaymentRows->sum('gross');
 
     return view('backend.event.transactions', [
@@ -92,7 +91,6 @@ class EventTransactionController extends Controller
 
       'adminEntriesCount'   => $adminEntriesCount,
       'adminEntriesCapeFee' => $adminEntriesCapeFee,
-      'adminGrossPrivate'   => $adminGrossPrivate,
       'payfastEntriesCount' => $payfastEntriesCount,
       'payfastGrossTotal'   => $payfastGrossTotal,
     ]);

@@ -12,6 +12,51 @@ use Spatie\Permission\Models\Role;
 class UserController extends Controller
 {
   /**
+   * Search users for super-user-only Select2 controls.
+   */
+  public function search(Request $request)
+  {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
+
+    $validated = $request->validate([
+      'q' => ['nullable', 'string', 'max:100'],
+      'page' => ['nullable', 'integer', 'min:1'],
+    ]);
+    $q = trim((string) ($validated['q'] ?? ''));
+    $page = (int) ($validated['page'] ?? 1);
+
+    $users = User::query()
+      ->when($q !== '', function ($query) use ($q) {
+        $terms = preg_split('/\s+/', $q);
+
+        foreach ($terms as $term) {
+          $term = addcslashes($term, '\\%_');
+          $query->where(function ($search) use ($term) {
+            $search->where('name', 'like', "%{$term}%")
+              ->orWhere('userName', 'like', "%{$term}%")
+              ->orWhere('userSurname', 'like', "%{$term}%");
+          });
+        }
+      })
+      ->orderBy('name')
+      ->orderBy('id')
+      ->simplePaginate(20, ['id', 'name', 'userName', 'userSurname'], 'page', $page);
+
+    return response()->json([
+      'results' => collect($users->items())->map(function (User $user): array {
+        $profileName = trim(($user->userName ?? '').' '.($user->userSurname ?? ''));
+        $displayName = $profileName !== '' ? $profileName : trim((string) $user->name);
+
+        return [
+          'id' => $user->id,
+          'text' => $displayName !== '' ? $displayName : 'User #'.$user->id,
+        ];
+      })->values(),
+      'pagination' => ['more' => $users->hasMorePages()],
+    ]);
+  }
+
+  /**
    * Display the users management page.
    */
   public function index(Request $request)
