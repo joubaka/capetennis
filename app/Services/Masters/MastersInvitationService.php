@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Models\BulkEmailLog;
 use App\Jobs\SendMastersInvitationEmailJob;
+use App\Domain\Entries\Services\EntryService;
 
 final class MastersInvitationService
 {
@@ -696,6 +697,109 @@ final class MastersInvitationService
             }
             $invitation->update(['status' => MastersInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
             DB::afterCommit(fn () => $this->queuePlayerMail($invitation->fresh(), 'confirmed'));
+        });
+    }
+
+    public function markPaidByAdmin(MastersInvitation $invitation, User $actor): MastersInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor) {
+            $locked = MastersInvitation::query()
+                ->with(['batch.event', 'categoryEvent'])
+                ->lockForUpdate()
+                ->findOrFail($invitation->id);
+
+            if ($locked->status === MastersInvitation::PAID_CONFIRMED) {
+                $existingEntry = CategoryEventRegistration::query()
+                    ->where('registration_id', $locked->registration_id)
+                    ->where('category_event_id', $locked->category_event_id)
+                    ->where('status', 'active')
+                    ->where('payment_status_id', 1)
+                    ->first();
+
+                if ($existingEntry?->isAdminEntry() && $existingEntry->admin_payment_status === 'paid') {
+                    return $locked;
+                }
+
+                throw ValidationException::withMessages([
+                    'invitation' => 'This invitation is already paid through another payment path.',
+                ]);
+            }
+
+            if ($locked->status !== MastersInvitation::ACCEPTED_PENDING_PAYMENT) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'Only a payment-pending Masters invitation can be marked as paid by an admin.',
+                ]);
+            }
+
+            if (! $locked->categoryEvent
+                || (int) $locked->categoryEvent->event_id !== (int) $locked->event_id
+                || (int) $locked->batch->event_id !== (int) $locked->event_id) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'The invitation does not belong to this event category.',
+                ]);
+            }
+
+            $cancelledOrderId = $locked->order_id;
+            $replacedRegistrationId = $locked->registration_id;
+
+            if (! $locked->order_id || ! $locked->registration_id) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'The pending Masters checkout is incomplete and cannot be marked as paid.',
+                ]);
+            }
+
+            $order = RegistrationOrder::query()->lockForUpdate()->findOrFail($locked->order_id);
+            $orderItems = RegistrationOrderItems::query()
+                ->where('order_id', $order->id)
+                ->get();
+            $orderItemMatches = $orderItems
+                ->where('registration_id', $locked->registration_id)
+                ->where('player_id', $locked->player_id)
+                ->where('category_event_id', $locked->category_event_id)
+                ->count() === 1;
+
+            if (! $orderItemMatches || $orderItems->count() !== 1) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'The pending checkout does not exclusively match this invitation.',
+                ]);
+            }
+
+            if ($order->pay_status || $order->payfast_paid || $order->wallet_debited) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'This checkout is already recorded as paid and must be reconciled instead.',
+                ]);
+            }
+
+            app(PaymentOrchestrator::class)->cancelPayment($order);
+
+            $this->softDeleteUnpaidDraftEntry($locked->registration_id, $locked->category_event_id);
+            $entry = app(EntryService::class)->addPlayerAsAdmin(
+                $locked->categoryEvent,
+                $locked->player_id,
+                $actor,
+                'paid_privately',
+            );
+
+            $locked->update([
+                'registration_id' => $entry->registration_id,
+                'order_id' => null,
+                'status' => MastersInvitation::PAID_CONFIRMED,
+                'paid_at' => now(),
+            ]);
+
+            activity('masters')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'invitation_id' => $locked->id,
+                    'player_id' => $locked->player_id,
+                    'category_event_id' => $locked->category_event_id,
+                    'cancelled_order_id' => $cancelledOrderId,
+                    'replaced_registration_id' => $replacedRegistrationId,
+                    'admin_registration_id' => $entry->registration_id,
+                    'collection_status' => 'paid_privately',
+                    'reconciled_payment' => false,
+                ])->log('Masters invitation marked paid by admin (private collection not reconciled)');
+
+            return $locked->refresh();
         });
     }
 

@@ -17,6 +17,8 @@ use App\Domain\Entries\Events\EntryWithdrawn;
 use App\Listeners\SyncMastersInvitationWithdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class MastersPaymentReconciliationTest extends TestCase
@@ -191,6 +193,106 @@ class MastersPaymentReconciliationTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         app(MastersInvitationService::class)->handlePaidWithdrawal($registration->id, $user, false);
+    }
+
+    public function test_admin_can_mark_a_pending_masters_checkout_as_paid_privately_once(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        $order = app(MastersInvitationService::class)->accept($invitation, $payer);
+        $order->update(['wallet_reserved' => 75]);
+        $pendingRegistrationId = $invitation->fresh()->registration_id;
+        $walletTransactionCount = DB::table('wallet_transactions')->count();
+
+        $paid = app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+
+        $this->assertSame(MastersInvitation::PAID_CONFIRMED, $paid->status);
+        $this->assertNull($paid->order_id);
+        $this->assertNotSame($pendingRegistrationId, $paid->registration_id);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
+        $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
+        $this->assertSame($walletTransactionCount, DB::table('wallet_transactions')->count());
+        $this->assertDatabaseHas('category_event_registrations', [
+            'registration_id' => $paid->registration_id,
+            'category_event_id' => $invitation->category_event_id,
+            'status' => 'active',
+            'payment_status_id' => 1,
+            'admin_payment_status' => 'paid',
+        ]);
+        $this->assertSame(1, CategoryEventRegistration::query()
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('status', 'active')
+            ->where('payment_status_id', 1)
+            ->count());
+        $this->assertSame(1, DB::table('transactions_pf')
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->where('amount_gross', 0)
+            ->count());
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'masters',
+            'description' => 'Masters invitation marked paid by admin (private collection not reconciled)',
+            'subject_id' => $invitation->id,
+            'causer_id' => $admin->id,
+        ]);
+
+        $registrationId = $paid->registration_id;
+        $transactionCount = DB::table('transactions_pf')
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->count();
+
+        $repeated = app(MastersInvitationService::class)->markPaidByAdmin($paid, $admin);
+
+        $this->assertSame($registrationId, $repeated->registration_id);
+        $this->assertSame($transactionCount, DB::table('transactions_pf')
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->count());
+    }
+
+    public function test_mark_paid_endpoint_is_visible_to_super_user_and_rejects_an_unrelated_event_admin(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        [$invitation, $payer] = $this->invitationScenario();
+        $mastersTypeId = DB::table('eventtypes')->where('code', 'masters')->value('id');
+        $invitation->batch->event->update(['eventType' => $mastersTypeId]);
+        $invitation->update(['ranking_list_id' => 1]);
+        app(MastersInvitationService::class)->accept($invitation, $payer);
+
+        $otherEvent = Event::factory()->create(['eventType' => $mastersTypeId]);
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $otherEvent->id,
+            'user_id' => $otherAdmin->id,
+        ]);
+
+        $this->actingAs($otherAdmin)
+            ->postJson(route('backend.masters.invitation.mark-paid', $invitation))
+            ->assertForbidden();
+
+        $eventAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $invitation->event_id,
+            'user_id' => $eventAdmin->id,
+        ]);
+        $this->actingAs($eventAdmin)
+            ->get(route('backend.masters.show', $invitation->batch))
+            ->assertOk()
+            ->assertSee('Mark paid privately (not reconciled)');
+        $this->actingAs($eventAdmin)
+            ->postJson(route('backend.masters.invitation.mark-paid', $invitation))
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $superUser = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($superUser)
+            ->postJson(route('backend.masters.invitation.mark-paid', $invitation))
+            ->assertOk()
+            ->assertJson(['ok' => true]);
     }
 
     private function invitationScenario(): array

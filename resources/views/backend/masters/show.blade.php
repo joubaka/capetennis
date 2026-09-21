@@ -91,7 +91,7 @@
             <div class="masters-entry-row masters-player-row">
               <span class="text-muted">{{ $loop->iteration }}</span><div><strong>{{ $playerInvitation->player?->full_name ?? ('Player '.$playerInvitation->player_id) }}</strong><small class="d-block text-muted">Rank {{ $playerInvitation->ranking_position }}</small></div>
               @php($contactEmail = $playerInvitation->player?->email ?: $playerInvitation->player?->user?->email ?: $playerInvitation->player?->users?->first()?->email)
-              <div class="contact-cell email-cell">@if($contactEmail)<a class="email-link" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<span class="text-muted">—</span>@endif</div><div class="contact-cell cell-cell">@if($playerInvitation->player?->cellNr)<a href="tel:{{ $playerInvitation->player->cellNr }}">{{ $playerInvitation->player->cellNr }}</a>@else<span class="text-muted">—</span>@endif</div><div class="payment-cell"><span class="badge {{ $playerInvitation->status === \App\Models\MastersInvitation::PAID_CONFIRMED ? 'bg-label-success' : ($playerInvitation->status === \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $playerStatus }}</span></div><div class="action-cell"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $playerInvitation) }}" data-player-row data-invited="{{ $willInvite ? 1 : 0 }}">@csrf @method('PATCH')<input type="hidden" name="status" value="{{ $willInvite ? 'reserve' : 'invited' }}"><button class="btn btn-sm {{ $willInvite ? 'btn-primary' : 'btn-outline-secondary' }}" type="submit" title="{{ $willInvite ? 'Move to reserve' : 'Add to invitation wave' }}">{{ $willInvite ? '✓' : '○' }}</button></form></div>
+              <div class="contact-cell email-cell">@if($contactEmail)<a class="email-link" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<span class="text-muted">—</span>@endif</div><div class="contact-cell cell-cell">@if($playerInvitation->player?->cellNr)<a href="tel:{{ $playerInvitation->player->cellNr }}">{{ $playerInvitation->player->cellNr }}</a>@else<span class="text-muted">—</span>@endif</div><div class="payment-cell"><span class="badge {{ $playerInvitation->status === \App\Models\MastersInvitation::PAID_CONFIRMED ? 'bg-label-success' : ($playerInvitation->status === \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $playerStatus }}</span></div><div class="action-cell"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $playerInvitation) }}" data-player-row data-invited="{{ $willInvite ? 1 : 0 }}" data-invitation-status="{{ $playerInvitation->status }}" data-mark-paid-url="{{ route('backend.masters.invitation.mark-paid', $playerInvitation) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="{{ $willInvite ? 'reserve' : 'invited' }}"><button class="btn btn-sm {{ $willInvite ? 'btn-primary' : 'btn-outline-secondary' }}" type="submit" title="{{ $willInvite ? 'Move to reserve' : 'Add to invitation wave' }}">{{ $willInvite ? '✓' : '○' }}</button></form></div>
             </div>
           @empty<div class="small text-muted p-3">No players currently selected for invitation.</div>@endforelse
       </div>
@@ -163,6 +163,22 @@ document.addEventListener('DOMContentLoaded', function () {
       } catch (error) { AppFeedback.fromError(error, 'Could not remove the player.'); remove.disabled = false; }
     });
     menu.appendChild(remove);
+    if (form.dataset.invitationStatus === 'accepted_pending_payment') {
+      const markPaid = document.createElement('button');
+      markPaid.type = 'button'; markPaid.className = 'dropdown-item text-success'; markPaid.textContent = 'Mark paid privately (not reconciled)'; markPaid.title = 'Record a private collection and complete this registration';
+      markPaid.addEventListener('click', async function () {
+        if (!confirm('Mark this player as paid by admin? This will cancel the pending online checkout and record a private collection that is not financially reconciled.')) return;
+        markPaid.disabled = true;
+        try {
+          const response = await fetch(form.dataset.markPaidUrl, {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}});
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || 'Could not mark the player as paid.');
+          AppFeedback.afterReload(data.message || 'Player marked as paid by admin.');
+          window.location.reload();
+        } catch (error) { AppFeedback.fromError(error, 'Could not mark the player as paid.'); markPaid.disabled = false; }
+      });
+      menu.appendChild(markPaid);
+    }
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'dropdown-item'; button.textContent = 'Preview invitation email'; button.title = 'Preview invitation email'; button.setAttribute('aria-label', 'Preview invitation email');
     button.addEventListener('click', async function () {

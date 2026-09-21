@@ -259,6 +259,21 @@ class MastersInvitationController extends Controller
         return back()->with('success', 'Player restored to the reserve list.');
     }
 
+    public function markPaid(Request $request, MastersInvitation $invitation, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($invitation->batch);
+        $service->markPaidByAdmin($invitation, $request->user());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Player marked as paid by admin. The private collection is noted but not financially reconciled.',
+            ]);
+        }
+
+        return back()->with('success', 'Player marked as paid by admin. The private collection is noted but not financially reconciled.');
+    }
+
     public function readiness(MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);
