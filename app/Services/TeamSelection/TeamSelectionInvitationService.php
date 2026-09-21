@@ -595,6 +595,188 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function restoreDeclinedInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor): TeamSelectionInvitation {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'player'])
+                ->findOrFail($invitation->id);
+
+            if ($locked->status === TeamSelectionInvitation::INVITED
+                && $locked->declined_at
+                && $locked->invited_at === null
+                && $locked->roster_rank) {
+                return $locked;
+            }
+            if ($locked->status !== TeamSelectionInvitation::DECLINED || ! $locked->vacated_roster_rank) {
+                throw ValidationException::withMessages([
+                    'restore' => 'Only a declined player with a recorded roster position can be restored.',
+                ]);
+            }
+
+            $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($locked->import_id);
+            if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages([
+                    'restore' => 'This regional selection is no longer open for roster restoration.',
+                ]);
+            }
+            if ($selectionImport->status === 'sent' && ! $this->replacementDeadlines($selectionImport)[0]) {
+                throw ValidationException::withMessages([
+                    'restore' => 'A declined player cannot be restored after the event has started.',
+                ]);
+            }
+            if ($locked->order_id) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
+                    throw ValidationException::withMessages([
+                        'restore' => 'Payment has already been received; use the normal withdrawal and refund workflow.',
+                    ]);
+                }
+            }
+
+            $restoredRank = (int) $locked->vacated_roster_rank;
+            $active = TeamSelectionInvitation::query()->lockForUpdate()
+                ->where('import_id', $locked->import_id)
+                ->where('team_id', $locked->team_id)
+                ->where('roster_rank', '>=', $restoredRank)
+                ->whereIn('status', [
+                    TeamSelectionInvitation::INVITED,
+                    TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                    TeamSelectionInvitation::PAID_CONFIRMED,
+                ])
+                ->orderByDesc('roster_rank')
+                ->get();
+
+            $lastActiveRank = $active->isEmpty() ? $restoredRank - 1 : (int) $active->first()->roster_rank;
+            $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+                ->where('team_id', $locked->team_id)
+                ->whereBetween('rank', [$restoredRank, max($restoredRank, $lastActiveRank + 1)])
+                ->get()
+                ->keyBy('rank');
+
+            foreach ($active as $moving) {
+                $sourceRank = (int) $moving->roster_rank;
+                $sourceSlot = $slots->get($sourceRank);
+                if (! $sourceSlot || (int) $sourceSlot->player_id !== (int) $moving->player_id) {
+                    throw ValidationException::withMessages([
+                        'restore' => 'The roster order changed while the player was being restored. Refresh and try again.',
+                    ]);
+                }
+                $destinationRank = $sourceRank + 1;
+                $destinationSlot = $slots->get($destinationRank);
+                if (! $destinationSlot) {
+                    $destinationSlot = TeamPlayer::create([
+                        'team_id' => $locked->team_id,
+                        'player_id' => 0,
+                        'rank' => $destinationRank,
+                        'pay_status' => 0,
+                    ]);
+                    $slots->put($destinationRank, $destinationSlot);
+                }
+                app(TeamPaymentService::class)->updateTeamPlayerSlot($destinationSlot, [
+                    'player_id' => $sourceSlot->player_id,
+                    'pay_status' => $sourceSlot->pay_status,
+                ]);
+                $moving->update(['roster_rank' => $destinationRank]);
+            }
+
+            $restoredSlot = $slots->get($restoredRank);
+            if (! $restoredSlot) {
+                $restoredSlot = TeamPlayer::create([
+                    'team_id' => $locked->team_id,
+                    'player_id' => 0,
+                    'rank' => $restoredRank,
+                    'pay_status' => 0,
+                ]);
+            }
+            app(TeamPaymentService::class)->updateTeamPlayerSlot($restoredSlot, [
+                'player_id' => $locked->player_id,
+                'pay_status' => 0,
+            ]);
+
+            $locked->update([
+                'status' => TeamSelectionInvitation::INVITED,
+                'roster_rank' => $restoredRank,
+                'order_id' => null,
+                'invited_at' => null,
+                'accepted_at' => null,
+                'payment_started_at' => null,
+                'paid_at' => null,
+                'response_deadline_override' => null,
+                'payment_deadline_override' => null,
+            ]);
+
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties([
+                    'team_id' => $locked->team_id,
+                    'restored_rank' => $restoredRank,
+                    'shifted_invitation_ids' => $active->pluck('id')->all(),
+                    'previous_declined_at' => $locked->declined_at?->toIso8601String(),
+                    'previous_decline_reason' => $locked->decline_reason,
+                    'email_queued' => false,
+                ])->log('regional manager restored declined team selection player');
+
+            return $locked->fresh(['player', 'selectionImport']);
+        });
+    }
+
+    public function sendRestoredInvitation(TeamSelectionInvitation $invitation, User $actor): string
+    {
+        return DB::transaction(function () use ($invitation, $actor): string {
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with(['selectionImport', 'player'])
+                ->findOrFail($invitation->id);
+            if ($locked->selectionImport?->status !== 'sent'
+                || $locked->status !== TeamSelectionInvitation::INVITED
+                || ! $locked->roster_rank
+                || ! $locked->declined_at
+                || $locked->invited_at !== null) {
+                throw ValidationException::withMessages([
+                    'email' => 'Only a restored, active, unpaid player whose invitation has not yet been re-sent can receive this email.',
+                ]);
+            }
+            if (! $this->replacementDeadlines($locked->selectionImport)[0]) {
+                throw ValidationException::withMessages([
+                    'email' => 'A restored invitation cannot be sent after the event has started.',
+                ]);
+            }
+            $responseDeadline = $locked->effectiveResponseDeadline();
+            $paymentDeadline = $locked->effectivePaymentDeadline();
+            if (! $responseDeadline || ! $paymentDeadline) {
+                throw ValidationException::withMessages(['email' => 'Set response and payment deadlines before sending this restored invitation.']);
+            }
+            if (now()->gt($responseDeadline) || now()->gt($paymentDeadline)) {
+                throw ValidationException::withMessages(['email' => 'Extend the response and payment deadlines before sending this restored invitation.']);
+            }
+            $email = $this->contactEmail($locked);
+            if (! $email) {
+                throw ValidationException::withMessages(['email' => 'This player does not have a valid profile, parent, or linked-account email address.']);
+            }
+
+            $log = BulkEmailLog::create([
+                'mail_type' => 'team_selection_invitation',
+                'related_type' => TeamSelectionInvitation::class,
+                'related_id' => $locked->id,
+                'recipient_email' => $email,
+                'recipient_name' => $locked->player?->full_name,
+                'status' => 'queued',
+                'payload' => [
+                    'kind' => 'invitation',
+                    'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
+                    'manual_restored_send' => true,
+                ],
+                'queued_at' => now(),
+            ]);
+            $locked->update(['invited_at' => now()]);
+            SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id);
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
+                ->log('regional manager manually sent restored team selection invitation');
+
+            return $email;
+        });
+    }
+
     public function replaceWithSystemPlayer(
         TeamSelectionInvitation $invitation,
         Player $player,

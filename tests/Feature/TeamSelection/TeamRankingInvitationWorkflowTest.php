@@ -325,6 +325,197 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
     }
 
+    public function test_manager_restores_declined_player_at_original_rank_without_sending_mail_and_restore_is_idempotent(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Restored invitation team event', 'type' => 2, 'code' => 'restored-invitation-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $declined = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        $originalDeclinedAt = null;
+        $owner = User::findOrFail($declined->player->userId);
+        app(TeamSelectionInvitationService::class)->decline($declined, $owner, 'Initially unavailable');
+        $declined = $declined->fresh();
+        $originalDeclinedAt = $declined->declined_at;
+        $emailLogCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertForbidden();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'No invitation email was sent'));
+
+        $restored = $declined->fresh();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $restored->status);
+        $this->assertSame(1, $restored->roster_rank);
+        $this->assertNull($restored->invited_at);
+        $this->assertSame('Initially unavailable', $restored->decline_reason);
+        $this->assertSame($originalDeclinedAt?->toISOString(), $restored->declined_at?->toISOString());
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        $this->assertSame(
+            $selectionImport->invitations()->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ])->orderBy('roster_rank')->pluck('player_id')->all(),
+            TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', '>', 0)
+                ->orderBy('rank')->pluck('player_id')->all()
+        );
+        $this->assertSame([1, 2, 3], $selectionImport->invitations()->whereIn('status', [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            TeamSelectionInvitation::PAID_CONFIRMED,
+        ])->orderBy('roster_rank')->pluck('roster_rank')->all());
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertRedirect();
+        $this->assertSame([1, 2, 3], $selectionImport->invitations()->whereIn('status', [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            TeamSelectionInvitation::PAID_CONFIRMED,
+        ])->orderBy('roster_rank')->pluck('roster_rank')->all());
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $restored->id,
+            'description' => 'regional manager restored declined team selection player',
+        ]);
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Restored — invitation not sent')
+            ->assertSee('Send invitation');
+    }
+
+    public function test_manager_manually_sends_restored_invitation_only_after_position_review(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Manual restored email team event', 'type' => 2, 'code' => 'manual-restored-email-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $declined = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        app(TeamSelectionInvitationService::class)->decline(
+            $declined,
+            User::findOrFail($declined->player->userId),
+            'Initially unavailable'
+        );
+        app(TeamSelectionInvitationService::class)->restoreDeclinedInvitation($declined->fresh(), $manager);
+        $restored = $declined->fresh();
+        $logsBeforeManualSend = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $foreignImport = $selectionImport->replicate();
+        $foreignImport->ranking_run_id = 'foreign-restored-send-run';
+        $foreignImport->save();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
+            $source->event, $foreignImport, $restored,
+        ]))->assertNotFound();
+        Queue::assertNothingPushed();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertRedirect()->assertSessionHas('success');
+
+        $this->assertSame($logsBeforeManualSend + 1, BulkEmailLog::query()->count());
+        $log = BulkEmailLog::query()->latest('id')->firstOrFail();
+        $this->assertTrue((bool) data_get($log->payload, 'manual_restored_send'));
+        $this->assertNotNull($restored->fresh()->invited_at);
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 1);
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertSessionHasErrors('email');
+        $this->assertSame($logsBeforeManualSend + 1, BulkEmailLog::query()->count());
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 1);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $restored->id,
+            'description' => 'regional manager manually sent restored team selection invitation',
+        ]);
+    }
+
+    public function test_sent_import_cannot_restore_or_send_a_restored_invitation_after_event_start(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Started restored invitation event', 'type' => 2, 'code' => 'started-restored-invitation-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDays(5),
+            'payment_deadline' => now()->addDays(6),
+        ], $manager);
+        $declined = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        app(TeamSelectionInvitationService::class)->decline(
+            $declined,
+            User::findOrFail($declined->player->userId),
+            'Initially unavailable'
+        );
+        $declined = $declined->fresh();
+        $source->event->update(['start_date' => now()->subDay()]);
+        $emailLogCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertSessionHasErrors('restore');
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $declined->fresh()->status);
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+
+        $source->event->update(['start_date' => now()->addMonth()]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+        $restored = $declined->fresh();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $restored->status);
+        Queue::assertNothingPushed();
+
+        $source->event->update(['start_date' => now()->subDay()]);
+        $selectionImport->update([
+            'response_deadline' => now()->addDays(5),
+            'payment_deadline' => now()->addDays(6),
+        ]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertSessionHasErrors('email');
+        $this->assertNull($restored->fresh()->invited_at);
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+    }
+
     public function test_manual_replacement_mode_leaves_a_visible_vacancy_until_manager_invites_the_reserve(): void
     {
         Queue::fake();

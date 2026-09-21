@@ -404,6 +404,25 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'Regional roster order updated.');
     }
 
+    public function restoreDeclined(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $restored = $service->restoreDeclinedInvitation($invitation, $request->user());
+
+        return back()->with('success', ($restored->player?->full_name ?? 'The player')
+            .' was restored at Rank '.$restored->roster_rank.'. No invitation email was sent. Review the team order before sending it manually.');
+    }
+
+    public function sendRestoredInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $email = $service->sendRestoredInvitation($invitation, $request->user());
+
+        return back()->with('success', "Invitation queued for {$email} after the restored team position was approved.");
+    }
+
     public function promoteReserveManually(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
