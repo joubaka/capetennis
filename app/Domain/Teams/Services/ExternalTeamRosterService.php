@@ -187,7 +187,6 @@ class ExternalTeamRosterService
     public function assertClaimCandidate(Event $event, Team $team, NoProfileTeamPlayer $slot, Player $player): void
     {
         $this->assertClaimAvailable($event, $team, $slot);
-        $this->assertPlayerMatchesRosterSlot($slot, $player);
     }
 
     public function assertCanRegister(User $user, Event $event, Team $team, Player $player): TeamPlayer
@@ -216,17 +215,6 @@ class ExternalTeamRosterService
         return $event->published
             && (bool) $event->signUp
             && ! in_array($event->status, ['closed', 'draft'], true);
-    }
-
-    private function assertPlayerMatchesRosterSlot(NoProfileTeamPlayer $slot, Player $player): void
-    {
-        if ($this->identityName((string) $slot->name, (string) $slot->surname)
-            !== $this->identityName((string) $player->name, (string) $player->surname)) {
-            throw ValidationException::withMessages([
-                'player_id' => 'The selected profile name does not match this roster player.',
-            ]);
-        }
-
     }
 
     private function identityName(string $name, string $surname): string

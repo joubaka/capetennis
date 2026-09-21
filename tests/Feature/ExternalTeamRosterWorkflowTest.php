@@ -221,10 +221,15 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertSame('corrected@example.test', $player->fresh()->email);
     }
 
-    public function test_claim_rejects_a_profile_that_does_not_match_the_roster_identity(): void
+    public function test_any_user_can_link_an_eligible_profile_that_does_not_match_the_roster_identity(): void
     {
         $user = User::factory()->create();
-        $player = Player::factory()->create(['name' => 'Wrong', 'surname' => 'Person', 'userId' => $user->id]);
+        $existingOwner = User::factory()->create();
+        $player = Player::factory()->create([
+            'name' => 'Different',
+            'surname' => 'Person',
+            'userId' => $existingOwner->id,
+        ]);
         $slot = NoProfileTeamPlayer::create([
             'team_id' => $this->team->id,
             'rank' => 1,
@@ -240,9 +245,33 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'event' => $this->event->id,
             'noProfile' => $slot->id,
             'confirmed_profile' => 1,
-        ])->assertSessionHasErrors('player_id');
+        ])->assertRedirect(route('player.claim.review'));
 
         $this->assertNull($slot->fresh()->player_profile);
+
+        $this->actingAs($user)->put(route('player.claim.complete'), [
+            'dateOfBirth' => '2012-05-17',
+            'gender' => 'Male',
+            'cellNr' => '0821234567',
+            'email' => 'different.person@example.test',
+            'confirmed_details' => 1,
+        ])->assertRedirect(route('team.payment.payfast', [$this->team, $player, $this->event]));
+
+        $this->assertDatabaseHas('no_profile_team_players', [
+            'id' => $slot->id,
+            'player_profile' => $player->id,
+            'claimed_by_user_id' => $user->id,
+        ]);
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $this->assertDatabaseHas('user_players', [
+            'user_id' => $user->id,
+            'player_id' => $player->id,
+        ]);
     }
 
     public function test_claim_accepts_equivalent_roster_and_profile_names_with_diacritics(): void
