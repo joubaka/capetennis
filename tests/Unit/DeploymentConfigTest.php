@@ -33,7 +33,7 @@ class DeploymentConfigTest extends TestCase
 
         $preflight = 'run_php "$PREFLIGHT_DIR/preflight.php"';
         $downtime = 'run_php "$APP_PATH/artisan" down --retry=60';
-        $merge = 'git -C "$APP_PATH" merge --ff-only';
+        $merge = 'git -C "$APP_PATH" merge --ff-only "$FETCHED_MAIN"';
 
         $this->assertStringContainsString('git -C "$APP_PATH" show "$FETCHED_MAIN:deploy.config"', $script);
         $this->assertStringContainsString('git -C "$APP_PATH" ls-tree -r --name-only "$FETCHED_MAIN"', $script);
@@ -42,6 +42,24 @@ class DeploymentConfigTest extends TestCase
         $this->assertLessThan(strpos($script, $merge), strpos($script, $preflight));
         $this->assertStringContainsString('done < "$PREFLIGHT_DIR/pending-migrations"', $script);
         $this->assertStringNotContainsString('for migration in $MIGRATION_PATHS', $script);
+        $this->assertStringContainsString('diff --name-only HEAD.."$FETCHED_MAIN"', $script);
+        $this->assertStringContainsString('[ "$REMOTE_HEAD" = "$FETCHED_MAIN" ] || fail', $script);
+        $this->assertStringNotContainsString('HEAD..origin/main', $script);
+        $this->assertStringNotContainsString('merge --ff-only "${EXPECTED_SHA:-origin/main}"', $script);
+    }
+
+    public function test_interactive_live_deploy_can_review_but_automation_still_requires_explicit_approval(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+
+        $this->assertStringContainsString('[ "$LIVE_DEPLOY" = true ] || fail', $script);
+        $this->assertStringContainsString('[ -t 0 ] && [ -t 1 ] || fail \'Non-interactive deployments require --approved-migrations-b64\'', $script);
+        $this->assertStringContainsString('Exact pending migrations for the target commit:', $script);
+        $this->assertStringContainsString('Type DEPLOY to approve this exact migration set and continue:', $script);
+        $this->assertStringContainsString('[ "$INTERACTIVE_APPROVAL" = DEPLOY ] || fail', $script);
+        $this->assertStringContainsString("'Migration preflight failed: Pending migrations lack explicit per-run approval: '*", $script);
+        $this->assertStringContainsString("*) printf '%s\\n' \"\$PREFLIGHT_MESSAGE\" >&2; fail 'Unable to determine an exact safe migration set'", $script);
+        $this->assertSame(3, substr_count($script, 'run_php "$PREFLIGHT_DIR/preflight.php"'));
     }
 
     public function test_deploy_does_not_execute_checkout_config_before_checkout_trust_checks(): void
@@ -81,8 +99,8 @@ class DeploymentConfigTest extends TestCase
 
         $this->assertStringContainsString('--expected-sha', $script);
         $this->assertStringContainsString('[ "$FETCHED_MAIN" != "$EXPECTED_SHA" ]', $script);
-        $this->assertStringContainsString('[ "$REMOTE_HEAD" = "$EXPECTED_SHA" ]', $script);
-        $this->assertStringContainsString('merge --ff-only "${EXPECTED_SHA:-origin/main}"', $script);
+        $this->assertStringContainsString('merge --ff-only "$FETCHED_MAIN"', $script);
+        $this->assertStringContainsString('[ "$REMOTE_HEAD" = "$FETCHED_MAIN" ]', $script);
         $this->assertStringContainsString('APP_PATH="${DEPLOY_APP_PATH_OVERRIDE:-$SCRIPT_PATH}"', $script);
         $this->assertStringContainsString('CANONICAL_APP_PATH="$APP_PATH"', $script);
         $this->assertSame(2, substr_count($script, 'APP_PATH="$CANONICAL_APP_PATH"'));
@@ -93,6 +111,7 @@ class DeploymentConfigTest extends TestCase
         $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
 
         foreach ([
+            'FETCHED_MAIN',
             'EXPECTED_SHA',
             'RECONCILE_MASTERS_PAYMENTS',
             'REQUESTED_BRANCH',

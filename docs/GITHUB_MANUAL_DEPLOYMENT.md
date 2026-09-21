@@ -67,3 +67,11 @@ differ. The Wilson Masters incident reconciliation migration is never inserted
 or approved automatically: if it is pending, its full path must be deliberately
 included in that run's input after reviewing its production impact. The GitHub
 environment approval is not, by itself, migration authorization.
+
+For a direct server deployment, an operator may use the familiar
+`deploy-ct main --live` command in an interactive terminal. The script inspects
+the exact target commit, prints its exact pending migration set, and continues
+only when the operator types `DEPLOY`. Piped, scheduled, CI, and other
+non-interactive invocations must still supply `--approved-migrations-b64`; the
+interactive prompt is not an automation bypass. The explicit flag retains the
+same exact-set validation described above.
