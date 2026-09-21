@@ -348,6 +348,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         app(TeamSelectionInvitationService::class)->decline($declined, $owner, 'Initially unavailable');
         $declined = $declined->fresh();
         $originalDeclinedAt = $declined->declined_at;
+        $overflowReserve = $selectionImport->invitations()
+            ->where('promoted_from_id', $declined->id)
+            ->where('status', TeamSelectionInvitation::INVITED)
+            ->firstOrFail();
         $emailLogCount = BulkEmailLog::query()->count();
         Queue::fake();
 
@@ -375,16 +379,18 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', '>', 0)
                 ->orderBy('rank')->pluck('player_id')->all()
         );
-        $this->assertSame([1, 2, 3], $selectionImport->invitations()->whereIn('status', [
+        $this->assertSame([1, 2], $selectionImport->invitations()->whereIn('status', [
             TeamSelectionInvitation::INVITED,
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
             TeamSelectionInvitation::PAID_CONFIRMED,
         ])->orderBy('roster_rank')->pluck('roster_rank')->all());
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $overflowReserve->fresh()->status);
+        $this->assertNull($overflowReserve->fresh()->roster_rank);
 
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
             $source->event, $selectionImport, $restored,
         ]))->assertRedirect();
-        $this->assertSame([1, 2, 3], $selectionImport->invitations()->whereIn('status', [
+        $this->assertSame([1, 2], $selectionImport->invitations()->whereIn('status', [
             TeamSelectionInvitation::INVITED,
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
             TeamSelectionInvitation::PAID_CONFIRMED,
@@ -400,6 +406,143 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee('Restored — invitation not sent')
             ->assertSee('Send invitation');
+    }
+
+    public function test_restoring_into_full_eight_player_team_returns_unpaid_overflow_to_reserve_without_mail(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $team->update(['num_team_members' => 8]);
+        $rankingList = RankingList::query()->where('series_id', $source->series_id)->firstOrFail();
+        foreach (range(6, 10) as $rank) {
+            $owner = User::factory()->create(['email' => "capacity{$rank}@example.test"]);
+            $player = Player::factory()->create(['email' => "capacity{$rank}@example.test", 'userId' => $owner->id]);
+            SeriesRanking::create([
+                'series_id' => $source->series_id,
+                'ranking_list_id' => $rankingList->id,
+                'category_id' => $rankingList->category_id,
+                'player_id' => $player->id,
+                'rank_position' => $rank,
+                'total_points' => 1000 - $rank,
+                'meta_json' => ['events_played' => 3],
+                'status' => 'published',
+                'run_id' => 'published-team-selection-run',
+                'published_at' => now(),
+            ]);
+        }
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Capacity restore team event', 'type' => 2, 'code' => 'capacity-restore-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $declined = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        app(TeamSelectionInvitationService::class)->decline(
+            $declined,
+            User::findOrFail($declined->player->userId),
+            'Initially unavailable'
+        );
+        $declined = $declined->fresh();
+        $overflow = $selectionImport->invitations()->where('promoted_from_id', $declined->id)
+            ->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $originalQueuePosition = $overflow->queue_position;
+        $emailLogCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertRedirect()->assertSessionHas('success');
+
+        $active = $selectionImport->invitations()->whereIn('status', [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            TeamSelectionInvitation::PAID_CONFIRMED,
+        ])->orderBy('roster_rank')->get();
+        $this->assertCount(8, $active);
+        $this->assertSame(range(1, 8), $active->pluck('roster_rank')->all());
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $overflow->fresh()->status);
+        $this->assertNull($overflow->fresh()->roster_rank);
+        $this->assertSame($originalQueuePosition, $overflow->fresh()->queue_position);
+        $this->assertSame(
+            $active->pluck('player_id')->all(),
+            TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+                ->whereBetween('rank', [1, 8])->orderBy('rank')->pluck('player_id')->all()
+        );
+        $this->assertFalse(TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->where('rank', '>', 8)->where('player_id', '>', 0)->exists());
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $overflow->id,
+            'description' => 'returned overflow team selection player to reserve',
+        ]);
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined->fresh(),
+        ]))->assertRedirect();
+        $this->assertSame(8, $selectionImport->invitations()->whereIn('status', [
+            TeamSelectionInvitation::INVITED,
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            TeamSelectionInvitation::PAID_CONFIRMED,
+        ])->count());
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_restore_fails_before_mutation_when_overflow_player_has_pending_payment_state(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Protected overflow team event', 'type' => 2, 'code' => 'protected-overflow-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $declined = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        app(TeamSelectionInvitationService::class)->decline(
+            $declined,
+            User::findOrFail($declined->player->userId),
+            'Initially unavailable'
+        );
+        $declined = $declined->fresh();
+        $overflow = $selectionImport->invitations()->where('promoted_from_id', $declined->id)
+            ->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $overflow->update([
+            'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            'accepted_at' => now(),
+            'payment_started_at' => now(),
+        ]);
+        $ranksBefore = $selectionImport->invitations()->whereNotNull('roster_rank')
+            ->orderBy('id')->pluck('roster_rank', 'id')->all();
+        $emailLogCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $declined,
+        ]))->assertSessionHasErrors('restore');
+
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $declined->fresh()->status);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $overflow->fresh()->status);
+        $this->assertSame($ranksBefore, $selectionImport->invitations()->whereNotNull('roster_rank')
+            ->orderBy('id')->pluck('roster_rank', 'id')->all());
+        $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_manager_manually_sends_restored_invitation_only_after_position_review(): void

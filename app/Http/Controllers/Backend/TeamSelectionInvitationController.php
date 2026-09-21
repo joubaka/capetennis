@@ -411,7 +411,7 @@ class TeamSelectionInvitationController extends Controller
         $restored = $service->restoreDeclinedInvitation($invitation, $request->user());
 
         return back()->with('success', ($restored->player?->full_name ?? 'The player')
-            .' was restored at Rank '.$restored->roster_rank.'. No invitation email was sent. Review the team order before sending it manually.');
+            .' was restored at Rank '.$restored->roster_rank.'. The configured team size was retained and any unpaid overflow player returned to reserve. No invitation email was sent. Review the team order before sending it manually.');
     }
 
     public function sendRestoredInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)

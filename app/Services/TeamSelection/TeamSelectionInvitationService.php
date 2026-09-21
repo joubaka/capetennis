@@ -635,6 +635,13 @@ final class TeamSelectionInvitationService
             }
 
             $restoredRank = (int) $locked->vacated_roster_rank;
+            $team = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($locked->team_id);
+            $capacity = max(0, (int) $team->num_team_members);
+            if ($capacity < 1 || $restoredRank > $capacity) {
+                throw ValidationException::withMessages([
+                    'restore' => 'The saved roster position is outside this team’s configured capacity.',
+                ]);
+            }
             $active = TeamSelectionInvitation::query()->lockForUpdate()
                 ->where('import_id', $locked->import_id)
                 ->where('team_id', $locked->team_id)
@@ -646,6 +653,19 @@ final class TeamSelectionInvitationService
                 ])
                 ->orderByDesc('roster_rank')
                 ->get();
+
+            $overflow = $active->filter(fn (TeamSelectionInvitation $moving): bool => (int) $moving->roster_rank + 1 > $capacity);
+            foreach ($overflow as $moving) {
+                if ($moving->status !== TeamSelectionInvitation::INVITED
+                    || $moving->order_id
+                    || $moving->accepted_at
+                    || $moving->payment_started_at
+                    || $moving->paid_at) {
+                    throw ValidationException::withMessages([
+                        'restore' => 'Restoring this player would displace a player with payment activity. Resolve that player through the normal payment or withdrawal workflow first.',
+                    ]);
+                }
+            }
 
             $lastActiveRank = $active->isEmpty() ? $restoredRank - 1 : (int) $active->first()->roster_rank;
             $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
@@ -661,6 +681,29 @@ final class TeamSelectionInvitationService
                     throw ValidationException::withMessages([
                         'restore' => 'The roster order changed while the player was being restored. Refresh and try again.',
                     ]);
+                }
+                if ($overflow->contains('id', $moving->id)) {
+                    if ((int) $sourceSlot->pay_status !== 0) {
+                        throw ValidationException::withMessages([
+                            'restore' => 'Restoring this player would displace a player with payment activity. Resolve that player through the normal payment or withdrawal workflow first.',
+                        ]);
+                    }
+                    $moving->update([
+                        'status' => TeamSelectionInvitation::RESERVE,
+                        'roster_rank' => null,
+                        'invited_at' => null,
+                        'response_deadline_override' => null,
+                        'payment_deadline_override' => null,
+                    ]);
+                    activity('team-selection')->performedOn($moving)->causedBy($actor)
+                        ->withProperties([
+                            'team_id' => $locked->team_id,
+                            'capacity' => $capacity,
+                            'restored_invitation_id' => $locked->id,
+                            'previous_rank' => $sourceRank,
+                            'email_queued' => false,
+                        ])->log('returned overflow team selection player to reserve');
+                    continue;
                 }
                 $destinationRank = $sourceRank + 1;
                 $destinationSlot = $slots->get($destinationRank);
@@ -711,10 +754,26 @@ final class TeamSelectionInvitationService
                     'team_id' => $locked->team_id,
                     'restored_rank' => $restoredRank,
                     'shifted_invitation_ids' => $active->pluck('id')->all(),
-                    'previous_declined_at' => $locked->declined_at?->toIso8601String(),
-                    'previous_decline_reason' => $locked->decline_reason,
-                    'email_queued' => false,
-                ])->log('regional manager restored declined team selection player');
+                'previous_declined_at' => $locked->declined_at?->toIso8601String(),
+                'previous_decline_reason' => $locked->decline_reason,
+                'returned_to_reserve_invitation_ids' => $overflow->pluck('id')->all(),
+                'email_queued' => false,
+            ])->log('regional manager restored declined team selection player');
+
+            $overflowPlayerIds = $overflow->pluck('player_id')->map(fn ($id) => (int) $id)->all();
+            if ($overflowPlayerIds !== []) {
+                $overflowSlots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+                    ->where('team_id', $locked->team_id)
+                    ->where('rank', '>', $capacity)
+                    ->whereIn('player_id', $overflowPlayerIds)
+                    ->get();
+                foreach ($overflowSlots as $overflowSlot) {
+                    app(TeamPaymentService::class)->updateTeamPlayerSlot($overflowSlot, [
+                        'player_id' => 0,
+                        'pay_status' => 0,
+                    ]);
+                }
+            }
 
             return $locked->fresh(['player', 'selectionImport']);
         });
