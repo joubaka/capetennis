@@ -764,7 +764,8 @@ final class MastersInvitationService
                 throw ValidationException::withMessages(['ranking' => 'Dirkie must have the reviewed and published Wilson Series U/9 ranking before a Masters invitation is created.']);
             }
             $series = Series::query()->lockForUpdate()->find(18);
-            $eventsPlayed = (int) data_get($targetRanking->meta_json, 'events_played', 0);
+            $eligibilityEvidence = $this->identityCorrectionEventsPlayed($targetRanking, $registrationIds);
+            $eventsPlayed = $eligibilityEvidence['events_played'];
             $minimumEvents = (int) ($series?->minimum_events_for_team_selection ?? 0);
             if ($eventsPlayed !== 2 || $minimumEvents < 1 || $eventsPlayed < $minimumEvents) {
                 throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking does not contain the audited two-leg Masters eligibility evidence.']);
@@ -845,6 +846,7 @@ final class MastersInvitationService
                     'rank_position' => (int) $targetRanking->rank_position,
                     'total_points' => (int) $targetRanking->total_points,
                     'events_played' => $eventsPlayed,
+                    'events_played_evidence_source' => $eligibilityEvidence['source'],
                     'minimum_events_for_team_selection' => $minimumEvents,
                     'published_ranking_id' => (int) $targetRanking->id,
                     'identity_correction' => [
@@ -900,6 +902,86 @@ final class MastersInvitationService
 
             return $replacement->fresh(['player', 'categoryEvent.category', 'batch.event']);
         });
+    }
+
+    /** @return array{events_played: int, source: string} */
+    private function identityCorrectionEventsPlayed(SeriesRanking $ranking, array $registrationIds): array
+    {
+        $meta = is_array($ranking->meta_json) ? $ranking->meta_json : [];
+        $hasExplicitCount = array_key_exists('events_played', $meta);
+        $hasCountingLegs = array_key_exists('counting_legs', $meta);
+        $explicitCount = null;
+
+        if ($hasExplicitCount) {
+            if (! is_int($meta['events_played']) && ! (is_string($meta['events_played']) && ctype_digit($meta['events_played']))) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking has malformed Masters event-count evidence.']);
+            }
+            $explicitCount = (int) $meta['events_played'];
+        }
+
+        $legCount = null;
+        if ($hasCountingLegs) {
+            if (! is_array($meta['counting_legs']) || ! array_is_list($meta['counting_legs'])) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking has malformed Masters counting-leg evidence.']);
+            }
+
+            $eventIds = [];
+            foreach ($meta['counting_legs'] as $leg) {
+                if (! is_array($leg)
+                    || ! array_key_exists('category_event_id', $leg)
+                    || (! is_int($leg['category_event_id']) && ! (is_string($leg['category_event_id']) && ctype_digit($leg['category_event_id'])))
+                    || (int) $leg['category_event_id'] < 1) {
+                    throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking has malformed Masters counting-leg evidence.']);
+                }
+                $eventIds[] = (int) $leg['category_event_id'];
+            }
+
+            if (count($eventIds) !== count(array_unique($eventIds))) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking has duplicate Masters counting-leg evidence.']);
+            }
+            sort($eventIds);
+            if ($eventIds !== [1861, 2011]) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking does not contain the audited Wilson Series event legs.']);
+            }
+
+            $expectedRegistrations = [
+                1861 => ['registration_id' => 18445, 'event_id' => 230],
+                2011 => ['registration_id' => 20410, 'event_id' => 237],
+            ];
+            foreach ($expectedRegistrations as $categoryEventId => $expected) {
+                $registrationId = $expected['registration_id'];
+                if (! in_array($registrationId, $registrationIds, true)
+                    || ! DB::table('category_event_registrations as cer')
+                        ->join('category_events as ce', 'ce.id', '=', 'cer.category_event_id')
+                        ->join('events as e', 'e.id', '=', 'ce.event_id')
+                        ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+                        ->where('cer.category_event_id', $categoryEventId)
+                        ->where('cer.registration_id', $registrationId)
+                        ->where('cer.user_id', 4025)
+                        ->where('cer.status', 'active')
+                        ->where('cer.payment_status_id', 1)
+                        ->where('ce.event_id', $expected['event_id'])
+                        ->where('ce.category_id', 131)
+                        ->where('e.series_id', 18)
+                        ->where('pr.player_id', 5332)
+                        ->exists()) {
+                    throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking event legs no longer match the audited Wilson registrations.']);
+                }
+            }
+            $legCount = count($eventIds);
+        }
+
+        if ($explicitCount !== null && $legCount !== null && $explicitCount !== $legCount) {
+            throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking has conflicting Masters event-count evidence.']);
+        }
+        if ($explicitCount !== null) {
+            return ['events_played' => $explicitCount, 'source' => $legCount === null ? 'events_played' : 'events_played_and_counting_legs'];
+        }
+        if ($legCount !== null) {
+            return ['events_played' => $legCount, 'source' => 'counting_legs'];
+        }
+
+        throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking does not contain Masters event-count evidence.']);
     }
 
     private function isExactIdentityCorrectionReplacement(MastersInvitation $invitation, MastersInvitation $vacancy): bool

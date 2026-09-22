@@ -78,9 +78,19 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
         Player::query()->forceCreate(['id' => 2439, 'name' => 'Dirk', 'surname' => 'Coetzee', 'dateOfBirth' => '2010-03-25', 'userId' => 2340]);
         $this->target = Player::query()->forceCreate(['id' => 5332, 'name' => 'Dirkie', 'surname' => 'Coetzee', 'dateOfBirth' => '2017-09-09', 'userId' => $targetUser->id]);
 
+        Series::query()->forceCreate([
+            'id' => 18,
+            'name' => 'Wilson Series 2026',
+            'year' => 2026,
+            'minimum_events_for_team_selection' => 1,
+        ]);
         $event = Event::factory()->create(['id' => 254, 'name' => 'Wilson Masters 2026']);
+        Event::factory()->create(['id' => 230, 'name' => 'Cavaliers Junior Wilson Paarl Tournament 2026', 'series_id' => 18]);
+        Event::factory()->create(['id' => 237, 'name' => 'Cavaliers Junior Strand Tournament 2026', 'series_id' => 18]);
         $category = Category::query()->forceCreate(['id' => 131, 'name' => 'Boys U/9']);
         CategoryEvent::query()->forceCreate(['id' => 2182, 'event_id' => $event->id, 'category_id' => $category->id, 'entry_fee' => 285]);
+        CategoryEvent::query()->forceCreate(['id' => 1861, 'event_id' => 230, 'category_id' => $category->id, 'entry_fee' => 285]);
+        CategoryEvent::query()->forceCreate(['id' => 2011, 'event_id' => 237, 'category_id' => $category->id, 'entry_fee' => 285]);
         MastersInvitationBatch::query()->create([
             'id' => 4, 'event_id' => 254, 'series_id' => 18, 'ranking_run_id' => 'published-run',
             'created_by' => $this->actor->id, 'top_x' => 8, 'status' => 'sent',
@@ -105,11 +115,9 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
                 'updated_at' => now(),
             ]);
         }
-        Series::query()->forceCreate([
-            'id' => 18,
-            'name' => 'Wilson Series 2026',
-            'year' => 2026,
-            'minimum_events_for_team_selection' => 1,
+        DB::table('category_event_registrations')->insert([
+            ['category_event_id' => 1861, 'registration_id' => 18445, 'user_id' => 4025, 'status' => 'active', 'payment_status_id' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['category_event_id' => 2011, 'registration_id' => 20410, 'user_id' => 4025, 'status' => 'active', 'payment_status_id' => 1, 'created_at' => now(), 'updated_at' => now()],
         ]);
         SeriesRanking::query()->create([
             'series_id' => 18,
@@ -170,6 +178,70 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
         $this->assertDatabaseCount('registration_order_items', 0);
         $this->assertDatabaseCount('wallet_transactions', 0);
         $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_it_accepts_two_legacy_counting_legs_and_records_the_derived_evidence(): void
+    {
+        $this->updateRankingMeta([
+            'counting_legs' => [
+                ['category_event_id' => 1861, 'position' => 4, 'points' => 50],
+                ['category_event_id' => 2011, 'position' => 7, 'points' => 30],
+            ],
+        ]);
+
+        $replacement = $this->service()->createIdentityCorrectionReplacement($this->vacancy, $this->target, $this->actor);
+
+        $this->assertSame(2, $replacement->snapshot_json['events_played']);
+        $this->assertSame('counting_legs', $replacement->snapshot_json['events_played_evidence_source']);
+        Queue::assertPushed(SendMastersInvitationEmailJob::class, 1);
+    }
+
+    public function test_it_rejects_conflicting_explicit_and_counting_leg_evidence(): void
+    {
+        $this->updateRankingMeta([
+            'events_played' => 2,
+            'counting_legs' => [['category_event_id' => 1861]],
+        ]);
+
+        $this->assertRankingEvidenceRejected();
+    }
+
+    public function test_it_rejects_one_counting_leg(): void
+    {
+        $this->updateRankingMeta(['counting_legs' => [['category_event_id' => 1861]]]);
+
+        $this->assertRankingEvidenceRejected();
+    }
+
+    public function test_it_rejects_malformed_or_duplicate_counting_leg_evidence(): void
+    {
+        foreach ([
+            ['counting_legs' => [['position' => 4], ['category_event_id' => 2011]]],
+            ['counting_legs' => [['category_event_id' => 1861], ['category_event_id' => 1861]]],
+        ] as $meta) {
+            $this->updateRankingMeta($meta);
+            $this->assertRankingEvidenceRejected();
+        }
+    }
+
+    public function test_it_rejects_wrong_or_cross_series_counting_leg_evidence(): void
+    {
+        $this->updateRankingMeta([
+            'counting_legs' => [
+                ['category_event_id' => 1861],
+                ['category_event_id' => 9999],
+            ],
+        ]);
+        $this->assertRankingEvidenceRejected();
+
+        Event::query()->whereKey(237)->update(['series_id' => null]);
+        $this->updateRankingMeta([
+            'counting_legs' => [
+                ['category_event_id' => 1861],
+                ['category_event_id' => 2011],
+            ],
+        ]);
+        $this->assertRankingEvidenceRejected();
     }
 
     public function test_it_requires_a_super_user_without_creating_or_queueing_anything(): void
@@ -395,5 +467,24 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
     private function service(): MastersInvitationService
     {
         return app(MastersInvitationService::class);
+    }
+
+    private function updateRankingMeta(array $meta): void
+    {
+        SeriesRanking::query()->where('player_id', 5332)->update(['meta_json' => json_encode($meta, JSON_THROW_ON_ERROR)]);
+    }
+
+    private function assertRankingEvidenceRejected(): void
+    {
+        try {
+            $this->service()->createIdentityCorrectionReplacement($this->vacancy, $this->target, $this->actor);
+            $this->fail('Expected invalid ranking event evidence to block the invitation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('ranking', $exception->errors());
+        }
+
+        $this->assertSame(1, MastersInvitation::query()->count());
+        $this->assertSame(0, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
     }
 }
