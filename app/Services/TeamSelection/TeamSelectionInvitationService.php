@@ -597,7 +597,21 @@ final class TeamSelectionInvitationService
 
     public function restoreDeclinedInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor): TeamSelectionInvitation {
+        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::DECLINED);
+    }
+
+    public function restoreWithdrawnInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    {
+        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::WITHDRAWN);
+    }
+
+    private function restoreInactiveInvitation(
+        TeamSelectionInvitation $invitation,
+        User $actor,
+        string $expectedStatus
+    ): TeamSelectionInvitation
+    {
+        return DB::transaction(function () use ($invitation, $actor, $expectedStatus): TeamSelectionInvitation {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])
                 ->findOrFail($invitation->id);
@@ -605,12 +619,13 @@ final class TeamSelectionInvitationService
             if ($locked->status === TeamSelectionInvitation::INVITED
                 && $locked->declined_at
                 && $locked->invited_at === null
-                && $locked->roster_rank) {
+                && $locked->roster_rank
+                && data_get($locked->snapshot_json, 'restoration.kind') === $expectedStatus) {
                 return $locked;
             }
-            if ($locked->status !== TeamSelectionInvitation::DECLINED || ! $locked->vacated_roster_rank) {
+            if ($locked->status !== $expectedStatus || ! $locked->vacated_roster_rank) {
                 throw ValidationException::withMessages([
-                    'restore' => 'Only a declined player with a recorded roster position can be restored.',
+                    'restore' => 'Only a '.$expectedStatus.' player with a recorded roster position can be restored.',
                 ]);
             }
 
@@ -620,12 +635,19 @@ final class TeamSelectionInvitationService
                     'restore' => 'This regional selection is no longer open for roster restoration.',
                 ]);
             }
-            if ($selectionImport->status === 'sent' && ! $this->replacementDeadlines($selectionImport)[0]) {
+            if ((int) $locked->event_id !== (int) $selectionImport->event_id
+                || (int) $locked->region_id !== (int) $selectionImport->region_id) {
                 throw ValidationException::withMessages([
-                    'restore' => 'A declined player cannot be restored after the event has started.',
+                    'restore' => 'The player selection no longer belongs to this event and region import.',
                 ]);
             }
-            if ($locked->order_id) {
+            if (($selectionImport->status === 'sent' || $expectedStatus === TeamSelectionInvitation::WITHDRAWN)
+                && ! $this->replacementDeadlines($selectionImport)[0]) {
+                throw ValidationException::withMessages([
+                    'restore' => 'A '.$expectedStatus.' player cannot be restored after the event has started.',
+                ]);
+            }
+            if ($expectedStatus === TeamSelectionInvitation::DECLINED && $locked->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
                 if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
                     throw ValidationException::withMessages([
@@ -636,6 +658,15 @@ final class TeamSelectionInvitationService
 
             $restoredRank = (int) $locked->vacated_roster_rank;
             $team = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($locked->team_id);
+            $teamBelongsToImport = (int) $team->region_id === (int) $selectionImport->region_id
+                && $team->category_event_id
+                && DB::table('category_events')->where('id', $team->category_event_id)
+                    ->where('event_id', $selectionImport->event_id)->exists();
+            if (! $teamBelongsToImport) {
+                throw ValidationException::withMessages([
+                    'restore' => 'The selected team no longer belongs to this event and region import.',
+                ]);
+            }
             $capacity = max(0, (int) $team->num_team_members);
             if ($capacity < 1 || $restoredRank > $capacity) {
                 throw ValidationException::withMessages([
@@ -737,6 +768,24 @@ final class TeamSelectionInvitationService
                 'pay_status' => 0,
             ]);
 
+            $previousOrderId = $locked->order_id;
+            $snapshot = $locked->snapshot_json ?? [];
+            $previousOrderIds = collect(data_get($snapshot, 'restoration.previous_order_ids', []))
+                ->merge(data_get($snapshot, 'restoration.previous_order_id') ? [data_get($snapshot, 'restoration.previous_order_id')] : [])
+                ->merge($previousOrderId ? [$previousOrderId] : [])
+                ->map(fn ($id): int => (int) $id)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            $snapshot['restoration'] = [
+                'kind' => $expectedStatus,
+                'restored_at' => now()->toIso8601String(),
+                'restored_by_user_id' => $actor->id,
+                'previous_order_id' => $previousOrderId,
+                'previous_order_ids' => $previousOrderIds,
+                'fresh_registration_required' => $expectedStatus === TeamSelectionInvitation::WITHDRAWN,
+            ];
             $locked->update([
                 'status' => TeamSelectionInvitation::INVITED,
                 'roster_rank' => $restoredRank,
@@ -747,6 +796,7 @@ final class TeamSelectionInvitationService
                 'paid_at' => null,
                 'response_deadline_override' => null,
                 'payment_deadline_override' => null,
+                'snapshot_json' => $snapshot,
             ]);
 
             activity('team-selection')->performedOn($locked)->causedBy($actor)
@@ -758,7 +808,9 @@ final class TeamSelectionInvitationService
                 'previous_decline_reason' => $locked->decline_reason,
                 'returned_to_reserve_invitation_ids' => $overflow->pluck('id')->all(),
                 'email_queued' => false,
-            ])->log('regional manager restored declined team selection player');
+            ])->log($expectedStatus === TeamSelectionInvitation::WITHDRAWN
+                ? 'regional manager restored withdrawn team selection player for fresh registration'
+                : 'regional manager restored declined team selection player');
 
             $overflowPlayerIds = $overflow->pluck('player_id')->map(fn ($id) => (int) $id)->all();
             if ($overflowPlayerIds !== []) {

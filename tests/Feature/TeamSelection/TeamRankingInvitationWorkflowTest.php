@@ -19,6 +19,7 @@ use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\Team;
+use App\Models\TeamPaymentOrder;
 use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
 use App\Models\TeamSelectionImport;
@@ -2278,6 +2279,182 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $invitation->fresh()->status);
     }
 
+    public function test_manager_restores_withdrawn_paid_player_for_a_fresh_registration_without_mutating_history_or_sending_mail(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Withdrawn restore team event', 'type' => 2, 'code' => 'withdrawn-restore-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->orderBy('roster_rank')->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        $oldOrder = app(TeamPaymentService::class)->ensureOrder(
+            $owner, $team, $invitation->player, $selectionImport->event, 490.00
+        );
+        $oldOrder->update([
+            'pay_status' => true,
+            'payfast_paid' => true,
+            'payfast_amount_due' => 0,
+            'withdrawn_at' => null,
+            'withdrawn_by' => $owner->id,
+            'refund_status' => 'completed',
+            'refunded_at' => now(),
+        ]);
+        $invitation->update([
+            'status' => TeamSelectionInvitation::PAID_CONFIRMED,
+            'order_id' => $oldOrder->id,
+            'paid_at' => now(),
+        ]);
+        TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)->update(['player_id' => 0, 'pay_status' => 0]);
+        app(TeamSelectionInvitationService::class)->markWithdrawn(
+            $selectionImport->event_id, $team->id, $invitation->player_id, $owner
+        );
+        $withdrawn = $invitation->fresh();
+        $oldOrderState = $oldOrder->fresh()->getAttributes();
+        $walletTransactionsBefore = DB::table('wallet_transactions')->count();
+        $payfastTransactionsBefore = DB::table('transactions_pf')->count();
+        $logsBefore = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs(User::factory()->create())->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $withdrawn,
+        ]))->assertForbidden();
+        $source->event->update(['start_date' => now()->subDay()]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $withdrawn,
+        ]))->assertSessionHasErrors('restore');
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $invitation->fresh()->status);
+        $source->event->update(['start_date' => now()->addMonth()]);
+        $otherRegion = TeamRegion::create(['region_name' => 'Wrong restore region']);
+        $invitation->update(['region_id' => $otherRegion->id]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $invitation,
+        ]))->assertSessionHasErrors('restore');
+        $invitation->update(['region_id' => $selectionImport->region_id]);
+        $originalTeamRegionId = $team->region_id;
+        $originalCategoryEventId = $team->category_event_id;
+        $team->update(['category_event_id' => null]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $invitation,
+        ]))->assertSessionHasErrors('restore');
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $invitation->fresh()->status);
+        $team->update(['category_event_id' => $originalCategoryEventId]);
+        $team->update(['region_id' => $otherRegion->id]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $invitation,
+        ]))->assertSessionHasErrors('restore');
+        $team->update(['region_id' => $originalTeamRegionId]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $withdrawn,
+        ]))->assertRedirect()->assertSessionHas('success');
+
+        $restored = $invitation->fresh();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $restored->status);
+        $this->assertSame((int) $withdrawn->vacated_roster_rank, $restored->roster_rank);
+        $this->assertNull($restored->order_id);
+        $this->assertNull($restored->invited_at);
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, data_get($restored->snapshot_json, 'restoration.kind'));
+        $this->assertSame($oldOrder->id, data_get($restored->snapshot_json, 'restoration.previous_order_id'));
+        $this->assertTrue((bool) data_get($restored->snapshot_json, 'restoration.fresh_registration_required'));
+        $this->assertSame($oldOrderState, $oldOrder->fresh()->getAttributes());
+        $this->assertSame($logsBefore, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('Restored — invitation not sent')
+            ->assertSee('Send invitation');
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($restored->roster_rank, $invitation->fresh()->roster_rank);
+        $this->assertSame($logsBefore, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+
+        $selectionImport->event->update(['entryFee' => 500.00]);
+        TeamRegion::query()->whereKey($team->region_id)->update(['region_fee' => 25.00]);
+        $paymentUrl = route('team.payment.payfast', [$team, $restored->player, $selectionImport->event]);
+        $otherEvent = Event::factory()->create(['published' => true, 'signUp' => 1, 'status' => 'active']);
+        $otherTeam = Team::factory()->create(['published' => true, 'region_id' => $team->region_id]);
+        $this->actingAs($owner)->get(route('team.payment.payfast', [
+            $team, $restored->player, $otherEvent,
+        ]))->assertRedirect()->assertSessionHasErrors();
+        $this->actingAs($owner)->get(route('team.payment.payfast', [
+            $otherTeam, $restored->player, $selectionImport->event,
+        ]))->assertRedirect()->assertSessionHasErrors();
+        $this->assertSame(1, TeamPaymentOrder::query()->where('player_id', $restored->player_id)->count());
+        $this->actingAs($owner)->get($paymentUrl)
+            ->assertOk()->assertViewIs('frontend.payfast.team_payment');
+        $newOrder = TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $restored->player_id)->where('event_id', $selectionImport->event_id)
+            ->whereKeyNot($oldOrder->id)->firstOrFail();
+        $this->assertNotSame($oldOrder->id, $newOrder->id);
+        $this->assertSame(525.00, (float) $newOrder->total_amount);
+        $this->assertFalse((bool) $newOrder->pay_status);
+        $this->assertFalse((bool) $newOrder->payfast_paid);
+        $this->assertNull($newOrder->withdrawn_at);
+        $this->assertSame($newOrder->id, $invitation->fresh()->order_id);
+        $this->actingAs($owner)->get($paymentUrl)
+            ->assertOk()->assertViewIs('frontend.payfast.team_payment');
+        $this->assertSame(2, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $restored->player_id)->where('event_id', $selectionImport->event_id)->count());
+        $this->assertSame($oldOrderState, $oldOrder->fresh()->getAttributes());
+        $this->assertSame($walletTransactionsBefore, DB::table('wallet_transactions')->count());
+        $this->assertSame($payfastTransactionsBefore, DB::table('transactions_pf')->count());
+
+        $newOrder->update(['pay_status' => true, 'payfast_paid' => true, 'payfast_amount_due' => 0]);
+        app(TeamSelectionInvitationService::class)->confirmPaidOrder($newOrder->fresh());
+        TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->where('player_id', $restored->player_id)->update(['player_id' => 0, 'pay_status' => 0]);
+        app(TeamSelectionInvitationService::class)->markWithdrawn(
+            $selectionImport->event_id, $team->id, $restored->player_id, $owner
+        );
+        $secondHistoricalState = $newOrder->fresh()->getAttributes();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $invitation->fresh(),
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+        $historyIds = data_get($invitation->fresh()->snapshot_json, 'restoration.previous_order_ids');
+        $this->assertEqualsCanonicalizing([$oldOrder->id, $newOrder->id], $historyIds);
+        $this->actingAs($owner)->get($paymentUrl)
+            ->assertOk()->assertViewIs('frontend.payfast.team_payment');
+        $thirdOrder = TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $restored->player_id)->where('event_id', $selectionImport->event_id)
+            ->whereNotIn('id', [$oldOrder->id, $newOrder->id])->firstOrFail();
+        $this->assertNotSame($oldOrder->id, $thirdOrder->id);
+        $this->assertNotSame($newOrder->id, $thirdOrder->id);
+        $this->actingAs($owner)->get($paymentUrl)->assertOk();
+        $this->assertSame(3, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $restored->player_id)->where('event_id', $selectionImport->event_id)->count());
+        $this->assertSame($oldOrderState, $oldOrder->fresh()->getAttributes());
+        $this->assertSame($secondHistoricalState, $newOrder->fresh()->getAttributes());
+        $this->assertSame($walletTransactionsBefore, DB::table('wallet_transactions')->count());
+        $this->assertSame($payfastTransactionsBefore, DB::table('transactions_pf')->count());
+
+        $otherPlayer = Player::factory()->create();
+        $this->assertNotSame($thirdOrder->id, app(TeamPaymentService::class)->ensureOrder(
+            $owner, $team, $otherPlayer, $selectionImport->event, 525.00
+        )->id);
+        $this->assertNotSame($thirdOrder->id, app(TeamPaymentService::class)->ensureOrder(
+            $owner, $team, $restored->player, $otherEvent, 525.00
+        )->id);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $restored->id,
+            'description' => 'regional manager restored withdrawn team selection player for fresh registration',
+        ]);
+    }
+
     public function test_generic_roster_edits_are_blocked_after_a_ranking_import(): void
     {
         [$source, $team] = $this->selectionSource();
@@ -2878,12 +3055,17 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $eventYear = (int) $event->start_date->format('Y');
         $series = Series::factory()->create(['name' => 'Overberg '.$eventYear, 'year' => $eventYear, 'minimum_events_for_team_selection' => 1]);
         $category = Category::factory()->create(['name' => 'u/10 Boys']);
+        $categoryEvent = CategoryEvent::factory()->create([
+            'event_id' => $event->id,
+            'category_id' => $category->id,
+        ]);
         $rankingList = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
         $team = new Team();
         $team->forceFill([
             'user_id' => $actor->id,
             'personal_team' => false,
             'name' => 'Overberg u/10 Boys', 'region_id' => $region->id,
+            'category_event_id' => $categoryEvent->id,
             'num_team_members' => 2, 'published' => true, 'year' => $eventYear,
         ])->save();
         $players = collect();

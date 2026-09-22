@@ -7,6 +7,7 @@ use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPaymentOrder;
 use App\Models\TeamPlayer;
+use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
@@ -21,12 +22,31 @@ class TeamPaymentService
     {
         return FinanceMutationScope::run('payment_state_write', function () use ($user, $team, $player, $event, $total) {
             return DB::transaction(function () use ($user, $team, $player, $event, $total) {
-                $existing = TeamPaymentOrder::query()
+                Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+                $excludedHistoricalOrderIds = TeamSelectionInvitation::query()
+                    ->where('team_id', $team->id)
+                    ->where('player_id', $player->id)
+                    ->where('event_id', $event->id)
+                    ->get(['snapshot_json'])
+                    ->flatMap(function (TeamSelectionInvitation $invitation): array {
+                        $legacy = data_get($invitation->snapshot_json, 'restoration.previous_order_id');
+                        $history = data_get($invitation->snapshot_json, 'restoration.previous_order_ids', []);
+
+                        return array_merge(is_array($history) ? $history : [], $legacy ? [$legacy] : []);
+                    })
+                    ->filter()
+                    ->map(fn ($id): int => (int) $id)
+                    ->unique()
+                    ->all();
+                $orders = TeamPaymentOrder::query()
                     ->where('team_id', $team->id)
                     ->where('player_id', $player->id)
                     ->where('event_id', $event->id)
                     ->lockForUpdate()
-                    ->first();
+                    ->orderByDesc('id')
+                    ->get();
+                $existing = $orders->first(fn (TeamPaymentOrder $order): bool => $order->withdrawn_at === null
+                    && ! in_array((int) $order->id, $excludedHistoricalOrderIds, true));
 
                 if ($existing) {
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {

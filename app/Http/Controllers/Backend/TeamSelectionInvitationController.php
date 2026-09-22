@@ -408,10 +408,16 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        $restored = $service->restoreDeclinedInvitation($invitation, $request->user());
+        $wasWithdrawn = $invitation->status === TeamSelectionInvitation::WITHDRAWN
+            || data_get($invitation->snapshot_json, 'restoration.kind') === TeamSelectionInvitation::WITHDRAWN;
+        $restored = $wasWithdrawn
+            ? $service->restoreWithdrawnInvitation($invitation, $request->user())
+            : $service->restoreDeclinedInvitation($invitation, $request->user());
 
         return back()->with('success', ($restored->player?->full_name ?? 'The player')
-            .' was restored at Rank '.$restored->roster_rank.'. The configured team size was retained and any unpaid overflow player returned to reserve. No invitation email was sent. Review the team order before sending it manually.');
+            .' was restored at Rank '.$restored->roster_rank.'. The configured team size was retained and any unpaid overflow player returned to reserve. '
+            .($wasWithdrawn ? 'Their previous order and withdrawal history were preserved; they must register and pay through a fresh order. ' : '')
+            .'No invitation email was sent. Review the team order before sending it manually.');
     }
 
     public function sendRestoredInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
