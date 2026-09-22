@@ -15,6 +15,7 @@ use App\Models\Registration;
 use App\Models\RegistrationOrderItems;
 use App\Models\RegistrationOrder;
 use App\Models\SeriesRanking;
+use App\Models\Series;
 use App\Models\User;
 use App\Models\Event;
 use App\Models\Category;
@@ -24,6 +25,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Auth\Access\AuthorizationException;
 use App\Models\BulkEmailLog;
 use App\Jobs\SendMastersInvitationEmailJob;
 use App\Domain\Entries\Services\EntryService;
@@ -685,6 +687,250 @@ final class MastersInvitationService
             $this->queueAdminMail($vacancy->fresh(), 'replacement_sent', $replacement);
         });
         return $replacement;
+    }
+
+    public function createIdentityCorrectionReplacement(
+        MastersInvitation $vacancy,
+        Player $target,
+        User $actor,
+        array $correctedRegistrationIds = [18445, 20410],
+    ): MastersInvitation {
+        if (! $actor->hasRole('super-user')) {
+            throw new AuthorizationException('Only a super user may create an identity-correction Masters replacement.');
+        }
+
+        return DB::transaction(function () use ($vacancy, $target, $actor, $correctedRegistrationIds): MastersInvitation {
+            $batch = MastersInvitationBatch::query()->lockForUpdate()->findOrFail(4);
+            $lockedVacancy = MastersInvitation::query()->lockForUpdate()->findOrFail($vacancy->id);
+            $lockedTarget = Player::query()->lockForUpdate()->findOrFail($target->id);
+
+            if ((int) $lockedVacancy->id !== 807
+                || (int) $lockedVacancy->batch_id !== 4
+                || (int) $lockedVacancy->event_id !== 254
+                || (int) $lockedVacancy->category_event_id !== 2182
+                || (int) $lockedVacancy->ranking_list_id !== 938
+                || (int) $lockedVacancy->ranking_category_id !== 131
+                || (int) $lockedVacancy->ranking_position !== 8
+                || (int) $lockedVacancy->queue_position !== 8
+                || (int) $lockedVacancy->total_points !== 80
+                || (int) $lockedVacancy->player_id !== 2439
+                || $lockedVacancy->status !== MastersInvitation::DECLINED
+                || $lockedVacancy->registration_id !== null
+                || $lockedVacancy->order_id !== null) {
+                throw ValidationException::withMessages(['invitation' => 'The identity-correction vacancy no longer matches the audited declined, unpaid invitation.']);
+            }
+            if ((int) $batch->event_id !== 254
+                || (int) $batch->series_id !== 18
+                || $batch->status !== 'sent'
+                || ! $batch->public_list_published
+                || ! $batch->registration_open
+                || ! $batch->replacement_payment_deadline
+                || $batch->replacement_payment_deadline->isPast()) {
+                throw ValidationException::withMessages(['batch' => 'The Masters batch is not open for this replacement invitation.']);
+            }
+            if (! CategoryEvent::query()->whereKey(2182)->where('event_id', 254)->where('category_id', 131)->exists()) {
+                throw ValidationException::withMessages(['category' => 'The Masters U/9 category mapping no longer matches the audited event.']);
+            }
+            if ((int) $lockedTarget->id !== 5332
+                || strcasecmp(trim((string) $lockedTarget->name), 'Dirkie') !== 0
+                || strcasecmp(trim((string) $lockedTarget->surname), 'Coetzee') !== 0
+                || (string) $lockedTarget->dateOfBirth !== '2017-09-09'
+                || (int) $lockedTarget->userId !== 4025) {
+                throw ValidationException::withMessages(['player' => 'The replacement player no longer matches the audited Dirkie Coetzee profile.']);
+            }
+
+            $registrationIds = collect($correctedRegistrationIds)->map(fn ($id): int => (int) $id)->sort()->values()->all();
+            if ($registrationIds !== [18445, 20410]
+                || DB::table('player_registrations')->whereIn('registration_id', $registrationIds)->count() !== 2
+                || DB::table('player_registrations')
+                    ->whereIn('registration_id', $registrationIds)
+                    ->where('player_id', 5332)
+                    ->distinct()
+                    ->count('registration_id') !== 2) {
+                throw ValidationException::withMessages(['registrations' => 'Both audited Wilson Series registrations must point to Dirkie before the Masters replacement is created.']);
+            }
+
+            $targetRanking = SeriesRanking::query()
+                ->where('series_id', 18)
+                ->where('ranking_list_id', 938)
+                ->where('category_id', 131)
+                ->where('player_id', 5332)
+                ->where('status', 'published')
+                ->lockForUpdate()
+                ->first();
+            if (! $targetRanking
+                || (int) $targetRanking->rank_position !== 8
+                || (int) $targetRanking->total_points !== 80) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie must have the reviewed and published Wilson Series U/9 ranking before a Masters invitation is created.']);
+            }
+            $series = Series::query()->lockForUpdate()->find(18);
+            $eventsPlayed = (int) data_get($targetRanking->meta_json, 'events_played', 0);
+            $minimumEvents = (int) ($series?->minimum_events_for_team_selection ?? 0);
+            if ($eventsPlayed !== 2 || $minimumEvents < 1 || $eventsPlayed < $minimumEvents) {
+                throw ValidationException::withMessages(['ranking' => 'Dirkie\'s published ranking does not contain the audited two-leg Masters eligibility evidence.']);
+            }
+
+            $mastersOrderIds = RegistrationOrderItems::query()
+                ->where('category_event_id', 2182)
+                ->where('player_id', 5332)
+                ->pluck('order_id');
+            $hasPayfastEvidence = DB::table('transactions_pf')->where('event_id', 254)
+                ->where(function ($query) use ($mastersOrderIds): void {
+                    $query->where('player_id', 5332)->orWhere('custom_int2', 5332);
+                    if ($mastersOrderIds->isNotEmpty()) {
+                        $query->orWhereIn('custom_int5', $mastersOrderIds);
+                    }
+                })->exists();
+            if ($hasPayfastEvidence) {
+                throw ValidationException::withMessages(['payment' => 'Dirkie already has Masters PayFast evidence; manual financial review is required.']);
+            }
+            if ($mastersOrderIds->isNotEmpty()
+                || DB::table('category_event_registrations as cer')
+                    ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
+                    ->where('cer.category_event_id', 2182)
+                    ->where('pr.player_id', 5332)
+                    ->exists()) {
+                throw ValidationException::withMessages(['payment' => 'Dirkie already has Masters registration or payment evidence; manual financial review is required.']);
+            }
+
+            $existing = MastersInvitation::query()
+                ->where('batch_id', 4)
+                ->where('player_id', 5332)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                if (! $this->isExactIdentityCorrectionReplacement($existing, $lockedVacancy)) {
+                    throw ValidationException::withMessages(['invitation' => 'A different Masters invitation already exists for Dirkie; no replacement was created.']);
+                }
+            }
+
+            $recipient = $this->playerUser($lockedTarget);
+            if (! $recipient?->email || (int) $recipient->id !== 4025) {
+                throw ValidationException::withMessages(['player' => 'Dirkie must have the audited linked account and email before an invitation can be queued.']);
+            }
+
+            $created = ! $existing;
+            $now = now();
+            $replacement = $existing ?: MastersInvitation::query()->create([
+                'batch_id' => 4,
+                'event_id' => 254,
+                'category_event_id' => 2182,
+                'ranking_list_id' => $lockedVacancy->ranking_list_id,
+                'ranking_category_id' => $lockedVacancy->ranking_category_id,
+                'player_id' => 5332,
+                'registration_id' => null,
+                'order_id' => null,
+                'ranking_position' => $targetRanking->rank_position,
+                'queue_position' => $lockedVacancy->queue_position,
+                'total_points' => $targetRanking->total_points,
+                'status' => MastersInvitation::INVITED,
+                'decline_reason' => null,
+                'exception_reason' => null,
+                'promoted_from_id' => 807,
+                'invited_at' => $now,
+                'accepted_at' => null,
+                'paid_at' => null,
+                'declined_at' => null,
+                'expired_at' => null,
+                'withdrawn_at' => null,
+                'replacement_sent_at' => $now,
+                'declined_by_user_id' => null,
+                'decline_method' => null,
+                'decline_confirmation_sent_at' => null,
+                'decline_confirmed_at' => null,
+                'admin_removed_by_user_id' => null,
+                'admin_removed_at' => null,
+                'snapshot_json' => [
+                    'player_name' => $lockedTarget->full_name,
+                    'rank_position' => (int) $targetRanking->rank_position,
+                    'total_points' => (int) $targetRanking->total_points,
+                    'events_played' => $eventsPlayed,
+                    'minimum_events_for_team_selection' => $minimumEvents,
+                    'published_ranking_id' => (int) $targetRanking->id,
+                    'identity_correction' => [
+                        'source_invitation_id' => 807,
+                        'source_player_id' => 2439,
+                        'target_player_id' => 5332,
+                        'corrected_registration_ids' => $registrationIds,
+                    ],
+                ],
+            ]);
+
+            $correctionKey = 'wilson-series-u9-identity-2439-to-5332';
+            $log = BulkEmailLog::query()->where('mail_type', 'masters_invitation')
+                ->where('related_type', MastersInvitation::class)
+                ->where('related_id', $replacement->id)
+                ->where('payload->correction_key', $correctionKey)
+                ->lockForUpdate()
+                ->first();
+            if (! $log) {
+                $log = BulkEmailLog::create([
+                    'mail_type' => 'masters_invitation',
+                    'related_type' => MastersInvitation::class,
+                    'related_id' => $replacement->id,
+                    'recipient_email' => $recipient->email,
+                    'recipient_name' => $lockedTarget->full_name,
+                    'status' => 'queued',
+                    'payload' => [
+                        'invitation_id' => $replacement->id,
+                        'kind' => 'replacement',
+                        'correction_key' => $correctionKey,
+                    ],
+                    'queued_at' => $now,
+                ]);
+            }
+            if (in_array($log->status, ['queued', 'failed'], true)) {
+                $logId = (int) $log->id;
+                DB::afterCommit(static function () use ($logId): void {
+                    SendMastersInvitationEmailJob::dispatch($logId, 254);
+                });
+            }
+
+            if ($created) {
+                activity('masters')->performedOn($replacement)->causedBy($actor)
+                    ->withProperties([
+                        'vacancy_invitation_id' => 807,
+                        'replacement_invitation_id' => $replacement->id,
+                        'source_player_id' => 2439,
+                        'target_player_id' => 5332,
+                        'published_ranking_id' => $targetRanking->id,
+                        'correction_key' => $correctionKey,
+                    ])->log('Masters replacement invitation created after player identity correction');
+            }
+
+            return $replacement->fresh(['player', 'categoryEvent.category', 'batch.event']);
+        });
+    }
+
+    private function isExactIdentityCorrectionReplacement(MastersInvitation $invitation, MastersInvitation $vacancy): bool
+    {
+        $correction = $invitation->snapshot_json['identity_correction'] ?? null;
+
+        return (int) $invitation->event_id === 254
+            && (int) $invitation->category_event_id === 2182
+            && (int) $invitation->ranking_list_id === (int) $vacancy->ranking_list_id
+            && (int) $invitation->ranking_category_id === (int) $vacancy->ranking_category_id
+            && (int) $invitation->ranking_position === (int) $vacancy->ranking_position
+            && (int) $invitation->queue_position === (int) $vacancy->queue_position
+            && (int) $invitation->total_points === (int) $vacancy->total_points
+            && $invitation->status === MastersInvitation::INVITED
+            && (int) $invitation->promoted_from_id === 807
+            && $invitation->invited_at !== null
+            && $invitation->replacement_sent_at !== null
+            && $invitation->registration_id === null
+            && $invitation->order_id === null
+            && $invitation->accepted_at === null
+            && $invitation->paid_at === null
+            && $invitation->declined_at === null
+            && $invitation->expired_at === null
+            && $invitation->withdrawn_at === null
+            && $invitation->decline_reason === null
+            && $invitation->exception_reason === null
+            && is_array($correction)
+            && (int) ($correction['source_invitation_id'] ?? 0) === 807
+            && (int) ($correction['source_player_id'] ?? 0) === 2439
+            && (int) ($correction['target_player_id'] ?? 0) === 5332
+            && collect($correction['corrected_registration_ids'] ?? [])->map(fn ($id): int => (int) $id)->sort()->values()->all() === [18445, 20410];
     }
 
     public function confirmPaidOrder(RegistrationOrder $order): void
