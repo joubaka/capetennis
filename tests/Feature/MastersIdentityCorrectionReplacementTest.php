@@ -88,7 +88,8 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
         Event::factory()->create(['id' => 230, 'name' => 'Cavaliers Junior Wilson Paarl Tournament 2026', 'series_id' => 18]);
         Event::factory()->create(['id' => 237, 'name' => 'Cavaliers Junior Strand Tournament 2026', 'series_id' => 18]);
         $category = Category::query()->forceCreate(['id' => 131, 'name' => 'Boys U/9']);
-        CategoryEvent::query()->forceCreate(['id' => 2182, 'event_id' => $event->id, 'category_id' => $category->id, 'entry_fee' => 285]);
+        $mastersCategory = Category::query()->forceCreate(['id' => 224, 'name' => 'Boys U/9 Masters']);
+        CategoryEvent::query()->forceCreate(['id' => 2182, 'event_id' => $event->id, 'category_id' => $mastersCategory->id, 'entry_fee' => 285, 'ordering' => 938]);
         CategoryEvent::query()->forceCreate(['id' => 1861, 'event_id' => 230, 'category_id' => $category->id, 'entry_fee' => 285]);
         CategoryEvent::query()->forceCreate(['id' => 2011, 'event_id' => 237, 'category_id' => $category->id, 'entry_fee' => 285]);
         MastersInvitationBatch::query()->create([
@@ -314,6 +315,22 @@ class MastersIdentityCorrectionReplacementTest extends TestCase
             $this->fail('Expected batch state drift to stop replacement creation.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('batch', $exception->errors());
+        }
+
+        $this->assertSame(1, MastersInvitation::query()->count());
+        $this->assertSame(0, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_it_rejects_wrong_masters_event_category_without_conflating_the_ranking_category(): void
+    {
+        CategoryEvent::query()->whereKey(2182)->update(['category_id' => 131]);
+
+        try {
+            $this->service()->createIdentityCorrectionReplacement($this->vacancy, $this->target, $this->actor);
+            $this->fail('Expected the wrong Masters event category to stop replacement creation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('category', $exception->errors());
         }
 
         $this->assertSame(1, MastersInvitation::query()->count());

@@ -728,7 +728,7 @@ final class MastersInvitationService
                 || $batch->replacement_payment_deadline->isPast()) {
                 throw ValidationException::withMessages(['batch' => 'The Masters batch is not open for this replacement invitation.']);
             }
-            if (! CategoryEvent::query()->whereKey(2182)->where('event_id', 254)->where('category_id', 131)->exists()) {
+            if (! CategoryEvent::query()->whereKey(2182)->where('event_id', 254)->where('category_id', 224)->exists()) {
                 throw ValidationException::withMessages(['category' => 'The Masters U/9 category mapping no longer matches the audited event.']);
             }
             if ((int) $lockedTarget->id !== 5332
