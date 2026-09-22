@@ -16,6 +16,9 @@ class TeamPaymentOrder extends Model
     'wallet_debited',
     'payfast_paid',
     'pay_status',
+    'collection_status',
+    'paid_privately_at',
+    'paid_privately_by',
     'payfast_pf_payment_id',
     'payfast_raw_data',
     // Refund fields
@@ -44,6 +47,8 @@ class TeamPaymentOrder extends Model
     'wallet_debited' => 'boolean',
     'payfast_paid' => 'boolean',
     'pay_status' => 'boolean',
+    'paid_privately_at' => 'datetime',
+    'paid_privately_by' => 'integer',
     'payfast_raw_data' => 'array',
     // Refund casts
     'refund_gross' => 'float',

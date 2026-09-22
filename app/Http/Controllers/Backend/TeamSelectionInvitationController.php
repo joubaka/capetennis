@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Payments\Services\TeamPaymentService;
 use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\EventRegionRankingSource;
@@ -427,6 +428,16 @@ class TeamSelectionInvitationController extends Controller
         $email = $service->sendRestoredInvitation($invitation, $request->user());
 
         return back()->with('success', "Invitation queued for {$email} after the restored team position was approved.");
+    }
+
+    public function markPaidPrivately(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamPaymentService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $paid = $service->markInvitationPaidPrivately($invitation, $request->user());
+
+        return back()->with('success', ($paid->player?->full_name ?? 'The player')
+            .' was marked paid privately. This is an administrative collection record and was not reconciled through PayFast.');
     }
 
     public function promoteReserveManually(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)

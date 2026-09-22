@@ -2755,6 +2755,151 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertTrue($selectionImport->invitations()->where('player_id', $unlinked->id)->exists());
     }
 
+    public function test_manager_can_mark_active_invitation_paid_privately_with_exact_amount_and_no_gateway_or_wallet_records(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Private collection team event', 'type' => 2, 'code' => 'private-collection-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType, 'entryFee' => 500.00]);
+        TeamRegion::query()->whereKey($team->region_id)->update(['region_fee' => 25.00]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        $invitation->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'payment_started_at' => now()]);
+        $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $source->event, 1.00);
+        $order->update(['wallet_reserved' => 1.00, 'payfast_amount_due' => 0.00]);
+        app(TeamSelectionInvitationService::class)->attachOrder($order);
+        $walletRows = DB::table('wallet_transactions')->count();
+        $payfastRows = DB::table('transactions_pf')->count();
+        $emailRows = BulkEmailLog::query()->count();
+
+        $url = route('backend.team-selection.invitations.mark-paid-privately', [$source->event, $selectionImport, $invitation]);
+        $this->actingAs(User::factory()->create())->post($url)->assertForbidden();
+        $this->assertSame(0, (int) $order->fresh()->pay_status);
+
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()->assertSee('Mark paid privately (not reconciled)');
+        $this->actingAs($manager)->post($url)->assertRedirect()->assertSessionHas('success');
+
+        $paidOrder = $order->fresh();
+        $this->assertSame(525.00, (float) $paidOrder->total_amount);
+        $this->assertSame(0.00, (float) $paidOrder->wallet_reserved);
+        $this->assertSame(0.00, (float) $paidOrder->payfast_amount_due);
+        $this->assertTrue((bool) $paidOrder->pay_status);
+        $this->assertFalse((bool) $paidOrder->payfast_paid);
+        $this->assertFalse((bool) $paidOrder->wallet_debited);
+        $this->assertSame('paid_privately', $paidOrder->collection_status);
+        $this->assertSame($manager->id, $paidOrder->paid_privately_by);
+        $this->assertNotNull($paidOrder->paid_privately_at);
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
+        $this->assertSame(1, (int) TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)->value('pay_status'));
+        $this->assertSame($walletRows, DB::table('wallet_transactions')->count());
+        $this->assertSame($payfastRows, DB::table('transactions_pf')->count());
+        $this->assertSame($emailRows, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+
+        $firstPaidAt = $paidOrder->paid_privately_at?->toISOString();
+        $this->actingAs($manager)->post($url)->assertRedirect()->assertSessionHas('success');
+        $this->assertSame(1, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)->where('event_id', $source->event_id)->count());
+        $this->assertSame($firstPaidAt, $order->fresh()->paid_privately_at?->toISOString());
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionInvitation::class,
+            'subject_id' => $invitation->id,
+            'description' => 'team selection invitation marked paid privately by manager',
+        ]);
+
+        $invitedWithoutCheckout = $selectionImport->invitations()
+            ->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.mark-paid-privately', [
+            $source->event, $selectionImport, $invitedWithoutCheckout,
+        ]))->assertRedirect()->assertSessionHas('success');
+        $createdOrder = TeamPaymentOrder::query()->findOrFail($invitedWithoutCheckout->fresh()->order_id);
+        $this->assertSame(525.00, (float) $createdOrder->total_amount);
+        $this->assertSame('paid_privately', $createdOrder->collection_status);
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $invitedWithoutCheckout->fresh()->status);
+        $this->assertSame($walletRows, DB::table('wallet_transactions')->count());
+        $this->assertSame($payfastRows, DB::table('transactions_pf')->count());
+        $this->assertSame($emailRows, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_private_payment_action_rejects_cross_scope_inactive_ambiguous_and_already_gateway_paid_invitations(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Guarded private collection team event', 'type' => 2, 'code' => 'guarded-private-collection-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $url = route('backend.team-selection.invitations.mark-paid-privately', [$source->event, $selectionImport, $invitation]);
+
+        $otherEvent = Event::factory()->create(['eventType' => $teamType]);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.mark-paid-privately', [
+            $otherEvent, $selectionImport, $invitation,
+        ]))->assertNotFound();
+
+        $invitation->update(['status' => TeamSelectionInvitation::RESERVE, 'roster_rank' => null]);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $invitation->update(['status' => TeamSelectionInvitation::INVITED, 'roster_rank' => 1]);
+
+        $guardian = User::factory()->create();
+        $invitation->player->users()->attach($guardian->id);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $invitation->player->users()->detach($guardian->id);
+
+        $owner = User::findOrFail($invitation->player->userId);
+        $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $source->event, 490.00);
+        $invitation->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'payment_started_at' => now()]);
+        app(TeamSelectionInvitationService::class)->attachOrder($order);
+
+        $unrelatedPayer = User::factory()->create();
+        $order->update(['user_id' => $unrelatedPayer->id, 'wallet_reserved' => 40.00, 'payfast_amount_due' => 450.00]);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $this->assertSame(40.00, (float) $order->fresh()->wallet_reserved);
+        $this->assertSame(450.00, (float) $order->fresh()->payfast_amount_due);
+        $this->assertSame(0, (int) $order->fresh()->pay_status);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+
+        $order->update(['user_id' => $owner->id, 'wallet_reserved' => 0.00, 'payfast_amount_due' => 490.00]);
+        $order->update(['withdrawn_at' => now(), 'withdrawn_by' => $owner->id]);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $this->assertNull($order->fresh()->collection_status);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+
+        $order->update([
+            'withdrawn_at' => null,
+            'withdrawn_by' => null,
+            'refund_status' => 'pending',
+            'refund_gross' => 490.00,
+            'refund_method' => 'eft',
+        ]);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $this->assertSame('pending', $order->fresh()->refund_status);
+        $this->assertSame(490.00, (float) $order->fresh()->refund_gross);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+
+        $order->update([
+            'refund_status' => 'not_refunded',
+            'refund_gross' => 0,
+            'refund_method' => null,
+        ]);
+        $order->update(['pay_status' => true, 'payfast_paid' => true, 'payfast_pf_payment_id' => 'PF-EXISTING']);
+        $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertNull($order->fresh()->collection_status);
+    }
+
     public function test_open_team_registration_keeps_expired_invitation_available(): void
     {
         Queue::fake();
