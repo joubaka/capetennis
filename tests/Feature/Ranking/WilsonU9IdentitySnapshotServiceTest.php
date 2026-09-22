@@ -291,6 +291,183 @@ class WilsonU9IdentitySnapshotServiceTest extends TestCase
         $this->assertDatabaseHas('series_rankings', ['run_id' => 'bad-current-run', 'total_points' => 999]);
     }
 
+    public function test_it_recovers_many_legacy_groups_idempotently_and_canonical_review_succeeds(): void
+    {
+        SeriesRanking::query()->where('status', 'published')->get()->each(function (SeriesRanking $row): void {
+            $meta = $row->meta_json ?? [];
+            unset($meta['tie_decision'], $meta['head_to_head_decision']);
+            $row->forceFill(['meta_json' => $meta])->save();
+        });
+        DB::table('ranking_tie_decisions')->where('run_id', 'published-run')->delete();
+        DB::table('ranking_head_to_head_confirmations')->where('run_id', 'published-run')->delete();
+
+        for ($group = 1; $group <= 81; $group++) {
+            $shared = $group === 81;
+            foreach ([0, 1] as $offset) {
+                SeriesRanking::query()->create([
+                    'series_id' => 18, 'ranking_list_id' => 939, 'category_id' => 132,
+                    'player_id' => Player::factory()->create()->id,
+                    'rank_position' => $shared ? 170 : ($group * 2) + $offset,
+                    'total_points' => 500 - $group,
+                    'meta_json' => ['legacy_group' => $group] + match ($group) {
+                        79 => ['tiebreak_notes' => ['Tie broken by previous published ranking.']],
+                        80 => ['tiebreak_notes' => ['Tied on 420 points; compared by third-event score ('.($offset === 0 ? '300' : '200').' points).']],
+                        default => [],
+                    },
+                    'status' => 'published', 'run_id' => 'published-run',
+                ]);
+            }
+        }
+
+        $publishedBefore = SeriesRanking::query()->where('status', 'published')->orderBy('id')->get()->map->getAttributes()->all();
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $shapeBefore = SeriesRanking::query()->where('run_id', $runId)->orderBy('id')
+            ->get(['ranking_list_id', 'category_id', 'player_id', 'rank_position', 'total_points'])->map->getAttributes()->all();
+
+        $this->artisan('ranking:repair-dirkie-legacy-ties', [
+            '--actor' => $this->actor->id, '--confirm' => 'wrong',
+        ])->assertFailed();
+        $this->artisan('ranking:repair-dirkie-legacy-ties', [
+            '--actor' => $this->actor->id, '--confirm' => WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION,
+        ])->assertSuccessful();
+        $first = $runId;
+        $second = app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        $this->assertSame($runId, $first);
+        $this->assertSame($runId, $second);
+        $this->assertSame(82, DB::table('ranking_tie_decisions')->where('run_id', $runId)->count());
+        $this->assertSame(1, DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'third_event_score')->count());
+        $this->assertSame(1, DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'previous_ranking')->count());
+        $this->assertSame(79, DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'other')->count());
+        $this->assertSame(1, DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'shared_position')->count());
+        $this->assertSame(
+            79,
+            DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'other')
+                ->where('note', 'Order preserved from the previously published snapshot during audited player identity correction')->count()
+        );
+        $firstOther = DB::table('ranking_tie_decisions')->where('run_id', $runId)->where('reason', 'other')->orderBy('id')->first();
+        $orderedIds = json_decode((string) $firstOther->ordered_player_ids, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(
+            $orderedIds,
+            SeriesRanking::query()->where('run_id', $runId)->where('ranking_list_id', $firstOther->ranking_list_id)
+                ->where('total_points', $firstOther->total_points)->orderBy('rank_position')->orderBy('player_id')
+                ->pluck('player_id')->map(fn ($id): int => (int) $id)->all()
+        );
+        $this->assertSame(1, DB::table('ranking_audit_logs')->where('run_id', $runId)->where('action', 'confirm_legacy_ties_from_published_order')->count());
+        $repairPayload = json_decode((string) DB::table('ranking_audit_logs')->where('run_id', $runId)
+            ->where('action', 'confirm_legacy_ties_from_published_order')->value('payload'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(82, $repairPayload['groups_confirmed']);
+        $this->assertSame($shapeBefore, SeriesRanking::query()->where('run_id', $runId)->orderBy('id')
+            ->get(['ranking_list_id', 'category_id', 'player_id', 'rank_position', 'total_points'])->map->getAttributes()->all());
+        $this->assertSame($publishedBefore, SeriesRanking::query()->where('status', 'published')->orderBy('id')->get()->map->getAttributes()->all());
+
+        app(RankingPublicationService::class)->markReviewed(Series::query()->findOrFail(18), $this->actor->id);
+        $this->assertSame(count($shapeBefore), SeriesRanking::query()->where('run_id', $runId)->where('status', 'reviewed')->count());
+    }
+
+    public function test_legacy_recovery_rejects_noncontiguous_interleaved_order_and_rolls_back(): void
+    {
+        $this->stripPublishedPrimaryTieEvidence();
+        SeriesRanking::query()->where('status', 'published')->where('ranking_list_id', 938)
+            ->where('player_id', '<>', 2439)->update(['rank_position' => 10]);
+        SeriesRanking::query()->create([
+            'series_id' => 18, 'ranking_list_id' => 938, 'category_id' => 131,
+            'player_id' => Player::factory()->create()->id, 'rank_position' => 9, 'total_points' => 70,
+            'meta_json' => [], 'status' => 'published', 'run_id' => 'published-run',
+        ]);
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $shape = SeriesRanking::query()->where('run_id', $runId)->orderBy('id')->pluck('rank_position', 'player_id')->all();
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        } finally {
+            $this->assertSame($shape, SeriesRanking::query()->where('run_id', $runId)->orderBy('id')->pluck('rank_position', 'player_id')->all());
+            $this->assertDatabaseMissing('ranking_audit_logs', ['run_id' => $runId, 'action' => 'confirm_legacy_ties_from_published_order']);
+        }
+    }
+
+    public function test_legacy_recovery_rejects_head_to_head_provenance_and_rolls_back(): void
+    {
+        SeriesRanking::query()->where('status', 'published')->get()->each(function (SeriesRanking $row): void {
+            $meta = $row->meta_json ?? [];
+            unset($meta['tie_decision']);
+            $row->forceFill(['meta_json' => $meta])->save();
+        });
+        DB::table('ranking_tie_decisions')->where('run_id', 'published-run')->delete();
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        } finally {
+            $this->assertDatabaseMissing('ranking_audit_logs', ['run_id' => $runId, 'action' => 'confirm_legacy_ties_from_published_order']);
+            $this->assertSame(0, DB::table('ranking_tie_decisions')->where('run_id', $runId)->count());
+        }
+    }
+
+    public function test_legacy_recovery_rejects_mixed_third_event_evidence_and_rolls_back(): void
+    {
+        $this->stripPublishedPrimaryTieEvidence();
+        $source = SeriesRanking::query()->where('status', 'published')->where('player_id', 2439)->firstOrFail();
+        $meta = $source->meta_json ?? [];
+        $meta['tiebreak_notes'] = ['Compared by third-event score.'];
+        $source->forceFill(['meta_json' => $meta])->save();
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        } finally {
+            $this->assertDatabaseMissing('ranking_audit_logs', ['run_id' => $runId, 'action' => 'confirm_legacy_ties_from_published_order']);
+            $this->assertSame(0, DB::table('ranking_tie_decisions')->where('run_id', $runId)->count());
+        }
+    }
+
+    public function test_legacy_recovery_rejects_downstream_comparator_text_as_third_event_evidence(): void
+    {
+        $this->stripPublishedPrimaryTieEvidence();
+        SeriesRanking::query()->where('status', 'published')->where('ranking_list_id', 938)->get()->each(function (SeriesRanking $row): void {
+            $meta = $row->meta_json ?? [];
+            $meta['tiebreak_notes'] = ['Tied on points and third-event score; compared by latest-played-leg placing (3rd at Wilson Leg).'];
+            $row->forceFill(['meta_json' => $meta])->save();
+        });
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        } finally {
+            $this->assertDatabaseMissing('ranking_audit_logs', ['run_id' => $runId, 'action' => 'confirm_legacy_ties_from_published_order']);
+            $this->assertSame(0, DB::table('ranking_tie_decisions')->where('run_id', $runId)->count());
+        }
+    }
+
+    public function test_legacy_recovery_rejects_shared_rank_collision_with_different_points(): void
+    {
+        $this->stripPublishedPrimaryTieEvidence();
+        SeriesRanking::query()->where('status', 'published')->where('ranking_list_id', 938)->update(['rank_position' => 8]);
+        SeriesRanking::query()->create([
+            'series_id' => 18, 'ranking_list_id' => 938, 'category_id' => 131,
+            'player_id' => Player::factory()->create()->id, 'rank_position' => 8, 'total_points' => 70,
+            'meta_json' => [], 'status' => 'published', 'run_id' => 'published-run',
+        ]);
+        $runId = app(WilsonU9IdentitySnapshotService::class)->replaceCalculatedRun($this->actor, WilsonU9IdentitySnapshotService::CONFIRMATION);
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(WilsonU9IdentitySnapshotService::class)->repairCalculatedLegacyTies($this->actor, WilsonU9IdentitySnapshotService::LEGACY_TIE_CONFIRMATION);
+        } finally {
+            $this->assertDatabaseMissing('ranking_audit_logs', ['run_id' => $runId, 'action' => 'confirm_legacy_ties_from_published_order']);
+            $this->assertSame(0, DB::table('ranking_tie_decisions')->where('run_id', $runId)->count());
+        }
+    }
+
+    private function stripPublishedPrimaryTieEvidence(): void
+    {
+        SeriesRanking::query()->where('status', 'published')->get()->each(function (SeriesRanking $row): void {
+            $meta = $row->meta_json ?? [];
+            unset($meta['tie_decision'], $meta['head_to_head_decision']);
+            $row->forceFill(['meta_json' => $meta])->save();
+        });
+        DB::table('ranking_tie_decisions')->where('run_id', 'published-run')->delete();
+        DB::table('ranking_head_to_head_confirmations')->where('run_id', 'published-run')->delete();
+    }
+
     private function normalizeIdentityMeta(mixed $value): mixed
     {
         if (! is_array($value)) {

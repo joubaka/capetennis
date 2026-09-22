@@ -15,6 +15,8 @@ final class WilsonU9IdentitySnapshotService
 {
     public const CONFIRMATION = 'CLONE-WILSON-18-SWAP-DIRKIE-5332';
 
+    public const LEGACY_TIE_CONFIRMATION = 'REPAIR-DIRKIE-5332-LEGACY-TIES';
+
     private const SERIES_ID = 18;
     private const LIST_ID = 938;
     private const CATEGORY_ID = 131;
@@ -159,6 +161,192 @@ final class WilsonU9IdentitySnapshotService
             ])->log('Published ranking snapshot cloned for Dirkie identity correction');
 
             return $newRunId;
+        });
+    }
+
+    /**
+     * Add modern audit evidence to legacy equal-points groups in the already-created
+     * one-off calculated clone. Ranking positions and points are never changed.
+     */
+    public function repairCalculatedLegacyTies(User $actor, string $confirmation): string
+    {
+        if (! $actor->hasRole('super-user')) {
+            throw new AuthorizationException('Only a super-user may perform this correction.');
+        }
+        if (! hash_equals(self::LEGACY_TIE_CONFIRMATION, $confirmation)) {
+            throw new RuntimeException('Confirmation token mismatch.');
+        }
+
+        return DB::transaction(function () use ($actor): string {
+            $series = Series::query()->whereKey(self::SERIES_ID)->lockForUpdate()->firstOrFail();
+            $runIds = SeriesRanking::query()->where('series_id', self::SERIES_ID)
+                ->where('status', RankingStatus::Calculated->value)->whereNotNull('run_id')
+                ->distinct()->lockForUpdate()->pluck('run_id');
+            if ($runIds->count() !== 1) {
+                throw new RuntimeException('Expected exactly one current calculated Wilson Series run.');
+            }
+            $runId = (string) $runIds->first();
+            if (! str_starts_with($runId, 'dirkie-identity-')) {
+                throw new RuntimeException('The calculated run is not the guarded Dirkie identity clone.');
+            }
+            $cloneAudit = DB::table('ranking_audit_logs')->where('series_id', self::SERIES_ID)
+                ->where('run_id', $runId)->where('action', 'clone_published_snapshot_for_player_identity_correction')
+                ->lockForUpdate()->first();
+            if (! $cloneAudit) {
+                throw new RuntimeException('The calculated run is missing its identity-correction audit record.');
+            }
+            $this->assertRegistrationAndInvitationBoundaries();
+            if (! SeriesRanking::query()->where('series_id', self::SERIES_ID)->where('run_id', $runId)
+                ->where('ranking_list_id', self::LIST_ID)->where('category_id', self::CATEGORY_ID)
+                ->where('player_id', self::TARGET_PLAYER_ID)->where('rank_position', 8)->where('total_points', 80)->exists()
+                || SeriesRanking::query()->where('series_id', self::SERIES_ID)->where('run_id', $runId)
+                    ->where('player_id', self::SOURCE_PLAYER_ID)->exists()) {
+                throw new RuntimeException('The calculated Dirkie identity row no longer matches the audited clone.');
+            }
+
+            $repairAudit = DB::table('ranking_audit_logs')->where('series_id', self::SERIES_ID)
+                ->where('run_id', $runId)->where('action', 'confirm_legacy_ties_from_published_order')->lockForUpdate()->first();
+            if ($repairAudit) {
+                app(RankingTieDecisionService::class)->assertAllConfirmed($series, $runId);
+                return $runId;
+            }
+
+            $rows = SeriesRanking::query()->where('series_id', self::SERIES_ID)->where('run_id', $runId)
+                ->where('status', RankingStatus::Calculated->value)->orderBy('ranking_list_id')
+                ->orderBy('rank_position')->orderBy('player_id')->lockForUpdate()->get();
+            $legacyGroups = $rows->groupBy(fn (SeriesRanking $row): string => $row->ranking_list_id.':'.$row->total_points)
+                ->filter(fn ($group): bool => $group->count() > 1)
+                ->filter(function ($group): bool {
+                    $withDecision = $group->filter(fn (SeriesRanking $row): bool => ! empty($row->meta_json['tie_decision']['tie_key']));
+                    if ($withDecision->isNotEmpty() && $withDecision->count() !== $group->count()) {
+                        throw new RuntimeException('An equal-points group mixes modern and legacy tie evidence.');
+                    }
+                    return $withDecision->isEmpty();
+                });
+
+            $created = 0;
+            foreach ($legacyGroups as $group) {
+                $ordered = $group->sortBy(fn (SeriesRanking $row): string => sprintf('%010d:%020d', $row->rank_position, $row->player_id))->values();
+                $ranks = $ordered->pluck('rank_position')->map(fn ($rank): int => (int) $rank);
+                $reason = $ranks->unique()->count() === 1
+                    ? 'shared_position'
+                    : ($ranks->unique()->count() === $ordered->count() ? 'other' : null);
+                if ($reason === null) {
+                    throw new RuntimeException('A legacy tie group has a mixed shared/sequential position pattern.');
+                }
+                if ($reason !== 'shared_position') {
+                    $expectedRanks = range((int) $ranks->min(), (int) $ranks->max());
+                    if ($ranks->sort()->values()->all() !== $expectedRanks
+                        || $rows->filter(fn (SeriesRanking $candidate): bool =>
+                            (int) $candidate->ranking_list_id === (int) $ordered->first()->ranking_list_id
+                            && (int) $candidate->total_points !== (int) $ordered->first()->total_points
+                            && (int) $candidate->rank_position >= (int) $ranks->min()
+                            && (int) $candidate->rank_position <= (int) $ranks->max()
+                        )->isNotEmpty()) {
+                        throw new RuntimeException('A legacy sequential tie group is noncontiguous or interleaved with another ranking row.');
+                    }
+                } elseif ($rows->filter(fn (SeriesRanking $candidate): bool =>
+                    (int) $candidate->ranking_list_id === (int) $ordered->first()->ranking_list_id
+                    && (int) $candidate->total_points !== (int) $ordered->first()->total_points
+                    && (int) $candidate->rank_position === (int) $ranks->first()
+                )->isNotEmpty()) {
+                    throw new RuntimeException('A legacy shared-position group overlaps a different-points row at the same rank.');
+                }
+                $thirdEventEvidence = [];
+                $mentionsThirdEvent = [];
+                $previousRankingEvidence = [];
+                foreach ($ordered as $row) {
+                    $meta = $row->meta_json ?? [];
+                    $notes = collect($meta['tiebreak_notes'] ?? [])->map(fn ($note): string => strtolower((string) $note));
+                    if (! empty($meta['head_to_head_decision'])
+                        || $notes->contains(fn (string $note): bool => str_contains($note, 'head-to-head') || str_contains($note, 'head to head'))) {
+                        throw new RuntimeException('A legacy tie group contains head-to-head evidence that cannot be inferred safely.');
+                    }
+                    $thirdEventEvidence[] = $notes->contains(fn (string $note): bool =>
+                        preg_match('/^tied on \d+ points; compared by third-event score \(\d+ points\)\.$/i', trim($note)) === 1
+                    );
+                    $mentionsThirdEvent[] = $notes->contains(fn (string $note): bool => str_contains($note, 'third-event') || str_contains($note, 'third event'));
+                    $previousRankingEvidence[] = $notes->contains(fn (string $note): bool => str_contains($note, 'previous published ranking') || str_contains($note, 'previous ranking'));
+                }
+                $hasThirdEventEvidence = in_array(true, $thirdEventEvidence, true);
+                if (in_array(true, $mentionsThirdEvent, true)
+                    && ($hasThirdEventEvidence === false || in_array(false, $thirdEventEvidence, true))) {
+                    throw new RuntimeException('A legacy tie group mentions third-event scoring without one consistent exact resolving pattern.');
+                }
+                $hasPreviousRankingEvidence = in_array(true, $previousRankingEvidence, true);
+                if ($hasThirdEventEvidence && (in_array(false, $thirdEventEvidence, true) || $reason === 'shared_position')) {
+                    throw new RuntimeException('A legacy third-event group does not preserve one consistent sequential published order.');
+                }
+                if ($hasPreviousRankingEvidence && (in_array(false, $previousRankingEvidence, true) || $reason === 'shared_position')) {
+                    throw new RuntimeException('A legacy previous-ranking group does not preserve one consistent sequential published order.');
+                }
+                if ($hasThirdEventEvidence && $hasPreviousRankingEvidence) {
+                    throw new RuntimeException('A legacy tie group contains conflicting decision provenance.');
+                }
+
+                $playerIds = $ordered->pluck('player_id')->map(fn ($id): int => (int) $id);
+                if ($playerIds->duplicates()->isNotEmpty()) {
+                    throw new RuntimeException('A legacy tie group contains duplicate player identities.');
+                }
+                $sortedPlayerIds = $playerIds->sort()->values();
+                $rankingListId = (int) $ordered->first()->ranking_list_id;
+                $points = (int) $ordered->first()->total_points;
+                $tieKey = hash('sha256', implode(':', [$rankingListId, $points, $sortedPlayerIds->implode(',')]));
+                if (DB::table('ranking_tie_decisions')->where('series_id', self::SERIES_ID)
+                    ->where('run_id', $runId)->where('tie_key', $tieKey)->exists()) {
+                    throw new RuntimeException('A legacy tie decision key already exists without matching row metadata.');
+                }
+                $confirmedReason = $hasThirdEventEvidence
+                    ? 'third_event_score'
+                    : ($hasPreviousRankingEvidence ? 'previous_ranking' : $reason);
+                $decisionNote = $confirmedReason === 'other'
+                    ? 'Order preserved from the previously published snapshot during audited player identity correction'
+                    : 'Preserved exactly from the previously published ranking snapshot during the audited Dirkie identity correction.';
+                $decision = [
+                    'tie_key' => $tieKey,
+                    'ranking_list_id' => $rankingListId,
+                    'total_points' => $points,
+                    'player_ids' => $sortedPlayerIds->all(),
+                    'suggested_method' => $hasThirdEventEvidence
+                        ? 'third_event_score'
+                        : ($hasPreviousRankingEvidence ? 'previous_ranking' : null),
+                    'suggested_order' => $playerIds->all(),
+                    'confirmed_order' => $playerIds->all(),
+                    'reason' => $confirmedReason,
+                    'note' => $decisionNote,
+                    'confirmed_by' => (int) $actor->id,
+                    'confirmed_at' => now()->toIso8601String(),
+                ];
+                foreach ($ordered as $row) {
+                    $meta = $row->meta_json ?? [];
+                    $meta['tie_decision'] = $decision;
+                    $row->forceFill(['meta_json' => $meta])->save();
+                }
+                DB::table('ranking_tie_decisions')->insert([
+                    'series_id' => self::SERIES_ID, 'run_id' => $runId, 'ranking_list_id' => $rankingListId,
+                    'tie_key' => $tieKey, 'total_points' => $points,
+                    'player_ids' => json_encode($sortedPlayerIds->all(), JSON_THROW_ON_ERROR),
+                    'ordered_player_ids' => json_encode($playerIds->all(), JSON_THROW_ON_ERROR),
+                    'reason' => $confirmedReason, 'note' => $decision['note'], 'fixture_id' => null,
+                    'confirmed_by' => $actor->id, 'confirmed_at' => now(),
+                    'decision_snapshot' => json_encode($decision, JSON_THROW_ON_ERROR),
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $created++;
+            }
+
+            app(RankingTieDecisionService::class)->assertAllConfirmed($series, $runId);
+            DB::table('ranking_audit_logs')->insert([
+                'series_id' => self::SERIES_ID, 'run_id' => $runId,
+                'action' => 'confirm_legacy_ties_from_published_order',
+                'payload' => json_encode(['run_id' => $runId, 'groups_confirmed' => $created], JSON_THROW_ON_ERROR),
+                'user_id' => $actor->id, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            activity('ranking')->performedOn($series)->causedBy($actor)->withProperties([
+                'run_id' => $runId, 'groups_confirmed' => $created,
+            ])->log('Legacy ranking ties confirmed from published order');
+
+            return $runId;
         });
     }
 
