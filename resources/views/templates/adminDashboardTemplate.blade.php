@@ -92,18 +92,86 @@
               </button>
             @endcan
           </div>
-          <div class="table-responsive">
-            <table class="table datatable-events align-middle w-100">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Start</th>
-                  <th>Entry Fee</th>
-                  <th>Entries</th>
-                  <th>Dashboard</th>
-                </tr>
-              </thead>
-            </table>
+          <div class="card-body">
+            @forelse($managedEvents as $event)
+              @php
+                $isUpcoming = $event->start_date?->isFuture();
+                $isCurrent = ! $isUpcoming && (! $event->end_date || $event->end_date->copy()->endOfDay()->isFuture());
+              @endphp
+              <div class="dashboard-event-card mb-3" data-event-id="{{ $event->id }}">
+                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                  <div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                      <h5 class="mb-0">{{ $event->name }}</h5>
+                      <span class="badge {{ $isUpcoming ? 'bg-label-info' : ($isCurrent ? 'bg-label-success' : 'bg-label-secondary') }}">
+                        {{ $isUpcoming ? 'Upcoming' : ($isCurrent ? 'In progress' : 'Completed') }}
+                      </span>
+                      @unless($event->published)
+                        <span class="badge bg-label-warning">Not published</span>
+                      @endunless
+                    </div>
+                    <div class="dashboard-event-card__meta d-flex flex-wrap gap-3">
+                      <span><i class="ti ti-calendar me-1"></i>{{ $event->start_date?->format('d M Y') ?? 'Date not set' }}</span>
+                      <span><i class="ti ti-users me-1"></i>{{ $event->registrations_count }} {{ \Illuminate\Support\Str::plural('entry', $event->registrations_count) }}</span>
+                      @if($event->series)
+                        <span><i class="ti ti-layers me-1"></i>{{ $event->series->name }}</span>
+                      @endif
+                    </div>
+                  </div>
+
+                  <div class="dashboard-event-card__actions align-self-lg-start">
+                    @can('event-draw.view', $event)
+                      <a class="btn btn-sm btn-primary" href="{{ route('admin.events.overview', $event) }}"><i class="ti ti-layout-grid me-1"></i>Open event</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route($event->isTeam() ? 'admin.events.teams' : 'admin.events.entries.new', $event) }}">{{ $event->isTeam() ? 'Teams' : 'Entries' }}</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route('headOffice.show', $event->id) }}">Draws</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route($event->isTeam() ? 'backend.scoreboard.team.show' : 'admin.events.results.individual', $event) }}">Results</a>
+                    @endcan
+
+                    <div class="dropdown">
+                      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
+                      <div class="dropdown-menu dropdown-menu-end">
+                        @can('event-finance.view', $event)
+                          <a class="dropdown-item" href="{{ route('admin.events.finances', $event) }}"><i class="ti ti-report-money me-2"></i>Finances</a>
+                        @endcan
+                        @can('event.settings.manage', $event)
+                          <a class="dropdown-item" href="{{ route('admin.events.settings', $event) }}"><i class="ti ti-settings me-2"></i>Settings</a>
+                        @endcan
+                        @can('event-category.manage', $event)
+                          <a class="dropdown-item" href="{{ route('admin.events.categories', $event) }}"><i class="ti ti-list-details me-2"></i>Categories</a>
+                        @endcan
+                        @can('event.manage', $event)
+                          <a class="dropdown-item" href="{{ route('convenor.show', $event->id) }}"><i class="ti ti-users me-2"></i>Event directors</a>
+                          <a class="dropdown-item" href="{{ route('admin.events.announcements', $event) }}"><i class="ti ti-megaphone me-2"></i>Announcements</a>
+                        @endcan
+                        @if(auth()->user()->hasAnyRole(['super-user', 'admin', 'convenor']) && auth()->user()->can('event-draw.view', $event))
+                          <a class="dropdown-item" href="{{ route('admin.events.transactions', $event) }}"><i class="ti ti-credit-card me-2"></i>Transactions</a>
+                        @endif
+                        @if($event->series && auth()->user()->can('view', $event->series))
+                          <div class="dropdown-divider"></div>
+                          <a class="dropdown-item" href="{{ route('series.show', $event->series) }}"><i class="ti ti-layers me-2"></i>Series &amp; rankings</a>
+                        @endif
+                        @role('super-user')
+                          <div class="dropdown-divider"></div>
+                          <a class="dropdown-item" href="{{ route('admin.events.copy', $event) }}"><i class="ti ti-copy me-2"></i>Copy event</a>
+                        @endrole
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            @empty
+              <div class="text-center py-5">
+                <span class="badge bg-label-secondary p-3 mb-3"><i class="ti ti-calendar-off ti-lg"></i></span>
+                <h5>No events to manage yet</h5>
+                <p class="text-muted mb-0">Events will appear here when you are assigned as an event administrator.</p>
+              </div>
+            @endforelse
+
+            @if($managedEvents->hasPages())
+              <div class="pt-3 border-top">
+                {{ $managedEvents->links('pagination::simple-bootstrap-5') }}
+              </div>
+            @endif
           </div>
         </div>
       </div>

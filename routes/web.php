@@ -263,7 +263,6 @@ Route::post('notifyClothing', [RegisterController::class, 'notifyClothing'])->na
 Route::post('notify_order', [RegisterController::class, 'notify_order'])->name('notify_order');
 Route::post('notify_team', [RegisterController::class, 'notify_team'])->name('notify.team');
 Route::get('events/cancel', [EventController::class, 'cancel'])->name('event.cancel');
-Route::get('events/ajax/userEvents/{id}', [EventController::class, 'userEventAjax'])->name('ajax.event.user');
 Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->name('ajax.series.all');
 // Event viewing remains public. Every event-management action requires an
 // authenticated user and is additionally authorized in EventController.

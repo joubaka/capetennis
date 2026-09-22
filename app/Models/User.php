@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
@@ -82,6 +83,18 @@ class User extends Authenticatable
     function events()
     {
         return $this->hasMany(Event::class, 'admin', 'id');
+    }
+
+    /**
+     * Events this account is explicitly assigned to administer.
+     *
+     * Keep this separate from the legacy events.admin relationship above:
+     * event_admins is the canonical source used by event-scoped authorization.
+     */
+    public function adminEvents(): BelongsToMany
+    {
+        return $this->belongsToMany(Event::class, 'event_admins')
+            ->withTimestamps();
     }
     function orders()
     {

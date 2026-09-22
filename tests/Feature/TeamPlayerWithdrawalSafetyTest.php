@@ -25,6 +25,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
     public function test_refund_cannot_be_requested_before_paid_player_is_withdrawn(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $order = $this->paidOrder($user, $event, $team, $player);
 
         $response = $this->actingAs($user)->post(
             route('team.player.refund.request', [$team, $player, $event]),
@@ -32,6 +33,8 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         );
 
         $response->assertSessionHasErrors();
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertSame('not_refunded', $order->fresh()->refund_status);
         $this->assertDatabaseHas('team_players', [
             'team_id' => $team->id,
             'player_id' => $player->id,
@@ -43,6 +46,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
         $otherEvent = Event::factory()->create();
+        $this->paidOrder($user, $otherEvent, $team, $player);
 
         $this->actingAs($user)->post(
             route('team.player.withdraw', [$team, $player, $otherEvent])
@@ -58,6 +62,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
     public function test_late_paid_withdrawal_frees_slot_when_no_refund_flow_follows(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $this->paidOrder($user, $event, $team, $player);
         $event->update(['withdrawal_deadline' => now()->subDay()]);
 
         $this->actingAs($user)->post(
@@ -74,6 +79,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
     public function test_opening_refund_choice_does_not_mutate_paid_roster_or_future_fixtures(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $this->paidOrder($user, $event, $team, $player);
         $event->update(['withdrawal_deadline' => now()->addDay()]);
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         $future = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
@@ -118,21 +124,51 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         $this->get($refundChoice)->assertOk();
     }
 
-    public function test_unlinked_non_payer_cannot_withdraw_team_player(): void
+    public function test_linked_non_payer_cannot_withdraw_team_player(): void
     {
         [$payer, $event, $team, $player] = $this->paidTeamPlayer();
-        $stranger = User::factory()->create();
-        TeamPaymentOrder::create([
-            'user_id' => $payer->id,
+        $nonPayer = User::factory()->create();
+        $nonPayer->players()->attach($player->id);
+        $this->paidOrder($payer, $event, $team, $player);
+
+        $this->actingAs($nonPayer)
+            ->post(route('team.player.withdraw', [$team, $player, $event]))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseHas('team_players', [
             'team_id' => $team->id,
             'player_id' => $player->id,
-            'event_id' => $event->id,
-            'total_amount' => 200,
             'pay_status' => 1,
-            'payfast_paid' => true,
         ]);
+    }
 
-        $this->actingAs($stranger)
+    public function test_linked_owner_can_still_withdraw_an_unpaid_team_player(): void
+    {
+        [$owner, $event, $team, $player] = $this->paidTeamPlayer();
+        TeamPlayer::query()
+            ->where('team_id', $team->id)
+            ->where('player_id', $player->id)
+            ->update(['pay_status' => 0]);
+
+        $this->actingAs($owner)
+            ->post(route('team.player.withdraw', [$team, $player, $event]))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $team->id,
+            'player_id' => 0,
+            'pay_status' => 0,
+        ]);
+    }
+
+    public function test_order_for_a_different_team_does_not_authorize_withdrawal(): void
+    {
+        [$payer, $event, $team, $player] = $this->paidTeamPlayer();
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $otherTeam = Team::factory()->create(['category_event_id' => $otherCategory->id]);
+        $this->paidOrder($payer, $event, $otherTeam, $player);
+
+        $this->actingAs($payer)
             ->post(route('team.player.withdraw', [$team, $player, $event]))
             ->assertSessionHasErrors();
 
@@ -146,6 +182,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
     public function test_withdrawal_clears_future_fixture_assignments_but_preserves_completed_history(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $this->paidOrder($user, $event, $team, $player);
         $event->update(['withdrawal_deadline' => now()->subDay()]);
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         $future = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
@@ -256,7 +293,7 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         $this->actingAs($otherOwner)->post(
             route('team.player.refund.request', [$team, $player, $event]),
             ['method' => 'wallet']
-        )->assertForbidden();
+        )->assertSessionHasErrors();
     }
 
     private function paidTeamPlayer(): array
@@ -275,5 +312,18 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
         ]);
 
         return [$user, $event, $team, $player];
+    }
+
+    private function paidOrder(User $payer, Event $event, Team $team, Player $player): TeamPaymentOrder
+    {
+        return TeamPaymentOrder::create([
+            'user_id' => $payer->id,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
+            'total_amount' => 200,
+            'pay_status' => 1,
+            'payfast_paid' => true,
+        ]);
     }
 }

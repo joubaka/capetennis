@@ -17,6 +17,7 @@ use App\Models\TeamFixture;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
 use App\Models\TeamFixtureResult;
+use App\Models\TeamPaymentOrder;
 use App\Models\TeamRegion;
 use App\Models\User;
 use Carbon\Carbon;
@@ -416,6 +417,7 @@ class EventController extends Controller
     // ---------------------------------------------------------
     $myClothingOrders = collect();
     $myPaidClothingOrdersByPlayer = collect();
+    $myPaidTeamOrdersByPlayer = collect();
 
     if (Auth::check()) {
       $regionIds = $regions->pluck('id');
@@ -435,6 +437,13 @@ class EventController extends Controller
       $myPaidClothingOrdersByPlayer = $myClothingOrders
         ->where('pay_status', 1)
         ->groupBy(fn (ClothingOrder $order) => $order->team_id.'-'.$order->player_id);
+
+      $myPaidTeamOrdersByPlayer = TeamPaymentOrder::query()
+        ->where('user_id', Auth::id())
+        ->where('event_id', $event->id)
+        ->where('pay_status', true)
+        ->get()
+        ->keyBy(fn (TeamPaymentOrder $order) => $order->team_id.'-'.$order->player_id);
     }
 
     // ---------------------------------------------------------
@@ -523,6 +532,7 @@ return view('frontend.event.show', compact(
       'formatWithdrawalLine',
       'myClothingOrders',
       'myPaidClothingOrdersByPlayer',
+      'myPaidTeamOrdersByPlayer',
       'nomRegisteredLookup',
       'canEnter',
       'canWithdraw',
@@ -716,28 +726,6 @@ return view('frontend.event.show', compact(
         return view('frontend.event.cancel');
     }
 
-    public function userEventAjax($id)
-    {
-        // Lightweight query: select only the columns the DataTable needs,
-        // use a raw sub-select for the registration count to avoid the
-        // expensive hasManyThrough withCount on every row.
-
-        $countSql = '(SELECT COUNT(*) FROM category_event_registrations
-                      JOIN category_events ON category_events.id = category_event_registrations.category_event_id
-                      WHERE category_events.event_id = events.id) as registrations';
-
-        $query = Event::selectRaw('events.id, events.name, events.start_date, events.entryFee, ' . $countSql);
-
-        if ($id != 584) {
-            $query->whereHas('admins', function ($q) use ($id) {
-                $q->where('user_id', $id);
-            });
-        }
-
-        $events = $query->orderByDesc('start_date')->get();
-
-        return ['data' => $events];
-    }
     public function convertDate($date)
     {
         $formatDate = $date->format('D d M Y');

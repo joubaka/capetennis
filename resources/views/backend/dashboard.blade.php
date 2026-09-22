@@ -36,6 +36,9 @@
   .dashboard-event-time { display: block; color: #a5a3ae; font-size: .75rem; margin-top: .15rem; }
   .dashboard-event-actions { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 150px; }
   .dashboard-event-actions .btn { margin: 0 !important; }
+  .dashboard-event-card { border: 1px solid #ebeaf0; border-radius: .75rem; padding: 1rem; height: 100%; }
+  .dashboard-event-card__meta { color: #6f6b7d; font-size: .875rem; }
+  .dashboard-event-card__actions { display: flex; flex-wrap: wrap; gap: .4rem; }
   @media (max-width: 767.98px) {
     .dashboard-section-header { align-items: flex-start !important; gap: 1rem; }
     .dashboard-event-name { max-width: 180px; }
@@ -76,17 +79,17 @@
         <h4 class="mb-0">{{ $user->userName ?? $user->name }}</h4>
         <small class="text-muted">{{ $user->email }}</small>
 
-        @can('admin')
+        @if($managedEventCount > 0)
         <div class="d-flex justify-content-center mt-3">
           <div class="text-center">
             <span class="badge bg-label-primary p-2 mb-1">
               <i class="ti ti-calendar ti-sm"></i>
             </span>
-            <p class="fw-semibold mb-0">{{ $user->events->count() }}</p>
-            <small class="text-muted">Events</small>
+            <p class="fw-semibold mb-0">{{ $managedEventCount }}</p>
+            <small class="text-muted">Event administrator</small>
           </div>
         </div>
-        @endcan
+        @endif
 
         <hr class="my-4">
 
@@ -261,11 +264,9 @@
     </div>
   </div>
 
-  @can('admin')
   <div class="col-xl-8 col-lg-7 col-md-7">
     @include('templates.adminDashboardTemplate')
   </div>
-  @endcan
 
 </div>
 
@@ -442,65 +443,6 @@ $(function () {
       }
     });
   });
-
-  // ==========================================================
-  // 🟦 EVENTS DATATABLE
-  // ==========================================================
-  var dtEvents = $('.datatable-events');
-  if (dtEvents.length) {
-    dtEvents.DataTable({
-      ordering: true,
-      order: [[1, 'desc']],
-      pageLength: 25,
-      ajax: APP_URL + '/events/ajax/userEvents/' + userId,
-      columns: [
-        { data: 'name' },
-        { data: 'start_date' },
-        { data: 'entryFee' },
-        { data: 'registrations' },
-        { data: null, orderable: false },
-      ],
-      columnDefs: [
-        {
-          targets: 0,
-          render: function (data, type, full) {
-            var link = APP_URL + '/events/' + full.id;
-            var label = '<a href="' + link + '" class="dashboard-event-name text-decoration-none">' + $('<div>').text(full.name || 'Unnamed event').html() + '</a>';
-            var isUpcoming = full.start_date && new Date(full.start_date) > new Date()
-              ? '<span class="badge rounded-pill bg-label-success mt-2">Upcoming</span>'
-              : '';
-            return '<div>' + label + '<div>' + isUpcoming + '</div></div>';
-          }
-        },
-        {
-          targets: 1,
-          render: function (data, type, full) {
-            if (type !== 'display') return data || '';
-            if (!full.start_date) return '<span class="text-muted">Not scheduled</span>';
-            var date = moment(full.start_date);
-            return '<span class="dashboard-event-date">' + date.format('DD MMM YYYY') + '</span>' +
-              '<span class="dashboard-event-time">' + date.format('HH:mm') + '</span>';
-          }
-        },
-        {
-          targets: 2,
-          render: function (data, type, full) { return '<span class="fw-semibold text-dark">R ' + Number(full.entryFee || 0).toFixed(2) + '</span>'; }
-        },
-        {
-          targets: 3,
-          render: function (data, type, full) { return full.registrations || 0; }
-        },
-        {
-          targets: 4,
-          render: function (data, type, full) {
-            var admin = '<a href="' + APP_URL + '/backend/event/' + full.id + '/overview" class="btn btn-sm btn-secondary me-1">Dashboard</a>';
-            var copy = '<a href="' + APP_URL + '/backend/event/' + full.id + '/copy" class="btn btn-sm btn-outline-primary"><i class="ti ti-copy me-1"></i>Copy</a>';
-            return '<div class="dashboard-event-actions">' + admin + copy + '</div>';
-          }
-        },
-      ],
-    });
-  }
 
   // ==========================================================
   // 🟦 SERIES DATATABLE

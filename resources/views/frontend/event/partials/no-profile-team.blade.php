@@ -42,6 +42,9 @@
             $playerName = $hasLinkedProfile
               ? ucfirst(strtolower($play->profile->name)) . ' ' . ucfirst(strtolower($play->profile->surname))
               : ucfirst(strtolower($play->name)) . ' ' . ucfirst(strtolower($play->surname));
+            $myPaidTeamOrder = $hasLinkedProfile
+              ? ($myPaidTeamOrdersByPlayer ?? collect())->get($teamModel->id.'-'.$play->player_profile)
+              : null;
           @endphp
 
           <li class="list-group-item">
@@ -71,6 +74,20 @@
                   <span class="badge bg-success-subtle text-success px-2 py-1">
                     <i class="ti ti-circle-check me-1"></i>Registered
                   </span>
+
+                  @if(($canWithdraw ?? false) && $myPaidTeamOrder)
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger withDrawPlayer"
+                            title="Cancel registration and withdraw from event"
+                            aria-label="Withdraw {{ $playerName }} from this team"
+                            data-id="{{ $teamSlot->id }}"
+                            data-team="{{ $teamModel->id }}"
+                            data-player="{{ $play->player_profile }}"
+                            data-event="{{ $event->id }}"
+                            data-url="{{ route('team.player.withdraw', [$teamModel->id, $play->player_profile, $event->id]) }}">
+                      <i class="ti ti-x me-1" aria-hidden="true"></i>Withdraw
+                    </button>
+                  @endif
 
                 @elseif($hasLinkedProfile && $registrationOpen)
                   <a href="{{ route('team.payment.payfast', [$teamModel->id, $play->player_profile, $event->id]) }}"

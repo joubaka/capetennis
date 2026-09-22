@@ -41,6 +41,9 @@
                 fn ($order) => $order->items->sum(fn ($item) => max(1, (int) ($item->qty ?? 1)))
               );
               $clothingDetailsId = 'clothing-orders-'.$event->id.'-'.$team->id.'-'.($player?->id ?? 0);
+              $myPaidTeamOrder = $player
+                ? ($myPaidTeamOrdersByPlayer ?? collect())->get($team->id.'-'.$player->id)
+                : null;
             @endphp
 
             <li id="team-registration-{{ $team->id }}-{{ $player?->id ?? 0 }}"
@@ -70,10 +73,7 @@
                       </span>
 
                       {{-- WITHDRAW BUTTON --}}
-                      @php
-                        $canWithdraw = $event->withdrawal_deadline && now()->lt($event->withdrawal_deadline);
-                      @endphp
-                      @if($canWithdraw && auth()->check() && ($player->users->contains('id', auth()->id()) || (int)auth()->id() === 584))
+                      @if(($canWithdraw ?? false) && $myPaidTeamOrder)
                         <button type="button"
                                 class="btn btn-sm btn-outline-danger withDrawPlayer"
                                 title="Cancel registration and withdraw from event"

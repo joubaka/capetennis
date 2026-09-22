@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
+use App\Models\Event;
 use App\Models\EventType;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +17,21 @@ class DashboardController extends Controller
       'wallet',
       'players',
     ]);
+
+    $managedEventsQuery = Event::query()
+      ->when(
+        ! $user->hasRole('super-user'),
+        fn ($query) => $query->whereHas('admins', fn ($admins) => $admins->where('users.id', $user->id))
+      );
+    $managedEventCount = (clone $managedEventsQuery)->count();
+    $managedEvents = $managedEventsQuery
+      ->with(['eventTypeModel', 'series'])
+      ->withCount('registrations')
+      ->orderByRaw('CASE WHEN COALESCE(events.end_date, events.start_date) >= ? THEN 0 ELSE 1 END', [today()->toDateString()])
+      ->orderBy('events.start_date')
+      ->orderBy('events.id')
+      ->simplePaginate(12, ['*'], 'event_page')
+      ->withQueryString();
 
     // Only needed for the create-event modal (super-admin)
     $eventTypes = $user->can('superUser') ? EventType::all() : collect();
@@ -78,7 +94,9 @@ class DashboardController extends Controller
       'activityLogs',
       'activityByUser',
       'logNames',
-      'tabs'
+      'tabs',
+      'managedEvents',
+      'managedEventCount'
     ));
   }
 }
