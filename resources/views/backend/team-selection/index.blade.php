@@ -412,29 +412,38 @@
                                     @if($activeImport->status === 'sent' && !$isReserve)
                                       <div class="d-flex flex-wrap gap-1 mt-1">
                                         <a class="btn btn-xs btn-outline-secondary" target="_blank" href="{{ route('backend.team-selection.invitations.email.view', [$event, $activeImport, $invitation]) }}">View email</a>
-                                        @if($awaitingRestoredInvitation)
-                                          <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Send the invitation to this restored player now? Confirm the team positions are correct before continuing.');">@csrf<button class="btn btn-xs btn-success">Send invitation</button></form>
-                                        @elseif(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                        @if(!$awaitingRestoredInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                           <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Resend the saved invitation email to this player?');">@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
                                         @endif
                                       </div>
                                     @endif
                                   </td>
                                   <td>
-                                    <div class="d-flex flex-wrap gap-1">
-                                    @if($isReserve && ($reserveActivationIndex = $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id)) !== false && ($reserveActivationRank = $openRosterRanks->get($reserveActivationIndex)))
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place?');">@csrf<button class="btn btn-sm btn-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
+                                    @php($reserveActivationIndex = $isReserve ? $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id) : false)
+                                    @php($reserveActivationRank = $reserveActivationIndex !== false ? $openRosterRanks->get($reserveActivationIndex) : null)
+                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || (!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) || $openVacancy)
+                                    @if($hasRegionalActions)
+                                    <div class="dropdown">
+                                      <button class="btn btn-sm btn-icon btn-outline-secondary dropdown-toggle hide-arrow" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
+                                        <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+                                      </button>
+                                      <div class="dropdown-menu dropdown-menu-end p-1" style="min-width:15rem;">
+                                    @if($awaitingRestoredInvitation)
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Send the invitation to this restored player now? Confirm the team positions are correct before continuing.');">@csrf<button class="dropdown-item text-success">Send invitation</button></form>
+                                    @endif
+                                    @if($isReserve && $reserveActivationRank)
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place?');">@csrf<button class="dropdown-item text-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
                                     @endif
                                     @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank)
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.restore', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('{{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Restore this withdrawn player' : 'Restore this player' }} at Rank {{ $invitation->vacated_roster_rank }}? Active players at and below that rank will move down. {{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Their old payment and withdrawal history stays unchanged, and they must register and pay again through a fresh order. ' : '' }}No email will be sent.');">@csrf<button class="btn btn-sm btn-outline-primary">Restore at Rank {{ $invitation->vacated_roster_rank }}</button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.restore', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('{{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Restore this withdrawn player' : 'Restore this player' }} at Rank {{ $invitation->vacated_roster_rank }}? Active players at and below that rank will move down. {{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Their old payment and withdrawal history stays unchanged, and they must register and pay again through a fresh order. ' : '' }}No email will be sent.');">@csrf<button class="dropdown-item text-primary">Restore at Rank {{ $invitation->vacated_roster_rank }}</button></form>
                                     @endif
-                                      @if($recipientEmail && !$isReserve)<button class="btn btn-sm btn-outline-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail"></i></button>@endif
+                                      @if($recipientEmail && !$isReserve)<button class="dropdown-item text-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email player</button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                       @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)
                                       @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($eligibleTeamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
                                       @php($replacementMode = $replacementMode === 'next_reserve' && $eligibleTeamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
                                       <details @if($replacementFormOpen) open @endif>
-                                        <summary class="btn btn-sm btn-outline-warning">Change player</summary>
+                                        <summary class="dropdown-item text-warning">Change player</summary>
                                         <form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}"
                                               class="mt-2 replacement-player-form" data-replacement-player-form
                                               onsubmit="return confirm('Replace this unpaid player? The roster change is audited and cannot be undone.');">
@@ -468,14 +477,18 @@
                                       </details>
                                     @endif
                                     @if($openVacancy && $eligibleTeamReserves->isNotEmpty())
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.promote-reserve', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Invite the next reserve now? Their own response and payment deadlines will start now.');">@csrf<button class="btn btn-sm btn-warning">Invite next reserve</button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.promote-reserve', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Invite the next reserve now? Their own response and payment deadlines will start now.');">@csrf<button class="dropdown-item text-warning">Invite next reserve</button></form>
                                     @elseif($openVacancy)
                                       <span class="text-warning small">Vacancy open · no eligible reserve. Add or link a reserve below.</span>
                                     @endif
                                     @if(!$openVacancy && !$recipientEmail && ($isReserve || !in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)))
                                       <span class="text-muted small">No action available</span>
                                     @endif
+                                      </div>
                                     </div>
+                                    @else
+                                      <span class="text-muted small">No action available</span>
+                                    @endif
                                   </td>
                                 </tr>
                               @empty

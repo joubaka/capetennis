@@ -406,7 +406,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
             ->assertSee('Restored — invitation not sent')
-            ->assertSee('Send invitation');
+            ->assertSee('Send invitation')
+            ->assertSee('Regional actions for '.$restored->player->full_name)
+            ->assertSee('ti-dots-vertical', false);
     }
 
     public function test_restoring_into_full_eight_player_team_returns_unpaid_overflow_to_reserve_without_mail(): void
@@ -495,6 +497,69 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             TeamSelectionInvitation::PAID_CONFIRMED,
         ])->count());
         $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_restoring_into_an_empty_saved_rank_does_not_shift_paid_players_below_it(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Open slot restore team event', 'type' => 2, 'code' => 'open-slot-restore-team-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+        ], $manager);
+        $withdrawn = $selectionImport->invitations()->where('roster_rank', 1)->firstOrFail();
+        $paid = $selectionImport->invitations()->where('roster_rank', 2)->firstOrFail();
+        $paidOwner = User::findOrFail($paid->player->userId);
+        $paidOrder = app(TeamPaymentService::class)->ensureOrder(
+            $paidOwner, $team, $paid->player, $selectionImport->event, 490.00
+        );
+        $paidOrder->update(['pay_status' => true, 'payfast_paid' => true, 'payfast_amount_due' => 0]);
+        $paid->update([
+            'status' => TeamSelectionInvitation::PAID_CONFIRMED,
+            'order_id' => $paidOrder->id,
+            'paid_at' => now(),
+        ]);
+        TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 2)
+            ->update(['pay_status' => 1]);
+        $withdrawn->update([
+            'status' => TeamSelectionInvitation::WITHDRAWN,
+            'declined_at' => now(),
+            'vacated_roster_rank' => 1,
+            'roster_rank' => null,
+        ]);
+        TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)
+            ->update(['player_id' => 0, 'pay_status' => 0]);
+        $paidInvitationState = $paid->fresh()->getAttributes();
+        $paidOrderState = $paidOrder->fresh()->getAttributes();
+        $reserveState = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('id')->get()->mapWithKeys(fn ($item) => [$item->id => $item->getAttributes()])->all();
+        $emailCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.restore', [
+            $source->event, $selectionImport, $withdrawn,
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $withdrawn->fresh()->roster_rank);
+        $this->assertSame($withdrawn->player_id, (int) TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', 1)->value('player_id'));
+        $this->assertSame(2, $paid->fresh()->roster_rank);
+        $this->assertSame($paid->player_id, (int) TeamPlayer::withoutGlobalScopes()
+            ->where('team_id', $team->id)->where('rank', 2)->value('player_id'));
+        $this->assertSame($paidInvitationState, $paid->fresh()->getAttributes());
+        $this->assertSame($paidOrderState, $paidOrder->fresh()->getAttributes());
+        $this->assertSame($reserveState, $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
+            ->orderBy('id')->get()->mapWithKeys(fn ($item) => [$item->id => $item->getAttributes()])->all());
+        $this->assertSame($emailCount, BulkEmailLog::query()->count());
         Queue::assertNothingPushed();
     }
 

@@ -685,6 +685,24 @@ final class TeamSelectionInvitationService
                 ->orderByDesc('roster_rank')
                 ->get();
 
+            $targetInvitation = $active->first(
+                fn (TeamSelectionInvitation $moving): bool => (int) $moving->roster_rank === $restoredRank
+            );
+            $targetSlot = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
+                ->where('team_id', $locked->team_id)
+                ->where('rank', $restoredRank)
+                ->first();
+            $targetSlotOccupied = $targetSlot && (int) $targetSlot->player_id > 0;
+            if (($targetInvitation === null) !== ! $targetSlotOccupied
+                || ($targetInvitation && (int) $targetSlot->player_id !== (int) $targetInvitation->player_id)) {
+                throw ValidationException::withMessages([
+                    'restore' => 'The saved roster position no longer matches the active team slot. Refresh and resolve the roster before restoring this player.',
+                ]);
+            }
+            if (! $targetSlotOccupied) {
+                $active = collect();
+            }
+
             $overflow = $active->filter(fn (TeamSelectionInvitation $moving): bool => (int) $moving->roster_rank + 1 > $capacity);
             foreach ($overflow as $moving) {
                 if ($moving->status !== TeamSelectionInvitation::INVITED
