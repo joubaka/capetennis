@@ -226,17 +226,29 @@ final class WilsonU9IdentitySnapshotService
 
             $created = 0;
             foreach ($legacyGroups as $group) {
-                $ordered = $group->sortBy(fn (SeriesRanking $row): string => sprintf('%010d:%020d', $row->rank_position, $row->player_id))->values();
+                $ordered = $group->sortBy(fn (SeriesRanking $row): string => sprintf('%010d:%020d', $row->rank_position, $row->id))->values();
                 $ranks = $ordered->pluck('rank_position')->map(fn ($rank): int => (int) $rank);
+                $mixedRankPattern = $ranks->unique()->count() > 1 && $ranks->unique()->count() < $ordered->count();
                 $reason = $ranks->unique()->count() === 1
                     ? 'shared_position'
-                    : ($ranks->unique()->count() === $ordered->count() ? 'other' : null);
-                if ($reason === null) {
-                    throw new RuntimeException('A legacy tie group has a mixed shared/sequential position pattern.');
-                }
+                    : 'other';
                 if ($reason !== 'shared_position') {
                     $expectedRanks = range((int) $ranks->min(), (int) $ranks->max());
-                    if ($ranks->sort()->values()->all() !== $expectedRanks
+                    $validMixedTransitions = true;
+                    if ($mixedRankPattern) {
+                        $rankCounts = $ranks->countBy()->sortKeys();
+                        $distinctRanks = $rankCounts->keys()->map(fn ($rank): int => (int) $rank)->values();
+                        for ($index = 0; $index < $distinctRanks->count() - 1; $index++) {
+                            $currentRank = $distinctRanks[$index];
+                            $expectedNextRank = $currentRank + (int) $rankCounts[$currentRank];
+                            if ((int) $distinctRanks[$index + 1] !== $expectedNextRank) {
+                                $validMixedTransitions = false;
+                                break;
+                            }
+                        }
+                    }
+                    if ((! $mixedRankPattern && $ranks->sort()->values()->all() !== $expectedRanks)
+                        || ($mixedRankPattern && ! $validMixedTransitions)
                         || $rows->filter(fn (SeriesRanking $candidate): bool =>
                             (int) $candidate->ranking_list_id === (int) $ordered->first()->ranking_list_id
                             && (int) $candidate->total_points !== (int) $ordered->first()->total_points
@@ -274,6 +286,9 @@ final class WilsonU9IdentitySnapshotService
                     throw new RuntimeException('A legacy tie group mentions third-event scoring without one consistent exact resolving pattern.');
                 }
                 $hasPreviousRankingEvidence = in_array(true, $previousRankingEvidence, true);
+                if ($mixedRankPattern && ($hasThirdEventEvidence || $hasPreviousRankingEvidence)) {
+                    throw new RuntimeException('A legacy mixed-rank tie group cannot claim a single automatic ordering method.');
+                }
                 if ($hasThirdEventEvidence && (in_array(false, $thirdEventEvidence, true) || $reason === 'shared_position')) {
                     throw new RuntimeException('A legacy third-event group does not preserve one consistent sequential published order.');
                 }
@@ -312,6 +327,8 @@ final class WilsonU9IdentitySnapshotService
                         : ($hasPreviousRankingEvidence ? 'previous_ranking' : null),
                     'suggested_order' => $playerIds->all(),
                     'confirmed_order' => $playerIds->all(),
+                    'preserved_rank_positions' => $ranks->all(),
+                    'legacy_rank_pattern' => $mixedRankPattern ? 'mixed_preserved' : ($reason === 'shared_position' ? 'shared' : 'sequential'),
                     'reason' => $confirmedReason,
                     'note' => $decisionNote,
                     'confirmed_by' => (int) $actor->id,
