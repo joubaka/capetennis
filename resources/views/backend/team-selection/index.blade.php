@@ -321,18 +321,18 @@
                   @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
                   @php($linkedImportedCount = $importedRoster->whereNotNull('player_profile')->count())
                   <div class="col-12">
-                    <div class="card regional-team-card">
+                    <div class="card regional-team-card" data-team-card-id="{{ $regionTeam->id }}">
                       <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2" data-team-workspace-header data-team-workspace-target="#team-workspace-{{ $regionTeam->id }}">
                         <div>
                           <h6 class="mb-1">{{ $regionTeam->name }}</h6>
                           @if($activeImport)
-                            <span class="text-muted small">{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
+                            <span class="text-muted small" data-team-roster-summary>{{ $teamSelected->count() }} selected · {{ $teamReserves->count() }} reserves · {{ $regionTeam->num_team_members }} configured places</span>
                           @else
                             <span class="text-muted small">{{ $importedRoster->count() }} roster players · {{ $linkedImportedCount }} linked · {{ $importedRoster->count() - $linkedImportedCount }} unlinked · {{ $regionTeam->num_team_members }} configured places</span>
                           @endif
                         </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
-                          @if($activeImport && $teamOpenPlaceCount > 0)<span class="badge bg-label-danger">{{ $teamOpenPlaceCount }} open {{ \Illuminate\Support\Str::plural('place', $teamOpenPlaceCount) }}</span>@endif
+                          @if($activeImport)<span class="badge bg-label-danger {{ $teamOpenPlaceCount > 0 ? '' : 'd-none' }}" data-team-open-places>{{ $teamOpenPlaceCount }} open {{ \Illuminate\Support\Str::plural('place', $teamOpenPlaceCount) }}</span>@endif
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication-status>{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
                           <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
                           <div class="dropdown">
@@ -365,7 +365,7 @@
                         </ul>
                         <div class="tab-content p-0">
                         <div class="tab-pane fade show active" id="team-players-{{ $regionTeam->id }}">
-                        <form method="POST" action="{{ route('backend.team-selection.players.add', [$event, $activeImport, $regionTeam]) }}" class="row g-2 align-items-end p-3 border-bottom">
+                        <form method="POST" action="{{ route('backend.team-selection.players.add', [$event, $activeImport, $regionTeam]) }}" class="row g-2 align-items-end p-3 border-bottom" data-add-team-player-form>
                           @csrf
                           <input type="hidden" name="add_team_id" value="{{ $regionTeam->id }}">
                           <div class="col-lg-5">
@@ -376,13 +376,13 @@
                             <label class="form-label" for="add-player-reason-{{ $regionTeam->id }}">Reason</label>
                             <input id="add-player-reason-{{ $regionTeam->id }}" type="text" name="reason" class="form-control" maxlength="1000" placeholder="Why this player is being added" required>
                           </div>
-                          <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary"><i class="ti ti-user-plus me-1"></i>Add as reserve</button></div>
+                          <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" data-add-team-player-submit><i class="ti ti-user-plus me-1"></i><span>Add as reserve</span></button></div>
                           <div class="col-12 form-text">System player profiles are shown. Player-profile email is used first, followed by a parent or linked-account email. The player is appended to the reserve queue; the active roster and published ranking snapshot stay unchanged.</div>
                         </form>
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
                             <thead><tr><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
-                            <tbody>
+                            <tbody data-team-invitations>
                               @forelse($teamInvitations as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
                                 @php($rawContactEmails = $rawContactEmailsFor($invitation))
@@ -500,7 +500,7 @@
                                   </td>
                                 </tr>
                               @empty
-                                <tr><td colspan="7" class="text-center text-muted py-4">No ranked players have been imported for this team yet.</td></tr>
+                                <tr data-empty-team-invitations><td colspan="7" class="text-center text-muted py-4">No ranked players have been imported for this team yet.</td></tr>
                               @endforelse
                             </tbody>
                           </table>
@@ -896,6 +896,54 @@ document.addEventListener('DOMContentLoaded', function () {
     'X-Requested-With': 'XMLHttpRequest',
     'X-CSRF-TOKEN': csrfToken,
   };
+  document.addEventListener('submit', async function (event) {
+    const form = event.target.closest('[data-add-team-player-form]');
+    if (!form) return;
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+
+    const button = form.querySelector('[data-add-team-player-submit]');
+    const buttonLabel = button?.querySelector('span');
+    const originalLabel = buttonLabel?.textContent || 'Add as reserve';
+    button?.setAttribute('disabled', 'disabled');
+    if (buttonLabel) buttonLabel.textContent = 'Adding…';
+
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form),
+      });
+      if (!response.ok) throw await AppFeedback.responseError(response, 'The player could not be added.');
+      const data = await response.json();
+      const card = form.closest('[data-team-card-id]');
+      const tbody = card?.querySelector('[data-team-invitations]');
+      const template = document.createElement('template');
+      template.innerHTML = data.row_html.trim();
+      const row = template.content.firstElementChild;
+      if (!tbody || !row) throw new Error('The updated reserve row could not be displayed. Refresh the page to see the saved player.');
+
+      tbody.querySelector('[data-empty-team-invitations]')?.remove();
+      tbody.appendChild(row);
+      const summary = card.querySelector('[data-team-roster-summary]');
+      if (summary) summary.textContent = `${data.summary.selected} selected · ${data.summary.reserves} reserves · ${data.summary.configured_places} configured places`;
+      const openPlaces = card.querySelector('[data-team-open-places]');
+      if (openPlaces) {
+        openPlaces.textContent = `${data.summary.open_places} open ${data.summary.open_places === 1 ? 'place' : 'places'}`;
+        openPlaces.classList.toggle('d-none', data.summary.open_places === 0);
+      }
+
+      form.reset();
+      const playerSelect = form.querySelector('[name="player_id"]');
+      if (playerSelect && window.jQuery?.fn?.select2) window.jQuery(playerSelect).val(null).trigger('change');
+      AppFeedback.success(data.message);
+    } catch (error) {
+      AppFeedback.fromError(error, 'The player could not be added.');
+    } finally {
+      button?.removeAttribute('disabled');
+      if (buttonLabel) buttonLabel.textContent = originalLabel;
+    }
+  });
   const renderTeamPublication = function (button, published) {
     const card = button.closest('.regional-team-card');
     const badge = card?.querySelector('[data-team-publication-status]');

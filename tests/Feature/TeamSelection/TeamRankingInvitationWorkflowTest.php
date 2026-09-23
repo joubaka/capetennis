@@ -2705,6 +2705,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_manager_can_search_and_add_any_system_player_as_an_audited_reserve(): void
     {
+        Queue::fake();
         [$source, $team] = $this->selectionSource();
         $manager = User::factory()->create();
         $teamType = DB::table('eventtypes')->insertGetId([
@@ -2714,6 +2715,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $source->event->update(['eventType' => $teamType]);
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
         $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $team->update(['num_team_members' => 5]);
         $owner = User::factory()->create(['email' => 'new.reserve@example.test']);
         $player = Player::factory()->create([
             'name' => 'Brandnew',
@@ -2730,6 +2732,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         $rosterBefore = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
             ->orderBy('rank')->pluck('player_id')->all();
+        $emailLogsBefore = BulkEmailLog::query()->count();
 
         $this->actingAs(User::factory()->create())
             ->getJson(route('backend.team-selection.players.search', [$source->event, $selectionImport, $team, 'q' => 'Brandnew']))
@@ -2745,10 +2748,20 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertJsonPath('results.0.id', $unlinked->id)
             ->assertJsonPath('results.0.text', 'Ian Ferreira · 0821234567');
 
-        $this->actingAs($manager)->post(
+        $this->actingAs($manager)->postJson(
             route('backend.team-selection.players.add', [$source->event, $selectionImport, $team]),
             ['player_id' => $player->id, 'reason' => 'Late regional selection', 'add_team_id' => $team->id]
-        )->assertRedirect()->assertSessionHas('success');
+        )->assertOk()
+            ->assertJsonPath('team_id', $team->id)
+            ->assertJsonPath('summary.selected', 2)
+            ->assertJsonPath('summary.reserves', 3)
+            ->assertJsonPath('summary.configured_places', 5)
+            ->assertJsonPath('summary.open_places', 3)
+            ->assertJsonPath('message', 'Brandnew Reserveplayer was added as the next reserve. The published ranking snapshot and active roster were not changed.')
+            ->assertJson(fn ($json) => $json
+                ->whereType('row_html', 'string')
+                ->where('row_html', fn (string $html) => str_contains($html, 'Activate as Rank 5'))
+                ->etc());
 
         $invitation = $selectionImport->invitations()->where('player_id', $player->id)->firstOrFail();
         $this->assertSame(TeamSelectionInvitation::RESERVE, $invitation->status);
@@ -2762,6 +2775,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'subject_id' => $invitation->id,
             'description' => 'regional manager added system player profile as reserve',
         ]);
+        $this->assertSame($emailLogsBefore, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
 
         $this->actingAs($manager)->post(
             route('backend.team-selection.players.add', [$source->event, $selectionImport, $team]),

@@ -540,7 +540,53 @@ class TeamSelectionInvitationController extends Controller
             trim($data['reason'])
         );
 
-        return back()->with('success', $invitation->player->full_name.' was added as the next reserve. The published ranking snapshot and active roster were not changed.');
+        $message = $invitation->player->full_name.' was added as the next reserve. The published ranking snapshot and active roster were not changed.';
+
+        if ($request->expectsJson()) {
+            $teamInvitations = $selectionImport->invitations()
+                ->with(['player.user', 'player.users', 'emailLogs'])
+                ->where('team_id', $team->id)
+                ->orderBy('queue_position')
+                ->get();
+            $selectedCount = $teamInvitations->whereIn('status', [
+                TeamSelectionInvitation::INVITED,
+                TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                TeamSelectionInvitation::PAID_CONFIRMED,
+            ])->count();
+            $reserves = $teamInvitations->where('status', TeamSelectionInvitation::RESERVE)->values();
+            $openRosterRanks = collect(range(1, max(1, (int) $team->num_team_members)))
+                ->reject(fn (int $rank) => $teamInvitations->contains(
+                    fn (TeamSelectionInvitation $candidate) => in_array($candidate->status, [
+                        TeamSelectionInvitation::INVITED,
+                        TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+                        TeamSelectionInvitation::PAID_CONFIRMED,
+                    ], true) && (int) $candidate->roster_rank === $rank
+                ))
+                ->values();
+            $reserveIndex = $reserves->search(fn (TeamSelectionInvitation $candidate) => $candidate->is($invitation));
+            $invitation->loadMissing(['player.user', 'player.users', 'emailLogs']);
+
+            return response()->json([
+                'message' => $message,
+                'team_id' => $team->id,
+                'summary' => [
+                    'selected' => $selectedCount,
+                    'reserves' => $reserves->count(),
+                    'configured_places' => (int) $team->num_team_members,
+                    'open_places' => max(0, (int) $team->num_team_members - $selectedCount),
+                ],
+                'row_html' => view('backend.team-selection._added-reserve-row', [
+                    'event' => $event,
+                    'activeImport' => $selectionImport,
+                    'invitation' => $invitation,
+                    'recipientEmail' => $this->contacts->primaryEmail($invitation->player),
+                    'rawContactEmails' => $this->contacts->rawEmails($invitation->player),
+                    'reserveActivationRank' => $reserveIndex === false ? null : $openRosterRanks->get($reserveIndex),
+                ])->render(),
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function viewSentInvitation(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)

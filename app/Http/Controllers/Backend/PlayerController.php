@@ -257,7 +257,9 @@ class PlayerController extends Controller
    */
     public function show($id)
     {
-        //
+        $player = Player::findOrFail($id);
+
+        return redirect()->route('backend.player.profile', $player->id);
     }
 
     /**
