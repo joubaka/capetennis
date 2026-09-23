@@ -39,6 +39,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 use Spatie\Permission\Models\Role;
@@ -2828,6 +2829,99 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($payfastRows, DB::table('transactions_pf')->count());
         $this->assertSame($emailRows, BulkEmailLog::query()->count());
         Queue::assertNothingPushed();
+    }
+
+    public function test_team_order_schema_preserves_withdrawn_history_and_enforces_one_active_lifecycle(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $player = Player::factory()->create();
+        $owner = User::factory()->create();
+        $player->update(['userId' => $owner->id]);
+        $service = app(TeamPaymentService::class);
+
+        $historical = $service->ensureOrder($owner, $team, $player, $source->event, 525.00);
+        $service->recordWithdrawal($historical, $owner);
+        $historicalState = $historical->fresh()->getAttributes();
+
+        $active = $service->ensureOrder($owner, $team, $player, $source->event, 525.00);
+        $this->assertNotSame($historical->id, $active->id);
+        $this->assertNull($active->withdrawn_at);
+        $this->assertSame($active->id, $service->ensureOrder(
+            $owner, $team, $player, $source->event, 525.00,
+        )->id);
+        $this->assertSame($historicalState, $historical->fresh()->getAttributes());
+
+        try {
+            TeamPaymentOrder::query()->create([
+                'user_id' => $owner->id,
+                'team_id' => $team->id,
+                'player_id' => $player->id,
+                'event_id' => $source->event_id,
+                'total_amount' => 525.00,
+                'wallet_reserved' => 0,
+                'payfast_amount_due' => 525.00,
+                'wallet_debited' => false,
+                'payfast_paid' => false,
+                'pay_status' => false,
+            ]);
+            $this->fail('Expected the database to reject a second active order lifecycle.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23000', $exception->getCode());
+        }
+
+        $this->assertSame(2, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $player->id)->where('event_id', $source->event_id)->count());
+        $this->assertSame($historicalState, $historical->fresh()->getAttributes());
+    }
+
+    public function test_team_order_history_migration_is_scoped_and_idempotent(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        $matchingOrder = app(TeamPaymentService::class)->ensureOrder(
+            $owner, $team, $invitation->player, $source->event, 525.00,
+        );
+        $invitation->update(['snapshot_json' => [
+            'restoration' => ['previous_order_id' => $matchingOrder->id],
+        ]]);
+        $migration = require database_path('migrations/2026_09_22_110000_allow_withdrawn_team_order_history.php');
+
+        $migration->up();
+        $firstWithdrawnAt = $matchingOrder->fresh()->withdrawn_at?->toISOString();
+        $this->assertNotNull($firstWithdrawnAt);
+        $migration->up();
+        $this->assertSame($firstWithdrawnAt, $matchingOrder->fresh()->withdrawn_at?->toISOString());
+
+        $foreignTeam = Team::factory()->create();
+        $foreignPlayer = Player::factory()->create();
+        $foreignEvent = Event::factory()->create();
+        $foreignOrder = TeamPaymentOrder::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'team_id' => $foreignTeam->id,
+            'player_id' => $foreignPlayer->id,
+            'event_id' => $foreignEvent->id,
+            'total_amount' => 100,
+            'wallet_reserved' => 0,
+            'payfast_amount_due' => 100,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+        ]);
+        $invitation->update(['snapshot_json' => [
+            'restoration' => ['previous_order_id' => $foreignOrder->id],
+        ]]);
+
+        try {
+            $migration->up();
+            $this->fail('Expected corrupt restoration history to stop the migration.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString("invitation {$invitation->id}", $exception->getMessage());
+        }
+
+        $this->assertNull($foreignOrder->fresh()->withdrawn_at);
+        $this->assertSame(100.00, (float) $foreignOrder->fresh()->payfast_amount_due);
     }
 
     public function test_private_payment_action_rejects_cross_scope_inactive_ambiguous_and_already_gateway_paid_invitations(): void

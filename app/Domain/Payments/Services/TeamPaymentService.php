@@ -180,7 +180,7 @@ class TeamPaymentService
         });
     }
 
-    public function recordWithdrawal(TeamPaymentOrder $order, User $actor): TeamPaymentOrder
+    public function recordWithdrawal(TeamPaymentOrder $order, ?User $actor): TeamPaymentOrder
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $actor) {
             return DB::transaction(function () use ($order, $actor) {
@@ -188,7 +188,7 @@ class TeamPaymentService
 
                 if (! $locked->withdrawn_at) {
                     $locked->withdrawn_at = now();
-                    $locked->withdrawn_by = $actor->id;
+                    $locked->withdrawn_by = $actor?->id;
                     $locked->save();
                 }
 

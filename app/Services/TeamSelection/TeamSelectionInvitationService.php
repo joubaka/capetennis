@@ -463,6 +463,9 @@ final class TeamSelectionInvitationService
                 if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
                     app(TeamPaymentService::class)->cancelPayment($order);
                 }
+                if ($order) {
+                    app(TeamPaymentService::class)->recordWithdrawal($order, $actor);
+                }
             }
 
             $rank = $invitation->roster_rank;
