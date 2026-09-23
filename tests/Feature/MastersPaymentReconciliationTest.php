@@ -19,7 +19,9 @@ use App\Listeners\SyncMastersInvitationWithdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -369,7 +371,7 @@ class MastersPaymentReconciliationTest extends TestCase
         $this->assertSame('pending', $pendingOrder->fresh()->status);
     }
 
-    public function test_manual_payment_rejects_ambiguous_admin_transaction_history_without_mutation(): void
+    public function test_manual_payment_accepts_duplicate_zero_value_admin_transaction_history(): void
     {
         [$invitation, $payer] = $this->invitationScenario();
         $admin = User::factory()->create();
@@ -381,6 +383,80 @@ class MastersPaymentReconciliationTest extends TestCase
         unset($transaction['id']);
         DB::table('transactions_pf')->insert($transaction);
         $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
+
+        $paid = app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+
+        $this->assertSame(MastersInvitation::PAID_CONFIRMED, $paid->status);
+        $this->assertSame('cancelled', $pendingOrder->fresh()->status);
+        $this->assertSame(2, DB::table('transactions_pf')
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->count());
+    }
+
+    public function test_manual_payment_accepts_legacy_zero_value_event_named_admin_transaction(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'unpaid');
+        DB::table('activity_log')->where('subject_type', CategoryEventRegistration::class)
+            ->where('subject_id', $entry->id)->delete();
+        DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->update(['item_name' => $invitation->batch->event->name, 'custom_int5' => null]);
+        app(MastersInvitationService::class)->accept($invitation, $payer);
+
+        $paid = app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+
+        $this->assertSame($entry->registration_id, $paid->registration_id);
+        $this->assertSame('paid', $entry->fresh()->admin_payment_status);
+    }
+
+    public function test_manual_payment_rejects_positive_gateway_artifact_even_when_linked_to_cancelled_unpaid_order(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        $cancelledAttempt = RegistrationOrder::create([
+            'user_id' => $payer->id,
+            'payfast_amount_due' => 0,
+            'total_fee' => 285,
+            'wallet_reserved' => 0,
+            'wallet_debited' => false,
+            'payfast_paid' => false,
+            'pay_status' => false,
+            'payment_method' => 'payfast',
+            'status' => 'cancelled',
+        ]);
+        $artifact = (array) DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)->first();
+        unset($artifact['id']);
+        $artifact['amount_gross'] = 285;
+        $artifact['pf_payment_id'] = 'ABANDONED-ATTEMPT';
+        $artifact['custom_int5'] = $cancelledAttempt->id;
+        DB::table('transactions_pf')->insert($artifact);
+        $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
+        $before = $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']);
+
+        $this->expectException(ValidationException::class);
+        try {
+            app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+        } finally {
+            $this->assertSame($before, $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']));
+            $this->assertSame('pending', $pendingOrder->fresh()->status);
+            $this->assertSame('paid', $entry->fresh()->admin_payment_status);
+        }
+    }
+
+    public function test_manual_payment_rejects_complete_zero_value_transaction_without_mutation(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        $unsafe = (array) DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)->first();
+        unset($unsafe['id']);
+        $unsafe['payment_status'] = 'COMPLETE';
+        DB::table('transactions_pf')->insert($unsafe);
+        $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
         $before = $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']);
 
         $this->expectException(ValidationException::class);
@@ -390,6 +466,109 @@ class MastersPaymentReconciliationTest extends TestCase
             $this->assertSame($before, $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']));
             $this->assertSame('pending', $pendingOrder->fresh()->status);
         }
+    }
+
+    public function test_manual_payment_rejects_transaction_registration_mismatch_when_column_exists(): void
+    {
+        $this->assertTrue(Schema::hasColumn('transactions_pf', 'registration_id'));
+
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        DB::table('activity_log')->where('subject_type', CategoryEventRegistration::class)
+            ->where('subject_id', $entry->id)->delete();
+        DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->update(['registration_id' => $entry->registration_id + 999]);
+        $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
+        $before = $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']);
+
+        $this->expectException(ValidationException::class);
+        try {
+            app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+        } finally {
+            $this->assertSame($before, $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']));
+            $this->assertSame('pending', $pendingOrder->fresh()->status);
+        }
+    }
+
+    public function test_manual_payment_ignores_archived_unsafe_transaction(): void
+    {
+        if (! Schema::hasColumn('transactions_pf', 'archived_at')) {
+            $this->markTestSkipped('The archived transaction column is unavailable.');
+        }
+
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        $entry = app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        $archived = (array) DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)->first();
+        unset($archived['id']);
+        $archived['amount_gross'] = 285;
+        $archived['pf_payment_id'] = 'ARCHIVED-GATEWAY';
+        $archived['archived_at'] = now();
+        DB::table('transactions_pf')->insert($archived);
+        app(MastersInvitationService::class)->accept($invitation, $payer);
+
+        $paid = app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+
+        $this->assertSame($entry->registration_id, $paid->registration_id);
+    }
+
+    public function test_manual_payment_rejects_unattributed_positive_or_gateway_transaction_without_mutation(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        $unsafe = (array) DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)->first();
+        unset($unsafe['id']);
+        $unsafe['amount_gross'] = 285;
+        $unsafe['pf_payment_id'] = 'UNATTRIBUTED-GATEWAY';
+        $unsafe['custom_int5'] = null;
+        DB::table('transactions_pf')->insert($unsafe);
+        $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
+        $before = $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']);
+
+        $this->expectException(ValidationException::class);
+        try {
+            app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+        } finally {
+            $this->assertSame($before, $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']));
+            $this->assertSame('pending', $pendingOrder->fresh()->status);
+        }
+    }
+
+    #[DataProvider('unsafeAdminAmountEvidence')]
+    public function test_manual_payment_rejects_null_or_nonzero_admin_amount_evidence(
+        string $column,
+        int|float|null $value,
+    ): void {
+        [$invitation, $payer] = $this->invitationScenario();
+        $admin = User::factory()->create();
+        app(EntryService::class)->addPlayerAsAdmin($invitation->categoryEvent, $invitation->player_id, $admin, 'paid_privately');
+        DB::table('transactions_pf')->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->update([$column => $value]);
+        $pendingOrder = app(MastersInvitationService::class)->accept($invitation, $payer);
+        $before = $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']);
+
+        $this->expectException(ValidationException::class);
+        try {
+            app(MastersInvitationService::class)->markPaidByAdmin($invitation, $admin);
+        } finally {
+            $this->assertSame($before, $invitation->fresh()->only(['status', 'order_id', 'registration_id', 'paid_at']));
+            $this->assertSame('pending', $pendingOrder->fresh()->status);
+        }
+    }
+
+    public static function unsafeAdminAmountEvidence(): array
+    {
+        return [
+            'null gross' => ['amount_gross', null],
+            'null net' => ['amount_net', null],
+            'null fee' => ['amount_fee', null],
+            'nonzero net' => ['amount_net', 1],
+            'negative fee' => ['amount_fee', -1],
+        ];
     }
 
     public function test_manual_payment_rejects_paid_invitation_linked_to_non_admin_entry_without_mutation(): void

@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Auth\Access\AuthorizationException;
 use App\Models\BulkEmailLog;
 use App\Jobs\SendMastersInvitationEmailJob;
@@ -1133,34 +1134,86 @@ final class MastersInvitationService
                     && in_array($existingAdminEntry->refund_status, [null, '', 'not_refunded'], true)
                     && (float) ($existingAdminEntry->refund_gross ?? 0) === 0.0;
 
-                $adminTransactions = DB::table('transactions_pf')
-                    ->where('event_id', $locked->event_id)
-                    ->where('category_event_id', $locked->category_event_id)
-                    ->where('player_id', $locked->player_id)
-                    ->whereNull('pf_payment_id')
-                    ->where('item_name', 'Admin Entry')
-                    ->when(
-                        \Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'archived_at'),
-                        fn ($query) => $query->whereNull('archived_at')
-                    )
-                    ->lockForUpdate()
-                    ->get();
-
                 $allTransactions = DB::table('transactions_pf')
                     ->where('event_id', $locked->event_id)
                     ->where('category_event_id', $locked->category_event_id)
                     ->where('player_id', $locked->player_id)
                     ->when(
-                        \Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'archived_at'),
+                        Schema::hasColumn('transactions_pf', 'archived_at'),
                         fn ($query) => $query->whereNull('archived_at')
                     )
                     ->lockForUpdate()
                     ->get();
 
+                $activityProvesAdminEntry = DB::table('activity_log')
+                    ->where('subject_type', CategoryEventRegistration::class)
+                    ->where('subject_id', $existingAdminEntry->id)
+                    ->lockForUpdate()
+                    ->get(['properties'])
+                    ->contains(function ($activity): bool {
+                        $properties = json_decode((string) $activity->properties, true);
+
+                        return is_array($properties)
+                            && ($properties['entry_source'] ?? null) === 'admin_offline';
+                    });
+
+                $transactionRegistrationColumnExists = Schema::hasColumn('transactions_pf', 'registration_id');
+                $eventName = (string) $locked->batch->event->name;
+                $isExactZeroNonGateway = static function ($transaction): bool {
+                    return $transaction->amount_gross !== null
+                        && $transaction->amount_net !== null
+                        && $transaction->amount_fee !== null
+                        && is_numeric($transaction->amount_gross)
+                        && is_numeric($transaction->amount_net)
+                        && is_numeric($transaction->amount_fee)
+                        && (float) $transaction->amount_gross === 0.0
+                        && (float) $transaction->amount_net === 0.0
+                        && (float) $transaction->amount_fee === 0.0
+                        && empty($transaction->pf_payment_id)
+                        && ! in_array(strtolower(trim((string) ($transaction->payment_status ?? ''))), ['complete', 'paid'], true);
+                };
+
+                $qualifyingAdminTransactions = $allTransactions->filter(
+                    function ($transaction) use ($existingAdminEntry, $eventName, $isExactZeroNonGateway, $transactionRegistrationColumnExists): bool {
+                        $registrationMatches = ! $transactionRegistrationColumnExists
+                            || empty($transaction->registration_id)
+                            || (int) $transaction->registration_id === (int) $existingAdminEntry->registration_id;
+                        $knownAdminShape = $transaction->item_name === 'Admin Entry'
+                            || ($transaction->item_name === $eventName && empty($transaction->custom_int5));
+
+                        return $isExactZeroNonGateway($transaction)
+                            && $transaction->transaction_type === 'Registration'
+                            && $registrationMatches
+                            && $knownAdminShape;
+                    }
+                );
+
+                $unsafeTransactions = $allTransactions->reject(function ($transaction) use ($qualifyingAdminTransactions, $isExactZeroNonGateway): bool {
+                    if ($qualifyingAdminTransactions->contains('id', $transaction->id)) {
+                        return true;
+                    }
+
+                    if (! $isExactZeroNonGateway($transaction)) {
+                        return false;
+                    }
+
+                    $orderId = (int) ($transaction->custom_int5 ?? 0);
+                    if (! $orderId) {
+                        return false;
+                    }
+
+                    $attemptOrder = RegistrationOrder::query()->lockForUpdate()->find($orderId);
+
+                    return $attemptOrder
+                        && in_array($attemptOrder->status, ['pending', 'cancelled'], true)
+                        && ! $attemptOrder->pay_status
+                        && ! $attemptOrder->payfast_paid
+                        && ! $attemptOrder->wallet_debited;
+                });
+
                 if (! $hasSafeAdminState
-                    || $adminTransactions->count() !== 1
-                    || $allTransactions->count() !== 1
-                    || (float) $adminTransactions->first()->amount_gross !== 0.0) {
+                    || (! $activityProvesAdminEntry && $qualifyingAdminTransactions->isEmpty())
+                    || $unsafeTransactions->isNotEmpty()) {
                     throw ValidationException::withMessages([
                         'invitation' => 'An existing paid entry cannot be safely identified as one unreconciled admin entry. Resolve its payment history before continuing.',
                     ]);

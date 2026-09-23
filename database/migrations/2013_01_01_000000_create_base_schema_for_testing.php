@@ -417,9 +417,11 @@ return new class extends Migration
                 $table->decimal('amount_gross', 10, 2)->nullable();
                 $table->decimal('amount_fee', 10, 2)->nullable();
                 $table->decimal('amount_net', 10, 2)->nullable();
+                $table->string('payment_status')->nullable();
                 $table->unsignedBigInteger('event_id')->nullable();
                 $table->unsignedBigInteger('category_event_id')->nullable();
                 $table->unsignedBigInteger('player_id')->nullable();
+                $table->unsignedBigInteger('registration_id')->nullable();
                 $table->string('item_name')->nullable();
                 $table->string('email_address')->nullable();
                 $table->integer('custom_int1')->nullable();

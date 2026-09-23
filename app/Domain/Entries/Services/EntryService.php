@@ -98,7 +98,7 @@ class EntryService
                 'admin_payment_status' => $adminPaymentStatus,
             ]);
 
-            DB::table('transactions_pf')->insert([
+            $adminTransaction = [
                 'created_at'        => now(),
                 'updated_at'        => now(),
                 'transaction_type'  => 'Registration',
@@ -116,7 +116,11 @@ class EntryService
                 'custom_int4'       => $actingUser->id,
                 'custom_str1'       => optional($lockedCategoryEvent->category)->name,
                 'custom_str3'       => optional($lockedCategoryEvent->event)->name,
-            ]);
+            ];
+            if (Schema::hasColumn('transactions_pf', 'registration_id')) {
+                $adminTransaction['registration_id'] = $registration->id;
+            }
+            DB::table('transactions_pf')->insert($adminTransaction);
 
             activity('registration')
                 ->performedOn($entry)
