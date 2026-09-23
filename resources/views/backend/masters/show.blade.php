@@ -7,7 +7,7 @@
   .masters-player-list { overflow:visible; }
   .masters-player-row { border-top:1px solid #ebeaf0; padding:.55rem 0; }
   .masters-player-row .form-check-input { margin-top:.25rem; }
-  .masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow-x:auto; overflow-y:hidden; }
+  .masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow:visible; }
   .masters-entry-head, .masters-entry-row { display:grid; grid-template-columns:1.5rem minmax(6rem,1.15fr) minmax(7rem,1.35fr) minmax(5rem,.85fr) minmax(6.3rem,1fr) 6rem; align-items:center; gap:.35rem; padding:.5rem .45rem; }
   .masters-entry-head { background:#e4e4e9; color:#625f6d; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
   .masters-entry-row { border-top:1px solid #ebeaf0; font-size:.82rem; }
@@ -21,7 +21,7 @@
   .masters-entry-row .action-cell .btn { padding:.25rem .4rem; }
   .masters-action-menu .dropdown-item { font-size:.82rem; padding:.45rem .75rem; }
   .masters-action-menu form { display:block !important; margin:0; }
-  @media (max-width: 900px) { .masters-entry-head { display:none; } .masters-entry-row { grid-template-columns:2rem minmax(9rem,1fr) minmax(7rem,1fr) auto; } .masters-entry-row .email-cell, .masters-entry-row .cell-cell, .masters-entry-row .payment-cell { grid-column:2 / span 2; } }
+  @media (max-width: 900px) { .masters-entry-head { display:none; } .masters-entry-row { grid-template-columns:2rem minmax(0,1fr) auto; } .masters-entry-row .email-cell, .masters-entry-row .cell-cell, .masters-entry-row .payment-cell { grid-column:2; } .masters-entry-row .action-cell { grid-column:3; grid-row:1; } }
   .masters-groups { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1rem; }
   .masters-groups .card { margin-bottom:0 !important; }
   .masters-groups .card-body { padding:1rem 1.1rem; }

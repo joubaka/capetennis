@@ -68,11 +68,13 @@ class MastersEntriesAlignmentTest extends TestCase
         $this->assertSame(0, $xpath->query('//*[@data-url-lock or @data-url-unlock]')->length);
         $this->assertSame(0, $xpath->query('//*[@data-admin-payment-note]')->length);
 
-        $this->actingAs($this->admin)
+        $mastersPage = $this->actingAs($this->admin)
             ->get(route('backend.masters.show', $batch))
             ->assertOk()
             ->assertSee('Confirmed Entries')
             ->assertSee(route('admin.events.entries.new', $event), false);
+
+        $mastersPage->assertSee('.masters-entry-table { width:100%; border:1px solid #ebeaf0; border-radius:.35rem; overflow:visible; }', false);
     }
 
     public function test_generic_masters_roster_mutations_are_blocked_server_side(): void
