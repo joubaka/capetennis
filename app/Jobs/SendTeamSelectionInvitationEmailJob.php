@@ -52,9 +52,18 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
         $log = BulkEmailLog::where('mail_type', 'team_selection_invitation')->find($this->logId);
         if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
         $invitation = TeamSelectionInvitation::with(['selectionImport.event', 'region', 'team', 'player'])->find($log->related_id);
+        $kind = $log->payload['kind'] ?? 'invitation';
+        $eligibleStatuses = match ($kind) {
+            'custom_payment_update' => [TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT],
+            'custom_paid_update' => [TeamSelectionInvitation::PAID_CONFIRMED],
+            default => [TeamSelectionInvitation::INVITED],
+        };
+        $deadline = $kind === 'custom_payment_update'
+            ? $invitation?->effectivePaymentDeadline()
+            : $invitation?->effectiveResponseDeadline();
         if (! $invitation || (int) $invitation->event_id !== $this->eventId
-            || $invitation->status !== TeamSelectionInvitation::INVITED
-            || ($invitation->effectiveResponseDeadline() && now()->gt($invitation->effectiveResponseDeadline()))) {
+            || ! in_array($invitation->status, $eligibleStatuses, true)
+            || ($kind !== 'custom_paid_update' && $deadline && now()->gt($deadline))) {
             $log->markAsSkipped('Invitation is no longer eligible to send.');
             return;
         }

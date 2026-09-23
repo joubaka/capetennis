@@ -140,6 +140,7 @@
       @php($selectionSent = $activeImport?->status === 'sent')
       @php($pendingActivatedInvitations = $activeImport?->invitations?->filter(fn($invitation) => $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->roster_rank && !$invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation')) ?? collect())
       @php($pendingActivatedRecipients = $pendingActivatedInvitations->filter(fn($invitation) => (bool) $recipientEmailFor($invitation)))
+      @php($customEmailRecipients = $activeImport?->invitations?->filter(fn($invitation) => in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED], true) && $invitation->roster_rank && (bool) $recipientEmailFor($invitation)) ?? collect())
       @php($pendingActivatedRecipientHash = hash('sha256', $pendingActivatedRecipients->map(fn($invitation) => $invitation->id.'|'.mb_strtolower(trim((string) $recipientEmailFor($invitation))))->sort()->values()->implode("\n")))
       @php($selectedInvitations = $activeImport?->invitations?->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]) ?? collect())
       @php($outstandingRegistrationCount = $selectedInvitations->whereNotIn('status', [\App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->count())
@@ -379,6 +380,13 @@
                           <div class="col-lg-2 d-grid"><button class="btn btn-outline-primary" data-add-team-player-submit><i class="ti ti-user-plus me-1"></i><span>Add as reserve</span></button></div>
                           <div class="col-12 form-text">System player profiles are shown. Player-profile email is used first, followed by a parent or linked-account email. The player is appended to the reserve queue; the active roster and published ranking snapshot stay unchanged.</div>
                         </form>
+                        @php($teamCustomEmailRecipients = $teamInvitations->filter(fn($invitation) => $customEmailRecipients->contains('id', $invitation->id)))
+                        @if($activeImport->status === 'sent')
+                          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom bg-light" data-custom-email-team-toolbar="{{ $regionTeam->id }}">
+                            <label class="form-check mb-0"><input class="form-check-input" type="checkbox" data-custom-email-check-all="{{ $regionTeam->id }}" @disabled($teamCustomEmailRecipients->isEmpty())><span class="form-check-label">Check all eligible players</span></label>
+                            <button type="button" class="btn btn-sm btn-primary" data-custom-email-team-button="{{ $regionTeam->id }}" data-bs-toggle="modal" data-bs-target="#custom-player-email-modal-{{ $activeImport->id }}" disabled><i class="ti ti-mail-edit me-1"></i><span>Email checked players</span></button>
+                          </div>
+                        @endif
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
                             <thead><tr><th><span class="visually-hidden">Select</span></th><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
@@ -393,11 +401,11 @@
                                 @php($openVacancy = $isInactive && $invitation->vacated_roster_rank && !$hasActiveReplacement)
                                 @php($awaitingRestoredInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->declined_at && !$invitation->invited_at)
                                 @php($awaitingActivatedInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && !$invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation'))
-                                @php($canSelectCustomInvitation = $awaitingActivatedInvitation && $invitation->roster_rank && (bool) $recipientEmail)
+                                @php($canSelectCustomInvitation = $activeImport->status === 'sent' && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED], true) && $invitation->roster_rank && (bool) $recipientEmail)
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
-                                  <td>@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-pending-invitations-{{ $activeImport->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom invitation">@endif</td>
+                                  <td>@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-player-email-form-{{ $activeImport->id }}" data-custom-email-player="{{ $regionTeam->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom email">@endif</td>
                                   <td><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
                                   <td>
@@ -567,17 +575,19 @@
                         </div>
                         <details class="mt-2"><summary>Review {{ $pendingActivatedRecipients->count() }} exact recipient(s)</summary><div class="small text-muted mt-2">@forelse($pendingActivatedRecipients as $pendingInvitation)<div>{{ $pendingInvitation->player?->full_name ?: 'Player' }} · {{ $recipientEmailFor($pendingInvitation) }}</div>@empty No pending player currently has a valid email address. @endforelse</div></details>
                         @if($pendingActivatedInvitations->count() > $pendingActivatedRecipients->count())<div class="small text-danger mt-2">{{ $pendingActivatedInvitations->count() - $pendingActivatedRecipients->count() }} pending player(s) have no valid email and will remain pending.</div>@endif
-                        <div class="mt-3"><button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#custom-pending-invitation-modal-{{ $activeImport->id }}" @disabled($pendingActivatedRecipients->isEmpty())><i class="ti ti-mail-edit me-1"></i>Create custom invitation for checked players</button><div class="form-text">Tick players in the team tables, then edit and preview the replacement email before sending.</div></div>
+                        <div class="mt-3 form-text">Use <strong>Email checked players</strong> above a team table to compose a custom email.</div>
                         <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-pending-activated', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Queue invitations for exactly {{ $pendingActivatedRecipients->count() }} reviewed newly activated recipient(s)?');">@csrf
                           <input type="hidden" name="recipient_hash" value="{{ $pendingActivatedRecipientHash }}"><input type="hidden" name="recipient_count" value="{{ $pendingActivatedRecipients->count() }}">
                           <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-pending-activated-{{ $activeImport->id }}" required><label class="form-check-label" for="confirm-pending-activated-{{ $activeImport->id }}">I reviewed and confirm these {{ $pendingActivatedRecipients->count() }} exact recipient(s).</label></div>
                           <button class="btn btn-sm btn-success" @disabled($pendingActivatedRecipients->isEmpty())>Confirm and send {{ $pendingActivatedRecipients->count() }} pending invitation(s)</button>
                         </form>
                       </div>
-                      <div class="modal fade" id="custom-pending-invitation-modal-{{ $activeImport->id }}" tabindex="-1" aria-hidden="true">
+                    @endif
+                    @if($customEmailRecipients->isNotEmpty())
+                      <div class="modal fade" id="custom-player-email-modal-{{ $activeImport->id }}" tabindex="-1" aria-hidden="true">
                         <div class="modal-dialog modal-lg modal-dialog-centered">
-                          <form id="custom-pending-invitations-{{ $activeImport->id }}" method="POST" target="_blank" action="{{ route('backend.team-selection.invitations.email.custom-preview', [$event, $activeImport]) }}" class="modal-content">@csrf
-                            <div class="modal-header"><div><h5 class="modal-title">Custom replacement invitation</h5><div class="small text-muted">Only checked, eligible pending replacement players will be included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                          <form id="custom-player-email-form-{{ $activeImport->id }}" method="POST" target="_blank" action="{{ route('backend.team-selection.invitations.email.custom-preview', [$event, $activeImport]) }}" class="modal-content">@csrf
+                            <div class="modal-header"><div><h5 class="modal-title">Email checked players</h5><div class="small text-muted">Only checked, eligible active players in this team will be included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                             <div class="modal-body">
                               <div class="mb-3"><label class="form-label" for="custom-invitation-subject-{{ $activeImport->id }}">Subject</label><input id="custom-invitation-subject-{{ $activeImport->id }}" class="form-control" name="email_subject" maxlength="255" value="{{ old('email_subject', data_get($activeImport->communication_snapshot, 'subject', $activeImport->email_subject)) }}" required></div>
                               <div><label class="form-label" for="custom-invitation-message-{{ $activeImport->id }}">Message</label><textarea id="custom-invitation-message-{{ $activeImport->id }}" class="form-control" name="email_message" rows="8" maxlength="10000" required>{{ old('email_message', data_get($activeImport->communication_snapshot, 'message', $activeImport->email_message)) }}</textarea><div class="form-text">The saved normal campaign is used as the starting point and will not be changed.</div></div>
@@ -1267,6 +1277,43 @@ document.addEventListener('DOMContentLoaded', function () {
         review.classList.toggle('d-none', review.dataset.rosterCohortReview !== button.dataset.targetType);
       });
     });
+  });
+
+  document.querySelectorAll('[data-custom-email-team-toolbar]').forEach(function (toolbar) {
+    const teamId = toolbar.dataset.customEmailTeamToolbar;
+    const checkAll = toolbar.querySelector(`[data-custom-email-check-all="${teamId}"]`);
+    const button = toolbar.querySelector(`[data-custom-email-team-button="${teamId}"]`);
+    const boxes = Array.from(document.querySelectorAll(`[data-custom-email-player="${teamId}"]`));
+    const sync = function () {
+      const checked = boxes.filter(box => box.checked).length;
+      checkAll.checked = boxes.length > 0 && checked === boxes.length;
+      checkAll.indeterminate = checked > 0 && checked < boxes.length;
+      button.disabled = checked === 0;
+      button.querySelector('span').textContent = checked === 0
+        ? 'Email checked players'
+        : `Email ${checked} checked player${checked === 1 ? '' : 's'}`;
+    };
+    checkAll.addEventListener('change', function () {
+      boxes.forEach(box => { box.checked = checkAll.checked; });
+      sync();
+    });
+    boxes.forEach(box => box.addEventListener('change', sync));
+    button.addEventListener('click', function () {
+      document.querySelectorAll('[data-custom-email-player]').forEach(function (box) {
+        if (box.dataset.customEmailPlayer !== teamId) box.checked = false;
+      });
+      document.querySelectorAll('[data-custom-email-team-toolbar]').forEach(function (otherToolbar) {
+        if (otherToolbar !== toolbar) {
+          const otherCheckAll = otherToolbar.querySelector('[data-custom-email-check-all]');
+          const otherButton = otherToolbar.querySelector('[data-custom-email-team-button]');
+          otherCheckAll.checked = false;
+          otherCheckAll.indeterminate = false;
+          otherButton.disabled = true;
+          otherButton.querySelector('span').textContent = 'Email checked players';
+        }
+      });
+    });
+    sync();
   });
 
   const syncReplacementProfile = function (modeSelect) {

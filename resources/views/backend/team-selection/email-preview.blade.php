@@ -18,7 +18,14 @@
       @endisset
     </div>
   </div>
-  @include('emails.team-selection.invitation', ['invitation' => $invitation, 'campaign' => $campaign, 'kind' => $kind])
+  @isset($previewVariants)
+    @foreach($previewVariants as $variant)
+      <div style="max-width:680px;margin:20px auto 0;padding:0 12px"><strong>Email for {{ $variant['invitation']->player?->full_name ?? 'Player' }} · {{ str($variant['status'])->replace('_', ' ')->title() }}</strong></div>
+      @include('emails.team-selection.invitation', ['invitation' => $variant['invitation'], 'campaign' => $campaign, 'kind' => $variant['kind']])
+    @endforeach
+  @else
+    @include('emails.team-selection.invitation', ['invitation' => $invitation, 'campaign' => $campaign, 'kind' => $kind])
+  @endisset
   @isset($customSend)
     <div style="max-width:680px;margin:0 auto 28px;padding:0 12px">
       <form method="POST" action="{{ $customSend['route'] }}" style="background:#fff;border-radius:10px;padding:16px 18px;box-sizing:border-box">
@@ -27,8 +34,9 @@
         <input type="hidden" name="email_subject" value="{{ $customSend['email_subject'] }}">
         <textarea name="email_message" hidden>{{ $customSend['email_message'] }}</textarea>
         <input type="hidden" name="preview_hash" value="{{ $customSend['preview_hash'] }}">
+        <input type="hidden" name="preview_token" value="{{ $customSend['preview_token'] }}">
         <label style="display:block"><input type="checkbox" name="confirm_recipients" value="1" required> I confirm these exact recipients and this custom email.</label>
-        <button type="submit" style="margin-top:12px;border:0;border-radius:6px;background:#16876f;color:#fff;padding:10px 16px;cursor:pointer">Send {{ count($customSend['invitation_ids']) }} custom invitation(s)</button>
+        <button type="submit" style="margin-top:12px;border:0;border-radius:6px;background:#16876f;color:#fff;padding:10px 16px;cursor:pointer">Send {{ count($customSend['invitation_ids']) }} custom email(s)</button>
       </form>
     </div>
   @endisset

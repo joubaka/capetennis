@@ -1646,6 +1646,7 @@ final class TeamSelectionInvitationService
         string $subject,
         string $message,
         bool $lockForUpdate = false,
+        ?string $previewToken = null,
     ): array {
         $resolved = $this->resolveCustomPendingActivatedInvitations($import, $invitationIds, $lockForUpdate);
         $campaign = $this->customCampaignSnapshot($import, $subject, $message);
@@ -1653,13 +1654,18 @@ final class TeamSelectionInvitationService
             'id' => (int) $invitation->id,
             'name' => (string) ($invitation->player?->full_name ?: 'Player'),
             'email' => (string) $this->contactEmail($invitation),
+            'status' => (string) $invitation->status,
+            'kind' => $this->customEmailKind($invitation),
         ])->values()->all();
 
-        return [
+        $preview = [
             'campaign' => $campaign,
             'recipients' => $recipients,
-            'hash' => $this->customPendingPreviewHash($campaign, $recipients),
+            'preview_token' => $previewToken ?: (string) \Illuminate\Support\Str::uuid(),
         ];
+        $preview['hash'] = $this->customPendingPreviewHash($campaign, $recipients, $preview['preview_token']);
+
+        return $preview;
     }
 
     /**
@@ -1673,10 +1679,11 @@ final class TeamSelectionInvitationService
         string $subject,
         string $message,
         string $expectedPreviewHash,
+        string $previewToken,
     ): array {
-        return DB::transaction(function () use ($import, $actor, $invitationIds, $subject, $message, $expectedPreviewHash): array {
+        return DB::transaction(function () use ($import, $actor, $invitationIds, $subject, $message, $expectedPreviewHash, $previewToken): array {
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
-            $preview = $this->previewCustomPendingActivatedInvitations($lockedImport, $invitationIds, $subject, $message, true);
+            $preview = $this->previewCustomPendingActivatedInvitations($lockedImport, $invitationIds, $subject, $message, true, $previewToken);
             if (! hash_equals($preview['hash'], $expectedPreviewHash)) {
                 throw ValidationException::withMessages([
                     'email_preview' => 'Preview this exact player selection and custom email before sending. Any change requires a new preview.',
@@ -1686,15 +1693,20 @@ final class TeamSelectionInvitationService
             $queued = 0;
             foreach ($preview['recipients'] as $recipient) {
                 $invitation = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($recipient['id']);
-                if (! $this->queueMail($invitation, $recipient['email'], 'replacement', $preview['campaign'], allowHistoricalRepeat: true)) {
+                $pendingManual = $this->isPendingManualInvitation($invitation);
+                $kind = $this->customEmailKind($invitation);
+                $customCampaign = [...$preview['campaign'], 'custom_preview_hash' => $expectedPreviewHash];
+                if (! $this->queueMail($invitation, $recipient['email'], $kind, $customCampaign, allowHistoricalRepeat: true, customPreviewHash: $expectedPreviewHash)) {
                     continue;
                 }
-                $snapshot = $invitation->snapshot_json ?? [];
-                data_set($snapshot, 'activation.pending_manual_invitation', false);
-                data_set($snapshot, 'activation.invitation_sent_at', now()->toIso8601String());
-                data_set($snapshot, 'activation.invitation_sent_by_user_id', $actor->id);
-                data_set($snapshot, 'activation.custom_campaign_hash', $preview['campaign']['hash']);
-                $invitation->update(['invited_at' => now(), 'snapshot_json' => $snapshot]);
+                if ($pendingManual) {
+                    $snapshot = $invitation->snapshot_json ?? [];
+                    data_set($snapshot, 'activation.pending_manual_invitation', false);
+                    data_set($snapshot, 'activation.invitation_sent_at', now()->toIso8601String());
+                    data_set($snapshot, 'activation.invitation_sent_by_user_id', $actor->id);
+                    data_set($snapshot, 'activation.custom_campaign_hash', $preview['campaign']['hash']);
+                    $invitation->update(['invited_at' => now(), 'snapshot_json' => $snapshot]);
+                }
                 $queued++;
             }
 
@@ -1703,7 +1715,7 @@ final class TeamSelectionInvitationService
                     'queued' => $queued,
                     'invitation_ids' => collect($preview['recipients'])->pluck('id')->all(),
                     'campaign_hash' => $preview['campaign']['hash'],
-                ])->log('regional manager sent custom pending activated team selection invitations');
+                ])->log('regional manager sent custom team selection player emails');
 
             return ['queued' => $queued];
         });
@@ -1714,36 +1726,38 @@ final class TeamSelectionInvitationService
     {
         $ids = collect($invitationIds)->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
         if ($ids->isEmpty() || $ids->count() !== count($invitationIds)) {
-            throw ValidationException::withMessages(['invitation_ids' => 'Select at least one valid pending replacement invitation.']);
+            throw ValidationException::withMessages(['invitation_ids' => 'Select at least one valid active team player.']);
         }
         if ($import->status !== 'sent' || ! $this->replacementDeadlines($import)[0]) {
-            throw ValidationException::withMessages(['invitation_ids' => 'Custom replacement invitations are not available for this campaign.']);
+            throw ValidationException::withMessages(['invitation_ids' => 'Custom player emails are not available for this campaign.']);
         }
 
         $invitations = TeamSelectionInvitation::query()->with('player')
             ->where('import_id', $import->id)
             ->where('event_id', $import->event_id)
             ->whereIn('id', $ids)
-            ->where('status', TeamSelectionInvitation::INVITED)
+            ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])
             ->whereNotNull('roster_rank')
-            ->whereNull('invited_at')
-            ->where('snapshot_json->activation->pending_manual_invitation', true)
             ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
             ->orderBy('id')->get();
         if ($invitations->count() !== $ids->count() || $invitations->contains(fn ($invitation) => ! $this->contactEmail($invitation))) {
             throw ValidationException::withMessages([
-                'invitation_ids' => 'The selected replacement list is stale or includes an ineligible player. Review the current pending players and try again.',
+                'invitation_ids' => 'The selected player list is stale or includes an ineligible player. Review the current active team players and try again.',
             ]);
         }
         if ($invitations->contains(function (TeamSelectionInvitation $invitation): bool {
             $responseDeadline = $invitation->effectiveResponseDeadline();
             $paymentDeadline = $invitation->effectivePaymentDeadline();
 
-            return ! $responseDeadline || ! $paymentDeadline
-                || now()->gt($responseDeadline) || now()->gt($paymentDeadline);
+            if ($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED) return false;
+            if ($invitation->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
+                return ! $paymentDeadline || now()->gt($paymentDeadline);
+            }
+
+            return ! $responseDeadline || ! $paymentDeadline || now()->gt($responseDeadline) || now()->gt($paymentDeadline);
         })) {
             throw ValidationException::withMessages([
-                'invitation_ids' => 'Extend the response and payment deadlines before sending the selected replacement invitations.',
+                'invitation_ids' => 'Extend the applicable response or payment deadlines before emailing the selected players.',
             ]);
         }
 
@@ -1762,11 +1776,28 @@ final class TeamSelectionInvitationService
         return $campaign;
     }
 
+    public function customEmailKind(TeamSelectionInvitation $invitation): string
+    {
+        return match ($invitation->status) {
+            TeamSelectionInvitation::PAID_CONFIRMED => 'custom_paid_update',
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT => 'custom_payment_update',
+            default => $this->isPendingManualInvitation($invitation) ? 'replacement' : 'invitation',
+        };
+    }
+
+    private function isPendingManualInvitation(TeamSelectionInvitation $invitation): bool
+    {
+        return $invitation->status === TeamSelectionInvitation::INVITED
+            && ! $invitation->invited_at
+            && (bool) data_get($invitation->snapshot_json, 'activation.pending_manual_invitation');
+    }
+
     /** @param array<int, array{id:int,name:string,email:string}> $recipients */
-    private function customPendingPreviewHash(array $campaign, array $recipients): string
+    private function customPendingPreviewHash(array $campaign, array $recipients, string $previewToken): string
     {
         return hash('sha256', json_encode([
             'campaign_hash' => $campaign['hash'],
+            'preview_token' => $previewToken,
             'recipients' => collect($recipients)->map(fn (array $recipient) => [
                 'id' => $recipient['id'],
                 'email' => mb_strtolower(trim($recipient['email'])),
@@ -1957,8 +1988,16 @@ final class TeamSelectionInvitationService
         string $kind,
         array $campaign = [],
         bool $allowHistoricalRepeat = false,
+        ?string $customPreviewHash = null,
     ): bool
     {
+        if ($customPreviewHash && BulkEmailLog::query()->where([
+            'mail_type' => 'team_selection_invitation',
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $invitation->id,
+            'recipient_email' => $email,
+            'payload->campaign->custom_preview_hash' => $customPreviewHash,
+        ])->exists()) return false;
         if (! $allowHistoricalRepeat) {
             $existing = BulkEmailLog::query()->where([
                 'mail_type' => 'team_selection_invitation',

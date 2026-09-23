@@ -496,12 +496,19 @@ class TeamSelectionInvitationController extends Controller
             $data['email_message'],
         );
         $request->session()->put('team_selection_custom_email_previews.'.$selectionImport->id, $preview['hash']);
-        $invitation = $selectionImport->invitations()
+        $request->session()->put('team_selection_custom_email_preview_tokens.'.$selectionImport->id, $preview['preview_token']);
+        $previewInvitations = $selectionImport->invitations()
             ->with(['selectionImport.event', 'region', 'team', 'player'])
-            ->findOrFail($preview['recipients'][0]['id']);
+            ->whereIn('id', collect($preview['recipients'])->pluck('id'))->get()->keyBy('id');
+        $invitation = $previewInvitations->get($preview['recipients'][0]['id']) ?? abort(404);
         $campaign = $preview['campaign'];
         $recipients = $preview['recipients'];
-        $kind = 'replacement';
+        $kind = $preview['recipients'][0]['kind'];
+        $previewVariants = collect($preview['recipients'])->map(fn (array $recipient): array => [
+            'invitation' => $previewInvitations->get($recipient['id']),
+            'kind' => $recipient['kind'],
+            'status' => $recipient['status'],
+        ])->all();
         $subject = $campaign['subject'];
         $customSend = [
             'route' => route('backend.team-selection.invitations.email.custom-send', [$event, $selectionImport]),
@@ -509,10 +516,11 @@ class TeamSelectionInvitationController extends Controller
             'email_subject' => $campaign['subject'],
             'email_message' => $campaign['message'],
             'preview_hash' => $preview['hash'],
+            'preview_token' => $preview['preview_token'],
         ];
 
         return view('backend.team-selection.email-preview', compact(
-            'invitation', 'campaign', 'kind', 'subject', 'recipients', 'customSend'
+            'invitation', 'campaign', 'kind', 'subject', 'recipients', 'customSend', 'previewVariants'
         ));
     }
 
@@ -533,11 +541,13 @@ class TeamSelectionInvitationController extends Controller
             $data['email_subject'],
             $data['email_message'],
             $data['preview_hash'],
+            $data['preview_token'],
         );
         $request->session()->forget('team_selection_custom_email_previews.'.$selectionImport->id);
+        $request->session()->forget('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
 
         return redirect()->route('backend.team-selection.index', $event)
-            ->with('success', "Queued {$stats['queued']} custom replacement invitation(s). The saved normal campaign was not changed.");
+            ->with('success', "Queued {$stats['queued']} custom player email(s). The saved normal campaign was not changed.");
     }
 
     /** @return array<string, mixed> */
@@ -549,6 +559,7 @@ class TeamSelectionInvitationController extends Controller
             'email_subject' => ['required', 'string', 'max:255'],
             'email_message' => ['required', 'string', 'max:10000'],
             'preview_hash' => [$sending ? 'required' : 'nullable', 'string', 'size:64'],
+            'preview_token' => [$sending ? 'required' : 'nullable', 'uuid'],
             'confirm_recipients' => [$sending ? 'accepted' : 'nullable'],
         ]);
     }
