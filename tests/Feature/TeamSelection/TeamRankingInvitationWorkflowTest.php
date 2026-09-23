@@ -3435,6 +3435,122 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_manager_previews_and_queues_custom_email_for_exact_checked_pending_replacements(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Custom replacement invitation event', 'type' => 2, 'code' => 'custom-replacement-invitation-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+            'email_subject' => 'Normal saved subject',
+            'email_message' => 'Normal saved message.',
+        ], $manager);
+        $team->update(['num_team_members' => 4]);
+        $service = app(TeamSelectionInvitationService::class);
+        $first = Player::factory()->create(['name' => 'Dental', 'surname' => 'One', 'email' => 'dental-one@example.test']);
+        $second = Player::factory()->create(['name' => 'Dental', 'surname' => 'Two', 'email' => 'dental-two@example.test']);
+        $firstReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $first, $manager, 'Dental replacement');
+        $secondReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $second, $manager, 'Dental replacement');
+        foreach ([$firstReserve, $secondReserve] as $reserve) {
+            $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+                $source->event, $selectionImport, $reserve,
+            ]))->assertRedirect();
+        }
+        $baselineLogs = BulkEmailLog::query()->count();
+        $payload = [
+            'invitation_ids' => [$firstReserve->id],
+            'email_subject' => 'Dental replacement invitation',
+            'email_message' => 'Please use your personal registration link below.',
+        ];
+        $previewRoute = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $selectionImport]);
+        $sendRoute = route('backend.team-selection.invitations.email.custom-send', [$source->event, $selectionImport]);
+
+        $this->actingAs(User::factory()->create())->post($previewRoute, $payload)->assertForbidden();
+        $preview = $this->actingAs($manager)->post($previewRoute, $payload)
+            ->assertOk()
+            ->assertSee('Exact recipients (1)')
+            ->assertSee('Dental One')
+            ->assertDontSee('Dental Two')
+            ->assertSee('Dental replacement invitation')
+            ->assertSee('Please use your personal registration link below.');
+        $previewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
+        $this->assertIsString($previewHash);
+        $this->assertSame($baselineLogs, BulkEmailLog::query()->count());
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 2); // Original campaign only.
+
+        $foreignInvitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)
+            ->whereNotIn('id', [$firstReserve->id, $secondReserve->id])->firstOrFail();
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$payload, 'invitation_ids' => [$foreignInvitation->id], 'preview_hash' => $previewHash, 'confirm_recipients' => 1,
+        ])->assertSessionHasErrors('invitation_ids');
+        $this->assertSame($baselineLogs, BulkEmailLog::query()->count());
+
+        BulkEmailLog::create([
+            'mail_type' => 'team_selection_invitation',
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $firstReserve->id,
+            'recipient_email' => 'dental-one@example.test',
+            'recipient_name' => 'Dental One',
+            'status' => 'sent',
+            'payload' => ['kind' => 'historical_invitation'],
+            'queued_at' => now()->subDay(),
+            'sent_at' => now()->subDay(),
+        ]);
+        $logsWithHistoricalDelivery = $baselineLogs + 1;
+
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$payload, 'preview_hash' => $previewHash, 'confirm_recipients' => 1,
+        ])->assertRedirect(route('backend.team-selection.index', $source->event))->assertSessionHas('success');
+        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
+        $customLog = BulkEmailLog::query()->latest('id')->firstOrFail();
+        $this->assertSame($firstReserve->id, (int) $customLog->related_id);
+        $this->assertSame('Dental replacement invitation', data_get($customLog->payload, 'campaign.subject'));
+        $this->assertSame('Please use your personal registration link below.', data_get($customLog->payload, 'campaign.message'));
+        $this->assertNotNull($firstReserve->fresh()->invited_at);
+        $this->assertNull($secondReserve->fresh()->invited_at);
+        $this->assertSame('Normal saved subject', $selectionImport->fresh()->email_subject);
+        $this->assertSame('Normal saved message.', $selectionImport->fresh()->email_message);
+
+        $this->actingAs($manager)->withSession([
+            'team_selection_custom_email_previews.'.$selectionImport->id => $previewHash,
+        ])->post($sendRoute, [
+            ...$payload, 'preview_hash' => $previewHash, 'confirm_recipients' => 1,
+        ])->assertSessionHasErrors('invitation_ids');
+        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
+
+        $secondPayload = [...$payload, 'invitation_ids' => [$secondReserve->id]];
+        $this->actingAs($manager)->post($previewRoute, $secondPayload)->assertOk();
+        $secondPreviewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
+        $second->update(['email' => 'changed-dental-two@example.test']);
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$secondPayload, 'preview_hash' => $secondPreviewHash, 'confirm_recipients' => 1,
+        ])->assertSessionHasErrors('email_preview');
+        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
+        $this->assertNull($secondReserve->fresh()->invited_at);
+
+        $this->actingAs($manager)->post($previewRoute, $secondPayload)->assertOk();
+        $expiredPreviewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
+        $secondReserve->update([
+            'response_deadline_override' => now()->subHours(2),
+            'payment_deadline_override' => now()->subHour(),
+        ]);
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$secondPayload, 'preview_hash' => $expiredPreviewHash, 'confirm_recipients' => 1,
+        ])->assertSessionHasErrors('invitation_ids');
+        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
+        $this->assertNull($secondReserve->fresh()->invited_at);
+        $this->assertTrue((bool) data_get($secondReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
+    }
+
     public function test_final_reminder_cohorts_separate_registration_and_incomplete_clothing_states(): void
     {
         [$source, $team] = $this->selectionSource();

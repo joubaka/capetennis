@@ -381,7 +381,7 @@
                         </form>
                         <div class="table-responsive">
                           <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
+                            <thead><tr><th><span class="visually-hidden">Select</span></th><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
                             <tbody data-team-invitations>
                               @forelse($teamInvitations as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
@@ -393,9 +393,11 @@
                                 @php($openVacancy = $isInactive && $invitation->vacated_roster_rank && !$hasActiveReplacement)
                                 @php($awaitingRestoredInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->declined_at && !$invitation->invited_at)
                                 @php($awaitingActivatedInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && !$invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation'))
+                                @php($canSelectCustomInvitation = $awaitingActivatedInvitation && $invitation->roster_rank && (bool) $recipientEmail)
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
+                                  <td>@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-pending-invitations-{{ $activeImport->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom invitation">@endif</td>
                                   <td><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
                                   <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
                                   <td>
@@ -565,11 +567,24 @@
                         </div>
                         <details class="mt-2"><summary>Review {{ $pendingActivatedRecipients->count() }} exact recipient(s)</summary><div class="small text-muted mt-2">@forelse($pendingActivatedRecipients as $pendingInvitation)<div>{{ $pendingInvitation->player?->full_name ?: 'Player' }} · {{ $recipientEmailFor($pendingInvitation) }}</div>@empty No pending player currently has a valid email address. @endforelse</div></details>
                         @if($pendingActivatedInvitations->count() > $pendingActivatedRecipients->count())<div class="small text-danger mt-2">{{ $pendingActivatedInvitations->count() - $pendingActivatedRecipients->count() }} pending player(s) have no valid email and will remain pending.</div>@endif
+                        <div class="mt-3"><button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#custom-pending-invitation-modal-{{ $activeImport->id }}" @disabled($pendingActivatedRecipients->isEmpty())><i class="ti ti-mail-edit me-1"></i>Create custom invitation for checked players</button><div class="form-text">Tick players in the team tables, then edit and preview the replacement email before sending.</div></div>
                         <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-pending-activated', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Queue invitations for exactly {{ $pendingActivatedRecipients->count() }} reviewed newly activated recipient(s)?');">@csrf
                           <input type="hidden" name="recipient_hash" value="{{ $pendingActivatedRecipientHash }}"><input type="hidden" name="recipient_count" value="{{ $pendingActivatedRecipients->count() }}">
                           <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-pending-activated-{{ $activeImport->id }}" required><label class="form-check-label" for="confirm-pending-activated-{{ $activeImport->id }}">I reviewed and confirm these {{ $pendingActivatedRecipients->count() }} exact recipient(s).</label></div>
                           <button class="btn btn-sm btn-success" @disabled($pendingActivatedRecipients->isEmpty())>Confirm and send {{ $pendingActivatedRecipients->count() }} pending invitation(s)</button>
                         </form>
+                      </div>
+                      <div class="modal fade" id="custom-pending-invitation-modal-{{ $activeImport->id }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-centered">
+                          <form id="custom-pending-invitations-{{ $activeImport->id }}" method="POST" target="_blank" action="{{ route('backend.team-selection.invitations.email.custom-preview', [$event, $activeImport]) }}" class="modal-content">@csrf
+                            <div class="modal-header"><div><h5 class="modal-title">Custom replacement invitation</h5><div class="small text-muted">Only checked, eligible pending replacement players will be included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <div class="modal-body">
+                              <div class="mb-3"><label class="form-label" for="custom-invitation-subject-{{ $activeImport->id }}">Subject</label><input id="custom-invitation-subject-{{ $activeImport->id }}" class="form-control" name="email_subject" maxlength="255" value="{{ old('email_subject', data_get($activeImport->communication_snapshot, 'subject', $activeImport->email_subject)) }}" required></div>
+                              <div><label class="form-label" for="custom-invitation-message-{{ $activeImport->id }}">Message</label><textarea id="custom-invitation-message-{{ $activeImport->id }}" class="form-control" name="email_message" rows="8" maxlength="10000" required>{{ old('email_message', data_get($activeImport->communication_snapshot, 'message', $activeImport->email_message)) }}</textarea><div class="form-text">The saved normal campaign is used as the starting point and will not be changed.</div></div>
+                            </div>
+                            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Review exact recipients and email</button></div>
+                          </form>
+                        </div>
                       </div>
                     @endif
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Sent: {{ $emailLogs->where('status','sent')->count() }}</span><span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span><span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>@if($emailLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>@endif</div>

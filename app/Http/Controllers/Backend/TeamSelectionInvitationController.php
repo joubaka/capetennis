@@ -485,6 +485,74 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', $message);
     }
 
+    public function previewCustomPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    {
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $this->customPendingInvitationData($request);
+        $preview = $service->previewCustomPendingActivatedInvitations(
+            $selectionImport,
+            $data['invitation_ids'],
+            $data['email_subject'],
+            $data['email_message'],
+        );
+        $request->session()->put('team_selection_custom_email_previews.'.$selectionImport->id, $preview['hash']);
+        $invitation = $selectionImport->invitations()
+            ->with(['selectionImport.event', 'region', 'team', 'player'])
+            ->findOrFail($preview['recipients'][0]['id']);
+        $campaign = $preview['campaign'];
+        $recipients = $preview['recipients'];
+        $kind = 'replacement';
+        $subject = $campaign['subject'];
+        $customSend = [
+            'route' => route('backend.team-selection.invitations.email.custom-send', [$event, $selectionImport]),
+            'invitation_ids' => collect($recipients)->pluck('id')->all(),
+            'email_subject' => $campaign['subject'],
+            'email_message' => $campaign['message'],
+            'preview_hash' => $preview['hash'],
+        ];
+
+        return view('backend.team-selection.email-preview', compact(
+            'invitation', 'campaign', 'kind', 'subject', 'recipients', 'customSend'
+        ));
+    }
+
+    public function sendCustomPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    {
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $this->customPendingInvitationData($request, true);
+        $sessionHash = $request->session()->get('team_selection_custom_email_previews.'.$selectionImport->id);
+        if (! is_string($sessionHash) || ! hash_equals($sessionHash, $data['preview_hash'])) {
+            throw ValidationException::withMessages([
+                'email_preview' => 'Preview this exact player selection and custom email before sending.',
+            ]);
+        }
+        $stats = $service->sendCustomPendingActivatedInvitations(
+            $selectionImport,
+            $request->user(),
+            $data['invitation_ids'],
+            $data['email_subject'],
+            $data['email_message'],
+            $data['preview_hash'],
+        );
+        $request->session()->forget('team_selection_custom_email_previews.'.$selectionImport->id);
+
+        return redirect()->route('backend.team-selection.index', $event)
+            ->with('success', "Queued {$stats['queued']} custom replacement invitation(s). The saved normal campaign was not changed.");
+    }
+
+    /** @return array<string, mixed> */
+    private function customPendingInvitationData(Request $request, bool $sending = false): array
+    {
+        return $request->validate([
+            'invitation_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'invitation_ids.*' => ['required', 'integer', 'distinct'],
+            'email_subject' => ['required', 'string', 'max:255'],
+            'email_message' => ['required', 'string', 'max:10000'],
+            'preview_hash' => [$sending ? 'required' : 'nullable', 'string', 'size:64'],
+            'confirm_recipients' => [$sending ? 'accepted' : 'nullable'],
+        ]);
+    }
+
     public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)
     {
         $this->authorizeTeamImport($event, $selectionImport, $team, $request->user());
