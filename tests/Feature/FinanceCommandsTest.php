@@ -96,11 +96,11 @@ class FinanceCommandsTest extends TestCase
         $this->artisan('finance:detect-duplicates')->assertExitCode(0);
     }
 
-    public function test_detect_duplicates_reports_team_payment_order_duplicates(): void
+    public function test_detect_duplicates_allows_withdrawn_history_beside_one_active_team_order(): void
     {
         $user = User::factory()->create();
 
-        // Two team payment orders for the same (team_id, player_id, event_id)
+        // A withdrawn lifecycle is immutable history, not a duplicate active checkout.
         TeamPaymentOrder::create([
             'user_id'            => $user->id,
             'team_id'            => 1,
@@ -109,6 +109,8 @@ class FinanceCommandsTest extends TestCase
             'total_amount'       => 100,
             'wallet_reserved'    => 0,
             'payfast_amount_due' => 100,
+            'withdrawn_at'       => now()->subMinute(),
+            'withdrawn_by'       => $user->id,
         ]);
         TeamPaymentOrder::create([
             'user_id'            => $user->id,
@@ -120,7 +122,7 @@ class FinanceCommandsTest extends TestCase
             'payfast_amount_due' => 100,
         ]);
 
-        $this->artisan('finance:detect-duplicates')->assertExitCode(1);
+        $this->artisan('finance:detect-duplicates')->assertExitCode(0);
     }
 
     // =========================================================================

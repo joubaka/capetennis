@@ -43,6 +43,7 @@ class FinanceDetectDuplicatesCommand extends Command
         if (DB::getSchemaBuilder()->hasTable('team_payment_orders')) {
             $teamDuplicates = DB::table('team_payment_orders')
                 ->select('team_id', 'player_id', 'event_id', DB::raw('COUNT(*) as duplicate_count'))
+                ->whereNull('withdrawn_at')
                 ->groupBy('team_id', 'player_id', 'event_id')
                 ->havingRaw('COUNT(*) > 1')
                 ->get();

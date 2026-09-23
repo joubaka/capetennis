@@ -1199,12 +1199,19 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'response_deadline' => now()->addDay(),
             'payment_deadline' => now()->addDays(2),
         ], User::factory()->create());
+        Queue::fake();
         $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
         $owner = User::findOrFail($invitation->player->userId);
         app(TeamSelectionInvitationService::class)->accept($invitation, $owner);
         $order = app(TeamPaymentService::class)->ensureOrder($owner, $team, $invitation->player, $selectionImport->event, 490.00);
         $order->update(['wallet_reserved' => 100.00, 'payfast_amount_due' => 390.00]);
         app(TeamSelectionInvitationService::class)->attachOrder($order);
+        $order->refresh();
+        $paymentEvidence = $order->only([
+            'pay_status', 'payfast_paid', 'wallet_debited', 'refund_status',
+            'refund_gross', 'refund_fee', 'refund_net', 'refunded_at',
+        ]);
+        $walletTransactionsBefore = DB::table('wallet_transactions')->count();
 
         app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), $owner, 'School commitment');
 
@@ -1213,6 +1220,32 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($invitation->fresh()->payment_started_at);
         $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
         $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame($owner->id, $order->fresh()->withdrawn_by);
+        $firstWithdrawnAt = $order->fresh()->withdrawn_at?->toISOString();
+        app(TeamPaymentService::class)->closeUnpaidLifecycle($order->fresh(), $owner);
+        $this->assertSame($firstWithdrawnAt, $order->fresh()->withdrawn_at?->toISOString());
+        Queue::fake();
+
+        $restored = app(TeamSelectionInvitationService::class)->restoreDeclinedInvitation(
+            $invitation->fresh(), User::factory()->create()
+        );
+        $freshOrder = app(TeamPaymentService::class)->ensureOrder(
+            $owner, $team, $restored->player, $selectionImport->event, 490.00
+        );
+        app(TeamSelectionInvitationService::class)->attachOrder($freshOrder);
+
+        $this->assertNotSame($order->id, $freshOrder->id);
+        $this->assertSame(2, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)->where('event_id', $selectionImport->event_id)->count());
+        $this->assertSame(1, TeamPaymentOrder::query()->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)->where('event_id', $selectionImport->event_id)
+            ->whereNull('withdrawn_at')->count());
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
+        $this->assertFalse((bool) $freshOrder->fresh()->wallet_debited);
+        $this->assertSame($paymentEvidence, $order->fresh()->only(array_keys($paymentEvidence)));
+        $this->assertSame($walletTransactionsBefore, DB::table('wallet_transactions')->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_decline_cannot_overtake_a_paid_order_waiting_for_invitation_sync(): void
@@ -2094,6 +2127,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     public function test_ranking_categories_create_missing_event_categories_and_region_teams_without_duplicates(): void
     {
         [$source, $existingTeam] = $this->selectionSource();
+        $existingTeam->update(['category_event_id' => null]);
         $secondCategory = Category::factory()->create(['name' => 'u/12 Girls']);
         $secondList = RankingList::factory()->create([
             'series_id' => $source->series_id,
@@ -2910,8 +2944,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'pay_status' => false,
         ]);
         $invitation->update(['snapshot_json' => [
-            'restoration' => ['previous_order_id' => $foreignOrder->id],
+            'restoration' => ['previous_order_ids' => [$matchingOrder->id, $foreignOrder->id]],
         ]]);
+        $matchingOrder->update(['withdrawn_at' => null, 'withdrawn_by' => null]);
 
         try {
             $migration->up();
@@ -2921,6 +2956,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         }
 
         $this->assertNull($foreignOrder->fresh()->withdrawn_at);
+        $this->assertNull($matchingOrder->fresh()->withdrawn_at);
         $this->assertSame(100.00, (float) $foreignOrder->fresh()->payfast_amount_due);
     }
 

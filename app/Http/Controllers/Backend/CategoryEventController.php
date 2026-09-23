@@ -55,6 +55,14 @@ class CategoryEventController extends Controller
     abort_unless($event, 404);
     $this->authorize('event.manage', $event);
 
+    if ($event->isMasters()) {
+      abort_unless(
+        $user->hasRole('super-user')
+          || ($user->hasRole('admin') && $user->is_event_admin($event->id)),
+        403
+      );
+    }
+
     if ($registration->status === 'withdrawn') {
       return back()->withErrors('This registration is already withdrawn.');
     }
@@ -68,8 +76,11 @@ class CategoryEventController extends Controller
     // draw_group_registrations are removed atomically inside the transaction.
     app(EntryService::class)->withdrawEntryAsAdmin($registration, $user);
 
-    // Send notification emails outside the transaction
-    $registration->sendWithdrawalEmails('admin');
+    // Masters notifications and replacement updates are owned by the
+    // EntryWithdrawn listener. Keep the generic notification for other events.
+    if (! $event->isMasters()) {
+      $registration->sendWithdrawalEmails('admin');
+    }
 
     if ($registration->is_paid) {
       // Admins may always remove the entry, but a refund is only available

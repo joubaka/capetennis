@@ -205,6 +205,27 @@ class TeamPaymentService
         return $cancelled;
     }
 
+    public function closeUnpaidLifecycle(TeamPaymentOrder $order, ?User $actor): TeamPaymentOrder
+    {
+        return DB::transaction(function () use ($order, $actor): TeamPaymentOrder {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+
+            if ($locked->withdrawn_at) {
+                return $locked;
+            }
+
+            if ($locked->pay_status || $locked->payfast_paid || $locked->wallet_debited) {
+                throw ValidationException::withMessages([
+                    'payment' => 'A paid or debited team checkout cannot be closed as an unpaid lifecycle.',
+                ]);
+            }
+
+            $cancelled = $this->cancelPayment($locked);
+
+            return $this->recordWithdrawal($cancelled, $actor);
+        });
+    }
+
     public function markInvitationPaidPrivately(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($invitation, $actor) {

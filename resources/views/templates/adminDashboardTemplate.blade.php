@@ -1,12 +1,19 @@
 <div class="col-xl-12">
+  @php
+    $primaryDashboardTab = ($tabs['events'] ?? false) ? 'events'
+      : (($tabs['rankings'] ?? false) ? 'rankings'
+      : (($tabs['users'] ?? false) ? 'users'
+      : (($tabs['players'] ?? false) ? 'players' : 'activity')));
+  @endphp
 
   <div class="nav-align-top mb-4">
 
     {{-- ================= TABS ================= --}}
     <ul class="nav nav-pills dashboard-tabs mb-4" role="tablist">
+      @if($tabs['events'] ?? false)
       <li class="nav-item" role="presentation">
         <button
-          class="nav-link active"
+          class="nav-link {{ $primaryDashboardTab === 'events' ? 'active' : '' }}"
           data-bs-toggle="tab"
           data-bs-target="#tab-events"
           type="button"
@@ -15,11 +22,12 @@
           My Events
         </button>
       </li>
+      @endif
 
       @if($tabs['rankings'] ?? false)
         <li class="nav-item" role="presentation">
           <button
-            class="nav-link"
+            class="nav-link {{ $primaryDashboardTab === 'rankings' ? 'active' : '' }}"
             data-bs-toggle="tab"
             data-bs-target="#tab-rankings"
             type="button"
@@ -33,7 +41,7 @@
       @if($tabs['users'] ?? false)
         <li class="nav-item" role="presentation">
           <button
-            class="nav-link"
+            class="nav-link {{ $primaryDashboardTab === 'users' ? 'active' : '' }}"
             data-bs-toggle="tab"
             data-bs-target="#tab-users"
             type="button"
@@ -47,7 +55,7 @@
       @if($tabs['players'] ?? false)
         <li class="nav-item" role="presentation">
           <button
-            class="nav-link"
+            class="nav-link {{ $primaryDashboardTab === 'players' ? 'active' : '' }}"
             data-bs-toggle="tab"
             data-bs-target="#tab-players"
             type="button"
@@ -61,7 +69,7 @@
       @if($tabs['activity'] ?? false)
         <li class="nav-item" role="presentation">
           <button
-            class="nav-link"
+            class="nav-link {{ $primaryDashboardTab === 'activity' ? 'active' : '' }}"
             data-bs-toggle="tab"
             data-bs-target="#tab-activity"
             type="button"
@@ -77,7 +85,8 @@
     <div class="tab-content">
 
       {{-- EVENTS --}}
-      <div class="tab-pane fade show active" id="tab-events" role="tabpanel">
+      @if($tabs['events'] ?? false)
+      <div class="tab-pane fade {{ $primaryDashboardTab === 'events' ? 'show active' : '' }}" id="tab-events" role="tabpanel">
         <div class="card dashboard-events-card mb-4">
           <div class="card-header dashboard-section-header d-flex justify-content-between align-items-center">
             <div>
@@ -112,7 +121,6 @@
                     </div>
                     <div class="dashboard-event-card__meta d-flex flex-wrap gap-3">
                       <span><i class="ti ti-calendar me-1"></i>{{ $event->start_date?->format('d M Y') ?? 'Date not set' }}</span>
-                      <span><i class="ti ti-users me-1"></i>{{ $event->registrations_count }} {{ \Illuminate\Support\Str::plural('entry', $event->registrations_count) }}</span>
                       @if($event->series)
                         <span><i class="ti ti-layers me-1"></i>{{ $event->series->name }}</span>
                       @endif
@@ -175,9 +183,10 @@
           </div>
         </div>
       </div>
+      @endif
 
       {{-- RANKINGS --}}
-      <div class="tab-pane fade" id="tab-rankings" role="tabpanel">
+      <div class="tab-pane fade {{ $primaryDashboardTab === 'rankings' ? 'show active' : '' }}" id="tab-rankings" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">Series List</h5>
           <div class="table-responsive">
@@ -197,7 +206,7 @@
       </div>
 
       {{-- USERS --}}
-      <div class="tab-pane fade" id="tab-users" role="tabpanel">
+      <div class="tab-pane fade {{ $primaryDashboardTab === 'users' ? 'show active' : '' }}" id="tab-users" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">User List</h5>
           <div class="table-responsive">
@@ -217,7 +226,7 @@
       </div>
 
       {{-- PLAYERS --}}
-      <div class="tab-pane fade" id="tab-players" role="tabpanel">
+      <div class="tab-pane fade {{ $primaryDashboardTab === 'players' ? 'show active' : '' }}" id="tab-players" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">Player List</h5>
           <div class="table-responsive">
@@ -238,7 +247,7 @@
 
       {{-- ACTIVITY LOG --}}
       @if($tabs['activity'] ?? false)
-      <div class="tab-pane fade" id="tab-activity" role="tabpanel">
+      <div class="tab-pane fade {{ $primaryDashboardTab === 'activity' ? 'show active' : '' }}" id="tab-activity" role="tabpanel">
         <div class="mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="ti ti-history me-1"></i> Activity Log</h5>

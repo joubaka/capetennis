@@ -219,6 +219,11 @@
 
 @section('content')
 <meta name="csrf-token" content="{{ csrf_token() }}">
+@php
+  $isMasters = $event->isMasters();
+  $canManageMasters = auth()->user()->hasRole('super-user')
+    || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id));
+@endphp
 
 <div class="container-xl">
 
@@ -227,6 +232,19 @@
     'eventWorkspaceIcon' => 'ti-users',
     'eventWorkspaceSubtitle' => 'Entries by category',
   ])
+  @if($isMasters)
+    <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" role="status">
+      <div>
+        <strong>Confirmed Masters roster</strong>
+        <div class="small mt-1">This page contains paid entries used for draws, results, exports and event communication. Manage invitations, reserves, category placement and private payments in the Masters dashboard.</div>
+      </div>
+      @if($canManageMasters)
+        <a class="btn btn-sm btn-primary" href="{{ $mastersBatch ? route('backend.masters.show', $mastersBatch) : route('backend.masters.setup', $event) }}">
+          <i class="ti ti-trophy me-1"></i>Manage Masters
+        </a>
+      @endif
+    </div>
+  @endif
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Entries by category</h2><p class="text-muted mb-0">Manage players, category access and event communication.</p></div>
     <div class="d-flex gap-2 flex-wrap">
@@ -270,14 +288,14 @@
   </button>
 
   {{-- LOCK / UNLOCK --}}
-  @if($categoryEvent->isLocked())
+  @if(!$isMasters && $categoryEvent->isLocked())
     <button type="button"
             class="btn btn-outline-warning btn-sm category-lock-btn"
             data-locked="1"
             data-url-unlock="{{ route('admin.category.unlock', $categoryEvent) }}">
       <i class="ti ti-lock-open me-1"></i>Unlock
     </button>
-  @else
+  @elseif(!$isMasters)
     <button type="button"
             class="btn btn-outline-secondary btn-sm category-lock-btn"
             data-locked="0"
@@ -287,14 +305,14 @@
   @endif
 
   {{-- ADD PLAYER --}}
-  @unless($categoryEvent->isLocked())
+  @if(!$isMasters && !$categoryEvent->isLocked())
     <button type="button"
             class="btn btn-outline-success btn-sm add-player-btn"
             data-category="{{ $categoryEvent->id }}"
             data-locked="0">
       <i class="ti ti-plus me-1"></i>Register offline
     </button>
-  @endunless
+  @endif
 
 </div>
 
@@ -376,7 +394,11 @@
                   @endif
                 </td>
                 <td>
-                  @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
+                  @if($isMasters)
+                    <span class="badge bg-success">Paid</span>
+                  @else
+                    @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
+                  @endif
                 </td>
                <td class="col-actions text-end">
   <div class="dropdown">
@@ -398,6 +420,7 @@
         </button>
       </li>
 
+      @unless($isMasters)
       <li>
         <button type="button"
                 class="dropdown-item move-player-btn"
@@ -407,23 +430,15 @@
           <i class="ti ti-arrows-transfer-up me-1"></i>Move
         </button>
       </li>
+      @endunless
 
-      @if($reg->status !== 'withdrawn')
+      @if($reg->status !== 'withdrawn' && (!$isMasters || $canManageMasters))
         <li>
           <button type="button"
                   class="dropdown-item text-warning withdraw-player-btn"
                   data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                   data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
             <i class="ti ti-user-minus me-1"></i>Withdraw
-          </button>
-        </li>
-      @else
-        <li>
-          <button type="button"
-                  class="dropdown-item text-success reinstate-player-btn"
-                  data-url="{{ route('admin.category.registration.reinstate', $reg) }}"
-                  data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
-            <i class="ti ti-user-plus me-1"></i>Reinstate
           </button>
         </li>
       @endif
@@ -457,6 +472,7 @@
 @include('backend.event.partials.email-modal')
 
 {{-- ADD PLAYER MODAL (SINGLE) --}}
+@unless($isMasters)
 <div class="modal fade" id="addPlayerModal" tabindex="-1" aria-labelledby="addPlayerModalTitle" aria-hidden="true">
   <div class="modal-dialog modal-md modal-dialog-centered">
     <form id="addPlayerForm" class="modal-content">
@@ -545,6 +561,7 @@
     </form>
   </div>
 </div>
+@endunless
 
 
 <script>
@@ -974,68 +991,6 @@ document.addEventListener('click', function(e) {
     })
     .catch(() => toastr.error('Withdraw failed. Please try again.'));
     }); // end Swal.then
-});
-
-    /* =====================
-   REINSTATE PLAYER
-===================== */
-document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.reinstate-player-btn');
-    if (!btn) return;
-    e.preventDefault();
-
-    const playerName = btn.dataset.player || 'this player';
-
-    Swal.fire({
-        title: 'Reinstate ' + playerName + '?',
-        text: 'This will set the player back to active status.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, reinstate',
-        cancelButtonText: 'Cancel',
-        confirmButtonColor: '#28a745',
-    }).then(result => {
-        if (!result.isConfirmed) return;
-
-        fetch(btn.dataset.url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': csrf,
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(r => r.json())
-        .then(res => {
-            if (!res.success) {
-                toastr.error(res.message || 'Reinstate failed.');
-                return;
-            }
-            const row = btn.closest('tr');
-            const card = btn.closest('.category-card');
-            if (row) {
-                row.classList.remove('table-danger', 'text-muted');
-                // Update status badge
-                const statusCell = row.querySelector('.col-status');
-                if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Active</span>';
-                // Remove the "Not refunded" badge if present
-                const refundBadge = row.querySelector('.badge.bg-secondary');
-                if (refundBadge) refundBadge.remove();
-                // Swap reinstate button back to withdraw button
-                btn.closest('li').outerHTML =
-                    `<li><button type="button" class="dropdown-item text-warning withdraw-player-btn"
-                        data-url="${btn.dataset.url.replace('/reinstate', '/withdraw')}"
-                        data-player="${playerName}">
-                        <i class="ti ti-user-minus me-1"></i>Withdraw
-                    </button></li>`;
-            }
-            updateWithdrawnCount(card, -1);
-            reindexRows(card);
-            toastr.success(playerName + ' has been reinstated.');
-            toastr.info(playerName + ' must be re-added to a draw group manually via the Draw → Players & Groups tab.', 'Draw Not Updated', { timeOut: 6000 });
-        })
-        .catch(() => toastr.error('Reinstate failed. Please try again.'));
-    });
 });
 
     /* =====================

@@ -308,7 +308,17 @@ class AuthServiceProvider extends ServiceProvider
         // Lock/unlock categories and add/remove players from category events.
 
         Gate::define('category.manage', function ($user, \App\Models\CategoryEvent $categoryEvent) {
-            return $user->hasAnyRole(['super-user', 'admin', 'convenor']);
+            $eventId = $categoryEvent->event_id;
+            if (!$eventId) {
+                return false;
+            }
+
+            if ($user->is_event_admin($eventId)) {
+                return true;
+            }
+
+            return ! $user->is_event_score_keeper($eventId)
+                && $user->is_convenor($eventId);
         });
 
         // ── Event Finance Authorization (EventFinanceController) ─────────────────────

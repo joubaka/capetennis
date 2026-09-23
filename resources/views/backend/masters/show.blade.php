@@ -38,7 +38,7 @@
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2"><div><h4>Masters invitation batch</h4><p class="text-muted">{{ $batch->event->name ?? 'Event' }} · ranking run {{ $batch->ranking_run_id }}</p></div><div class="d-flex gap-2"><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a>@if($batch->series_id)<a href="{{ route('series.events', $batch->series_id) }}" class="btn btn-outline-secondary">Back to Series</a>@endif</div></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2"><div><h4>Masters invitation batch</h4><p class="text-muted">{{ $batch->event->name ?? 'Event' }} · ranking run {{ $batch->ranking_run_id }}</p></div><div class="d-flex gap-2 flex-wrap"><a href="{{ route('admin.events.entries.new', $batch->event_id) }}" class="btn btn-primary"><i class="ti ti-users me-1"></i>Confirmed Entries</a><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a>@if($batch->series_id)<a href="{{ route('series.events', $batch->series_id) }}" class="btn btn-outline-secondary">Back to Series</a>@endif</div></div>
   <div class="alert {{ $readiness['status'] === 'blocked' ? 'alert-danger' : ($readiness['status'] === 'warning' ? 'alert-warning' : 'alert-success') }}">
     Readiness: {{ ucfirst($readiness['status']) }}
   </div>

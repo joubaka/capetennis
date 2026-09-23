@@ -12,10 +12,12 @@ return new class extends Migration
 
     public function up(): void
     {
+        $backfills = [];
+
         DB::table('team_selection_invitations')
             ->whereNotNull('snapshot_json')
             ->orderBy('id')
-            ->chunkById(200, function ($invitations): void {
+            ->chunkById(200, function ($invitations) use (&$backfills): void {
                 foreach ($invitations as $invitation) {
                     $snapshot = json_decode((string) $invitation->snapshot_json, true);
                     $legacyId = data_get($snapshot, 'restoration.previous_order_id');
@@ -40,17 +42,26 @@ return new class extends Migration
                         }
 
                         if ($order->withdrawn_at === null) {
-                            DB::table('team_payment_orders')
-                                ->where('id', $orderId)
-                                ->where('team_id', $invitation->team_id)
-                                ->where('player_id', $invitation->player_id)
-                                ->where('event_id', $invitation->event_id)
-                                ->whereNull('withdrawn_at')
-                                ->update(['withdrawn_at' => $invitation->declined_at ?: $invitation->updated_at ?: now()]);
+                            $backfills[$orderId] = [
+                                'team_id' => $invitation->team_id,
+                                'player_id' => $invitation->player_id,
+                                'event_id' => $invitation->event_id,
+                                'withdrawn_at' => $invitation->declined_at ?: $invitation->updated_at ?: now(),
+                            ];
                         }
                     }
                 }
             });
+
+        foreach ($backfills as $orderId => $backfill) {
+            DB::table('team_payment_orders')
+                ->where('id', $orderId)
+                ->where('team_id', $backfill['team_id'])
+                ->where('player_id', $backfill['player_id'])
+                ->where('event_id', $backfill['event_id'])
+                ->whereNull('withdrawn_at')
+                ->update(['withdrawn_at' => $backfill['withdrawn_at']]);
+        }
 
         if (! Schema::hasColumn('team_payment_orders', self::ACTIVE_COLUMN)) {
             Schema::table('team_payment_orders', function (Blueprint $table): void {

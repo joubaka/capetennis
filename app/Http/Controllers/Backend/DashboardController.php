@@ -26,12 +26,26 @@ class DashboardController extends Controller
     $managedEventCount = (clone $managedEventsQuery)->count();
     $managedEvents = $managedEventsQuery
       ->with(['eventTypeModel', 'series'])
-      ->withCount('registrations')
       ->orderByRaw('CASE WHEN COALESCE(events.end_date, events.start_date) >= ? THEN 0 ELSE 1 END', [today()->toDateString()])
       ->orderBy('events.start_date')
       ->orderBy('events.id')
       ->simplePaginate(12, ['*'], 'event_page')
       ->withQueryString();
+
+    // Public discovery remains stricter than administrator visibility: even
+    // assigned admins and super-users only see published events here.
+    $upcomingEvents = Event::query()
+      ->select(['id', 'name', 'start_date', 'end_date', 'eventType', 'series_id'])
+      ->where('published', true)
+      ->upcoming()
+      ->with([
+        'eventTypeModel:id,name',
+        'series:id,name',
+      ])
+      ->orderBy('start_date')
+      ->orderBy('id')
+      ->limit(6)
+      ->get();
 
     // Only needed for the create-event modal (super-admin)
     $eventTypes = $user->can('superUser') ? EventType::all() : collect();
@@ -57,6 +71,7 @@ class DashboardController extends Controller
 
     // Determine which tabs to show per user
     $tabs = [
+      'events' => $user->hasRole('super-user') || $managedEventCount > 0,
       'rankings' => $user->can('superUser'),
       'users' => $user->can('superUser'),
       // players visible to admins and super-users
@@ -96,7 +111,8 @@ class DashboardController extends Controller
       'logNames',
       'tabs',
       'managedEvents',
-      'managedEventCount'
+      'managedEventCount',
+      'upcomingEvents'
     ));
   }
 }

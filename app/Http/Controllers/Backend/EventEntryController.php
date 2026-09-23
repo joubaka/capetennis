@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\CategoryEvent;
 use App\Models\Registration;
 use App\Models\CategoryEventRegistration;
+use App\Models\MastersInvitationBatch;
 use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\Mail;
@@ -44,7 +45,15 @@ class EventEntryController extends Controller
       ])
       ->get();
 
-    return view('backend.event.individual.entries', compact('event', 'categoryEvents'));
+    $mastersBatch = $event->isMasters()
+      ? MastersInvitationBatch::query()
+          ->where('event_id', $event->id)
+          ->where('status', '!=', 'restarted')
+          ->latest('id')
+          ->first()
+      : null;
+
+    return view('backend.event.individual.entries', compact('event', 'categoryEvents', 'mastersBatch'));
   }
 
   /**
@@ -53,6 +62,7 @@ class EventEntryController extends Controller
   public function lock(CategoryEvent $categoryEvent)
   {
     $this->authorize('category.manage', $categoryEvent);
+    $this->rejectMastersRosterMutation($categoryEvent->event);
 
     $this->entryService->lockCategory($categoryEvent, auth()->user());
 
@@ -68,6 +78,7 @@ class EventEntryController extends Controller
   public function unlock(CategoryEvent $categoryEvent)
   {
     $this->authorize('category.manage', $categoryEvent);
+    $this->rejectMastersRosterMutation($categoryEvent->event);
 
     $this->entryService->unlockCategory($categoryEvent, auth()->user());
 
@@ -87,6 +98,7 @@ class EventEntryController extends Controller
   public function addPlayer(Request $request, CategoryEvent $categoryEvent)
   {
     $this->authorize('event-draw.view', $categoryEvent->event);
+    $this->rejectMastersRosterMutation($categoryEvent->event);
 
     $data = $request->validate([
       'registration_id' => ['required', 'exists:players,id'],
@@ -128,6 +140,7 @@ class EventEntryController extends Controller
     $categoryEvent = $entry->categoryEvent;
     abort_unless($categoryEvent, 404);
     $this->authorize('event-draw.view', $categoryEvent->event);
+    $this->rejectMastersRosterMutation($categoryEvent->event);
 
     $data = $request->validate([
       'paid' => ['required', 'boolean'],
@@ -165,6 +178,13 @@ class EventEntryController extends Controller
   public function removePlayer(CategoryEvent $categoryEvent, Registration $registration)
   {
     $this->authorize('category.manage', $categoryEvent);
+
+    if ($categoryEvent->event?->isMasters()) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Withdraw Masters players from Confirmed Entries so invitation, replacement and refund handling stay synchronized.',
+      ], 422);
+    }
 
     if ($categoryEvent->isLocked()) {
       return response()->json([
@@ -227,8 +247,8 @@ class EventEntryController extends Controller
     $data = $request->validate([
       'scope' => 'required|in:player,category,event',
       'event_id' => 'required|exists:events,id',
-      'category_event_id' => 'nullable|exists:category_events,id',
-      'registration_id' => 'nullable|exists:registrations,id',
+      'category_event_id' => 'nullable|required_if:scope,category|exists:category_events,id',
+      'registration_id' => 'nullable|required_if:scope,player|exists:registrations,id',
 
       'subject' => 'required|string|max:255',
       'message' => 'required|string',
@@ -253,7 +273,15 @@ class EventEntryController extends Controller
     ========================= */
     if ($data['scope'] === 'player') {
 
-      $reg = Registration::with('players')->findOrFail($data['registration_id']);
+      $reg = Registration::query()
+        ->with('players')
+        ->whereKey($data['registration_id'])
+        ->whereHas('categoryEventRegistrations', function ($query) use ($authEvent) {
+          $query->where('payment_status_id', 1)
+            ->where('status', '!=', 'withdrawn')
+            ->whereHas('categoryEvent', fn ($categoryQuery) => $categoryQuery->where('event_id', $authEvent->id));
+        })
+        ->firstOrFail();
       $emails = $reg->players->pluck('email');
 
       Log::info('📍 Scope: player', [
@@ -265,9 +293,13 @@ class EventEntryController extends Controller
 
       $categoryEvent = CategoryEvent::with([
         'categoryEventRegistrations' => function ($query) {
-            $query->where('payment_status_id', 1)->with('registration.players');
+            $query->where('payment_status_id', 1)
+              ->where('status', '!=', 'withdrawn')
+              ->with('registration.players');
         }
-      ])->findOrFail($data['category_event_id']);
+      ])
+        ->where('event_id', $authEvent->id)
+        ->findOrFail($data['category_event_id']);
 
       $emails = $categoryEvent->categoryEventRegistrations
         ->flatMap(fn($r) => $r->registration->players)
@@ -280,11 +312,13 @@ class EventEntryController extends Controller
 
     } else {
 
-      $event = Event::with(['registrations' => function ($query) {
-          $query->whereHas('categoryEventRegistrations', function ($q) {
-              $q->where('payment_status_id', 1);
+      $event = Event::with(['registrations' => function ($query) use ($authEvent) {
+          $query->whereHas('categoryEventRegistrations', function ($q) use ($authEvent) {
+              $q->where('payment_status_id', 1)
+                ->where('status', '!=', 'withdrawn')
+                ->whereHas('categoryEvent', fn ($categoryQuery) => $categoryQuery->where('event_id', $authEvent->id));
           })->with('players');
-      }])->findOrFail($data['event_id']);
+      }])->findOrFail($authEvent->id);
 
       $emails = $event->registrations
         ->flatMap(fn($r) => $r->players)
@@ -360,6 +394,7 @@ class EventEntryController extends Controller
   public function availableRegistrations(Request $request, CategoryEvent $categoryEvent)
   {
     $this->authorize('event-draw.view', $categoryEvent->event);
+    $this->rejectMastersRosterMutation($categoryEvent->event);
 
     $data = $request->validate([
       'q' => ['nullable', 'string', 'max:100'],
@@ -413,11 +448,23 @@ class EventEntryController extends Controller
       $this->authorize('category.manage', $entry->categoryEvent);
     }
 
+    abort_unless($entry->categoryEvent?->event, 404);
+    $this->rejectMastersRosterMutation($entry->categoryEvent->event);
+
     $request->validate([
       'new_category_id' => ['required', 'exists:category_events,id']
     ]);
 
     $newCategory = CategoryEvent::findOrFail($request->new_category_id);
+
+    if ((int) $newCategory->event_id !== (int) $entry->categoryEvent->event_id) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Players can only be moved between categories in the same event.',
+      ], 422);
+    }
+
+    $this->rejectMastersRosterMutation($newCategory->event);
 
     if ($newCategory->isLocked()) {
       return response()->json([
@@ -458,7 +505,7 @@ class EventEntryController extends Controller
    */
   public function entryDetails(CategoryEventRegistration $entry)
   {
-    $this->authorize('event-draw.view', $entry->categoryEvent?->event ?? new Event());
+    abort_unless(request()->user()?->hasRole('super-user'), 403);
 
     $entry->load(['registration.players', 'categoryEvent.category', 'categoryEvent.event']);
 
@@ -479,7 +526,7 @@ class EventEntryController extends Controller
       })
       ->orderBy('created_at', 'desc')
       ->get(['id', 'pf_payment_id', 'amount_gross', 'amount_fee', 'amount_net',
-             'cape_tennis_fee', 'is_test', 'item_name', 'name_first', 'name_last',
+             'cape_tennis_fee', 'is_test', 'item_name',
              'email_address', 'custom_int4', 'custom_str2', 'custom_str4', 'transaction_type', 'created_at']);
 
     // Wallet payment for this entry (via registration_order_items -> wallet_transactions)
@@ -609,13 +656,22 @@ class EventEntryController extends Controller
         'cape_tennis_fee' => $t->cape_tennis_fee,
         'is_test'       => $t->is_test,
         'item_name'     => $t->item_name,
-        'name_first'    => $t->name_first,
-        'name_last'     => $t->name_last,
-        'payer_name'    => $t->custom_str2 ?: trim(($t->name_first ?? '') . ' ' . ($t->name_last ?? '')),
+        'name_first'    => null,
+        'name_last'     => null,
+        'payer_name'    => $t->custom_str2 ?: null,
         'email_address' => $t->email_address ?: ($t->custom_str4 ?? null),
         'created_at'    => $t->created_at,
       ])->values(),
     ]);
+  }
+
+  private function rejectMastersRosterMutation(?Event $event): void
+  {
+    abort_if(
+      $event?->isMasters(),
+      422,
+      'Manage Masters invitations, reserves, categories and private payments from the Masters dashboard.'
+    );
   }
 
 }

@@ -1719,12 +1719,6 @@ Route::delete(
     [CategoryEventController::class, 'withdraw']
   )->middleware('role:super-user|admin|convenor')->name('admin.category.registration.withdraw');
 
-  // Admin reinstate a withdrawn player
-  Route::post(
-    '/admin/category-registration/{registration}/reinstate',
-    [CategoryEventController::class, 'reinstate']
-  )->name('admin.category.registration.reinstate');
-
   // Admin refund chooser (after admin withdrawal)
   Route::get(
     '/admin/event/{event}/registration/{registration}/refund',

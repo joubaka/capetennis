@@ -240,13 +240,15 @@ class MastersInvitationController extends Controller
             abort_unless($event && $event->id === $invitation->event_id, 404);
 
             app(\App\Domain\Entries\Services\EntryService::class)->withdrawEntryAsAdmin($registration, $request->user());
-            $registration->sendWithdrawalEmails('admin');
-            if ($event->canWithdraw()) {
+            $refundAllowed = now()->lte($event->withdrawalCloseAt());
+            if ($refundAllowed && $request->user()->hasRole('super-user')) {
                 return redirect()->route('admin.registration.refund.choose', [$event, $registration])
                     ->with('success', 'Paid player removed by admin. Choose whether a refund should be issued.');
             }
 
-            return back()->with('success', 'Paid player removed by admin and deactivated (no refund — withdrawal deadline passed).');
+            return back()->with('success', $refundAllowed
+                ? 'Paid player removed by admin and deactivated (no refund issued).'
+                : 'Paid player removed by admin and deactivated (no refund — withdrawal deadline passed).');
         }
         $service->removeByAdmin($invitation, $request->user());
         return back()->with('success', 'Player removed by admin and retained in the audit history.');

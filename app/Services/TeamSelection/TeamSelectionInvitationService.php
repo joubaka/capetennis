@@ -365,7 +365,7 @@ final class TeamSelectionInvitationService
                             'payment' => 'Payment has already been received or is being finalized. The invitation cannot be declined.',
                         ]);
                     }
-                    app(TeamPaymentService::class)->cancelPayment($order);
+                    app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $user);
                 }
             }
             $rank = $locked->roster_rank;
@@ -461,9 +461,8 @@ final class TeamSelectionInvitationService
             if ($invitation->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($invitation->order_id);
                 if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
-                    app(TeamPaymentService::class)->cancelPayment($order);
-                }
-                if ($order) {
+                    app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $actor);
+                } elseif ($order) {
                     app(TeamPaymentService::class)->recordWithdrawal($order, $actor);
                 }
             }
@@ -506,7 +505,7 @@ final class TeamSelectionInvitationService
                 if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
                     throw ValidationException::withMessages(['replacement' => 'Payment has already been received; use the withdrawal and refund workflow.']);
                 }
-                if ($order) app(TeamPaymentService::class)->cancelPayment($order);
+                if ($order) app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $actor);
             }
 
             $rank = $locked->roster_rank;
@@ -948,7 +947,7 @@ final class TeamSelectionInvitationService
                 if ($order && ($order->pay_status || $order->payfast_paid || $order->wallet_debited)) {
                     throw ValidationException::withMessages(['replacement' => 'Payment has already been received; use the withdrawal and refund workflow.']);
                 }
-                if ($order) app(TeamPaymentService::class)->cancelPayment($order);
+                if ($order) app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $actor);
             }
 
             $rank = $locked->roster_rank;
@@ -1357,7 +1356,7 @@ final class TeamSelectionInvitationService
                             return null;
                         }
                         if ($order) {
-                            app(TeamPaymentService::class)->cancelPayment($order);
+                            app(TeamPaymentService::class)->closeUnpaidLifecycle($order, null);
                         }
                     }
 
@@ -1646,7 +1645,7 @@ final class TeamSelectionInvitationService
             if ($helper->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($helper->order_id);
                 if ($order && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited) {
-                    app(TeamPaymentService::class)->cancelPayment($order);
+                    app(TeamPaymentService::class)->closeUnpaidLifecycle($order, null);
                 }
             }
 

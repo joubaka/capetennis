@@ -58,7 +58,7 @@ $configData = Helper::appClasses();
 
     <form id="formAuthentication" class="mb-3" action="{{ route('login') }}" method="POST">
         @csrf
-        @if(request()->filled('redirect') && str_starts_with(request('redirect'), '/'))
+        @if(app(\App\Support\Auth\PostLoginDestination::class)->isSafeLocalPath(request('redirect')))
             <input type="hidden" name="redirect" value="{{ request('redirect') }}">
         @endif
           <div class="mb-3">

@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Laravel\Fortify\Contracts\LoginResponse;
 use App\Http\Responses\LoginResponse as CustomLoginResponse;
+use App\Http\Responses\TwoFactorLoginResponse as CustomTwoFactorLoginResponse;
+use Laravel\Fortify\Contracts\TwoFactorLoginResponse;
 use App\Models\CategoryEventRegistration;
 use App\Models\ClothingOrder;
 use App\Models\Order;
@@ -51,6 +53,7 @@ class AppServiceProvider extends ServiceProvider
 
     // ✅ Override Fortify login redirect behaviour
     $this->app->singleton(LoginResponse::class, CustomLoginResponse::class);
+    $this->app->singleton(TwoFactorLoginResponse::class, CustomTwoFactorLoginResponse::class);
 
     // ---------------------------------------------------------------
     // Draw domain — canonical services

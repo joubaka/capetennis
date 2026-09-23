@@ -407,6 +407,20 @@ class Event extends Model
     return app(EventLifecycleService::class)->snapshot($this)['label'];
   }
 
+  /** Events that are still running or have not started yet. */
+  public function scopeUpcoming(Builder $query): Builder
+  {
+    return $query->where(function (Builder $upcomingQuery) {
+      $upcomingQuery
+        ->whereDate('end_date', '>=', today())
+        ->orWhere(function (Builder $withoutEndDate) {
+          $withoutEndDate
+            ->whereNull('end_date')
+            ->whereDate('start_date', '>=', today());
+        });
+    });
+  }
+
   // app/Models/Event.php
 
  

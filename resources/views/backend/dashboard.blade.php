@@ -39,6 +39,7 @@
   .dashboard-event-card { border: 1px solid #ebeaf0; border-radius: .75rem; padding: 1rem; height: 100%; }
   .dashboard-event-card__meta { color: #6f6b7d; font-size: .875rem; }
   .dashboard-event-card__actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .upcoming-event-card { border: 1px solid #ebeaf0; border-radius: .75rem; padding: 1rem; height: 100%; background: #fff; }
   @media (max-width: 767.98px) {
     .dashboard-section-header { align-items: flex-start !important; gap: 1rem; }
     .dashboard-event-name { max-width: 180px; }
@@ -68,7 +69,10 @@
 <div class="row">
 
   {{-- ================= USER SIDEBAR ================= --}}
-  <div class="col-xl-4 col-lg-5 col-md-5 order-1 order-md-0">
+  @php
+    $showDashboardTabs = collect($tabs)->contains(true);
+  @endphp
+  <div class="{{ $showDashboardTabs ? 'col-xl-4 col-lg-5 col-md-5' : 'col-12' }} order-1 order-md-0">
     <div class="card mb-4">
       <div class="card-body text-center">
 
@@ -79,7 +83,15 @@
         <h4 class="mb-0">{{ $user->userName ?? $user->name }}</h4>
         <small class="text-muted">{{ $user->email }}</small>
 
-        @if($managedEventCount > 0)
+        @if($user->hasRole('super-user'))
+        <div class="d-flex justify-content-center mt-3">
+          <div class="text-center">
+            <span class="badge bg-label-primary p-2 mb-1"><i class="ti ti-shield ti-sm"></i></span>
+            <p class="fw-semibold mb-0">Platform administrator</p>
+            <small class="text-muted">{{ $managedEventCount }} events available</small>
+          </div>
+        </div>
+        @elseif($managedEventCount > 0)
         <div class="d-flex justify-content-center mt-3">
           <div class="text-center">
             <span class="badge bg-label-primary p-2 mb-1">
@@ -264,11 +276,22 @@
     </div>
   </div>
 
+  @if($showDashboardTabs)
   <div class="col-xl-8 col-lg-7 col-md-7">
     @include('templates.adminDashboardTemplate')
+    @include('backend.partials.upcoming-events')
   </div>
+  @endif
 
 </div>
+
+@unless($showDashboardTabs)
+  <div class="row mt-4">
+    <div class="col-12">
+      @include('backend.partials.upcoming-events')
+    </div>
+  </div>
+@endunless
 
 <div class="modal fade" id="addProfileModal">
   <div class="modal-dialog">

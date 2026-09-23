@@ -355,13 +355,16 @@ class SuperAdminPlayerDuplicateTest extends TestCase
     public function test_bulk_quick_merge_routes_identical_overlap_to_one_canonical_keeper(): void
     {
         $firstKeep = Player::factory()->create([
-            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01', 'email' => 'same@example.test',
+            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01',
+            'gender' => 1, 'email' => 'same@example.test', 'cellNr' => '0825550202',
         ]);
         $secondKeep = Player::factory()->create([
-            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01', 'email' => 'same@example.test',
+            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01',
+            'gender' => 1, 'email' => 'same@example.test', 'cellNr' => '0825550202',
         ]);
         $empty = Player::factory()->create([
-            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01', 'email' => 'same@example.test',
+            'name' => 'Jamie', 'surname' => 'Smith', 'dateOfBirth' => '2010-01-01',
+            'gender' => 1, 'email' => 'same@example.test', 'cellNr' => '0825550202',
         ]);
         foreach ([$firstKeep, $secondKeep] as $keep) {
             $registrationId = DB::table('registrations')->insertGetId(['created_at' => now(), 'updated_at' => now()]);
