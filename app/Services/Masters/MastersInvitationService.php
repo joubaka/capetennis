@@ -1098,6 +1098,105 @@ final class MastersInvitationService
                 ]);
             }
 
+            // A legacy admin entry may already be the canonical active entry for
+            // this player/category. Resolve that state before cancelling the
+            // pending checkout; creating another admin entry would duplicate the
+            // roster row and its zero-value audit transaction.
+            $activePaidEntries = CategoryEventRegistration::query()
+                ->select('category_event_registrations.*')
+                ->join('player_registrations as masters_pr', 'masters_pr.registration_id', '=', 'category_event_registrations.registration_id')
+                ->where('masters_pr.player_id', $locked->player_id)
+                ->where('category_event_registrations.category_event_id', $locked->category_event_id)
+                ->where('category_event_registrations.status', 'active')
+                ->where('category_event_registrations.payment_status_id', 1)
+                ->whereNull('category_event_registrations.deleted_at')
+                ->lockForUpdate()
+                ->get();
+
+            if ($paidItem = $this->paidOrderItemFor($locked)) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'This player already has a gateway-paid entry. Reconcile that payment instead of recording a private payment.',
+                ]);
+            }
+
+            if ($activePaidEntries->count() > 1) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'Multiple active paid entries exist for this player and category. Resolve the duplicate records before marking a private payment.',
+                ]);
+            }
+
+            $existingAdminEntry = $activePaidEntries->first();
+            if ($existingAdminEntry) {
+                $hasSafeAdminState = (int) $existingAdminEntry->registration_id !== (int) $locked->registration_id
+                    && $existingAdminEntry->isAdminEntry()
+                    && $existingAdminEntry->pf_transaction_id === null
+                    && in_array($existingAdminEntry->refund_status, [null, '', 'not_refunded'], true)
+                    && (float) ($existingAdminEntry->refund_gross ?? 0) === 0.0;
+
+                $adminTransactions = DB::table('transactions_pf')
+                    ->where('event_id', $locked->event_id)
+                    ->where('category_event_id', $locked->category_event_id)
+                    ->where('player_id', $locked->player_id)
+                    ->whereNull('pf_payment_id')
+                    ->where('item_name', 'Admin Entry')
+                    ->when(
+                        \Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'archived_at'),
+                        fn ($query) => $query->whereNull('archived_at')
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                $allTransactions = DB::table('transactions_pf')
+                    ->where('event_id', $locked->event_id)
+                    ->where('category_event_id', $locked->category_event_id)
+                    ->where('player_id', $locked->player_id)
+                    ->when(
+                        \Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'archived_at'),
+                        fn ($query) => $query->whereNull('archived_at')
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                if (! $hasSafeAdminState
+                    || $adminTransactions->count() !== 1
+                    || $allTransactions->count() !== 1
+                    || (float) $adminTransactions->first()->amount_gross !== 0.0) {
+                    throw ValidationException::withMessages([
+                        'invitation' => 'An existing paid entry cannot be safely identified as one unreconciled admin entry. Resolve its payment history before continuing.',
+                    ]);
+                }
+
+                app(PaymentOrchestrator::class)->cancelPayment($order);
+                $this->softDeleteUnpaidDraftEntry($locked->registration_id, $locked->category_event_id);
+
+                if ($existingAdminEntry->admin_payment_status !== 'paid') {
+                    $existingAdminEntry = app(EntryService::class)
+                        ->setAdminPaymentStatus($existingAdminEntry, true, $actor);
+                }
+
+                $locked->update([
+                    'registration_id' => $existingAdminEntry->registration_id,
+                    'order_id' => null,
+                    'status' => MastersInvitation::PAID_CONFIRMED,
+                    'paid_at' => now(),
+                ]);
+
+                activity('masters')->performedOn($locked)->causedBy($actor)
+                    ->withProperties([
+                        'invitation_id' => $locked->id,
+                        'player_id' => $locked->player_id,
+                        'category_event_id' => $locked->category_event_id,
+                        'cancelled_order_id' => $cancelledOrderId,
+                        'replaced_registration_id' => $replacedRegistrationId,
+                        'admin_registration_id' => $existingAdminEntry->registration_id,
+                        'collection_status' => 'paid_privately',
+                        'reconciled_payment' => false,
+                        'linked_existing_admin_entry' => true,
+                    ])->log('Masters invitation linked to existing admin entry and marked paid privately (not reconciled)');
+
+                return $locked->refresh();
+            }
+
             app(PaymentOrchestrator::class)->cancelPayment($order);
 
             $this->softDeleteUnpaidDraftEntry($locked->registration_id, $locked->category_event_id);
