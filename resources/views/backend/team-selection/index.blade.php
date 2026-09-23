@@ -138,6 +138,9 @@
       @php($allLinkedImportedRecipients = $regionImportedCohorts->get('linked_all', collect()))
       @php($unpublishedTeamCount = $regionTeams->where('published', false)->count())
       @php($selectionSent = $activeImport?->status === 'sent')
+      @php($pendingActivatedInvitations = $activeImport?->invitations?->filter(fn($invitation) => $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->roster_rank && !$invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation')) ?? collect())
+      @php($pendingActivatedRecipients = $pendingActivatedInvitations->filter(fn($invitation) => (bool) $recipientEmailFor($invitation)))
+      @php($pendingActivatedRecipientHash = hash('sha256', $pendingActivatedRecipients->map(fn($invitation) => $invitation->id.'|'.mb_strtolower(trim((string) $recipientEmailFor($invitation))))->sort()->values()->implode("\n")))
       @php($selectedInvitations = $activeImport?->invitations?->whereIn('status', [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED]) ?? collect())
       @php($outstandingRegistrationCount = $selectedInvitations->whereNotIn('status', [\App\Models\TeamSelectionInvitation::PAID_CONFIRMED])->count())
       @php($regionalOpenPlaces = $regionTeams->sum(fn($team) => max(0, (int) $team->num_team_members - $selectedInvitations->where('team_id', $team->id)->count())))
@@ -389,6 +392,7 @@
                                 @php($hasActiveReplacement = $teamInvitations->contains(fn($candidate) => (int) $candidate->promoted_from_id === (int) $invitation->id && in_array($candidate->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED], true)))
                                 @php($openVacancy = $isInactive && $invitation->vacated_roster_rank && !$hasActiveReplacement)
                                 @php($awaitingRestoredInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->declined_at && !$invitation->invited_at)
+                                @php($awaitingActivatedInvitation = $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && !$invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation'))
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
@@ -408,11 +412,11 @@
                                   <td>@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
                                   <td><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>@if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif</td>
                                   <td>
-                                    <div>{{ $awaitingRestoredInvitation ? 'Restored — invitation not sent' : ($delivery ? ucfirst($delivery->status) : 'Not sent') }}</div>
+                                    <div>{{ $awaitingRestoredInvitation ? 'Restored — invitation not sent' : ($awaitingActivatedInvitation ? 'Pending invitation — not sent' : ($delivery ? ucfirst($delivery->status) : 'Not sent')) }}</div>
                                     @if($activeImport->status === 'sent' && !$isReserve)
                                       <div class="d-flex flex-wrap gap-1 mt-1">
                                         <a class="btn btn-xs btn-outline-secondary" target="_blank" href="{{ route('backend.team-selection.invitations.email.view', [$event, $activeImport, $invitation]) }}">View email</a>
-                                        @if(!$awaitingRestoredInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                        @if(!$awaitingRestoredInvitation && !$awaitingActivatedInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                           <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Resend the saved invitation email to this player?');">@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
                                         @endif
                                       </div>
@@ -436,7 +440,7 @@
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.mark-paid-privately', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Confirm that payment was collected privately for this player? This will mark the team place paid, cancel any pending checkout, and will NOT be recorded as a PayFast reconciliation. No email will be sent.');">@csrf<button class="dropdown-item text-primary">Mark paid privately (not reconciled)</button></form>
                                     @endif
                                     @if($isReserve && $reserveActivationRank)
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place?');">@csrf<button class="dropdown-item text-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place? No invitation email will be sent. You can review and send all pending newly activated invitations together later.');">@csrf<button class="dropdown-item text-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
                                     @endif
                                     @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank)
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.restore', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('{{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Restore this withdrawn player' : 'Restore this player' }} at Rank {{ $invitation->vacated_roster_rank }}? Active players at and below that rank will move down. {{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Their old payment and withdrawal history stays unchanged, and they must register and pay again through a fresh order. ' : '' }}No email will be sent.');">@csrf<button class="dropdown-item text-primary">Restore at Rank {{ $invitation->vacated_roster_rank }}</button></form>
@@ -553,6 +557,21 @@
                   </form>
                   @php($emailLogs = $activeImport->invitations->flatMap->emailLogs)
                   @if($activeImport->status === 'sent')
+                    @if($pendingActivatedInvitations->isNotEmpty())
+                      <div class="alert alert-warning mt-3 mb-3">
+                        <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start">
+                          <div><strong>{{ $pendingActivatedInvitations->count() }} newly activated invitation(s) pending.</strong><div class="small">No email was sent during the roster changes. Review the exact recipients, then confirm one bulk send using the saved campaign and deadlines.</div></div>
+                          <span class="badge bg-label-warning">{{ $pendingActivatedRecipients->count() }} ready to send</span>
+                        </div>
+                        <details class="mt-2"><summary>Review {{ $pendingActivatedRecipients->count() }} exact recipient(s)</summary><div class="small text-muted mt-2">@forelse($pendingActivatedRecipients as $pendingInvitation)<div>{{ $pendingInvitation->player?->full_name ?: 'Player' }} · {{ $recipientEmailFor($pendingInvitation) }}</div>@empty No pending player currently has a valid email address. @endforelse</div></details>
+                        @if($pendingActivatedInvitations->count() > $pendingActivatedRecipients->count())<div class="small text-danger mt-2">{{ $pendingActivatedInvitations->count() - $pendingActivatedRecipients->count() }} pending player(s) have no valid email and will remain pending.</div>@endif
+                        <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-pending-activated', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Queue invitations for exactly {{ $pendingActivatedRecipients->count() }} reviewed newly activated recipient(s)?');">@csrf
+                          <input type="hidden" name="recipient_hash" value="{{ $pendingActivatedRecipientHash }}"><input type="hidden" name="recipient_count" value="{{ $pendingActivatedRecipients->count() }}">
+                          <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-pending-activated-{{ $activeImport->id }}" required><label class="form-check-label" for="confirm-pending-activated-{{ $activeImport->id }}">I reviewed and confirm these {{ $pendingActivatedRecipients->count() }} exact recipient(s).</label></div>
+                          <button class="btn btn-sm btn-success" @disabled($pendingActivatedRecipients->isEmpty())>Confirm and send {{ $pendingActivatedRecipients->count() }} pending invitation(s)</button>
+                        </form>
+                      </div>
+                    @endif
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Sent: {{ $emailLogs->where('status','sent')->count() }}</span><span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span><span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>@if($emailLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>@endif</div>
                     <form method="POST" action="{{ route('backend.team-selection.deadlines.extend', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf @method('PATCH')
                       <div class="col-md-3"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ $activeImport->response_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>

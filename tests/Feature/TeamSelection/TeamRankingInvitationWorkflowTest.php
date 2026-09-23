@@ -3158,6 +3158,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_manager_can_activate_reserves_into_unfilled_configured_team_places(): void
     {
+        Queue::fake();
         [$source, $team] = $this->selectionSource();
         $manager = User::factory()->create();
         $teamType = DB::table('eventtypes')->insertGetId([
@@ -3176,6 +3177,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $firstReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $first, $manager, 'Fill open place seven');
         $secondReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $second, $manager, 'Fill open place eight');
         $thirdReserve = $service->addSystemPlayerAsReserve($selectionImport, $team, $third, $manager, 'Remain in reserve queue');
+        $emailLogsBeforeActivation = BulkEmailLog::query()->count();
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
@@ -3198,6 +3200,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::INVITED, $firstReserve->fresh()->status);
         $this->assertSame(TeamSelectionInvitation::INVITED, $secondReserve->fresh()->status);
         $this->assertSame(TeamSelectionInvitation::RESERVE, $thirdReserve->fresh()->status);
+        $this->assertSame($emailLogsBeforeActivation, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
         $this->assertSame(
             [$first->id, $second->id],
             TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
@@ -3212,6 +3216,208 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
             $source->event, $selectionImport, $thirdReserve,
         ]))->assertSessionHasErrors('activation');
+    }
+
+    public function test_silent_activation_suppresses_helper_team_auto_replacement_mail(): void
+    {
+        Queue::fake();
+        [$source, $primaryTeam, $players] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Silent helper cascade event', 'type' => 2, 'code' => 'silent-helper-cascade-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ], $manager);
+        $selectionImport->update(['auto_replacement_enabled' => true]);
+        $primaryTeam->update(['num_team_members' => 3]);
+        $primaryReserve = $selectionImport->invitations()->where('team_id', $primaryTeam->id)
+            ->where('player_id', $players->get(2)->id)->firstOrFail();
+
+        $helperTeam = new Team();
+        $helperTeam->forceFill([
+            'user_id' => $manager->id,
+            'personal_team' => false,
+            'name' => 'Silent helper team',
+            'region_id' => $primaryTeam->region_id,
+            'num_team_members' => 1,
+            'published' => true,
+            'year' => $primaryTeam->year,
+        ])->save();
+        $template = $selectionImport->invitations()->where('team_id', $primaryTeam->id)->firstOrFail();
+        $originalHelperPlayer = Player::factory()->create();
+        TeamPlayer::create([
+            'team_id' => $helperTeam->id,
+            'player_id' => $originalHelperPlayer->id,
+            'rank' => 1,
+            'pay_status' => 0,
+        ]);
+        $helperSelected = TeamSelectionInvitation::create([
+            'import_id' => $selectionImport->id,
+            'event_id' => $selectionImport->event_id,
+            'region_id' => $selectionImport->region_id,
+            'team_id' => $helperTeam->id,
+            'player_id' => $originalHelperPlayer->id,
+            'ranking_list_id' => $template->ranking_list_id,
+            'ranking_position' => 1,
+            'queue_position' => 1,
+            'total_points' => 0,
+            'roster_rank' => 1,
+            'status' => TeamSelectionInvitation::INVITED,
+            'invited_at' => now(),
+        ]);
+        $service = app(TeamSelectionInvitationService::class);
+        $helperPlacement = $service->replaceWithSystemPlayer(
+            $helperSelected,
+            $primaryReserve->player,
+            $manager,
+            'Temporary helper placement',
+        );
+        $helperReserve = $service->addSystemPlayerAsReserve(
+            $selectionImport->fresh(),
+            $helperTeam,
+            Player::factory()->create(),
+            $manager,
+            'Replacement if the helper returns to the primary team',
+        );
+        $logCountBeforeActivation = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+            $source->event, $selectionImport, $primaryReserve,
+        ]))->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'No email was sent'));
+
+        $this->assertSame($logCountBeforeActivation, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $helperPlacement->fresh()->status);
+        $promotedHelperReserve = $helperReserve->fresh();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $promotedHelperReserve->status);
+        $this->assertSame(1, $promotedHelperReserve->roster_rank);
+        $this->assertNull($promotedHelperReserve->invited_at);
+        $this->assertTrue((bool) data_get($promotedHelperReserve->snapshot_json, 'activation.pending_manual_invitation'));
+        $this->assertSame('helper_team_cascade', data_get($promotedHelperReserve->snapshot_json, 'activation.source'));
+    }
+
+    public function test_sent_campaign_activations_are_silent_and_manager_sends_all_pending_invitations_once(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $teamType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Manual activated invitation event', 'type' => 2, 'code' => 'manual-activated-invitation-event',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamType]);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+            'email_subject' => 'Saved activated-player campaign',
+            'email_message' => 'Use this saved campaign for newly activated players.',
+        ], $manager);
+        $team->update(['num_team_members' => 4]);
+        $service = app(TeamSelectionInvitationService::class);
+        $first = Player::factory()->create(['name' => 'Pending', 'surname' => 'One']);
+        $second = Player::factory()->create(['name' => 'Pending', 'surname' => 'Two']);
+        $firstReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $first, $manager, 'First open place');
+        $secondReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $second, $manager, 'Second open place');
+        $initialLogCount = BulkEmailLog::query()->count();
+        Queue::fake();
+
+        foreach ([$firstReserve, $secondReserve] as $reserve) {
+            $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
+                $source->event, $selectionImport, $reserve,
+            ]))->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'No email was sent'));
+        }
+
+        $this->assertSame($initialLogCount, BulkEmailLog::query()->count());
+        Queue::assertNothingPushed();
+        foreach ([$firstReserve, $secondReserve] as $reserve) {
+            $activated = $reserve->fresh();
+            $this->assertSame(TeamSelectionInvitation::INVITED, $activated->status);
+            $this->assertNull($activated->invited_at);
+            $this->assertTrue((bool) data_get($activated->snapshot_json, 'activation.pending_manual_invitation'));
+        }
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()
+            ->assertSee('2 newly activated invitation(s) pending.')
+            ->assertSee('Confirm and send 2 pending invitation(s)')
+            ->assertSee('Pending invitation — not sent');
+
+        $sendRoute = route('backend.team-selection.invitations.email.send-pending-activated', [
+            $source->event, $selectionImport,
+        ]);
+        $recipientRows = collect([$firstReserve, $secondReserve])->mapWithKeys(fn (TeamSelectionInvitation $invitation) => [
+            $invitation->id => mb_strtolower(trim((string) $invitation->player->email)),
+        ]);
+        $recipientHash = hash('sha256', $recipientRows
+            ->map(fn (string $email, int $id) => $id.'|'.$email)->sort()->values()->implode("\n"));
+        $confirmedRecipients = [
+            'confirm_recipients' => '1',
+            'recipient_count' => 2,
+            'recipient_hash' => $recipientHash,
+        ];
+        $this->actingAs(User::factory()->create())->post($sendRoute, [
+            ...$confirmedRecipients,
+        ])->assertForbidden();
+        $this->assertSame($initialLogCount, BulkEmailLog::query()->count());
+
+        $foreignEvent = Event::factory()->create();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-pending-activated', [
+            $foreignEvent, $selectionImport,
+        ]), $confirmedRecipients)->assertNotFound();
+        $this->assertSame($initialLogCount, BulkEmailLog::query()->count());
+
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$confirmedRecipients,
+            'recipient_hash' => str_repeat('0', 64),
+        ])->assertSessionHasErrors('email');
+        $this->assertSame($initialLogCount, BulkEmailLog::query()->count());
+        $this->assertTrue((bool) data_get($firstReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
+
+        BulkEmailLog::create([
+            'mail_type' => 'team_selection_invitation',
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $firstReserve->id,
+            'recipient_email' => $firstReserve->player->email,
+            'recipient_name' => $firstReserve->player->full_name,
+            'status' => 'sent',
+            'payload' => ['kind' => 'historical_invitation'],
+            'queued_at' => now()->subDay(),
+            'sent_at' => now()->subDay(),
+        ]);
+        $logCountWithHistoricalDelivery = BulkEmailLog::query()->count();
+
+        $this->actingAs($manager)->post($sendRoute, $confirmedRecipients)
+            ->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 2'));
+        $this->assertSame($logCountWithHistoricalDelivery + 2, BulkEmailLog::query()->count());
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 2);
+        $pendingLogs = BulkEmailLog::query()->whereIn('related_id', [$firstReserve->id, $secondReserve->id])->get();
+        $manualActivationLogs = $pendingLogs->filter(fn (BulkEmailLog $log) => data_get($log->payload, 'campaign.subject') === 'Saved activated-player campaign');
+        $this->assertCount(2, $manualActivationLogs);
+        foreach ([$firstReserve, $secondReserve] as $reserve) {
+            $sent = $reserve->fresh();
+            $this->assertNotNull($sent->invited_at);
+            $this->assertFalse((bool) data_get($sent->snapshot_json, 'activation.pending_manual_invitation'));
+        }
+
+        $this->actingAs($manager)->post($sendRoute, $confirmedRecipients)
+            ->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 0'));
+        $this->assertSame($logCountWithHistoricalDelivery + 2, BulkEmailLog::query()->count());
+        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 2);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionImport::class,
+            'subject_id' => $selectionImport->id,
+            'description' => 'regional manager sent pending activated team selection invitations',
+        ]);
     }
 
     public function test_final_reminder_cohorts_separate_registration_and_incomplete_clothing_states(): void

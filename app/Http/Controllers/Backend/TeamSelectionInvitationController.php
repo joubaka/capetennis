@@ -454,10 +454,35 @@ class TeamSelectionInvitationController extends Controller
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $activated = $service->activateReserveInOpenPlace($invitation, $request->user());
-        $delivery = $selectionImport->status === 'sent' ? ' The invitation email was queued.' : '';
+        $delivery = $selectionImport->status === 'sent'
+            ? ' No email was sent; this player is pending the next confirmed bulk invitation send.'
+            : ' No email was sent; this player will be included when the draft campaign is confirmed.';
 
         return back()->with('success', ($activated->player?->full_name ?? 'The reserve')
             .' is now active at Rank '.$activated->roster_rank.'.'.$delivery);
+    }
+
+    public function sendPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    {
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate([
+            'confirm_recipients' => ['accepted'],
+            'recipient_hash' => ['required', 'string', 'size:64'],
+            'recipient_count' => ['required', 'integer', 'min:0'],
+        ]);
+        $stats = $service->sendPendingActivatedInvitations(
+            $selectionImport,
+            $request->user(),
+            $data['recipient_hash'],
+            (int) $data['recipient_count'],
+        );
+
+        $message = "Queued {$stats['queued']} pending newly activated invitation(s) using the saved campaign.";
+        if ($stats['skipped_missing_email'] > 0) {
+            $message .= " {$stats['skipped_missing_email']} player(s) remain pending because no valid email is available.";
+        }
+
+        return back()->with('success', $message);
     }
 
     public function searchPlayers(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team)

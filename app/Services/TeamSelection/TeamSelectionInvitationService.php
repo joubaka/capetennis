@@ -1512,32 +1512,136 @@ final class TeamSelectionInvitationService
             $locked->update([
                 'status' => TeamSelectionInvitation::INVITED,
                 'roster_rank' => $openRank,
-                'invited_at' => $lockedImport->status === 'sent' ? now() : null,
+                'invited_at' => null,
                 'response_deadline_override' => $replacementDeadlines[0],
                 'payment_deadline_override' => $replacementDeadlines[1],
+                'snapshot_json' => array_replace_recursive($locked->snapshot_json ?? [], [
+                    'activation' => [
+                        'activated_at' => now()->toIso8601String(),
+                        'activated_by_user_id' => $actor->id,
+                        'pending_manual_invitation' => $lockedImport->status === 'sent',
+                    ],
+                ]),
             ]);
-            $this->moveFromHelperTeamsToPrimaryTeam($locked);
-
-            if ($lockedImport->status === 'sent') {
-                $email = $this->contactEmail($locked);
-                if (! $email) {
-                    throw ValidationException::withMessages(['activation' => 'This reserve needs a valid profile, parent, or linked-account email before activation.']);
-                }
-                $this->queueMail($locked, $email, 'replacement', $this->savedCampaignSnapshot($lockedImport));
-            }
+            $this->moveFromHelperTeamsToPrimaryTeam($locked, suppressInvitationMail: true);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties([
                     'event_id' => $lockedImport->event_id,
                     'team_id' => $team->id,
                     'player_id' => $locked->player_id,
                     'roster_rank' => $openRank,
+                    'email_queued' => false,
+                    'pending_manual_invitation' => $lockedImport->status === 'sent',
                 ])->log('activated reserve in open regional team place');
 
             return $locked->fresh('player');
         });
     }
 
-    private function promoteNextReserve(TeamSelectionInvitation $vacated, ?int $rank, bool $allowDraft = false): ?TeamSelectionInvitation
+    /**
+     * @return array{queued: int, skipped_missing_email: int}
+     */
+    public function sendPendingActivatedInvitations(
+        TeamSelectionImport $import,
+        User $actor,
+        string $expectedRecipientHash,
+        int $expectedRecipientCount,
+    ): array
+    {
+        return DB::transaction(function () use ($import, $actor, $expectedRecipientHash, $expectedRecipientCount): array {
+            $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
+            if ($lockedImport->status !== 'sent') {
+                throw ValidationException::withMessages([
+                    'email' => 'Pending newly activated invitations can only be sent from an existing sent campaign.',
+                ]);
+            }
+            if (! $this->replacementDeadlines($lockedImport)[0]) {
+                throw ValidationException::withMessages([
+                    'email' => 'Pending newly activated invitations cannot be sent after the event has started.',
+                ]);
+            }
+
+            $pending = TeamSelectionInvitation::query()->lockForUpdate()
+                ->with('player')
+                ->where('import_id', $lockedImport->id)
+                ->where('event_id', $lockedImport->event_id)
+                ->where('status', TeamSelectionInvitation::INVITED)
+                ->whereNotNull('roster_rank')
+                ->whereNull('invited_at')
+                ->where('snapshot_json->activation->pending_manual_invitation', true)
+                ->orderBy('team_id')->orderBy('roster_rank')->orderBy('id')
+                ->get();
+            if ($pending->isEmpty()) {
+                return ['queued' => 0, 'skipped_missing_email' => 0];
+            }
+
+            $campaign = $this->savedCampaignSnapshot($lockedImport);
+            $recipientRows = $pending->mapWithKeys(fn (TeamSelectionInvitation $invitation) => [
+                $invitation->id => $this->contactEmail($invitation),
+            ])->filter();
+            $recipientHash = hash('sha256', $recipientRows
+                ->map(fn (string $email, int $id) => $id.'|'.mb_strtolower(trim($email)))
+                ->sort()->values()->implode("\n"));
+            if ($recipientRows->count() !== $expectedRecipientCount || ! hash_equals($recipientHash, $expectedRecipientHash)) {
+                throw ValidationException::withMessages([
+                    'email' => 'The pending invitation recipient list changed. Review the current recipients and confirm again.',
+                ]);
+            }
+            $queued = 0;
+            $missing = 0;
+            foreach ($pending as $invitation) {
+                $responseDeadline = $invitation->effectiveResponseDeadline();
+                $paymentDeadline = $invitation->effectivePaymentDeadline();
+                if (! $responseDeadline || ! $paymentDeadline || now()->gt($responseDeadline) || now()->gt($paymentDeadline)) {
+                    throw ValidationException::withMessages([
+                        'email' => 'Extend the response and payment deadlines before sending the pending invitations.',
+                    ]);
+                }
+
+                $email = $this->contactEmail($invitation);
+                if (! $email) {
+                    $missing++;
+                    continue;
+                }
+
+                $queuedForThisActivation = $this->queueMail(
+                    $invitation,
+                    $email,
+                    'replacement',
+                    $campaign,
+                    allowHistoricalRepeat: true,
+                );
+                if (! $queuedForThisActivation) {
+                    continue;
+                }
+                $snapshot = $invitation->snapshot_json ?? [];
+                data_set($snapshot, 'activation.pending_manual_invitation', false);
+                data_set($snapshot, 'activation.invitation_sent_at', now()->toIso8601String());
+                data_set($snapshot, 'activation.invitation_sent_by_user_id', $actor->id);
+                $invitation->update([
+                    'invited_at' => now(),
+                    'snapshot_json' => $snapshot,
+                ]);
+                $queued++;
+            }
+
+            activity('team-selection')->performedOn($lockedImport)->causedBy($actor)
+                ->withProperties([
+                    'queued' => $queued,
+                    'skipped_missing_email' => $missing,
+                    'invitation_ids' => $pending->filter(fn (TeamSelectionInvitation $invitation) => $invitation->invited_at !== null)->pluck('id')->all(),
+                ])->log('regional manager sent pending activated team selection invitations');
+
+            return ['queued' => $queued, 'skipped_missing_email' => $missing];
+        });
+    }
+
+    private function promoteNextReserve(
+        TeamSelectionInvitation $vacated,
+        ?int $rank,
+        bool $allowDraft = false,
+        bool $suppressInvitationMail = false,
+    ): ?TeamSelectionInvitation
     {
         $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($vacated->import_id);
         $statusAllowsReplacement = $selectionImport
@@ -1585,16 +1689,23 @@ final class TeamSelectionInvitationService
             'player_id' => $reserve->player_id,
             'pay_status' => 0,
         ]);
+        $snapshot = $reserve->snapshot_json ?? [];
+        if ($suppressInvitationMail && $selectionImport->status === 'sent') {
+            data_set($snapshot, 'activation.pending_manual_invitation', true);
+            data_set($snapshot, 'activation.activated_at', now()->toIso8601String());
+            data_set($snapshot, 'activation.source', 'helper_team_cascade');
+        }
         $reserve->update([
             'status' => TeamSelectionInvitation::INVITED,
             'roster_rank' => $replacementRank,
             'promoted_from_id' => $vacated->id,
-            'invited_at' => $selectionImport->status === 'sent' ? now() : null,
+            'invited_at' => $selectionImport->status === 'sent' && ! $suppressInvitationMail ? now() : null,
             'response_deadline_override' => $replacementDeadlines[0],
             'payment_deadline_override' => $replacementDeadlines[1],
+            'snapshot_json' => $snapshot,
         ]);
-        $this->moveFromHelperTeamsToPrimaryTeam($reserve);
-        if ($selectionImport->status === 'sent') {
+        $this->moveFromHelperTeamsToPrimaryTeam($reserve, $suppressInvitationMail);
+        if ($selectionImport->status === 'sent' && ! $suppressInvitationMail) {
             $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
         }
 
@@ -1619,7 +1730,10 @@ final class TeamSelectionInvitationService
             ) === 'manual_system_profile');
     }
 
-    private function moveFromHelperTeamsToPrimaryTeam(TeamSelectionInvitation $primarySelection): void
+    private function moveFromHelperTeamsToPrimaryTeam(
+        TeamSelectionInvitation $primarySelection,
+        bool $suppressInvitationMail = false,
+    ): void
     {
         if (data_get($primarySelection->snapshot_json, 'selection_source') === 'manual_system_profile') {
             return;
@@ -1673,7 +1787,12 @@ final class TeamSelectionInvitationService
                 }
                 $replacementRank = $this->closeRosterGap($helper, (int) $rank);
                 if ($helper->selectionImport?->auto_replacement_enabled) {
-                    $this->promoteNextReserve($helper, $replacementRank, true);
+                    $this->promoteNextReserve(
+                        $helper,
+                        $replacementRank,
+                        allowDraft: true,
+                        suppressInvitationMail: $suppressInvitationMail,
+                    );
                 }
             }
 
@@ -1699,15 +1818,18 @@ final class TeamSelectionInvitationService
         string $email,
         string $kind,
         array $campaign = [],
-    ): void
+        bool $allowHistoricalRepeat = false,
+    ): bool
     {
-        $existing = BulkEmailLog::query()->where([
-            'mail_type' => 'team_selection_invitation',
-            'related_type' => TeamSelectionInvitation::class,
-            'related_id' => $invitation->id,
-            'recipient_email' => $email,
-        ])->whereIn('status', ['queued', 'sent'])->exists();
-        if ($existing) return;
+        if (! $allowHistoricalRepeat) {
+            $existing = BulkEmailLog::query()->where([
+                'mail_type' => 'team_selection_invitation',
+                'related_type' => TeamSelectionInvitation::class,
+                'related_id' => $invitation->id,
+                'recipient_email' => $email,
+            ])->whereIn('status', ['queued', 'sent'])->exists();
+            if ($existing) return false;
+        }
 
         $log = BulkEmailLog::create([
             'mail_type' => 'team_selection_invitation',
@@ -1720,6 +1842,8 @@ final class TeamSelectionInvitationService
             'queued_at' => now(),
         ]);
         SendTeamSelectionInvitationEmailJob::dispatch($log->id, $invitation->event_id);
+
+        return true;
     }
 
     public function previewCampaign(TeamSelectionImport $import, array $details): array
