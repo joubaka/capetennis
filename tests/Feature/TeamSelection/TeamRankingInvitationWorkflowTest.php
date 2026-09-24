@@ -3597,6 +3597,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('data-custom-email-check-all="'.$team->id.'"', false)
             ->assertSee('data-custom-email-team-button="'.$team->id.'"', false)
             ->assertSee('data-custom-email-player="'.$team->id.'"', false)
+            ->assertSee('document.body.appendChild(modal);', false)
+            ->assertSee('document.querySelectorAll(\'[id^="custom-player-email-modal-"]\')', false)
             ->assertSee('checkAll.indeterminate = checked > 0', false);
 
         $payload = [

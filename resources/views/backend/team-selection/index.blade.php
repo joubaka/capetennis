@@ -847,6 +847,9 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[id^="final-team-reminders-"]').forEach(function (modal) {
     document.body.appendChild(modal);
   });
+  document.querySelectorAll('[id^="custom-player-email-modal-"]').forEach(function (modal) {
+    document.body.appendChild(modal);
+  });
   const workspaceStateKey = 'team-selection-workspace-{{ $event->id }}';
   const openWorkspace = function (regionId, taskKey, updateLocation = true) {
     const regionTab = document.querySelector(`[data-bs-target="#region-panel-${regionId}"]`);
