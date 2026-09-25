@@ -305,6 +305,11 @@ class PlatformGovernanceTest extends TestCase
         $admin         = $this->adminUser();
         $categoryEvent = CategoryEvent::factory()->create(['locked_at' => null]);
 
+        DB::table('event_admins')->insert([
+            'event_id' => $categoryEvent->event_id,
+            'user_id' => $admin->id,
+        ]);
+
         $this->actingAs($admin)
             ->postJson(route('admin.category.lock', $categoryEvent))
             ->assertOk()
@@ -319,6 +324,11 @@ class PlatformGovernanceTest extends TestCase
 
         $admin         = $this->adminUser();
         $categoryEvent = CategoryEvent::factory()->create(['locked_at' => now()]);
+
+        DB::table('event_admins')->insert([
+            'event_id' => $categoryEvent->event_id,
+            'user_id' => $admin->id,
+        ]);
 
         $this->actingAs($admin)
             ->postJson(route('admin.category.unlock', $categoryEvent))

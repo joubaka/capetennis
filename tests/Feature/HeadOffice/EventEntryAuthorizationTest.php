@@ -106,6 +106,54 @@ class EventEntryAuthorizationTest extends TestCase
         $this->assertNotEquals(401, $response->status());
     }
 
+    // ── category management ────────────────────────────────────────────────────
+
+    public function test_assigned_event_admin_can_manage_category(): void
+    {
+        $this->actingAs($this->admin)
+            ->get(route('category.manage', $this->categoryEvent))
+            ->assertOk()
+            ->assertViewIs('backend.categoryEvent.manage');
+    }
+
+    public function test_ordinary_user_cannot_manage_category(): void
+    {
+        $this->actingAs($this->ordinaryUser)
+            ->get(route('category.manage', $this->categoryEvent))
+            ->assertForbidden();
+    }
+
+    public function test_unassigned_admin_cannot_manage_category(): void
+    {
+        $unassignedAdmin = User::factory()->create()->assignRole('admin');
+
+        $this->actingAs($unassignedAdmin)
+            ->get(route('category.manage', $this->categoryEvent))
+            ->assertForbidden();
+    }
+
+    public function test_admin_assigned_to_another_event_cannot_manage_category(): void
+    {
+        $otherEvent = Event::factory()->create(['eventType' => 1]);
+        $crossEventAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $otherEvent->id,
+            'user_id' => $crossEventAdmin->id,
+        ]);
+
+        $this->actingAs($crossEventAdmin)
+            ->get(route('category.manage', $this->categoryEvent))
+            ->assertForbidden();
+    }
+
+    public function test_super_user_can_manage_category(): void
+    {
+        $this->actingAs($this->superUser)
+            ->get(route('category.manage', $this->categoryEvent))
+            ->assertOk()
+            ->assertViewIs('backend.categoryEvent.manage');
+    }
+
     public function test_admin_can_export_event_entries(): void
     {
         Excel::fake();
@@ -134,24 +182,47 @@ class EventEntryAuthorizationTest extends TestCase
         $this->actingAs($this->ordinaryUser)
             ->postJson(route('admin.category.lock', $this->categoryEvent))
             ->assertForbidden();
+
+        $this->assertNull($this->categoryEvent->refresh()->locked_at);
+    }
+
+    public function test_unassigned_and_cross_event_admins_cannot_lock_category(): void
+    {
+        $unassignedAdmin = User::factory()->create()->assignRole('admin');
+        $otherEvent = Event::factory()->create(['eventType' => 1]);
+        $crossEventAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $otherEvent->id,
+            'user_id' => $crossEventAdmin->id,
+        ]);
+
+        foreach ([$unassignedAdmin, $crossEventAdmin] as $actor) {
+            $this->actingAs($actor)
+                ->postJson(route('admin.category.lock', $this->categoryEvent))
+                ->assertForbidden();
+
+            $this->assertNull($this->categoryEvent->refresh()->locked_at);
+        }
     }
 
     public function test_admin_can_lock_category(): void
     {
-        $response = $this->actingAs($this->admin)
-            ->postJson(route('admin.category.lock', $this->categoryEvent));
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.lock', $this->categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', true);
 
-        $this->assertNotEquals(403, $response->status());
-        $this->assertNotEquals(401, $response->status());
+        $this->assertNotNull($this->categoryEvent->refresh()->locked_at);
     }
 
     public function test_super_user_can_lock_category(): void
     {
-        $response = $this->actingAs($this->superUser)
-            ->postJson(route('admin.category.lock', $this->categoryEvent));
+        $this->actingAs($this->superUser)
+            ->postJson(route('admin.category.lock', $this->categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', true);
 
-        $this->assertNotEquals(403, $response->status());
-        $this->assertNotEquals(401, $response->status());
+        $this->assertNotNull($this->categoryEvent->refresh()->locked_at);
     }
 
     // ── unlock ───────────────────────────────────────────────────────────────
@@ -164,9 +235,57 @@ class EventEntryAuthorizationTest extends TestCase
 
     public function test_ordinary_user_cannot_unlock_category(): void
     {
+        $this->categoryEvent->update(['locked_at' => now()]);
+
         $this->actingAs($this->ordinaryUser)
             ->postJson(route('admin.category.unlock', $this->categoryEvent))
             ->assertForbidden();
+
+        $this->assertNotNull($this->categoryEvent->refresh()->locked_at);
+    }
+
+    public function test_unassigned_and_cross_event_admins_cannot_unlock_category(): void
+    {
+        $this->categoryEvent->update(['locked_at' => now()]);
+        $unassignedAdmin = User::factory()->create()->assignRole('admin');
+        $otherEvent = Event::factory()->create(['eventType' => 1]);
+        $crossEventAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert([
+            'event_id' => $otherEvent->id,
+            'user_id' => $crossEventAdmin->id,
+        ]);
+
+        foreach ([$unassignedAdmin, $crossEventAdmin] as $actor) {
+            $this->actingAs($actor)
+                ->postJson(route('admin.category.unlock', $this->categoryEvent))
+                ->assertForbidden();
+
+            $this->assertNotNull($this->categoryEvent->refresh()->locked_at);
+        }
+    }
+
+    public function test_assigned_event_admin_can_unlock_category(): void
+    {
+        $this->categoryEvent->update(['locked_at' => now()]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.category.unlock', $this->categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', false);
+
+        $this->assertNull($this->categoryEvent->refresh()->locked_at);
+    }
+
+    public function test_super_user_can_unlock_category(): void
+    {
+        $this->categoryEvent->update(['locked_at' => now()]);
+
+        $this->actingAs($this->superUser)
+            ->postJson(route('admin.category.unlock', $this->categoryEvent))
+            ->assertOk()
+            ->assertJsonPath('locked', false);
+
+        $this->assertNull($this->categoryEvent->refresh()->locked_at);
     }
 
     // ── availableRegistrations ───────────────────────────────────────────────

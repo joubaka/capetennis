@@ -16,14 +16,17 @@ class CategoryEventController extends Controller
 {
   public function manage($category_event_id)
   {
-      $categoryEvent = CategoryEvent::with([
+      $categoryEvent = CategoryEvent::findOrFail($category_event_id);
+      $this->authorize('category.manage', $categoryEvent);
+
+      $categoryEvent->load([
           'category',
           'draws.settings',
           'draws.groups.registrations.players',
           'draws.registrations.players',
           'draws.drawFormat',
           'registrations.players'
-      ])->findOrFail($category_event_id);
+      ]);
 
       $eligibleRegistrations = $categoryEvent
           ->registrations
