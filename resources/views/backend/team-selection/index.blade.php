@@ -48,7 +48,31 @@
   .imported-roster-sortable .drag-handle { cursor: grab; touch-action: none; }
   .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
-    .regional-team-card .table { min-width: 760px; }
+    .region-workspace-card > .card-body { padding: .75rem; }
+    .regional-team-card .card-header[data-team-workspace-header] { align-items: stretch !important; padding: .85rem; }
+    .regional-team-card .card-header[data-team-workspace-header] > * { min-width: 0; width: 100%; }
+    .regional-team-card .card-header[data-team-workspace-header] h6,
+    .regional-team-card .card-header[data-team-workspace-header] .small { overflow-wrap: anywhere; }
+    .regional-team-card .team-workspace-actions { justify-content: flex-start; }
+    .regional-team-card .team-workspace-actions .team-workspace-toggle { flex: 1 1 auto; }
+    .regional-team-card .tab-content > .tab-pane > form { padding: .85rem !important; }
+    .regional-team-card .team-player-table { overflow: visible; }
+    .regional-team-card .team-player-table table,
+    .regional-team-card .team-player-table tbody,
+    .regional-team-card .team-player-table tr,
+    .regional-team-card .team-player-table td { display: block; width: 100%; }
+    .regional-team-card .team-player-table thead { display: none; }
+    .regional-team-card .team-player-table tbody { padding: .75rem; }
+    .regional-team-card .team-player-table tr { margin-bottom: .75rem; padding: .8rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #fff; box-shadow: 0 .12rem .35rem rgba(31, 57, 104, .06); }
+    .regional-team-card .team-player-table tr:last-child { margin-bottom: 0; }
+    .regional-team-card .team-player-table tr.reserve-row { background: #fffaf0; }
+    .regional-team-card .team-player-table td { display: grid; grid-template-columns: minmax(5.5rem, 35%) minmax(0, 1fr); gap: .65rem; align-items: start; padding: .45rem 0; border: 0; overflow-wrap: anywhere; }
+    .regional-team-card .team-player-table td::before { content: attr(data-label); color: #68778c; font-size: .75rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+    .regional-team-card .team-player-table td[data-label="Select"] { grid-template-columns: 1fr; padding-top: 0; }
+    .regional-team-card .team-player-table td[data-label="Select"]::before { content: none; }
+    .regional-team-card .team-player-table td[data-mobile-full] { display: block; text-align: center; }
+    .regional-team-card .team-player-table td[data-mobile-full]::before { content: none; }
+    .regional-team-card .replacement-player-form { min-width: 0; width: min(18rem, calc(100vw - 2rem)); max-width: 100%; }
     .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
     .region-task-tabs .nav-link { flex: 0 0 auto; min-width: max-content; scroll-snap-align: start; }
     .selection-progress { grid-template-columns: 1fr; }
@@ -91,7 +115,7 @@
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
   @if($isEventManager)
-    <div class="alert alert-info">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+    <div class="alert alert-primary">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
   @else
     <div class="alert alert-info">You are viewing team selection, invitations and announcements for your assigned region.</div>
   @endif
@@ -332,7 +356,7 @@
                             <span class="text-muted small">{{ $importedRoster->count() }} roster players · {{ $linkedImportedCount }} linked · {{ $importedRoster->count() - $linkedImportedCount }} unlinked · {{ $regionTeam->num_team_members }} configured places</span>
                           @endif
                         </div>
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <div class="d-flex flex-wrap gap-2 align-items-center team-workspace-actions">
                           @if($activeImport)<span class="badge bg-label-danger {{ $teamOpenPlaceCount > 0 ? '' : 'd-none' }}" data-team-open-places>{{ $teamOpenPlaceCount }} open {{ \Illuminate\Support\Str::plural('place', $teamOpenPlaceCount) }}</span>@endif
                           <span class="badge {{ $regionTeam->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication-status>{{ $regionTeam->published ? 'Published' : 'Not published' }}</span>
                           <button class="btn btn-sm btn-primary team-workspace-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-workspace-{{ $regionTeam->id }}" aria-controls="team-workspace-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-eye me-1"></i><span>Show team</span></button>
@@ -387,7 +411,7 @@
                             <button type="button" class="btn btn-sm btn-primary" data-custom-email-team-button="{{ $regionTeam->id }}" data-bs-toggle="modal" data-bs-target="#custom-player-email-modal-{{ $activeImport->id }}" disabled><i class="ti ti-mail-edit me-1"></i><span>Email checked players</span></button>
                           </div>
                         @endif
-                        <div class="table-responsive">
+                        <div class="table-responsive team-player-table" data-mobile-player-cards>
                           <table class="table table-sm align-middle mb-0">
                             <thead><tr><th><span class="visually-hidden">Select</span></th><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
                             <tbody data-team-invitations>
@@ -405,10 +429,10 @@
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
                                 <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
-                                  <td>@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-player-email-form-{{ $activeImport->id }}" data-custom-email-player="{{ $regionTeam->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom email">@endif</td>
-                                  <td><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
-                                  <td><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
-                                  <td>
+                                  <td data-label="Select">@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-player-email-form-{{ $activeImport->id }}" data-custom-email-player="{{ $regionTeam->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom email">@endif</td>
+                                  <td data-label="Rank"><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
+                                  <td data-label="Player"><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
+                                  <td data-label="Contact">
                                     @if($recipientEmail)
                                       <div>{{ $recipientEmail }}</div>
                                     @elseif($rawContactEmails->isNotEmpty())
@@ -419,9 +443,9 @@
                                     @endif
                                     <div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div>
                                   </td>
-                                  <td>@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
-                                  <td><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>@if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif</td>
-                                  <td>
+                                  <td data-label="Ranking">@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
+                                  <td data-label="Selection / payment"><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>@if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif</td>
+                                  <td data-label="Email">
                                     <div>{{ $awaitingRestoredInvitation ? 'Restored — invitation not sent' : ($awaitingActivatedInvitation ? 'Pending invitation — not sent' : ($delivery ? ucfirst($delivery->status) : 'Not sent')) }}</div>
                                     @if($activeImport->status === 'sent' && !$isReserve)
                                       <div class="d-flex flex-wrap gap-1 mt-1">
@@ -432,7 +456,7 @@
                                       </div>
                                     @endif
                                   </td>
-                                  <td>
+                                  <td data-label="Regional action">
                                     @php($reserveActivationIndex = $isReserve ? $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id) : false)
                                     @php($reserveActivationRank = $reserveActivationIndex !== false ? $openRosterRanks->get($reserveActivationIndex) : null)
                                     @php($canMarkPaidPrivately = !$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
@@ -510,7 +534,7 @@
                                   </td>
                                 </tr>
                               @empty
-                                <tr data-empty-team-invitations><td colspan="7" class="text-center text-muted py-4">No ranked players have been imported for this team yet.</td></tr>
+                                <tr data-empty-team-invitations><td colspan="8" data-mobile-full class="text-center text-muted py-4">No ranked players have been imported for this team yet.</td></tr>
                               @endforelse
                             </tbody>
                           </table>

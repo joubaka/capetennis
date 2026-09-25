@@ -42,9 +42,23 @@
 
 ## Agent delegation
 
+Capester is the user's single Cape Tennis engineering front door. Capester owns scope, coordination, verification, and the final user-facing result. For substantial work, Capester may coordinate bounded specialists from `.agents/skills/capester/references/agent-roster.md`; every specialist inherits the original task's authority limits.
+
+Reuse live specialists within the same task. Across tasks, recreate roles from the repository skills rather than relying on hidden chat state. Only one agent may own edits to a file or feature boundary at a time; parallel work should normally be read-only, and stateful test or browser runs must use isolated databases and runtime paths or run serially.
+
 - The primary agent remains accountable for scope, coordination, final verification, and the user-facing result.
 - Use `ct_caretaker` for recurring read-only repository health checks and `ct_lead` for bounded investigation and work planning.
 - Use `ct_developer` for one approved implementation scope at a time. Do not run parallel write-heavy agents against overlapping files.
 - After implementation, use `ct_quality` for independent verification. Add `ct_financial_security` whenever payment, wallet, refund, withdrawal, identity, authorization, secrets, or other sensitive state is involved.
 - Use `ct_release_guardian` only after the user explicitly requests release preparation, commit, push, pull request, or deployment work.
 - Parallel delegation is preferred for independent read-heavy exploration, test analysis, and review. Keep code ownership non-overlapping and preserve all unrelated worktree changes.
+
+## Durable agent learning
+
+Capester and its specialists should improve as work establishes new project knowledge. Record a learning only when it is verified, reusable beyond the current task, precisely scoped, and safe for a future agent to apply.
+
+- Put broad product, authorization, and safety rules in `AGENTS.md`.
+- Put agent workflow in the relevant skill and conditional technical procedures in skill references.
+- Put executable product invariants in regression tests.
+- Prefer updating an existing rule over duplicating it in another file.
+- Never retain secrets, personal data, transient production values, guesses, incident-only workarounds, or exceptions that weaken a safeguard.
