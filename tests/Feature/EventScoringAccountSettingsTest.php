@@ -74,6 +74,8 @@ class EventScoringAccountSettingsTest extends TestCase
             ->get(route('admin.events.settings', $event))
             ->assertOk()
             ->assertSee('Applications open')
+            ->assertDontSee('Entry status')
+            ->assertDontSee('name="status"', false)
             ->assertDontSee('Signup open')
             ->assertDontSee('for="event-published"', false);
 
@@ -86,6 +88,7 @@ class EventScoringAccountSettingsTest extends TestCase
         $event->refresh();
         $this->assertTrue((bool) $event->published);
         $this->assertTrue((bool) $event->signUp);
+        $this->assertSame('open', $event->status);
 
         $this->actingAs($viewer)
             ->patchJson(route('admin.events.settings.update', $event), [
@@ -94,8 +97,9 @@ class EventScoringAccountSettingsTest extends TestCase
             ->assertOk();
 
         $event->refresh();
-        $this->assertFalse((bool) $event->published);
+        $this->assertTrue((bool) $event->published);
         $this->assertFalse((bool) $event->signUp);
+        $this->assertSame('closed', $event->status);
     }
 
     public function test_mixed_legacy_visibility_does_not_submit_the_combined_control_until_it_changes(): void
@@ -125,6 +129,8 @@ class EventScoringAccountSettingsTest extends TestCase
             'submittedApplicationsVersion === applicationsControlVersion',
             $response->getContent()
         );
+        $this->assertStringContainsString('if (saveRequestInFlight)', $response->getContent());
+        $this->assertStringContainsString('saveQueued = true', $response->getContent());
 
         $this->actingAs($viewer)
             ->patchJson(route('admin.events.settings.update', $event), [

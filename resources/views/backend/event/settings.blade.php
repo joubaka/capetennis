@@ -88,20 +88,12 @@
           <input id="event-name" class="form-control autosave" name="name" value="{{ $event->name }}">
 
           <div class="row g-3 mt-1">
-            <div class="col-md-6">
+            <div class="col-12">
               <label class="form-label" for="event-type">Event type</label>
               <select id="event-type" class="form-select autosave" name="eventType">
                 @foreach(\App\Models\EventType::all() as $type)
                   <option value="{{ $type->id }}" @selected($event->eventType == $type->id)>{{ $type->name }}</option>
                 @endforeach
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="entry-status">Entry status</label>
-              <select id="entry-status" class="form-select autosave" name="status">
-                <option value="draft" @selected($event->status === 'draft')>Draft</option>
-                <option value="open" @selected($event->status === 'open')>Open</option>
-                <option value="closed" @selected($event->status === 'closed')>Closed</option>
               </select>
             </div>
           </div>
@@ -111,7 +103,7 @@
           <input class="form-check-input autosave" type="checkbox"
                  id="applications-open" name="applications_open" {{ $event->published && $event->signUp ? 'checked' : '' }}>
           <label class="form-check-label fw-semibold" for="applications-open">Applications open</label>
-          <div class="field-help mt-0">Show the event publicly and allow players to enter.</div>
+          <div class="field-help mt-0">Open applications and publish the event. Closing applications keeps the event visible.</div>
         </div>
       </div>
         </div>
@@ -452,6 +444,8 @@ $(function () {
   }
 
   let saveTimer = null;
+  let saveRequestInFlight = false;
+  let saveQueued = false;
   let applicationsControlDirty = false;
   let applicationsControlVersion = 0;
 
@@ -571,6 +565,10 @@ $(function () {
     saveTimer = setTimeout(function () {
 
       if (!accessWindowsAreValid()) return;
+      if (saveRequestInFlight) {
+        saveQueued = true;
+        return;
+      }
 
       console.groupCollapsed('💾 AUTOSAVE PAYLOAD BUILD');
 
@@ -627,6 +625,7 @@ $(function () {
       console.groupEnd();
 
       console.log('🚀 Sending PATCH →', updateUrl);
+      saveRequestInFlight = true;
 
       $.ajax({
         url: updateUrl,
@@ -652,6 +651,13 @@ $(function () {
 
         setSaveStatus('error', 'Changes not saved');
         showRequestErrors(xhr, 'Event settings could not be saved. Please try again.');
+      })
+      .always(function () {
+        saveRequestInFlight = false;
+        if (saveQueued) {
+          saveQueued = false;
+          autosave();
+        }
       });
 
     }, 700);

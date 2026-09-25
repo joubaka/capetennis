@@ -275,8 +275,10 @@ class EventSettingsController extends Controller
 
     // Boolean safety
     if ($request->has('applications_open')) {
-      $updateData['published'] = $request->boolean('applications_open');
-      $updateData['signUp'] = $request->boolean('applications_open');
+      $applicationsOpen = $request->boolean('applications_open');
+      $updateData['status'] = $applicationsOpen ? 'open' : 'closed';
+      $updateData['published'] = true;
+      $updateData['signUp'] = $applicationsOpen;
     } elseif ($request->has('published')) {
       $updateData['published'] = $request->boolean('published');
     }
