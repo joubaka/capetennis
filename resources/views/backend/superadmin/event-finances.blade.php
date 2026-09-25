@@ -71,12 +71,15 @@
       <div class="card border-start border-primary">
         <div class="card-body">
           <small class="text-muted">
-            Gross Income ({{ $totalEntries }} entries
+            Total Received ({{ $totalEntries }} entries
             @if(isset($refundCount) && $refundCount > 0), {{ $refundCount }} refund{{ $refundCount !== 1 ? 's' : '' }}@endif
             @if(isset($noRefundCount) && $noRefundCount > 0), {{ $noRefundCount }} withdrawn (no refund)@endif
             )
           </small>
           <h4>R {{ number_format($totalGross, 2) }}</h4>
+          @if(($clothingReceived ?? 0) > 0)
+            <small class="text-muted d-block">Registration R {{ number_format($registrationReceived ?? $totalGross, 2) }} · Clothing R {{ number_format($clothingReceived, 2) }}</small>
+          @endif
         </div>
       </div>
     </div>
@@ -107,7 +110,7 @@
     <div class="col-md-3">
       <div class="card border-start border-danger">
         <div class="card-body">
-          <small class="text-muted">Total Paid Out to Convenors</small>
+          <small class="text-muted">Entry Payouts to Convenors</small>
           <h4 class="text-danger">− R {{ number_format($totalPaidOut, 2) }}</h4>
         </div>
       </div>
@@ -326,12 +329,14 @@
               @php
                 $badgeClass = match($tx->type) {
                   'payment'    => 'bg-success',
+                  'clothing_payment' => 'bg-primary',
                   'refund'     => 'bg-danger',
                   'withdrawal' => 'bg-secondary',
                   'payout'     => 'bg-info',
                   default      => 'bg-secondary',
                 };
                 $badgeLabel = match($tx->type) {
+                  'clothing_payment' => 'Clothing received',
                   'refund'     => 'Refunded',
                   'withdrawal' => 'Withdrawn',
                   default      => ucfirst($tx->type),
@@ -424,7 +429,7 @@
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            <td colspan="5" class="text-end">Totals</td>
+            <td colspan="5" class="text-end">All Received Totals</td>
             <td class="text-end">R {{ number_format($totalGross, 2) }}</td>
             <td class="text-end text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</td>
             <td class="text-end text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</td>

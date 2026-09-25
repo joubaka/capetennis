@@ -59,7 +59,7 @@ class SuperAdminFinancePayoutDefaultsTest extends TestCase
         ]);
 
         $expectedBalance = app(FinancialLedgerService::class)
-            ->buildForEvent($event)['totals']['balance'];
+            ->buildForEvent($event)['totals']['registration_balance'];
 
         $this->actingAs($this->superUser)
             ->get(route('superadmin.finances.event', $event))

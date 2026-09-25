@@ -40,16 +40,22 @@
             <tr class="{{ $isRefund ? 'refund-row' : '' }}">
                 <td>{{ $t->pf_payment_id ?? '-' }}</td>
                 <td>{{ \Carbon\Carbon::parse($t->created_at)->format('d M Y') }}</td>
-                <td>{{ ucfirst($t->type) }}</td>
+                <td>{{ $t->type === 'clothing_payment' ? 'Clothing received' : ucfirst($t->type) }}</td>
                 <td style="text-align: left;">
                     <strong>{{ $t->player ?? '-' }}</strong>
                     @if(!$isRefund && isset($t->order) && $t->order && $t->order->items && $t->order->items->count())
                         <ul>
                             @foreach($t->order->items as $item)
                             <li>
-                                {{ $item->player->name ?? '' }} {{ $item->player->surname ?? '' }}
-                                ({{ optional(optional($item->category_event)->category)->name ?? '-' }})
-                                &mdash; R{{ number_format($item->item_price ?? 0, 2) }}
+                                @if($t->type === 'clothing_payment')
+                                    {{ $item->item_name ?? optional($item->itemType)->item_type_name ?? 'Clothing' }}
+                                    ({{ $item->size_name ?? optional($item->size)->size ?? '-' }}, qty {{ $item->qty ?: 1 }})
+                                    &mdash; R{{ number_format($item->line_total ?? (($item->price ?? 0) * ($item->qty ?: 1)), 2) }}
+                                @else
+                                    {{ $item->player->name ?? '' }} {{ $item->player->surname ?? '' }}
+                                    ({{ optional(optional($item->category_event)->category)->name ?? '-' }})
+                                    &mdash; R{{ number_format($item->item_price ?? 0, 2) }}
+                                @endif
                             </li>
                             @endforeach
                         </ul>

@@ -88,6 +88,9 @@ class EventTransactionController extends Controller
       'totalCapeTennisFees' => $totals['cape_fees'],
       'totalPayouts'        => $totals['total_paid_out'],
       'netTournamentIncome' => $totals['net_revenue'],
+      'registrationReceived'=> $totals['registration_received'],
+      'clothingReceived'    => $totals['clothing_received'],
+      'clothingNet'         => $totals['clothing_net'],
 
       'adminEntriesCount'   => $adminEntriesCount,
       'adminEntriesCapeFee' => $adminEntriesCapeFee,

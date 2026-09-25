@@ -74,7 +74,7 @@
     'eventWorkspaceSubtitle' => 'Tournament transactions',
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-    <div><h2 class="h4 mb-1">Tournament transactions</h2><p class="text-muted mb-0">Registration payments, withdrawals, fees and payouts.</p></div>
+    <div><h2 class="h4 mb-1">Tournament transactions</h2><p class="text-muted mb-0">Registration and clothing receipts, withdrawals, fees and payouts.</p></div>
     <div class="d-flex gap-2">
         <a href="{{ route('transactions.pdf', $event) }}" class="btn btn-outline-primary btn-sm">
           Export Transactions
@@ -90,8 +90,11 @@
     <div class="col-md-2">
       <div class="card border-start border-primary h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Gross Income</small>
+          <small class="text-muted d-block mb-1">Total Received</small>
           <h4 class="mb-1">R {{ number_format($totalGross, 2) }}</h4>
+          @if(($clothingReceived ?? 0) > 0)
+            <small class="text-muted d-block">Registration R {{ number_format($registrationReceived ?? $totalGross, 2) }} · Clothing R {{ number_format($clothingReceived, 2) }}</small>
+          @endif
           <small class="text-muted d-block">
             {{ $totalEntries }} total {{ $totalEntries === 1 ? 'entry' : 'entries' }}
             @if(($totalWithdrawnCount ?? 0) > 0) · {{ $totalWithdrawnCount }} withdrew @endif
@@ -275,6 +278,15 @@ if ($tx->type === 'payment' && isset($tx->order)) {
   );
 }
 
+if ($tx->type === 'clothing_payment') {
+  $payload = collect($tx->registrationDetails ?? [])->map(fn ($item) => [
+    'mode' => 'payment_item',
+    'player' => $item['player'] ?? '—',
+    'category' => trim(($item['item'] ?? 'Clothing') . ' · ' . ($item['size'] ?? '—')),
+    'price' => number_format($item['price'] ?? 0, 2),
+  ]);
+}
+
 
             // REFUND CHILD DATA
             if ($tx->type === 'refund') {
@@ -322,6 +334,8 @@ if ($tx->type === 'payment' && isset($tx->order)) {
                 <span class="badge bg-warning text-dark">Admin fee liability</span>
               @elseif($tx->type === 'payment')
                 <span class="badge bg-success">Payment</span>
+              @elseif($tx->type === 'clothing_payment')
+                <span class="badge bg-primary">Clothing received</span>
               @elseif($tx->type === 'refund')
                 <span class="badge bg-danger">Refunded</span>
                 @if(($tx->refund_status ?? '') === 'pending')

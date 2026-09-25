@@ -62,6 +62,81 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->assertStringContainsString($scorer->email, $option->textContent);
     }
 
+    public function test_settings_uses_one_applications_control_for_publication_and_signup(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $event = Event::factory()->create([
+            'published' => false,
+            'signUp' => false,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('admin.events.settings', $event))
+            ->assertOk()
+            ->assertSee('Applications open')
+            ->assertDontSee('Signup open')
+            ->assertDontSee('for="event-published"', false);
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'applications_open' => true,
+            ])
+            ->assertOk();
+
+        $event->refresh();
+        $this->assertTrue((bool) $event->published);
+        $this->assertTrue((bool) $event->signUp);
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'applications_open' => false,
+            ])
+            ->assertOk();
+
+        $event->refresh();
+        $this->assertFalse((bool) $event->published);
+        $this->assertFalse((bool) $event->signUp);
+    }
+
+    public function test_mixed_legacy_visibility_does_not_submit_the_combined_control_until_it_changes(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $event = Event::factory()->create([
+            'published' => true,
+            'signUp' => false,
+        ]);
+
+        $response = $this->actingAs($viewer)
+            ->get(route('admin.events.settings', $event))
+            ->assertOk();
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $control = $xpath->query('//input[@name="applications_open"]')->item(0);
+
+        $this->assertNotNull($control);
+        $this->assertFalse($control->hasAttribute('checked'));
+        $this->assertStringContainsString(
+            "if (name === 'applications_open' && !applicationsControlDirty) return;",
+            $response->getContent()
+        );
+        $this->assertStringContainsString(
+            'submittedApplicationsVersion === applicationsControlVersion',
+            $response->getContent()
+        );
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'name' => 'Updated without changing applications',
+            ])
+            ->assertOk();
+
+        $event->refresh();
+        $this->assertTrue((bool) $event->published);
+        $this->assertFalse((bool) $event->signUp);
+    }
+
     public function test_settings_assigns_and_removes_event_scoped_scoring_access(): void
     {
         $viewer = User::factory()->create()->assignRole('super-user');

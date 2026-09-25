@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Domain\Finance\Services\FinancialLedgerService;
 use App\Models\CategoryEventRegistration;
+use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\User;
@@ -534,6 +535,173 @@ class FinancialLedgerServiceTest extends TestCase
         $this->assertSame('', $paymentItem['player']);
         $this->assertSame('—', $paymentItem['category']);
         $this->assertSame('125.00', $paymentItem['price']);
+    }
+
+    public function test_completed_clothing_receipt_is_event_scoped_detailed_and_not_counted_as_entry(): void
+    {
+        $payer = User::factory()->create(['name' => 'Clothing Payer']);
+        $player = Player::factory()->create(['name' => 'Casey', 'surname' => 'Player']);
+        $otherEvent = Event::factory()->create(['cape_tennis_fee' => 10.00]);
+        $regionId = DB::table('team_regions')->insertGetId([
+            'region_name' => 'West Coast',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $teamId = DB::table('teams')->insertGetId([
+            'user_id' => $payer->id,
+            'name' => 'West Coast U15',
+            'personal_team' => false,
+            'region_id' => $regionId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $itemTypeId = DB::table('clothing_item_types')->insertGetId([
+            'item_type_name' => 'Tracksuit',
+            'price' => 300,
+            'region_id' => $regionId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $sizeId = DB::table('clothing_sizes')->insertGetId([
+            'size' => 'Medium',
+            'item_type' => $itemTypeId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $paid = ClothingOrder::create([
+            'event_id' => $this->event->id,
+            'team_id' => $teamId,
+            'player_id' => $player->id,
+            'user_id' => $payer->id,
+            'pay_status' => 1,
+            'status' => 'completed',
+            'payfast_paid' => true,
+            'payfast_pf_payment_id' => 'PF-CLOTHING-PAID',
+            'subtotal' => 600.00,
+            'payfast_fee' => 18.00,
+            'total' => 618.00,
+            'amount_paid' => 618.00,
+            'paid_at' => now(),
+        ]);
+        DB::table('clothing_order_items')->insert([
+            'clothing_order_id' => $paid->id,
+            'clothing_order_item_id' => $itemTypeId,
+            'clothing_item_size' => $sizeId,
+            'item_name' => 'Tracksuit',
+            'size_name' => 'Medium',
+            'qty' => 2,
+            'price' => 309.00,
+            'line_total' => 618.00,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach ([
+            ['event_id' => $this->event->id, 'status' => 'pending', 'reference' => 'PF-CLOTHING-PENDING'],
+            ['event_id' => $otherEvent->id, 'status' => 'completed', 'reference' => 'PF-CLOTHING-OTHER'],
+        ] as $excluded) {
+            ClothingOrder::create([
+                'event_id' => $excluded['event_id'],
+                'team_id' => $teamId,
+                'player_id' => $player->id,
+                'user_id' => $payer->id,
+                'pay_status' => 1,
+                'status' => $excluded['status'],
+                'payfast_paid' => true,
+                'payfast_pf_payment_id' => $excluded['reference'],
+                'subtotal' => 100.00,
+                'payfast_fee' => 3.00,
+                'total' => 103.00,
+                'amount_paid' => 103.00,
+                'paid_at' => now(),
+            ]);
+        }
+
+        DB::table('transactions_pf')->insert([
+            'pf_payment_id' => 'PF-REGISTRATION',
+            'event_id' => $this->event->id,
+            'transaction_type' => 'Registration',
+            'amount_gross' => 100.00,
+            'cape_tennis_fee' => 10.00,
+            'is_test' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $built = $this->service->buildForEvent($this->event->refresh());
+        $clothingRows = $built['paymentRows']->where('type', 'clothing_payment')->values();
+        $this->assertCount(1, $clothingRows, 'Pending and cross-event clothing must be excluded');
+        $row = $clothingRows->first();
+        $detail = $row->registrationDetails->first();
+
+        $this->assertSame(618.0, $row->gross);
+        $this->assertSame(-18.0, $row->fee);
+        $this->assertSame(0.0, $row->capeFee);
+        $this->assertSame(600.0, $row->net);
+        $this->assertSame('Clothing Payer', $row->user_name);
+        $this->assertSame('Casey Player', $row->player);
+        $this->assertSame('West Coast U15', $row->team);
+        $this->assertSame('West Coast', $row->region);
+        $this->assertSame('Tracksuit', $detail['item']);
+        $this->assertSame('Medium', $detail['size']);
+        $this->assertSame(2, $detail['quantity']);
+        $this->assertSame(618.0, $detail['price']);
+
+        $this->assertSame(718.0, $built['totals']['gross_payments']);
+        $this->assertSame(618.0, $built['totals']['clothing_received']);
+        $this->assertSame(600.0, $built['totals']['clothing_net']);
+        $this->assertSame(100.0, $built['totals']['registration_received']);
+        $this->assertSame(86.8, $built['totals']['registration_net']);
+
+        $summary = $this->service->buildFySummaryRow($this->event->refresh());
+        $this->assertSame(1, $summary['total_entries']);
+        $this->assertTrue($summary['has_transactions']);
+        $clothingOnlySummary = $this->service->buildFySummaryRow($otherEvent->refresh());
+        $this->assertSame(0, $clothingOnlySummary['total_entries']);
+        $this->assertTrue($clothingOnlySummary['has_transactions']);
+
+        $totalsWithPayout = $this->service->buildTotals(
+            $built['paymentRows'],
+            collect(),
+            collect([(object) ['net' => -25.00]])
+        );
+        $this->assertSame(61.8, $totalsWithPayout['registration_balance']);
+        $this->assertSame(661.8, $totalsWithPayout['balance']);
+    }
+
+    public function test_legacy_paid_clothing_uses_snapshotted_total_when_amount_paid_is_null(): void
+    {
+        ClothingOrder::create([
+            'event_id' => $this->event->id,
+            'pay_status' => 1,
+            'status' => 'completed',
+            'payfast_paid' => true,
+            'payfast_pf_payment_id' => 'PF-CLOTHING-LEGACY',
+            'subtotal' => 250.00,
+            'payfast_fee' => 8.00,
+            'total' => 258.00,
+            'amount_paid' => null,
+            'paid_at' => now(),
+        ]);
+
+        $built = $this->service->buildForEvent($this->event->refresh());
+        $row = $built['paymentRows']->firstWhere('type', 'clothing_payment');
+
+        $this->assertNotNull($row);
+        $this->assertSame(258.0, $row->gross);
+        $this->assertSame(-8.0, $row->fee);
+        $this->assertSame(250.0, $row->net);
+        $this->assertSame(258.0, $built['totals']['clothing_received']);
+    }
+
+    public function test_transaction_pdf_has_clothing_specific_item_rendering(): void
+    {
+        $blade = file_get_contents(resource_path('views/backend/adminPage/pdf/transactions.blade.php'));
+
+        $this->assertStringContainsString("\$t->type === 'clothing_payment'", $blade);
+        $this->assertStringContainsString('$item->item_name', $blade);
+        $this->assertStringContainsString('$item->line_total', $blade);
     }
 
     // =========================================================================

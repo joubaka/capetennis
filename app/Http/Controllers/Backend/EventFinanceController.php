@@ -50,12 +50,16 @@ class EventFinanceController extends Controller
             ->values();
 
         $totalGross = $ledgerTotals['gross_payments'];
+        $registrationReceived = $ledgerTotals['registration_received'];
+        $clothingReceived = $ledgerTotals['clothing_received'];
+        $clothingNet = $ledgerTotals['clothing_net'];
         $totalPayfastFees = abs($ledgerTotals['pf_fees']);
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
         $netRegistrationIncome = $ledgerTotals['net_revenue'];
+        $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $isTeamEvent
-            ? $paymentRows->count()
-            : $paymentRows->sum(fn ($row) => $row->entryCount ?? 1);
+            ? $entryRows->count()
+            : $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
 
         // Raw PayFast transactions are retained only for the category split.
         $payfastTransactions = Transaction::with([
@@ -203,6 +207,9 @@ class EventFinanceController extends Controller
             'event',
             'eventTransactions',
             'totalGross',
+            'registrationReceived',
+            'clothingReceived',
+            'clothingNet',
             'totalPayfastFees',
             'totalCapeTennisFees',
             'totalEntries',

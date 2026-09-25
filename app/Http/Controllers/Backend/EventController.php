@@ -74,9 +74,10 @@ class EventController extends Controller
     $totals      = $built['totals'];
 
     $isTeamEvent  = $event->isTeam();
+    $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
     $totalEntries = $isTeamEvent
-      ? $paymentRows->count()
-      : $paymentRows->sum(fn($r) => $r->entryCount ?? 1);
+      ? $entryRows->count()
+      : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
     $ledger = collect()
       ->merge($paymentRows)

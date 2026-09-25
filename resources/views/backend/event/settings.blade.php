@@ -106,19 +106,12 @@
             </div>
           </div>
 
-          <div class="d-flex flex-column flex-sm-row gap-3 gap-sm-5 mt-4 p-3 rounded bg-body">
+          <div class="mt-4 p-3 rounded bg-body">
         <div class="form-check form-switch">
           <input class="form-check-input autosave" type="checkbox"
-                 id="event-published" name="published" {{ $event->published ? 'checked' : '' }}>
-          <label class="form-check-label fw-semibold" for="event-published">Published</label>
-          <div class="field-help mt-0">Show the event publicly.</div>
-        </div>
-
-        <div class="form-check form-switch">
-          <input class="form-check-input autosave" type="checkbox"
-                 id="signup-open" name="signUp" {{ $event->signUp ? 'checked' : '' }}>
-          <label class="form-check-label fw-semibold" for="signup-open">Signup open</label>
-          <div class="field-help mt-0">Allow players to enter.</div>
+                 id="applications-open" name="applications_open" {{ $event->published && $event->signUp ? 'checked' : '' }}>
+          <label class="form-check-label fw-semibold" for="applications-open">Applications open</label>
+          <div class="field-help mt-0">Show the event publicly and allow players to enter.</div>
         </div>
       </div>
         </div>
@@ -459,6 +452,8 @@ $(function () {
   }
 
   let saveTimer = null;
+  let applicationsControlDirty = false;
+  let applicationsControlVersion = 0;
 
   function setSaveStatus(state, message) {
     const states = {
@@ -585,6 +580,7 @@ $(function () {
         const el = $(this);
         const name = el.attr('name');
         if (!name) return;
+        if (name === 'applications_open' && !applicationsControlDirty) return;
 
         if (el.attr('type') === 'checkbox') {
           payload[name] = el.is(':checked') ? 1 : 0;
@@ -623,6 +619,10 @@ $(function () {
 
       delete payload.withdrawal_days;
 
+      const submittedApplicationsVersion = payload.applications_open === undefined
+        ? null
+        : applicationsControlVersion;
+
       console.log('📦 Final payload:', payload);
       console.groupEnd();
 
@@ -638,6 +638,9 @@ $(function () {
       })
       .done(function (res) {
         console.log('✅ Saved response:', res);
+        if (submittedApplicationsVersion !== null && submittedApplicationsVersion === applicationsControlVersion) {
+          applicationsControlDirty = false;
+        }
         setSaveStatus('saved', 'All changes saved');
         feedback.success(res.message || 'Event settings saved.');
         updatePreviews();
@@ -657,7 +660,13 @@ $(function () {
   /* =========================
      BIND AUTOSAVE
   ========================= */
-  $(document).on('change keyup', '.autosave', autosave);
+  $(document).on('change keyup', '.autosave', function () {
+    if ($(this).attr('name') === 'applications_open') {
+      applicationsControlDirty = true;
+      applicationsControlVersion += 1;
+    }
+    autosave();
+  });
   $('#event-settings-form').on('submit', function (event) {
     event.preventDefault();
     autosave();

@@ -8,6 +8,7 @@ use App\Models\CategoryEvent;
 use App\Models\EventConvenor;
 use App\Models\User;
 use App\Models\Venue;
+use App\Services\Masters\MastersInvitationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -61,7 +62,7 @@ class EventSettingsController extends Controller
   /**
    * Update event settings (AJAX, partial-safe)
    */
-  public function update(Request $request, Event $event)
+  public function update(Request $request, Event $event, MastersInvitationService $mastersInvitationService)
   {
     Gate::authorize('event.settings.manage', $event);
 
@@ -86,6 +87,7 @@ class EventSettingsController extends Controller
       'email' => 'sometimes|nullable|email',
       'published' => 'sometimes|boolean',
       'signUp' => 'sometimes|boolean',
+      'applications_open' => 'sometimes|boolean',
       'organizer' => 'sometimes|nullable|string|max:191',
 
       'logo_existing' => [
@@ -267,38 +269,42 @@ class EventSettingsController extends Controller
         'admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at',
         'scoring_accounts', 'scoring_venues', 'scoring_starts_at', 'scoring_expires_at',
         'logo_upload', 'logo_existing',
+        'applications_open',
       ])
       ->toArray();
 
     // Boolean safety
-    if ($request->has('published')) {
+    if ($request->has('applications_open')) {
+      $updateData['published'] = $request->boolean('applications_open');
+      $updateData['signUp'] = $request->boolean('applications_open');
+    } elseif ($request->has('published')) {
       $updateData['published'] = $request->boolean('published');
     }
-    if ($request->has('signUp')) {
+    if (! $request->has('applications_open') && $request->has('signUp')) {
       $updateData['signUp'] = $request->boolean('signUp');
     }
 
     Log::debug('🔁 Mapped data', $updateData);
 
-    $event->update($updateData);
+    DB::transaction(function () use ($event, $mastersInvitationService, $request, $updateData): void {
+      // Masters registration is displayed from the invitation batch. Use its
+      // canonical service so prerequisites and the activity audit remain intact.
+      if (($request->has('applications_open') || $request->has('signUp')) && $event->isMasters()) {
+        $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)
+          ->latest('id')
+          ->first();
 
-    // Masters registration is displayed on the public event page from the
-    // invitation batch, while this settings page controls the event signup
-    // switch. Keep the two gates synchronized so an organiser cannot see
-    // "Signup open" here while Masters registration remains closed publicly.
-    if ($request->has('signUp') && $event->isMasters()) {
-      $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)
-        ->latest('id')
-        ->first();
-
-      if ($mastersBatch) {
-        $mastersBatch->update([
-          'registration_open' => $request->boolean('signUp')
-            && $mastersBatch->status === 'sent'
-            && (bool) $mastersBatch->public_list_published,
-        ]);
+        if ($mastersBatch) {
+          $mastersInvitationService->setRegistrationOpen(
+            $mastersBatch,
+            (bool) ($updateData['signUp'] ?? $event->signUp),
+            $request->user()
+          );
+        }
       }
-    }
+
+      $event->update($updateData);
+    });
 
     /**
      * ADMINS

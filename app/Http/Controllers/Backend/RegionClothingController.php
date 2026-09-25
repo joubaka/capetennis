@@ -398,11 +398,18 @@ class RegionClothingController extends Controller
     ])
       ->whereHas('team', fn($q) => $q->where('region_id', $region->id))
       ->where('pay_status', 1)
+      ->where('status', 'completed')
       ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
       ->orderByDesc('created_at')
       ->get();
 
-    return view('backend.clothing.clothing-index', compact('region', 'clothings'));
+    $clothingFinancials = [
+      'received' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total)), 2),
+      'payfast_fees' => round($clothings->sum(fn ($order) => (float) $order->payfast_fee), 2),
+      'net' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total) - (float) $order->payfast_fee), 2),
+    ];
+
+    return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials'));
   }
 
 

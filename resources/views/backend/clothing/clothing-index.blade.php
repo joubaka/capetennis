@@ -3,6 +3,13 @@
 @section('title', 'Clothing Orders — ' . ($region->region_name ?? 'Region'))
 
 @section('content')
+@php
+  $clothingFinancials = $clothingFinancials ?? [
+    'received' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total)), 2),
+    'payfast_fees' => round($clothings->sum(fn ($order) => (float) $order->payfast_fee), 2),
+    'net' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total) - (float) $order->payfast_fee), 2),
+  ];
+@endphp
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
     <h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5>
@@ -19,6 +26,11 @@
   </div>
 
   <div class="card-body">
+    <div class="row g-3 mb-4">
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Customer payments received</small><strong class="fs-5 text-success">R{{ number_format($clothingFinancials['received'], 2) }}</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PayFast fees</small><strong class="fs-5 text-warning">− R{{ number_format($clothingFinancials['payfast_fees'], 2) }}</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Net clothing proceeds before supplier costs</small><strong class="fs-5">R{{ number_format($clothingFinancials['net'], 2) }}</strong></div></div>
+    </div>
     <div class="table-responsive">
       <table class="table table-striped align-middle">
         <thead class="table-light">

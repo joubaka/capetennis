@@ -41,7 +41,7 @@
     <div class="col-6 col-md-3">
       <div class="card border-start border-success border-3">
         <div class="card-body">
-          <small class="text-muted">Total Gross Income</small>
+          <small class="text-muted">Total Received</small>
           <h5 class="text-success">R {{ number_format($financeSummary['total_gross'], 2) }}</h5>
           <small class="text-muted">FY {{ $currentFY }}</small>
         </div>
@@ -89,7 +89,7 @@
           <tr>
             <th>Event</th>
             <th>Date</th>
-            <th class="text-end">Gross Income</th>
+            <th class="text-end">Received</th>
             <th class="text-end">Net Income</th>
             <th class="text-end">Paid Out</th>
             <th class="text-end">Balance</th>

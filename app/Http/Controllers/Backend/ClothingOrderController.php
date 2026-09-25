@@ -199,6 +199,7 @@ class ClothingOrderController extends Controller
       ])
       ->whereIn('team_id', $teams)
       ->where('pay_status', 1)
+      ->where('status', 'completed')
       ->get();
 
   
@@ -259,6 +260,7 @@ class ClothingOrderController extends Controller
     return ClothingOrder::query()
       ->with(['items.itemType', 'items.size', 'player', 'team'])
       ->where('pay_status', 1)
+      ->where('status', 'completed')
       ->whereHas('team', fn ($query) => $query->where('region_id', $region->id))
       ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
       ->orderByDesc('created_at');

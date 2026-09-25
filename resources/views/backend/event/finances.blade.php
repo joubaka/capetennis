@@ -210,8 +210,8 @@
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
             aria-expanded="false" aria-controls="registrationTransactionsCollapse">
       <div class="pe-2">
-        <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Registration Transactions</h5>
-        <small class="text-muted">Open to see registered players, payment status and method, amounts paid, fees and refunds.</small>
+        <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Received Transactions</h5>
+        <small class="text-muted">Open to see registration and clothing receipts, payment method, fees and refunds.</small>
       </div>
       <span class="registration-transactions-action d-inline-flex align-items-center gap-2">
         <span class="badge bg-primary">{{ $eventTransactions->count() }}</span>
@@ -257,7 +257,7 @@
               </td>
               <td>
                 <span class="badge bg-label-{{ $transaction->status_colour ?? 'secondary' }}">
-                  {{ $transaction->type === 'payment' ? 'Payment' : ($transaction->status_label ?? ucfirst($transaction->type)) }}
+                  {{ $transaction->type === 'payment' ? 'Registration payment' : ($transaction->status_label ?? ucfirst($transaction->type)) }}
                 </span>
               </td>
               <td>{{ $transaction->method ?? $transaction->payment_method ?? '—' }}</td>
@@ -336,15 +336,27 @@
             <tr>
               <td>
                 <span class="badge bg-label-primary me-1">System</span>
-                Registration Fees (PayFast gross)
+                Registration received
               </td>
               <td class="text-center">{{ $totalEntries }}</td>
               <td class="text-end">—</td>
               <td><small class="text-muted">PayFast transactions</small></td>
               <td>—</td>
-              <td class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
+              <td class="text-end fw-semibold text-success">R {{ number_format($registrationReceived, 2) }}</td>
               <td class="no-print"></td>
             </tr>
+
+            @if($clothingReceived > 0)
+              <tr>
+                <td><span class="badge bg-label-primary me-1">System</span>Clothing received</td>
+                <td class="text-center">{{ $eventTransactions->where('type', 'clothing_payment')->count() }}</td>
+                <td class="text-end">—</td>
+                <td><small class="text-muted">Paid clothing orders</small></td>
+                <td>—</td>
+                <td class="text-end fw-semibold text-success">R {{ number_format($clothingReceived, 2) }}</td>
+                <td class="no-print"></td>
+              </tr>
+            @endif
 
             {{-- ── PayFast fee deduction row ── --}}
             @if(abs($totalPayfastFees) > 0)

@@ -108,15 +108,19 @@ class SuperAdminFinanceController extends Controller
         $totalPayfastFees    = $totals['pf_fees'];
         $totalCapeTennisFees = $totals['cape_fees'];
         $netTournamentIncome = $totals['net_revenue'];
+        $registrationReceived = $totals['registration_received'];
+        $clothingReceived     = $totals['clothing_received'];
+        $clothingNet          = $totals['clothing_net'];
         $totalPaidOut        = $totals['total_paid_out'];
         $balance             = $totals['balance'];
         $grossPayments       = $totals['gross_payments'];
         $completedRefunds    = $totals['completed_refunds'];
         $pendingRefunds      = $totals['pending_refunds'];
 
+        $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $isTeamEvent
-            ? $paymentRows->count()
-            : $paymentRows->sum(fn($t) => $t->entryCount ?? 1);
+            ? $entryRows->count()
+            : $entryRows->sum(fn($t) => $t->entryCount ?? 1);
 
         $accountingRefundRows = $refundRows->where('type', 'refund');
         $noRefundRows        = $refundRows->where('type', 'withdrawal');
@@ -145,7 +149,7 @@ class SuperAdminFinanceController extends Controller
         $eventAdmins = $event->admins()->orderBy('name')->get();
         $defaultConvenor = $convenors->first();
         $defaultAdmin = $defaultConvenor ? null : $eventAdmins->first();
-        $defaultPayoutAmount = max(0, round($balance, 2));
+        $defaultPayoutAmount = max(0, round($totals['registration_balance'], 2));
 
         // ── Registrations eligible for super-admin full refund ─────────────
         $eligibleForRefund = CategoryEventRegistration::with([
@@ -195,6 +199,9 @@ class SuperAdminFinanceController extends Controller
             'totalPayfastFees',
             'totalCapeTennisFees',
             'netTournamentIncome',
+            'registrationReceived',
+            'clothingReceived',
+            'clothingNet',
             'totalPaidOut',
             'balance',
             'eligibleForRefund',

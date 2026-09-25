@@ -43,12 +43,13 @@ class EventOperationsService
         $ledger = $this->ledger->buildForEvent($event);
         $totals = $ledger['totals'];
         $paymentRows = $ledger['paymentRows'];
+        $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $finance = [
             'event' => $event,
             'gross_payments' => $totals['gross_payments'],
             'completed_refunds' => $totals['completed_refunds'],
             'pending_refunds' => $totals['pending_refunds'],
-            'total_entries' => $event->isTeam() ? $paymentRows->count() : $paymentRows->sum(fn ($row) => $row->entryCount ?? 1),
+            'total_entries' => $event->isTeam() ? $entryRows->count() : $entryRows->sum(fn ($row) => $row->entryCount ?? 1),
             'total_paid_out' => $totals['total_paid_out'],
             'balance' => $totals['balance'],
             'has_transactions' => $paymentRows->isNotEmpty(),

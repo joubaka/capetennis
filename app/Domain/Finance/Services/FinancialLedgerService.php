@@ -4,6 +4,7 @@ namespace App\Domain\Finance\Services;
 
 use App\Domain\Finance\Constants\RefundType;
 use App\Models\CategoryEventRegistration;
+use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\EventPayout;
 use App\Models\RegistrationOrder;
@@ -75,6 +76,7 @@ class FinancialLedgerService
 
         $isTeamEvent  = $event->isTeam();
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
+        $recognizedRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee', 'clothing_payment']);
         $totalEntries = $isTeamEvent
             ? $entryRows->count()
             : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
@@ -89,7 +91,7 @@ class FinancialLedgerService
             'total_entries'    => $totalEntries,
             'total_paid_out'   => $totals['total_paid_out'],
             'balance'          => $totals['balance'],
-            'has_transactions' => $entryRows->isNotEmpty(),
+            'has_transactions' => $recognizedRows->isNotEmpty(),
         ];
     }
 
@@ -123,10 +125,15 @@ class FinancialLedgerService
         // ── Wallet-only team orders (no PayFast tx at all) ─────────────────
         $teamWalletOnlyRows = $this->buildTeamWalletOnlyRows($event, $feePerEntry);
 
+        // Clothing receipts belong to the event ledger, but they are not
+        // registration entries and carry no Cape Tennis entry fee.
+        $clothingRows = $this->buildClothingRows($event);
+
         return collect()
             ->merge($pfRows)
             ->merge($walletOnlyRows)
-            ->merge($teamWalletOnlyRows);
+            ->merge($teamWalletOnlyRows)
+            ->merge($clothingRows);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -323,8 +330,20 @@ class FinancialLedgerService
         $paymentsNet = round($grossPayments + $pfFees + $capeFees, 2);
         $netRevenue  = round($paymentsNet + $completedRefundNetImpact, 2);
 
+        $clothingPayments = $paymentRows->where('type', 'clothing_payment');
+        $registrationPayments = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
+        $registrationReceived = round($registrationPayments->sum('gross'), 2);
+        $registrationNet = round($registrationPayments->sum(
+            fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
+        ) + $completedRefundNetImpact, 2);
+        $clothingReceived = round($clothingPayments->sum('gross'), 2);
+        $clothingNet = round($clothingPayments->sum(
+            fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
+        ), 2);
+
         $totalPaidOut = round($payoutRows->sum(fn($r) => abs($r->net ?? 0)), 2);
         $balance      = round($netRevenue - $totalPaidOut, 2);
+        $registrationBalance = round($registrationNet - $totalPaidOut, 2);
 
         return [
             'gross_payments'         => $grossPayments,
@@ -336,6 +355,11 @@ class FinancialLedgerService
             'pending_refunds'        => $pendingRefundGross,
             'no_refund_count'        => $noRefundCount,
             'net_revenue'            => $netRevenue,
+            'registration_received'  => $registrationReceived,
+            'registration_net'       => $registrationNet,
+            'registration_balance'   => $registrationBalance,
+            'clothing_received'      => $clothingReceived,
+            'clothing_net'           => $clothingNet,
             'total_paid_out'         => $totalPaidOut,
             'balance'                => $balance,
             // Legacy aliases for view compatibility
@@ -352,6 +376,78 @@ class FinancialLedgerService
     // ─────────────────────────────────────────────────────────────────────────
     // Internals
     // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildClothingRows(Event $event): Collection
+    {
+        return ClothingOrder::with([
+            'user',
+            'player',
+            'team.regions',
+            'items.itemType',
+            'items.size',
+        ])
+            ->where('event_id', $event->id)
+            ->where('pay_status', 1)
+            ->where('status', 'completed')
+            ->orderByDesc('paid_at')
+            ->get()
+            ->map(function (ClothingOrder $order) {
+                // amount_paid was introduced after legacy paid orders existed.
+                // Their snapshotted total is the defensible received fallback.
+                $gross = round((float) ($order->amount_paid ?? $order->total), 2);
+                $fee = -abs(round((float) $order->payfast_fee, 2));
+                $net = round($gross + $fee, 2);
+                $playerName = trim(($order->player?->name ?? '') . ' ' . ($order->player?->surname ?? '')) ?: '—';
+                $teamName = $order->team?->name ?? '—';
+                $regionName = $order->team?->regions?->region_name ?? '—';
+                $details = $order->items->map(fn ($item) => [
+                    'player' => $playerName,
+                    'category' => 'Clothing',
+                    'price' => round((float) $item->line_total, 2),
+                    'item' => $item->item_name ?? $item->itemType?->item_type_name ?? '—',
+                    'size' => $item->size_name ?? $item->size?->size ?? '—',
+                    'quantity' => (int) $item->qty,
+                    'unit_price' => round((float) $item->price, 2),
+                    'team' => $teamName,
+                    'region' => $regionName,
+                ])->values();
+
+                return (object) [
+                    'type' => 'clothing_payment',
+                    'subtype' => 'clothing_order',
+                    'amount_gross' => $gross,
+                    'amount_fee' => $fee,
+                    'amount_net' => $net,
+                    'payment_method' => 'PayFast',
+                    'refund_status' => null,
+                    'withdrawal_status' => null,
+                    'status_label' => 'Clothing payment',
+                    'status_colour' => 'success',
+                    'source_tx_id' => null,
+                    'source_order_id' => $order->id,
+                    'source_pf_id' => $order->payfast_pf_payment_id ?: $order->pf_id,
+                    'user_name' => $order->user?->name ?? '—',
+                    'event_id' => $order->event_id,
+                    'created_at' => $order->paid_at ?? $order->updated_at,
+                    'player' => $playerName,
+                    'team' => $teamName,
+                    'region' => $regionName,
+                    'method' => 'PayFast',
+                    'gross' => $gross,
+                    'fee' => $fee,
+                    'capeFee' => 0.0,
+                    'net' => $net,
+                    'pf_payment_id' => $order->payfast_pf_payment_id ?: $order->pf_id,
+                    'tx_id' => null,
+                    'paid_at' => $order->paid_at,
+                    'order' => $order,
+                    'entryCount' => 0,
+                    'payfastGross' => $gross,
+                    'walletUsed' => 0.0,
+                    'registrationDetails' => $details,
+                ];
+            });
+    }
 
     private function mapPayfastRow(Transaction $tx, float $feePerEntry): object
     {
