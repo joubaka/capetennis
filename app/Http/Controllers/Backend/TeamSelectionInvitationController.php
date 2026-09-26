@@ -26,6 +26,7 @@ use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\TeamSelectionContactService;
 use App\Services\TeamSelection\TeamSelectionReminderService;
+use App\Services\TeamSelection\TeamSelectionEmailAudienceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -691,18 +692,25 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', "Invitation re-queued for {$email} using the saved campaign message.");
     }
 
-    public function sendRosterMessage(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
+    public function sendRosterMessage(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
         $data = $request->validate([
-            'target_type' => ['required', 'in:region,team,player,unlinked_imported,linked_unpaid,linked_all'],
+            'target_type' => ['required', 'in:region,team,player,unlinked_imported,linked_unpaid,linked_all,filtered'],
             'team_id' => ['nullable', 'required_if:target_type,team,player', 'integer', 'exists:teams,id'],
             'invitation_id' => ['nullable', 'integer', 'exists:team_selection_invitations,id'],
             'subject' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:20000'],
             'confirm_recipients' => ['accepted'],
             'recipient_hash' => ['nullable', 'string', 'size:64'],
+            'category_event_ids' => ['nullable', 'required_if:target_type,filtered', 'array', 'min:1', 'max:30'],
+            'category_event_ids.*' => ['integer', 'distinct'],
+            'gender' => ['nullable', 'required_if:target_type,filtered', 'in:any,boys,girls'],
+            'audience_status' => ['nullable', 'required_if:target_type,filtered', 'in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn'],
         ]);
+        if ($data['target_type'] === 'filtered') {
+            abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        }
 
         $team = null;
         if (in_array($data['target_type'], ['team', 'player'], true)) {
@@ -713,25 +721,27 @@ class TeamSelectionInvitationController extends Controller
 
         $invitationId = $data['target_type'] === 'player' ? (int) ($data['invitation_id'] ?? 0) : null;
         $importedCohort = in_array($data['target_type'], ['unlinked_imported', 'linked_unpaid', 'linked_all'], true);
-        $recipients = $importedCohort
-            ? $this->recipientCohort($event, $eventRegion, $data['target_type'])
-            : $this->rosterRecipients($event, $eventRegion, $team?->id, $invitationId);
+        $recipients = match (true) {
+            $data['target_type'] === 'filtered' => $audiences->resolve($event, $eventRegion, $data),
+            $importedCohort => $this->recipientCohort($event, $eventRegion, $data['target_type']),
+            default => $this->rosterRecipients($event, $eventRegion, $team?->id, $invitationId),
+        };
         if ($recipients->isEmpty()) {
             throw ValidationException::withMessages(['message' => 'No matching recipient has a valid email address.']);
         }
-        if ($data['target_type'] === 'region' || $importedCohort) {
+        if (in_array($data['target_type'], ['region', 'filtered'], true) || $importedCohort) {
             $currentHash = hash('sha256', $recipients->pluck('email')->toJson());
             if (! hash_equals($currentHash, (string) ($data['recipient_hash'] ?? ''))) {
                 throw ValidationException::withMessages(['confirm_recipients' => 'The regional recipient list changed. Review the current list and confirm again.']);
             }
         }
 
-        $related = $data['target_type'] === 'region' || $importedCohort
+        $related = in_array($data['target_type'], ['region', 'filtered'], true) || $importedCohort
             ? $eventRegion
             : ($data['target_type'] === 'player'
                 ? TeamSelectionInvitation::query()->findOrFail($invitationId)
                 : $team);
-        $mailType = $data['target_type'] === 'region' || $importedCohort ? 'region_email' : 'team_email';
+        $mailType = in_array($data['target_type'], ['region', 'filtered'], true) || $importedCohort ? 'region_email' : 'team_email';
         $stats = $mailer->dispatch($mailType, $related, $recipients, [
             'subject' => trim($data['subject']),
             'message' => $data['message'],
@@ -744,6 +754,7 @@ class TeamSelectionInvitationController extends Controller
                 'unlinked_imported' => 'regional manager emailed unlinked imported players',
                 'linked_unpaid' => 'regional manager emailed linked unpaid imported players',
                 'linked_all' => 'regional manager emailed all linked imported players',
+                'filtered' => 'regional manager emailed a filtered team-selection audience',
                 'region' => 'regional manager emailed all active selected players in region',
                 default => 'regional manager emailed selected team roster',
             });
@@ -847,6 +858,25 @@ class TeamSelectionInvitationController extends Controller
         };
 
         return back()->with('success', "Regional team details updated to {$data['num_team_members']} player places.{$reserveMessage}");
+    }
+
+    public function previewRosterAudience(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionEmailAudienceService $audiences)
+    {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        $data = $request->validate([
+            'category_event_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'category_event_ids.*' => ['integer', 'distinct'],
+            'gender' => ['required', 'in:any,boys,girls'],
+            'audience_status' => ['required', 'in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn'],
+        ]);
+        $recipients = $audiences->resolve($event, $eventRegion, $data);
+
+        return response()->json([
+            'count' => $recipients->count(),
+            'recipient_hash' => hash('sha256', $recipients->pluck('email')->toJson()),
+            'recipients' => $recipients,
+        ]);
     }
 
     public function updateTeamPublication(Request $request, Event $event, EventRegion $eventRegion, Team $team)

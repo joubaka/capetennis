@@ -24,6 +24,28 @@ class MastersRegistrationBoundaryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_guest_event_signup_returns_to_registration_after_login(): void
+    {
+        [$event] = $this->individualEvent();
+        $user = User::factory()->create();
+        $registrationPath = route('register.register', $event, false);
+        $loginUrl = route('login', ['redirect' => $registrationPath]);
+
+        $this->get(route('events.show', $event))
+            ->assertOk()
+            ->assertSee($loginUrl, false);
+
+        $this->get($loginUrl)
+            ->assertOk()
+            ->assertSee('name="redirect" value="'.$registrationPath.'"', false);
+
+        $this->post(route('login'), [
+            'email' => $user->email,
+            'password' => 'password',
+            'redirect' => $registrationPath,
+        ])->assertRedirect($registrationPath);
+    }
+
     public function test_public_event_page_does_not_offer_generic_signup_for_masters(): void
     {
         [$event] = $this->mastersEvent();

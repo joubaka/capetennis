@@ -31,6 +31,7 @@ use App\Services\TeamSelection\TeamRankingImportService;
 use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Services\TeamSelection\RegionManagerAccessService;
 use App\Services\TeamSelection\TeamSelectionReminderService;
+use App\Services\TeamSelection\TeamSelectionEmailAudienceService;
 use App\Services\Clothing\ClothingPriceService;
 use App\Services\Clothing\ClothingOrderService;
 use App\Services\Clothing\ClothingPaymentService;
@@ -47,6 +48,125 @@ use Spatie\Permission\Models\Role;
 class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_filtered_team_email_audience_combines_age_group_gender_and_invitation_state(): void
+    {
+        [$source, $team, $players] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update(['status' => 'sent']);
+        $invitations = $selectionImport->invitations()->orderBy('queue_position')->get();
+
+        $players->each->update(['gender' => 1]);
+        $players[0]->update(['gender' => 2]);
+        $invitations[0]->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
+        $invitations[1]->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'invited_at' => now(), 'accepted_at' => now()]);
+        $invitations[2]->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'invited_at' => now(), 'accepted_at' => now(), 'paid_at' => now()]);
+        $invitations[3]->update(['status' => TeamSelectionInvitation::RESERVE, 'invited_at' => null]);
+
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+        $service = app(TeamSelectionEmailAudienceService::class);
+        $base = ['category_event_ids' => [$team->category_event_id], 'gender' => 'any'];
+
+        $this->assertSame(
+            [$players[2]->email],
+            $service->resolve($source->event, $eventRegion, $base + ['audience_status' => 'entered'])->pluck('email')->all()
+        );
+        $this->assertEqualsCanonicalizing(
+            [$players[0]->email, $players[1]->email],
+            $service->resolve($source->event, $eventRegion, $base + ['audience_status' => 'not_entered'])->pluck('email')->all()
+        );
+        $this->assertSame(
+            [$players[3]->email],
+            $service->resolve($source->event, $eventRegion, $base + ['audience_status' => 'not_invited'])->pluck('email')->all()
+        );
+        $this->assertSame(
+            [$players[0]->email],
+            $service->resolve($source->event, $eventRegion, $base + ['audience_status' => 'not_accepted'])->pluck('email')->all()
+        );
+        $this->assertSame(
+            [$players[0]->email],
+            $service->resolve($source->event, $eventRegion, ['category_event_ids' => [$team->category_event_id], 'gender' => 'girls', 'audience_status' => 'active'])->pluck('email')->all()
+        );
+    }
+
+    public function test_filtered_team_email_audience_rejects_cross_event_age_groups(): void
+    {
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update(['status' => 'sent']);
+        $otherCategory = CategoryEvent::factory()->create();
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+
+        try {
+            app(TeamSelectionEmailAudienceService::class)->resolve($source->event, $eventRegion, [
+                'category_event_ids' => [$otherCategory->id],
+                'gender' => 'any',
+                'audience_status' => 'active',
+            ]);
+            $this->fail('Expected the cross-event age group to be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('category_event_ids', $exception->errors());
+        }
+    }
+
+    public function test_region_manager_must_preview_the_exact_filtered_audience_before_sending(): void
+    {
+        Queue::fake();
+        [$source, $team, $players] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Filtered mail team event',
+            'type' => 2,
+            'code' => 'filtered-mail-team-event',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamEventType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update(['status' => 'sent']);
+        $invitations = $selectionImport->invitations()->orderBy('queue_position')->get();
+        $invitations[0]->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
+        $invitations[1]->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'invited_at' => now(), 'accepted_at' => now(), 'paid_at' => now()]);
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+        $filters = [
+            'category_event_ids' => [$team->category_event_id],
+            'gender' => 'any',
+            'audience_status' => 'not_entered',
+        ];
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('backend.team-selection.roster-email.preview', [$source->event, $eventRegion]), $filters)
+            ->assertForbidden();
+
+        $preview = $this->actingAs($manager)
+            ->postJson(route('backend.team-selection.roster-email.preview', [$source->event, $eventRegion]), $filters)
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('recipients.0.email', $players[0]->email);
+
+        $payload = $filters + [
+            'target_type' => 'filtered',
+            'subject' => 'Registration reminder',
+            'message' => 'Please complete your event entry.',
+            'confirm_recipients' => 1,
+            'recipient_hash' => $preview->json('recipient_hash'),
+        ];
+
+        $this->actingAs($manager)
+            ->post(route('backend.team-selection.roster-email.send', [$source->event, $eventRegion]), $payload)
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('bulk_email_logs', [
+            'mail_type' => 'region_email',
+            'recipient_email' => $players[0]->email,
+        ]);
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'mail_type' => 'region_email',
+            'recipient_email' => $players[1]->email,
+        ]);
+    }
 
     public function test_region_import_fills_configured_team_and_creates_two_reserves_from_published_ranking(): void
     {
