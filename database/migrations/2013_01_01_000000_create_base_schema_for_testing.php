@@ -241,7 +241,7 @@ return new class extends Migration
                 $table->bigIncrements('id');
                 $table->unsignedBigInteger('event_id')->nullable();
                 $table->unsignedBigInteger('category_id')->nullable();
-                $table->decimal('entry_fee', 10, 2)->default(0);
+                $table->decimal('entry_fee', 10, 2)->nullable();
                 $table->integer('ordering')->default(0);
                 $table->boolean('nominations_published')->default(false);
                 $table->timestamp('locked_at')->nullable();

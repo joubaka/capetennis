@@ -1368,7 +1368,9 @@ class RegisterController extends Controller
         $orderItem->registration_id   = $registration->id;
         $orderItem->player_id         = (int) $playerIds[$i];
         $orderItem->user_id           = $authUser->id;
-        $orderItem->item_price        = $categoryEvent->entry_fee ?? 0;
+        $orderItem->item_price        = $categoryEvent->entry_fee !== null
+          ? (float) $categoryEvent->entry_fee
+          : (float) ($categoryEvent->event()->value('entryFee') ?? 0);
         $orderItem->save();
 
         $registration->players()->syncWithoutDetaching([(int) $playerIds[$i]]);
