@@ -57,6 +57,11 @@ class RegistrationOrder extends Model
     return $this->belongsTo(\App\Models\WalletTransaction::class, 'wallet_transaction_id');
   }
 
+  public function paymentRecovery()
+  {
+    return $this->hasOne(RegistrationPaymentRecovery::class, 'registration_order_id');
+  }
+
   public function isFullyPaid(): bool
   {
     return (bool) $this->pay_status;

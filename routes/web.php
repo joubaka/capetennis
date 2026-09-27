@@ -58,6 +58,7 @@ use App\Http\Controllers\Backend\WalletTransactionController;
 use App\Http\Controllers\Frontend\RegistrationWithdrawController;
 use App\Http\Controllers\Frontend\RegistrationRefundController;
 use App\Http\Controllers\Frontend\RegistrationPaymentController;
+use App\Http\Controllers\Frontend\RegistrationPaymentRecoveryController;
 use App\Http\Controllers\Frontend\EventController;
 use App\Http\Controllers\Frontend\FrontFixtureController;
 use App\Http\Controllers\Frontend\HomeController;
@@ -189,6 +190,13 @@ Route::get(
   '/registration/checkout/{order}',
   [RegistrationPaymentController::class, 'checkout']
 )->middleware(['auth', 'agreement', 'profile.updated'])->name('registration.checkout');
+
+Route::get('/registration/payment-recovery/{recovery}', [RegistrationPaymentRecoveryController::class, 'show'])
+  ->middleware(['auth', 'signed'])
+  ->name('registration.recovery.show');
+Route::get('/registration/payment-recovery/{recovery}/payfast', [RegistrationPaymentRecoveryController::class, 'payfast'])
+  ->middleware(['auth', 'signed'])
+  ->name('registration.recovery.payfast');
 
 Route::post(
   '/registration/hybrid/complete/{orderId}',

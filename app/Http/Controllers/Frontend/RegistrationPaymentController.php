@@ -430,6 +430,7 @@ class RegistrationPaymentController extends Controller
 
     // 🔐 Idempotency protection
     if ($order->pay_status == 1) {
+      $this->reconcilePaymentRecovery($order);
       if (!empty($payfastData['pf_payment_id'])) {
         $this->recordPayfastTransaction($order, $payfastData);
       }
@@ -450,13 +451,16 @@ class RegistrationPaymentController extends Controller
     try {
 
       $method = (float) $order->wallet_reserved > 0 ? 'hybrid' : 'payfast';
-      $order = app(\App\Domain\Payments\Services\RegistrationPaymentService::class)
-        ->finalizePayfastPayment($order, $amountGross, [
+      $paymentContext = [
         'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
         'payment_method' => $method,
         'wallet_source_type' => 'event_registration_wallet_payment',
         'wallet_meta' => ['order_id' => $order->id],
-      ]);
+      ];
+      $recovery = \App\Models\RegistrationPaymentRecovery::query()->where('registration_order_id', $order->id)->first();
+      $order = $recovery
+        ? app(\App\Domain\Payments\Services\RegistrationPaymentRecoveryService::class)->finalizePayfastRecovery($recovery, $amountGross, $paymentContext)
+        : app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->finalizePayfastPayment($order, $amountGross, $paymentContext);
 
       $this->recordPayfastTransaction($order, $payfastData);
 
@@ -470,6 +474,7 @@ class RegistrationPaymentController extends Controller
         $walletTx
       );
       app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
+      $this->reconcilePaymentRecovery($order);
 
     } catch (\Throwable $e) {
 
@@ -502,6 +507,14 @@ class RegistrationPaymentController extends Controller
       ->log("Registration paid via PayFast for {$pfEventName}");
 
     return true;
+  }
+
+  private function reconcilePaymentRecovery(RegistrationOrder $order): void
+  {
+    \App\Models\RegistrationPaymentRecovery::query()
+      ->where('registration_order_id', $order->id)
+      ->whereNull('paid_at')
+      ->update(['paid_at' => now(), 'status' => 'paid']);
   }
 
   /**

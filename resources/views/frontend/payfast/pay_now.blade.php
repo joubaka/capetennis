@@ -90,12 +90,6 @@
         form.querySelectorAll('input[type=hidden]').forEach(function(el) {
             fields[el.name] = el.value;
         });
-        console.log('[PayFast Form Fields]', fields);
-        console.warn('merchant_id  = "' + (fields.merchant_id  || 'EMPTY') + '"');
-        console.warn('merchant_key = "' + (fields.merchant_key || 'EMPTY') + '"');
-        console.warn('amount       = "' + (fields.amount       || 'EMPTY') + '"');
-        console.warn('action URL   = "' + form.action + '"');
-
         // DEBUG MODE: hold for 10 seconds so you can read console, then submit
         var debugHold = {{ app()->isLocal() ? 'true' : 'false' }};
         var hasCreds  = fields.merchant_id && fields.merchant_key;
@@ -110,7 +104,6 @@
             return; // stop — do not submit broken form
         }
 
-        console.log('[PayFast] Credentials present — submitting...');
         if (navigator.sendBeacon && {{ \Illuminate\Support\Facades\Route::has('audit.interactions.store') ? 'true' : 'false' }}) {
             var auditPayload = new FormData();
             auditPayload.append('_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
