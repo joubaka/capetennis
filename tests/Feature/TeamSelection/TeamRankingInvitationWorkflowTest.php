@@ -168,6 +168,149 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_event_manager_previews_and_idempotently_sends_an_event_scoped_filtered_audience(): void
+    {
+        Queue::fake();
+        [$source, $team, $players] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Event audience mail', 'type' => 2, 'code' => 'event-audience-mail',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamEventType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport->update(['status' => 'sent']);
+        $activeInvitationIds = $selectionImport->invitations()->orderBy('queue_position')->limit(2)->pluck('id');
+        TeamSelectionInvitation::query()->whereKey($activeInvitationIds)
+            ->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+        $filters = [
+            'event_region_ids' => [$eventRegion->id],
+            'category_event_ids' => [$team->category_event_id],
+            'gender' => 'any',
+            'audience_status' => 'active',
+        ];
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)
+            ->assertForbidden();
+
+        $preview = $this->actingAs($manager)
+            ->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)
+            ->assertOk()
+            ->assertJsonPath('count', 2)
+            ->assertJsonStructure(['recipient_hash', 'send_token', 'recipients' => [['email', 'region']]]);
+
+        $payload = $filters + [
+            'subject' => 'Event registration reminder',
+            'message' => 'Please complete your event entry.',
+            'confirm_recipients' => 1,
+            'recipient_hash' => $preview->json('recipient_hash'),
+            'send_token' => $preview->json('send_token'),
+        ];
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)
+            ->assertRedirect()->assertSessionHas('success');
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)
+            ->assertRedirect()->assertSessionHas('success');
+
+        $this->assertSame(2, BulkEmailLog::query()->where('mail_type', 'region_email')->where('related_type', Event::class)->count());
+
+        $foreignRegion = new EventRegion();
+        $foreignRegion->event_id = Event::factory()->create()->id;
+        $foreignRegion->region_id = TeamRegion::create(['region_name' => 'Foreign event region'])->id;
+        $foreignRegion->ordering = 1;
+        $foreignRegion->save();
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            ...$filters, 'event_region_ids' => [$foreignRegion->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('event_region_ids');
+
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), [
+            ...$payload, 'audience_status' => 'invited',
+        ])->assertSessionHasErrors('confirm_recipients');
+        $this->assertSame(2, BulkEmailLog::query()->where('mail_type', 'region_email')->where('related_type', Event::class)->count());
+    }
+
+    public function test_event_roster_preview_deduplicates_shared_contacts_across_all_regions_and_honours_a_region_subset(): void
+    {
+        [$firstSource, $firstTeam, $firstPlayers] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Multi-region audience mail', 'type' => 2, 'code' => 'multi-region-audience-mail',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $event = $firstSource->event;
+        $event->update(['eventType' => $teamEventType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
+
+        $firstImport = app(TeamRankingImportService::class)->import($firstSource, $manager);
+        $firstImport->update(['status' => 'sent']);
+        $firstActive = $firstImport->invitations()->orderBy('queue_position')->limit(2)->get();
+        $firstActive[0]->player->update(['email' => 'SHARED.Contact@example.test']);
+        $firstActive[1]->player->update(['email' => 'first-region@example.test']);
+        TeamSelectionInvitation::query()->whereKey($firstActive->pluck('id'))
+            ->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
+
+        $secondRegion = TeamRegion::create(['region_name' => 'Boland Primary Schools 2026']);
+        $secondEventRegion = new EventRegion();
+        $secondEventRegion->event_id = $event->id;
+        $secondEventRegion->region_id = $secondRegion->id;
+        $secondEventRegion->ordering = 2;
+        $secondEventRegion->save();
+        $eventYear = (int) $event->start_date->format('Y');
+        $secondSeries = Series::factory()->create(['name' => 'Boland '.$eventYear, 'year' => $eventYear, 'minimum_events_for_team_selection' => 1]);
+        $categoryEvent = CategoryEvent::query()->findOrFail($firstTeam->category_event_id);
+        $rankingList = RankingList::factory()->create(['series_id' => $secondSeries->id, 'category_id' => $categoryEvent->category_id]);
+        $secondTeam = new Team();
+        $secondTeam->forceFill([
+            'user_id' => $manager->id, 'personal_team' => false, 'name' => 'Boland u/10 Boys',
+            'region_id' => $secondRegion->id, 'category_event_id' => $categoryEvent->id,
+            'num_team_members' => 2, 'published' => true, 'year' => $eventYear,
+        ])->save();
+        $secondPlayers = collect();
+        foreach ([' shared.contact@EXAMPLE.test ', 'second-region@example.test'] as $rank => $email) {
+            $owner = User::factory()->create();
+            $player = Player::factory()->create(['email' => $email, 'userId' => $owner->id]);
+            $secondPlayers->push($player);
+            SeriesRanking::create([
+                'series_id' => $secondSeries->id, 'ranking_list_id' => $rankingList->id,
+                'category_id' => $categoryEvent->category_id, 'player_id' => $player->id,
+                'rank_position' => $rank + 1, 'total_points' => 900 - $rank,
+                'meta_json' => ['events_played' => 3], 'status' => 'published',
+                'run_id' => 'published-second-region-selection-run', 'published_at' => now(),
+            ]);
+        }
+        $secondSource = app(TeamRankingImportService::class)->link($event, $secondEventRegion, $secondSeries, 2, $manager);
+        $secondImport = app(TeamRankingImportService::class)->import($secondSource, $manager, true);
+        $secondImport->update(['status' => 'sent']);
+        TeamSelectionInvitation::query()->where('import_id', $secondImport->id)
+            ->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
+
+        $firstEventRegion = EventRegion::query()->where('event_id', $event->id)->where('region_id', $firstTeam->region_id)->firstOrFail();
+        $filters = [
+            'category_event_ids' => [$categoryEvent->id], 'gender' => 'any', 'audience_status' => 'active',
+        ];
+        $allRegions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
+            ...$filters, 'event_region_ids' => [$firstEventRegion->id, $secondEventRegion->id],
+        ])->assertOk()->assertJsonPath('count', 3);
+        $this->assertEqualsCanonicalizing(
+            ['shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
+            collect($allRegions->json('recipients'))->pluck('email')->all(),
+        );
+        $shared = collect($allRegions->json('recipients'))->firstWhere('email', 'shared.contact@example.test');
+        $this->assertStringContainsString('Overberg', $shared['region']);
+        $this->assertStringContainsString('Boland', $shared['region']);
+
+        $subset = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
+            ...$filters, 'event_region_ids' => [$secondEventRegion->id],
+        ])->assertOk()->assertJsonPath('count', 2);
+        $this->assertEqualsCanonicalizing(
+            ['shared.contact@example.test', 'second-region@example.test'],
+            collect($subset->json('recipients'))->pluck('email')->all(),
+        );
+        $this->assertNotContains('first-region@example.test', collect($subset->json('recipients'))->pluck('email')->all());
+    }
+
     public function test_region_import_fills_configured_team_and_creates_two_reserves_from_published_ranking(): void
     {
         [$source, $team, $players] = $this->selectionSource();

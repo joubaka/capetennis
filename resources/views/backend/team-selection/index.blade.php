@@ -116,6 +116,36 @@
 
   @if($isEventManager)
     <div class="alert alert-primary">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+    @php($eventFilterTeams = $teams->flatten(1)->filter(fn($team) => $team->category_event_id)->unique('category_event_id')->sortBy(fn($team) => $team->category?->category?->name))
+    @if($eventRegions->isNotEmpty() && $eventFilterTeams->isNotEmpty())
+      <div class="d-flex justify-content-end mb-3" data-event-roster-email-action>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#event-roster-email"><i class="ti ti-mail-forward me-1"></i>Email selected players across regions</button>
+      </div>
+      <div class="modal fade" id="event-roster-email" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.event-roster-email.send', $event) }}" class="modal-content" data-event-roster-email-form>@csrf
+          <input type="hidden" name="recipient_hash" data-event-roster-email-hash>
+          <input type="hidden" name="send_token" data-event-roster-email-token>
+          <div class="modal-header"><div><h5 class="modal-title">Email selected players</h5><div class="small text-muted">Choose all event regions or a specific regional group, then preview the exact deduplicated recipients.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="border rounded p-3 mb-3" data-event-roster-filter-panel data-preview-url="{{ route('backend.team-selection.event-roster-email.preview', $event) }}">
+              <div class="row g-3">
+                <div class="col-12"><fieldset><legend class="form-label mb-2">Regions</legend><div class="row g-2">@foreach($eventRegions as $filterRegion)<div class="col-sm-6 col-lg-3"><label class="form-check border rounded p-2 h-100"><input class="form-check-input ms-0 me-2" type="checkbox" name="event_region_ids[]" value="{{ $filterRegion->id }}" data-event-roster-filter checked><span class="form-check-label">{{ $filterRegion->region?->region_name }}</span></label></div>@endforeach</div></fieldset><div class="form-text">Leave all selected to email all regions, or clear regions you do not want included.</div></div>
+                <div class="col-12"><fieldset><legend class="form-label mb-2">Age groups</legend><div class="row g-2">@foreach($eventFilterTeams as $filterTeam)<div class="col-sm-6 col-lg-4"><label class="form-check border rounded p-2 h-100"><input class="form-check-input ms-0 me-2" type="checkbox" name="category_event_ids[]" value="{{ $filterTeam->category_event_id }}" data-event-roster-filter><span class="form-check-label">{{ $filterTeam->category?->category?->name ?: $filterTeam->name }}</span></label></div>@endforeach</div></fieldset></div>
+                <div class="col-md-6"><label class="form-label">Gender</label><select class="form-select" name="gender" data-event-roster-filter required><option value="any">All genders</option><option value="girls">Girls</option><option value="boys">Boys</option></select></div>
+                <div class="col-md-6"><label class="form-label">Player status</label><select class="form-select" name="audience_status" data-event-roster-filter required><option value="active">All active selected players</option><option value="entered">Entered / paid</option><option value="not_entered">Selected but not entered / paid</option><option value="invited">Invitation sent</option><option value="not_invited">Not yet invited</option><option value="accepted">Accepted</option><option value="not_accepted">Invited but not accepted</option><option value="declined">Declined</option><option value="withdrawn">Withdrawn</option></select></div>
+              </div>
+              <button class="btn btn-outline-primary mt-3" type="button" data-event-roster-preview><i class="ti ti-list-check me-1"></i>Preview recipients</button>
+              <div class="alert alert-secondary mt-3 mb-0 d-none" data-event-roster-result></div>
+              <div class="mt-3 d-none" data-event-roster-review><strong class="small">Exact recipients</strong><div class="small text-muted mt-1" data-event-roster-list></div></div>
+            </div>
+            <div class="mb-3"><label class="form-label">Subject</label><input class="form-control" name="subject" maxlength="180" required></div>
+            <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-event-roster-email" required><label class="form-check-label" for="confirm-event-roster-email">I confirm the exact recipient details above are correct</label></div>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
+        </form></div>
+      </div>
+    @endif
   @else
     <div class="alert alert-info">You are viewing team selection, invitations and announcements for your assigned region.</div>
   @endif
@@ -320,9 +350,6 @@
                     @endif
                     @if($allLinkedImportedRecipients->isNotEmpty())
                       <button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="linked_all" data-recipient="{{ $allLinkedImportedRecipients->count() }} linked player email(s) in {{ $eventRegion->region?->region_name }}" data-recipient-hash="{{ hash('sha256', $allLinkedImportedRecipients->pluck('email')->toJson()) }}"><i class="ti ti-users me-2"></i>Email all linked players</button>
-                    @endif
-                    @if($isEventManager && $activeImport?->status === 'sent' && $regionTeams->isNotEmpty())
-                      <button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="filtered" data-recipient="Choose age groups, gender and player status below"><i class="ti ti-filter me-2"></i>Email a filtered player group</button>
                     @endif
                     @if($eventRegion->region?->usesOnlineClothingOrders())
                       <div class="dropdown-divider"></div>
@@ -1301,6 +1328,57 @@ document.addEventListener('DOMContentLoaded', function () {
         AppFeedback.fromError(error, 'The workbook could not be processed.');
       } finally {
         submit.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-event-roster-email-form]').forEach(function (form) {
+    const panel = form.querySelector('[data-event-roster-filter-panel]');
+    const inputs = Array.from(form.querySelectorAll('[data-event-roster-filter]'));
+    const hash = form.querySelector('[data-event-roster-email-hash]');
+    const token = form.querySelector('[data-event-roster-email-token]');
+    const confirmation = form.querySelector('[name="confirm_recipients"]');
+    const result = form.querySelector('[data-event-roster-result]');
+    const review = form.querySelector('[data-event-roster-review]');
+    const list = form.querySelector('[data-event-roster-list]');
+    const reset = function () {
+      hash.value = '';
+      token.value = '';
+      confirmation.checked = false;
+      result.classList.add('d-none');
+      review.classList.add('d-none');
+      list.innerHTML = '';
+    };
+    inputs.forEach(input => input.addEventListener('change', reset));
+    form.querySelector('[data-event-roster-preview]').addEventListener('click', async function () {
+      const button = this;
+      const formData = new FormData();
+      formData.append('_token', form.querySelector('[name="_token"]').value);
+      inputs.forEach(input => {
+        if (input.type === 'checkbox') {
+          if (input.checked) formData.append(input.name, input.value);
+        } else {
+          formData.append(input.name, input.value);
+        }
+      });
+      button.disabled = true;
+      try {
+        const response = await fetch(panel.dataset.previewUrl, { method: 'POST', headers: { Accept: 'application/json' }, body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'Recipient preview failed.');
+        hash.value = data.recipient_hash;
+        token.value = data.send_token;
+        result.textContent = `${data.count} unique recipient${data.count === 1 ? '' : 's'} matched across the selected regions.`;
+        result.classList.remove('d-none');
+        result.classList.toggle('alert-warning', data.count === 0);
+        result.classList.toggle('alert-success', data.count > 0);
+        list.innerHTML = data.recipients.map(recipient => `<div>${escape(recipient.name)} · ${escape(recipient.email)} · ${escape(recipient.region)} · ${escape(recipient.category)}</div>`).join('');
+        review.classList.toggle('d-none', data.count === 0);
+      } catch (error) {
+        reset();
+        AppFeedback.fromError(error, 'Recipient preview failed.');
+      } finally {
+        button.disabled = false;
       }
     });
   });

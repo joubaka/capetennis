@@ -29,6 +29,7 @@ use App\Services\TeamSelection\TeamSelectionReminderService;
 use App\Services\TeamSelection\TeamSelectionEmailAudienceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class TeamSelectionInvitationController extends Controller
@@ -876,6 +877,88 @@ class TeamSelectionInvitationController extends Controller
             'count' => $recipients->count(),
             'recipient_hash' => hash('sha256', $recipients->pluck('email')->toJson()),
             'recipients' => $recipients,
+        ]);
+    }
+
+    public function previewEventRosterAudience(Request $request, Event $event, TeamSelectionEmailAudienceService $audiences, RegionManagerAccessService $access)
+    {
+        abort_unless($event->isTeam(), 404);
+        abort_unless($access->isEventManager($request->user(), $event), 403);
+        $data = $this->validateEventRosterAudience($request, false);
+        $recipients = $audiences->resolveForEvent($event, $data);
+        $sendToken = (string) Str::uuid();
+        $recipientHash = $audiences->eventPreviewHash($event, $data, $recipients, $sendToken);
+        $request->session()->put("team_selection.event_roster_email.{$sendToken}", $recipientHash);
+
+        return response()->json([
+            'count' => $recipients->count(),
+            'recipient_hash' => $recipientHash,
+            'send_token' => $sendToken,
+            'recipients' => $recipients,
+        ]);
+    }
+
+    public function sendEventRosterMessage(Request $request, Event $event, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences, RegionManagerAccessService $access)
+    {
+        abort_unless($event->isTeam(), 404);
+        abort_unless($access->isEventManager($request->user(), $event), 403);
+        $data = $this->validateEventRosterAudience($request, true);
+        $recipients = $audiences->resolveForEvent($event, $data);
+        if ($recipients->isEmpty()) {
+            throw ValidationException::withMessages(['message' => 'No matching recipient has a valid email address.']);
+        }
+        $currentHash = $audiences->eventPreviewHash($event, $data, $recipients, $data['send_token']);
+        $previewHash = (string) $request->session()->get("team_selection.event_roster_email.{$data['send_token']}", '');
+        if ($previewHash === '' || ! hash_equals($previewHash, $data['recipient_hash']) || ! hash_equals($currentHash, $data['recipient_hash'])) {
+            throw ValidationException::withMessages(['confirm_recipients' => 'The event recipient list changed. Review the current list and confirm again.']);
+        }
+
+        $regionIds = collect($data['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values();
+        $stats = DB::transaction(function () use ($event, $data, $recipients, $request, $mailer): array {
+            Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $alreadyQueued = \App\Models\BulkEmailLog::query()
+                ->where('mail_type', 'region_email')
+                ->where('related_type', Event::class)
+                ->where('related_id', $event->id)
+                ->where('payload->send_token', $data['send_token'])
+                ->exists();
+            if ($alreadyQueued) {
+                return ['queued' => 0, 'duplicate' => $recipients->count()];
+            }
+
+            return $mailer->dispatch('region_email', $event, $recipients, [
+                'subject' => trim($data['subject']),
+                'message' => $data['message'],
+                'from_name' => $request->user()->name ?: 'Event team manager',
+                'reply_to' => $request->user()->email,
+                'send_token' => $data['send_token'],
+                'event_region_ids' => collect($data['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'category_event_ids' => collect($data['category_event_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'gender' => $data['gender'],
+                'audience_status' => $data['audience_status'],
+            ], true);
+        });
+        activity('team-selection')->performedOn($event)->causedBy($request->user())
+            ->withProperties(['target_type' => 'event_filtered', 'event_region_ids' => $regionIds->all(), 'region_count' => $regionIds->count(), 'queued' => $stats['queued']])
+            ->log('event manager emailed a filtered team-selection audience');
+
+        return back()->with('success', "Queued {$stats['queued']} email(s) for the reviewed event recipient list.");
+    }
+
+    private function validateEventRosterAudience(Request $request, bool $sending): array
+    {
+        return $request->validate([
+            'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'event_region_ids.*' => ['integer', 'distinct'],
+            'category_event_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'category_event_ids.*' => ['integer', 'distinct'],
+            'gender' => ['required', 'in:any,boys,girls'],
+            'audience_status' => ['required', 'in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn'],
+            'subject' => [$sending ? 'required' : 'nullable', 'string', 'max:180'],
+            'message' => [$sending ? 'required' : 'nullable', 'string', 'max:20000'],
+            'confirm_recipients' => [$sending ? 'accepted' : 'nullable'],
+            'recipient_hash' => [$sending ? 'required' : 'nullable', 'string', 'size:64'],
+            'send_token' => [$sending ? 'required' : 'nullable', 'uuid'],
         ]);
     }
 
