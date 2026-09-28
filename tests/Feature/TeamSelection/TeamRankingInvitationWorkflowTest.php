@@ -500,7 +500,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'invitation',
             $payload['campaign'],
         ))->render();
-        $this->assertStringContainsString('Register and pay', $html);
+        $this->assertStringContainsString('>Register<', $html);
+        $this->assertStringNotContainsString('Payment deadline', $html);
+        $this->assertStringNotContainsString('payment deadline', $html);
+        $this->assertStringNotContainsString('Complete payment', $html);
+        $this->assertStringNotContainsString('Register and pay', $html);
         $this->assertStringContainsString('View event', $html);
         $this->assertStringContainsString('Decline invitation', $html);
         $this->assertStringContainsString(htmlspecialchars(route('events.show', [
@@ -586,7 +590,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'kind' => 'replacement',
             'campaign' => [],
         ])->assertSee($promoted->response_deadline_override->format('d M Y H:i'))
-            ->assertSee('24 hours from this invitation');
+            ->assertSee('24 hours from this invitation')
+            ->assertSee('Respond by:')
+            ->assertDontSee('Respond and complete payment by:')
+            ->assertDontSee('payment deadline');
         Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class);
     }
 
@@ -1727,7 +1734,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('go to the main page and click')
             ->assertSee('Order clothing')
             ->assertDontSee('return to your invitation page')
-            ->assertSee('Register and pay')
+            ->assertSee('Register')
             ->assertSee('Decline invitation')
             ->assertDontSee('Ranking position:')
             ->assertDontSee('Entry fee');
@@ -3888,13 +3895,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $mixedPreview = $this->actingAs($manager)->post($previewRoute, $payload)
             ->assertOk()->assertSee('Exact recipients (3)')
             ->assertSee('Platteland team invitation')
-            ->assertSee('Team payment update')
+            ->assertSee('Team registration update')
             ->assertSee('Confirmed team place update')
             ->assertSee('Send 3 custom email(s)');
         $mixedHtml = $mixedPreview->getContent();
         $this->assertSame(1, substr_count($mixedHtml, '>Decline invitation<'));
-        $this->assertSame(1, substr_count($mixedHtml, '>Register and pay<'));
-        $this->assertSame(1, substr_count($mixedHtml, '>Complete payment<'));
+        $this->assertSame(2, substr_count($mixedHtml, '>Register</a>'));
+        $this->assertSame(0, substr_count($mixedHtml, '>Complete payment<'));
         $this->assertSame(1, substr_count($mixedHtml, '>View invitation<'));
         $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
         $token = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
@@ -3917,11 +3924,18 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             $this->assertSame($before[$invitation->id][2], $invitation->snapshot_json);
         }
         $paymentHtml = (new \App\Mail\TeamSelectionInvitationMail($active[1]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_payment_update', ['message' => 'Update']))->render();
-        $this->assertStringContainsString('Complete payment', $paymentHtml);
+        $this->assertStringContainsString('Team registration update', $paymentHtml);
+        $this->assertStringContainsString('How to register', $paymentHtml);
+        $this->assertStringContainsString('>Register<', $paymentHtml);
+        $this->assertStringNotContainsString('Pending payment', $paymentHtml);
+        $this->assertStringNotContainsString('pending payment', $paymentHtml);
+        $this->assertStringNotContainsString('Payment deadline', $paymentHtml);
+        $this->assertStringNotContainsString('payment deadline', $paymentHtml);
+        $this->assertStringNotContainsString('Complete payment', $paymentHtml);
         $this->assertStringNotContainsString('Decline invitation', $paymentHtml);
         $paidHtml = (new \App\Mail\TeamSelectionInvitationMail($active[2]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_paid_update', ['message' => 'Update']))->render();
         $this->assertStringContainsString('View invitation', $paidHtml);
-        $this->assertStringNotContainsString('Register and pay', $paidHtml);
+        $this->assertStringNotContainsString('>Register<', $paidHtml);
         $this->assertStringNotContainsString('Decline invitation', $paidHtml);
         $this->assertDatabaseHas('activity_log', [
             'subject_type' => TeamSelectionImport::class,
