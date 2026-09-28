@@ -1209,7 +1209,10 @@ final class TeamSelectionInvitationService
                 'replacement_payment_deadline' => $locked->replacement_payment_deadline?->toIso8601String(),
             ];
             $affectedInvitations = $locked->invitations()
-                ->whereNotNull('promoted_from_id')
+                ->where(function ($query) {
+                    $query->whereNotNull('promoted_from_id')
+                        ->orWhereNotNull('snapshot_json->activation->activated_at');
+                })
                 ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT])
                 ->lockForUpdate()
                 ->get();

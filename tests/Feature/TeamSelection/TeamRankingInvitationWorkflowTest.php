@@ -2972,6 +2972,54 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_replacement_deadline_update_syncs_a_manually_activated_invitation_without_a_promoted_source(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $response = now()->addDay()->startOfMinute();
+        $payment = now()->addDays(2)->startOfMinute();
+        $service->send($selectionImport, [
+            'response_deadline' => $response,
+            'payment_deadline' => $payment,
+            'replacement_payment_deadline' => now()->addDays(3)->startOfMinute(),
+        ], $actor);
+
+        $manuallyActivated = $selectionImport->invitations()->whereNotNull('roster_rank')->firstOrFail();
+        $staleOverride = now()->subDay()->startOfMinute();
+        $manuallyActivated->update([
+            'promoted_from_id' => null,
+            'invited_at' => null,
+            'response_deadline_override' => $staleOverride,
+            'payment_deadline_override' => $staleOverride,
+            'snapshot_json' => array_replace_recursive($manuallyActivated->snapshot_json ?? [], [
+                'activation' => [
+                    'activated_at' => now()->subHours(2)->toIso8601String(),
+                    'activated_by_user_id' => $actor->id,
+                    'pending_manual_invitation' => true,
+                ],
+            ]),
+        ]);
+        $this->assertSame('replacement', $service->customEmailKind($manuallyActivated->fresh()));
+        $this->assertSame($staleOverride->toDateTimeString(), $manuallyActivated->fresh()->effectiveResponseDeadline()->toDateTimeString());
+
+        $canonicalReplacement = now()->addDays(4)->startOfMinute();
+        $service->extendDeadlines($selectionImport->fresh(), [
+            'response_deadline' => $response->format('Y-m-d H:i'),
+            'payment_deadline' => $payment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => $canonicalReplacement->format('Y-m-d H:i'),
+        ], $actor);
+
+        $synced = $manuallyActivated->fresh();
+        $this->assertNull($synced->promoted_from_id);
+        $this->assertTrue((bool) data_get($synced->snapshot_json, 'activation.pending_manual_invitation'));
+        $this->assertSame($canonicalReplacement->toDateTimeString(), $synced->response_deadline_override->toDateTimeString());
+        $this->assertSame($canonicalReplacement->toDateTimeString(), $synced->payment_deadline_override->toDateTimeString());
+        $this->assertSame($canonicalReplacement->toDateTimeString(), $synced->effectiveResponseDeadline()->toDateTimeString());
+    }
+
     public function test_replacement_deadline_must_be_future_after_payment_and_before_event_start(): void
     {
         Queue::fake();
