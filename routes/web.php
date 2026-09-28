@@ -427,6 +427,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::prefix('interprovincial-trials')->name('backend.interprovincial-trials.')->group(function () {
     Route::get('events/{event}/invitations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
+    Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
+    Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');
     Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
     Route::post('events/{event}/batches/{batch}/review', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'review'])->name('batches.review');
     Route::post('events/{event}/batches/{batch}/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'send'])->name('batches.send');

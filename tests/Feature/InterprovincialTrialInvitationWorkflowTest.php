@@ -55,6 +55,74 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->actingAs(User::factory()->create())->get("/backend/nomination/selected/{$this->category->id}")->assertForbidden();
     }
 
+    public function test_current_event_workspace_links_to_a_usable_nomination_flow(): void
+    {
+        $player = Player::factory()->create(['name' => 'Reachable', 'surname' => 'Nominee']);
+
+        $this->actingAs($this->admin)->get(route('admin.events.overview', $this->event))
+            ->assertOk()
+            ->assertSee('Nominations &amp; invitations', false)
+            ->assertSee(route('backend.interprovincial-trials.invitations.index', $this->event), false);
+
+        $ordinaryTypeId = DB::table('eventtypes')->insertGetId([
+            'name' => 'Ordinary Singles Test',
+            'type' => EventType::INDIVIDUAL,
+            'code' => 'ordinary-singles-test',
+        ]);
+        $ordinaryEvent = Event::factory()->create(['eventType' => $ordinaryTypeId]);
+        DB::table('event_admins')->insert(['event_id' => $ordinaryEvent->id, 'user_id' => $this->admin->id]);
+        $this->actingAs($this->admin)->get(route('admin.events.overview', $ordinaryEvent))
+            ->assertOk()
+            ->assertDontSee('Nominations &amp; invitations', false);
+
+        $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', [
+            'event' => $this->event,
+            'player_search' => 'Reachable',
+        ]))->assertOk()
+            ->assertSee('Find an existing player')
+            ->assertSee('Reachable Nominee')
+            ->assertSee('Player #'.$player->id)
+            ->assertDontSee($player->email)
+            ->assertSee(route('backend.interprovincial-trials.nominations.store', [$this->event, $this->category]), false);
+
+        $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', [
+            'event' => $this->event,
+            'player_search' => '%_',
+        ]))->assertOk()->assertDontSee('Reachable Nominee');
+
+        $store = route('backend.interprovincial-trials.nominations.store', [$this->event, $this->category]);
+        $this->actingAs($this->admin)->post($store, ['player_id' => $player->id])->assertRedirect();
+        $this->actingAs($this->admin)->post($store, ['player_id' => $player->id])->assertRedirect();
+        $this->assertDatabaseCount('event_nominations', 1);
+    }
+
+    public function test_nested_nomination_actions_reject_cross_event_identifiers(): void
+    {
+        $player = Player::factory()->create();
+        $other = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $other->id]);
+        DB::table('event_admins')->insert(['event_id' => $other->id, 'user_id' => $this->admin->id]);
+
+        $this->actingAs($this->admin)
+            ->post(route('backend.interprovincial-trials.nominations.store', [$this->event, $otherCategory]), ['player_id' => $player->id])
+            ->assertNotFound();
+
+        $nomination = EventNomination::create(['event_id' => $other->id, 'category_event_id' => $otherCategory->id, 'player_id' => $player->id]);
+        $this->actingAs($this->admin)
+            ->delete(route('backend.interprovincial-trials.nominations.destroy', [$this->event, $this->category, $nomination]))
+            ->assertNotFound();
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id]);
+
+        $unassigned = User::factory()->create()->assignRole('admin');
+        $this->actingAs($unassigned)
+            ->post(route('backend.interprovincial-trials.nominations.store', [$this->event, $this->category]), ['player_id' => $player->id])
+            ->assertForbidden();
+        $this->actingAs($unassigned)
+            ->delete(route('backend.interprovincial-trials.nominations.destroy', [$other, $otherCategory, $nomination]))
+            ->assertForbidden();
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id]);
+    }
+
     public function test_prepare_review_and_send_are_exact_idempotent_and_create_no_financial_records(): void
     {
         Bus::fake();
@@ -78,6 +146,44 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('registration_orders', 0);
         $this->assertDatabaseCount('wallet_transactions', 0);
         $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_send_rejects_a_nomination_added_after_review_without_queueing_mail(): void
+    {
+        Bus::fake();
+        [$batch] = $this->reviewedBatch();
+        $addedOwner = User::factory()->create();
+        $addedPlayer = Player::factory()->create(['userId' => $addedOwner->id]);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $addedPlayer->id]);
+
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.batches.send', [$this->event, $batch]))
+            ->assertSessionHasErrors('batch');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_send_rejects_a_nomination_removed_after_review_without_queueing_mail(): void
+    {
+        Bus::fake();
+        [$batch, , $nomination] = $this->reviewedBatch();
+        $nomination->delete();
+
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.batches.send', [$this->event, $batch]))
+            ->assertSessionHasErrors('batch');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_send_rejects_a_linked_recipient_change_after_review_without_queueing_mail(): void
+    {
+        Bus::fake();
+        [$batch, $owner] = $this->reviewedBatch();
+        $owner->update(['email' => 'changed-after-review@example.test']);
+
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.batches.send', [$this->event, $batch]))
+            ->assertSessionHasErrors('batch');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNothingDispatched();
     }
 
     public function test_batch_and_player_access_reject_cross_event_and_unlinked_accounts(): void
@@ -201,5 +307,24 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 1);
         Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 2);
+    }
+
+    private function reviewedBatch(): array
+    {
+        $owner = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $owner->id]);
+        $nomination = EventNomination::create([
+            'event_id' => $this->event->id,
+            'category_event_id' => $this->category->id,
+            'player_id' => $player->id,
+        ]);
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.prepare', $this->event));
+        $batch = InterprovincialTrialInvitationBatch::sole();
+        $this->actingAs($this->admin)->post(
+            route('backend.interprovincial-trials.batches.review', [$this->event, $batch]),
+            ['snapshot_hash' => $batch->snapshot_hash]
+        );
+
+        return [$batch->fresh(), $owner, $nomination];
     }
 }

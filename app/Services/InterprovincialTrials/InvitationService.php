@@ -73,6 +73,15 @@ class InvitationService
             if ($locked->status !== InterprovincialTrialInvitationBatch::REVIEWED) {
                 throw ValidationException::withMessages(['batch' => 'Review the exact recipient list before sending invitations.']);
             }
+            $currentRows = $this->snapshotRows(
+                $locked->event,
+                $locked->event->nominations()->lockForUpdate()
+                    ->with(['player.user', 'player.users', 'categoryEvent.category'])
+                    ->orderBy('id')->get()
+            );
+            if (! hash_equals($locked->snapshot_hash, $this->snapshotHash($currentRows))) {
+                throw ValidationException::withMessages(['batch' => 'Nominations or recipients changed. Prepare and review the list again.']);
+            }
             foreach ($locked->invitations()->whereNotNull('recipient_email')->get() as $invitation) {
                 $claimed = DB::table('interprovincial_trial_mail_dispatches')->insertOrIgnore(['invitation_id' => $invitation->id, 'created_at' => now(), 'updated_at' => now()]);
                 if ($claimed) {

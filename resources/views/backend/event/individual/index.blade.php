@@ -1,5 +1,19 @@
 <div class="row g-3">
 
+  @if($event->isInterprovincialTrials() && auth()->check() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))))
+  <div class="col-12">
+    <div class="card border border-primary h-100">
+      <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+        <div>
+          <h5 class="mb-1"><i class="ti ti-user-check me-1 text-primary"></i>Nominations &amp; invitations</h5>
+          <p class="text-muted mb-0">Find existing Cape Tennis players, nominate them per trials category, and prepare the reviewed invitation list.</p>
+        </div>
+        <a class="btn btn-primary flex-shrink-0" href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}">Manage nominations &amp; invitations</a>
+      </div>
+    </div>
+  </div>
+  @endif
+
   {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
   <div class="col-xl-4 col-md-6">
     <div class="card h-100">

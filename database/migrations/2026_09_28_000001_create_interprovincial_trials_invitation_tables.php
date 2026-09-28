@@ -21,7 +21,19 @@ return new class extends Migration
                     DB::table('event_nominations')->where('id', $nomination->id)->update(['event_id' => $eventId]);
                 }
             });
-            DB::statement('DELETE n1 FROM event_nominations n1 INNER JOIN event_nominations n2 ON n1.category_event_id = n2.category_event_id AND n1.player_id = n2.player_id AND n1.id > n2.id');
+            DB::table('event_nominations')
+                ->select('category_event_id', 'player_id', DB::raw('MIN(id) as keep_id'))
+                ->groupBy('category_event_id', 'player_id')
+                ->havingRaw('COUNT(*) > 1')
+                ->orderBy('keep_id')
+                ->get()
+                ->each(function ($duplicate): void {
+                    DB::table('event_nominations')
+                        ->where('category_event_id', $duplicate->category_event_id)
+                        ->where('player_id', $duplicate->player_id)
+                        ->where('id', '<>', $duplicate->keep_id)
+                        ->delete();
+                });
             Schema::table('event_nominations', function (Blueprint $table): void {
                 $table->unique(['category_event_id', 'player_id'], 'event_nominations_category_player_unique');
             });
