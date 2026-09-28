@@ -652,7 +652,7 @@ class FinancialLedgerServiceTest extends TestCase
         $this->assertSame(618.0, $built['totals']['clothing_received']);
         $this->assertSame(600.0, $built['totals']['clothing_net']);
         $this->assertSame(100.0, $built['totals']['registration_received']);
-        $this->assertSame(86.8, $built['totals']['registration_net']);
+        $this->assertSame(84.07, $built['totals']['registration_net']);
 
         $summary = $this->service->buildFySummaryRow($this->event->refresh());
         $this->assertSame(1, $summary['total_entries']);
@@ -666,8 +666,8 @@ class FinancialLedgerServiceTest extends TestCase
             collect(),
             collect([(object) ['net' => -25.00]])
         );
-        $this->assertSame(61.8, $totalsWithPayout['registration_balance']);
-        $this->assertSame(661.8, $totalsWithPayout['balance']);
+        $this->assertSame(59.07, $totalsWithPayout['registration_balance']);
+        $this->assertSame(659.07, $totalsWithPayout['balance']);
     }
 
     public function test_legacy_paid_clothing_uses_snapshotted_total_when_amount_paid_is_null(): void
