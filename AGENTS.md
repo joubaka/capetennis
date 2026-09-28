@@ -16,6 +16,7 @@
 - Accept refund requests only after withdrawal. Enforce ownership, withdrawal state, deadlines, payment state, and idempotency.
 - Preserve original paid state as an audit record after refunds; refund status records the reversal.
 - Withdrawals must remove active draw, fixture, or roster participation. A late team withdrawal with no refund path must free its roster slot immediately.
+- Interprovincial Trials registration is payer-sponsored: sponsorship authorization must never depend on owning or linking to the nominee. Any otherwise eligible authenticated user, including the normal agreement and profile gates, may register the exact currently invited nominee; that actor becomes the payer without gaining player ownership or creating a `user_players` link. Only that payer may resume or cancel the resulting checkout; declining remains restricted to an account already linked to the nominated player.
 
 ## Mail, secrets, and dashboards
 

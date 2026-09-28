@@ -132,18 +132,28 @@ class InvitationService
     {
         return DB::transaction(function () use ($invitation, $user): RegistrationOrder {
             $locked = InterprovincialTrialInvitation::query()
-                ->with(['event.eventTypeModel', 'categoryEvent', 'player.users'])
+                ->with(['event.eventTypeModel', 'categoryEvent', 'nomination', 'player'])
                 ->lockForUpdate()->findOrFail($invitation->id);
 
-            $owned = (int) $locked->player?->userId === (int) $user->id
-                || $locked->player?->users->contains(fn (User $linked): bool => (int) $linked->id === (int) $user->id);
-            abort_unless($owned, 403);
+            $tupleIsCurrent = $locked->event?->isInterprovincialTrials()
+                && (int) $locked->categoryEvent?->event_id === (int) $locked->event_id
+                && (int) $locked->nomination?->event_id === (int) $locked->event_id
+                && (int) $locked->nomination?->category_event_id === (int) $locked->category_event_id
+                && (int) $locked->nomination?->player_id === (int) $locked->player_id
+                && ! InterprovincialTrialInvitation::query()->where('event_id', $locked->event_id)
+                    ->where('nomination_id', $locked->nomination_id)->where('id', '>', $locked->id)
+                    ->where('status', '!=', 'prepared')->exists();
+            abort_unless($tupleIsCurrent, 404);
 
             if ($locked->status === InterprovincialTrialInvitation::PAID_CONFIRMED && $locked->order_id) {
-                return RegistrationOrder::findOrFail($locked->order_id);
+                $existing = RegistrationOrder::findOrFail($locked->order_id);
+                if ((int) $existing->user_id !== (int) $user->id) throw ValidationException::withMessages(['invitation' => 'This invitation is already being processed.']);
+                return $existing;
             }
             if ($locked->status === InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
-                return RegistrationOrder::findOrFail($locked->order_id);
+                $existing = RegistrationOrder::findOrFail($locked->order_id);
+                if ((int) $existing->user_id !== (int) $user->id) throw ValidationException::withMessages(['invitation' => 'This invitation is already being processed.']);
+                return $existing;
             }
 
             $event = $locked->event;
@@ -266,13 +276,8 @@ class InvitationService
                 ->lockForUpdate()
                 ->first();
             $category = $invitation->categoryEvent()->lockForUpdate()->first();
+            $event = $invitation->event()->lockForUpdate()->first();
             $player = $invitation->player()->lockForUpdate()->first();
-            $ownerMatches = $player
-                && ((int) $player->userId === (int) $lockedOrder->user_id
-                    || DB::table('user_players')
-                        ->where('player_id', $player->id)
-                        ->where('user_id', $lockedOrder->user_id)
-                        ->exists());
             $nominationMatches = DB::table('event_nominations')
                 ->where('id', $invitation->nomination_id)
                 ->where('event_id', $invitation->event_id)
@@ -284,11 +289,12 @@ class InvitationService
                 ->where('player_id', $invitation->player_id)
                 ->exists();
 
-            $tupleMatches = $category
+            $tupleMatches = $event?->isInterprovincialTrials()
+                && $category
                 && (int) $category->event_id === (int) $invitation->event_id
                 && $nominationMatches
                 && $registrationHasPlayer
-                && $ownerMatches
+                && $player
                 && $entry
                 && $item
                 && (int) $entry->user_id === (int) $lockedOrder->user_id
@@ -323,12 +329,29 @@ class InvitationService
     public function resetCancelledPayment(RegistrationOrder $order, User $user): void
     {
         DB::transaction(function () use ($order, $user): void {
-            $invitation = InterprovincialTrialInvitation::query()->with('player.users')->lockForUpdate()
-                ->where('order_id', $order->id)->first();
+            $lockedOrder = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
+            abort_unless((int) $lockedOrder->user_id === (int) $user->id, 403);
+            if ($lockedOrder->status !== 'cancelled'
+                || (int) $lockedOrder->pay_status === 1
+                || (bool) $lockedOrder->payfast_paid
+                || round((float) $lockedOrder->wallet_reserved, 2) !== 0.0) {
+                throw ValidationException::withMessages([
+                    'payment' => 'Only a cancelled, unpaid checkout with no wallet reservation can be reset.',
+                ]);
+            }
+            $invitation = InterprovincialTrialInvitation::query()->with(['categoryEvent', 'nomination'])->lockForUpdate()
+                ->where('order_id', $lockedOrder->id)->first();
             if (! $invitation || $invitation->status !== InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT) return;
-            $owned = (int) $invitation->player?->userId === (int) $user->id
-                || $invitation->player?->users->contains(fn (User $linked): bool => (int) $linked->id === (int) $user->id);
-            abort_unless($owned, 403);
+            $itemMatches = RegistrationOrderItems::query()->where('order_id', $lockedOrder->id)
+                ->where('registration_id', $invitation->registration_id)
+                ->where('category_event_id', $invitation->category_event_id)
+                ->where('player_id', $invitation->player_id)
+                ->where('user_id', $lockedOrder->user_id)->exists();
+            abort_unless((int) $invitation->categoryEvent?->event_id === (int) $invitation->event_id
+                && (int) $invitation->nomination?->event_id === (int) $invitation->event_id
+                && (int) $invitation->nomination?->category_event_id === (int) $invitation->category_event_id
+                && (int) $invitation->nomination?->player_id === (int) $invitation->player_id
+                && $itemMatches, 404);
             CategoryEventRegistration::query()
                 ->where('registration_id', $invitation->registration_id)
                 ->where('category_event_id', $invitation->category_event_id)

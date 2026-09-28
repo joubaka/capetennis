@@ -3821,10 +3821,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         $this->actingAs($manager)->post($sendRoute, [
             ...$secondPayload, 'preview_hash' => $expiredPreviewHash, 'preview_token' => $expiredPreviewToken, 'confirm_recipients' => 1,
-        ])->assertSessionHasErrors('invitation_ids');
-        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
-        $this->assertNull($secondReserve->fresh()->invited_at);
-        $this->assertTrue((bool) data_get($secondReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
+        ])->assertRedirect(route('backend.team-selection.index', $source->event))
+            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
+        $this->assertSame($logsWithHistoricalDelivery + 2, BulkEmailLog::query()->count());
+        $this->assertNotNull($secondReserve->fresh()->invited_at);
+        $this->assertFalse((bool) data_get($secondReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
     }
 
     public function test_custom_checked_player_email_supports_each_active_roster_status_and_team_scoped_controls(): void
@@ -3860,6 +3861,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         }
         $active[1]->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'accepted_at' => now()]);
         $active[2]->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+        $active[0]->update([
+            'response_deadline_override' => now()->subDays(2),
+            'payment_deadline_override' => now()->subDay(),
+        ]);
+        $active[1]->update(['payment_deadline_override' => now()->subDay()]);
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()

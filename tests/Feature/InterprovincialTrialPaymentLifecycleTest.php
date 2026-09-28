@@ -9,6 +9,7 @@ use App\Models\EventNomination;
 use App\Models\EventType;
 use App\Models\Draw;
 use App\Models\InterprovincialTrialInvitation;
+use App\Models\InterprovincialTrialInvitationBatch;
 use App\Models\Player;
 use App\Models\RegistrationOrder;
 use App\Models\User;
@@ -97,6 +98,7 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
     {
         [$invitation, $order, $entry] = $this->paidFixture();
         $paidAt = $invitation->paid_at;
+        $this->assertNotSame((int) $invitation->player->userId, (int) $order->user_id);
 
         try {
             app(InvitationService::class)->handlePaidWithdrawal($entry->registration_id, $this->admin);
@@ -112,6 +114,7 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
         $fresh = $invitation->fresh();
         $this->assertSame(InterprovincialTrialInvitation::WITHDRAWN, $fresh->status);
         $this->assertSame($order->id, $fresh->order_id);
+        $this->assertSame($order->user_id, $fresh->order->user_id);
         $this->assertSame($entry->registration_id, $fresh->registration_id);
         $this->assertTrue($paidAt->equalTo($fresh->paid_at));
         $this->assertDatabaseCount('interprovincial_trial_invitations', 1);
@@ -228,18 +231,24 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
         ]);
         $category = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 0]);
         $owner = User::factory()->create();
+        $payer = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
-        EventNomination::create([
+        $nomination = EventNomination::create([
             'event_id' => $event->id,
             'category_event_id' => $category->id,
             'player_id' => $player->id,
         ]);
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $this->admin->id]);
 
-        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.prepare', $event));
-        $invitation = InterprovincialTrialInvitation::query()->latest('id')->firstOrFail();
-        $invitation->update(['status' => 'sent']);
-        $order = app(InvitationService::class)->accept($invitation, $owner);
+        $batch = InterprovincialTrialInvitationBatch::create([
+            'event_id' => $event->id, 'status' => InterprovincialTrialInvitationBatch::DRAFT,
+            'snapshot_hash' => str_repeat('e', 64), 'created_by_user_id' => $this->admin->id,
+        ]);
+        $invitation = InterprovincialTrialInvitation::create([
+            'batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $category->id,
+            'nomination_id' => $nomination->id, 'player_id' => $player->id, 'status' => 'sent',
+        ]);
+        $order = app(InvitationService::class)->accept($invitation, $payer);
         $entry = CategoryEventRegistration::query()
             ->where('registration_id', $invitation->fresh()->registration_id)
             ->where('category_event_id', $category->id)

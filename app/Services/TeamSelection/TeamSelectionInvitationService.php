@@ -1745,22 +1745,6 @@ final class TeamSelectionInvitationService
                 'invitation_ids' => 'The selected player list is stale or includes an ineligible player. Review the current active team players and try again.',
             ]);
         }
-        if ($invitations->contains(function (TeamSelectionInvitation $invitation): bool {
-            $responseDeadline = $invitation->effectiveResponseDeadline();
-            $paymentDeadline = $invitation->effectivePaymentDeadline();
-
-            if ($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED) return false;
-            if ($invitation->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
-                return ! $paymentDeadline || now()->gt($paymentDeadline);
-            }
-
-            return ! $responseDeadline || ! $paymentDeadline || now()->gt($responseDeadline) || now()->gt($paymentDeadline);
-        })) {
-            throw ValidationException::withMessages([
-                'invitation_ids' => 'Extend the applicable response or payment deadlines before emailing the selected players.',
-            ]);
-        }
-
         return $invitations;
     }
 

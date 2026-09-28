@@ -23,26 +23,21 @@ class InterprovincialTrialInvitationController extends Controller
     public function show(Request $request, InterprovincialTrialInvitation $invitation)
     {
         $user = $request->user();
-        $ownsInvitedPlayer = in_array((int) $invitation->player_id, $user->ownedPlayerIds(), true);
-        $previewOnly = $user->hasRole('super-user') && ! $ownsInvitedPlayer;
-
-        abort_unless($ownsInvitedPlayer || $previewOnly, 403);
-        abort_if(! $previewOnly && ! in_array($invitation->status, ['queued', 'sent'], true), 404);
-        $invitation->load(['event', 'categoryEvent.category', 'player', 'nomination']);
+        $invitation->load(['event', 'categoryEvent.category', 'player', 'nomination', 'order']);
 
         $tupleIsCurrent = (int) $invitation->categoryEvent?->event_id === (int) $invitation->event_id
             && (int) $invitation->nomination?->event_id === (int) $invitation->event_id
             && (int) $invitation->nomination?->category_event_id === (int) $invitation->category_event_id
             && (int) $invitation->nomination?->player_id === (int) $invitation->player_id;
-        if ($ownsInvitedPlayer && $tupleIsCurrent && $invitation->categoryEvent->nominations_published) {
-            return redirect(route('events.show', [
-                'event' => $invitation->event_id,
-                'player' => $invitation->player_id,
-                'nomination' => $invitation->nomination_id,
-            ]).'#trial-nomination-'.$invitation->nomination_id);
-        }
+        $tupleIsCurrent = $tupleIsCurrent && ! InterprovincialTrialInvitation::query()
+            ->where('event_id', $invitation->event_id)->where('nomination_id', $invitation->nomination_id)
+            ->where('id', '>', $invitation->id)->where('status', '!=', 'prepared')->exists();
+        abort_unless($tupleIsCurrent && $invitation->event?->isInterprovincialTrials(), 404);
 
-        return view('frontend.interprovincial-trials.invitations.show', compact('invitation', 'previewOnly'));
+        $canDecline = in_array((int) $invitation->player_id, $user->ownedPlayerIds(), true);
+        $isPayer = $invitation->order && (int) $invitation->order->user_id === (int) $user->id;
+
+        return view('frontend.interprovincial-trials.invitations.show', compact('invitation', 'canDecline', 'isPayer'));
     }
 
     public function register(Request $request, InterprovincialTrialInvitation $invitation, InvitationService $service)
