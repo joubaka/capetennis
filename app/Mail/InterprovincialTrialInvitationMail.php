@@ -7,7 +7,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Support\Facades\URL;
 
 class InterprovincialTrialInvitationMail extends Mailable
 {
@@ -17,7 +16,11 @@ class InterprovincialTrialInvitationMail extends Mailable
     public function content(): Content
     {
         return new Content(view: 'emails.interprovincial-trials.invitation', with: [
-            'invitationUrl' => URL::temporarySignedRoute('interprovincial-trials.invitations.show', now()->addDays(7), ['invitation' => $this->invitation]),
+            'invitationUrl' => route('events.show', [
+                'event' => $this->invitation->event_id,
+                'player' => $this->invitation->player_id,
+                'nomination' => $this->invitation->nomination_id,
+            ]).'#trial-nomination-'.$this->invitation->nomination_id,
             'recipientName' => $this->messagePayload['recipient_name'] ?? '',
             'messageBody' => $this->messagePayload['body'] ?? '',
         ]);

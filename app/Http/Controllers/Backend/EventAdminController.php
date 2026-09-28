@@ -799,6 +799,15 @@ class EventAdminController extends Controller
   public function overview(Event $event)
   {
     $this->authorize('event-draw.view', $event);
+
+    if ($event->isInterprovincialTrials()) {
+      $user = request()->user();
+      abort_unless(
+        $user && ($user->hasRole('super-user') || ($user->hasRole('admin') && $user->is_event_admin($event->id))),
+        403
+      );
+    }
+
     $operations = app(EventOperationsService::class)->for($event);
 
     // =====================
@@ -877,6 +886,57 @@ class EventAdminController extends Controller
     $financeData = $event->isTeam()
       ? $this->buildFinanceData($event, $operations['financeTotals'])
       : [];
+
+    if ($event->isInterprovincialTrials()) {
+      $interproBatch = \App\Models\InterprovincialTrialInvitationBatch::query()
+        ->where('event_id', $event->id)
+        ->latest('id')
+        ->first();
+
+      $invitationStates = collect();
+      if ($interproBatch) {
+        $invitationStates = \App\Models\InterprovincialTrialInvitation::query()
+          ->where('event_id', $event->id)
+          ->where('batch_id', $interproBatch->id)
+          ->selectRaw('status, COUNT(*) as aggregate')
+          ->groupBy('status')
+          ->pluck('aggregate', 'status');
+      }
+
+      $categoryCount = \App\Models\CategoryEvent::query()
+        ->where('event_id', $event->id)
+        ->count();
+      $publishedCategoryCount = \App\Models\CategoryEvent::query()
+        ->where('event_id', $event->id)
+        ->where('nominations_published', true)
+        ->count();
+      $registrationClosesAt = $event->registrationClosesAt()?->endOfDay();
+      $registrationOpen = (bool) $event->published
+        && (int) $event->signUp === 1
+        && $event->hasOpenRegistrationLifecycle()
+        && (! $registrationClosesAt || now()->lte($registrationClosesAt));
+
+      $interproStats = [
+        'categories' => $categoryCount,
+        'nominations' => \App\Models\EventNomination::query()->where('event_id', $event->id)->count(),
+        'batch' => $interproBatch?->status ?? 'Not prepared',
+        'queued' => (int) ($invitationStates['queued'] ?? 0),
+        'sent' => (int) ($invitationStates['sent'] ?? 0),
+        'acceptedPendingPayment' => (int) ($invitationStates[\App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT] ?? 0),
+        'paidConfirmed' => (int) ($invitationStates[\App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED] ?? 0),
+        'declinedOrWithdrawn' => (int) (($invitationStates[\App\Models\InterprovincialTrialInvitation::DECLINED] ?? 0)
+          + ($invitationStates[\App\Models\InterprovincialTrialInvitation::WITHDRAWN] ?? 0)),
+        'failed' => (int) ($invitationStates['failed'] ?? 0),
+        'publication' => $publishedCategoryCount === 0
+          ? 'Unpublished'
+          : ($publishedCategoryCount === $categoryCount ? 'Published' : 'Partially published'),
+        'registration' => $registrationOpen ? 'Open' : 'Closed',
+      ];
+
+      return view('backend.event.interprovincial-trials.overview', compact(
+        'event', 'operations', 'interproBatch', 'interproStats'
+      ));
+    }
 
     if ($event->isMasters()) {
       $event->load(['series', 'categoryEvents.category']);

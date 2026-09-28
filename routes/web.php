@@ -142,6 +142,7 @@ Route::middleware('auth')->prefix('interprovincial-trials')->name('interprovinci
   Route::get('invitations', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'show'])->middleware(['signed', 'throttle:30,1'])->name('invitations.show');
   Route::post('invitations/{invitation}/register', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'register'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('invitations.register');
+  Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'decline'])->middleware('throttle:10,1')->name('invitations.decline');
 });
 
 Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->group(function () {
@@ -435,10 +436,17 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
     Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');
     Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
+    Route::post('events/{event}/invitations/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'sendCurrent'])->name('invitations.send-current');
+    Route::post('events/{event}/invitations/send-preview', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'previewSend'])
+      ->middleware('throttle:30,1')->name('invitations.send-preview');
+    Route::post('events/{event}/invitations/send-preview/queue', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'queuePreviewedSend'])
+      ->middleware('throttle:10,1')->name('invitations.send-preview.queue');
     Route::put('events/{event}/batches/{batch}/message', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'saveMessage'])->name('batches.message');
     Route::post('events/{event}/batches/{batch}/review', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'review'])->name('batches.review');
     Route::post('events/{event}/batches/{batch}/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'send'])->name('batches.send');
     Route::post('events/{event}/batches/{batch}/invitations/{invitation}/retry', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'retry'])->name('invitations.retry');
+    Route::post('events/{event}/invitations/{invitation}/retry-follow-up', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'retryFollowUp'])
+      ->middleware('throttle:10,1')->name('invitations.retry-follow-up');
   });
 
   Route::middleware('role:super-user|admin')->prefix('masters')->name('backend.masters.')->group(function () {

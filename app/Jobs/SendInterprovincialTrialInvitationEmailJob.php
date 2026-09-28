@@ -29,19 +29,23 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         $log = BulkEmailLog::where('mail_type', 'interprovincial_trial_invitation')->find($this->logId);
         if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
         $invitation = InterprovincialTrialInvitation::with(['batch.event', 'categoryEvent.category', 'player'])->find($log->related_id);
-        if (! $invitation || (int) $invitation->event_id !== $this->eventId || ! in_array($invitation->status, ['queued', 'sending', 'failed'], true)) {
+        $kind = (string) data_get($log->payload, 'kind', 'initial');
+        $eligibleStates = $kind === 'initial'
+            ? ['queued', 'sending', 'failed']
+            : ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT];
+        if (! $invitation || (int) $invitation->event_id !== $this->eventId || ! in_array($invitation->status, $eligibleStates, true)) {
             $log->markAsSkipped('Invitation is no longer eligible to send.'); return;
         }
         // SMTP is at-least-once: a worker can fail after transport acceptance but
         // before this state is committed. The stable log/dispatch keys prevent
         // separate queue requests; provider-level idempotency is unavailable.
-        $invitation->update(['status' => 'sending']);
+        if ($kind === 'initial') $invitation->update(['status' => 'sending']);
         $log->update(['status' => 'sending', 'failed_at' => null, 'error_message' => null]);
         $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
             ->sendNow(new InterprovincialTrialInvitationMail($invitation, $log->payload ?? []));
         if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
         $log->markAsSent();
-        $invitation->update(['status' => 'sent', 'sent_at' => now()]);
+        if ($kind === 'initial') $invitation->update(['status' => 'sent', 'sent_at' => now()]);
     }
 
     public function failed(Throwable $exception): void
@@ -49,7 +53,9 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         $log = BulkEmailLog::find($this->logId);
         if ($log && ! $log->sent_at) {
             $log->markAsFailed($exception->getMessage());
-            InterprovincialTrialInvitation::whereKey($log->related_id)->whereNull('sent_at')->update(['status' => 'failed']);
+            if ((string) data_get($log->payload, 'kind', 'initial') === 'initial') {
+                InterprovincialTrialInvitation::whereKey($log->related_id)->whereNull('sent_at')->update(['status' => 'failed']);
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\EventNomination;
+use App\Models\InterprovincialTrialInvitation;
 use App\Models\InterprovincialTrialInvitationBatch;
 use App\Models\Player;
 use App\Services\InterprovincialTrials\InvitationService;
@@ -16,11 +17,39 @@ class InterprovincialTrialInvitationController extends Controller
     public function index(Request $request, Event $event)
     {
         $this->authorizeEvent($event);
-        $batch = InterprovincialTrialInvitationBatch::with(['invitations.player', 'invitations.categoryEvent.category'])
-            ->where('event_id', $event->id)->latest('id')->first();
+        $batch = $this->latestBatchForEvent($event);
         $event->load(['categoryEvents' => fn ($query) => $query->with(['category', 'nominations.player'])->orderBy('ordering')->orderBy('id')]);
 
         $invitations = $batch?->invitations ?? collect();
+        $successfulInitialIds = $this->successfulInitialInvitationIds($invitations);
+        $failedFollowUpIds = $this->failedFollowUpInvitationIds($invitations);
+        $latestInvitationsByNomination = $invitations->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
+        $currentNominationIds = $event->categoryEvents->flatMap->nominations->pluck('id')->map(fn ($id): int => (int) $id);
+        $nominationPresentations = $event->categoryEvents->flatMap->nominations->mapWithKeys(function (EventNomination $nomination) use ($latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
+            $invitation = $latestInvitationsByNomination->get((int) $nomination->id);
+
+            return [$nomination->id => $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id))];
+        });
+        $historicalInvitations = $invitations
+            ->reject(fn (InterprovincialTrialInvitation $invitation): bool => $currentNominationIds->contains((int) $invitation->nomination_id))
+            ->map(fn (InterprovincialTrialInvitation $invitation): array => $this->invitationPresentation($invitation))
+            ->values();
+        $nominationFilterGroups = collect([
+            'all' => 'All',
+            'nominated' => 'Nominated - not sent',
+            'invited' => 'Awaiting response',
+            'payment-pending' => 'Payment pending',
+            'registered' => 'Registered',
+            'declined-withdrawn' => 'Declined / withdrawn',
+            'delivery-failed' => 'Delivery failed',
+            'cancelled' => 'Cancelled',
+        ])->map(fn (string $label, string $key): array => [
+            'key' => $key,
+            'label' => $label,
+            'count' => $key === 'all'
+                ? $nominationPresentations->count()
+                : $nominationPresentations->where('filter_key', $key)->count(),
+        ]);
         $registrationClosesAt = $event->registrationClosesAt()?->endOfDay();
         $registrationOpen = (bool) $event->published
             && (int) $event->signUp === 1
@@ -28,7 +57,7 @@ class InterprovincialTrialInvitationController extends Controller
             && (! $registrationClosesAt || now()->lte($registrationClosesAt));
         $knownInvitationStates = [
             'prepared', 'queued', 'sending', 'sent', 'failed',
-            'accepted_pending_payment', 'paid_confirmed', 'withdrawn', 'cancelled',
+            'accepted_pending_payment', 'paid_confirmed', 'declined', 'withdrawn', 'cancelled',
         ];
         $stateCounts = collect($knownInvitationStates)
             ->mapWithKeys(fn (string $status): array => [$status => $invitations->where('status', $status)->count()])
@@ -47,8 +76,10 @@ class InterprovincialTrialInvitationController extends Controller
             'batch_status' => $batch?->status,
             'state_counts' => $stateCounts,
         ];
-
-        return view('backend.interprovincial-trials.invitations', compact('event', 'batch', 'readiness'));
+        return view('backend.interprovincial-trials.invitations', compact(
+            'event', 'batch', 'readiness', 'latestInvitationsByNomination', 'nominationPresentations',
+            'nominationFilterGroups', 'historicalInvitations'
+        ));
     }
 
     public function players(Request $request, Event $event)
@@ -58,16 +89,21 @@ class InterprovincialTrialInvitationController extends Controller
             'q' => ['required', 'string', 'min:2', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1', 'max:10'],
         ]);
-        $search = trim($data['q']);
+        $terms = preg_split('/\s+/u', trim($data['q']), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $search = implode(' ', $terms);
         abort_if(mb_strlen($search) < 2, 422, 'Enter at least two characters.');
 
-        $literalSearch = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search);
-        $pattern = "%{$literalSearch}%";
         $players = Player::query()
             ->select('id', 'name', 'surname')
-            ->where(function ($query) use ($pattern): void {
-                $query->whereRaw("name LIKE ? ESCAPE '!'", [$pattern])
-                    ->orWhereRaw("surname LIKE ? ESCAPE '!'", [$pattern]);
+            ->where(function ($query) use ($terms): void {
+                foreach ($terms as $term) {
+                    $literalTerm = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
+                    $pattern = "%{$literalTerm}%";
+                    $query->where(function ($termQuery) use ($pattern): void {
+                        $termQuery->whereRaw("name LIKE ? ESCAPE '!'", [$pattern])
+                            ->orWhereRaw("surname LIKE ? ESCAPE '!'", [$pattern]);
+                    });
+                }
             })
             ->orderBy('surname')
             ->orderBy('name')
@@ -106,7 +142,7 @@ class InterprovincialTrialInvitationController extends Controller
             return $added;
         });
         $alreadyNominated = $playerIds->count() - $added;
-        $message = "{$added} nomination(s) added; {$alreadyNominated} already nominated. Prepare a new invitation snapshot when the list is complete.";
+        $message = "{$added} nomination(s) added; {$alreadyNominated} already nominated. Send invitations when the list is complete.";
 
         if ($request->expectsJson()) {
             return response()->json($this->categoryNominationPayload($categoryEvent, $message, $added, $alreadyNominated));
@@ -163,6 +199,26 @@ class InterprovincialTrialInvitationController extends Controller
             ->where('category_event_id', $categoryEvent->id)
             ->orderBy('id')
             ->get();
+        $event = $categoryEvent->event()->firstOrFail();
+        $batch = $this->latestBatchForEvent($event);
+        $latestInvitations = ($batch?->invitations ?? collect())
+            ->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
+        $successfulInitialIds = $this->successfulInitialInvitationIds($batch?->invitations ?? collect());
+        $failedFollowUpIds = $this->failedFollowUpInvitationIds($batch?->invitations ?? collect());
+        $presentations = $nominations->mapWithKeys(function (EventNomination $nomination) use ($latestInvitations, $successfulInitialIds, $failedFollowUpIds): array {
+            $invitation = $latestInvitations->get((int) $nomination->id);
+            return [$nomination->id => $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id))];
+        });
+        $rows = $nominations->map(fn (EventNomination $nomination): string => view(
+            'backend.interprovincial-trials._nomination-row',
+            [
+                'event' => $event,
+                'batch' => $batch,
+                'nomination' => $nomination,
+                'categoryEvent' => $categoryEvent,
+                'presentation' => $presentations->get($nomination->id),
+            ]
+        )->render())->implode('');
 
         return [
             'message' => $message,
@@ -170,9 +226,14 @@ class InterprovincialTrialInvitationController extends Controller
             'already_nominated' => $alreadyNominated,
             'category_event_id' => $categoryEvent->id,
             'count' => $nominations->count(),
+            'html' => $rows,
             'nominations' => $nominations->map(fn (EventNomination $nomination): array => [
                 'id' => $nomination->id,
                 'player_name' => trim(($nomination->player?->name ?? '').' '.($nomination->player?->surname ?? '')),
+                'status_label' => $presentations->get($nomination->id)['label'],
+                'status_key' => $presentations->get($nomination->id)['key'],
+                'recipient_email' => $presentations->get($nomination->id)['invitation']?->recipient_email,
+                'can_remove' => $presentations->get($nomination->id)['can_remove'],
                 'destroy_url' => route('backend.interprovincial-trials.nominations.destroy', [
                     $categoryEvent->event_id,
                     $categoryEvent,
@@ -181,11 +242,135 @@ class InterprovincialTrialInvitationController extends Controller
             ])->values(),
         ];
     }
-    public function prepare(Request $request,Event $event,InvitationService $service) { $this->authorizeEvent($event); $service->prepare($event,$request->user()); return back()->with('success','Invitation list prepared for review.'); }
-    public function saveMessage(Request $request, Event $event, InterprovincialTrialInvitationBatch $batch, InvitationService $service) { $this->authorizeBatch($event, $batch); $notBlank = function (string $attribute, mixed $value, \Closure $fail): void { if (trim((string) $value) === '') { $fail('The '.$attribute.' field must contain text.'); } }; $data = $request->validate(['email_subject' => ['required', 'string', 'max:150', 'not_regex:/[\r\n]/', $notBlank], 'email_body' => ['required', 'string', 'max:5000', $notBlank]]); $service->saveMessage($batch, trim($data['email_subject']), trim($data['email_body'])); return back()->with('success', 'Invitation subject and message saved. Review the exact message and recipients before queueing.'); }
-    public function review(Request $request,Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { $this->authorizeBatch($event,$batch); $data=$request->validate(['snapshot_hash'=>['required','string','size:64'], 'message_hash'=>['required','string','size:64']]); $service->review($batch,$request->user(),$data['snapshot_hash'],$data['message_hash']); return back()->with('success','The exact recipients and stored message have been reviewed.'); }
-    public function send(Request $request, Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { $this->authorizeBatch($event,$batch); $request->validate(['confirm_exact_recipients_and_message' => ['accepted']]); $service->queue($batch); return back()->with('success','Invitations were queued once through the managed mail service.'); }
+
+    private function latestBatchForEvent(Event $event): ?InterprovincialTrialInvitationBatch
+    {
+        return InterprovincialTrialInvitationBatch::query()->with([
+            'invitations' => fn ($query) => $query
+                ->where('event_id', $event->id)
+                ->select([
+                    'id', 'batch_id', 'event_id', 'category_event_id', 'nomination_id', 'player_id',
+                    'registration_id', 'order_id', 'recipient_email', 'status',
+                    'queued_at', 'sent_at', 'accepted_at', 'paid_at', 'withdrawn_at',
+                ])
+                ->orderBy('id'),
+            'invitations.player:id,name,surname',
+            'invitations.categoryEvent' => fn ($query) => $query
+                ->where('event_id', $event->id)
+                ->select(['id', 'event_id', 'category_id']),
+            'invitations.categoryEvent.category:id,name',
+        ])->where('event_id', $event->id)->latest('id')->first();
+    }
+
+    private function invitationPresentation(?InterprovincialTrialInvitation $invitation, bool $hasSuccessfulInitial = false, bool $hasFailedFollowUp = false): array
+    {
+        $status = $invitation?->status;
+        [$key, $filterKey, $label, $tone] = match ($status) {
+            'queued', 'sending', 'sent' => ['invited', 'invited', 'Invited - awaiting response', 'primary'],
+            InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT => ['payment-pending', 'payment-pending', 'Payment pending', 'warning'],
+            InterprovincialTrialInvitation::PAID_CONFIRMED => ['registered', 'registered', 'Registered', 'success'],
+            InterprovincialTrialInvitation::DECLINED => ['declined', 'declined-withdrawn', 'Declined', 'secondary'],
+            InterprovincialTrialInvitation::WITHDRAWN => ['withdrawn', 'declined-withdrawn', 'Withdrawn', 'secondary'],
+            'failed' => ['delivery-failed', 'delivery-failed', 'Delivery failed', 'danger'],
+            'cancelled' => ['cancelled', 'cancelled', 'Cancelled', 'dark'],
+            default => ['nominated', 'nominated', 'Nominated - not sent', 'info'],
+        };
+
+        return [
+            'invitation' => $invitation,
+            'key' => $key,
+            'filter_key' => $filterKey,
+            'label' => $label,
+            'tone' => $tone,
+            'can_remove' => ! $invitation || $status === 'prepared',
+            'can_resend' => $hasSuccessfulInitial && in_array($status, ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT], true),
+            'can_retry_follow_up' => $hasFailedFollowUp && in_array($status, ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT], true),
+        ];
+    }
+
+    private function successfulInitialInvitationIds($invitations)
+    {
+        $ids = $invitations->pluck('id')->filter()->values();
+        if ($ids->isEmpty()) return collect();
+
+        return DB::table('interprovincial_trial_mail_dispatches as dispatches')
+            ->join('bulk_email_logs as logs', 'logs.id', '=', 'dispatches.bulk_email_log_id')
+            ->whereIn('dispatches.invitation_id', $ids)
+            ->where('dispatches.kind', 'initial')
+            ->where('logs.status', 'sent')
+            ->whereNotNull('logs.sent_at')
+            ->pluck('dispatches.invitation_id')
+            ->map(fn ($id): int => (int) $id);
+    }
+
+    private function failedFollowUpInvitationIds($invitations)
+    {
+        $ids = $invitations->pluck('id')->filter()->values();
+        if ($ids->isEmpty()) return collect();
+
+        return DB::table('interprovincial_trial_mail_dispatches as dispatches')
+            ->join('bulk_email_logs as logs', 'logs.id', '=', 'dispatches.bulk_email_log_id')
+            ->whereIn('dispatches.invitation_id', $ids)
+            ->where('dispatches.kind', 'follow_up')
+            ->where('logs.status', 'failed')
+            ->whereNull('logs.sent_at')
+            ->pluck('dispatches.invitation_id')
+            ->map(fn ($id): int => (int) $id);
+    }
+    public function prepare(Request $request,Event $event,InvitationService $service) { abort(404); }
+    public function sendCurrent(Request $request, Event $event, InvitationService $service)
+    {
+        abort(404);
+    }
+    public function previewSend(Request $request, Event $event, InvitationService $service)
+    {
+        $this->authorizeEvent($event);
+        $data = $request->validate([
+            'mode' => ['required', 'in:new,not_registered,individual'],
+            'invitation_id' => ['nullable', 'integer'],
+        ]);
+
+        return response()->json($service->previewAttempt($event, $data['mode'], $data['invitation_id'] ?? null));
+    }
+
+    public function queuePreviewedSend(Request $request, Event $event, InvitationService $service)
+    {
+        $this->authorizeEvent($event);
+        $notBlank = function (string $attribute, mixed $value, \Closure $fail): void {
+            if (trim((string) $value) === '') $fail('The '.$attribute.' field must contain text.');
+        };
+        $data = $request->validate([
+            'mode' => ['required', 'in:new,not_registered,individual'],
+            'invitation_id' => ['nullable', 'integer'],
+            'request_token' => ['required', 'uuid'],
+            'recipient_hash' => ['required', 'string', 'size:64'],
+            'subject' => ['required', 'string', 'max:150', 'not_regex:/[\r\n]/', $notBlank],
+            'body' => ['required', 'string', 'max:5000', $notBlank],
+        ]);
+        $result = $service->queueAttempt($event, $request->user(), $data);
+
+        return response()->json([
+            'message' => $result['already_queued']
+                ? 'This exact send request was already queued.'
+                : $result['queued_count'].' invitation email(s) queued through the managed mail service.',
+            'queued_count' => $result['queued_count'],
+            'already_queued' => $result['already_queued'],
+        ]);
+    }
+    public function saveMessage(Request $request, Event $event, InterprovincialTrialInvitationBatch $batch, InvitationService $service) { abort(404); }
+    public function review(Request $request,Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { abort(404); }
+    public function send(Request $request, Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { abort(404); }
     public function retry(Event $event,InterprovincialTrialInvitationBatch $batch,\App\Models\InterprovincialTrialInvitation $invitation,InvitationService $service) { $this->authorizeBatch($event,$batch); abort_unless((int)$invitation->batch_id===(int)$batch->id && (int)$invitation->event_id===(int)$event->id,404); $retried=$service->retryFailed($batch,$invitation); return back()->with('success',$retried?'The failed invitation was queued for retry.':'The invitation is already queued, sending, or sent.'); }
+    public function retryFollowUp(Event $event, InterprovincialTrialInvitation $invitation, InvitationService $service)
+    {
+        $this->authorizeEvent($event);
+        abort_unless((int) $invitation->event_id === (int) $event->id, 404);
+        $retried = $service->retryFailedFollowUp($event, $invitation);
+
+        return back()->with('success', $retried
+            ? 'The failed follow-up was queued again with its original recipient and message.'
+            : 'There is no failed follow-up to retry.');
+    }
     private function authorizeBatch(Event $event,InterprovincialTrialInvitationBatch $batch): void { $this->authorizeEvent($event); abort_unless((int)$batch->event_id===(int)$event->id,404); }
     private function authorizeEvent(Event $event): void { abort_unless($event->isInterprovincialTrials(),404); $u=request()->user(); abort_unless($u&&($u->hasRole('super-user')||($u->hasRole('admin')&&$u->is_event_admin($event->id))),403); }
 }

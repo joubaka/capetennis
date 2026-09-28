@@ -6,12 +6,29 @@
 @section('vendor-script')
 <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
 @endsection
+@section('page-style')
+<style>
+  .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .interpro-nomination-row { align-items:flex-start; border-top:1px solid #ebeaf0; display:grid; gap:.8rem; grid-template-columns:minmax(12rem,1.4fr) minmax(10rem,1fr) minmax(12rem,1.2fr) auto; padding:1rem 0; }
+  .interpro-nomination-row:first-child { border-top:0; }
+  .interpro-nomination-row__identity, .interpro-nomination-row__status, .interpro-nomination-row__timeline { min-width:0; }
+  .interpro-nomination-row__status, .interpro-nomination-row__timeline { display:flex; flex-direction:column; gap:.25rem; }
+  .interpro-nomination-row__actions { align-items:flex-end; display:flex; flex-direction:column; gap:.4rem; }
+  .interpro-email { display:inline-block; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
+  .interpro-row-action { min-height:44px; min-width:44px; }
+  @media (max-width: 767.98px) {
+    .interpro-nomination-row { grid-template-columns:1fr; }
+    .interpro-nomination-row__actions { align-items:stretch; flex-direction:row; flex-wrap:wrap; }
+    .interpro-nomination-row__actions form, .interpro-nomination-row__actions .interpro-row-action { width:100%; }
+  }
+</style>
+@endsection
 @section('content')
 <div class="container-xl">
   @include('backend.event.partials.header', ['event' => $event])
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate existing Cape Tennis players per category, then prepare an exact invitation snapshot.</p></div>
+    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, edit the message, and send all invitations in one step.</p></div>
     <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
   </div>
   @if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
@@ -21,7 +38,7 @@
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
       <div>
         <h5 class="mb-1" id="invitation-readiness-heading">Invitation readiness</h5>
-        <p class="text-muted small mb-0">A read-only view of nominations, recipients, message review and registration access.</p>
+        <p class="text-muted small mb-0">A read-only view of nominations, the latest email batch, and registration access.</p>
       </div>
       <span class="badge {{ $readiness['batch_status'] === 'reviewed' ? 'bg-label-success' : 'bg-label-info' }} text-break">
         {{ $readiness['batch_status'] ? 'Batch '.ucfirst($readiness['batch_status']) : 'No invitation batch' }}
@@ -37,8 +54,7 @@
       <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Readiness checks">
         <span class="badge {{ $readiness['nomination_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['nomination_count'] > 0 ? 'Nominations ready' : 'Add nominations' }}</span>
         <span class="badge {{ $readiness['invitation_count'] > 0 && $readiness['blocked_recipient_count'] === 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['invitation_count'] > 0 && $readiness['blocked_recipient_count'] === 0 ? 'Recipients ready' : 'Recipients need attention' }}</span>
-        <span class="badge {{ $readiness['message_saved'] ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['message_saved'] ? 'Message saved' : 'Message not saved' }}</span>
-        <span class="badge {{ $readiness['message_reviewed'] ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['message_reviewed'] ? 'Message reviewed' : 'Review required' }}</span>
+        <span class="badge {{ $readiness['message_saved'] ? 'bg-label-success' : 'bg-label-info' }}">{{ $readiness['message_saved'] ? 'Message stored' : 'Message ready to edit below' }}</span>
         <span class="badge {{ $readiness['registration_open'] ? 'bg-label-success' : 'bg-label-danger' }}">Registration {{ $readiness['registration_open'] ? 'open' : 'closed' }}</span>
       </div>
       @if($readiness['state_counts']->isNotEmpty())
@@ -87,29 +103,73 @@
     </form>
   </div></div>
 
-  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Review nominations by category</h5></div><div class="card-body"><div class="row g-3">
+  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Review nominations by category</h5></div><div class="card-body">
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Send to newly nominated</button>
+      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Send to players not registered</button>
+    </div>
+    <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players">
+      @foreach($nominationFilterGroups as $filter)
+        <button type="button" class="btn btn-sm btn-outline-primary {{ $filter['key'] === 'all' ? 'active' : '' }}" data-nomination-filter="{{ $filter['key'] }}" aria-pressed="{{ $filter['key'] === 'all' ? 'true' : 'false' }}">
+          {{ $filter['label'] }} <span class="badge bg-label-primary ms-1" data-filter-count="{{ $filter['key'] }}">{{ $filter['count'] }}</span>
+        </button>
+      @endforeach
+    </div>
+    <div class="row g-3">
     @forelse($event->categoryEvents as $categoryEvent)
-      <div class="col-lg-6"><div class="border rounded p-3 h-100" data-nomination-category="{{ $categoryEvent->id }}"><h6>{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary" data-nomination-count>{{ $categoryEvent->nominations->count() }}</span></h6><div class="list-group list-group-flush" data-nomination-list>
+      <div class="col-12"><div class="border rounded p-3" data-nomination-category="{{ $categoryEvent->id }}"><h6>{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary" data-nomination-count>{{ $categoryEvent->nominations->count() }}</span></h6><div data-nomination-list>
       @forelse($categoryEvent->nominations as $nomination)
-        <div class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2"><span>{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</span><form class="nomination-remove-form" method="POST" action="{{ route('backend.interprovincial-trials.nominations.destroy', [$event, $categoryEvent, $nomination]) }}">@csrf @method('DELETE')<button class="btn btn-sm btn-outline-danger">Remove</button></form></div>
+        @include('backend.interprovincial-trials._nomination-row', [
+          'presentation' => $nominationPresentations->get($nomination->id),
+        ])
       @empty<div class="text-muted" data-empty-nominations>No players nominated yet.</div>@endforelse
       </div></div></div>
     @empty<div class="col-12"><div class="alert alert-warning mb-0">Add event categories before nominating players.</div></div>@endforelse
-  </div></div></div>
-
-  <div class="card"><div class="card-header"><h5 class="mb-0">3. Prepare and review invitations</h5></div><div class="card-body"><form method="POST" action="{{ route('backend.interprovincial-trials.invitations.prepare', $event) }}">@csrf<button class="btn btn-primary">Prepare invitations from current nominations</button></form></div></div>
-
-  @if($batch)
-  <div class="card mt-4 overflow-hidden"><div class="card-header d-flex flex-wrap gap-2"><strong class="text-break">Invitation batch #{{ $batch->id }}</strong> <span class="badge bg-label-info text-break">{{ ucfirst($batch->status) }}</span></div>
-  <div class="card-body border-bottom"><h6>Invitation message</h6><form method="POST" action="{{ route('backend.interprovincial-trials.batches.message', [$event, $batch]) }}">@csrf @method('PUT')<div class="mb-3"><label class="form-label" for="email-subject">Subject</label><input id="email-subject" class="form-control" name="email_subject" maxlength="150" value="{{ old('email_subject', $batch->email_subject) }}" required></div><div class="mb-3"><label class="form-label" for="email-body">Plain-text message</label><textarea id="email-body" class="form-control" name="email_body" rows="7" maxlength="5000" required>{{ old('email_body', $batch->email_body) }}</textarea></div><button class="btn btn-outline-primary">Save invitation message</button></form></div>
-  <div class="card-body border-bottom"><strong>Exact recipient preview</strong><div class="small text-muted">Review every player, category, recipient and the stored message below. Missing account emails block review and queueing.</div></div>
-  <div class="table-responsive"><table class="table"><thead><tr><th>Player</th><th>Category</th><th>Recipient</th><th>Readiness</th></tr></thead><tbody>
-  @foreach($batch->invitations as $invitation)<tr><td>{{ $invitation->player->name }} {{ $invitation->player->surname }}</td><td>{{ $invitation->categoryEvent->category->name }}</td><td>{{ $invitation->recipient_email ?: 'No linked account email' }}</td><td>{{ $invitation->recipient_email ? 'Ready' : 'Blocked' }} @if($invitation->status === 'failed')<form class="d-inline" method="POST" action="{{ route('backend.interprovincial-trials.invitations.retry', [$event,$batch,$invitation]) }}">@csrf<button class="btn btn-sm btn-outline-primary">Retry email</button></form>@endif</td></tr>@endforeach
-  </tbody></table></div><div class="card-body d-flex flex-wrap gap-2">
-  @if($batch->status === 'draft' && $batch->message_hash)<form method="POST" action="{{ route('backend.interprovincial-trials.batches.review', [$event,$batch]) }}">@csrf<input type="hidden" name="snapshot_hash" value="{{ $batch->snapshot_hash }}"><input type="hidden" name="message_hash" value="{{ $batch->message_hash }}"><button class="btn btn-success">I reviewed these exact recipients and message</button></form>@endif
-  @if($batch->status === 'reviewed')<form method="POST" action="{{ route('backend.interprovincial-trials.batches.send', [$event,$batch]) }}">@csrf<div class="form-check mb-2"><input class="form-check-input" type="checkbox" value="1" name="confirm_exact_recipients_and_message" id="confirm-exact" required><label class="form-check-label" for="confirm-exact">I confirm this exact recipient list and stored message must be queued.</label></div><button class="btn btn-primary">Queue invitations</button></form>@endif
+    </div>
   </div></div>
+
+  @if($historicalInvitations->isNotEmpty())
+    <div class="card mb-4">
+      <div class="card-header"><h5 class="mb-1">Historical invitations no longer in current nominations</h5><p class="text-muted small mb-0">Audit history is retained. These players are not part of the current nomination list.</p></div>
+      <div class="card-body py-2">
+        @foreach($historicalInvitations as $presentation)
+          @php($invitation = $presentation['invitation'])
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 border-bottom py-2">
+            <div><span class="fw-semibold">{{ $invitation->player?->name }} {{ $invitation->player?->surname }}</span><div class="small text-muted">{{ $invitation->categoryEvent?->category?->name ?? 'Category unavailable' }} · {{ $invitation->recipient_email ?: 'No linked account email' }}</div></div>
+            <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $presentation['label'] }}</span>
+          </div>
+        @endforeach
+      </div>
+    </div>
   @endif
+
+  <div class="card overflow-hidden">
+    <div class="card-header"><h5 class="mb-0">3. Send invitation emails</h5></div>
+    <div class="card-body">
+      @if($batch)
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $batch->invitations->count() }} invitation{{ $batch->invitations->count() === 1 ? '' : 's' }}</span></div>
+      @endif
+      <p class="text-muted mb-0">Choose a send action above to preview the exact recipients, blockers, subject, and message before anything is queued through the managed mail service.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal fade" id="interpro-send-preview-modal" tabindex="-1" aria-labelledby="interpro-send-preview-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="interpro-send-preview-title">Review exact invitation recipients</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <form id="interpro-send-preview-form">
+      <div class="modal-body">
+        <div id="interpro-send-preview-feedback" class="alert d-none" role="status"></div>
+        <div class="mb-3"><strong>Exact recipients</strong><div id="interpro-send-preview-recipients" class="list-group mt-2"></div></div>
+        <div class="mb-3 d-none" id="interpro-send-preview-blockers-wrap"><strong class="text-danger">Blockers</strong><div id="interpro-send-preview-blockers" class="list-group mt-2"></div></div>
+        <div class="mb-3"><label class="form-label" for="interpro-preview-subject">Subject</label><input class="form-control" id="interpro-preview-subject" maxlength="150" required></div>
+        <div><label class="form-label" for="interpro-preview-body">Message</label><textarea class="form-control" id="interpro-preview-body" rows="6" maxlength="5000" required></textarea></div>
+        <input type="hidden" id="interpro-preview-mode"><input type="hidden" id="interpro-preview-invitation"><input type="hidden" id="interpro-preview-token"><input type="hidden" id="interpro-preview-hash">
+      </div>
+      <div class="modal-footer"><span class="me-auto text-muted small" id="interpro-preview-count"></span><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="interpro-preview-confirm">Queue exact emails</button></div>
+    </form>
+  </div></div>
 </div>
 @endsection
 
@@ -121,6 +181,80 @@ $(function () {
   const feedback = document.getElementById('nomination-feedback');
   const csrf = form.querySelector('input[name="_token"]').value;
 
+  const refreshNominationFilters = () => {
+    const rows = Array.from(document.querySelectorAll('[data-nomination-row]'));
+    document.querySelectorAll('[data-filter-count]').forEach(counter => {
+      const key = counter.dataset.filterCount;
+      counter.textContent = key === 'all' ? rows.length : rows.filter(row => row.dataset.nominationState === key).length;
+    });
+  };
+
+  document.querySelectorAll('[data-nomination-filter]').forEach(button => {
+    button.addEventListener('click', function () {
+      const selected = this.dataset.nominationFilter;
+      document.querySelectorAll('[data-nomination-filter]').forEach(filter => {
+        const active = filter === this;
+        filter.setAttribute('aria-pressed', active ? 'true' : 'false');
+        filter.classList.toggle('active', active);
+      });
+      document.querySelectorAll('[data-nomination-row]').forEach(row => {
+        row.classList.toggle('d-none', selected !== 'all' && row.dataset.nominationState !== selected);
+      });
+    });
+  });
+
+  const previewModalElement = document.getElementById('interpro-send-preview-modal');
+  const previewModal = previewModalElement ? bootstrap.Modal.getOrCreateInstance(previewModalElement) : null;
+  const previewForm = document.getElementById('interpro-send-preview-form');
+  document.addEventListener('click', async event => {
+    const trigger = event.target.closest('[data-send-preview-mode]');
+    if (!trigger) return;
+    trigger.disabled = true;
+    try {
+      const response = await fetch(@json(route('backend.interprovincial-trials.invitations.send-preview', $event)), {
+        method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: trigger.dataset.sendPreviewMode, invitation_id: trigger.dataset.invitationId || null})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Preview could not be loaded.');
+      document.getElementById('interpro-preview-mode').value = data.mode;
+      document.getElementById('interpro-preview-invitation').value = trigger.dataset.invitationId || '';
+      document.getElementById('interpro-preview-token').value = data.request_token;
+      document.getElementById('interpro-preview-hash').value = data.recipient_hash;
+      document.getElementById('interpro-preview-subject').value = data.subject;
+      document.getElementById('interpro-preview-body').value = data.body;
+      document.getElementById('interpro-send-preview-recipients').innerHTML = data.recipients.map(row => `<div class="list-group-item"><strong>${escapeHtml(row.name)}</strong><div class="small text-muted">${escapeHtml(row.email)} · ${escapeHtml(row.category || '')} · ${escapeHtml(row.status)}</div></div>`).join('') || '<div class="text-muted">No eligible recipients.</div>';
+      document.getElementById('interpro-send-preview-blockers').innerHTML = data.blockers.map(row => `<div class="list-group-item text-danger">${escapeHtml(row.name)} — ${escapeHtml(row.reason)}</div>`).join('');
+      document.getElementById('interpro-send-preview-blockers-wrap').classList.toggle('d-none', data.blockers.length === 0);
+      document.getElementById('interpro-preview-count').textContent = `${data.recipients.length} email${data.recipients.length === 1 ? '' : 's'} ready`;
+      document.getElementById('interpro-preview-confirm').disabled = data.recipients.length === 0 || data.blockers.length > 0;
+      previewModal.show();
+    } catch (error) { AppFeedback.fromError(error, 'Preview could not be loaded.'); }
+    finally { trigger.disabled = false; }
+  });
+  const escapeHtml = value => $('<div>').text(value ?? '').html();
+  previewForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const confirm = document.getElementById('interpro-preview-confirm');
+    confirm.disabled = true;
+    try {
+      const payload = {
+        mode: document.getElementById('interpro-preview-mode').value,
+        invitation_id: document.getElementById('interpro-preview-invitation').value || null,
+        request_token: document.getElementById('interpro-preview-token').value,
+        recipient_hash: document.getElementById('interpro-preview-hash').value,
+        subject: document.getElementById('interpro-preview-subject').value,
+        body: document.getElementById('interpro-preview-body').value,
+      };
+      const response = await fetch(@json(route('backend.interprovincial-trials.invitations.send-preview.queue', $event)), {
+        method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Emails could not be queued.');
+      previewModal.hide(); AppFeedback.success(data.message); window.location.reload();
+    } catch (error) { AppFeedback.fromError(error, 'Emails could not be queued.'); confirm.disabled = false; }
+  });
+
   const showFeedback = (message, isError = false) => {
     feedback.textContent = message;
     feedback.className = `small ${isError ? 'text-danger' : 'text-success'}`;
@@ -131,34 +265,16 @@ $(function () {
     if (!card) return;
     card.querySelector('[data-nomination-count]').textContent = data.count;
     const list = card.querySelector('[data-nomination-list]');
-    list.replaceChildren();
+    list.innerHTML = data.html || '';
     if (!data.nominations.length) {
       const empty = document.createElement('div');
       empty.className = 'text-muted';
       empty.dataset.emptyNominations = '';
       empty.textContent = 'No players nominated yet.';
       list.appendChild(empty);
-      return;
+    } else {
+      refreshNominationFilters();
     }
-    data.nominations.forEach(nomination => {
-      const row = document.createElement('div');
-      row.className = 'list-group-item px-0 d-flex justify-content-between align-items-center gap-2';
-      const name = document.createElement('span');
-      name.textContent = nomination.player_name;
-      const removeForm = document.createElement('form');
-      removeForm.className = 'nomination-remove-form';
-      removeForm.method = 'POST';
-      removeForm.action = nomination.destroy_url;
-      const token = document.createElement('input');
-      token.type = 'hidden'; token.name = '_token'; token.value = csrf;
-      const method = document.createElement('input');
-      method.type = 'hidden'; method.name = '_method'; method.value = 'DELETE';
-      const button = document.createElement('button');
-      button.type = 'submit'; button.className = 'btn btn-sm btn-outline-danger'; button.textContent = 'Remove';
-      removeForm.append(token, method, button);
-      row.append(name, removeForm);
-      list.appendChild(row);
-    });
   };
   player.select2({
     width: '100%',
