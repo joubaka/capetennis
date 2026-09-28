@@ -2889,6 +2889,233 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($failed->fresh()->failed_at);
     }
 
+    public function test_expired_campaign_deadlines_can_remain_unchanged_while_replacement_deadline_is_updated(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay()->startOfMinute(),
+            'payment_deadline' => now()->addDays(2)->startOfMinute(),
+            'replacement_payment_deadline' => now()->addDays(3)->startOfMinute(),
+        ], $actor);
+
+        $expiredResponse = now()->subDays(2)->startOfMinute();
+        $expiredPayment = now()->subDay()->startOfMinute();
+        $selectionImport->update([
+            'response_deadline' => $expiredResponse,
+            'payment_deadline' => $expiredPayment,
+        ]);
+        $invitations = $selectionImport->invitations()->orderBy('queue_position')->get();
+        $oldOverride = now()->addDays(3)->startOfMinute();
+        $invitations[0]->update([
+            'promoted_from_id' => $invitations[2]->id,
+            'response_deadline_override' => $oldOverride,
+            'payment_deadline_override' => $oldOverride,
+        ]);
+        $invitations[1]->update([
+            'promoted_from_id' => $invitations[3]->id,
+            'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            'response_deadline_override' => $oldOverride,
+            'payment_deadline_override' => $oldOverride,
+        ]);
+        $invitations[2]->update([
+            'promoted_from_id' => $invitations[0]->id,
+            'status' => TeamSelectionInvitation::PAID_CONFIRMED,
+            'response_deadline_override' => $oldOverride,
+            'payment_deadline_override' => $oldOverride,
+        ]);
+
+        $laterReplacement = now()->addDays(10)->startOfMinute();
+        $service->extendDeadlines($selectionImport->fresh(), [
+            'response_deadline' => $expiredResponse->format('Y-m-d H:i'),
+            'payment_deadline' => $expiredPayment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => $laterReplacement->format('Y-m-d H:i'),
+        ], $actor);
+
+        $this->assertSame($expiredResponse->toDateTimeString(), $selectionImport->fresh()->response_deadline->toDateTimeString());
+        $this->assertSame($expiredPayment->toDateTimeString(), $selectionImport->fresh()->payment_deadline->toDateTimeString());
+        $this->assertSame($laterReplacement->toDateTimeString(), $selectionImport->fresh()->replacement_payment_deadline->toDateTimeString());
+        foreach ($invitations->take(2) as $active) {
+            $this->assertSame($laterReplacement->toDateTimeString(), $active->fresh()->response_deadline_override->toDateTimeString());
+            $this->assertSame($laterReplacement->toDateTimeString(), $active->fresh()->payment_deadline_override->toDateTimeString());
+        }
+        $this->assertSame($oldOverride->toDateTimeString(), $invitations[2]->fresh()->response_deadline_override->toDateTimeString());
+        $this->assertSame($oldOverride->toDateTimeString(), $invitations[2]->fresh()->payment_deadline_override->toDateTimeString());
+        $this->assertNull($invitations[3]->fresh()->response_deadline_override);
+
+        $invitations[2]->update(['status' => TeamSelectionInvitation::DECLINED]);
+        $invitations[3]->update([
+            'promoted_from_id' => $invitations[1]->id,
+            'status' => TeamSelectionInvitation::WITHDRAWN,
+            'response_deadline_override' => $oldOverride,
+            'payment_deadline_override' => $oldOverride,
+        ]);
+        $earlierReplacement = now()->addDays(8)->startOfMinute();
+        $service->extendDeadlines($selectionImport->fresh(), [
+            'response_deadline' => $expiredResponse->format('Y-m-d H:i'),
+            'payment_deadline' => $expiredPayment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => $earlierReplacement->format('Y-m-d H:i'),
+        ], $actor);
+
+        $this->assertSame($earlierReplacement->toDateTimeString(), $selectionImport->fresh()->replacement_payment_deadline->toDateTimeString());
+        foreach ($invitations->slice(2) as $closed) {
+            $this->assertSame($oldOverride->toDateTimeString(), $closed->fresh()->response_deadline_override->toDateTimeString());
+            $this->assertSame($oldOverride->toDateTimeString(), $closed->fresh()->payment_deadline_override->toDateTimeString());
+        }
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => TeamSelectionImport::class,
+            'subject_id' => $selectionImport->id,
+            'description' => 'updated regional team invitation deadlines',
+        ]);
+    }
+
+    public function test_replacement_deadline_must_be_future_after_payment_and_before_event_start(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $response = now()->addDay()->startOfMinute();
+        $payment = now()->addDays(2)->startOfMinute();
+        $service->send($selectionImport, [
+            'response_deadline' => $response,
+            'payment_deadline' => $payment,
+            'replacement_payment_deadline' => now()->addDays(3)->startOfMinute(),
+        ], $actor);
+
+        $invalidReplacementDeadlines = [
+            now()->subMinute()->startOfMinute(),
+            $payment->copy()->subMinute(),
+            $source->event->start_date->copy()->startOfDay(),
+            $source->event->start_date->copy()->addHour(),
+        ];
+
+        foreach ($invalidReplacementDeadlines as $invalidReplacement) {
+            try {
+                $service->extendDeadlines($selectionImport->fresh(), [
+                    'response_deadline' => $response->format('Y-m-d H:i'),
+                    'payment_deadline' => $payment->format('Y-m-d H:i'),
+                    'replacement_payment_deadline' => $invalidReplacement->format('Y-m-d H:i'),
+                ], $actor);
+                $this->fail('An invalid replacement deadline was accepted.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('deadlines', $exception->errors());
+            }
+        }
+    }
+
+    public function test_short_replacement_cutoff_preserves_active_promoted_players_canonical_window(): void
+    {
+        $this->travelTo(now()->startOfMinute());
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $service->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ], $actor);
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $promoted = $service->replaceWithNextReserve($selected, $actor, 'Testing protected response window');
+        $expiredResponse = now()->subDays(2);
+        $expiredPayment = now()->subDay();
+        $selectionImport->update([
+            'response_deadline' => $expiredResponse,
+            'payment_deadline' => $expiredPayment,
+        ]);
+
+        $submittedCutoff = now()->addHours(12);
+        $service->extendDeadlines($selectionImport->fresh(), [
+            'response_deadline' => $expiredResponse->format('Y-m-d H:i'),
+            'payment_deadline' => $expiredPayment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => $submittedCutoff->format('Y-m-d H:i'),
+        ], $actor);
+
+        $canonicalCutoff = now()->addHours(24);
+        $this->assertSame($submittedCutoff->toDateTimeString(), $selectionImport->fresh()->replacement_payment_deadline->toDateTimeString());
+        $this->assertSame($canonicalCutoff->toDateTimeString(), $promoted->fresh()->response_deadline_override->toDateTimeString());
+        $this->assertSame($canonicalCutoff->toDateTimeString(), $promoted->fresh()->payment_deadline_override->toDateTimeString());
+        $this->travelBack();
+    }
+
+    public function test_deadline_update_endpoint_is_authorized_event_scoped_and_has_no_financial_side_effects(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $response = now()->addDay()->startOfMinute();
+        $payment = now()->addDays(2)->startOfMinute();
+        $service->send($selectionImport, [
+            'response_deadline' => $response,
+            'payment_deadline' => $payment,
+            'replacement_payment_deadline' => now()->addDays(3)->startOfMinute(),
+        ], $actor);
+        $payload = [
+            'response_deadline' => $response->format('Y-m-d H:i'),
+            'payment_deadline' => $payment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => now()->addDays(5)->startOfMinute()->format('Y-m-d H:i'),
+        ];
+        $originalReplacement = $selectionImport->fresh()->replacement_payment_deadline;
+        $orderCount = TeamPaymentOrder::count();
+        $walletTransactionCount = DB::table('wallet_transactions')->count();
+        $payfastTransactionCount = DB::table('transactions_pf')->count();
+
+        $this->actingAs(User::factory()->create())
+            ->patch(route('backend.team-selection.deadlines.extend', [$source->event, $selectionImport]), $payload)
+            ->assertForbidden();
+        $this->actingAs($manager)
+            ->patch(route('backend.team-selection.deadlines.extend', [Event::factory()->create(), $selectionImport]), $payload)
+            ->assertNotFound();
+        $this->assertSame($originalReplacement->toDateTimeString(), $selectionImport->fresh()->replacement_payment_deadline->toDateTimeString());
+
+        $this->actingAs($manager)
+            ->patch(route('backend.team-selection.deadlines.extend', [$source->event, $selectionImport]), $payload)
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Invitation deadlines were updated.');
+
+        $this->assertSame($orderCount, TeamPaymentOrder::count());
+        $this->assertSame($walletTransactionCount, DB::table('wallet_transactions')->count());
+        $this->assertSame($payfastTransactionCount, DB::table('transactions_pf')->count());
+    }
+
+    public function test_future_reserve_promotion_uses_the_revised_replacement_cutoff(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $service = app(TeamSelectionInvitationService::class);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
+        $response = now()->addDay()->startOfMinute();
+        $payment = now()->addDays(2)->startOfMinute();
+        $service->send($selectionImport, [
+            'response_deadline' => $response,
+            'payment_deadline' => $payment,
+            'replacement_payment_deadline' => now()->addDays(3)->startOfMinute(),
+        ], $actor);
+        $revisedReplacement = now()->addDays(9)->startOfMinute();
+        $service->extendDeadlines($selectionImport->fresh(), [
+            'response_deadline' => $response->format('Y-m-d H:i'),
+            'payment_deadline' => $payment->format('Y-m-d H:i'),
+            'replacement_payment_deadline' => $revisedReplacement->format('Y-m-d H:i'),
+        ], $actor);
+
+        $selected = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $promoted = $service->replaceWithNextReserve($selected, $actor, 'Testing revised replacement cutoff');
+
+        $this->assertSame($revisedReplacement->toDateTimeString(), $promoted->response_deadline_override->toDateTimeString());
+        $this->assertSame($revisedReplacement->toDateTimeString(), $promoted->payment_deadline_override->toDateTimeString());
+    }
+
     public function test_expired_responses_promote_the_next_reserve_without_leaving_a_roster_gap(): void
     {
         Queue::fake();

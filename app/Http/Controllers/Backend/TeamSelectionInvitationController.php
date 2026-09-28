@@ -255,7 +255,7 @@ class TeamSelectionInvitationController extends Controller
         ]);
         $service->extendDeadlines($selectionImport, $data, $request->user());
 
-        return back()->with('success', 'Invitation deadlines were extended.');
+        return back()->with('success', 'Invitation deadlines were updated.');
     }
 
     public function updateReplacementMode(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
