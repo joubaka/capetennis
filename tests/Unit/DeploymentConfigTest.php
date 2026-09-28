@@ -6,25 +6,38 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
-    public function test_release_allowlists_every_required_migration(): void
+    public function test_release_allowlists_every_new_migration_after_the_reviewed_baseline(): void
     {
-        $config = file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        $root = dirname(__DIR__, 2);
+        $config = (string) file_get_contents($root.'/deploy.config');
 
-        foreach ([
-            '2026_08_06_000001_add_device_fields_to_authentication_log_table.php',
-            '2026_08_12_000001_add_series_ranking_snapshot_indexes.php',
-            '2026_08_12_000002_add_sort_order_to_ranking_list_category_events.php',
-            '2026_08_18_120000_create_audit_events_table.php',
-            '2026_08_18_120100_create_audit_daily_seals_table.php',
-            '2026_09_04_213500_create_event_venue_court_allocations.php',
-            '2026_09_05_000001_add_schedule_visibility_to_draw_settings.php',
-            '2026_09_06_000001_add_require_full_sets_to_draw_settings.php',
-            '2026_09_06_010000_repair_overberg_u10b_single_set_results.php',
-            '2026_09_07_060000_add_score_format_to_draw_settings.php',
-            '2026_09_09_040000_add_user_id_to_registration_order_items.php',
-        ] as $migration) {
-            $this->assertStringContainsString($migration, $config);
-        }
+        $this->assertSame(1, preg_match('/^MIGRATION_PATHS="([^"]*)"$/m', $config, $matches));
+
+        $allowlistedMigrations = preg_split('/\s+/', trim($matches[1])) ?: [];
+        $migrationFiles = glob($root.'/database/migrations/*.php') ?: [];
+        $reviewedBaseline = '2026_09_27_000000';
+
+        // Add only an exact, explicitly reviewed one-off migration here when it
+        // must remain manual and must never be run by the normal deploy command.
+        $manualOnlyMigrations = [];
+
+        $requiredMigrations = array_values(array_filter(
+            array_map(
+                static fn (string $path): string => 'database/migrations/'.basename($path),
+                $migrationFiles
+            ),
+            static fn (string $path): bool => basename($path) >= $reviewedBaseline
+                && ! in_array($path, $manualOnlyMigrations, true)
+        ));
+        sort($requiredMigrations);
+
+        $missingMigrations = array_values(array_diff($requiredMigrations, $allowlistedMigrations));
+
+        $this->assertSame(
+            [],
+            $missingMigrations,
+            'New migrations must be added to deploy.config or explicitly reviewed as manual-only: '.implode(', ', $missingMigrations)
+        );
     }
 
     public function test_deploy_preflights_exact_target_migrations_before_downtime_or_merge(): void
