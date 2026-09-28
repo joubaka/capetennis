@@ -407,6 +407,16 @@ class Event extends Model
     return app(EventLifecycleService::class)->snapshot($this)['label'];
   }
 
+  public function isInterprovincialTrials(): bool
+  {
+    $type = $this->eventTypeModel;
+    $code = (string) ($type?->code ?? '');
+    $name = strtolower(trim((string) ($type?->name ?? '')));
+
+    return $code === EventType::INTERPROVINCIAL_TRIALS_CODE
+      || in_array($name, ['interpro trials', 'interprovincial trials'], true);
+  }
+
   /** Events that are still running or have not started yet. */
   public function scopeUpcoming(Builder $query): Builder
   {

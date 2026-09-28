@@ -34,6 +34,12 @@
 </style>
 
 <div class="col-xl-12">
+  @if($event->isInterprovincialTrials())
+    <div class="alert alert-info d-flex justify-content-between align-items-center">
+      <div><strong>Interprovincial Trials invitations</strong><br><small>Load existing player nominations, review exact recipients, and queue invitations.</small></div>
+      <a class="btn btn-primary" href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}">Manage invitations</a>
+    </div>
+  @endif
 
 
   <div class="col-xl-12">

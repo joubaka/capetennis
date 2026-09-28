@@ -28,6 +28,11 @@ class EventNomination extends Model
     return $this->belongsTo(CategoryEvent::class);
   }
 
+  public function categoryEvent()
+  {
+    return $this->belongsTo(CategoryEvent::class, 'category_event_id');
+  }
+
   public function event()
   {
     return $this->belongsTo(Event::class);

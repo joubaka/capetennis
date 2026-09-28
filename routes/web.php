@@ -138,6 +138,11 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
   Route::post('invitations/{invitation}/decline', [\App\Http\Controllers\Frontend\MastersInvitationController::class, 'decline'])->name('invitations.decline');
 });
 
+Route::middleware('auth')->prefix('interprovincial-trials')->name('interprovincial-trials.')->group(function () {
+  Route::get('invitations', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
+  Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'show'])->middleware(['signed', 'throttle:30,1'])->name('invitations.show');
+});
+
 Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->group(function () {
   Route::get('invitations', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\TeamSelectionInvitationController::class, 'show'])->name('invitations.show');
@@ -419,6 +424,14 @@ Route::middleware([
 
 //backend
 Route::prefix('backend')->middleware('auth')->group(function () {
+
+  Route::prefix('interprovincial-trials')->name('backend.interprovincial-trials.')->group(function () {
+    Route::get('events/{event}/invitations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
+    Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
+    Route::post('events/{event}/batches/{batch}/review', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'review'])->name('batches.review');
+    Route::post('events/{event}/batches/{batch}/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'send'])->name('batches.send');
+    Route::post('events/{event}/batches/{batch}/invitations/{invitation}/retry', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'retry'])->name('invitations.retry');
+  });
 
   Route::middleware('role:super-user|admin')->prefix('masters')->name('backend.masters.')->group(function () {
     Route::get('events/{event}/setup', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'setup'])->name('setup');

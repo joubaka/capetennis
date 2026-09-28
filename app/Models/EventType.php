@@ -12,4 +12,5 @@ class EventType extends Model
   public const INDIVIDUAL = 1;
   public const TEAM = 2;
   public const MASTERS_CODE = 'masters';
+  public const INTERPROVINCIAL_TRIALS_CODE = 'interprovincial-trials';
 }
