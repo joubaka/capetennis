@@ -243,6 +243,9 @@ class MastersRegistrationBoundaryTest extends TestCase
             'status' => 'open',
             'published' => 1,
             'signUp' => 1,
+            'start_date' => now()->addDays(30)->toDateString(),
+            'end_date' => now()->addDays(31)->toDateString(),
+            'deadline' => 7,
         ]);
         $categoryEvent = CategoryEvent::factory()->create([
             'event_id' => $event->id,
