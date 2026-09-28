@@ -14,6 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use App\Services\InterprovincialTrials\InvitationService;
+use Illuminate\Validation\ValidationException;
 
 class AdminRegistrationRefundController extends Controller
 {
@@ -331,29 +333,74 @@ class AdminRegistrationRefundController extends Controller
    * Cancel a pending withdrawal: revert the registration status back to active.
    * Only super-users may do this (they are the only ones redirected to the chooser).
    */
-  public function cancelWithdraw(Event $event, CategoryEventRegistration $registration)
+  public function cancelWithdraw(Event $event, CategoryEventRegistration $registration, InvitationService $invitations)
   {
     $user = auth()->user();
     if (! ($user->can('super-user') || (method_exists($user, 'hasRole') && $user->hasRole('super-user')))) {
       abort(403, 'Only super-users can cancel a withdrawal.');
     }
 
-    if ($registration->status !== 'withdrawn') {
+    $restored = DB::transaction(function () use ($event, $registration, $invitations, $user): ?CategoryEventRegistration {
+      $locked = CategoryEventRegistration::query()
+        ->with('categoryEvent')
+        ->lockForUpdate()
+        ->findOrFail($registration->id);
+
+      abort_unless((int) $locked->categoryEvent?->event_id === (int) $event->id, 404);
+
+      if ($locked->status !== 'withdrawn') {
+        return null;
+      }
+
+      $hasRefundLiabilityOrReversal = ! in_array($locked->refund_status, [null, 'not_refunded'], true)
+        || filled($locked->refund_method)
+        || $locked->refunded_at
+        || (float) $locked->refund_gross !== 0.0
+        || (float) $locked->refund_fee !== 0.0
+        || (float) $locked->refund_net !== 0.0;
+
+      if ($hasRefundLiabilityOrReversal) {
+        throw ValidationException::withMessages([
+          'registration' => 'A withdrawal with a refund decision or financial reversal cannot be cancelled.',
+        ]);
+      }
+
+      $hasCategoryDraw = DB::table('draws')
+        ->where('event_id', $event->id)
+        ->where('category_event_id', $locked->category_event_id)
+        ->lockForUpdate()
+        ->first(['id']) !== null;
+
+      if ($hasCategoryDraw) {
+        throw ValidationException::withMessages([
+          'registration' => 'This withdrawal cannot be cancelled after draw participation may have been removed.',
+        ]);
+      }
+
+      $locked->update([
+        'status'        => 'active',
+        'withdrawn_at'  => null,
+        'withdrawn_by'  => null,
+        'refund_status' => 'not_refunded',
+        'refund_method' => null,
+        'refund_gross'  => 0,
+        'refund_fee'    => 0,
+        'refund_net'    => 0,
+        'refunded_at'   => null,
+      ]);
+
+      $invitations->restorePaidWithdrawal($locked->fresh(), $user);
+
+      return $locked->fresh();
+    });
+
+    if (! $restored) {
       return redirect()
         ->route('admin.events.entries.new', $event)
         ->with('info', 'Registration is not in a withdrawn state — nothing to revert.');
     }
 
-    $registration->update([
-      'status'        => 'active',
-      'withdrawn_at'  => null,
-      'refund_status' => null,
-      'refund_method' => null,
-      'refund_gross'  => 0,
-      'refund_fee'    => 0,
-      'refund_net'    => 0,
-      'refunded_at'   => null,
-    ]);
+    $registration = $restored;
 
     activity('withdrawal')
       ->performedOn($registration)

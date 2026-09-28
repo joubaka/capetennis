@@ -274,9 +274,13 @@ class RegisterController extends Controller
     // ✅ FIX 1: assign the event properly
     $event = Event::with('eventTypeModel')->findOrFail($id);
 
-    if ($event->isMasters()) {
+    if ($event->isMasters() || $event->isInterprovincialTrials()) {
       return redirect()->route('events.show', $event->id)
-        ->withErrors(['msg' => 'Masters registration is invitation-only. Select your name from the Masters invitation list to register.']);
+        ->withErrors(['msg' => 'Registration for this event is invitation-only. Open your invitation to register.']);
+    }
+
+    if ($message = $this->genericRegistrationGateMessage($event)) {
+      return redirect()->route('events.show', $event->id)->withErrors(['msg' => $message]);
     }
 
     $players = collect(); // Players loaded via AJAX Select2
@@ -1294,8 +1298,13 @@ class RegisterController extends Controller
       }
 
       $categoryEvent->loadMissing('event.eventTypeModel');
-      if ($categoryEvent->event?->isMasters()) {
-        $duplicateErrors[] = 'Masters registration is invitation-only. Select your name from the Masters invitation list to register.';
+      if ($categoryEvent->event?->isMasters() || $categoryEvent->event?->isInterprovincialTrials()) {
+        $duplicateErrors[] = 'Registration for this event is invitation-only. Open your invitation to register.';
+        continue;
+      }
+
+      if ($message = $this->genericRegistrationGateMessage($categoryEvent->event)) {
+        $duplicateErrors[] = $message;
         continue;
       }
 
@@ -1439,6 +1448,24 @@ class RegisterController extends Controller
     $order = $regorder->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
 
     return view('frontend.payfast.check_out', compact('request', 'payfast', 'order'));
+  }
+
+  private function genericRegistrationGateMessage(Event $event): ?string
+  {
+    if (! $event->published || ! $event->hasOpenRegistrationLifecycle() || (int) $event->signUp !== 1) {
+      return 'Registration for this event is closed.';
+    }
+
+    if (! $event->isTeam()) {
+      $closeAt = $event->start_date
+        ? $event->start_date->copy()->startOfDay()->subDays((int) ($event->deadline ?? 0))->endOfDay()
+        : null;
+      if ($closeAt && now()->gt($closeAt)) {
+        return 'The registration deadline for this event has passed.';
+      }
+    }
+
+    return null;
   }
 
 

@@ -1,6 +1,7 @@
 @php
   $eventWorkspaceRegionalOnly = $eventWorkspaceRegionalOnly ?? false;
   $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
+    request()->routeIs('backend.interprovincial-trials.*') => 'invitations',
     request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
     request()->routeIs('admin.events.results.*', 'backend.scoreboard.team.show') => 'results',
     request()->routeIs('admin.events.finances*') => 'finances',
@@ -26,6 +27,17 @@
   @can('event-finance.view', $event)
     <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
   @endcan
+  @php
+    $canManageInterprovincialInvitations = $event->isInterprovincialTrials()
+      && (auth()->user()?->hasRole('super-user')
+        || (auth()->user()?->hasRole('admin') && auth()->user()?->is_event_admin($event->id)));
+  @endphp
+  @if($canManageInterprovincialInvitations)
+    <a href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}"
+       @if($eventWorkspaceActive === 'invitations') aria-current="page" @endif>
+      <i class="ti ti-mail-forward" aria-hidden="true"></i>Nominations &amp; invitations
+    </a>
+  @endif
   @can('event.settings.manage', $event)
     <a href="{{ route('admin.events.settings', $event) }}" @if($eventWorkspaceActive === 'settings') aria-current="page" @endif><i class="ti ti-settings" aria-hidden="true"></i>Settings</a>
   @endcan

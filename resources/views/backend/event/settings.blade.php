@@ -98,14 +98,20 @@
             </div>
           </div>
 
-          <div class="mt-4 p-3 rounded bg-body">
-        <div class="form-check form-switch">
-          <input class="form-check-input autosave" type="checkbox"
-                 id="applications-open" name="applications_open" {{ $event->published && $event->signUp ? 'checked' : '' }}>
-          <label class="form-check-label fw-semibold" for="applications-open">Applications open</label>
-          <div class="field-help mt-0">Open applications and publish the event. Closing applications keeps the event visible.</div>
-        </div>
-      </div>
+          <div class="mt-4 p-3 rounded bg-body d-grid gap-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input autosave" type="checkbox"
+                     id="event-published" name="published" {{ $event->published ? 'checked' : '' }}>
+              <label class="form-check-label fw-semibold" for="event-published">Published publicly</label>
+              <div class="field-help mt-0">Controls whether visitors can see the event. This does not open registration.</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input autosave" type="checkbox"
+                     id="registration-open" name="registration_open" {{ $event->signUp ? 'checked' : '' }}>
+              <label class="form-check-label fw-semibold" for="registration-open">Registration open</label>
+              <div class="field-help mt-0">Controls whether eligible players can register. This does not publish or unpublish the event.</div>
+            </div>
+          </div>
         </div>
 
         <div class="col-lg-4">
@@ -446,8 +452,8 @@ $(function () {
   let saveTimer = null;
   let saveRequestInFlight = false;
   let saveQueued = false;
-  let applicationsControlDirty = false;
-  let applicationsControlVersion = 0;
+  let registrationControlDirty = false;
+  let registrationControlVersion = 0;
 
   function setSaveStatus(state, message) {
     const states = {
@@ -578,7 +584,7 @@ $(function () {
         const el = $(this);
         const name = el.attr('name');
         if (!name) return;
-        if (name === 'applications_open' && !applicationsControlDirty) return;
+        if (name === 'registration_open' && !registrationControlDirty) return;
 
         if (el.attr('type') === 'checkbox') {
           payload[name] = el.is(':checked') ? 1 : 0;
@@ -617,9 +623,9 @@ $(function () {
 
       delete payload.withdrawal_days;
 
-      const submittedApplicationsVersion = payload.applications_open === undefined
+      const submittedRegistrationVersion = payload.registration_open === undefined
         ? null
-        : applicationsControlVersion;
+        : registrationControlVersion;
 
       console.log('📦 Final payload:', payload);
       console.groupEnd();
@@ -637,8 +643,8 @@ $(function () {
       })
       .done(function (res) {
         console.log('✅ Saved response:', res);
-        if (submittedApplicationsVersion !== null && submittedApplicationsVersion === applicationsControlVersion) {
-          applicationsControlDirty = false;
+        if (submittedRegistrationVersion !== null && submittedRegistrationVersion === registrationControlVersion) {
+          registrationControlDirty = false;
         }
         setSaveStatus('saved', 'All changes saved');
         feedback.success(res.message || 'Event settings saved.');
@@ -667,9 +673,9 @@ $(function () {
      BIND AUTOSAVE
   ========================= */
   $(document).on('change keyup', '.autosave', function () {
-    if ($(this).attr('name') === 'applications_open') {
-      applicationsControlDirty = true;
-      applicationsControlVersion += 1;
+    if ($(this).attr('name') === 'registration_open') {
+      registrationControlDirty = true;
+      registrationControlVersion += 1;
     }
     autosave();
   });

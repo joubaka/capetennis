@@ -30,7 +30,7 @@ class FrontFixtureController extends Controller
     $draw = Draw::with('event')->findOrFail($id);
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
-    if ($draw->event?->eventType == 13) {
+    if ($draw->event?->isInterprovincialTrials()) {
       return $this->showInterproFixtures($draw);
     }
 
@@ -179,8 +179,9 @@ class FrontFixtureController extends Controller
 
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
-    // Detect team vs individual
-    $isTeamEvent = ($draw->event?->eventType == 3);
+    // Resolve the base format semantically so event type database ids can vary.
+    $isTeamEvent = $draw->event?->isTeam()
+      || (! $draw->event?->isIndividual() && (int) $draw->event?->eventType === 3);
 
     // ---------------------------------------------------------
     // FIXTURE LOADERS

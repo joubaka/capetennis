@@ -240,7 +240,7 @@
                name="signUp"
                value="1">
         <label class="form-check-label">
-          Allow Sign Ups
+          Registration open
         </label>
       </div>
       {{-- LOGO --}}

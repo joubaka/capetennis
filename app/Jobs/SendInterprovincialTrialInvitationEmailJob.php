@@ -38,7 +38,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         $invitation->update(['status' => 'sending']);
         $log->update(['status' => 'sending', 'failed_at' => null, 'error_message' => null]);
         $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
-            ->sendNow(new InterprovincialTrialInvitationMail($invitation));
+            ->sendNow(new InterprovincialTrialInvitationMail($invitation, $log->payload ?? []));
         if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
         $log->markAsSent();
         $invitation->update(['status' => 'sent', 'sent_at' => now()]);

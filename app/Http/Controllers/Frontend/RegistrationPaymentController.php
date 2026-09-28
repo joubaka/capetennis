@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Models\MastersInvitation;
+use App\Models\InterprovincialTrialInvitation;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
 use App\Models\Registration;
@@ -31,7 +32,7 @@ class RegistrationPaymentController extends Controller
       return redirect()->back()->withErrors('This order has been cancelled and cannot be paid.');
     }
 
-    $this->assertMastersOrderIsInvitationLinked($order);
+    $this->assertInvitationOnlyOrderIsLinked($order);
 
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
@@ -89,7 +90,7 @@ class RegistrationPaymentController extends Controller
     }
 
     if ($type !== 'team') {
-      $this->assertMastersOrderIsInvitationLinked($order);
+      $this->assertInvitationOnlyOrderIsLinked($order);
     }
 
     try {
@@ -175,7 +176,7 @@ class RegistrationPaymentController extends Controller
     abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409, 'Order already paid.');
     abort_if(($order->status ?? null) === 'cancelled', 409, 'Order has been cancelled.');
 
-    $this->assertMastersOrderIsInvitationLinked($order);
+    $this->assertInvitationOnlyOrderIsLinked($order);
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
     } catch (\RuntimeException $exception) {
@@ -242,7 +243,7 @@ class RegistrationPaymentController extends Controller
       return response()->json(['error' => 'Order already paid.'], 400);
     }
 
-    $this->assertMastersOrderIsInvitationLinked($order);
+    $this->assertInvitationOnlyOrderIsLinked($order);
 
     $wallet = $user->wallet;
     $walletBalance = $wallet?->balance ?? 0;
@@ -325,7 +326,7 @@ class RegistrationPaymentController extends Controller
       abort(403);
     }
 
-    $this->assertMastersOrderIsInvitationLinked($order);
+    $this->assertInvitationOnlyOrderIsLinked($order);
 
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
@@ -334,6 +335,8 @@ class RegistrationPaymentController extends Controller
     }
 
     if ($order->wallet_debited) {
+      app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
+      app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($order->fresh());
       // Redirect back to the event page
       $eventId = optional($order->items->first()?->category_event?->event)->id;
       if ($eventId) {
@@ -354,6 +357,8 @@ class RegistrationPaymentController extends Controller
             'reference' => $eventName,
           ],
         ]);
+      app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
+      app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($order->fresh());
     } catch (\RuntimeException $exception) {
       return redirect()->route('registration.checkout', $order)
         ->withErrors($exception->getMessage());
@@ -428,8 +433,17 @@ class RegistrationPaymentController extends Controller
       return false;
     }
 
+    try {
+      $this->assertInvitationOnlyOrderIsLinked($order);
+    } catch (ValidationException $exception) {
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Invitation linkage failed', 'order_id' => $orderId]);
+      return false;
+    }
+
     // 🔐 Idempotency protection
     if ($order->pay_status == 1) {
+      app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
+      app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($order->fresh());
       $this->reconcilePaymentRecovery($order);
       if (!empty($payfastData['pf_payment_id'])) {
         $this->recordPayfastTransaction($order, $payfastData);
@@ -474,6 +488,7 @@ class RegistrationPaymentController extends Controller
         $walletTx
       );
       app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
+      app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($order->fresh());
       $this->reconcilePaymentRecovery($order);
 
     } catch (\Throwable $e) {
@@ -538,8 +553,11 @@ class RegistrationPaymentController extends Controller
         ->with('info', 'This order has already been paid.');
     }
 
+    $this->assertInvitationOnlyOrderIsLinked($order);
+
     app(PaymentOrchestrator::class)->cancelPayment($order);
     app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($order, auth()->user());
+    app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($order, auth()->user());
 
     Log::info('HYBRID PAYMENT CANCELLED', [
       'order_id' => $orderId,
@@ -557,13 +575,34 @@ class RegistrationPaymentController extends Controller
    * Masters orders may only proceed when created by the invitation workflow.
    * This also blocks payment of legacy generic checkout orders that bypassed it.
    */
-  private function assertMastersOrderIsInvitationLinked(RegistrationOrder $order): void
+  private function assertInvitationOnlyOrderIsLinked(RegistrationOrder $order): void
   {
     $order->loadMissing('items.category_event.event.eventTypeModel');
 
     foreach ($order->items as $item) {
       $event = $item->category_event?->event;
       if (!$event?->isMasters()) {
+        if (! $event?->isInterprovincialTrials()) {
+          continue;
+        }
+
+        $linked = InterprovincialTrialInvitation::query()
+          ->where('event_id', $event->id)
+          ->where('category_event_id', $item->category_event_id)
+          ->where('player_id', $item->player_id)
+          ->where('registration_id', $item->registration_id)
+          ->where('order_id', $order->id)
+          ->whereIn('status', [
+            InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT,
+            InterprovincialTrialInvitation::PAID_CONFIRMED,
+          ])->exists();
+
+        if (! $linked) {
+          throw ValidationException::withMessages([
+            'registration' => 'This trial payment is not linked to a valid invitation. Open your trial invitation to register.',
+          ]);
+        }
+
         continue;
       }
 

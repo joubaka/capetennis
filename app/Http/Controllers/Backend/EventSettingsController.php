@@ -87,6 +87,7 @@ class EventSettingsController extends Controller
       'email' => 'sometimes|nullable|email',
       'published' => 'sometimes|boolean',
       'signUp' => 'sometimes|boolean',
+      'registration_open' => 'sometimes|boolean',
       'applications_open' => 'sometimes|boolean',
       'organizer' => 'sometimes|nullable|string|max:191',
 
@@ -269,20 +270,22 @@ class EventSettingsController extends Controller
         'admins', 'convenors', 'convenor_starts_at', 'convenor_expires_at',
         'scoring_accounts', 'scoring_venues', 'scoring_starts_at', 'scoring_expires_at',
         'logo_upload', 'logo_existing',
-        'applications_open',
+        'registration_open', 'applications_open',
       ])
       ->toArray();
 
     // Boolean safety
-    if ($request->has('applications_open')) {
-      $applicationsOpen = $request->boolean('applications_open');
-      $updateData['status'] = $applicationsOpen ? 'open' : 'closed';
-      $updateData['published'] = true;
-      $updateData['signUp'] = $applicationsOpen;
-    } elseif ($request->has('published')) {
+    if ($request->has('registration_open')) {
+      $updateData['signUp'] = $request->boolean('registration_open');
+    } elseif ($request->has('applications_open')) {
+      // Backwards compatibility for older settings pages. Registration is
+      // independent from publication and the event lifecycle status.
+      $updateData['signUp'] = $request->boolean('applications_open');
+    }
+    if ($request->has('published')) {
       $updateData['published'] = $request->boolean('published');
     }
-    if (! $request->has('applications_open') && $request->has('signUp')) {
+    if (! $request->hasAny(['registration_open', 'applications_open']) && $request->has('signUp')) {
       $updateData['signUp'] = $request->boolean('signUp');
     }
 
@@ -291,7 +294,7 @@ class EventSettingsController extends Controller
     DB::transaction(function () use ($event, $mastersInvitationService, $request, $updateData): void {
       // Masters registration is displayed from the invitation batch. Use its
       // canonical service so prerequisites and the activity audit remain intact.
-      if (($request->has('applications_open') || $request->has('signUp')) && $event->isMasters()) {
+      if (($request->hasAny(['registration_open', 'applications_open', 'signUp'])) && $event->isMasters()) {
         $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)
           ->latest('id')
           ->first();

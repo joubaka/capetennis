@@ -23,6 +23,7 @@ class DrawEngineModeController extends Controller
 
     public function show(Draw $draw)
     {
+        $this->authorizeSuperUser();
         $draw->load('event');
 
         $safetyCheck = EngineRouter::canonicalSafetyCheck($draw);
@@ -55,6 +56,9 @@ class DrawEngineModeController extends Controller
 
     public function update(Request $request, Draw $draw)
     {
+        $this->authorizeSuperUser();
+        $this->ensureRequestedEventMatchesDraw($request, $draw);
+
         $request->validate([
             'engine_mode' => ['nullable', 'in:legacy,hybrid,canonical,'],
         ]);
@@ -77,6 +81,8 @@ class DrawEngineModeController extends Controller
 
     public function rollback(Draw $draw)
     {
+        $this->authorizeSuperUser();
+
         $previous = $draw->engine_mode;
         $draw->update(['engine_mode' => 'legacy']);
 
@@ -89,6 +95,8 @@ class DrawEngineModeController extends Controller
 
     public function updateEvent(Request $request, Event $event)
     {
+        $this->authorizeSuperUser();
+
         $request->validate([
             'engine_mode' => ['nullable', 'in:legacy,hybrid,canonical,'],
         ]);
@@ -113,5 +121,19 @@ class DrawEngineModeController extends Controller
 
         $label = $mode ?? 'inherit (global)';
         return back()->with('success', "Event #{$event->id} engine mode set to: {$label}");
+    }
+
+    private function authorizeSuperUser(): void
+    {
+        abort_unless(request()->user()?->hasRole('super-user'), 403);
+    }
+
+    private function ensureRequestedEventMatchesDraw(Request $request, Draw $draw): void
+    {
+        if (! $request->filled('event_id')) {
+            return;
+        }
+
+        abort_unless((int) $request->input('event_id') === (int) $draw->event_id, 404);
     }
 }

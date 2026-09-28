@@ -407,6 +407,11 @@ class Event extends Model
     return app(EventLifecycleService::class)->snapshot($this)['label'];
   }
 
+  public function hasOpenRegistrationLifecycle(): bool
+  {
+    return in_array($this->status, ['scheduled', 'open', 'active'], true);
+  }
+
   public function isInterprovincialTrials(): bool
   {
     $type = $this->eventTypeModel;

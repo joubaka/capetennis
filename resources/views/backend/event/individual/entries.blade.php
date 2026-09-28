@@ -261,6 +261,43 @@
     </div>
   </div>
 
+  @if(auth()->user()->hasRole('super-user') && $pendingCheckouts->isNotEmpty())
+    <section class="card border-warning mb-4" id="pending-checkouts" aria-labelledby="pending-checkouts-title">
+      <div class="card-header bg-label-warning">
+        <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts</h3>
+        <p class="small mb-0">Canonical unpaid checkout drafts are shown separately. They are not confirmed entries and private collection notes do not change their payment state.</p>
+      </div>
+      <div class="table-responsive">
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Category</th>
+              <th>Created</th>
+              <th>Canonical payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($pendingCheckouts as $pendingCheckout)
+              @php
+                $pendingPlayer = $pendingCheckout->registration?->players?->first();
+              @endphp
+              <tr data-pending-checkout-id="{{ $pendingCheckout->id }}">
+                <td>{{ trim(($pendingPlayer?->name ?? '') . ' ' . ($pendingPlayer?->surname ?? '')) ?: 'Unknown player' }}</td>
+                <td>{{ $pendingCheckout->categoryEvent?->category?->name ?? 'Uncategorised' }}</td>
+                <td>{{ $pendingCheckout->created_at?->format('d M Y H:i') ?? '—' }}</td>
+                <td><span class="badge bg-warning text-dark">Pending</span></td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+      @if($pendingCheckouts->count() === 100)
+        <div class="card-footer small text-muted">Showing the 100 most recent pending checkouts.</div>
+      @endif
+    </section>
+  @endif
+
   {{-- CATEGORY LIST --}}
   @foreach($categoryEvents as $categoryEvent)
     <div class="card mb-4 category-card"
@@ -270,10 +307,7 @@
   <div class="category-meta">
     <h5 class="mb-0">{{ $categoryEvent->category?->name }}</h5>
     <small class="text-muted">
-        <span class="entry-count">{{ $categoryEvent->allCategoryEventRegistrations->where('status', '!=', 'withdrawn')->count() }}</span> entries
-        @if($categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() > 0)
-          &nbsp;<span class="text-danger withdrawn-count">({{ $categoryEvent->allCategoryEventRegistrations->where('status', 'withdrawn')->count() }} withdrawn)</span>
-        @endif
+        <span class="entry-count">{{ $categoryEvent->allCategoryEventRegistrations->count() }}</span> confirmed entries
       </small>
   </div>
 

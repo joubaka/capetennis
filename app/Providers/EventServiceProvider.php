@@ -22,6 +22,7 @@ use App\Listeners\LogLogoutAudit;
 use App\Listeners\SendTeamRegistrationConfirmation;
 use App\Listeners\SendAdminEntryCreatedConfirmation;
 use App\Listeners\SyncMastersInvitationWithdrawal;
+use App\Listeners\SyncInterprovincialTrialInvitationWithdrawal;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 
@@ -50,6 +51,7 @@ class EventServiceProvider extends ServiceProvider
         ],
         EntryWithdrawn::class => [
             SyncMastersInvitationWithdrawal::class,
+            SyncInterprovincialTrialInvitationWithdrawal::class,
         ],
         // Auth events
         Login::class => [

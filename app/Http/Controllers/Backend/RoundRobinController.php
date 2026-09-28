@@ -90,9 +90,9 @@ class RoundRobinController extends Controller
 
 
     // -------------------------------------------------------------
-    // ONLY FOR INTERPRO EVENT TYPE 13
+    // ONLY FOR INTERPROVINCIAL TRIALS
     // -------------------------------------------------------------
-    if ($draw->event->eventType == 13) {
+    if ($draw->event->isInterprovincialTrials()) {
 
       Log::info("📥 Reloading ALL RR relationships (fixtures + groups + registrations + players)");
 
@@ -628,13 +628,11 @@ class RoundRobinController extends Controller
       'event_type' => $draw->event->eventType ?? null,
     ]);
 
-    $eventType = $draw->event->eventType ?? null;
-
     try {
       // ============================================================
-      // INTERPRO (eventType 13) - Use InterproDrawBuilder
+      // INTERPROVINCIAL TRIALS - Use InterproDrawBuilder
       // ============================================================
-      if ($eventType == 13) {
+      if ($draw->event?->isInterprovincialTrials()) {
         $fixtures = DB::transaction(function () use ($draw) {
           $seeds = $this->builder->buildMainSeedsFromRRStandings($draw);
           \Log::info("🧬 [MainBracket] SEEDS BUILT", $seeds);
@@ -1607,11 +1605,10 @@ class RoundRobinController extends Controller
   {
     $this->authorize('view', $draw);
 
-    $eventType = $draw->event->eventType ?? null;
     $isEmpty = request()->boolean('empty');
 
-    // Use original BracketEngine for Interpro (eventType 13)
-    if ($eventType == 13) {
+    // Use original BracketEngine for Interprovincial Trials.
+    if ($draw->event?->isInterprovincialTrials()) {
       $engine = new \App\Services\BracketEngine($draw);
       $svgData = $engine->build();
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
 use App\Models\InterprovincialTrialInvitation;
+use App\Services\InterprovincialTrials\InvitationService;
 use Illuminate\Http\Request;
 
 class InterprovincialTrialInvitationController extends Controller
@@ -26,5 +27,16 @@ class InterprovincialTrialInvitationController extends Controller
         $invitation->load(['event', 'categoryEvent.category', 'player']);
 
         return view('frontend.interprovincial-trials.invitations.show', compact('invitation'));
+    }
+
+    public function register(Request $request, InterprovincialTrialInvitation $invitation, InvitationService $service)
+    {
+        $order = $service->accept($invitation, $request->user());
+
+        if ((int) $order->pay_status === 1) {
+            return redirect()->route('frontend.registration.success', $order)->with('success', 'Trial registration confirmed.');
+        }
+
+        return redirect()->route('registration.checkout', $order);
     }
 }

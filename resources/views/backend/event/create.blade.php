@@ -264,7 +264,7 @@
                      name="signUp"
                      value="1"
                      @checked(old('signUp', false))>
-              <label class="form-check-label">Allow Sign-Up</label>
+              <label class="form-check-label">Registration open</label>
             </div>
 
           </div>
@@ -437,7 +437,7 @@
         ['Registration deadline', value('deadline') ? `${value('deadline')} days before start` : 'Not set'],
         ['Withdrawal deadline', value('withdrawal_deadline') || 'Not set'], ['Organizer', value('organizer') || 'Not set'],
         ['Contact email', value('email') || 'Not set'], ['Event admins', admins.join(', ') || 'None selected'],
-        ['Published', form.elements.published.checked ? 'Yes' : 'No'], ['Allow sign-up', form.elements.signUp.checked ? 'Yes' : 'No']
+        ['Published', form.elements.published.checked ? 'Yes' : 'No'], ['Registration open', form.elements.signUp.checked ? 'Yes' : 'No']
       ];
       document.getElementById('event-preview-content').innerHTML = `
         <dl class="row mb-0">${rows.map(([label, content]) => `<dt class="col-sm-4">${escapeHtml(label)}</dt><dd class="col-sm-8">${escapeHtml(content || 'Not set')}</dd>`).join('')}</dl>

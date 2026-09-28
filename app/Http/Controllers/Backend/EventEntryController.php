@@ -40,10 +40,25 @@ class EventEntryController extends Controller
       ->with([
         'category',
         'allCategoryEventRegistrations' => function ($query) {
-            $query->where('payment_status_id', 1)->with('registration.players');
+            $query->activeAndPaid()->with('registration.players');
         },
       ])
       ->get();
+
+    $pendingCheckouts = collect();
+    if (auth()->user()->hasRole('super-user')) {
+      $pendingCheckouts = CategoryEventRegistration::query()
+        ->active()
+        ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+        ->where(function ($query) {
+          $query->where('payment_status_id', '!=', 1)
+            ->orWhereNull('payment_status_id');
+        })
+        ->with(['categoryEvent.category', 'registration.players'])
+        ->latest('id')
+        ->limit(100)
+        ->get();
+    }
 
     $mastersBatch = $event->isMasters()
       ? MastersInvitationBatch::query()
@@ -53,7 +68,7 @@ class EventEntryController extends Controller
           ->first()
       : null;
 
-    return view('backend.event.individual.entries', compact('event', 'categoryEvents', 'mastersBatch'));
+    return view('backend.event.individual.entries', compact('event', 'categoryEvents', 'mastersBatch', 'pendingCheckouts'));
   }
 
   /**

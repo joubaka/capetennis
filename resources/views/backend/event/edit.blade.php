@@ -348,7 +348,7 @@
                      name="signUp"
                      value="1"
                      @checked($event->signUp)>
-              <label class="form-check-label">Allow Sign-Up</label>
+              <label class="form-check-label">Registration open</label>
             </div>
 
           </div>

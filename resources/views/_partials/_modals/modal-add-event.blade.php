@@ -113,7 +113,7 @@
                                             <i class="ti ti-x"></i>
                                         </span>
                                     </span>
-                                    <span class="switch-label">Sign-up Open</span>
+                                    <span class="switch-label">Registration open</span>
                                 </label>
                             </div>
                             <div class="mb-3 row">

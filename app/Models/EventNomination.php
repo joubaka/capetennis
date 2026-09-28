@@ -37,4 +37,10 @@ class EventNomination extends Model
   {
     return $this->belongsTo(Event::class);
   }
+
+  public function actionableInvitation()
+  {
+    return $this->hasOne(InterprovincialTrialInvitation::class, 'nomination_id')
+      ->ofMany(['id' => 'max'], fn ($query) => $query->whereIn('status', ['queued', 'sent']));
+  }
 }

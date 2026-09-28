@@ -1,6 +1,8 @@
 @php($typeView = $event->frontend_type_view)
 
-@if($typeView === 'masters')
+@if($event->isInterprovincialTrials())
+  @include('frontend.event.eventTypes.interprovincial-trials', ['publishedCategories' => $interprovincialTrialCategories ?? collect()])
+@elseif($typeView === 'masters')
   @include('frontend.event.eventTypes.masters', ['invitations' => $mastersInvitations ?? collect()])
 @elseif(view()->exists('frontend.event.eventTypes.'.$typeView))
   @include('frontend.event.eventTypes.'.$typeView)

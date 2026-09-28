@@ -62,7 +62,7 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->assertStringContainsString($scorer->email, $option->textContent);
     }
 
-    public function test_settings_uses_one_applications_control_for_publication_and_signup(): void
+    public function test_settings_separates_publication_from_registration(): void
     {
         $viewer = User::factory()->create()->assignRole('super-user');
         $event = Event::factory()->create([
@@ -73,36 +73,49 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->actingAs($viewer)
             ->get(route('admin.events.settings', $event))
             ->assertOk()
-            ->assertSee('Applications open')
+            ->assertSee('Registration open')
+            ->assertSee('Published publicly')
             ->assertDontSee('Entry status')
             ->assertDontSee('name="status"', false)
-            ->assertDontSee('Signup open')
-            ->assertDontSee('for="event-published"', false);
+            ->assertSee('name="registration_open"', false)
+            ->assertSee('name="published"', false)
+            ->assertDontSee('Applications open');
 
         $this->actingAs($viewer)
             ->patchJson(route('admin.events.settings.update', $event), [
-                'applications_open' => true,
+                'registration_open' => true,
             ])
             ->assertOk();
 
         $event->refresh();
-        $this->assertTrue((bool) $event->published);
+        $this->assertFalse((bool) $event->published);
         $this->assertTrue((bool) $event->signUp);
-        $this->assertSame('open', $event->status);
+        $this->assertSame('active', $event->status);
 
         $this->actingAs($viewer)
             ->patchJson(route('admin.events.settings.update', $event), [
-                'applications_open' => false,
+                'registration_open' => false,
+            ])
+            ->assertOk();
+
+        $event->refresh();
+        $this->assertFalse((bool) $event->published);
+        $this->assertFalse((bool) $event->signUp);
+        $this->assertSame('active', $event->status);
+
+        $this->actingAs($viewer)
+            ->patchJson(route('admin.events.settings.update', $event), [
+                'published' => true,
             ])
             ->assertOk();
 
         $event->refresh();
         $this->assertTrue((bool) $event->published);
         $this->assertFalse((bool) $event->signUp);
-        $this->assertSame('closed', $event->status);
+        $this->assertSame('active', $event->status);
     }
 
-    public function test_mixed_legacy_visibility_does_not_submit_the_combined_control_until_it_changes(): void
+    public function test_unrelated_autosaves_do_not_submit_the_registration_control_until_it_changes(): void
     {
         $viewer = User::factory()->create()->assignRole('super-user');
         $event = Event::factory()->create([
@@ -117,16 +130,16 @@ class EventScoringAccountSettingsTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());
         $xpath = new \DOMXPath($document);
-        $control = $xpath->query('//input[@name="applications_open"]')->item(0);
+        $control = $xpath->query('//input[@name="registration_open"]')->item(0);
 
         $this->assertNotNull($control);
         $this->assertFalse($control->hasAttribute('checked'));
         $this->assertStringContainsString(
-            "if (name === 'applications_open' && !applicationsControlDirty) return;",
+            "if (name === 'registration_open' && !registrationControlDirty) return;",
             $response->getContent()
         );
         $this->assertStringContainsString(
-            'submittedApplicationsVersion === applicationsControlVersion',
+            'submittedRegistrationVersion === registrationControlVersion',
             $response->getContent()
         );
         $this->assertStringContainsString('if (saveRequestInFlight)', $response->getContent());
@@ -141,6 +154,50 @@ class EventScoringAccountSettingsTest extends TestCase
         $event->refresh();
         $this->assertTrue((bool) $event->published);
         $this->assertFalse((bool) $event->signUp);
+    }
+
+    public function test_registration_toggle_preserves_publication_and_status_for_supported_event_types(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $types = [
+            1 => ['Individual', EventType::INDIVIDUAL, null],
+            2 => ['Team', EventType::TEAM, null],
+            3 => ['Masters', EventType::INDIVIDUAL, EventType::MASTERS_CODE],
+            4 => ['Interprovincial Trials', EventType::INDIVIDUAL, EventType::INTERPROVINCIAL_TRIALS_CODE],
+        ];
+
+        foreach ($types as $id => [$name, $type, $code]) {
+            DB::table('eventtypes')->updateOrInsert(
+                ['id' => $id],
+                ['name' => $name, 'type' => $type, 'code' => $code]
+            );
+
+            $event = Event::factory()->create([
+                'eventType' => $id,
+                'published' => $id % 2 === 0,
+                'signUp' => false,
+                'status' => 'scheduled',
+            ]);
+            $originalPublished = (bool) $event->published;
+
+            $this->actingAs($viewer)
+                ->patchJson(route('admin.events.settings.update', $event), ['registration_open' => true])
+                ->assertOk();
+
+            $event->refresh();
+            $this->assertTrue((bool) $event->signUp, $name);
+            $this->assertSame($originalPublished, (bool) $event->published, $name);
+            $this->assertSame('scheduled', $event->status, $name);
+
+            $this->actingAs($viewer)
+                ->patchJson(route('admin.events.settings.update', $event), ['registration_open' => false])
+                ->assertOk();
+
+            $event->refresh();
+            $this->assertFalse((bool) $event->signUp, $name);
+            $this->assertSame($originalPublished, (bool) $event->published, $name);
+            $this->assertSame('scheduled', $event->status, $name);
+        }
     }
 
     public function test_settings_assigns_and_removes_event_scoped_scoring_access(): void

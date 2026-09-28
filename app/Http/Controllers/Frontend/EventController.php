@@ -132,7 +132,6 @@ class EventController extends Controller
       'announcements',
       'files',
       'eventCategories.category',
-      'eventCategories.nominations.player',
       'eventCategories.registrations.players',
       'eventCategories.categoryEventRegistrations.registration.players',
       'draws.draw_types',
@@ -141,6 +140,17 @@ class EventController extends Controller
       'draws.order_of_play.venue',
       'series',
     ])->findOrFail($id);
+
+    $interprovincialTrialCategories = collect();
+    if ($event->isInterprovincialTrials()) {
+      $interprovincialTrialCategories = CategoryEvent::query()
+        ->with(['category', 'nominations' => fn ($query) => $query->with(['player:id,name,surname', 'actionableInvitation'])->orderBy('id')->limit(500)])
+        ->where('event_id', $event->id)
+        ->where('nominations_published', true)
+        ->orderBy('ordering')->orderBy('id')->limit(100)->get();
+    } else {
+      $event->load('eventCategories.nominations.player');
+    }
 
     $mastersInvitations = collect();
     $mastersRegistrationOpen = false;
@@ -223,7 +233,7 @@ class EventController extends Controller
 
 
     // FLAGS
-    $eventClosed = in_array($event->status, ['closed', 'draft']);
+    $eventClosed = ! $event->hasOpenRegistrationLifecycle();
 
     // Team and Masters registration is controlled explicitly by the organiser.
     // Their legacy calendar deadline must not contradict an open registration switch.
@@ -525,7 +535,7 @@ return view('frontend.event.show', compact(
       'event',
       'user',
       'signUp',
-      'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen', 'mastersBatch',
+      'eventTypes', 'mastersInvitations', 'mastersRegistrationOpen', 'mastersBatch', 'interprovincialTrialCategories',
       'eDate',
       'sDate',
       'formatEntryLine',

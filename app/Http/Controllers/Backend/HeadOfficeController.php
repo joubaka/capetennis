@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class HeadOfficeController extends Controller
@@ -56,8 +57,11 @@ class HeadOfficeController extends Controller
   {
     $event = Event::findOrFail($id);
 
+    $this->authorize('event-draw.view', $event);
+
     // The individual draw overview needs neither team fixtures nor team formats.
-    if ((int) $event->eventType === 6) {
+    if (($event->isIndividual() || (int) $event->eventType === 6)
+      && ! $event->isInterprovincialTrials()) {
       $event->load([
         'draws' => fn ($query) => $query
           ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
@@ -246,7 +250,7 @@ class HeadOfficeController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    if ($event->eventType == 5) {
+    if ($event->eventType == 5 && ! $event->isInterprovincialTrials()) {
 
       $data['playingDays'] = $this->getDatesBetween(
         $event->start_date,
@@ -278,7 +282,7 @@ class HeadOfficeController extends Controller
 
       return view('backend.headOffice.cavaliers-trials-show', $data);
 
-    } elseif ($event->eventType == 13) {
+    } elseif ($event->isInterprovincialTrials()) {
       return view('backend.headOffice.interpro-event-show', $data);
     }
 
@@ -357,19 +361,19 @@ class HeadOfficeController extends Controller
       'request' => $request->all(),
     ]);
 
+    $event = Event::findOrFail($request->input('event_id'));
+    $this->authorize('team-draw.createFormat', $event);
+
     $validatedData = $request->validate([
       'category' => 'required|array',
-      'category.*' => 'exists:category_events,id',
-      'event_id' => 'required|exists:events,id',
+      'category.*' => ['integer', 'distinct', Rule::exists('category_events', 'id')->where('event_id', $event->id)],
+      'event_id' => ['required', 'integer', Rule::in([$event->id])],
       'drawType' => 'required|integer'
     ]);
 
     $categories = $validatedData['category'];
     $event_id = $validatedData['event_id'];
     $drawType = $validatedData['drawType'];
-
-    $event = \App\Models\Event::findOrFail($event_id);
-    $this->authorize('team-draw.createFormat', $event);
 
     \Log::debug('[createFormatFixturesTeam] validated', compact('categories', 'event_id', 'drawType'));
 
@@ -560,7 +564,7 @@ class HeadOfficeController extends Controller
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
       'drawName'       => 'required|string|max:255',
       'category_ids'   => 'required|array|min:1',
-      'category_ids.*' => 'integer|exists:category_events,id',
+      'category_ids.*' => ['integer', 'distinct', Rule::exists('category_events', 'id')->where('event_id', $event->id)],
     ]);
 
     $draw = $this->createDraw($event->id, (int) $validated['draw_type_id'], $validated['drawName']);
@@ -1103,7 +1107,7 @@ class HeadOfficeController extends Controller
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
       'drawName'       => 'required|string|max:255',
       'category_ids'   => 'required|array|min:1',
-      'category_ids.*' => 'integer|exists:category_events,id',
+      'category_ids.*' => ['integer', 'distinct', Rule::exists('category_events', 'id')->where('event_id', $event->id)],
     ]);
 
     $drawType = \App\Models\DrawType::find($validated['draw_type_id']);

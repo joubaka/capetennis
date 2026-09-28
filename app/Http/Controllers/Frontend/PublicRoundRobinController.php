@@ -100,10 +100,9 @@ class PublicRoundRobinController extends Controller
     abort_if($draw->isRoundRobinOnly(), 404);
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
-    $eventType = $draw->event->eventType ?? null;
     $isEmpty = request()->boolean('empty');
 
-    if ($eventType == 13) {
+    if ($draw->event?->isInterprovincialTrials()) {
       $engine = new \App\Services\BracketEngine($draw);
       $svgData = $engine->build();
 

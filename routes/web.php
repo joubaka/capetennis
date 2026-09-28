@@ -141,6 +141,7 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
 Route::middleware('auth')->prefix('interprovincial-trials')->name('interprovincial-trials.')->group(function () {
   Route::get('invitations', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'show'])->middleware(['signed', 'throttle:30,1'])->name('invitations.show');
+  Route::post('invitations/{invitation}/register', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'register'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('invitations.register');
 });
 
 Route::middleware('auth')->prefix('team-selection')->name('team-selection.')->group(function () {
@@ -427,9 +428,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::prefix('interprovincial-trials')->name('backend.interprovincial-trials.')->group(function () {
     Route::get('events/{event}/invitations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
+    Route::get('events/{event}/players', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'players'])
+      ->middleware('throttle:30,1')->name('players.index');
+    Route::post('events/{event}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominateForCategory'])->name('nominations.bulk-store');
+    Route::put('events/{event}/nominations/publication', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'publication'])->name('nominations.publication');
     Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
     Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');
     Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
+    Route::put('events/{event}/batches/{batch}/message', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'saveMessage'])->name('batches.message');
     Route::post('events/{event}/batches/{batch}/review', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'review'])->name('batches.review');
     Route::post('events/{event}/batches/{batch}/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'send'])->name('batches.send');
     Route::post('events/{event}/batches/{batch}/invitations/{invitation}/retry', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'retry'])->name('invitations.retry');

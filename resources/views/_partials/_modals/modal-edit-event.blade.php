@@ -133,7 +133,7 @@
                     <span class="switch-on"><i class="ti ti-check"></i></span>
                     <span class="switch-off"><i class="ti ti-x"></i></span>
                   </span>
-                  <span class="switch-label">Sign-up Open</span>
+                  <span class="switch-label">Registration open</span>
                 </label>
               </div>
 @php
