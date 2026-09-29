@@ -7,6 +7,7 @@ use App\Mail\TeamSelectionInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\TeamSelectionInvitation;
 use App\Services\MailAccountManager;
+use App\Domain\Teams\Services\ExternalTeamRosterService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -58,12 +59,15 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             'custom_paid_update' => [TeamSelectionInvitation::PAID_CONFIRMED],
             default => [TeamSelectionInvitation::INVITED],
         };
+        $customRegistrationEmail = $kind === 'custom_invitation';
         $deadline = $kind === 'custom_payment_update'
             ? $invitation?->effectivePaymentDeadline()
             : $invitation?->effectiveResponseDeadline();
         if (! $invitation || (int) $invitation->event_id !== $this->eventId
             || ! in_array($invitation->status, $eligibleStatuses, true)
-            || ($kind !== 'custom_paid_update' && $deadline && now()->gt($deadline))) {
+            || ($customRegistrationEmail && ! app(ExternalTeamRosterService::class)->registrationIsOpen($invitation->selectionImport->event))
+            || ($kind === 'custom_payment_update' && $deadline && now()->gt($deadline))
+            || (! str_starts_with($kind, 'custom_') && $deadline && now()->gt($deadline))) {
             $log->markAsSkipped('Invitation is no longer eligible to send.');
             return;
         }

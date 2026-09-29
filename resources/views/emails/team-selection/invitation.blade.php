@@ -18,7 +18,8 @@
     'player' => $invitation->player_id,
   ]).'#team-registration-'.$invitation->team_id.'-'.$invitation->player_id;
   $eventName = $eventDetails['name'] ?? $event?->name;
-  $responseDeadline = $invitation->effectiveResponseDeadline();
+  $isCustomEmail = str_starts_with(($kind ?? 'invitation'), 'custom_');
+  $responseDeadline = $isCustomEmail ? null : $invitation->effectiveResponseDeadline();
   $shortReplacementWindow = ($kind ?? 'invitation') === 'replacement'
     && $invitation->invited_at
     && $responseDeadline

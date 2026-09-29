@@ -816,10 +816,12 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->actingAs($owner)->get($url)->assertOk()
             ->assertSee('id="trial-nomination-'.$nomination->id.'"', false)
             ->assertSee('border border-primary', false)
+            ->assertSee('Not registered')
             ->assertSee(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]), false)
             ->assertSee(route('interprovincial-trials.invitations.decline', $invitation), false);
         $this->actingAs(User::factory()->create())->get($url)->assertOk()
             ->assertSee('Focused Player')
+            ->assertSee('Not registered')
             ->assertSee(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]), false)
             ->assertDontSee(route('interprovincial-trials.invitations.decline', $invitation), false);
         auth()->logout();
@@ -831,10 +833,13 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'payment_method' => 'payfast', 'total_fee' => 100, 'status' => 'pending',
         ]);
         $invitation->update(['status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, 'order_id' => $order->id]);
-        $this->actingAs($owner)->get($url)->assertOk()->assertSee('>Register<', false)
-            ->assertDontSee('Complete payment')->assertSee(route('registration.checkout', $order), false)->assertDontSee('>Decline<', false);
-        $this->actingAs(User::factory()->create())->get($url)->assertOk()->assertSee('Registration in progress')
-            ->assertDontSee('Complete payment')->assertDontSee(route('registration.checkout', $order), false);
+        $this->actingAs($owner)->get($url)->assertOk()
+            ->assertSee('Not registered')->assertSee('Resume registration')
+            ->assertDontSee('Registration in progress')->assertSee(route('registration.checkout', $order), false)
+            ->assertDontSee('>Decline<', false);
+        $this->actingAs(User::factory()->create())->get($url)->assertOk()
+            ->assertSee('Not registered')->assertDontSee('Resume registration')
+            ->assertDontSee('Registration in progress')->assertDontSee(route('registration.checkout', $order), false);
         $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED]);
         $this->actingAs($owner)->get($url)->assertOk()->assertSee('Registered');
         $invitation->update(['status' => InterprovincialTrialInvitation::DECLINED]);

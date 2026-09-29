@@ -351,11 +351,19 @@ final class TeamSelectionInvitationService
                     'invitation' => 'This invitation is no longer awaiting payment. A paid registration must use the withdrawal process.',
                 ]);
             }
-            $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
-                ? $this->paymentDeadline($locked)
-                : $this->responseDeadline($locked);
-            if ($deadline && now()->gt($deadline)) {
-                throw ValidationException::withMessages(['invitation' => 'The invitation deadline has passed.']);
+            $customInvitation = (bool) data_get($locked->snapshot_json, 'activation.custom_campaign_hash');
+            if ($customInvitation) {
+                $event = $locked->selectionImport?->event;
+                if (! $event || ! app(ExternalTeamRosterService::class)->registrationIsOpen($event)) {
+                    throw ValidationException::withMessages(['invitation' => 'Team registration is no longer open for this event.']);
+                }
+            } else {
+                $deadline = $locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                    ? $this->paymentDeadline($locked)
+                    : $this->responseDeadline($locked);
+                if ($deadline && now()->gt($deadline)) {
+                    throw ValidationException::withMessages(['invitation' => 'The invitation deadline has passed.']);
+                }
             }
             if ($locked->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
@@ -1745,13 +1753,17 @@ final class TeamSelectionInvitationService
                 if (! $this->queueMail($invitation, $recipient['email'], $kind, $customCampaign, allowHistoricalRepeat: true, customPreviewHash: $expectedPreviewHash)) {
                     continue;
                 }
-                if ($pendingManual) {
+                if ($kind === 'custom_invitation') {
                     $snapshot = $invitation->snapshot_json ?? [];
-                    data_set($snapshot, 'activation.pending_manual_invitation', false);
-                    data_set($snapshot, 'activation.invitation_sent_at', now()->toIso8601String());
-                    data_set($snapshot, 'activation.invitation_sent_by_user_id', $actor->id);
                     data_set($snapshot, 'activation.custom_campaign_hash', $preview['campaign']['hash']);
-                    $invitation->update(['invited_at' => now(), 'snapshot_json' => $snapshot]);
+                    $updates = ['snapshot_json' => $snapshot];
+                    if ($pendingManual) {
+                        data_set($snapshot, 'activation.pending_manual_invitation', false);
+                        data_set($snapshot, 'activation.invitation_sent_at', now()->toIso8601String());
+                        data_set($snapshot, 'activation.invitation_sent_by_user_id', $actor->id);
+                        $updates = ['invited_at' => now(), 'snapshot_json' => $snapshot];
+                    }
+                    $invitation->update($updates);
                 }
                 $queued++;
             }
@@ -1774,7 +1786,8 @@ final class TeamSelectionInvitationService
         if ($ids->isEmpty() || $ids->count() !== count($invitationIds)) {
             throw ValidationException::withMessages(['invitation_ids' => 'Select at least one valid active team player.']);
         }
-        if ($import->status !== 'sent' || ! $this->replacementDeadlines($import)[0]) {
+        $import->loadMissing('event');
+        if ($import->status !== 'sent' || ! $import->event) {
             throw ValidationException::withMessages(['invitation_ids' => 'Custom player emails are not available for this campaign.']);
         }
 
@@ -1791,6 +1804,21 @@ final class TeamSelectionInvitationService
                 'invitation_ids' => 'The selected player list is stale or includes an ineligible player. Review the current active team players and try again.',
             ]);
         }
+        $registrationOpen = app(ExternalTeamRosterService::class)->registrationIsOpen($import->event);
+        if ($invitations->contains(function (TeamSelectionInvitation $invitation) use ($registrationOpen): bool {
+            $kind = $this->customEmailKind($invitation);
+            if ($kind === 'custom_invitation') {
+                return ! $registrationOpen;
+            }
+
+            return $kind === 'custom_payment_update'
+                && $invitation->effectivePaymentDeadline()
+                && now()->gt($invitation->effectivePaymentDeadline());
+        })) {
+            throw ValidationException::withMessages([
+                'invitation_ids' => 'One or more selected players can no longer receive this custom email. Review registration and payment availability, then try again.',
+            ]);
+        }
         return $invitations;
     }
 
@@ -1799,6 +1827,9 @@ final class TeamSelectionInvitationService
         $campaign = $this->savedCampaignSnapshot($import);
         $campaign['subject'] = trim((string) preg_replace('/[\r\n]+/', ' ', $subject));
         $campaign['message'] = trim($message);
+        // Custom checked-player emails deliberately carry no structured deadline.
+        // Managers may include their own date in the message without reusing a stale campaign cutoff.
+        $campaign['response_deadline'] = null;
         $withoutHash = $campaign;
         unset($withoutHash['hash']);
         $campaign['hash'] = hash('sha256', json_encode($withoutHash, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -1811,7 +1842,7 @@ final class TeamSelectionInvitationService
         return match ($invitation->status) {
             TeamSelectionInvitation::PAID_CONFIRMED => 'custom_paid_update',
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT => 'custom_payment_update',
-            default => $this->isPendingManualInvitation($invitation) ? 'replacement' : 'invitation',
+            default => 'custom_invitation',
         };
     }
 

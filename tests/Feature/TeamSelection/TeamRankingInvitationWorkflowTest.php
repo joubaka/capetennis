@@ -37,9 +37,11 @@ use App\Services\Clothing\ClothingPriceService;
 use App\Services\Clothing\ClothingOrderService;
 use App\Services\Clothing\ClothingPaymentService;
 use App\Mail\TeamSelectionInvitationMail;
+use App\Jobs\SendTeamSelectionInvitationEmailJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
@@ -3003,7 +3005,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 ],
             ]),
         ]);
-        $this->assertSame('replacement', $service->customEmailKind($manuallyActivated->fresh()));
+        $this->assertSame('custom_invitation', $service->customEmailKind($manuallyActivated->fresh()));
         $this->assertSame($staleOverride->toDateTimeString(), $manuallyActivated->fresh()->effectiveResponseDeadline()->toDateTimeString());
 
         $canonicalReplacement = now()->addDays(4)->startOfMinute();
@@ -4034,8 +4036,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Exact recipients (1)')
             ->assertSee('Dental One')
             ->assertDontSee('Dental Two')
-            ->assertSee('Dental replacement invitation')
-            ->assertSee('Please use your personal registration link below.');
+            ->assertSee('Platteland team invitation')
+            ->assertSee('Please use your personal registration link below.')
+            ->assertDontSee('Your replacement deadline')
+            ->assertDontSee('Your response deadline')
+            ->assertDontSee('24 hours from this invitation')
+            ->assertDontSee('Respond by:');
         $previewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
         $previewToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
         $this->assertIsString($previewHash);
@@ -4071,6 +4077,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($firstReserve->id, (int) $customLog->related_id);
         $this->assertSame('Dental replacement invitation', data_get($customLog->payload, 'campaign.subject'));
         $this->assertSame('Please use your personal registration link below.', data_get($customLog->payload, 'campaign.message'));
+        $this->assertSame('custom_invitation', data_get($customLog->payload, 'kind'));
+        $this->assertNull(data_get($customLog->payload, 'campaign.response_deadline'));
         $this->assertNotNull($firstReserve->fresh()->invited_at);
         $this->assertNull($secondReserve->fresh()->invited_at);
         $this->assertSame('Normal saved subject', $selectionImport->fresh()->email_subject);
@@ -4109,6 +4117,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($logsWithHistoricalDelivery + 2, BulkEmailLog::query()->count());
         $this->assertNotNull($secondReserve->fresh()->invited_at);
         $this->assertFalse((bool) data_get($secondReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
+
+        $staleDeadlineLog = BulkEmailLog::query()->latest('id')->firstOrFail();
+        Mail::shouldReceive('mailer')->once()->andReturnSelf();
+        Mail::shouldReceive('to')->once()->with($staleDeadlineLog->recipient_email)->andReturnSelf();
+        Mail::shouldReceive('sendNow')->once()->andReturn(true);
+        (new SendTeamSelectionInvitationEmailJob($staleDeadlineLog->id, $source->event_id))->handle();
+        $this->assertSame('sent', $staleDeadlineLog->fresh()->status);
     }
 
     public function test_custom_checked_player_email_supports_each_active_roster_status_and_team_scoped_controls(): void
@@ -4148,7 +4163,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'response_deadline_override' => now()->subDays(2),
             'payment_deadline_override' => now()->subDay(),
         ]);
-        $active[1]->update(['payment_deadline_override' => now()->subDay()]);
+        $active[1]->update(['payment_deadline_override' => now()->addDay()]);
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
@@ -4191,13 +4206,24 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $logs = BulkEmailLog::query()->whereIn('related_id', $active->pluck('id'))->latest('id')->take(3)->get();
         $this->assertEqualsCanonicalizing(
-            ['invitation', 'custom_payment_update', 'custom_paid_update'],
+            ['custom_invitation', 'custom_payment_update', 'custom_paid_update'],
             $logs->pluck('payload.kind')->all(),
         );
         foreach (TeamSelectionInvitation::query()->whereIn('id', $active->pluck('id'))->get() as $invitation) {
             $this->assertSame($before[$invitation->id][0], $invitation->status);
             $this->assertSame($before[$invitation->id][1], $invitation->invited_at?->toISOString());
-            $this->assertSame($before[$invitation->id][2], $invitation->snapshot_json);
+            if ($invitation->status === TeamSelectionInvitation::INVITED) {
+                $beforeSnapshot = $before[$invitation->id][2] ?? [];
+                $afterSnapshot = $invitation->snapshot_json ?? [];
+                data_forget($afterSnapshot, 'activation.custom_campaign_hash');
+                if (($afterSnapshot['activation'] ?? null) === []) {
+                    unset($afterSnapshot['activation']);
+                }
+                $this->assertSame($beforeSnapshot, $afterSnapshot);
+                $this->assertNotEmpty(data_get($invitation->snapshot_json, 'activation.custom_campaign_hash'));
+            } else {
+                $this->assertSame($before[$invitation->id][2], $invitation->snapshot_json);
+            }
         }
         $paymentHtml = (new \App\Mail\TeamSelectionInvitationMail($active[1]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_payment_update', ['message' => 'Update']))->render();
         $this->assertStringContainsString('Team registration update', $paymentHtml);
@@ -4218,6 +4244,81 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'subject_id' => $selectionImport->id,
             'description' => 'regional manager sent custom team selection player emails',
         ]);
+
+        $invited = $active[0]->fresh();
+        $unrelated = User::factory()->create();
+        $ordersBefore = TeamPaymentOrder::query()->count();
+        try {
+            app(TeamSelectionInvitationService::class)->decline($invited, $unrelated, 'Unavailable');
+            $this->fail('An unrelated user must not be able to decline a selected player invitation.');
+        } catch (AuthorizationException) {
+            $this->assertSame(TeamSelectionInvitation::INVITED, $invited->fresh()->status);
+        }
+        $owner = User::findOrFail($invited->player->userId);
+        app(TeamSelectionInvitationService::class)->decline($invited, $owner, 'Unavailable');
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $invited->fresh()->status);
+        $this->assertSame($ordersBefore, TeamPaymentOrder::query()->count());
+    }
+
+    public function test_custom_payment_update_keeps_payment_grace_after_registration_closes_and_skips_after_deadline(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        app(TeamSelectionInvitationService::class)->send($selectionImport, [
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+            'email_subject' => 'Normal subject',
+            'email_message' => 'Normal message',
+        ], $manager);
+        $accepted = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $accepted->player()->update(['email' => 'payment-grace@example.test']);
+        $accepted->update([
+            'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            'accepted_at' => now(),
+            'payment_deadline_override' => now()->addDay(),
+        ]);
+        $source->event->update(['signUp' => false]);
+
+        $payload = [
+            'invitation_ids' => [$accepted->id],
+            'email_subject' => 'Payment grace update',
+            'email_message' => 'Your existing payment window remains available.',
+        ];
+        $previewRoute = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $selectionImport]);
+        $sendRoute = route('backend.team-selection.invitations.email.custom-send', [$source->event, $selectionImport]);
+        $this->actingAs($manager)->post($previewRoute, $payload)->assertOk();
+        $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
+        $token = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$payload, 'preview_hash' => $hash, 'preview_token' => $token, 'confirm_recipients' => 1,
+        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
+
+        $log = BulkEmailLog::query()->where('related_id', $accepted->id)
+            ->where('payload->kind', 'custom_payment_update')->latest('id')->firstOrFail();
+        Mail::shouldReceive('mailer')->once()->andReturnSelf();
+        Mail::shouldReceive('to')->once()->with($log->recipient_email)->andReturnSelf();
+        Mail::shouldReceive('sendNow')->once()->andReturn(true);
+        (new SendTeamSelectionInvitationEmailJob($log->id, $source->event_id))->handle();
+        $this->assertSame('sent', $log->fresh()->status);
+
+        $accepted->update(['payment_deadline_override' => now()->subMinute()]);
+        $this->actingAs($manager)->post($previewRoute, $payload)->assertSessionHasErrors('invitation_ids');
+        $expiredLog = BulkEmailLog::create([
+            'mail_type' => 'team_selection_invitation',
+            'related_type' => TeamSelectionInvitation::class,
+            'related_id' => $accepted->id,
+            'recipient_email' => 'payment-grace@example.test',
+            'recipient_name' => $accepted->player->full_name,
+            'status' => 'queued',
+            'payload' => ['kind' => 'custom_payment_update', 'campaign' => []],
+            'queued_at' => now(),
+        ]);
+        (new SendTeamSelectionInvitationEmailJob($expiredLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $expiredLog->fresh()->status);
     }
 
     public function test_final_reminder_cohorts_separate_registration_and_incomplete_clothing_states(): void

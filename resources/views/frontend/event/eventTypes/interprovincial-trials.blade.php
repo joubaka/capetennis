@@ -34,14 +34,18 @@
                         <li id="trial-nomination-{{ $nomination->id }}" class="list-group-item px-0 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $focused ? 'border border-primary rounded px-2 bg-label-primary' : '' }}" @if($focused) tabindex="-1" autofocus @endif>
                           <span>{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</span>
                           @if(!$trialInvitation && $registrationOpen)
-                            @auth
-                              <form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
-                            @else
-                              <a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>
-                            @endauth
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                              <span class="badge bg-label-secondary">Not registered</span>
+                              @auth
+                                <form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                              @else
+                                <a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>
+                              @endauth
+                            </div>
                           @elseif($tupleMatches)
                             <div class="d-flex flex-wrap align-items-center gap-2">
                             @if(in_array($trialInvitation->status, ['queued', 'sent', 'open_registration'], true))
+                              <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
                                 @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
@@ -50,7 +54,8 @@
                               @endif
                               @if($ownsPlayer)<form method="POST" action="{{ route('interprovincial-trials.invitations.decline', $trialInvitation) }}" onsubmit="return confirm('Decline this invitation?');">@csrf<button type="submit" class="btn btn-sm btn-outline-danger">Decline</button></form>@endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
-                              @if($isPayer)<a class="btn btn-sm btn-primary" href="{{ route('registration.checkout', $trialInvitation->order_id) }}">Register</a>@else<span class="badge bg-label-warning">Registration in progress</span>@endif
+                              <span class="badge bg-label-secondary">Not registered</span>
+                              @if($isPayer)<a class="btn btn-sm btn-primary" href="{{ route('registration.checkout', $trialInvitation->order_id) }}">Resume registration</a>@endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)
                               <span class="badge bg-label-success">Registered</span>
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::DECLINED)
