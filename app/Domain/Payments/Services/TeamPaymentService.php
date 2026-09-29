@@ -52,9 +52,53 @@ class TeamPaymentService
                 if ($existing) {
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
                         if ((int) $existing->user_id !== (int) $user->id) {
-                            throw ValidationException::withMessages([
-                                'payment' => 'Another payer already started this checkout. That payer must cancel it before a different account can continue.',
+                            if ($this->hasActivePayfastHandoff($existing)) {
+                                throw ValidationException::withMessages([
+                                    'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
+                                ]);
+                            }
+                            if (! $this->isWhollyUnpaid($existing)) {
+                                throw ValidationException::withMessages([
+                                    'payment' => 'This checkout contains payment evidence and cannot be restarted by another payer.',
+                                ]);
+                            }
+
+                            $previousPayerId = (int) $existing->user_id;
+                            $superseded = $this->closeUnpaidLifecycle($existing, $user);
+                            $replacement = TeamPaymentOrder::create([
+                                'user_id' => $user->id,
+                                'team_id' => $team->id,
+                                'player_id' => $player->id,
+                                'event_id' => $event->id,
+                                'total_amount' => $total,
+                                'wallet_reserved' => 0,
+                                'payfast_amount_due' => $total,
+                                'wallet_debited' => false,
+                                'payfast_paid' => false,
+                                'pay_status' => false,
                             ]);
+                            TeamSelectionInvitation::query()
+                                ->where('event_id', $event->id)
+                                ->where('team_id', $team->id)
+                                ->where('player_id', $player->id)
+                                ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
+                                ->where('order_id', $superseded->id)
+                                ->update(['order_id' => $replacement->id]);
+                            activity('team-selection')->performedOn($replacement)->causedBy($user)
+                                ->withProperties([
+                                    'event_id' => $event->id,
+                                    'team_id' => $team->id,
+                                    'player_id' => $player->id,
+                                    'superseded_order_id' => $superseded->id,
+                                    'previous_payer_id' => $previousPayerId,
+                                    'replacement_order_id' => $replacement->id,
+                                    'amount' => round($total, 2),
+                                ])->log('restarted abandoned team checkout for a new payer');
+
+                            return $replacement;
+                        }
+                        if ($this->hasActivePayfastHandoff($existing)) {
+                            return $existing;
                         }
                         $totalChanged = round((float) $existing->total_amount, 2) !== round($total, 2);
                         $existing->total_amount = $total;
@@ -87,20 +131,72 @@ class TeamPaymentService
 
     public function reservePayment(TeamPaymentOrder $order, float $walletApplied, float $remainingAmount): TeamPaymentOrder
     {
-        /** @var TeamPaymentOrder $reserved */
-        $reserved = $this->paymentOrchestrator->initiatePayment($order, $walletApplied, $remainingAmount);
+        return DB::transaction(function () use ($order, $walletApplied, $remainingAmount): TeamPaymentOrder {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->withdrawn_at !== null) {
+                throw new \RuntimeException('This team checkout has been superseded or withdrawn and cannot be changed.');
+            }
+            if ($this->hasActivePayfastHandoff($locked)) {
+                throw new \RuntimeException('This team checkout is currently being processed by PayFast and cannot be changed.');
+            }
 
-        return $reserved;
+            /** @var TeamPaymentOrder $reserved */
+            $reserved = $this->paymentOrchestrator->initiatePayment($locked, $walletApplied, $remainingAmount);
+
+            return $reserved;
+        });
+    }
+
+    public function recordPayfastHandoff(TeamPaymentOrder $order, User $payer, float $amount): TeamPaymentOrder
+    {
+        return DB::transaction(function () use ($order, $payer, $amount): TeamPaymentOrder {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $expected = round((float) $locked->payfast_amount_due, 2);
+            if ((int) $locked->user_id !== (int) $payer->id) {
+                throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
+            }
+            if ($locked->withdrawn_at !== null || $locked->pay_status || $locked->payfast_paid || $locked->wallet_debited) {
+                throw ValidationException::withMessages(['payment' => 'This checkout is no longer available for PayFast submission.']);
+            }
+            if ($expected <= 0 || round($amount, 2) !== $expected) {
+                throw ValidationException::withMessages(['payment' => 'The PayFast handoff amount does not match the server-calculated balance.']);
+            }
+            if ($this->hasActivePayfastHandoff($locked)) {
+                return $locked;
+            }
+            $locked->forceFill([
+                'payfast_handed_off_at' => now(),
+            ])->save();
+
+            activity('team-payment')->performedOn($locked)->causedBy($payer)
+                ->withProperties([
+                    'order_id' => $locked->id,
+                    'payer_id' => $payer->id,
+                    'amount_due' => $expected,
+                    'event_id' => $locked->event_id,
+                    'team_id' => $locked->team_id,
+                    'player_id' => $locked->player_id,
+                    'handed_off_at' => $locked->payfast_handed_off_at?->toIso8601String(),
+                ])->log('team checkout handed off to PayFast');
+
+            return $locked->refresh();
+        });
     }
 
     public function finalizePayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
     {
-        /** @var TeamPaymentOrder $finalized */
-        $finalized = $this->paymentOrchestrator->finalizePayment($order, $context);
-        $this->markPlayerPaid($finalized);
-        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->confirmPaidOrder($finalized);
+        return DB::transaction(function () use ($order, $context): TeamPaymentOrder {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->withdrawn_at !== null) {
+                throw new \RuntimeException('This team checkout has been superseded or withdrawn and cannot be paid.');
+            }
+            /** @var TeamPaymentOrder $finalized */
+            $finalized = $this->paymentOrchestrator->finalizePayment($locked, $context);
+            $this->markPlayerPaid($finalized);
+            app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->confirmPaidOrder($finalized);
 
-        return $finalized;
+            return $finalized;
+        });
     }
 
     public function finalizeWalletPayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
@@ -189,6 +285,12 @@ class TeamPaymentService
             return DB::transaction(function () use ($order, $actor) {
                 $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
 
+                if ($this->hasUnresolvedPayfastHandoff($locked)) {
+                    throw ValidationException::withMessages([
+                        'payment' => 'A checkout currently with PayFast cannot be withdrawn locally.',
+                    ]);
+                }
+
                 if (! $locked->withdrawn_at) {
                     $locked->withdrawn_at = now();
                     $locked->withdrawn_by = $actor?->id;
@@ -213,6 +315,12 @@ class TeamPaymentService
         return DB::transaction(function () use ($order, $actor): TeamPaymentOrder {
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
 
+            if ($locked->payfast_handed_off_at !== null) {
+                throw ValidationException::withMessages([
+                    'payment' => 'A checkout handed off to PayFast cannot be closed locally.',
+                ]);
+            }
+
             if ($locked->withdrawn_at) {
                 return $locked;
             }
@@ -227,6 +335,34 @@ class TeamPaymentService
 
             return $this->recordWithdrawal($cancelled, $actor);
         });
+    }
+
+    private function isWhollyUnpaid(TeamPaymentOrder $order): bool
+    {
+        return ! $order->pay_status
+            && ! $order->payfast_paid
+            && ! $order->wallet_debited
+            && blank($order->payfast_pf_payment_id)
+            && blank($order->paid_privately_at)
+            && blank($order->collection_status)
+            && ! $order->hasRefund()
+            && $order->refunded_at === null
+            && round((float) $order->refund_gross, 2) === 0.0
+            && round((float) $order->refund_fee, 2) === 0.0
+            && round((float) $order->refund_net, 2) === 0.0;
+    }
+
+    private function hasActivePayfastHandoff(TeamPaymentOrder $order): bool
+    {
+        return $this->hasUnresolvedPayfastHandoff($order);
+    }
+
+    public function hasUnresolvedPayfastHandoff(TeamPaymentOrder $order): bool
+    {
+        return $order->payfast_handed_off_at !== null
+            && ! $order->pay_status
+            && ! $order->payfast_paid
+            && ! $order->wallet_debited;
     }
 
     public function markInvitationPaidPrivately(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
@@ -274,6 +410,11 @@ class TeamPaymentService
                 $order = $locked->order_id
                     ? TeamPaymentOrder::query()->lockForUpdate()->findOrFail($locked->order_id)
                     : null;
+                if ($order?->payfast_handed_off_at !== null) {
+                    throw ValidationException::withMessages([
+                        'payment' => 'A checkout handed off to PayFast cannot be marked paid privately.',
+                    ]);
+                }
                 $associatedUserIds = collect([$player->userId])->merge($player->users->pluck('id'))
                     ->filter()->map(fn ($id): int => (int) $id)->unique()->values();
                 $payer = $order

@@ -364,11 +364,12 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'pay_status' => 0,
         ]);
 
-        $this->actingAs($user)->get(route('team.payment.payfast', [
+        $paymentUrl = route('team.payment.payfast', [
             $this->team,
             $player,
             $this->event,
-        ]))->assertOk()
+        ]);
+        $this->actingAs($user)->get($paymentUrl)->assertOk()
             ->assertViewIs('frontend.payfast.team_payment')
             ->assertSee('Registration details')
             ->assertSee($player->name.' '.$player->surname)
@@ -381,6 +382,28 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_id' => $player->id,
             'event_id' => $this->event->id,
         ]);
+        $order = TeamPaymentOrder::query()->where('user_id', $user->id)
+            ->where('team_id', $this->team->id)->where('player_id', $player->id)->firstOrFail();
+        $this->assertNull($order->payfast_handed_off_at);
+
+        $this->post(route('team.payment.payfast.handoff', [
+            $this->team, $player, $this->event,
+        ]))->assertOk()
+            ->assertViewIs('frontend.payfast.team_payment')
+            ->assertSee('Redirecting securely to PayFast')
+            ->assertSee('name="amount" value="'.number_format((float) $order->payfast_amount_due, 2, '.', '').'"', false)
+            ->assertSee('name="custom_int5" value="'.$order->id.'"', false);
+        $this->assertNotNull($order->fresh()->payfast_handed_off_at);
+        $handedOffAt = $order->fresh()->payfast_handed_off_at->toISOString();
+        $this->post(route('team.payment.payfast.handoff', [
+            $this->team, $player, $this->event,
+        ]))->assertOk();
+        $this->assertSame($handedOffAt, $order->fresh()->payfast_handed_off_at->toISOString());
+        $this->assertSame(1, DB::table('activity_log')
+            ->where('subject_type', TeamPaymentOrder::class)
+            ->where('subject_id', $order->id)
+            ->where('description', 'team checkout handed off to PayFast')
+            ->count());
     }
 
     public function test_team_payment_trims_legacy_payer_name_before_signing_and_posting(): void

@@ -93,7 +93,10 @@
 
           @if($payfastDue > 0)
             <div class="border rounded p-4">
-              <form action="{{ $payfast->url }}" method="post">
+              <form id="teamPayfastForm" action="{{ $autoSubmitPayfast ? $payfast->url : route('team.payment.payfast.handoff', ['team' => $team->id, 'player' => $player->id, 'event' => $event->id]) }}" method="post">
+                @unless($autoSubmitPayfast)
+                  @csrf
+                @endunless
                 <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
                 <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
                 <input type="hidden" name="return_url" value="{{ $returnUrl }}">
@@ -154,8 +157,14 @@
                 @endphp
                 <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
 
-                <button class="btn btn-danger btn-lg w-100">Pay now with Payfast</button>
+                @unless($autoSubmitPayfast)
+                  <button class="btn btn-danger btn-lg w-100">Pay now with Payfast</button>
+                @endunless
               </form>
+              @if($autoSubmitPayfast)
+                <div class="text-center text-muted" role="status">Redirecting securely to PayFast…</div>
+                <script>document.getElementById('teamPayfastForm').submit();</script>
+              @endif
             </div>
           @else
             <div class="alert alert-success mb-3">

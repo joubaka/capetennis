@@ -49,6 +49,18 @@ class TeamPlayerWithdrawController extends Controller
       return back()->withErrors('Team player not found.');
     }
 
+    $activeOrder = TeamPaymentOrder::query()
+      ->where('team_id', $team->id)
+      ->where('player_id', $player->id)
+      ->where('event_id', $eventId)
+      ->whereNull('withdrawn_at')
+      ->latest('id')
+      ->first();
+    if ($activeOrder && app(\App\Domain\Payments\Services\TeamPaymentService::class)
+      ->hasUnresolvedPayfastHandoff($activeOrder)) {
+      return back()->withErrors('This checkout is currently with PayFast and cannot be withdrawn locally.');
+    }
+
     $withdrawalOrder = $this->paymentOrder($team, $player, (int) $eventId, $user);
     if ((int) $teamPlayer->pay_status === 1 && ! $withdrawalOrder) {
       return back()->withErrors('Only the payer may withdraw this team entry.');
@@ -82,12 +94,29 @@ class TeamPlayerWithdrawController extends Controller
       return back()->with('success', 'Player withdrawn from team. Refund is not available because the withdrawal deadline has passed. For assistance, contact support@capetennis.co.za.');
     }
 
-    // Unpaid: clear the slot to make it available
-    $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
-    app(\App\Domain\Payments\Services\TeamPaymentService::class)
-      ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
-    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
-      ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
+    DB::transaction(function () use ($teamPlayer, $team, $player, $eventId, $user): void {
+      $lockedOrder = TeamPaymentOrder::query()
+        ->where('team_id', $team->id)
+        ->where('player_id', $player->id)
+        ->where('event_id', $eventId)
+        ->whereNull('withdrawn_at')
+        ->lockForUpdate()
+        ->latest('id')
+        ->first();
+      if ($lockedOrder && app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->hasUnresolvedPayfastHandoff($lockedOrder)) {
+        throw \Illuminate\Validation\ValidationException::withMessages([
+          'payment' => 'This checkout is currently with PayFast and cannot be withdrawn locally.',
+        ]);
+      }
+
+      // Unpaid: clear fixtures and the slot only inside the same guarded transaction.
+      $this->removePlayerFromUnplayedFixtures($player, (int) $eventId);
+      app(\App\Domain\Payments\Services\TeamPaymentService::class)
+        ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
+      app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
+        ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
+    });
 
     return back()->with('success', 'Player withdrawn (no payment). Slot is now available.');
   }

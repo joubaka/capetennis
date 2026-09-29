@@ -397,7 +397,7 @@ class TeamController extends Controller
 
 
 
-  public function team_payment_payfast($teamId, $playerId, $eventId)
+  public function team_payment_payfast(Request $request, $teamId, $playerId, $eventId)
   {
     // require authenticated user
     $user = auth()->user();
@@ -449,6 +449,15 @@ class TeamController extends Controller
       $payfastDue = 0.00;
     }
 
+    $autoSubmitPayfast = $request->isMethod('post');
+    if ($autoSubmitPayfast) {
+      try {
+        $order = app(TeamPaymentService::class)->recordPayfastHandoff($order, $user, $payfastDue);
+      } catch (\Illuminate\Validation\ValidationException $exception) {
+        return redirect()->back()->withErrors($exception->errors());
+      }
+    }
+
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
     // Sandbox only on non-production environments (local/staging) for user 584.
@@ -480,7 +489,6 @@ class TeamController extends Controller
       'notify_url' => route('notify.team'),
       'amount' => $payfast->amount,
       'mode' => $isLocalTest ? 'sandbox' : 'live',
-      'payfast' => $payfast
     ]);
 
     // pass variables expected by the blade
@@ -497,6 +505,7 @@ class TeamController extends Controller
         'walletBalance' => $walletBalance,
         'walletReserved' => $walletReserved,
         'payfastDue' => $payfastDue,
+        'autoSubmitPayfast' => $autoSubmitPayfast,
     ]);
   }
 

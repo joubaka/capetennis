@@ -389,6 +389,7 @@ return new class extends Migration
                 $table->boolean('pay_status')->default(false);
                 $table->string('payfast_pf_payment_id')->nullable();
                 $table->json('payfast_raw_data')->nullable();
+                $table->timestamp('payfast_handed_off_at')->nullable();
                 // Refund fields
                 $table->string('refund_method')->nullable();
                 $table->string('refund_status')->default('not_refunded');

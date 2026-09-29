@@ -12,6 +12,7 @@ use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventAdmin;
 use App\Models\EventType;
+use App\Models\Draw;
 use App\Models\EventRegion;
 use App\Models\EventRegionManager;
 use App\Models\EventRegionRankingSource;
@@ -20,6 +21,8 @@ use App\Models\RankingList;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\Team;
+use App\Models\TeamFixture;
+use App\Models\TeamFixturePlayer;
 use App\Models\TeamPaymentOrder;
 use App\Models\TeamPlayer;
 use App\Models\TeamRegion;
@@ -3941,30 +3944,141 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($historicalState, $historical->fresh()->getAttributes());
     }
 
-    public function test_a_second_sponsor_cannot_take_over_an_existing_team_checkout(): void
+    public function test_a_second_sponsor_can_restart_abandoned_but_no_local_actor_can_close_or_replace_a_handed_off_checkout(): void
     {
         [$source, $team] = $this->selectionSource();
-        $player = Player::factory()->create();
-        $firstSponsor = User::factory()->create();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $invitation = $selectionImport->invitations()
+            ->where('team_id', $team->id)
+            ->where('status', TeamSelectionInvitation::INVITED)
+            ->firstOrFail();
+        $player = $invitation->player;
+        $firstSponsor = User::findOrFail($player->userId);
         $secondSponsor = User::factory()->create();
         $service = app(TeamPaymentService::class);
 
-        $order = $service->ensureOrder($firstSponsor, $team, $player, $source->event, 525.00);
+        $abandoned = $service->ensureOrder($firstSponsor, $team, $player, $source->event, 525.00);
+        $replacement = $service->ensureOrder($secondSponsor, $team, $player, $source->event, 600.00);
+        $invitation->update([
+            'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            'payment_started_at' => now(),
+            'order_id' => $replacement->id,
+        ]);
+        $this->assertSame($firstSponsor->id, $abandoned->fresh()->user_id);
+        $this->assertNotNull($abandoned->fresh()->withdrawn_at);
+        $this->assertSame($secondSponsor->id, $replacement->user_id);
+        $this->assertSame($replacement->id, $service->ensureOrder($secondSponsor, $team, $player, $source->event, 600.00)->id);
+
+        $service->recordPayfastHandoff($replacement, $secondSponsor, 600.00);
+        $draw = Draw::factory()->create(['event_id' => $source->event_id]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
+        $fixturePlayer = TeamFixturePlayer::create([
+            'team_fixture_id' => $fixture->id,
+            'team1_id' => $player->id,
+            'team2_id' => null,
+        ]);
+        $this->actingAs($firstSponsor)->post(route('team.player.withdraw', [
+            $team, $player, $source->event,
+        ]))->assertSessionHasErrors();
+        $this->assertSame($player->id, $fixturePlayer->fresh()->team1_id);
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertNull($replacement->fresh()->withdrawn_at);
+        try {
+            $service->ensureOrder($firstSponsor, $team, $player, $source->event, 600.00);
+            $this->fail('Expected an active PayFast handoff to prevent takeover.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+        $this->assertNull($replacement->fresh()->withdrawn_at);
+
+        $this->travelTo(now()->addYear());
+        try {
+            $service->ensureOrder($firstSponsor, $team, $player, $source->event, 600.00);
+            $this->fail('Expected elapsed time not to expire PayFast handoff protection.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        } finally {
+            $this->travelBack();
+        }
 
         try {
-            $service->ensureOrder($secondSponsor, $team, $player, $source->event, 600.00);
-            $this->fail('Expected a second sponsor to be prevented from taking over the checkout.');
+            app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), $firstSponsor, 'Unable to attend');
+            $this->fail('Expected payer-linked decline not to close a handed-off checkout.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payment', $exception->errors());
         }
 
-        $this->assertSame($firstSponsor->id, $order->fresh()->user_id);
-        $this->assertSame(525.00, (float) $order->fresh()->total_amount);
-        $this->assertSame(1, TeamPaymentOrder::query()
+        foreach ([$secondSponsor, null, User::factory()->create()] as $actor) {
+            try {
+                $service->closeUnpaidLifecycle($replacement->fresh(), $actor);
+                $this->fail('Expected payer, system and admin-like actors to be unable to close a handed-off checkout.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('payment', $exception->errors());
+            }
+        }
+        try {
+            $service->recordWithdrawal($replacement->fresh(), $secondSponsor);
+            $this->fail('Expected canonical withdrawal to reject an unresolved PayFast handoff.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+        $this->assertNull($replacement->fresh()->withdrawn_at);
+        $this->assertNotNull($replacement->fresh()->payfast_handed_off_at);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertSame(2, TeamPaymentOrder::query()
             ->where('team_id', $team->id)
             ->where('player_id', $player->id)
             ->where('event_id', $source->event_id)
             ->count());
+        $this->assertSame(1, TeamPaymentOrder::query()
+            ->where('team_id', $team->id)->where('player_id', $player->id)
+            ->where('event_id', $source->event_id)->whereNull('withdrawn_at')->count());
+
+        $replacement->update(['payfast_pf_payment_id' => 'PF-EVIDENCE']);
+        $this->assertSame($replacement->id, $service->ensureOrder(
+            $secondSponsor, $team, $player, $source->event, 600.00,
+        )->id);
+        try {
+            $service->ensureOrder($firstSponsor, $team, $player, $source->event, 600.00);
+            $this->fail('Expected PayFast evidence to continue preventing takeover.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+
+        config()->set('services.payfast.sandbox', false);
+        config()->set('services.payfast.merchant_id', 'test-merchant');
+        config()->set('services.payfast.passphrase_live', 'test-passphrase');
+        $itn = [
+            'merchant_id' => 'test-merchant',
+            'payment_status' => 'COMPLETE',
+            'custom_int5' => $replacement->id,
+            'pf_payment_id' => 'PF-STALE-CALLBACK',
+            'amount_gross' => '600.00',
+        ];
+        $raw = http_build_query($itn);
+        $itn['signature'] = md5($raw.'&passphrase='.urlencode('test-passphrase'));
+        $this->call('POST', route('notify.team'), $itn, [], [], [
+            'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+        ], http_build_query($itn))->assertOk();
+        $this->assertTrue((bool) $replacement->fresh()->pay_status);
+        $this->assertTrue((bool) $replacement->fresh()->payfast_paid);
+        $this->assertSame($replacement->id, TeamPaymentOrder::query()
+            ->where('team_id', $team->id)->where('player_id', $player->id)
+            ->where('event_id', $source->event_id)->whereNull('withdrawn_at')->value('id'));
+
+        $this->actingAs($secondSponsor)->post(route('team.player.withdraw', [
+            $team, $player, $source->event,
+        ]))->assertRedirect(route('team.player.refund.choose', [
+            $team->id, $player->id, $source->event_id,
+        ]));
+        $this->assertNotNull($replacement->fresh()->withdrawn_at);
     }
 
     public function test_team_order_history_migration_is_scoped_and_idempotent(): void
@@ -4087,6 +4201,53 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post($url)->assertSessionHasErrors('payment');
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
         $this->assertNull($order->fresh()->collection_status);
+    }
+
+    public function test_private_payment_cannot_replace_a_payfast_handoff_and_provider_finalization_remains_available(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $selectionImport->invitations()
+            ->where('team_id', $team->id)
+            ->where('status', TeamSelectionInvitation::INVITED)
+            ->firstOrFail();
+        $payer = User::findOrFail($invitation->player->userId);
+        $order = app(TeamPaymentService::class)->ensureOrder(
+            $payer, $team, $invitation->player, $source->event, 490.00,
+        );
+        $invitation->update([
+            'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
+            'payment_started_at' => now(),
+            'order_id' => $order->id,
+        ]);
+        app(TeamPaymentService::class)->recordPayfastHandoff($order, $payer, 490.00);
+
+        try {
+            app(TeamPaymentService::class)->markInvitationPaidPrivately($invitation->fresh(), $manager);
+            $this->fail('Expected private collection to reject a PayFast-handed checkout.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($order->id, $invitation->fresh()->order_id);
+        $this->assertNull($order->fresh()->collection_status);
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $team->id,
+            'player_id' => $invitation->player_id,
+            'pay_status' => 0,
+        ]);
+
+        app(TeamPaymentService::class)->finalizePayment($order->fresh(), [
+            'pf_payment_id' => 'PF-AFTER-PRIVATE-REJECTION',
+            'payfast_amount_due' => 490.00,
+            'payfast_amount_received' => 490.00,
+            'payment_method' => 'payfast',
+        ]);
+        $this->assertTrue((bool) $order->fresh()->pay_status);
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
     }
 
     public function test_open_team_registration_bypasses_expired_invitation_deadlines_and_resumes_one_order(): void

@@ -21,6 +21,7 @@ class TeamPaymentOrder extends Model
     'paid_privately_by',
     'payfast_pf_payment_id',
     'payfast_raw_data',
+    'payfast_handed_off_at',
     // Refund fields
     'refund_method',
     'refund_status',
@@ -50,6 +51,7 @@ class TeamPaymentOrder extends Model
     'paid_privately_at' => 'datetime',
     'paid_privately_by' => 'integer',
     'payfast_raw_data' => 'array',
+    'payfast_handed_off_at' => 'datetime',
     // Refund casts
     'refund_gross' => 'float',
     'refund_fee' => 'float',
