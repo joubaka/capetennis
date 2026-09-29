@@ -33,11 +33,17 @@
                         @endphp
                         <li id="trial-nomination-{{ $nomination->id }}" class="list-group-item px-0 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $focused ? 'border border-primary rounded px-2 bg-label-primary' : '' }}" @if($focused) tabindex="-1" autofocus @endif>
                           <span>{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</span>
-                          @if($tupleMatches)
+                          @if(!$trialInvitation && $registrationOpen)
+                            @auth
+                              <form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                            @else
+                              <a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>
+                            @endauth
+                          @elseif($tupleMatches)
                             <div class="d-flex flex-wrap align-items-center gap-2">
-                            @if(in_array($trialInvitation->status, ['queued', 'sent'], true))
+                            @if(in_array($trialInvitation->status, ['queued', 'sent', 'open_registration'], true))
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.invitations.register', $trialInvitation) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
                               @else
                                 <span class="badge bg-label-secondary">Registration closed</span>
@@ -49,8 +55,16 @@
                               <span class="badge bg-label-success">Registered</span>
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::DECLINED)
                               <span class="badge bg-label-secondary">Declined</span>
+                              @if($registrationOpen)
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
+                              @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
                               <span class="badge bg-label-secondary">Withdrawn</span>
+                              @if($registrationOpen)
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
+                              @endif
                             @endif
                             </div>
                           @endif

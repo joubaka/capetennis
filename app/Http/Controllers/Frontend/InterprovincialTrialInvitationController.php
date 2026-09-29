@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
+use App\Models\CategoryEvent;
+use App\Models\Event;
+use App\Models\EventNomination;
 use App\Models\InterprovincialTrialInvitation;
 use App\Services\InterprovincialTrials\InvitationService;
 use Illuminate\Http\Request;
@@ -43,6 +46,22 @@ class InterprovincialTrialInvitationController extends Controller
     public function register(Request $request, InterprovincialTrialInvitation $invitation, InvitationService $service)
     {
         $order = $service->accept($invitation, $request->user());
+
+        if ((int) $order->pay_status === 1) {
+            return redirect()->route('frontend.registration.success', $order)->with('success', 'Trial registration confirmed.');
+        }
+
+        return redirect()->route('registration.checkout', $order);
+    }
+
+    public function registerNomination(
+        Request $request,
+        Event $event,
+        CategoryEvent $categoryEvent,
+        EventNomination $nomination,
+        InvitationService $service
+    ) {
+        $order = $service->acceptPublishedNomination($event, $categoryEvent, $nomination, $request->user());
 
         if ((int) $order->pay_status === 1) {
             return redirect()->route('frontend.registration.success', $order)->with('success', 'Trial registration confirmed.');

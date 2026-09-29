@@ -139,6 +139,7 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
 });
 
 Route::middleware('auth')->prefix('interprovincial-trials')->name('interprovincial-trials.')->group(function () {
+  Route::post('events/{event}/categories/{categoryEvent}/nominations/{nomination}/register', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'registerNomination'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('nominations.register');
   Route::get('invitations', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'show'])->middleware(['signed', 'throttle:30,1'])->name('invitations.show');
   Route::post('invitations/{invitation}/register', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'register'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('invitations.register');

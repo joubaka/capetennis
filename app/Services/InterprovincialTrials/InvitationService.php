@@ -6,7 +6,9 @@ use App\Domain\Entries\Services\EntryEligibilityService;
 use App\Domain\Payments\Services\RegistrationPaymentService;
 use App\Jobs\SendInterprovincialTrialInvitationEmailJob;
 use App\Models\BulkEmailLog;
+use App\Models\CategoryEvent;
 use App\Models\Event;
+use App\Models\EventNomination;
 use App\Models\InterprovincialTrialInvitation;
 use App\Models\InterprovincialTrialInvitationBatch;
 use App\Models\Registration;
@@ -20,6 +22,79 @@ use Illuminate\Validation\ValidationException;
 
 class InvitationService
 {
+    public function acceptPublishedNomination(
+        Event $event,
+        CategoryEvent $categoryEvent,
+        EventNomination $nomination,
+        User $user
+    ): RegistrationOrder {
+        return DB::transaction(function () use ($event, $categoryEvent, $nomination, $user): RegistrationOrder {
+            $lockedEvent = Event::query()->with('eventTypeModel')->lockForUpdate()->findOrFail($event->id);
+            $lockedCategory = CategoryEvent::query()->lockForUpdate()->findOrFail($categoryEvent->id);
+            $lockedNomination = EventNomination::query()->lockForUpdate()->findOrFail($nomination->id);
+
+            abort_unless($lockedEvent->isInterprovincialTrials()
+                && (int) $lockedCategory->event_id === (int) $lockedEvent->id
+                && (bool) $lockedCategory->nominations_published
+                && (int) $lockedNomination->event_id === (int) $lockedEvent->id
+                && (int) $lockedNomination->category_event_id === (int) $lockedCategory->id,
+                404
+            );
+
+            if (! $lockedEvent->published || ! $lockedEvent->hasOpenRegistrationLifecycle()
+                || (int) $lockedEvent->signUp !== 1) {
+                throw ValidationException::withMessages(['invitation' => 'Registration for this trial is closed.']);
+            }
+            $closeAt = $lockedEvent->registrationClosesAt()?->endOfDay();
+            if ($closeAt && now()->gt($closeAt)) {
+                throw ValidationException::withMessages(['invitation' => 'The registration deadline has passed.']);
+            }
+
+            $existingOrderAttempt = InterprovincialTrialInvitation::query()
+                ->where('event_id', $lockedEvent->id)
+                ->where('category_event_id', $lockedCategory->id)
+                ->where('nomination_id', $lockedNomination->id)
+                ->where('player_id', $lockedNomination->player_id)
+                ->whereIn('status', [
+                    InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT,
+                    InterprovincialTrialInvitation::PAID_CONFIRMED,
+                ])
+                ->latest('id')
+                ->first();
+
+            $invitation = $existingOrderAttempt ?: InterprovincialTrialInvitation::query()
+                ->where('event_id', $lockedEvent->id)
+                ->where('category_event_id', $lockedCategory->id)
+                ->where('nomination_id', $lockedNomination->id)
+                ->where('player_id', $lockedNomination->player_id)
+                ->whereIn('status', ['queued', 'sent', 'open_registration'])
+                ->latest('id')
+                ->first();
+
+            if (! $invitation) {
+                $batch = InterprovincialTrialInvitationBatch::create([
+                    'event_id' => $lockedEvent->id,
+                    'status' => InterprovincialTrialInvitationBatch::DRAFT,
+                    'snapshot_hash' => hash('sha256', implode(':', [
+                        'open-registration', $lockedEvent->id, $lockedCategory->id, $lockedNomination->id,
+                    ])),
+                    'created_by_user_id' => $user->id,
+                ]);
+
+                $invitation = InterprovincialTrialInvitation::create([
+                    'batch_id' => $batch->id,
+                    'event_id' => $lockedEvent->id,
+                    'category_event_id' => $lockedCategory->id,
+                    'nomination_id' => $lockedNomination->id,
+                    'player_id' => $lockedNomination->player_id,
+                    'status' => 'open_registration',
+                ]);
+            }
+
+            return $this->accept($invitation, $user);
+        });
+    }
+
     public function previewAttempt(Event $event, string $mode, ?int $invitationId = null): array
     {
         $selection = $this->attemptSelection($event, $mode, $invitationId, false);
@@ -164,7 +239,7 @@ class InvitationService
                 throw ValidationException::withMessages(['invitation' => 'Registration for this trial is closed.']);
             }
             if (! $category || (int) $category->event_id !== (int) $event->id
-                || ! in_array($locked->status, ['queued', 'sent'], true)) {
+                || ! in_array($locked->status, ['queued', 'sent', 'open_registration'], true)) {
                 throw ValidationException::withMessages(['invitation' => 'This invitation is no longer available.']);
             }
             $closeAt = $event->registrationClosesAt()?->endOfDay();
