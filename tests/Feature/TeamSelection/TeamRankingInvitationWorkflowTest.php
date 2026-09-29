@@ -368,6 +368,120 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->where('related_type', Event::class)->where('related_id', $source->event_id)->count());
     }
 
+    public function test_ranking_audience_includes_rows_beyond_the_import_and_safely_handles_missing_email_and_scope(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Published ranking audience', 'type' => 2, 'code' => 'published-ranking-audience',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamEventType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        app(TeamRankingImportService::class)->import($source, $manager);
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+        $published = SeriesRanking::query()->where('series_id', $source->series_id)->where('status', 'published')->firstOrFail();
+
+        $beyondImport = Player::factory()->create(['name' => 'Beyond%20Import', 'email' => 'beyond-ranking@example.test']);
+        $beyondRow = SeriesRanking::create([
+            'series_id' => $source->series_id, 'ranking_list_id' => $published->ranking_list_id,
+            'category_id' => $published->category_id, 'player_id' => $beyondImport->id,
+            'rank_position' => 99, 'total_points' => 1, 'status' => 'published', 'run_id' => $published->run_id,
+        ]);
+        $withoutEmail = Player::factory()->create(['name' => 'No%20Email', 'email' => null, 'userId' => null]);
+        $missingRow = SeriesRanking::create([
+            'series_id' => $source->series_id, 'ranking_list_id' => $published->ranking_list_id,
+            'category_id' => $published->category_id, 'player_id' => $withoutEmail->id,
+            'rank_position' => 100, 'total_points' => 0, 'status' => 'published', 'run_id' => $published->run_id,
+        ]);
+        SeriesRanking::create([
+            'series_id' => $source->series_id, 'ranking_list_id' => $published->ranking_list_id,
+            'category_id' => $published->category_id, 'player_id' => $beyondImport->id,
+            'rank_position' => 1, 'total_points' => 999, 'status' => 'reviewed', 'run_id' => 'newer-reviewed-run',
+        ]);
+        $rankingOnlyTeam = $team->replicate();
+        $rankingOnlyTeam->name = 'Ranking%20Only%20Team';
+        $rankingOnlyTeam->published = false;
+        $rankingOnlyTeam->save();
+
+        $this->actingAs(User::factory()->create())->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'ranking', 'event_region_ids' => [$eventRegion->id],
+        ])->assertForbidden();
+
+        $rosterOptions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'roster', 'event_region_ids' => [$eventRegion->id],
+        ])->assertOk();
+        $this->assertNotContains($rankingOnlyTeam->id, collect($rosterOptions->json('teams'))->pluck('team_id')->all());
+
+        $options = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'ranking', 'event_region_ids' => [$eventRegion->id],
+        ])->assertOk();
+        $this->assertContains($rankingOnlyTeam->id, collect($options->json('teams'))->pluck('team_id')->all());
+        $rankingPlayers = collect($options->json('teams'))->firstWhere('team_id', $team->id)['ranking_players'];
+        $rankingPlayers = collect($rankingPlayers);
+        $this->assertTrue($rankingPlayers->contains(fn (array $player) => $player['series_ranking_id'] === $beyondRow->id && $player['name'] === 'Beyond Import '.$beyondImport->surname && $player['has_email'] === true));
+        $this->assertTrue($rankingPlayers->contains(fn (array $player) => $player['series_ranking_id'] === $missingRow->id && $player['name'] === 'No Email '.$withoutEmail->surname && $player['has_email'] === false));
+
+        $filters = [
+            'audience_mode' => 'ranking', 'event_region_ids' => [$eventRegion->id],
+            'team_ids' => [$team->id, $rankingOnlyTeam->id],
+            'series_ranking_ids' => [$beyondRow->id, $beyondRow->id], 'gender' => 'any', 'audience_status' => 'active',
+        ];
+        $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)
+            ->assertOk()->assertJsonPath('count', 1)
+            ->assertJsonPath('recipients.0.series_ranking_id', $beyondRow->id)
+            ->assertJsonPath('recipients.0.name', 'Beyond Import '.$beyondImport->surname);
+
+        $payload = $filters + [
+            'subject' => 'Ranking update', 'message' => 'Information for this ranked player.',
+            'confirm_recipients' => 1, 'recipient_hash' => $preview->json('recipient_hash'),
+            'send_token' => $preview->json('send_token'),
+        ];
+        $beyondImport->update(['email' => 'changed-ranking@example.test']);
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)
+            ->assertSessionHasErrors('confirm_recipients');
+        $this->assertDatabaseMissing('bulk_email_logs', ['mail_type' => 'region_email', 'recipient_email' => 'beyond-ranking@example.test']);
+        $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)->assertOk();
+        $payload['recipient_hash'] = $preview->json('recipient_hash');
+        $payload['send_token'] = $preview->json('send_token');
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)
+            ->assertRedirect()->assertSessionHas('success');
+        $this->assertDatabaseHas('bulk_email_logs', ['mail_type' => 'region_email', 'recipient_email' => 'changed-ranking@example.test']);
+        $mailPayload = BulkEmailLog::query()->where('mail_type', 'region_email')
+            ->where('recipient_email', 'changed-ranking@example.test')->firstOrFail()->payload;
+        $this->assertArrayNotHasKey('series_ranking_ids', $mailPayload);
+        $this->assertSame(1, $mailPayload['series_ranking_selection_count']);
+        $this->assertSame(64, strlen($mailPayload['series_ranking_selection_hash']));
+        $activityProperties = json_decode((string) DB::table('activity_log')->where('description', 'event manager emailed a filtered team-selection audience')
+            ->latest('id')->value('properties'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('series_ranking_ids', $activityProperties);
+        $this->assertSame(1, $activityProperties['series_ranking_selection_count']);
+        $this->assertSame(64, strlen($activityProperties['series_ranking_selection_hash']));
+
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            ...$filters, 'series_ranking_ids' => [$missingRow->id],
+        ])->assertOk()->assertJsonPath('count', 0);
+
+        $foreignCategory = Category::factory()->create();
+        $foreignRow = SeriesRanking::create([
+            'series_id' => $source->series_id, 'ranking_list_id' => $published->ranking_list_id,
+            'category_id' => $foreignCategory->id, 'player_id' => $beyondImport->id,
+            'rank_position' => 1, 'total_points' => 10, 'status' => 'published', 'run_id' => $published->run_id,
+        ]);
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            ...$filters, 'series_ranking_ids' => [$foreignRow->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('series_ranking_ids');
+
+        $archivedRow = $beyondRow->replicate();
+        $archivedRow->status = 'archived';
+        $archivedRow->run_id = 'older-run';
+        $archivedRow->save();
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            ...$filters, 'series_ranking_ids' => [$archivedRow->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('series_ranking_ids');
+    }
+
     public function test_event_roster_preview_deduplicates_shared_contacts_across_all_regions_and_honours_a_region_subset(): void
     {
         [$firstSource, $firstTeam, $firstPlayers] = $this->selectionSource();

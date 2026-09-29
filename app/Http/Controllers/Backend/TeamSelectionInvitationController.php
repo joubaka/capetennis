@@ -893,11 +893,13 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
+        $request->merge(['audience_mode' => $request->input('audience_mode', 'roster')]);
         if ($request->input('selection_stage') === 'teams') {
             $data = $request->validate([
                 'selection_stage' => ['required', 'in:teams'],
                 'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
                 'event_region_ids.*' => ['integer', 'distinct'],
+                'audience_mode' => ['required', 'in:roster,ranking'],
             ]);
 
             return response()->json(['teams' => $audiences->eventSelectionOptions($event, $data)]);
@@ -932,19 +934,32 @@ class TeamSelectionInvitationController extends Controller
                 ->where('payload->send_token', $data['send_token'])
                 ->exists();
             if ($alreadyQueued) {
-                return ['queued' => 0, 'duplicate' => 1];
+                return ['queued' => 0, 'duplicate' => 1, 'source_identities' => []];
             }
 
             $regionDatabaseIds = EventRegion::query()->where('event_id', $event->id)
                 ->whereIn('id', $data['event_region_ids'])->pluck('region_id');
-            $lockedImports = TeamSelectionImport::query()->where('event_id', $event->id)
-                ->whereIn('region_id', $regionDatabaseIds)->whereIn('status', ['draft', 'sent'])
-                ->orderBy('id')->lockForUpdate()->get();
-            $activeImportIds = $lockedImports->groupBy('region_id')
-                ->map(fn ($regionalImports) => $regionalImports->last()->id);
-            $lockedInvitations = TeamSelectionInvitation::query()->whereIn('import_id', $activeImportIds)
-                ->orderBy('id')->lockForUpdate()->get();
-            $lockedPlayers = Player::query()->whereIn('id', $lockedInvitations->pluck('player_id')->filter()->unique())
+            if ($data['audience_mode'] === 'ranking') {
+                $sourceIds = EventRegion::query()->where('event_id', $event->id)->whereIn('id', $data['event_region_ids'])->pluck('id');
+                $seriesIds = EventRegionRankingSource::query()->whereIn('event_region_id', $sourceIds)->pluck('series_id')->unique()->sort()->values();
+                Series::query()->whereIn('id', $seriesIds)->orderBy('id')->lockForUpdate()->get();
+                $lockedSources = EventRegionRankingSource::query()->whereIn('event_region_id', $sourceIds)
+                    ->orderBy('id')->lockForUpdate()->get();
+                $lockedRows = SeriesRanking::query()->whereIn('series_id', $lockedSources->pluck('series_id'))
+                    ->where(function ($query) use ($data) {
+                        $query->where('status', 'published')->orWhereIn('id', $data['series_ranking_ids']);
+                    })->orderBy('id')->lockForUpdate()->get();
+                $playerIdsToLock = $lockedRows->whereIn('id', $data['series_ranking_ids'])->pluck('player_id')->filter()->unique();
+            } else {
+                $lockedImports = TeamSelectionImport::query()->where('event_id', $event->id)
+                    ->whereIn('region_id', $regionDatabaseIds)->whereIn('status', ['draft', 'sent'])
+                    ->orderBy('id')->lockForUpdate()->get();
+                $activeImportIds = $lockedImports->groupBy('region_id')->map(fn ($regionalImports) => $regionalImports->last()->id);
+                $lockedInvitations = TeamSelectionInvitation::query()->whereIn('import_id', $activeImportIds)
+                    ->orderBy('id')->lockForUpdate()->get();
+                $playerIdsToLock = $lockedInvitations->pluck('player_id')->filter()->unique();
+            }
+            $lockedPlayers = Player::query()->whereIn('id', $playerIdsToLock)
                 ->orderBy('id')->lockForUpdate()->get();
             $playerIds = $lockedPlayers->pluck('id');
             $linkedUsers = DB::table('user_players')->whereIn('player_id', $playerIds)
@@ -963,7 +978,7 @@ class TeamSelectionInvitationController extends Controller
                 throw ValidationException::withMessages(['confirm_recipients' => 'The event recipient list changed. Review the current list and confirm again.']);
             }
 
-            return $mailer->dispatch('region_email', $event, $currentRecipients, [
+            $dispatch = $mailer->dispatch('region_email', $event, $currentRecipients, [
                 'subject' => trim($data['subject']),
                 'message' => $data['message'],
                 'from_name' => $request->user()->name ?: 'Event team manager',
@@ -973,13 +988,30 @@ class TeamSelectionInvitationController extends Controller
                 'category_event_ids' => collect($data['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
                 'team_ids' => collect($data['team_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
                 'invitation_ids' => collect($data['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'series_ranking_selection_count' => count($data['series_ranking_ids'] ?? []),
+                'series_ranking_selection_hash' => $this->rankingSelectionHash($data['series_ranking_ids'] ?? []),
+                'audience_mode' => $data['audience_mode'],
                 'gender' => $data['gender'],
                 'audience_status' => $data['audience_status'],
             ], true);
+
+            return [...$dispatch,
+                'duplicate' => 0,
+                'source_identities' => $currentRecipients->pluck('source_identity')->filter()->unique()->sort()->values()->all(),
+                'recipient_count' => $currentRecipients->count(),
+            ];
         });
         $request->session()->forget($sessionKey);
         activity('team-selection')->performedOn($event)->causedBy($request->user())
-            ->withProperties(['target_type' => 'event_filtered', 'event_region_ids' => $regionIds->all(), 'region_count' => $regionIds->count(), 'queued' => $stats['queued']])
+            ->withProperties([
+                'target_type' => 'event_filtered', 'audience_mode' => $data['audience_mode'],
+                'event_region_ids' => $regionIds->all(), 'region_count' => $regionIds->count(),
+                'series_ranking_selection_count' => count($data['series_ranking_ids'] ?? []),
+                'series_ranking_selection_hash' => $this->rankingSelectionHash($data['series_ranking_ids'] ?? []),
+                'source_identities' => $stats['source_identities'] ?? [], 'recipient_hash' => $data['recipient_hash'],
+                'recipient_count' => $stats['recipient_count'] ?? 0, 'send_token' => $data['send_token'],
+                'queued' => $stats['queued'], 'duplicate' => $stats['duplicate'] ?? 0,
+            ])
             ->log('event manager emailed a filtered team-selection audience');
 
         return back()->with('success', "Queued {$stats['queued']} email(s) for the reviewed event recipient list.");
@@ -987,15 +1019,20 @@ class TeamSelectionInvitationController extends Controller
 
     private function validateEventRosterAudience(Request $request, bool $sending): array
     {
-        return $request->validate([
+        $request->merge(['audience_mode' => $request->input('audience_mode', 'roster')]);
+
+        $data = $request->validate([
             'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
             'event_region_ids.*' => ['integer', 'distinct'],
-            'category_event_ids' => ['required_without:team_ids', 'array', 'min:1', 'max:30'],
+            'audience_mode' => ['required', 'in:roster,ranking'],
+            'category_event_ids' => ['nullable', 'array', 'min:1', 'max:30'],
             'category_event_ids.*' => ['integer', 'distinct'],
             'team_ids' => ['required_with:invitation_ids', 'array', 'min:1', 'max:100'],
             'team_ids.*' => ['integer', 'distinct'],
-            'invitation_ids' => ['required_with:team_ids', 'array', 'min:1', 'max:1000'],
+            'invitation_ids' => ['nullable', 'array', 'min:1', 'max:1000'],
             'invitation_ids.*' => ['integer', 'distinct'],
+            'series_ranking_ids' => ['required_if:audience_mode,ranking', 'array', 'min:1', 'max:5000'],
+            'series_ranking_ids.*' => ['integer'],
             'gender' => ['required', 'in:any,boys,girls'],
             'audience_status' => ['required', 'in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn'],
             'subject' => [$sending ? 'required' : 'nullable', 'string', 'max:180'],
@@ -1004,6 +1041,21 @@ class TeamSelectionInvitationController extends Controller
             'recipient_hash' => [$sending ? 'required' : 'nullable', 'string', 'size:64'],
             'send_token' => [$sending ? 'required' : 'nullable', 'uuid'],
         ]);
+
+        $data['series_ranking_ids'] = collect($data['series_ranking_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+
+        return $data;
+    }
+
+    private function rankingSelectionHash(array $ids): ?string
+    {
+        if ($ids === []) {
+            return null;
+        }
+
+        return hash('sha256', json_encode(collect($ids)->map(fn ($id) => (int) $id)
+            ->filter()->unique()->sort()->values()->all(), JSON_THROW_ON_ERROR));
     }
 
     public function updateTeamPublication(Request $request, Event $event, EventRegion $eventRegion, Team $team)
