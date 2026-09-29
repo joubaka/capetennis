@@ -358,6 +358,7 @@ return new class extends Migration
                 $table->string('payfast_pf_payment_id')->nullable();
                 $table->decimal('payfast_amount_due', 12, 2)->default(0);
                 $table->boolean('pay_status')->default(false);
+                $table->timestamp('payfast_handed_off_at')->nullable();
                 $table->timestamps();
             });
         }

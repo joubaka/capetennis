@@ -4,8 +4,10 @@ namespace App\Domain\Payments\Services;
 
 use App\Models\Registration;
 use App\Models\RegistrationOrder;
+use App\Models\User;
 use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class RegistrationPaymentService
 {
@@ -17,7 +19,16 @@ class RegistrationPaymentService
     public function reservePayment(RegistrationOrder $order, float $walletApplied, float $remainingAmount): RegistrationOrder
     {
         /** @var RegistrationOrder $reserved */
-        $reserved = $this->paymentOrchestrator->initiatePayment($order, $walletApplied, $remainingAmount);
+        $reserved = DB::transaction(function () use ($order, $walletApplied, $remainingAmount): RegistrationOrder {
+            $locked = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->payfast_handed_off_at) {
+                throw ValidationException::withMessages([
+                    'payment' => 'This checkout has already been sent to PayFast and cannot be changed while payment is resolving.',
+                ]);
+            }
+
+            return $this->paymentOrchestrator->initiatePayment($locked, $walletApplied, $remainingAmount);
+        });
 
         return $reserved;
     }
@@ -25,9 +36,73 @@ class RegistrationPaymentService
     public function cancelPayment(RegistrationOrder $order): RegistrationOrder
     {
         /** @var RegistrationOrder $cancelled */
-        $cancelled = $this->paymentOrchestrator->cancelPayment($order);
+        $cancelled = DB::transaction(function () use ($order): RegistrationOrder {
+            $locked = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->payfast_handed_off_at) {
+                throw ValidationException::withMessages([
+                    'payment' => 'This checkout has already been sent to PayFast and cannot be cancelled while payment is resolving.',
+                ]);
+            }
+
+            return $this->paymentOrchestrator->cancelPayment($locked);
+        });
 
         return $cancelled;
+    }
+
+    public function preparePayfastHandoff(
+        RegistrationOrder $order,
+        User $payer,
+        float $walletReserved,
+        float $payfastDue
+    ): RegistrationOrder
+    {
+        if (! is_finite($walletReserved) || ! is_finite($payfastDue)) {
+            throw ValidationException::withMessages(['payment' => 'The checkout amount is invalid.']);
+        }
+
+        return DB::transaction(function () use ($order, $payer, $walletReserved, $payfastDue): RegistrationOrder {
+            $locked = RegistrationOrder::query()->lockForUpdate()->with('items')->findOrFail($order->id);
+
+            if ((int) $locked->user_id !== (int) $payer->id) {
+                throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
+            }
+            if ((int) $locked->pay_status === 1 || (bool) $locked->payfast_paid
+                || (bool) $locked->wallet_debited || $locked->status === 'cancelled') {
+                throw ValidationException::withMessages(['payment' => 'This checkout can no longer be sent to PayFast.']);
+            }
+            if ($locked->payfast_handed_off_at) {
+                throw ValidationException::withMessages([
+                    'payment' => 'This checkout has already been sent to PayFast and is awaiting a verified result.',
+                ]);
+            }
+
+            $total = round((float) $locked->items->sum('item_price'), 2);
+            $reserved = round($walletReserved, 2);
+            $due = round($payfastDue, 2);
+            $storedReserved = round((float) $locked->wallet_reserved, 2);
+            $storedDue = round($total - $storedReserved, 2);
+            if ($total <= 0 || $reserved < 0 || $due <= 0 || round($reserved + $due, 2) !== $total) {
+                throw ValidationException::withMessages(['payment' => 'The checkout amount is not ready for PayFast.']);
+            }
+            if ($reserved !== $storedReserved || $due !== $storedDue) {
+                throw ValidationException::withMessages([
+                    'payment' => 'The checkout amount changed. Refresh the checkout before continuing to PayFast.',
+                ]);
+            }
+
+            $prepared = $this->paymentOrchestrator->initiatePayment($locked, $reserved, $due);
+            $prepared->forceFill(['payfast_handed_off_at' => now()])->save();
+            activity('registration-payment')->performedOn($prepared)->causedBy($payer)
+                ->withProperties([
+                    'order_id' => $prepared->id,
+                    'payer_id' => $payer->id,
+                    'amount_due' => $due,
+                    'handed_off_at' => $prepared->payfast_handed_off_at?->toIso8601String(),
+                ])->log('registration checkout handed off to PayFast');
+
+            return $prepared->fresh('items');
+        });
     }
 
     public function finalizePayment(RegistrationOrder $order, array $context = []): RegistrationOrder

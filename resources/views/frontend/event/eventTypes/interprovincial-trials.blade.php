@@ -28,8 +28,6 @@
                             && (int) request()->query('nomination') === (int) $nomination->id;
                           $registrationOpen = $event->published && $event->hasOpenRegistrationLifecycle() && (int) $event->signUp === 1
                             && (!$event->registrationClosesAt() || now()->lte($event->registrationClosesAt()->endOfDay()));
-                          $isPayer = auth()->check() && $trialInvitation?->order
-                            && (int) $trialInvitation->order->user_id === (int) auth()->id();
                         @endphp
                         <li id="trial-nomination-{{ $nomination->id }}" class="list-group-item px-0 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $focused ? 'border border-primary rounded px-2 bg-label-primary' : '' }}" @if($focused) tabindex="-1" autofocus @endif>
                           <span>{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</span>
@@ -55,7 +53,10 @@
                               @if($ownsPlayer)<form method="POST" action="{{ route('interprovincial-trials.invitations.decline', $trialInvitation) }}" onsubmit="return confirm('Decline this invitation?');">@csrf<button type="submit" class="btn btn-sm btn-outline-danger">Decline</button></form>@endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
                               <span class="badge bg-label-secondary">Not registered</span>
-                              @if($isPayer)<a class="btn btn-sm btn-primary" href="{{ route('registration.checkout', $trialInvitation->order_id) }}">Resume registration</a>@endif
+                              @if($registrationOpen)
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
+                              @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)
                               <span class="badge bg-label-success">Registered</span>
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::DECLINED)
@@ -65,7 +66,7 @@
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
                               @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
-                              <span class="badge bg-label-secondary">Withdrawn</span>
+                              <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
                                 @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth

@@ -21,6 +21,7 @@ class RegistrationOrder extends Model
     'wallet_transaction_id',
     'total_fee',
     'status',
+    'payfast_handed_off_at',
   ];
 
   protected $casts = [
@@ -30,6 +31,7 @@ class RegistrationOrder extends Model
     'wallet_debited' => 'boolean',
     'payfast_paid' => 'boolean',
     'pay_status' => 'boolean',
+    'payfast_handed_off_at' => 'datetime',
   ];
 
   /*

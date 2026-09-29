@@ -227,9 +227,20 @@ class InvitationService
                 return $existing;
             }
             if ($locked->status === InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
-                $existing = RegistrationOrder::findOrFail($locked->order_id);
-                if ((int) $existing->user_id !== (int) $user->id) throw ValidationException::withMessages(['invitation' => 'This invitation is already being processed.']);
-                return $existing;
+                $existing = RegistrationOrder::query()->lockForUpdate()->findOrFail($locked->order_id);
+                if ($existing->payfast_handed_off_at) {
+                    if ((int) $existing->user_id !== (int) $user->id) {
+                        throw ValidationException::withMessages([
+                            'invitation' => 'Payment is already being processed for this player. Please wait for it to resolve.',
+                        ]);
+                    }
+
+                    return $existing;
+                }
+
+                app(RegistrationPaymentService::class)->cancelPayment($existing);
+                $this->resetCancelledPaymentAttempt($locked, $existing);
+                $locked->refresh();
             }
 
             $event = $locked->event;
@@ -418,24 +429,36 @@ class InvitationService
             $invitation = InterprovincialTrialInvitation::query()->with(['categoryEvent', 'nomination'])->lockForUpdate()
                 ->where('order_id', $lockedOrder->id)->first();
             if (! $invitation || $invitation->status !== InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT) return;
-            $itemMatches = RegistrationOrderItems::query()->where('order_id', $lockedOrder->id)
-                ->where('registration_id', $invitation->registration_id)
-                ->where('category_event_id', $invitation->category_event_id)
-                ->where('player_id', $invitation->player_id)
-                ->where('user_id', $lockedOrder->user_id)->exists();
-            abort_unless((int) $invitation->categoryEvent?->event_id === (int) $invitation->event_id
-                && (int) $invitation->nomination?->event_id === (int) $invitation->event_id
-                && (int) $invitation->nomination?->category_event_id === (int) $invitation->category_event_id
-                && (int) $invitation->nomination?->player_id === (int) $invitation->player_id
-                && $itemMatches, 404);
-            CategoryEventRegistration::query()
-                ->where('registration_id', $invitation->registration_id)
-                ->where('category_event_id', $invitation->category_event_id)
-                ->where(fn ($query) => $query->whereNull('payment_status_id')->orWhere('payment_status_id', 0))
-                ->whereNull('pf_transaction_id')
-                ->get()->each->delete();
-            $invitation->update(['registration_id' => null, 'order_id' => null, 'accepted_at' => null, 'status' => 'sent']);
+            $this->resetCancelledPaymentAttempt($invitation, $lockedOrder);
         });
+    }
+
+    private function resetCancelledPaymentAttempt(
+        InterprovincialTrialInvitation $invitation,
+        RegistrationOrder $lockedOrder
+    ): void {
+        if ($lockedOrder->payfast_handed_off_at) {
+            throw ValidationException::withMessages([
+                'payment' => 'A checkout already sent to PayFast cannot be reset while payment is resolving.',
+            ]);
+        }
+        $itemMatches = RegistrationOrderItems::query()->where('order_id', $lockedOrder->id)
+            ->where('registration_id', $invitation->registration_id)
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where('player_id', $invitation->player_id)
+            ->where('user_id', $lockedOrder->user_id)->exists();
+        abort_unless((int) $invitation->categoryEvent?->event_id === (int) $invitation->event_id
+            && (int) $invitation->nomination?->event_id === (int) $invitation->event_id
+            && (int) $invitation->nomination?->category_event_id === (int) $invitation->category_event_id
+            && (int) $invitation->nomination?->player_id === (int) $invitation->player_id
+            && $itemMatches, 404);
+        CategoryEventRegistration::query()
+            ->where('registration_id', $invitation->registration_id)
+            ->where('category_event_id', $invitation->category_event_id)
+            ->where(fn ($query) => $query->whereNull('payment_status_id')->orWhere('payment_status_id', 0))
+            ->whereNull('pf_transaction_id')
+            ->get()->each->delete();
+        $invitation->update(['registration_id' => null, 'order_id' => null, 'accepted_at' => null, 'status' => 'sent']);
     }
 
     public function handlePaidWithdrawal(int $registrationId, ?User $actor = null): void

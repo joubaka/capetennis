@@ -5,10 +5,12 @@
 <div class="card"><div class="card-body">
 <h4>{{ $invitation->event->name }}</h4><p>{{ $invitation->player->name }} {{ $invitation->player->surname }} has been invited for {{ $invitation->categoryEvent->category->name }}.</p>
 @if($invitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)<div class="alert alert-success">Registration confirmed.</div>
-@elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)<div class="alert alert-secondary">Registration withdrawn.</div>
+@elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
+  @if($registrationOpen)<div class="alert alert-secondary">Not registered.</div><form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.nominations.register', [$invitation->event, $invitation->categoryEvent, $invitation->nomination]) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
+  @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
-  @if($isPayer && $invitation->order_id)<a class="btn btn-primary" href="{{ route('registration.checkout', $invitation->order_id) }}">Register</a>
-  @else<div class="alert alert-info">Registration is already in progress.</div>@endif
+  @if($registrationOpen)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
+  @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif(in_array($invitation->status, ['queued', 'sent'], true) && $registrationOpen)
   <form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
   @if($canDecline)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.decline', $invitation) }}">@csrf<button class="btn btn-outline-danger" type="submit">Decline</button></form>@endif

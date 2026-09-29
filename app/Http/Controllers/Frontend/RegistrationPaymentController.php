@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Frontend;
 
-use App\Domain\Payments\Services\PaymentOrchestrator;
+use App\Domain\Payments\Services\RegistrationPaymentService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -43,10 +43,7 @@ class RegistrationPaymentController extends Controller
     $order->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
     abort_if($order->items->isEmpty(), 404);
 
-    $payfast = new \App\Services\Payfast();
-    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
-
-    return view('frontend.payfast.check_out', compact('order', 'payfast'));
+    return view('frontend.payfast.check_out', compact('order'));
   }
 
   /**
@@ -66,10 +63,9 @@ class RegistrationPaymentController extends Controller
     }
 
     $user = auth()->user();
-    $wallet = $user?->wallet;
 
-    if (!$user || !$wallet) {
-      return back()->withErrors('Wallet not found.');
+    if (!$user) {
+      return back()->withErrors('Your session has expired. Please sign in again.');
     }
 
     // Ownership check
@@ -106,11 +102,11 @@ class RegistrationPaymentController extends Controller
 
     // --- Server-side financial calculations (never trust client input) ---
     $orderTotal    = round((float) $order->items->sum('item_price'), 2);
-    $walletBalance = round((float) ($wallet->balance ?? 0), 2);
-    $walletReserved  = round(min($walletBalance, $orderTotal), 2);
+    $walletReserved  = round((float) $order->wallet_reserved, 2);
     $payfastDue      = round($orderTotal - $walletReserved, 2);
 
-    if ($orderTotal > 0 && round($walletReserved + $payfastDue, 2) !== $orderTotal) {
+    if ($orderTotal <= 0 || $walletReserved < 0 || $walletReserved > $orderTotal
+        || round($walletReserved + $payfastDue, 2) !== $orderTotal) {
       Log::error('HYBRID PAY: Amount mismatch', [
         'order_id'        => $orderId,
         'order_total'     => $orderTotal,
@@ -120,38 +116,26 @@ class RegistrationPaymentController extends Controller
       abort(500, 'Payment amount calculation error. Please contact support@capetennis.co.za.');
     }
 
-    // Refresh-safe: if already reserved with matching amounts, skip re-reservation
-    if ($order->wallet_reserved > 0 && !$order->wallet_debited &&
-        round((float) $order->wallet_reserved, 2) === $walletReserved &&
-        round((float) $order->payfast_amount_due, 2) === $payfastDue) {
-
-      Log::info('HYBRID PAY: Already reserved', [
-        'order_id'        => $order->id,
-        'wallet_reserved' => $walletReserved,
-      ]);
-
-    } else {
-
-      $order = app(PaymentOrchestrator::class)->initiatePayment(
-        $order,
-        $walletReserved,
-        $payfastDue
-      );
-
-      Log::info('HYBRID RESERVED', [
-        'order_id'        => $order->id,
-        'user_id'         => $user->id,
-        'wallet_reserved' => $walletReserved,
-        'payfast_due'     => $payfastDue,
-      ]);
-    }
-
     // Wallet-only payment
     if ($payfastDue <= 0) {
+      $order = app(RegistrationPaymentService::class)->reservePayment($order, $walletReserved, 0);
       return $this->hybridComplete($orderId);
     }
 
-    $remaining = $payfastDue;
+    $order = app(RegistrationPaymentService::class)->preparePayfastHandoff(
+      $order,
+      $user,
+      $walletReserved,
+      $payfastDue
+    );
+    $remaining = round((float) $order->payfast_amount_due, 2);
+
+    Log::info('PAYFAST HANDOFF PREPARED', [
+      'order_id' => $order->id,
+      'user_id' => $user->id,
+      'wallet_reserved' => round((float) $order->wallet_reserved, 2),
+      'payfast_due' => $remaining,
+    ]);
 
     // 🔁 Send to PayFast
     $payfast = new \App\Services\Payfast();
@@ -188,7 +172,7 @@ class RegistrationPaymentController extends Controller
       return redirect()->route('registration.checkout', $order)->withErrors('This registration does not require payment.');
     }
 
-    $order = app(PaymentOrchestrator::class)->initiatePayment($order, 0, $total);
+    $order = app(RegistrationPaymentService::class)->reservePayment($order, 0, $total);
     Log::info('PAYFAST ONLY SELECTED', ['order_id' => $order->id, 'user_id' => auth()->id(), 'amount' => $total]);
 
     return redirect()->route('registration.checkout', $order);
@@ -263,7 +247,7 @@ class RegistrationPaymentController extends Controller
     }
 
     try {
-      $order = app(PaymentOrchestrator::class)->initiatePayment(
+      $order = app(RegistrationPaymentService::class)->reservePayment(
         $order,
         $walletApplied,
         $remaining
@@ -555,7 +539,7 @@ class RegistrationPaymentController extends Controller
 
     $this->assertInvitationOnlyOrderIsLinked($order);
 
-    app(PaymentOrchestrator::class)->cancelPayment($order);
+    app(RegistrationPaymentService::class)->cancelPayment($order);
     app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($order, auth()->user());
     app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($order, auth()->user());
 

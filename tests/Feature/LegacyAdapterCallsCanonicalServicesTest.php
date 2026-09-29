@@ -257,25 +257,25 @@ class LegacyAdapterCallsCanonicalServicesTest extends TestCase
     }
 
     /**
-     * Structural test: RegistrationPaymentController source code must call
-     * app(PaymentOrchestrator::class)->initiatePayment().
+     * Structural test: RegistrationPaymentController must use the canonical
+     * registration payment service rather than mutating payment state itself.
      */
-    public function test_registration_payment_controller_references_payment_orchestrator(): void
+    public function test_registration_payment_controller_references_registration_payment_service(): void
     {
         $source = file_get_contents(
             app_path('Http/Controllers/Frontend/RegistrationPaymentController.php')
         );
 
         $this->assertStringContainsString(
-            'PaymentOrchestrator',
+            'RegistrationPaymentService',
             $source,
-            'RegistrationPaymentController must import or reference PaymentOrchestrator'
+            'RegistrationPaymentController must import or reference RegistrationPaymentService'
         );
 
         $this->assertStringContainsString(
-            'initiatePayment',
+            'reservePayment',
             $source,
-            'RegistrationPaymentController::hybridPay must call initiatePayment()'
+            'RegistrationPaymentController::hybridPay must call reservePayment()'
         );
     }
 

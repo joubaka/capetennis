@@ -304,81 +304,15 @@
           @endif
 
           @php
-            $returnUrl = route('frontend.registration.success', $orderId);
             $cancelUrl = route('registration.hybrid.cancel', $orderId);
-            $notifyUrl = route('notify');
           @endphp
 
-          @if($payfastDue > 0 && filled($payfast->id) && filled($payfast->key) && !($walletReserved > 0 && $payfastDue < 20))
+          @if($payfastDue > 0 && !($walletReserved > 0 && $payfastDue < 20))
 
-            <form action="{{ $payfast->url }}" method="post" data-audit-order-id="{{ $orderId }}">
-
-              <input type="hidden" name="merchant_id" value="{{ $payfast->id }}">
-              <input type="hidden" name="merchant_key" value="{{ $payfast->key }}">
-
-              <input type="hidden" name="return_url" value="{{ $returnUrl }}">
-              <input type="hidden" name="cancel_url" value="{{ $cancelUrl }}">
-              <input type="hidden" name="notify_url" value="{{ $notifyUrl }}">
-
-              {{-- 🔐 CRITICAL FIX --}}
-              <input type="hidden" name="amount" value="{{ number_format($payfastDue, 2, '.', '') }}">
-
-              <input type="hidden" name="item_name" value="{{ $event ? $event->name : 'Event Registration' }}">
-
-              {{-- PayFast Custom Fields --}}
-              @if($categoryEvent)
-                <input type="hidden" name="custom_int1" value="{{ $categoryEvent->id }}">
-              @endif
-              @if($player)
-                <input type="hidden" name="custom_int2" value="{{ $player->id }}">
-              @endif
-              @if($event)
-                <input type="hidden" name="custom_int3" value="{{ $event->id }}">
-              @endif
-              @if(auth()->check())
-                <input type="hidden" name="custom_int4" value="{{ auth()->id() }}">
-              @endif
-              @if($orderId)
-                <input type="hidden" name="custom_int5" value="{{ $orderId }}">
-              @endif
-
-              @if($category)
-                <input type="hidden" name="custom_str1" value="{{ $category->name }}">
-              @endif
-              @if($player)
-                <input type="hidden" name="custom_str2" value="{{ trim($player->name . ' ' . $player->surname) }}">
-              @endif
-              @if($event)
-                <input type="hidden" name="custom_str3" value="{{ $event->name }}">
-              @endif
-              @if(auth()->check())
-                <input type="hidden" name="custom_str4" value="{{ trim(auth()->user()->name) }}">
-              @endif
-
-              {{-- NOTE: custom_wallet_reserved is NOT sent to PayFast (not a PayFast field) --}}
-
-              @php
-                $formFields = array_filter([
-                  'merchant_id'  => $payfast->id,
-                  'merchant_key' => $payfast->key,
-                  'return_url'   => $returnUrl,
-                  'cancel_url'   => $cancelUrl,
-                  'notify_url'   => $notifyUrl,
-                  'amount'       => number_format($payfastDue, 2, '.', ''),
-                  'item_name'    => $event ? $event->name : 'Event Registration',
-                  'custom_int1'  => $categoryEvent ? (string)$categoryEvent->id : null,
-                  'custom_int2'  => $player ? (string)$player->id : null,
-                  'custom_int3'  => $event ? (string)$event->id : null,
-                  'custom_int4'  => (string)auth()->id(),
-                  'custom_int5'  => (string)$orderId,
-                  'custom_str1'  => $category ? $category->name : null,
-                  'custom_str2'  => $player ? trim($player->name . ' ' . $player->surname) : null,
-                  'custom_str3'  => $event ? $event->name : null,
-                  'custom_str4'  => trim(auth()->user()->name),
-                ], fn($v) => $v !== null && $v !== '');
-              @endphp
-              <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
-
+            <form action="{{ route('registration.hybrid.pay') }}" method="post" data-audit-order-id="{{ $orderId }}">
+              @csrf
+              <input type="hidden" name="type" value="registration">
+              <input type="hidden" name="custom_int5" value="{{ $orderId }}">
               <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit" onclick="this.disabled=true; this.setAttribute('aria-busy', 'true'); this.form.submit(); return false;">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
