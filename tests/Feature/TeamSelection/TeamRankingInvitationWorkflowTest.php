@@ -379,9 +379,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $source->event->update(['eventType' => $teamEventType]);
         $manager = User::factory()->create();
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
-        app(TeamRankingImportService::class)->import($source, $manager);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
         $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
         $published = SeriesRanking::query()->where('series_id', $source->series_id)->where('status', 'published')->firstOrFail();
+        $stateInvitations = $selectionImport->invitations()->orderBy('queue_position')->limit(2)->get();
+        $stateInvitations[0]->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+        $stateInvitations[1]->update(['status' => TeamSelectionInvitation::DECLINED, 'declined_at' => now()]);
 
         $beyondImport = Player::factory()->create(['name' => 'Beyond%20Import', 'email' => 'beyond-ranking@example.test']);
         $beyondRow = SeriesRanking::create([
@@ -423,10 +426,86 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertTrue($rankingPlayers->contains(fn (array $player) => $player['series_ranking_id'] === $beyondRow->id && $player['name'] === 'Beyond Import '.$beyondImport->surname && $player['has_email'] === true));
         $this->assertTrue($rankingPlayers->contains(fn (array $player) => $player['series_ranking_id'] === $missingRow->id && $player['name'] === 'No Email '.$withoutEmail->surname && $player['has_email'] === false));
 
+        $unregisteredOptions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'ranking', 'ranking_status' => 'unregistered',
+            'event_region_ids' => [$eventRegion->id],
+        ])->assertOk();
+        $unregisteredIds = collect($unregisteredOptions->json('teams'))->flatMap(fn (array $option) => $option['ranking_players'])->pluck('series_ranking_id');
+        $paidRowId = SeriesRanking::query()->where('series_id', $source->series_id)->where('run_id', $published->run_id)
+            ->where('player_id', $stateInvitations[0]->player_id)->value('id');
+        $declinedRowId = SeriesRanking::query()->where('series_id', $source->series_id)->where('run_id', $published->run_id)
+            ->where('player_id', $stateInvitations[1]->player_id)->value('id');
+        $this->assertNotContains($paidRowId, $unregisteredIds);
+        $this->assertNotContains($declinedRowId, $unregisteredIds);
+        $this->assertContains($beyondRow->id, $unregisteredIds);
+
+        $declinedOptions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'ranking', 'ranking_status' => 'declined',
+            'event_region_ids' => [$eventRegion->id],
+        ])->assertOk();
+        $this->assertSame([$declinedRowId], collect($declinedOptions->json('teams'))->flatMap(fn (array $option) => $option['ranking_players'])
+            ->pluck('series_ranking_id')->unique()->values()->all());
+
+        $combinedOptions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'audience_mode' => 'ranking', 'ranking_status' => 'unregistered_or_declined',
+            'event_region_ids' => [$eventRegion->id],
+        ])->assertOk();
+        $combinedIds = collect($combinedOptions->json('teams'))->flatMap(fn (array $option) => $option['ranking_players'])->pluck('series_ranking_id');
+        $this->assertContains($declinedRowId, $combinedIds);
+        $this->assertContains($beyondRow->id, $combinedIds);
+        $this->assertNotContains($paidRowId, $combinedIds);
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'audience_mode' => 'ranking', 'ranking_status' => 'unregistered',
+            'event_region_ids' => [$eventRegion->id], 'team_ids' => [$team->id],
+            'series_ranking_ids' => [$paidRowId], 'gender' => 'any', 'audience_status' => 'active',
+        ])->assertUnprocessable()->assertJsonValidationErrors('series_ranking_ids');
+
+        $secondCategory = Category::factory()->create(['name' => 'u/13%20Girls']);
+        $secondCategoryEvent = CategoryEvent::create(['event_id' => $source->event_id, 'category_id' => $secondCategory->id]);
+        $secondRankingList = RankingList::factory()->create(['series_id' => $source->series_id, 'category_id' => $secondCategory->id]);
+        $secondPlayer = Player::factory()->create(['name' => 'Second%20Category', 'email' => 'second-category@example.test']);
+        $secondRow = SeriesRanking::create([
+            'series_id' => $source->series_id, 'ranking_list_id' => $secondRankingList->id,
+            'category_id' => $secondCategory->id, 'player_id' => $secondPlayer->id,
+            'rank_position' => 1, 'total_points' => 50, 'status' => 'published', 'run_id' => $published->run_id,
+        ]);
+        $secondTeam = $team->replicate();
+        $secondTeam->name = 'Overberg%20u/13%20Girls';
+        $secondTeam->category_event_id = $secondCategoryEvent->id;
+        $secondTeam->save();
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'audience_mode' => 'ranking', 'ranking_status' => 'unregistered',
+            'event_region_ids' => [$eventRegion->id], 'team_ids' => [$team->id, $secondTeam->id],
+            'series_ranking_ids' => [$beyondRow->id, $secondRow->id], 'gender' => 'any', 'audience_status' => 'active',
+        ])->assertOk()->assertJsonPath('count', 2)
+            ->assertJsonPath('recipients.1.name', 'Second Category '.$secondPlayer->surname)
+            ->assertJsonPath('recipients.1.category', 'u/13 Girls');
+
+        $becomesPaidInvitation = $selectionImport->invitations()->orderBy('queue_position')->skip(2)->firstOrFail();
+        $becomesPaidRow = SeriesRanking::query()->where('series_id', $source->series_id)->where('run_id', $published->run_id)
+            ->where('player_id', $becomesPaidInvitation->player_id)->firstOrFail();
+        $stateFilters = [
+            'audience_mode' => 'ranking', 'ranking_status' => 'unregistered',
+            'event_region_ids' => [$eventRegion->id], 'team_ids' => [$team->id],
+            'series_ranking_ids' => [$becomesPaidRow->id], 'gender' => 'any', 'audience_status' => 'active',
+        ];
+        $statePreview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $stateFilters)
+            ->assertOk()->assertJsonPath('count', 1);
+        $becomesPaidInvitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $stateFilters + [
+            'subject' => 'Unregistered players', 'message' => 'Please complete registration.',
+            'confirm_recipients' => 1, 'recipient_hash' => $statePreview->json('recipient_hash'),
+            'send_token' => $statePreview->json('send_token'),
+        ])->assertSessionHasErrors('series_ranking_ids');
+        $this->assertDatabaseMissing('bulk_email_logs', [
+            'mail_type' => 'region_email', 'recipient_email' => mb_strtolower((string) $becomesPaidInvitation->player->email),
+        ]);
+
         $filters = [
             'audience_mode' => 'ranking', 'event_region_ids' => [$eventRegion->id],
             'team_ids' => [$team->id, $rankingOnlyTeam->id],
-            'series_ranking_ids' => [$beyondRow->id, $beyondRow->id], 'gender' => 'any', 'audience_status' => 'active',
+            'series_ranking_ids' => [$beyondRow->id, $beyondRow->id], 'ranking_status' => 'unregistered',
+            'gender' => 'any', 'audience_status' => 'active',
         ];
         $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)
             ->assertOk()->assertJsonPath('count', 1)
@@ -458,6 +537,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertArrayNotHasKey('series_ranking_ids', $activityProperties);
         $this->assertSame(1, $activityProperties['series_ranking_selection_count']);
         $this->assertSame(64, strlen($activityProperties['series_ranking_selection_hash']));
+        $this->assertSame('unregistered', $activityProperties['ranking_status']);
 
         $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
             ...$filters, 'series_ranking_ids' => [$missingRow->id],
@@ -560,6 +640,32 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             collect($subset->json('recipients'))->pluck('email')->all(),
         );
         $this->assertNotContains('first-region@example.test', collect($subset->json('recipients'))->pluck('email')->all());
+
+        $firstRankingIds = SeriesRanking::query()->where('series_id', $firstSource->series_id)
+            ->whereIn('player_id', $firstActive->pluck('player_id'))->pluck('id');
+        $secondRankingIds = SeriesRanking::query()->where('series_id', $secondSource->series_id)
+            ->whereIn('player_id', $secondPlayers->pluck('id'))->pluck('id');
+        $rankingFilters = [
+            'audience_mode' => 'ranking', 'ranking_status' => 'unregistered',
+            'event_region_ids' => [$firstEventRegion->id, $secondEventRegion->id],
+            'team_ids' => [$firstTeam->id, $secondTeam->id],
+            'series_ranking_ids' => $firstRankingIds->concat($secondRankingIds)->all(),
+            'gender' => 'any', 'audience_status' => 'active',
+        ];
+        $rankingPreview = $this->actingAs($manager)->postJson(
+            route('backend.team-selection.event-roster-email.preview', $event),
+            $rankingFilters,
+        )->assertOk()->assertJsonPath('count', 3);
+        $this->assertEqualsCanonicalizing(
+            ['shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
+            collect($rankingPreview->json('recipients'))->pluck('email')->all(),
+        );
+        $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
+            ...$rankingFilters,
+            'event_region_ids' => [$secondEventRegion->id],
+            'team_ids' => [$secondTeam->id],
+            'series_ranking_ids' => [$firstRankingIds->first()],
+        ])->assertUnprocessable()->assertJsonValidationErrors('series_ranking_ids');
     }
 
     public function test_region_import_fills_configured_team_and_creates_two_reserves_from_published_ranking(): void
@@ -3983,10 +4089,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($order->fresh()->collection_status);
     }
 
-    public function test_open_team_registration_does_not_bypass_invitation_deadline(): void
+    public function test_open_team_registration_bypasses_expired_invitation_deadlines_and_resumes_one_order(): void
     {
         Queue::fake();
-        [$source] = $this->selectionSource();
+        [$source, $team] = $this->selectionSource();
         $actor = User::factory()->create();
         $service = app(TeamSelectionInvitationService::class);
         $selectionImport = app(TeamRankingImportService::class)->import($source, $actor);
@@ -4003,9 +4109,33 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
 
         $this->assertSame([], $service->processExpiredInvitations($selectionImport->event_id, true));
+        $payer = User::findOrFail($invitation->player->userId);
+        $paymentUrl = route('team.payment.payfast', [$team->id, $invitation->player_id, $source->event_id]);
 
-        $this->expectException(ValidationException::class);
-        $service->accept($invitation->fresh(), User::findOrFail($invitation->player->userId));
+        $this->actingAs($payer)->get($paymentUrl)
+            ->assertOk()
+            ->assertViewIs('frontend.payfast.team_payment');
+        $accepted = $invitation->fresh();
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $accepted->status);
+        $this->assertNotNull($accepted->order_id);
+
+        $this->actingAs($payer)->get($paymentUrl)
+            ->assertOk()
+            ->assertViewIs('frontend.payfast.team_payment');
+        $this->assertSame($accepted->order_id, $invitation->fresh()->order_id);
+        $this->assertSame(1, TeamPaymentOrder::query()
+            ->where('event_id', $source->event_id)
+            ->where('team_id', $team->id)
+            ->where('player_id', $invitation->player_id)
+            ->count());
+
+        $source->event->update(['status' => 'closed', 'signUp' => false]);
+        try {
+            $service->beginRegistration($source->event_id, $team->id, $invitation->player_id, $payer);
+            $this->fail('Expected the expired payment deadline to remain enforced after registration closes.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
     }
 
     public function test_ranked_primary_reserve_can_help_another_team_and_returns_to_real_team_when_promoted(): void

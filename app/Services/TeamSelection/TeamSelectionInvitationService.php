@@ -245,7 +245,7 @@ final class TeamSelectionInvitationService
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
             if ($locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
-                if ($this->paymentDeadline($locked) && now()->gt($this->paymentDeadline($locked))) {
+                if ($this->deadlineBlocksRegistration($locked, $this->paymentDeadline($locked))) {
                     throw ValidationException::withMessages(['payment' => 'The payment deadline for this invitation has passed.']);
                 }
 
@@ -254,7 +254,7 @@ final class TeamSelectionInvitationService
             if ($locked->status !== TeamSelectionInvitation::INVITED) {
                 throw ValidationException::withMessages(['invitation' => 'Registration is no longer available for this selected player.']);
             }
-            if ($this->responseDeadline($locked) && now()->gt($this->responseDeadline($locked))) {
+            if ($this->deadlineBlocksRegistration($locked, $this->responseDeadline($locked))) {
                 throw ValidationException::withMessages(['invitation' => 'The response deadline has passed.']);
             }
             app(ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister(
@@ -298,7 +298,7 @@ final class TeamSelectionInvitationService
         if ($invitation->status === TeamSelectionInvitation::INVITED) {
             return $this->accept($invitation, $user);
         }
-        if ($this->paymentDeadline($invitation) && now()->gt($this->paymentDeadline($invitation))) {
+        if ($this->deadlineBlocksRegistration($invitation, $this->paymentDeadline($invitation))) {
             throw ValidationException::withMessages(['payment' => 'The payment deadline for this team invitation has passed.']);
         }
 
@@ -2277,6 +2277,17 @@ final class TeamSelectionInvitationService
     private function paymentDeadline(TeamSelectionInvitation $invitation): mixed
     {
         return $invitation->effectivePaymentDeadline();
+    }
+
+    private function deadlineBlocksRegistration(TeamSelectionInvitation $invitation, mixed $deadline): bool
+    {
+        if (! $deadline || now()->lte($deadline)) {
+            return false;
+        }
+
+        $event = $invitation->selectionImport?->event;
+
+        return ! $event || ! app(ExternalTeamRosterService::class)->registrationIsOpen($event);
     }
 
     /** @return array{0: mixed, 1: mixed} */

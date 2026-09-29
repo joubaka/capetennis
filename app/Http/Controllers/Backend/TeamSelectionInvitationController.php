@@ -893,13 +893,17 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
-        $request->merge(['audience_mode' => $request->input('audience_mode', 'roster')]);
+        $request->merge([
+            'audience_mode' => $request->input('audience_mode', 'roster'),
+            'ranking_status' => $request->input('ranking_status', 'all'),
+        ]);
         if ($request->input('selection_stage') === 'teams') {
             $data = $request->validate([
                 'selection_stage' => ['required', 'in:teams'],
                 'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
                 'event_region_ids.*' => ['integer', 'distinct'],
                 'audience_mode' => ['required', 'in:roster,ranking'],
+                'ranking_status' => ['nullable', 'in:all,unregistered,declined,unregistered_or_declined'],
             ]);
 
             return response()->json(['teams' => $audiences->eventSelectionOptions($event, $data)]);
@@ -949,6 +953,11 @@ class TeamSelectionInvitationController extends Controller
                     ->where(function ($query) use ($data) {
                         $query->where('status', 'published')->orWhereIn('id', $data['series_ranking_ids']);
                     })->orderBy('id')->lockForUpdate()->get();
+                $rankingImports = TeamSelectionImport::query()->where('event_id', $event->id)
+                    ->whereIn('region_id', $regionDatabaseIds)->whereIn('status', ['draft', 'sent'])
+                    ->orderBy('id')->lockForUpdate()->get()->groupBy('region_id')->map(fn ($imports) => $imports->last()->id);
+                TeamSelectionInvitation::query()->whereIn('import_id', $rankingImports)
+                    ->orderBy('id')->lockForUpdate()->get();
                 $playerIdsToLock = $lockedRows->whereIn('id', $data['series_ranking_ids'])->pluck('player_id')->filter()->unique();
             } else {
                 $lockedImports = TeamSelectionImport::query()->where('event_id', $event->id)
@@ -991,6 +1000,7 @@ class TeamSelectionInvitationController extends Controller
                 'series_ranking_selection_count' => count($data['series_ranking_ids'] ?? []),
                 'series_ranking_selection_hash' => $this->rankingSelectionHash($data['series_ranking_ids'] ?? []),
                 'audience_mode' => $data['audience_mode'],
+                'ranking_status' => $data['ranking_status'],
                 'gender' => $data['gender'],
                 'audience_status' => $data['audience_status'],
             ], true);
@@ -1005,6 +1015,7 @@ class TeamSelectionInvitationController extends Controller
         activity('team-selection')->performedOn($event)->causedBy($request->user())
             ->withProperties([
                 'target_type' => 'event_filtered', 'audience_mode' => $data['audience_mode'],
+                'ranking_status' => $data['ranking_status'],
                 'event_region_ids' => $regionIds->all(), 'region_count' => $regionIds->count(),
                 'series_ranking_selection_count' => count($data['series_ranking_ids'] ?? []),
                 'series_ranking_selection_hash' => $this->rankingSelectionHash($data['series_ranking_ids'] ?? []),
@@ -1019,12 +1030,16 @@ class TeamSelectionInvitationController extends Controller
 
     private function validateEventRosterAudience(Request $request, bool $sending): array
     {
-        $request->merge(['audience_mode' => $request->input('audience_mode', 'roster')]);
+        $request->merge([
+            'audience_mode' => $request->input('audience_mode', 'roster'),
+            'ranking_status' => $request->input('ranking_status', 'all'),
+        ]);
 
         $data = $request->validate([
             'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
             'event_region_ids.*' => ['integer', 'distinct'],
             'audience_mode' => ['required', 'in:roster,ranking'],
+            'ranking_status' => ['required_if:audience_mode,ranking', 'nullable', 'in:all,unregistered,declined,unregistered_or_declined'],
             'category_event_ids' => ['nullable', 'array', 'min:1', 'max:30'],
             'category_event_ids.*' => ['integer', 'distinct'],
             'team_ids' => ['required_with:invitation_ids', 'array', 'min:1', 'max:100'],

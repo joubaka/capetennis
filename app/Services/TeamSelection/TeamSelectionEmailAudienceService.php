@@ -200,6 +200,7 @@ class TeamSelectionEmailAudienceService
         return hash('sha256', json_encode([
             'event_id' => (int) $event->id,
             'audience_mode' => $filters['audience_mode'] ?? 'roster',
+            'ranking_status' => $filters['ranking_status'] ?? 'all',
             'event_region_ids' => collect($filters['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'category_event_ids' => collect($filters['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'team_ids' => collect($filters['team_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
@@ -240,7 +241,8 @@ class TeamSelectionEmailAudienceService
 
         $sources = EventRegionRankingSource::query()->where('event_id', $event->id)
             ->whereIn('event_region_id', $eventRegions->keys())->get()->keyBy('event_region_id');
-        $rankingRowsByTeam = $teams->mapWithKeys(function (Team $team) use ($eventRegions, $sources): array {
+        $rankingStatus = (string) ($filters['ranking_status'] ?? 'all');
+        $rankingRowsByTeam = $teams->mapWithKeys(function (Team $team) use ($eventRegions, $sources, $activeImports, $rankingStatus): array {
             $eventRegion = $eventRegions->firstWhere('region_id', $team->region_id);
             $source = $eventRegion ? $sources->get($eventRegion->id) : null;
             $runId = $source ? $this->publishedRunId((int) $source->series_id) : null;
@@ -251,7 +253,12 @@ class TeamSelectionEmailAudienceService
                     ->orderBy('rank_position')->orderBy('id')->get()
                 : collect();
 
-            return [$team->id => $rows];
+            $states = $this->rankingEventStates($team, $activeImports, $rows->pluck('player_id'));
+
+            return [$team->id => $rows->filter(fn (SeriesRanking $row) => $this->matchesRankingStatus(
+                $states->get((int) $row->player_id, 'unregistered'),
+                $rankingStatus,
+            ))->values()];
         });
 
         $mode = $filters['audience_mode'] ?? 'roster';
@@ -270,10 +277,12 @@ class TeamSelectionEmailAudienceService
                         'status' => $invitation->status,
                         'has_email' => filled($this->contacts->primaryEmail($invitation->player)),
                     ])->values();
+                $rankingStates = $this->rankingEventStates($team, $activeImports, $rankingRowsByTeam->get($team->id, collect())->pluck('player_id'));
                 $rankingPlayers = $rankingRowsByTeam->get($team->id, collect())->map(fn (SeriesRanking $row): array => [
                     'series_ranking_id' => (int) $row->id,
                     'name' => $this->displayLabel((string) ($row->player?->full_name ?? 'Player')),
                     'status' => 'Rank '.(int) $row->rank_position,
+                    'event_state' => $rankingStates->get((int) $row->player_id, 'unregistered'),
                     'has_email' => filled($this->contacts->primaryEmail($row->player)),
                 ])->values();
 
@@ -317,10 +326,22 @@ class TeamSelectionEmailAudienceService
                 throw ValidationException::withMessages(['event_region_ids' => 'A selected region no longer has a current published ranking.']);
             }
             $categoryIds = $teams->where('region_id', $eventRegion->region_id)->pluck('category.category_id')->filter()->unique();
+            $regionalTeams = $teams->where('region_id', $eventRegion->region_id);
             $rows = SeriesRanking::query()->with(['player.user', 'player.users', 'category'])
                 ->where('series_id', $source->series_id)->where('run_id', $runId)->where('status', 'published')
                 ->whereIn('category_id', $categoryIds)->whereIn('id', $rowIds)->get();
-            $allowed = $allowed->concat($rows->map(function (SeriesRanking $row) use ($eventRegion, $source, $runId): array {
+            $activeImportIds = TeamSelectionImport::query()->where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
+                ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)->orderByDesc('id')->limit(1)->pluck('id');
+            $equivalentTeamIds = Team::query()->withoutGlobalScopes()->where('region_id', $eventRegion->region_id)
+                ->whereIn('category_event_id', $regionalTeams->pluck('category_event_id'))->pluck('id');
+            $states = TeamSelectionInvitation::query()->whereIn('import_id', $activeImportIds)
+                ->whereIn('team_id', $equivalentTeamIds)->whereIn('player_id', $rows->pluck('player_id'))
+                ->get()->groupBy('player_id')->map(fn (Collection $items) => $this->rankingEventState($items));
+            $rankingStatus = (string) ($filters['ranking_status'] ?? 'all');
+            $rows = $rows->filter(fn (SeriesRanking $row) => $this->matchesRankingStatus(
+                $states->get((int) $row->player_id, 'unregistered'), $rankingStatus,
+            ));
+            $allowed = $allowed->concat($rows->map(function (SeriesRanking $row) use ($eventRegion, $source, $runId, $states): array {
                 return [
                     'series_ranking_id' => (int) $row->id,
                     'email' => mb_strtolower(trim((string) $this->contacts->primaryEmail($row->player))),
@@ -328,6 +349,7 @@ class TeamSelectionEmailAudienceService
                     'category' => $this->displayLabel((string) ($row->category?->name ?? 'Age group')),
                     'region' => $this->displayLabel((string) ($eventRegion->region?->region_name ?? 'Region')),
                     'status' => 'Rank '.(int) $row->rank_position,
+                    'event_state' => $states->get((int) $row->player_id, 'unregistered'),
                     'source_identity' => implode(':', [(int) $source->id, (int) $source->series_id, $runId]),
                 ];
             }));
@@ -354,6 +376,38 @@ class TeamSelectionEmailAudienceService
             ->whereNotNull('run_id')->where('run_id', '!=', '')->distinct()->pluck('run_id');
 
         return $runIds->count() === 1 ? (string) $runIds->first() : null;
+    }
+
+    private function rankingEventStates(Team $team, Collection $activeImportIds, Collection $playerIds): Collection
+    {
+        $equivalentTeamIds = Team::query()->withoutGlobalScopes()->where('region_id', $team->region_id)
+            ->where('category_event_id', $team->category_event_id)->pluck('id');
+
+        return TeamSelectionInvitation::query()->whereIn('import_id', $activeImportIds)
+            ->whereIn('team_id', $equivalentTeamIds)->whereIn('player_id', $playerIds)->get()
+            ->groupBy('player_id')->map(fn (Collection $items) => $this->rankingEventState($items));
+    }
+
+    private function rankingEventState(Collection $invitations): string
+    {
+        if ($invitations->contains(fn (TeamSelectionInvitation $invitation) => $invitation->status === TeamSelectionInvitation::PAID_CONFIRMED)) {
+            return 'registered';
+        }
+        if ($invitations->contains(fn (TeamSelectionInvitation $invitation) => $invitation->status === TeamSelectionInvitation::DECLINED)) {
+            return 'declined';
+        }
+
+        return 'unregistered';
+    }
+
+    private function matchesRankingStatus(string $state, string $filter): bool
+    {
+        return match ($filter) {
+            'unregistered' => $state === 'unregistered',
+            'declined' => $state === 'declined',
+            'unregistered_or_declined' => in_array($state, ['unregistered', 'declined'], true),
+            default => true,
+        };
     }
 
     private function displayLabel(string $value): string
