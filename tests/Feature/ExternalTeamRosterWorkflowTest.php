@@ -330,6 +330,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
     public function test_open_team_event_accepts_registration_after_legacy_deadline(): void
     {
+        $this->team->update(['noProfile' => false]);
         $this->event->update([
             'start_date' => now()->addDay(),
             'deadline' => 7,
@@ -355,6 +356,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
     public function test_any_user_can_open_team_payment_for_an_eligible_unlinked_player(): void
     {
+        $this->team->update(['noProfile' => false]);
         $user = User::factory()->create();
         $player = Player::factory()->create(['userId' => User::factory()->create()->id]);
         TeamPlayer::create([
@@ -406,8 +408,135 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->count());
     }
 
+    public function test_linked_no_profile_player_can_open_payment_when_zero_mirror_is_repaired(): void
+    {
+        $payer = User::factory()->create();
+        $player = Player::factory()->create();
+        NoProfileTeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'name' => $player->name,
+            'surname' => $player->surname,
+            'player_profile' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $mirror = TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => 0,
+            'pay_status' => 0,
+        ]);
+
+        $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
+            ->assertOk()
+            ->assertViewIs('frontend.payfast.team_payment');
+
+        $this->assertSame($player->id, (int) $mirror->fresh()->player_id);
+        $this->assertDatabaseHas('team_payment_orders', [
+            'user_id' => $payer->id,
+            'team_id' => $this->team->id,
+            'player_id' => $player->id,
+            'event_id' => $this->event->id,
+        ]);
+    }
+
+    public function test_linked_no_profile_player_can_open_payment_when_mirror_is_missing(): void
+    {
+        $payer = User::factory()->create();
+        $player = Player::factory()->create();
+        NoProfileTeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 2,
+            'name' => $player->name,
+            'surname' => $player->surname,
+            'player_profile' => $player->id,
+            'pay_status' => 0,
+        ]);
+
+        $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
+            ->assertOk();
+
+        $this->assertDatabaseHas('team_players', [
+            'team_id' => $this->team->id,
+            'rank' => 2,
+            'player_id' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_no_profile_payment_rejects_conflicting_or_duplicate_mirrors_without_order_or_repairs(): void
+    {
+        $payer = User::factory()->create();
+        $player = Player::factory()->create();
+        $otherPlayer = Player::factory()->create();
+        NoProfileTeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'name' => $player->name,
+            'surname' => $player->surname,
+            'player_profile' => $player->id,
+            'pay_status' => 0,
+        ]);
+        $conflict = TeamPlayer::create([
+            'team_id' => $this->team->id,
+            'rank' => 1,
+            'player_id' => $otherPlayer->id,
+            'pay_status' => 0,
+        ]);
+
+        $this->actingAs($payer)->from(route('events.show', $this->event))
+            ->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
+            ->assertRedirect(route('events.show', $this->event))
+            ->assertSessionHasErrors('player');
+        $this->assertSame($otherPlayer->id, (int) $conflict->fresh()->player_id);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+
+        $conflict->update(['player_id' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+
+        $this->actingAs($payer)->from(route('events.show', $this->event))
+            ->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
+            ->assertRedirect(route('events.show', $this->event))
+            ->assertSessionHasErrors('player');
+        $this->assertSame(2, TeamPlayer::where('team_id', $this->team->id)->where('rank', 1)->where('player_id', 0)->count());
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
+    public function test_no_profile_payment_rejects_arbitrary_and_cross_team_players_without_order(): void
+    {
+        $payer = User::factory()->create();
+        $listedElsewhere = Player::factory()->create();
+        $arbitrary = Player::factory()->create();
+        $otherTeam = Team::factory()->create([
+            'category_event_id' => $this->team->category_event_id,
+            'published' => true,
+            'noProfile' => true,
+        ]);
+        NoProfileTeamPlayer::create([
+            'team_id' => $otherTeam->id,
+            'rank' => 1,
+            'name' => $listedElsewhere->name,
+            'surname' => $listedElsewhere->surname,
+            'player_profile' => $listedElsewhere->id,
+            'pay_status' => 0,
+        ]);
+
+        foreach ([$listedElsewhere, $arbitrary] as $player) {
+            $this->actingAs($payer)->from(route('events.show', $this->event))
+                ->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
+                ->assertRedirect(route('events.show', $this->event))
+                ->assertSessionHasErrors('player');
+        }
+
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseMissing('team_players', ['team_id' => $this->team->id, 'player_id' => $listedElsewhere->id]);
+        $this->assertDatabaseMissing('team_players', ['team_id' => $this->team->id, 'player_id' => $arbitrary->id]);
+    }
+
     public function test_team_payment_trims_legacy_payer_name_before_signing_and_posting(): void
     {
+        $this->team->update(['noProfile' => false]);
         $user = User::factory()->create(['name' => 'Wiaan ']);
         $player = Player::factory()->create([
             'name' => 'Nina',
@@ -432,6 +561,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
     public function test_team_payment_can_reapply_an_increased_wallet_balance_to_cover_the_full_order(): void
     {
+        $this->team->update(['noProfile' => false]);
         $this->event->update(['entryFee' => 490]);
         $user = User::factory()->create();
         $player = Player::factory()->create(['userId' => $user->id]);

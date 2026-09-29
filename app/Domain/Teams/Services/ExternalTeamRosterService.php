@@ -201,13 +201,75 @@ class ExternalTeamRosterService
         if (! $team->published) throw ValidationException::withMessages(['team' => 'This team has not been published yet.']);
         if (! $this->registrationIsOpen($event)) throw ValidationException::withMessages(['event' => 'Registration for this event is closed.']);
 
-        $teamPlayer = TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->first();
-        if (! $teamPlayer) throw ValidationException::withMessages(['player' => 'This player is not on the selected team roster.']);
-        if ((int) $teamPlayer->pay_status === 1) throw ValidationException::withMessages(['player' => 'This player is already registered.']);
+        return DB::transaction(function () use ($event, $team, $player): TeamPlayer {
+            if (! $team->noProfile) {
+                $teamPlayer = TeamPlayer::query()
+                    ->where('team_id', $team->id)
+                    ->where('player_id', $player->id)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $teamPlayer) throw ValidationException::withMessages(['player' => 'This player is not on the selected team roster.']);
+                if ((int) $teamPlayer->pay_status === 1) throw ValidationException::withMessages(['player' => 'This player is already registered.']);
 
-        $this->playerEligibility->assertEligible($player, $event);
+                $this->playerEligibility->assertEligible($player, $event);
 
-        return $teamPlayer;
+                return $teamPlayer;
+            }
+
+            $canonicalSlots = NoProfileTeamPlayer::query()
+                ->where('team_id', $team->id)
+                ->where('player_profile', $player->id)
+                ->lockForUpdate()
+                ->get();
+            if ($canonicalSlots->count() !== 1) {
+                throw ValidationException::withMessages(['player' => 'This player is not on the selected team roster.']);
+            }
+
+            $canonicalSlot = $canonicalSlots->first();
+            if ((int) $canonicalSlot->pay_status === 1) {
+                throw ValidationException::withMessages(['player' => 'This player is already registered.']);
+            }
+
+            $teamPlayers = TeamPlayer::query()
+                ->where('team_id', $team->id)
+                ->where('rank', $canonicalSlot->rank)
+                ->lockForUpdate()
+                ->get();
+            if ($teamPlayers->count() > 1) {
+                throw ValidationException::withMessages([
+                    'player' => 'This roster rank has duplicate team slots. Ask the tournament administrator to repair it before registering.',
+                ]);
+            }
+
+            $teamPlayer = $teamPlayers->first();
+            if ($teamPlayer && (int) $teamPlayer->player_id > 0 && (int) $teamPlayer->player_id !== (int) $player->id) {
+                throw ValidationException::withMessages([
+                    'player' => 'This roster position is assigned to another player. Ask the tournament administrator to repair it before registering.',
+                ]);
+            }
+
+            if (! $teamPlayer) {
+                $teamPlayer = new TeamPlayer([
+                    'team_id' => $team->id,
+                    'rank' => $canonicalSlot->rank,
+                    'player_id' => $player->id,
+                    'pay_status' => 0,
+                ]);
+            } elseif ((int) $teamPlayer->player_id === 0) {
+                $teamPlayer->player_id = $player->id;
+            }
+
+            if ((int) $teamPlayer->pay_status === 1) {
+                throw ValidationException::withMessages(['player' => 'This player is already registered.']);
+            }
+
+            $this->playerEligibility->assertEligible($player, $event);
+            if ($teamPlayer->isDirty() || ! $teamPlayer->exists) {
+                $teamPlayer->save();
+            }
+
+            return $teamPlayer;
+        });
     }
 
     public function registrationIsOpen(Event $event): bool
