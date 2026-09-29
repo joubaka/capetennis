@@ -277,10 +277,19 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         TeamSelectionInvitation::query()->whereKey($invitations->pluck('id'))
             ->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
         $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+        $eventRegion->region->update(['region_name' => 'Overberg%20Primary%20Schools%202026']);
+        $team->update(['name' => 'Overberg%20Primary%20Schools%202026%20u/10%20Boys']);
+        $team->category->category->update(['name' => 'u/10%20Boys']);
+        $invitations[0]->player->update(['name' => 'Test%20Player']);
 
         $options = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
             'selection_stage' => 'teams', 'event_region_ids' => [$eventRegion->id],
-        ])->assertOk()->assertJsonCount(1, 'teams')->assertJsonPath('teams.0.team_id', $team->id);
+        ])->assertOk()->assertJsonCount(1, 'teams')
+            ->assertJsonPath('teams.0.team_id', $team->id)
+            ->assertJsonPath('teams.0.name', 'Overberg Primary Schools 2026 u/10 Boys')
+            ->assertJsonPath('teams.0.region', 'Overberg Primary Schools 2026')
+            ->assertJsonPath('teams.0.category', 'u/10 Boys')
+            ->assertJsonPath('teams.0.players.0.name', 'Test Player '.$invitations[0]->player->surname);
         $this->assertCount(4, $options->json('teams.0.players'));
 
         $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
@@ -313,6 +322,50 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'invitation_ids' => [999999999],
             'gender' => 'any', 'audience_status' => 'active',
         ])->assertUnprocessable()->assertJsonValidationErrors('invitation_ids');
+    }
+
+    public function test_event_roster_stepper_includes_teams_from_a_current_draft_region(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $teamEventType = DB::table('eventtypes')->insertGetId([
+            'name' => 'Draft region audience mail', 'type' => 2, 'code' => 'draft-region-audience-mail',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $source->event->update(['eventType' => $teamEventType]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
+        $this->assertSame('draft', $selectionImport->status);
+        $eventRegion = EventRegion::query()->where('event_id', $source->event_id)->firstOrFail();
+
+        $options = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'selection_stage' => 'teams', 'event_region_ids' => [$eventRegion->id],
+        ])->assertOk()->assertJsonCount(1, 'teams')->assertJsonPath('teams.0.team_id', $team->id);
+
+        $draftInvitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
+            'event_region_ids' => [$eventRegion->id],
+            'team_ids' => [$team->id],
+            'invitation_ids' => [$draftInvitation->id],
+            'gender' => 'any', 'audience_status' => 'not_invited',
+        ])->assertOk()->assertJsonPath('count', 1)
+            ->assertJsonPath('recipients.0.invitation_id', $draftInvitation->id);
+
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), [
+            'event_region_ids' => [$eventRegion->id],
+            'team_ids' => [$team->id],
+            'invitation_ids' => [$draftInvitation->id],
+            'gender' => 'any', 'audience_status' => 'not_invited',
+            'subject' => 'Draft roster update', 'message' => 'Information for this selected player.',
+            'confirm_recipients' => 1,
+            'recipient_hash' => $preview->json('recipient_hash'),
+            'send_token' => $preview->json('send_token'),
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertCount(4, $options->json('teams.0.players'));
+        $this->assertSame(1, BulkEmailLog::query()->where('mail_type', 'region_email')
+            ->where('related_type', Event::class)->where('related_id', $source->event_id)->count());
     }
 
     public function test_event_roster_preview_deduplicates_shared_contacts_across_all_regions_and_honours_a_region_subset(): void

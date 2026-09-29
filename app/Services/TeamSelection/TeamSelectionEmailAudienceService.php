@@ -12,6 +12,8 @@ use Illuminate\Validation\ValidationException;
 
 class TeamSelectionEmailAudienceService
 {
+    private const ACTIVE_IMPORT_STATUSES = ['draft', 'sent'];
+
     public function __construct(private TeamSelectionContactService $contacts) {}
 
     /**
@@ -48,13 +50,13 @@ class TeamSelectionEmailAudienceService
         $activeImportId = TeamSelectionImport::query()
             ->where('event_id', $event->id)
             ->where('region_id', $eventRegion->region_id)
-            ->where('status', 'sent')
+            ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)
             ->latest('id')
             ->value('id');
 
         if (! $activeImportId) {
             throw ValidationException::withMessages([
-                'audience_status' => 'This region has no sent team-selection import to email.',
+                'audience_status' => 'This region has no current team-selection roster to email.',
             ]);
         }
 
@@ -147,9 +149,10 @@ class TeamSelectionEmailAudienceService
             if ($regionalCategoryIds->isEmpty()) {
                 return collect();
             }
-            $hasSentImport = TeamSelectionImport::query()->where('event_id', $event->id)
-                ->where('region_id', $eventRegion->region_id)->where('status', 'sent')->exists();
-            if (! $hasSentImport) {
+            $hasActiveImport = TeamSelectionImport::query()->where('event_id', $event->id)
+                ->where('region_id', $eventRegion->region_id)
+                ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)->exists();
+            if (! $hasActiveImport) {
                 return collect();
             }
 
@@ -164,7 +167,7 @@ class TeamSelectionEmailAudienceService
         if ($invitationIds->isNotEmpty()) {
             $activeImportIds = $eventRegions->pluck('region_id')->map(fn ($regionId) => TeamSelectionImport::query()
                 ->where('event_id', $event->id)->where('region_id', $regionId)
-                ->where('status', 'sent')->latest('id')->value('id'))->filter();
+                ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)->latest('id')->value('id'))->filter();
             $validInvitationIds = TeamSelectionInvitation::query()
                 ->where('event_id', $event->id)->whereIn('region_id', $eventRegions->pluck('region_id'))
                 ->whereIn('import_id', $activeImportIds)->whereIn('team_id', $teamIds)->whereIn('id', $invitationIds)
@@ -215,7 +218,8 @@ class TeamSelectionEmailAudienceService
         }
 
         $activeImports = TeamSelectionImport::query()->where('event_id', $event->id)
-            ->whereIn('region_id', $eventRegions->pluck('region_id'))->where('status', 'sent')
+            ->whereIn('region_id', $eventRegions->pluck('region_id'))
+            ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)
             ->orderByDesc('id')->get()->unique('region_id')->pluck('id');
         $activeTeamIds = TeamSelectionInvitation::query()->whereIn('import_id', $activeImports)
             ->pluck('team_id')->filter()->unique();
@@ -231,19 +235,26 @@ class TeamSelectionEmailAudienceService
                     ->whereIn('import_id', $activeImports)->orderBy('queue_position')->get()
                     ->map(fn (TeamSelectionInvitation $invitation): array => [
                         'invitation_id' => (int) $invitation->id,
-                        'name' => (string) ($invitation->player?->full_name ?? 'Player'),
+                        'name' => $this->displayLabel((string) ($invitation->player?->full_name ?? 'Player')),
                         'status' => $invitation->status,
                         'has_email' => filled($this->contacts->primaryEmail($invitation->player)),
                     ])->values();
 
                 return [
                     'team_id' => (int) $team->id,
-                    'name' => (string) $team->name,
-                    'category' => (string) ($team->category?->category?->name ?? $team->name),
-                    'region' => (string) ($region?->region?->region_name ?? 'Region'),
+                    'name' => $this->displayLabel((string) $team->name),
+                    'category' => $this->displayLabel((string) ($team->category?->category?->name ?? $team->name)),
+                    'region' => $this->displayLabel((string) ($region?->region?->region_name ?? 'Region')),
                     'players' => $players,
                 ];
             })->sortBy([['region', 'asc'], ['category', 'asc'], ['name', 'asc']])->values();
+    }
+
+    private function displayLabel(string $value): string
+    {
+        $decoded = rawurldecode($value);
+
+        return trim(preg_replace('/\s+/u', ' ', $decoded) ?? $decoded);
     }
 
     private function matchesStatus(TeamSelectionInvitation $invitation, string $audience): bool

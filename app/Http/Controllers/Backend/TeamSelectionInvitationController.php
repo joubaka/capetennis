@@ -938,7 +938,7 @@ class TeamSelectionInvitationController extends Controller
             $regionDatabaseIds = EventRegion::query()->where('event_id', $event->id)
                 ->whereIn('id', $data['event_region_ids'])->pluck('region_id');
             $lockedImports = TeamSelectionImport::query()->where('event_id', $event->id)
-                ->whereIn('region_id', $regionDatabaseIds)->where('status', 'sent')
+                ->whereIn('region_id', $regionDatabaseIds)->whereIn('status', ['draft', 'sent'])
                 ->orderBy('id')->lockForUpdate()->get();
             $activeImportIds = $lockedImports->groupBy('region_id')
                 ->map(fn ($regionalImports) => $regionalImports->last()->id);
