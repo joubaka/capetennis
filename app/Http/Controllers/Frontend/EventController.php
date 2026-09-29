@@ -144,7 +144,7 @@ class EventController extends Controller
     $interprovincialTrialCategories = collect();
     if ($event->isInterprovincialTrials()) {
       $interprovincialTrialCategories = CategoryEvent::query()
-        ->with(['category', 'nominations' => fn ($query) => $query->with(['player:id,name,surname', 'actionableInvitation'])->orderBy('id')->limit(500)])
+        ->with(['category', 'nominations' => fn ($query) => $query->with(['player:id,name,surname', 'actionableInvitation.order'])->orderBy('id')->limit(500)])
         ->where('event_id', $event->id)
         ->where('nominations_published', true)
         ->orderBy('ordering')->orderBy('id')->limit(100)->get();

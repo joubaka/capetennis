@@ -108,7 +108,8 @@
       <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Send to newly nominated</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Send to players not registered</button>
     </div>
-    <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players">
+    <p class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
+    <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players on this page">
       @foreach($nominationFilterGroups as $filter)
         <button type="button" class="btn btn-sm btn-outline-primary {{ $filter['key'] === 'all' ? 'active' : '' }}" data-nomination-filter="{{ $filter['key'] }}" aria-pressed="{{ $filter['key'] === 'all' ? 'true' : 'false' }}">
           {{ $filter['label'] }} <span class="badge bg-label-primary ms-1" data-filter-count="{{ $filter['key'] }}">{{ $filter['count'] }}</span>
@@ -117,18 +118,20 @@
     </div>
     <div class="row g-3">
     @forelse($event->categoryEvents as $categoryEvent)
-      <div class="col-12"><div class="border rounded p-3" data-nomination-category="{{ $categoryEvent->id }}"><h6>{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary" data-nomination-count>{{ $categoryEvent->nominations->count() }}</span></h6><div data-nomination-list>
-      @forelse($categoryEvent->nominations as $nomination)
+      @php($categoryNominations = $nominations->getCollection()->where('category_event_id', $categoryEvent->id))
+      <div class="col-12"><div class="border rounded p-3" data-nomination-category="{{ $categoryEvent->id }}"><h6>{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary" data-nomination-count>{{ $categoryEvent->nominations_count }}</span></h6><div data-nomination-list>
+      @forelse($categoryNominations as $nomination)
         @include('backend.interprovincial-trials._nomination-row', [
           'presentation' => $nominationPresentations->get($nomination->id),
         ])
-      @empty<div class="text-muted" data-empty-nominations>No players nominated yet.</div>@endforelse
+      @empty<div class="text-muted" data-empty-nominations>{{ $categoryEvent->nominations_count ? 'No nominations from this category on this page.' : 'No players nominated yet.' }}</div>@endforelse
       </div></div></div>
     @empty<div class="col-12"><div class="alert alert-warning mb-0">Add event categories before nominating players.</div></div>@endforelse
     </div>
+    @if($nominations->hasPages())<div class="mt-3">{{ $nominations->links() }}</div>@endif
   </div></div>
 
-  @if($historicalInvitations->isNotEmpty())
+  @if($historicalInvitations && $historicalInvitations->count())
     <div class="card mb-4">
       <div class="card-header"><h5 class="mb-1">Historical invitations no longer in current nominations</h5><p class="text-muted small mb-0">Audit history is retained. These players are not part of the current nomination list.</p></div>
       <div class="card-body py-2">
@@ -139,6 +142,7 @@
             <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $presentation['label'] }}</span>
           </div>
         @endforeach
+        @if($historicalInvitations->hasPages())<div class="mt-3">{{ $historicalInvitations->links() }}</div>@endif
       </div>
     </div>
   @endif
@@ -147,7 +151,7 @@
     <div class="card-header"><h5 class="mb-0">3. Send invitation emails</h5></div>
     <div class="card-body">
       @if($batch)
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $batch->invitations->count() }} invitation{{ $batch->invitations->count() === 1 ? '' : 's' }}</span></div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $readiness['invitation_count'] }} invitation{{ $readiness['invitation_count'] === 1 ? '' : 's' }}</span></div>
       @endif
       <p class="text-muted mb-0">Choose a send action above to preview the exact recipients, blockers, subject, and message before anything is queued through the managed mail service.</p>
     </div>
@@ -261,6 +265,10 @@ $(function () {
   };
 
   const rebuildCategory = data => {
+    if ((data.pagination?.last_page || 1) > 1) {
+      window.location.reload();
+      return;
+    }
     const card = document.querySelector(`[data-nomination-category="${data.category_event_id}"]`);
     if (!card) return;
     card.querySelector('[data-nomination-count]').textContent = data.count;

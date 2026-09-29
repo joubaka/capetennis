@@ -11,6 +11,7 @@ use App\Models\ClothingOrder;
 use App\Models\ClothingSize;
 use App\Models\Event;
 use App\Models\EventAdmin;
+use App\Models\EventType;
 use App\Models\EventRegion;
 use App\Models\EventRegionManager;
 use App\Models\EventRegionRankingSource;
@@ -4384,7 +4385,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     private function selectionSource(): array
     {
         $actor = User::factory()->create();
+        $teamEventTypeId = DB::table('eventtypes')->where('code', 'team-selection-test')->value('id')
+            ?: DB::table('eventtypes')->insertGetId([
+                'name' => 'Team selection test',
+                'type' => EventType::TEAM,
+                'code' => 'team-selection-test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         $event = Event::factory()->create([
+            'eventType' => $teamEventTypeId,
             'published' => true,
             'signUp' => true,
             'status' => 'published',

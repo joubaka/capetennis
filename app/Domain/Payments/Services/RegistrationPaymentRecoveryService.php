@@ -6,13 +6,13 @@ use App\Models\CategoryEventRegistration;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationPaymentRecovery;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Support\FinanceMutationScope;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use App\Models\User;
+use Illuminate\Validation\ValidationException;
 
 class RegistrationPaymentRecoveryService
 {
@@ -20,6 +20,7 @@ class RegistrationPaymentRecoveryService
         257 => ['from' => '2026-09-25 00:00:00', 'until' => '2026-09-28 00:00:00', 'fee' => 300.00],
     ];
     public const MAIL_TEMPLATE_VERSION = 'registration-payment-recovery-v1';
+    public const MINIMUM_MAIL_LINK_LIFETIME_MINUTES = 30;
 
     public function inspect(RegistrationOrder $order): array
     {
@@ -181,8 +182,33 @@ class RegistrationPaymentRecoveryService
     public function mailBatchHash(array $recoveries): string
     {
         usort($recoveries, fn ($a, $b) => $a->id <=> $b->id);
-        foreach ($recoveries as $recovery) $this->assertMailSnapshotCurrent($recovery);
+        foreach ($recoveries as $recovery) {
+            $this->assertMailSnapshotCurrent($recovery);
+            $this->assertMailLinkDispatchable($recovery);
+        }
         return $this->checksum(['action' => 'queue-mail', 'snapshots' => array_map(fn ($recovery) => [$recovery->id, $recovery->mail_snapshot_checksum], $recoveries)]);
+    }
+
+    public function assertRecoveryLinkActive(RegistrationPaymentRecovery $recovery): void
+    {
+        abort_unless($recovery->link_expires_at && $recovery->link_expires_at->isFuture(), 410, 'This recovery payment link has expired.');
+    }
+
+    public function assertMailLinkDispatchable(RegistrationPaymentRecovery $recovery): void
+    {
+        $this->assertRecoveryLinkActive($recovery);
+        abort_unless(
+            $recovery->link_expires_at->gt(now()->addMinutes(self::MINIMUM_MAIL_LINK_LIFETIME_MINUTES)),
+            409,
+            'The recovery payment link expires too soon to send safely.'
+        );
+    }
+
+    public function nestedSignedLinkExpiry(RegistrationPaymentRecovery $recovery): Carbon
+    {
+        $this->assertRecoveryLinkActive($recovery);
+
+        return now()->addMinutes(30)->min($recovery->link_expires_at);
     }
 
     public function validatePrepared(RegistrationPaymentRecovery $recovery): RegistrationOrder
@@ -230,6 +256,7 @@ class RegistrationPaymentRecoveryService
             abort_if($locked->mail_authorized_at !== null, 409, 'Recovery mail was already authorized.');
             $this->validatePrepared($locked);
             $this->assertMailSnapshotCurrent($locked);
+            $this->assertMailLinkDispatchable($locked);
             $locked->update(['mail_queued_by' => $actorId, 'mail_confirmation_hash' => $this->mailAuthorizationHash($locked), 'mail_authorized_at' => now()]);
             return $locked;
         });

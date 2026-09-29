@@ -99,6 +99,218 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $this->assertNotNull($recovery->fresh()->mail_queued_at);
     }
 
+    public function test_transport_failure_releases_only_its_claim_and_retry_can_send(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->authorizeMail($service->prepare($order, $owner->id), $this->superUser()->id);
+
+        $mailManager = app('mail.manager');
+        Mail::shouldReceive('to')->once()->with($owner->email)->andReturnSelf();
+        Mail::shouldReceive('sendNow')->once()->andThrow(new \RuntimeException('Simulated transport failure'));
+
+        try {
+            (new SendRecoveryPaymentMailJob($recovery->id))->handle();
+            $this->fail('The transport exception should be rethrown for the queue to retry.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated transport failure', $exception->getMessage());
+        }
+
+        $failed = $recovery->fresh();
+        $this->assertSame('mail_failed', $failed->status);
+        $this->assertNull($failed->mail_attempt_token);
+        $this->assertNull($failed->mail_sending_at);
+        $this->assertNull($failed->mail_sent_at);
+
+        Mail::swap($mailManager);
+        Mail::fake();
+        (new SendRecoveryPaymentMailJob($recovery->id))->handle();
+        Mail::assertSent(RecoveryPaymentMail::class, 1);
+        $this->assertSame('notified', $recovery->fresh()->status);
+    }
+
+    public function test_mail_success_cannot_downgrade_payment_finalized_while_transport_is_in_flight(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->authorizeMail($service->prepare($order, $owner->id), $this->superUser()->id);
+        $mailManager = app('mail.manager');
+
+        Mail::shouldReceive('to')->once()->with($owner->email)->andReturnSelf();
+        Mail::shouldReceive('sendNow')->once()->andReturnUsing(function () use ($order, $owner): void {
+            $this->assertTrue(app(RegistrationPaymentController::class)->handlePayfastSuccess([
+                'custom_int5' => $order->id,
+                'custom_int4' => $owner->id,
+                'pf_payment_id' => 'PF-MAIL-RACE-SUCCESS',
+                'payment_status' => 'COMPLETE',
+                'amount_gross' => '300.00',
+                'amount_fee' => '-10.00',
+                'amount_net' => '290.00',
+            ]));
+        });
+
+        (new SendRecoveryPaymentMailJob($recovery->id))->handle();
+        Mail::swap($mailManager);
+
+        $fresh = $recovery->fresh();
+        $this->assertSame('paid', $fresh->status);
+        $this->assertNotNull($fresh->paid_at);
+        $this->assertNotNull($fresh->mail_sent_at);
+        $this->assertDatabaseHas('registration_orders', ['id' => $order->id, 'pay_status' => 1]);
+    }
+
+    public function test_mail_failure_cannot_downgrade_payment_finalized_while_transport_is_in_flight(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->authorizeMail($service->prepare($order, $owner->id), $this->superUser()->id);
+        $mailManager = app('mail.manager');
+
+        Mail::shouldReceive('to')->once()->with($owner->email)->andReturnSelf();
+        Mail::shouldReceive('sendNow')->once()->andReturnUsing(function () use ($order, $owner): never {
+            $this->assertTrue(app(RegistrationPaymentController::class)->handlePayfastSuccess([
+                'custom_int5' => $order->id,
+                'custom_int4' => $owner->id,
+                'pf_payment_id' => 'PF-MAIL-RACE-FAILURE',
+                'payment_status' => 'COMPLETE',
+                'amount_gross' => '300.00',
+                'amount_fee' => '-10.00',
+                'amount_net' => '290.00',
+            ]));
+            throw new \RuntimeException('Simulated post-payment transport failure');
+        });
+
+        try {
+            (new SendRecoveryPaymentMailJob($recovery->id))->handle();
+            $this->fail('The transport failure should still be rethrown.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated post-payment transport failure', $exception->getMessage());
+        } finally {
+            Mail::swap($mailManager);
+        }
+
+        $fresh = $recovery->fresh();
+        $this->assertSame('paid', $fresh->status);
+        $this->assertNotNull($fresh->paid_at);
+        $this->assertNull($fresh->mail_attempt_token);
+        $this->assertNull($fresh->mail_sending_at);
+        $this->assertNull($fresh->mail_sent_at);
+        $this->assertDatabaseHas('registration_orders', ['id' => $order->id, 'pay_status' => 1]);
+    }
+
+    public function test_stale_claim_is_reclaimed(): void
+    {
+        Mail::fake();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->authorizeMail($service->prepare($order, $owner->id), $this->superUser()->id);
+
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)->update([
+            'mail_attempt_token' => (string) \Illuminate\Support\Str::uuid(),
+            'mail_sending_at' => now()->subMinutes(11),
+            'status' => 'sending',
+        ]);
+        (new SendRecoveryPaymentMailJob($recovery->id))->handle();
+        Mail::assertSent(RecoveryPaymentMail::class, 1);
+        $this->assertSame('notified', $recovery->fresh()->status);
+    }
+
+    public function test_mail_authorization_and_dispatch_reject_expired_or_near_expiry_links(): void
+    {
+        Mail::fake();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->prepare($order, $owner->id);
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->addMinutes(29)]);
+
+        try {
+            $service->authorizeMail($recovery->fresh(), $this->superUser()->id);
+            $this->fail('A near-expiry recovery link must not be authorized for mail.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->addHours(2)]);
+        $authorized = $service->authorizeMail($recovery->fresh(), $this->superUser()->id);
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->subSecond()]);
+
+        try {
+            (new SendRecoveryPaymentMailJob($authorized->id))->handle();
+            $this->fail('An expired recovery link must not be dispatched.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(410, $exception->getStatusCode());
+        }
+        Mail::assertNothingSent();
+        $this->assertNull($recovery->fresh()->mail_attempt_token);
+    }
+
+    public function test_checkout_endpoints_reject_recovery_after_its_canonical_expiry(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->subSecond()]);
+
+        $show = URL::temporarySignedRoute('registration.recovery.show', now()->addMinutes(5), ['recovery' => $recovery->id]);
+        $payfast = URL::temporarySignedRoute('registration.recovery.payfast', now()->addMinutes(5), ['recovery' => $recovery->id]);
+
+        $this->actingAs($owner)->get($show)->assertStatus(410);
+        $this->actingAs($owner)->get($payfast)->assertStatus(410);
+        $this->assertDatabaseHas('registration_orders', ['id' => $order->id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_nested_checkout_links_never_outlive_the_canonical_recovery_expiry(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->addMinutes(20)]);
+        $canonicalExpiry = $recovery->fresh()->link_expires_at->timestamp;
+        $show = URL::temporarySignedRoute('registration.recovery.show', now()->addMinutes(25), ['recovery' => $recovery->id]);
+
+        $showResponse = $this->actingAs($owner)->get($show)->assertOk();
+        $paymentUrl = $showResponse->viewData('paymentUrl');
+        parse_str((string) parse_url($paymentUrl, PHP_URL_QUERY), $paymentQuery);
+        $this->assertLessThanOrEqual($canonicalExpiry, (int) $paymentQuery['expires']);
+
+        $payfastResponse = $this->actingAs($owner)->get($paymentUrl)->assertOk();
+        parse_str((string) parse_url($payfastResponse->viewData('cancel_url'), PHP_URL_QUERY), $cancelQuery);
+        $this->assertLessThanOrEqual($canonicalExpiry, (int) $cancelQuery['expires']);
+    }
+
+    public function test_verified_complete_payment_can_finalize_after_recovery_link_expiry(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        DB::table('registration_payment_recoveries')->where('id', $recovery->id)
+            ->update(['link_expires_at' => now()->subMinute()]);
+
+        $handled = app(RegistrationPaymentController::class)->handlePayfastSuccess([
+            'custom_int5' => $order->id,
+            'custom_int4' => $owner->id,
+            'pf_payment_id' => 'PF-DELAYED-COMPLETE',
+            'payment_status' => 'COMPLETE',
+            'amount_gross' => '300.00',
+            'amount_fee' => '-10.00',
+            'amount_net' => '290.00',
+        ]);
+
+        $this->assertTrue($handled);
+        $this->assertDatabaseHas('registration_orders', [
+            'id' => $order->id,
+            'pay_status' => 1,
+            'payfast_paid' => 1,
+            'payfast_pf_payment_id' => 'PF-DELAYED-COMPLETE',
+        ]);
+        $this->assertSame('paid', $recovery->fresh()->status);
+        $this->assertNotNull($recovery->fresh()->paid_at);
+    }
+
     public function test_direct_unauthorized_mail_job_fails_without_sending(): void
     {
         Mail::fake();

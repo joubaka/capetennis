@@ -44,7 +44,14 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $typeId = DB::table('eventtypes')->insertGetId(['name' => 'Interpro Trials', 'type' => EventType::INDIVIDUAL,
             'code' => EventType::INTERPROVINCIAL_TRIALS_CODE]);
-        $this->event = Event::factory()->create(['eventType' => $typeId]);
+        $this->event = Event::factory()->create([
+            'eventType' => $typeId,
+            'published' => true,
+            'signUp' => 1,
+            'status' => 'scheduled',
+            'start_date' => now()->addMonth(),
+            'deadline' => 1,
+        ]);
         $this->category = CategoryEvent::factory()->create(['event_id' => $this->event->id]);
         $this->admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $this->event->id, 'user_id' => $this->admin->id]);
@@ -948,6 +955,64 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         foreach ($before as $table => $count) {
             $this->assertSame($count, DB::table($table)->count(), "The invitation list GET must not write {$table}.");
         }
+    }
+
+    public function test_nomination_workspace_and_latest_batch_are_paginated_without_loading_full_relations(): void
+    {
+        $batch = InterprovincialTrialInvitationBatch::create([
+            'event_id' => $this->event->id,
+            'status' => InterprovincialTrialInvitationBatch::QUEUED,
+            'snapshot_hash' => str_repeat('c', 64),
+            'created_by_user_id' => $this->admin->id,
+        ]);
+        $nominations = collect();
+        foreach (range(1, 105) as $index) {
+            $player = Player::factory()->create(['name' => 'Bounded', 'surname' => sprintf('%03d', $index)]);
+            $nomination = EventNomination::create([
+                'event_id' => $this->event->id,
+                'category_event_id' => $this->category->id,
+                'player_id' => $player->id,
+            ]);
+            $nominations->push($nomination);
+            InterprovincialTrialInvitation::create([
+                'batch_id' => $batch->id,
+                'event_id' => $this->event->id,
+                'category_event_id' => $this->category->id,
+                'nomination_id' => $nomination->id,
+                'player_id' => $player->id,
+                'recipient_email' => "bounded{$index}@example.test",
+                'status' => 'sent',
+            ]);
+        }
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('backend.interprovincial-trials.invitations.index', $this->event))
+            ->assertOk()
+            ->assertSee('Showing 1–100 of 105 nominations');
+        $page = $response->viewData('nominations');
+        $this->assertSame(100, $page->count());
+        $this->assertSame(105, $page->total());
+        $this->assertSame(100, $response->viewData('latestInvitationsByNomination')->count());
+        $this->assertFalse($response->viewData('batch')->relationLoaded('invitations'));
+        $this->assertSame(105, $response->viewData('readiness')['invitation_count']);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('backend.interprovincial-trials.nominations.store', [$this->event, $this->category]), [
+                'player_ids' => [$nominations->first()->player_id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 105)
+            ->assertJsonPath('pagination.per_page', 100)
+            ->assertJsonPath('pagination.last_page', 2)
+            ->assertJsonCount(100, 'nominations');
+
+        EventNomination::query()->whereIn('id', $nominations->take(55)->pluck('id'))->delete();
+        $historyResponse = $this->actingAs($this->admin)
+            ->get(route('backend.interprovincial-trials.invitations.index', [$this->event, 'history_page' => 2]))
+            ->assertOk();
+        $history = $historyResponse->viewData('historicalInvitations');
+        $this->assertSame(5, $history->count());
+        $this->assertSame(55, $history->total());
     }
 
     public function test_previewed_new_send_is_read_only_exact_audited_and_same_token_idempotent(): void

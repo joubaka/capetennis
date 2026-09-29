@@ -14,26 +14,62 @@ use Illuminate\Support\Facades\DB;
 
 class InterprovincialTrialInvitationController extends Controller
 {
+    private const NOMINATIONS_PER_PAGE = 100;
+    private const HISTORICAL_INVITATIONS_PER_PAGE = 50;
+
     public function index(Request $request, Event $event)
     {
         $this->authorizeEvent($event);
         $batch = $this->latestBatchForEvent($event);
-        $event->load(['categoryEvents' => fn ($query) => $query->with(['category', 'nominations.player'])->orderBy('ordering')->orderBy('id')]);
-
-        $invitations = $batch?->invitations ?? collect();
+        $event->load(['categoryEvents' => fn ($query) => $query
+            ->with('category')
+            ->withCount('nominations')
+            ->orderBy('ordering')
+            ->orderBy('id')]);
+        $categoryIds = $event->categoryEvents->pluck('id');
+        $nominations = EventNomination::query()
+            ->with(['player:id,name,surname', 'categoryEvent.category:id,name'])
+            ->where('event_id', $event->id)
+            ->whereIn('category_event_id', $categoryIds)
+            ->orderBy('category_event_id')
+            ->orderBy('id')
+            ->paginate(self::NOMINATIONS_PER_PAGE, ['*'], 'nominations_page')
+            ->withQueryString();
+        $invitations = $batch
+            ? $this->batchInvitationQuery($batch, $event)
+                ->select($this->invitationColumns())
+                ->whereIn('nomination_id', $nominations->getCollection()->pluck('id'))
+                ->get()
+            : collect();
         $successfulInitialIds = $this->successfulInitialInvitationIds($invitations);
         $failedFollowUpIds = $this->failedFollowUpInvitationIds($invitations);
         $latestInvitationsByNomination = $invitations->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
-        $currentNominationIds = $event->categoryEvents->flatMap->nominations->pluck('id')->map(fn ($id): int => (int) $id);
-        $nominationPresentations = $event->categoryEvents->flatMap->nominations->mapWithKeys(function (EventNomination $nomination) use ($latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
+        $nominationPresentations = $nominations->getCollection()->mapWithKeys(function (EventNomination $nomination) use ($latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
             $invitation = $latestInvitationsByNomination->get((int) $nomination->id);
 
             return [$nomination->id => $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id))];
         });
-        $historicalInvitations = $invitations
-            ->reject(fn (InterprovincialTrialInvitation $invitation): bool => $currentNominationIds->contains((int) $invitation->nomination_id))
-            ->map(fn (InterprovincialTrialInvitation $invitation): array => $this->invitationPresentation($invitation))
-            ->values();
+        $historicalInvitations = $batch
+            ? $this->batchInvitationQuery($batch, $event)
+                ->with([
+                    'player:id,name,surname',
+                    'categoryEvent' => fn ($query) => $query->where('event_id', $event->id)->select(['id', 'event_id', 'category_id']),
+                    'categoryEvent.category:id,name',
+                ])
+                ->whereNotIn('nomination_id', EventNomination::query()
+                    ->select('id')
+                    ->where('event_id', $event->id)
+                    ->whereIn('category_event_id', $categoryIds))
+                ->orderBy('id')
+                ->paginate(self::HISTORICAL_INVITATIONS_PER_PAGE, ['*'], 'history_page')
+                ->withQueryString()
+            : null;
+        if ($historicalInvitations) {
+            $historicalInvitations->setCollection(
+                $historicalInvitations->getCollection()
+                    ->map(fn (InterprovincialTrialInvitation $invitation): array => $this->invitationPresentation($invitation))
+            );
+        }
         $nominationFilterGroups = collect([
             'all' => 'All',
             'nominated' => 'Nominated - not sent',
@@ -59,15 +95,23 @@ class InterprovincialTrialInvitationController extends Controller
             'prepared', 'queued', 'sending', 'sent', 'failed',
             'accepted_pending_payment', 'paid_confirmed', 'declined', 'withdrawn', 'cancelled',
         ];
+        $invitationCounts = $batch
+            ? $this->batchInvitationQuery($batch, $event)
+                ->selectRaw('status, COUNT(*) as aggregate')
+                ->groupBy('status')
+                ->pluck('aggregate', 'status')
+            : collect();
         $stateCounts = collect($knownInvitationStates)
-            ->mapWithKeys(fn (string $status): array => [$status => $invitations->where('status', $status)->count()])
+            ->mapWithKeys(fn (string $status): array => [$status => (int) ($invitationCounts[$status] ?? 0)])
             ->filter(fn (int $count): bool => $count > 0);
+        $invitationCount = (int) $invitationCounts->sum();
+        $readyRecipientCount = $batch ? $this->batchInvitationQuery($batch, $event)->whereNotNull('recipient_email')->count() : 0;
         $readiness = [
             'category_count' => $event->categoryEvents->count(),
-            'nomination_count' => $event->categoryEvents->sum(fn (CategoryEvent $category): int => $category->nominations->count()),
-            'invitation_count' => $invitations->count(),
-            'ready_recipient_count' => $invitations->whereNotNull('recipient_email')->count(),
-            'blocked_recipient_count' => $invitations->whereNull('recipient_email')->count(),
+            'nomination_count' => $nominations->total(),
+            'invitation_count' => $invitationCount,
+            'ready_recipient_count' => $readyRecipientCount,
+            'blocked_recipient_count' => $invitationCount - $readyRecipientCount,
             'message_saved' => (bool) ($batch?->message_hash && filled($batch->email_subject) && filled($batch->email_body)),
             'message_reviewed' => (bool) ($batch?->message_hash && $batch?->reviewed_message_hash
                 && hash_equals((string) $batch->message_hash, (string) $batch->reviewed_message_hash)),
@@ -78,7 +122,7 @@ class InterprovincialTrialInvitationController extends Controller
         ];
         return view('backend.interprovincial-trials.invitations', compact(
             'event', 'batch', 'readiness', 'latestInvitationsByNomination', 'nominationPresentations',
-            'nominationFilterGroups', 'historicalInvitations'
+            'nominationFilterGroups', 'historicalInvitations', 'nominations'
         ));
     }
 
@@ -193,23 +237,31 @@ class InterprovincialTrialInvitationController extends Controller
 
     private function categoryNominationPayload(CategoryEvent $categoryEvent, string $message, int $added = 0, int $alreadyNominated = 0): array
     {
-        $nominations = EventNomination::query()
+        $nominationQuery = EventNomination::query()
             ->with('player:id,name,surname')
             ->where('event_id', $categoryEvent->event_id)
             ->where('category_event_id', $categoryEvent->id)
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
+        $nominationCount = (clone $nominationQuery)->count();
+        $nominations = $nominationQuery
+            ->paginate(self::NOMINATIONS_PER_PAGE, ['*'], 'nominations_page', max(1, request()->integer('nominations_page', 1)));
         $event = $categoryEvent->event()->firstOrFail();
         $batch = $this->latestBatchForEvent($event);
-        $latestInvitations = ($batch?->invitations ?? collect())
+        $batchInvitations = $batch
+            ? $this->batchInvitationQuery($batch, $event)
+                ->select($this->invitationColumns())
+                ->whereIn('nomination_id', $nominations->getCollection()->pluck('id'))
+                ->get()
+            : collect();
+        $latestInvitations = $batchInvitations
             ->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
-        $successfulInitialIds = $this->successfulInitialInvitationIds($batch?->invitations ?? collect());
-        $failedFollowUpIds = $this->failedFollowUpInvitationIds($batch?->invitations ?? collect());
-        $presentations = $nominations->mapWithKeys(function (EventNomination $nomination) use ($latestInvitations, $successfulInitialIds, $failedFollowUpIds): array {
+        $successfulInitialIds = $this->successfulInitialInvitationIds($batchInvitations);
+        $failedFollowUpIds = $this->failedFollowUpInvitationIds($batchInvitations);
+        $presentations = $nominations->getCollection()->mapWithKeys(function (EventNomination $nomination) use ($latestInvitations, $successfulInitialIds, $failedFollowUpIds): array {
             $invitation = $latestInvitations->get((int) $nomination->id);
             return [$nomination->id => $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id))];
         });
-        $rows = $nominations->map(fn (EventNomination $nomination): string => view(
+        $rows = $nominations->getCollection()->map(fn (EventNomination $nomination): string => view(
             'backend.interprovincial-trials._nomination-row',
             [
                 'event' => $event,
@@ -225,9 +277,14 @@ class InterprovincialTrialInvitationController extends Controller
             'added' => $added,
             'already_nominated' => $alreadyNominated,
             'category_event_id' => $categoryEvent->id,
-            'count' => $nominations->count(),
+            'count' => $nominationCount,
             'html' => $rows,
-            'nominations' => $nominations->map(fn (EventNomination $nomination): array => [
+            'pagination' => [
+                'current_page' => $nominations->currentPage(),
+                'last_page' => $nominations->lastPage(),
+                'per_page' => $nominations->perPage(),
+            ],
+            'nominations' => $nominations->getCollection()->map(fn (EventNomination $nomination): array => [
                 'id' => $nomination->id,
                 'player_name' => trim(($nomination->player?->name ?? '').' '.($nomination->player?->surname ?? '')),
                 'status_label' => $presentations->get($nomination->id)['label'],
@@ -245,21 +302,26 @@ class InterprovincialTrialInvitationController extends Controller
 
     private function latestBatchForEvent(Event $event): ?InterprovincialTrialInvitationBatch
     {
-        return InterprovincialTrialInvitationBatch::query()->with([
-            'invitations' => fn ($query) => $query
-                ->where('event_id', $event->id)
-                ->select([
-                    'id', 'batch_id', 'event_id', 'category_event_id', 'nomination_id', 'player_id',
-                    'registration_id', 'order_id', 'recipient_email', 'status',
-                    'queued_at', 'sent_at', 'accepted_at', 'paid_at', 'withdrawn_at',
-                ])
-                ->orderBy('id'),
-            'invitations.player:id,name,surname',
-            'invitations.categoryEvent' => fn ($query) => $query
-                ->where('event_id', $event->id)
-                ->select(['id', 'event_id', 'category_id']),
-            'invitations.categoryEvent.category:id,name',
-        ])->where('event_id', $event->id)->latest('id')->first();
+        return InterprovincialTrialInvitationBatch::query()
+            ->where('event_id', $event->id)
+            ->latest('id')
+            ->first();
+    }
+
+    private function batchInvitationQuery(InterprovincialTrialInvitationBatch $batch, Event $event)
+    {
+        return InterprovincialTrialInvitation::query()
+            ->where('batch_id', $batch->id)
+            ->where('event_id', $event->id);
+    }
+
+    private function invitationColumns(): array
+    {
+        return [
+            'id', 'batch_id', 'event_id', 'category_event_id', 'nomination_id', 'player_id',
+            'registration_id', 'order_id', 'recipient_email', 'status',
+            'queued_at', 'sent_at', 'accepted_at', 'paid_at', 'withdrawn_at',
+        ];
     }
 
     private function invitationPresentation(?InterprovincialTrialInvitation $invitation, bool $hasSuccessfulInitial = false, bool $hasFailedFollowUp = false): array
