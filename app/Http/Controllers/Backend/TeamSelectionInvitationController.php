@@ -199,11 +199,13 @@ class TeamSelectionInvitationController extends Controller
             ->with('success', "Imported {$selectionImport->invitations->where('status', 'invited')->count()} selected players and {$selectionImport->invitations->where('status', 'reserve')->count()} reserves.");
     }
 
-    public function send(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    public function send(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service, RegionManagerAccessService $access)
     {
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $this->communicationData($request);
+        $activateRegistration = $access->isEventManager($request->user(), $event);
+        $data['activate_registration'] = $activateRegistration;
         $campaign = $service->previewCampaign($selectionImport, $data);
         $previewHash = $request->session()->get('team_selection_email_previews.'.$selectionImport->id);
         if (! is_string($previewHash) || ! hash_equals($campaign['hash'], $previewHash)) {
@@ -211,17 +213,24 @@ class TeamSelectionInvitationController extends Controller
                 'email_preview' => 'Preview this exact email before sending. If you change any message, deadline, event detail, or clothing price, preview it again.',
             ]);
         }
-        $stats = $service->send($selectionImport, $data, $request->user());
+        $data['expected_campaign_hash'] = $previewHash;
+        $stats = $service->send(
+            $selectionImport,
+            $data,
+            $request->user(),
+            $activateRegistration,
+        );
         $request->session()->forget('team_selection_email_previews.'.$selectionImport->id);
 
         return back()->with('success', "Queued {$stats['queued']} invitations. {$stats['missing_email']} selected players need an email address.");
     }
 
-    public function previewEmail(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
+    public function previewEmail(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service, RegionManagerAccessService $access)
     {
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $this->communicationData($request);
+        $data['activate_registration'] = $access->isEventManager($request->user(), $event);
         $invitation = $selectionImport->invitations()
             ->with(['selectionImport.event', 'region', 'team', 'player'])
             ->where('status', 'invited')
@@ -884,6 +893,15 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
+        if ($request->input('selection_stage') === 'teams') {
+            $data = $request->validate([
+                'selection_stage' => ['required', 'in:teams'],
+                'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
+                'event_region_ids.*' => ['integer', 'distinct'],
+            ]);
+
+            return response()->json(['teams' => $audiences->eventSelectionOptions($event, $data)]);
+        }
         $data = $this->validateEventRosterAudience($request, false);
         $recipients = $audiences->resolveForEvent($event, $data);
         $sendToken = (string) Str::uuid();
@@ -903,18 +921,9 @@ class TeamSelectionInvitationController extends Controller
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
         $data = $this->validateEventRosterAudience($request, true);
-        $recipients = $audiences->resolveForEvent($event, $data);
-        if ($recipients->isEmpty()) {
-            throw ValidationException::withMessages(['message' => 'No matching recipient has a valid email address.']);
-        }
-        $currentHash = $audiences->eventPreviewHash($event, $data, $recipients, $data['send_token']);
-        $previewHash = (string) $request->session()->get("team_selection.event_roster_email.{$data['send_token']}", '');
-        if ($previewHash === '' || ! hash_equals($previewHash, $data['recipient_hash']) || ! hash_equals($currentHash, $data['recipient_hash'])) {
-            throw ValidationException::withMessages(['confirm_recipients' => 'The event recipient list changed. Review the current list and confirm again.']);
-        }
-
         $regionIds = collect($data['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values();
-        $stats = DB::transaction(function () use ($event, $data, $recipients, $request, $mailer): array {
+        $sessionKey = "team_selection.event_roster_email.{$data['send_token']}";
+        $stats = DB::transaction(function () use ($event, $data, $request, $mailer, $audiences, $sessionKey): array {
             Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
             $alreadyQueued = \App\Models\BulkEmailLog::query()
                 ->where('mail_type', 'region_email')
@@ -923,21 +932,52 @@ class TeamSelectionInvitationController extends Controller
                 ->where('payload->send_token', $data['send_token'])
                 ->exists();
             if ($alreadyQueued) {
-                return ['queued' => 0, 'duplicate' => $recipients->count()];
+                return ['queued' => 0, 'duplicate' => 1];
             }
 
-            return $mailer->dispatch('region_email', $event, $recipients, [
+            $regionDatabaseIds = EventRegion::query()->where('event_id', $event->id)
+                ->whereIn('id', $data['event_region_ids'])->pluck('region_id');
+            $lockedImports = TeamSelectionImport::query()->where('event_id', $event->id)
+                ->whereIn('region_id', $regionDatabaseIds)->where('status', 'sent')
+                ->orderBy('id')->lockForUpdate()->get();
+            $activeImportIds = $lockedImports->groupBy('region_id')
+                ->map(fn ($regionalImports) => $regionalImports->last()->id);
+            $lockedInvitations = TeamSelectionInvitation::query()->whereIn('import_id', $activeImportIds)
+                ->orderBy('id')->lockForUpdate()->get();
+            $lockedPlayers = Player::query()->whereIn('id', $lockedInvitations->pluck('player_id')->filter()->unique())
+                ->orderBy('id')->lockForUpdate()->get();
+            $playerIds = $lockedPlayers->pluck('id');
+            $linkedUsers = DB::table('user_players')->whereIn('player_id', $playerIds)
+                ->orderBy('player_id')->orderBy('user_id')->lockForUpdate()->get();
+            $contactUserIds = $lockedPlayers->pluck('userId')->concat($linkedUsers->pluck('user_id'))
+                ->filter()->map(fn ($id) => (int) $id)->unique()->sort()->values();
+            User::query()->whereIn('id', $contactUserIds)->orderBy('id')->lockForUpdate()->get();
+
+            $currentRecipients = $audiences->resolveForEvent($event, $data);
+            if ($currentRecipients->isEmpty()) {
+                throw ValidationException::withMessages(['message' => 'No matching recipient has a valid email address.']);
+            }
+            $currentHash = $audiences->eventPreviewHash($event, $data, $currentRecipients, $data['send_token']);
+            $previewHash = (string) $request->session()->get($sessionKey, '');
+            if ($previewHash === '' || ! hash_equals($previewHash, $data['recipient_hash']) || ! hash_equals($currentHash, $data['recipient_hash'])) {
+                throw ValidationException::withMessages(['confirm_recipients' => 'The event recipient list changed. Review the current list and confirm again.']);
+            }
+
+            return $mailer->dispatch('region_email', $event, $currentRecipients, [
                 'subject' => trim($data['subject']),
                 'message' => $data['message'],
                 'from_name' => $request->user()->name ?: 'Event team manager',
                 'reply_to' => $request->user()->email,
                 'send_token' => $data['send_token'],
                 'event_region_ids' => collect($data['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
-                'category_event_ids' => collect($data['category_event_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'category_event_ids' => collect($data['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'team_ids' => collect($data['team_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+                'invitation_ids' => collect($data['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
                 'gender' => $data['gender'],
                 'audience_status' => $data['audience_status'],
             ], true);
         });
+        $request->session()->forget($sessionKey);
         activity('team-selection')->performedOn($event)->causedBy($request->user())
             ->withProperties(['target_type' => 'event_filtered', 'event_region_ids' => $regionIds->all(), 'region_count' => $regionIds->count(), 'queued' => $stats['queued']])
             ->log('event manager emailed a filtered team-selection audience');
@@ -950,8 +990,12 @@ class TeamSelectionInvitationController extends Controller
         return $request->validate([
             'event_region_ids' => ['required', 'array', 'min:1', 'max:30'],
             'event_region_ids.*' => ['integer', 'distinct'],
-            'category_event_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'category_event_ids' => ['required_without:team_ids', 'array', 'min:1', 'max:30'],
             'category_event_ids.*' => ['integer', 'distinct'],
+            'team_ids' => ['required_with:invitation_ids', 'array', 'min:1', 'max:100'],
+            'team_ids.*' => ['integer', 'distinct'],
+            'invitation_ids' => ['required_with:team_ids', 'array', 'min:1', 'max:1000'],
+            'invitation_ids.*' => ['integer', 'distinct'],
             'gender' => ['required', 'in:any,boys,girls'],
             'audience_status' => ['required', 'in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn'],
             'subject' => [$sending ? 'required' : 'nullable', 'string', 'max:180'],
@@ -1251,9 +1295,10 @@ class TeamSelectionInvitationController extends Controller
 
     private function communicationData(Request $request): array
     {
-        return $request->validate([
-            'response_deadline' => ['required', 'date'],
-            'payment_deadline' => ['required', 'date', 'after_or_equal:response_deadline'],
+        $data = $request->validate([
+            'registration_deadline' => ['nullable', 'date'],
+            'response_deadline' => ['nullable', 'required_without:registration_deadline', 'date'],
+            'payment_deadline' => ['nullable', 'required_without:registration_deadline', 'date', 'after_or_equal:response_deadline'],
             'replacement_payment_deadline' => ['nullable', 'date', 'after_or_equal:payment_deadline'],
             'email_subject' => ['required', 'string', 'max:180'],
             'email_message' => ['required', 'string', 'max:10000'],
@@ -1261,5 +1306,13 @@ class TeamSelectionInvitationController extends Controller
             'reply_to' => ['nullable', 'email:rfc', 'max:255'],
             'include_clothing' => ['nullable', 'boolean'],
         ]);
+
+        if (! empty($data['registration_deadline'])) {
+            $data['response_deadline'] = $data['registration_deadline'];
+            $data['payment_deadline'] = $data['registration_deadline'];
+            $data['replacement_payment_deadline'] = $data['registration_deadline'];
+        }
+
+        return $data;
     }
 }

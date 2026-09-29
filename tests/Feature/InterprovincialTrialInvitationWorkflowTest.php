@@ -1249,6 +1249,37 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 3);
     }
 
+    public function test_bulk_send_queues_valid_recipients_and_reports_nominees_without_email_as_skipped(): void
+    {
+        Bus::fake();
+        $owner = User::factory()->create(['email' => 'valid-trial-recipient@example.test']);
+        $validPlayer = Player::factory()->create(['userId' => $owner->id]);
+        $missingEmailPlayer = Player::factory()->create(['userId' => null]);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $validPlayer->id]);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $missingEmailPlayer->id]);
+
+        $previewUrl = route('backend.interprovincial-trials.invitations.send-preview', $this->event);
+        $queueUrl = route('backend.interprovincial-trials.invitations.send-preview.queue', $this->event);
+        $preview = $this->actingAs($this->admin)->postJson($previewUrl, ['mode' => 'new'])
+            ->assertOk()
+            ->assertJsonCount(1, 'recipients')
+            ->assertJsonCount(1, 'blockers')
+            ->json();
+
+        $this->actingAs($this->admin)->postJson($queueUrl, [
+            'mode' => 'new',
+            'request_token' => $preview['request_token'],
+            'recipient_hash' => $preview['recipient_hash'],
+            'subject' => 'Trials invitation',
+            'body' => 'Register for the published trial.',
+        ])->assertOk()
+            ->assertJsonPath('queued_count', 1)
+            ->assertJsonPath('skipped_count', 1);
+
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 1);
+    }
+
     public function test_terminal_mail_failure_can_retry_without_a_second_dispatch_record_or_duplicate_send(): void
     {
         Bus::fake();

@@ -51,11 +51,14 @@ class TeamPaymentService
 
                 if ($existing) {
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
-                        $ownershipChanged = (int) $existing->user_id !== (int) $user->id;
+                        if ((int) $existing->user_id !== (int) $user->id) {
+                            throw ValidationException::withMessages([
+                                'payment' => 'Another payer already started this checkout. That payer must cancel it before a different account can continue.',
+                            ]);
+                        }
                         $totalChanged = round((float) $existing->total_amount, 2) !== round($total, 2);
-                        $existing->user_id = $user->id;
                         $existing->total_amount = $total;
-                        if ($ownershipChanged || $totalChanged) {
+                        if ($totalChanged) {
                             $existing->wallet_reserved = 0;
                             $existing->payfast_amount_due = round($total, 2);
                             $existing->wallet_debited = false;

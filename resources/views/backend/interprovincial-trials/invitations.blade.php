@@ -49,11 +49,11 @@
         <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Categories</div><div class="fs-4 fw-semibold">{{ $readiness['category_count'] }}</div></div></div>
         <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Nominations</div><div class="fs-4 fw-semibold">{{ $readiness['nomination_count'] }}</div></div></div>
         <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Ready recipients</div><div class="fs-4 fw-semibold">{{ $readiness['ready_recipient_count'] }}</div></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Recipient blockers</div><div class="fs-4 fw-semibold">{{ $readiness['blocked_recipient_count'] }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Missing email</div><div class="fs-4 fw-semibold">{{ $readiness['blocked_recipient_count'] }}</div></div></div>
       </div>
       <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Readiness checks">
         <span class="badge {{ $readiness['nomination_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['nomination_count'] > 0 ? 'Nominations ready' : 'Add nominations' }}</span>
-        <span class="badge {{ $readiness['invitation_count'] > 0 && $readiness['blocked_recipient_count'] === 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['invitation_count'] > 0 && $readiness['blocked_recipient_count'] === 0 ? 'Recipients ready' : 'Recipients need attention' }}</span>
+        <span class="badge {{ $readiness['invitation_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['invitation_count'] > 0 ? 'Valid recipients can be emailed' : 'No recipients ready' }}</span>
         <span class="badge {{ $readiness['message_saved'] ? 'bg-label-success' : 'bg-label-info' }}">{{ $readiness['message_saved'] ? 'Message stored' : 'Message ready to edit below' }}</span>
         <span class="badge {{ $readiness['registration_open'] ? 'bg-label-success' : 'bg-label-danger' }}">Registration {{ $readiness['registration_open'] ? 'open' : 'closed' }}</span>
       </div>
@@ -166,7 +166,7 @@
       <div class="modal-body">
         <div id="interpro-send-preview-feedback" class="alert d-none" role="status"></div>
         <div class="mb-3"><strong>Exact recipients</strong><div id="interpro-send-preview-recipients" class="list-group mt-2"></div></div>
-        <div class="mb-3 d-none" id="interpro-send-preview-blockers-wrap"><strong class="text-danger">Blockers</strong><div id="interpro-send-preview-blockers" class="list-group mt-2"></div></div>
+        <div class="mb-3 d-none" id="interpro-send-preview-blockers-wrap"><strong class="text-warning">Skipped because no email is available</strong><div id="interpro-send-preview-blockers" class="list-group mt-2"></div></div>
         <div class="mb-3"><label class="form-label" for="interpro-preview-subject">Subject</label><input class="form-control" id="interpro-preview-subject" maxlength="150" required></div>
         <div><label class="form-label" for="interpro-preview-body">Message</label><textarea class="form-control" id="interpro-preview-body" rows="6" maxlength="5000" required></textarea></div>
         <input type="hidden" id="interpro-preview-mode"><input type="hidden" id="interpro-preview-invitation"><input type="hidden" id="interpro-preview-token"><input type="hidden" id="interpro-preview-hash">
@@ -228,10 +228,10 @@ $(function () {
       document.getElementById('interpro-preview-subject').value = data.subject;
       document.getElementById('interpro-preview-body').value = data.body;
       document.getElementById('interpro-send-preview-recipients').innerHTML = data.recipients.map(row => `<div class="list-group-item"><strong>${escapeHtml(row.name)}</strong><div class="small text-muted">${escapeHtml(row.email)} · ${escapeHtml(row.category || '')} · ${escapeHtml(row.status)}</div></div>`).join('') || '<div class="text-muted">No eligible recipients.</div>';
-      document.getElementById('interpro-send-preview-blockers').innerHTML = data.blockers.map(row => `<div class="list-group-item text-danger">${escapeHtml(row.name)} — ${escapeHtml(row.reason)}</div>`).join('');
+      document.getElementById('interpro-send-preview-blockers').innerHTML = data.blockers.map(row => `<div class="list-group-item text-warning">${escapeHtml(row.name)} — ${escapeHtml(row.reason)}</div>`).join('');
       document.getElementById('interpro-send-preview-blockers-wrap').classList.toggle('d-none', data.blockers.length === 0);
       document.getElementById('interpro-preview-count').textContent = `${data.recipients.length} email${data.recipients.length === 1 ? '' : 's'} ready`;
-      document.getElementById('interpro-preview-confirm').disabled = data.recipients.length === 0 || data.blockers.length > 0;
+      document.getElementById('interpro-preview-confirm').disabled = data.recipients.length === 0;
       previewModal.show();
     } catch (error) { AppFeedback.fromError(error, 'Preview could not be loaded.'); }
     finally { trigger.disabled = false; }

@@ -414,8 +414,9 @@ class InterprovincialTrialInvitationController extends Controller
         return response()->json([
             'message' => $result['already_queued']
                 ? 'This exact send request was already queued.'
-                : $result['queued_count'].' invitation email(s) queued through the managed mail service.',
+                : $result['queued_count'].' invitation email(s) queued through the managed mail service; '.($result['skipped_count'] ?? 0).' nominee(s) without email were skipped.',
             'queued_count' => $result['queued_count'],
+            'skipped_count' => $result['skipped_count'] ?? 0,
             'already_queued' => $result['already_queued'],
         ]);
     }

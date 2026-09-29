@@ -37,6 +37,7 @@ final class TeamSelectionInvitationService
     public function updateTeamSettings(Team $team, Event $event, int $regionId, array $attributes, User $actor): array
     {
         return DB::transaction(function () use ($team, $event, $regionId, $attributes, $actor): array {
+            Event::query()->lockForUpdate()->findOrFail($event->id);
             $requestedPlaces = (int) $attributes['num_team_members'];
             $activeImport = TeamSelectionImport::query()
                 ->where('event_id', $event->id)
@@ -138,12 +139,14 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function send(TeamSelectionImport $import, array $deadlines, User $actor): array
+    public function send(TeamSelectionImport $import, array $deadlines, User $actor, bool $activateRegistration = false): array
     {
-        return DB::transaction(function () use ($import, $deadlines, $actor) {
+        return DB::transaction(function () use ($import, $deadlines, $actor, $activateRegistration) {
+            $event = Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $locked = TeamSelectionImport::query()->lockForUpdate()
-                ->with(['event.venues', 'region.clothingItems.sizes', 'invitations.team'])
+                ->with(['event.venues', 'region.clothingItems.sizes', 'invitations.team', 'invitations.player.user', 'invitations.player.users'])
                 ->findOrFail($import->id);
+            abort_unless((int) $locked->event_id === (int) $event->id, 404);
             if ($locked->status === 'sent') {
                 throw ValidationException::withMessages(['import' => 'These invitations have already been sent.']);
             }
@@ -155,38 +158,53 @@ final class TeamSelectionInvitationService
                 || $payment->lt($response) || $replacement->lt($payment)) {
                 throw ValidationException::withMessages(['deadlines' => 'Use future deadlines ordered as response, payment, then replacement payment.']);
             }
-            if (! app(ExternalTeamRosterService::class)->registrationIsOpen($locked->event)) {
-                throw ValidationException::withMessages(['event' => 'Publish the event and open team registration before sending invitations.']);
-            }
-
             $selected = $locked->invitations->where('status', TeamSelectionInvitation::INVITED);
             if ($selected->isEmpty()) {
                 throw ValidationException::withMessages(['invitations' => 'There are no selected players to invite.']);
             }
-            $unpublished = $selected->pluck('team')->filter(fn ($team) => ! $team?->published)->pluck('name')->unique()->values();
-            if ($unpublished->isNotEmpty()) {
-                throw ValidationException::withMessages(['teams' => 'Publish these teams before sending: '.$unpublished->implode(', ').'.']);
-            }
 
-            $candidates = $locked->invitations->whereIn('status', [
-                TeamSelectionInvitation::INVITED,
-                TeamSelectionInvitation::RESERVE,
-            ]);
-            $missing = $candidates->filter(fn ($invitation) => ! $this->contactEmail($invitation));
-            if ($missing->isNotEmpty()) {
+            if ($activateRegistration) {
+                if (! app(RegionManagerAccessService::class)->isEventManager($actor, $event)) {
+                    throw new AuthorizationException('Only an event manager may open registration for the whole event.');
+                }
+                $eventUpdates = ['published' => true, 'signUp' => true];
+                if (in_array($event->status, ['draft', 'closed'], true)) {
+                    $eventUpdates['status'] = 'open';
+                }
+                $event->update($eventUpdates);
+                $event->refresh();
+                $locked->setRelation('event', $event);
+            } elseif (! app(ExternalTeamRosterService::class)->registrationIsOpen($event)) {
                 throw ValidationException::withMessages([
-                    'email' => $missing->count().' selected or reserve player(s) do not have a valid player-profile, parent, or linked-account email address. Add an email before sending invitations.',
+                    'event' => 'The event manager must open event registration before a regional invitation can be sent.',
                 ]);
             }
+            Team::query()->whereIn('id', $selected->pluck('team_id')->filter()->unique())
+                ->update(['published' => true]);
 
             $campaign = $this->campaignSnapshot($locked, $deadlines, $response, $payment, $replacement);
+            if (isset($deadlines['expected_campaign_hash'])
+                && ! hash_equals((string) $deadlines['expected_campaign_hash'], (string) $campaign['hash'])) {
+                throw ValidationException::withMessages([
+                    'email_preview' => 'The recipient list or invitation content changed. Preview the exact send again.',
+                ]);
+            }
 
             $stats = ['selected' => $selected->count(), 'queued' => 0, 'missing_email' => 0];
             foreach ($selected as $invitation) {
                 $email = $this->contactEmail($invitation);
+                if (! $email) {
+                    $stats['missing_email']++;
+                    continue;
+                }
                 $invitation->update(['invited_at' => now()]);
                 $this->queueMail($invitation, $email, 'invitation', $campaign);
                 $stats['queued']++;
+            }
+            if ($stats['queued'] === 0) {
+                throw ValidationException::withMessages([
+                    'email' => 'None of the selected players has a valid contact email. Add at least one contact before sending.',
+                ]);
             }
 
             $locked->update([
@@ -212,6 +230,8 @@ final class TeamSelectionInvitationService
                     'replacement_payment_deadline' => $replacement->toIso8601String(),
                     'communication_hash' => $campaign['hash'],
                     'include_clothing' => $campaign['include_clothing'],
+                    'registration_opened' => $activateRegistration,
+                    'teams_published' => $selected->pluck('team_id')->filter()->unique()->count(),
                 ])
                 ->log('sent regional team selection invitations');
 
@@ -224,10 +244,8 @@ final class TeamSelectionInvitationService
         return DB::transaction(function () use ($invitation, $user) {
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
-            $registrationOpen = app(ExternalTeamRosterService::class)
-                ->registrationIsOpen($locked->selectionImport->event);
             if ($locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
-                if (! $registrationOpen && $this->paymentDeadline($locked) && now()->gt($this->paymentDeadline($locked))) {
+                if ($this->paymentDeadline($locked) && now()->gt($this->paymentDeadline($locked))) {
                     throw ValidationException::withMessages(['payment' => 'The payment deadline for this invitation has passed.']);
                 }
 
@@ -236,7 +254,7 @@ final class TeamSelectionInvitationService
             if ($locked->status !== TeamSelectionInvitation::INVITED) {
                 throw ValidationException::withMessages(['invitation' => 'Registration is no longer available for this selected player.']);
             }
-            if (! $registrationOpen && $this->responseDeadline($locked) && now()->gt($this->responseDeadline($locked))) {
+            if ($this->responseDeadline($locked) && now()->gt($this->responseDeadline($locked))) {
                 throw ValidationException::withMessages(['invitation' => 'The response deadline has passed.']);
             }
             app(ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister(
@@ -280,9 +298,7 @@ final class TeamSelectionInvitationService
         if ($invitation->status === TeamSelectionInvitation::INVITED) {
             return $this->accept($invitation, $user);
         }
-        $event = $invitation->selectionImport?->event;
-        $registrationOpen = $event && app(ExternalTeamRosterService::class)->registrationIsOpen($event);
-        if (! $registrationOpen && $this->paymentDeadline($invitation) && now()->gt($this->paymentDeadline($invitation))) {
+        if ($this->paymentDeadline($invitation) && now()->gt($this->paymentDeadline($invitation))) {
             throw ValidationException::withMessages(['payment' => 'The payment deadline for this team invitation has passed.']);
         }
 
@@ -341,7 +357,9 @@ final class TeamSelectionInvitationService
     public function decline(TeamSelectionInvitation $invitation, User $user, ?string $reason): ?TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $user, $reason) {
+            $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
+            $locked->setRelation('selectionImport', $selectionImport);
             $this->decisionAccess->authorizePlayerDecision($user, $locked);
             if (! in_array($locked->status, [
                 TeamSelectionInvitation::INVITED,
@@ -392,7 +410,7 @@ final class TeamSelectionInvitationService
             if ($slot) app(TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
 
             $reserve = $locked->selectionImport?->auto_replacement_enabled
-                ? $this->promoteNextReserve($locked, $rank, true)
+                ? $this->promoteNextReserve($locked, $selectionImport, $rank, true)
                 : null;
             activity('team-selection')->performedOn($locked)->causedBy($user)
                 ->withProperties([
@@ -451,6 +469,11 @@ final class TeamSelectionInvitationService
     public function markWithdrawn(int $eventId, int $teamId, int $playerId, ?User $actor = null): ?TeamSelectionInvitation
     {
         return DB::transaction(function () use ($eventId, $teamId, $playerId, $actor) {
+            $event = Event::query()->lockForUpdate()->findOrFail($eventId);
+            $selectionImport = TeamSelectionImport::query()->where('event_id', $event->id)
+                ->whereHas('invitations', fn ($query) => $query->where('team_id', $teamId)->where('player_id', $playerId)
+                    ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED]))
+                ->latest('id')->lockForUpdate()->first();
             $invitation = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')
                 ->where('event_id', $eventId)
                 ->where('team_id', $teamId)
@@ -465,6 +488,8 @@ final class TeamSelectionInvitationService
             if (! $invitation) {
                 return null;
             }
+            abort_unless($selectionImport && (int) $invitation->import_id === (int) $selectionImport->id, 404);
+            $invitation->setRelation('selectionImport', $selectionImport);
 
             if ($invitation->order_id) {
                 $order = TeamPaymentOrder::query()->lockForUpdate()->find($invitation->order_id);
@@ -484,7 +509,7 @@ final class TeamSelectionInvitationService
                 'roster_rank' => null,
             ]);
             $reserve = $invitation->selectionImport?->auto_replacement_enabled
-                ? $this->promoteNextReserve($invitation, $rank)
+                ? $this->promoteNextReserve($invitation, $selectionImport, $rank)
                 : null;
 
             $activity = activity('team-selection')->performedOn($invitation)
@@ -501,8 +526,10 @@ final class TeamSelectionInvitationService
     public function replaceWithNextReserve(TeamSelectionInvitation $invitation, User $actor, string $reason): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $actor, $reason) {
+            $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
+            $locked->setRelation('selectionImport', $selectionImport);
             if (! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) {
                 throw ValidationException::withMessages([
                     'replacement' => 'Only an unpaid selected player can be replaced. Withdraw and process any paid player through the normal refund workflow.',
@@ -531,7 +558,7 @@ final class TeamSelectionInvitationService
                 'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
-            $replacement = $this->promoteNextReserve($locked, $rank, true);
+            $replacement = $this->promoteNextReserve($locked, $selectionImport, $rank, true);
             if (! $replacement) {
                 throw ValidationException::withMessages([
                     'replacement' => 'No eligible reserve with a linked email account is available for this team.',
@@ -552,27 +579,44 @@ final class TeamSelectionInvitationService
     public function moveRosterRank(TeamSelectionInvitation $invitation, User $actor, string $direction): void
     {
         DB::transaction(function () use ($invitation, $actor, $direction): void {
-            $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
-            if (! in_array($locked->status, [
+            $selectionImport = $this->lockInvitationContext($invitation);
+            $current = TeamSelectionInvitation::query()->findOrFail($invitation->id);
+            if ((int) $current->import_id !== (int) $selectionImport->id || ! in_array($current->status, [
                 TeamSelectionInvitation::INVITED,
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
                 TeamSelectionInvitation::PAID_CONFIRMED,
-            ], true) || ! $locked->roster_rank) {
+            ], true) || ! $current->roster_rank) {
                 throw ValidationException::withMessages(['order' => 'Only an active selected player can be reordered.']);
             }
 
-            $targetRank = (int) $locked->roster_rank + ($direction === 'up' ? -1 : 1);
-            $swap = TeamSelectionInvitation::query()->lockForUpdate()
-                ->where('import_id', $locked->import_id)
-                ->where('team_id', $locked->team_id)
+            $targetRank = (int) $current->roster_rank + ($direction === 'up' ? -1 : 1);
+            $swapId = TeamSelectionInvitation::query()
+                ->where('import_id', $current->import_id)
+                ->where('team_id', $current->team_id)
                 ->where('roster_rank', $targetRank)
                 ->whereIn('status', [
                     TeamSelectionInvitation::INVITED,
                     TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
                     TeamSelectionInvitation::PAID_CONFIRMED,
-                ])->first();
-            if (! $swap) {
+                ])->value('id');
+            if (! $swapId) {
                 throw ValidationException::withMessages(['order' => 'That player is already at the end of the active roster.']);
+            }
+
+            $lockedPair = TeamSelectionInvitation::query()
+                ->whereIn('id', collect([$current->id, $swapId])->map(fn ($id) => (int) $id)->sort()->values())
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $locked = $lockedPair->get($current->id);
+            $swap = $lockedPair->get((int) $swapId);
+            if (! $locked || ! $swap
+                || (int) $locked->import_id !== (int) $selectionImport->id
+                || (int) $swap->import_id !== (int) $selectionImport->id
+                || (int) $locked->team_id !== (int) $swap->team_id
+                || (int) $locked->roster_rank !== (int) $current->roster_rank
+                || (int) $swap->roster_rank !== $targetRank
+                || ! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED], true)
+                || ! in_array($swap->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED], true)) {
+                throw ValidationException::withMessages(['order' => 'The roster order changed while it was being updated. Refresh and try again.']);
             }
 
             $currentRank = (int) $locked->roster_rank;
@@ -622,9 +666,11 @@ final class TeamSelectionInvitationService
     ): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $actor, $expectedStatus): TeamSelectionInvitation {
+            $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])
                 ->findOrFail($invitation->id);
+            $locked->setRelation('selectionImport', $selectionImport);
 
             if ($locked->status === TeamSelectionInvitation::INVITED
                 && $locked->declined_at
@@ -639,8 +685,7 @@ final class TeamSelectionInvitationService
                 ]);
             }
 
-            $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($locked->import_id);
-            if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
+            if (! in_array($selectionImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages([
                     'restore' => 'This regional selection is no longer open for roster restoration.',
                 ]);
@@ -923,16 +968,17 @@ final class TeamSelectionInvitationService
         string $reason,
     ): TeamSelectionInvitation {
         return DB::transaction(function () use ($invitation, $player, $actor, $reason): TeamSelectionInvitation {
+            $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
+            $locked->setRelation('selectionImport', $selectionImport);
             if (! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) {
                 throw ValidationException::withMessages([
                     'replacement' => 'Only an unpaid selected player can be replaced. Withdraw and process any paid player through the normal refund workflow.',
                 ]);
             }
 
-            $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($locked->import_id);
-            if (! $selectionImport || ! in_array($selectionImport->status, ['draft', 'sent'], true)) {
+            if (! in_array($selectionImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages(['replacement' => 'This regional selection is no longer open for player replacement.']);
             }
             if ($selectionImport->invitations()->where('team_id', $locked->team_id)
@@ -1091,6 +1137,7 @@ final class TeamSelectionInvitationService
     public function addSystemPlayerAsReserve(TeamSelectionImport $import, Team $team, Player $player, User $actor, string $reason): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($import, $team, $player, $actor, $reason): TeamSelectionInvitation {
+            Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
             if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages(['player_id' => 'Players can only be added to the current draft or sent selection.']);
@@ -1188,6 +1235,7 @@ final class TeamSelectionInvitationService
     public function extendDeadlines(TeamSelectionImport $import, array $deadlines, User $actor): TeamSelectionImport
     {
         return DB::transaction(function () use ($import, $deadlines, $actor) {
+            Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $locked = TeamSelectionImport::query()->with('event')->lockForUpdate()->findOrFail($import->id);
             if ($locked->status !== 'sent') {
                 throw ValidationException::withMessages(['import' => 'Deadlines can only be updated after invitations have been sent.']);
@@ -1385,8 +1433,10 @@ final class TeamSelectionInvitationService
             ];
             if ($apply) {
                 $row['replacement_id'] = DB::transaction(function () use ($candidate): ?int {
+                    $selectionImport = $this->lockInvitationContext($candidate);
                     $locked = TeamSelectionInvitation::query()->lockForUpdate()
                         ->with(['selectionImport', 'player'])->findOrFail($candidate->id);
+                    $locked->setRelation('selectionImport', $selectionImport);
                     if (! in_array($locked->status, [
                         TeamSelectionInvitation::INVITED,
                         TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -1437,7 +1487,7 @@ final class TeamSelectionInvitationService
                         'roster_rank' => null,
                     ]);
                     $replacement = $locked->selectionImport?->auto_replacement_enabled
-                        ? $this->promoteNextReserve($locked, $rank)
+                        ? $this->promoteNextReserve($locked, $selectionImport, $rank)
                         : null;
                     activity('team-selection')->performedOn($locked)
                         ->withProperties(['replacement_id' => $replacement?->id, 'method' => $method])
@@ -1455,8 +1505,10 @@ final class TeamSelectionInvitationService
     public function promoteNextReserveManually(TeamSelectionInvitation $vacated, User $actor): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($vacated, $actor): TeamSelectionInvitation {
+            $selectionImport = $this->lockInvitationContext($vacated);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])->findOrFail($vacated->id);
+            $locked->setRelation('selectionImport', $selectionImport);
             if (! in_array($locked->status, [TeamSelectionInvitation::DECLINED, TeamSelectionInvitation::WITHDRAWN], true)
                 || ! $locked->vacated_roster_rank) {
                 throw ValidationException::withMessages([
@@ -1474,7 +1526,7 @@ final class TeamSelectionInvitationService
                 return $existing->load('player');
             }
 
-            $replacement = $this->promoteNextReserve($locked, (int) $locked->vacated_roster_rank, true);
+            $replacement = $this->promoteNextReserve($locked, $selectionImport, (int) $locked->vacated_roster_rank, true);
             if (! $replacement) {
                 throw ValidationException::withMessages([
                     'replacement' => 'No eligible reserve with a linked email is available, or the event has already started.',
@@ -1495,6 +1547,7 @@ final class TeamSelectionInvitationService
     public function activateReserveInOpenPlace(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $actor): TeamSelectionInvitation {
+            Event::query()->lockForUpdate()->findOrFail($invitation->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id);
             if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
                 throw ValidationException::withMessages(['activation' => 'Only the current draft or sent selection can be changed.']);
@@ -1603,6 +1656,7 @@ final class TeamSelectionInvitationService
     ): array
     {
         return DB::transaction(function () use ($import, $actor, $expectedRecipientHash, $expectedRecipientCount): array {
+            Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
             if ($lockedImport->status !== 'sent') {
                 throw ValidationException::withMessages([
@@ -1736,6 +1790,7 @@ final class TeamSelectionInvitationService
         string $previewToken,
     ): array {
         return DB::transaction(function () use ($import, $actor, $invitationIds, $subject, $message, $expectedPreviewHash, $previewToken): array {
+            Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
             $preview = $this->previewCustomPendingActivatedInvitations($lockedImport, $invitationIds, $subject, $message, true, $previewToken);
             if (! hash_equals($preview['hash'], $expectedPreviewHash)) {
@@ -1871,14 +1926,13 @@ final class TeamSelectionInvitationService
 
     private function promoteNextReserve(
         TeamSelectionInvitation $vacated,
+        TeamSelectionImport $selectionImport,
         ?int $rank,
         bool $allowDraft = false,
         bool $suppressInvitationMail = false,
     ): ?TeamSelectionInvitation
     {
-        $selectionImport = TeamSelectionImport::query()->lockForUpdate()->find($vacated->import_id);
-        $statusAllowsReplacement = $selectionImport
-            && ($selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft'));
+        $statusAllowsReplacement = $selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft');
         if (! $rank || ! $statusAllowsReplacement) {
             return null;
         }
@@ -1937,7 +1991,7 @@ final class TeamSelectionInvitationService
             'payment_deadline_override' => $replacementDeadlines[1],
             'snapshot_json' => $snapshot,
         ]);
-        $this->moveFromHelperTeamsToPrimaryTeam($reserve, $suppressInvitationMail);
+        $this->moveFromHelperTeamsToPrimaryTeam($reserve, $selectionImport, $suppressInvitationMail);
         if ($selectionImport->status === 'sent' && ! $suppressInvitationMail) {
             $this->queueMail($reserve, $email, 'replacement', $this->savedCampaignSnapshot($selectionImport));
         }
@@ -1965,6 +2019,7 @@ final class TeamSelectionInvitationService
 
     private function moveFromHelperTeamsToPrimaryTeam(
         TeamSelectionInvitation $primarySelection,
+        TeamSelectionImport $selectionImport,
         bool $suppressInvitationMail = false,
     ): void
     {
@@ -2022,6 +2077,7 @@ final class TeamSelectionInvitationService
                 if ($helper->selectionImport?->auto_replacement_enabled) {
                     $this->promoteNextReserve(
                         $helper,
+                        $selectionImport,
                         $replacementRank,
                         allowDraft: true,
                         suppressInvitationMail: $suppressInvitationMail,
@@ -2037,6 +2093,15 @@ final class TeamSelectionInvitationService
                     'player_id' => $primarySelection->player_id,
                 ])->log('moved helper player into primary regional team');
         }
+    }
+
+    private function lockInvitationContext(TeamSelectionInvitation $invitation): TeamSelectionImport
+    {
+        $event = Event::query()->lockForUpdate()->findOrFail($invitation->event_id);
+        $selectionImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id);
+        abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
+
+        return $selectionImport;
     }
 
     private function contactEmail(TeamSelectionInvitation $invitation): ?string
@@ -2124,9 +2189,10 @@ final class TeamSelectionInvitationService
         $eventVenues = $event
             ? ($event->relationLoaded('venues') ? $event->getRelation('venues') : $event->venues()->get())
             : collect();
+        $willPublishEvent = (bool) $event?->published || (bool) ($details['activate_registration'] ?? false);
         $eventDetails = [
             'name' => $event?->name,
-            'published' => (bool) $event?->published,
+            'published' => $willPublishEvent,
             'start_date' => $event?->start_date?->toDateString(),
             'end_date' => $event?->end_date?->toDateString(),
             'entry_fee' => (float) ($event?->entryFee ?? 0),
@@ -2134,7 +2200,7 @@ final class TeamSelectionInvitationService
             'contact_email' => $event?->email,
             'venues' => $eventVenues->pluck('name')->filter()->values()->all(),
             'venue_notes' => trim((string) $event?->venue_notes),
-            'public_url' => $event?->published ? route('events.show', $event) : null,
+            'public_url' => $willPublishEvent ? route('events.show', $event) : null,
         ];
         $clothingItems = $includeClothing
             ? $region->clothingItems
@@ -2158,9 +2224,30 @@ final class TeamSelectionInvitationService
             'event' => $eventDetails,
             'clothing_items' => $clothingItems,
         ];
+        $recipients = $this->campaignRecipientSnapshot($import);
+        $snapshot['recipient_hash'] = hash('sha256', json_encode($recipients, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $snapshot['recipient_count'] = $recipients->whereNotNull('email')->count();
+        $snapshot['missing_email_count'] = $recipients->whereNull('email')->count();
         $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $snapshot;
+    }
+
+    private function campaignRecipientSnapshot(TeamSelectionImport $import): \Illuminate\Support\Collection
+    {
+        $invitations = $import->relationLoaded('invitations')
+            ? $import->invitations
+            : $import->invitations()->with(['player.user', 'player.users'])->get();
+
+        return $invitations
+            ->where('status', TeamSelectionInvitation::INVITED)
+            ->map(fn (TeamSelectionInvitation $invitation): array => [
+                'invitation_id' => (int) $invitation->id,
+                'player_id' => (int) $invitation->player_id,
+                'email' => $this->contactEmail($invitation),
+            ])
+            ->sortBy('invitation_id')
+            ->values();
     }
 
     private function savedCampaignSnapshot(TeamSelectionImport $import): array

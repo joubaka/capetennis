@@ -117,12 +117,9 @@ class InvitationService
                 ->where('dispatches.request_token', $request['request_token'])
                 ->count();
             if ($existingAttempts > 0) {
-                return ['queued_count' => 0, 'already_queued' => true];
+                return ['queued_count' => 0, 'skipped_count' => 0, 'already_queued' => true];
             }
             $selection = $this->attemptSelection($event, $request['mode'], $request['invitation_id'] ?? null, true);
-            if ($selection['blockers']) {
-                throw ValidationException::withMessages(['recipients' => 'Resolve every recipient blocker before queueing email.']);
-            }
             if (! hash_equals($request['recipient_hash'], $this->attemptRecipientHash($selection['recipients']))) {
                 throw ValidationException::withMessages(['recipients' => 'The recipients changed. Preview the exact list again.']);
             }
@@ -199,7 +196,11 @@ class InvitationService
                 $queued++;
             }
 
-            return ['queued_count' => $queued, 'already_queued' => $queued === 0];
+            return [
+                'queued_count' => $queued,
+                'skipped_count' => count($selection['blockers']),
+                'already_queued' => $queued === 0,
+            ];
         });
     }
 

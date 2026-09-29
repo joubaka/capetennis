@@ -78,6 +78,8 @@ class TeamSelectionEmailAudienceService
         return $invitations
             ->map(function (TeamSelectionInvitation $invitation): array {
                 return [
+                    'invitation_id' => (int) $invitation->id,
+                    'team_id' => (int) $invitation->team_id,
                     'email' => (string) $this->contacts->primaryEmail($invitation->player),
                     'name' => (string) ($invitation->player?->full_name ?? 'Player'),
                     'category' => (string) ($invitation->team?->category?->category?->name ?? $invitation->team?->name ?? 'Age group'),
@@ -109,7 +111,24 @@ class TeamSelectionEmailAudienceService
             throw ValidationException::withMessages(['event_region_ids' => 'One or more selected regions do not belong to this event.']);
         }
 
+        $teamIds = collect($filters['team_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
+        $invitationIds = collect($filters['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
+        if ($teamIds->isNotEmpty()) {
+            $validTeamIds = Team::query()->withoutGlobalScopes()
+                ->whereIn('id', $teamIds)
+                ->whereIn('region_id', $eventRegions->pluck('region_id'))
+                ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
+                ->pluck('id')->sort()->values();
+            if ($validTeamIds->all() !== $teamIds->all()) {
+                throw ValidationException::withMessages(['team_ids' => 'One or more selected teams do not belong to the selected event regions.']);
+            }
+        }
+
         $categoryIds = collect($filters['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($teamIds->isNotEmpty()) {
+            $categoryIds = Team::query()->withoutGlobalScopes()->whereIn('id', $teamIds)
+                ->pluck('category_event_id')->filter()->unique()->values();
+        }
         $validCategoryIds = Team::query()->withoutGlobalScopes()
             ->whereIn('region_id', $eventRegions->pluck('region_id'))
             ->whereIn('category_event_id', $categoryIds)
@@ -119,7 +138,7 @@ class TeamSelectionEmailAudienceService
             throw ValidationException::withMessages(['category_event_ids' => 'One or more selected age groups do not belong to the selected event regions.']);
         }
 
-        return $regionIds->flatMap(function (int $eventRegionId) use ($event, $eventRegions, $filters, $categoryIds): Collection {
+        $recipients = $regionIds->flatMap(function (int $eventRegionId) use ($event, $eventRegions, $filters, $categoryIds, $teamIds): Collection {
             $eventRegion = $eventRegions->get($eventRegionId);
             $regionalCategoryIds = Team::query()->withoutGlobalScopes()
                 ->where('region_id', $eventRegion->region_id)
@@ -135,11 +154,28 @@ class TeamSelectionEmailAudienceService
             }
 
             return $this->resolve($event, $eventRegion, [...$filters, 'category_event_ids' => $regionalCategoryIds->all()])
+                ->when($teamIds->isNotEmpty(), fn (Collection $items) => $items->whereIn('team_id', $teamIds))
                 ->map(fn (array $recipient): array => [
                     ...$recipient,
                     'region' => (string) ($eventRegion->region?->region_name ?? 'Region'),
                 ]);
-        })->groupBy('email')->map(function (Collection $matches): array {
+        });
+
+        if ($invitationIds->isNotEmpty()) {
+            $activeImportIds = $eventRegions->pluck('region_id')->map(fn ($regionId) => TeamSelectionImport::query()
+                ->where('event_id', $event->id)->where('region_id', $regionId)
+                ->where('status', 'sent')->latest('id')->value('id'))->filter();
+            $validInvitationIds = TeamSelectionInvitation::query()
+                ->where('event_id', $event->id)->whereIn('region_id', $eventRegions->pluck('region_id'))
+                ->whereIn('import_id', $activeImportIds)->whereIn('team_id', $teamIds)->whereIn('id', $invitationIds)
+                ->pluck('id')->sort()->values();
+            if ($validInvitationIds->all() !== $invitationIds->all()) {
+                throw ValidationException::withMessages(['invitation_ids' => 'One or more selected players do not belong to the selected teams and regions.']);
+            }
+            $recipients = $recipients->whereIn('invitation_id', $invitationIds);
+        }
+
+        return $recipients->groupBy('email')->map(function (Collection $matches): array {
             $first = $matches->first();
 
             return [
@@ -155,12 +191,59 @@ class TeamSelectionEmailAudienceService
         return hash('sha256', json_encode([
             'event_id' => (int) $event->id,
             'event_region_ids' => collect($filters['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
-            'category_event_ids' => collect($filters['category_event_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+            'category_event_ids' => collect($filters['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+            'team_ids' => collect($filters['team_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+            'invitation_ids' => collect($filters['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'gender' => $filters['gender'],
             'audience_status' => $filters['audience_status'],
             'recipients' => $recipients->pluck('email')->map(fn ($email) => mb_strtolower(trim((string) $email)))->sort()->values()->all(),
             'send_token' => $sendToken,
         ], JSON_THROW_ON_ERROR));
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    public function eventSelectionOptions(Event $event, array $filters): Collection
+    {
+        $regionIds = collect($filters['event_region_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
+        if ($regionIds->isEmpty()) {
+            throw ValidationException::withMessages(['event_region_ids' => 'Select at least one region.']);
+        }
+        $eventRegions = EventRegion::query()->with('region')->where('event_id', $event->id)
+            ->whereIn('id', $regionIds)->get()->keyBy('id');
+        if ($eventRegions->count() !== $regionIds->count()) {
+            throw ValidationException::withMessages(['event_region_ids' => 'One or more selected regions do not belong to this event.']);
+        }
+
+        $activeImports = TeamSelectionImport::query()->where('event_id', $event->id)
+            ->whereIn('region_id', $eventRegions->pluck('region_id'))->where('status', 'sent')
+            ->orderByDesc('id')->get()->unique('region_id')->pluck('id');
+        $activeTeamIds = TeamSelectionInvitation::query()->whereIn('import_id', $activeImports)
+            ->pluck('team_id')->filter()->unique();
+
+        return Team::query()->withoutGlobalScopes()->with(['category.category'])
+            ->whereIn('id', $activeTeamIds)
+            ->whereIn('region_id', $eventRegions->pluck('region_id'))
+            ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
+            ->orderBy('name')->get()->map(function (Team $team) use ($eventRegions, $activeImports): array {
+                $region = $eventRegions->firstWhere('region_id', $team->region_id);
+                $players = TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
+                    ->where('event_id', $team->category?->event_id)->where('team_id', $team->id)
+                    ->whereIn('import_id', $activeImports)->orderBy('queue_position')->get()
+                    ->map(fn (TeamSelectionInvitation $invitation): array => [
+                        'invitation_id' => (int) $invitation->id,
+                        'name' => (string) ($invitation->player?->full_name ?? 'Player'),
+                        'status' => $invitation->status,
+                        'has_email' => filled($this->contacts->primaryEmail($invitation->player)),
+                    ])->values();
+
+                return [
+                    'team_id' => (int) $team->id,
+                    'name' => (string) $team->name,
+                    'category' => (string) ($team->category?->category?->name ?? $team->name),
+                    'region' => (string) ($region?->region?->region_name ?? 'Region'),
+                    'players' => $players,
+                ];
+            })->sortBy([['region', 'asc'], ['category', 'asc'], ['name', 'asc']])->values();
     }
 
     private function matchesStatus(TeamSelectionInvitation $invitation, string $audience): bool
