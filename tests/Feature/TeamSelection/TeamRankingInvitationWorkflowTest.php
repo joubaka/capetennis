@@ -4163,7 +4163,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'response_deadline_override' => now()->subDays(2),
             'payment_deadline_override' => now()->subDay(),
         ]);
-        $active[1]->update(['payment_deadline_override' => now()->addDay()]);
+        $active[1]->update(['payment_deadline_override' => now()->subMinute()]);
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
@@ -4186,12 +4186,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $mixedPreview = $this->actingAs($manager)->post($previewRoute, $payload)
             ->assertOk()->assertSee('Exact recipients (3)')
             ->assertSee('Platteland team invitation')
-            ->assertSee('Team registration update')
+            ->assertSee('Team player update')
             ->assertSee('Confirmed team place update')
             ->assertSee('Send 3 custom email(s)');
         $mixedHtml = $mixedPreview->getContent();
         $this->assertSame(1, substr_count($mixedHtml, '>Decline invitation<'));
-        $this->assertSame(2, substr_count($mixedHtml, '>Register</a>'));
+        $this->assertSame(1, substr_count($mixedHtml, '>Register</a>'));
         $this->assertSame(0, substr_count($mixedHtml, '>Complete payment<'));
         $this->assertSame(1, substr_count($mixedHtml, '>View invitation<'));
         $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
@@ -4206,7 +4206,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $logs = BulkEmailLog::query()->whereIn('related_id', $active->pluck('id'))->latest('id')->take(3)->get();
         $this->assertEqualsCanonicalizing(
-            ['custom_invitation', 'custom_payment_update', 'custom_paid_update'],
+            ['custom_invitation', 'custom_status_update', 'custom_paid_update'],
             $logs->pluck('payload.kind')->all(),
         );
         foreach (TeamSelectionInvitation::query()->whereIn('id', $active->pluck('id'))->get() as $invitation) {
@@ -4225,16 +4225,17 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 $this->assertSame($before[$invitation->id][2], $invitation->snapshot_json);
             }
         }
-        $paymentHtml = (new \App\Mail\TeamSelectionInvitationMail($active[1]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_payment_update', ['message' => 'Update']))->render();
-        $this->assertStringContainsString('Team registration update', $paymentHtml);
-        $this->assertStringContainsString('How to register', $paymentHtml);
-        $this->assertStringContainsString('>Register<', $paymentHtml);
-        $this->assertStringNotContainsString('Pending payment', $paymentHtml);
-        $this->assertStringNotContainsString('pending payment', $paymentHtml);
-        $this->assertStringNotContainsString('Payment deadline', $paymentHtml);
-        $this->assertStringNotContainsString('payment deadline', $paymentHtml);
-        $this->assertStringNotContainsString('Complete payment', $paymentHtml);
-        $this->assertStringNotContainsString('Decline invitation', $paymentHtml);
+        $statusHtml = (new \App\Mail\TeamSelectionInvitationMail($active[1]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_status_update', ['message' => 'Update']))->render();
+        $this->assertStringContainsString('Team player update', $statusHtml);
+        $this->assertStringNotContainsString('How to register', $statusHtml);
+        $this->assertStringNotContainsString('>Register<', $statusHtml);
+        $this->assertStringNotContainsString('Pending payment', $statusHtml);
+        $this->assertStringNotContainsString('pending payment', $statusHtml);
+        $this->assertStringNotContainsString('Payment deadline', $statusHtml);
+        $this->assertStringNotContainsString('payment deadline', $statusHtml);
+        $this->assertStringNotContainsString('Complete payment', $statusHtml);
+        $this->assertStringNotContainsString('Decline invitation', $statusHtml);
+        $this->assertStringNotContainsString('Respond by:', $statusHtml);
         $paidHtml = (new \App\Mail\TeamSelectionInvitationMail($active[2]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_paid_update', ['message' => 'Update']))->render();
         $this->assertStringContainsString('View invitation', $paidHtml);
         $this->assertStringNotContainsString('>Register<', $paidHtml);
@@ -4306,7 +4307,63 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('sent', $log->fresh()->status);
 
         $accepted->update(['payment_deadline_override' => now()->subMinute()]);
-        $this->actingAs($manager)->post($previewRoute, $payload)->assertSessionHasErrors('invitation_ids');
+        $expiredPreview = $this->actingAs($manager)->post($previewRoute, $payload)
+            ->assertOk()
+            ->assertSee('Team player update')
+            ->assertDontSee('How to register')
+            ->assertDontSee('>Register<', false)
+            ->assertDontSee('Decline invitation')
+            ->assertDontSee('Respond by:');
+        $expiredHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
+        $expiredToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
+        $this->actingAs($manager)->post($sendRoute, [
+            ...$payload, 'preview_hash' => $expiredHash, 'preview_token' => $expiredToken, 'confirm_recipients' => 1,
+        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
+        $statusLog = BulkEmailLog::query()->where('related_id', $accepted->id)
+            ->where('payload->kind', 'custom_status_update')->latest('id')->firstOrFail();
+        $accepted->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+        (new SendTeamSelectionInvitationEmailJob($statusLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $statusLog->fresh()->status);
+
+        $accepted->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'paid_at' => null]);
+        $newStatusLog = function () use ($accepted): BulkEmailLog {
+            return BulkEmailLog::create([
+                'mail_type' => 'team_selection_invitation',
+                'related_type' => TeamSelectionInvitation::class,
+                'related_id' => $accepted->id,
+                'recipient_email' => 'payment-grace@example.test',
+                'recipient_name' => $accepted->player->full_name,
+                'status' => 'queued',
+                'payload' => ['kind' => 'custom_status_update', 'campaign' => []],
+                'queued_at' => now(),
+            ]);
+        };
+        $rosterRank = $accepted->roster_rank;
+        $accepted->update(['roster_rank' => null]);
+        $inactiveRosterLog = $newStatusLog();
+        (new SendTeamSelectionInvitationEmailJob($inactiveRosterLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $inactiveRosterLog->fresh()->status);
+
+        $accepted->update(['roster_rank' => $rosterRank]);
+        $accepted->player()->update(['email' => 'changed-contact@example.test']);
+        $changedContactLog = $newStatusLog();
+        (new SendTeamSelectionInvitationEmailJob($changedContactLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $changedContactLog->fresh()->status);
+
+        $accepted->player()->update(['email' => 'payment-grace@example.test']);
+        $accepted->update(['payment_deadline_override' => now()->addHour()]);
+        $changedKindLog = $newStatusLog();
+        (new SendTeamSelectionInvitationEmailJob($changedKindLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $changedKindLog->fresh()->status);
+
+        $accepted->update(['payment_deadline_override' => now()->subMinute()]);
+        TeamSelectionImport::query()->whereKey($selectionImport->id)->update(['status' => 'draft']);
+        $this->assertSame('draft', $selectionImport->fresh()->status);
+        $closedImportLog = $newStatusLog();
+        (new SendTeamSelectionInvitationEmailJob($closedImportLog->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $closedImportLog->fresh()->status);
+        TeamSelectionImport::query()->whereKey($selectionImport->id)->update(['status' => 'sent']);
+
         $expiredLog = BulkEmailLog::create([
             'mail_type' => 'team_selection_invitation',
             'related_type' => TeamSelectionInvitation::class,

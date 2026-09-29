@@ -10,14 +10,16 @@
 
 ### Supervised: local edits
 
-- Edit application code, tests, documentation, and local-only tooling for the approved task.
-- Run focused tests and local browser QA.
+- A direct request to implement, fix, change, build, refactor, or continue supplies approval for the bounded local task; do not ask for a second approval before starting or between normal local steps.
+- Edit application code, tests, documentation, and local-only tooling for that task.
+- Run proportionate focused tests, formatters, builds, route and Blade checks, and local browser QA, then fix failures caused by the change without another approval gate.
 - Do not assume the task authorizes unrelated cleanup or broad refactors.
+- Audit, investigation, diagnosis, review, explanation, and planning requests remain read-only unless implementation is also requested.
 
 ### Explicit approval required
 
 - Commit, push, create or update a pull request, modify dependencies, or prepare an approved production migration list.
-- Run broad or unusually expensive checks when they may disrupt normal local work.
+- Run broad or unusually expensive checks when they are likely to disrupt normal local work.
 
 ### Fresh manual authorization every time
 

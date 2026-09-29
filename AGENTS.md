@@ -33,10 +33,18 @@
 - Verify `git diff --check`, route registration, and Blade compilation before committing.
 - Do not run all pending production migrations blindly; inspect and run only those required for deployment.
 
+## Default local implementation authority
+
+- A direct request to implement, fix, change, build, refactor, or continue authorizes the bounded local development loop needed to complete that request. This includes inspecting the relevant code, editing application code and tests, running focused tests, formatters, builds, route and Blade checks, local browser QA, and fixing failures caused by the change.
+- Do not pause for repeated approval between normal local steps within the requested scope. Make reasonable implementation decisions, preserve unrelated worktree changes, and report material assumptions in the handoff.
+- Requests to audit, investigate, diagnose, review, explain, or plan remain read-only unless the user also asks for implementation.
+- Local implementation authority does not include unrelated cleanup, broad refactors, dependency changes, commits, pushes, pull requests, release preparation, deployment, production access or mutation, publication, outbound communication, or payment, credential, security, role, or production feature configuration.
+- Ask before a broad or unusually expensive local check only when it is likely to disrupt the user's normal local work; otherwise run proportionate verification without another gate.
+
 ## Cape Tennis caretaker authority
 
 - For recurring repository care, use the project skill at `.codex/skills/cape-tennis-engineering/SKILL.md` and the specification in `docs/caretaker/AGENT_SPEC.md`.
-- The caretaker may inspect the repository and run read-only diagnostics automatically. Code and test edits must remain local and supervised.
+- A caretaker run may inspect the repository and run read-only diagnostics automatically. It does not make repairs unless the user separately asks to implement or fix them; that request authorizes bounded local edits and verification under the default local implementation authority above.
 - Committing, pushing, opening pull requests, changing dependencies, and preparing a release require explicit approval.
 - Deployment, production migrations or data changes, publication, outbound communication, and payment or security configuration always require a fresh explicit authorization.
 - A daily check reports evidence and risks; it does not repair findings, mutate data, send mail, or deploy.
@@ -49,7 +57,7 @@ Reuse live specialists within the same task. Across tasks, recreate roles from t
 
 - The primary agent remains accountable for scope, coordination, final verification, and the user-facing result.
 - Use `ct_caretaker` for recurring read-only repository health checks and `ct_lead` for bounded investigation and work planning.
-- Use `ct_developer` for one approved implementation scope at a time. Do not run parallel write-heavy agents against overlapping files.
+- Use `ct_developer` for one user-requested implementation scope at a time. The implementation request itself is sufficient approval for bounded local edits and verification. Do not run parallel write-heavy agents against overlapping files.
 - After implementation, use `ct_quality` for independent verification. Add `ct_financial_security` whenever payment, wallet, refund, withdrawal, identity, authorization, secrets, or other sensitive state is involved.
 - Use `ct_release_guardian` only after the user explicitly requests release preparation, commit, push, pull request, or deployment work.
 - Parallel delegation is preferred for independent read-heavy exploration, test analysis, and review. Keep code ownership non-overlapping and preserve all unrelated worktree changes.

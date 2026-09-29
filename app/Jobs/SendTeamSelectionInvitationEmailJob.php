@@ -7,6 +7,8 @@ use App\Mail\TeamSelectionInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\TeamSelectionInvitation;
 use App\Services\MailAccountManager;
+use App\Services\TeamSelection\TeamSelectionContactService;
+use App\Services\TeamSelection\TeamSelectionInvitationService;
 use App\Domain\Teams\Services\ExternalTeamRosterService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -54,8 +56,10 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
         if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
         $invitation = TeamSelectionInvitation::with(['selectionImport.event', 'region', 'team', 'player'])->find($log->related_id);
         $kind = $log->payload['kind'] ?? 'invitation';
+        $isCustomEmail = str_starts_with($kind, 'custom_');
         $eligibleStatuses = match ($kind) {
             'custom_payment_update' => [TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT],
+            'custom_status_update' => [TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT],
             'custom_paid_update' => [TeamSelectionInvitation::PAID_CONFIRMED],
             default => [TeamSelectionInvitation::INVITED],
         };
@@ -63,8 +67,22 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
         $deadline = $kind === 'custom_payment_update'
             ? $invitation?->effectivePaymentDeadline()
             : $invitation?->effectiveResponseDeadline();
+        $currentContactEmail = $invitation
+            ? app(TeamSelectionContactService::class)->primaryEmail($invitation->player)
+            : null;
+        $customContextIsStale = $isCustomEmail && (
+            ! $invitation?->selectionImport
+            || $invitation->selectionImport->status !== 'sent'
+            || (int) $invitation->selectionImport->event_id !== (int) $invitation->event_id
+            || (int) $invitation->import_id !== (int) $invitation->selectionImport->id
+            || $invitation->roster_rank === null
+            || ! is_string($currentContactEmail)
+            || ! hash_equals((string) $log->recipient_email, $currentContactEmail)
+            || app(TeamSelectionInvitationService::class)->customEmailKind($invitation) !== $kind
+        );
         if (! $invitation || (int) $invitation->event_id !== $this->eventId
             || ! in_array($invitation->status, $eligibleStatuses, true)
+            || $customContextIsStale
             || ($customRegistrationEmail && ! app(ExternalTeamRosterService::class)->registrationIsOpen($invitation->selectionImport->event))
             || ($kind === 'custom_payment_update' && $deadline && now()->gt($deadline))
             || (! str_starts_with($kind, 'custom_') && $deadline && now()->gt($deadline))) {

@@ -1692,7 +1692,7 @@ final class TeamSelectionInvitationService
 
     /**
      * @param array<int, int|string> $invitationIds
-     * @return array{campaign: array, recipients: array<int, array{id:int,name:string,email:string}>, hash: string}
+     * @return array{campaign: array, recipients: array<int, array{id:int,name:string,email:string,status:string,kind:string}>, hash: string}
      */
     public function previewCustomPendingActivatedInvitations(
         TeamSelectionImport $import,
@@ -1811,9 +1811,7 @@ final class TeamSelectionInvitationService
                 return ! $registrationOpen;
             }
 
-            return $kind === 'custom_payment_update'
-                && $invitation->effectivePaymentDeadline()
-                && now()->gt($invitation->effectivePaymentDeadline());
+            return false;
         })) {
             throw ValidationException::withMessages([
                 'invitation_ids' => 'One or more selected players can no longer receive this custom email. Review registration and payment availability, then try again.',
@@ -1841,7 +1839,10 @@ final class TeamSelectionInvitationService
     {
         return match ($invitation->status) {
             TeamSelectionInvitation::PAID_CONFIRMED => 'custom_paid_update',
-            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT => 'custom_payment_update',
+            TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT => $invitation->effectivePaymentDeadline()
+                && now()->gt($invitation->effectivePaymentDeadline())
+                    ? 'custom_status_update'
+                    : 'custom_payment_update',
             default => 'custom_invitation',
         };
     }
@@ -1853,7 +1854,7 @@ final class TeamSelectionInvitationService
             && (bool) data_get($invitation->snapshot_json, 'activation.pending_manual_invitation');
     }
 
-    /** @param array<int, array{id:int,name:string,email:string}> $recipients */
+    /** @param array<int, array{id:int,name:string,email:string,status:string,kind:string}> $recipients */
     private function customPendingPreviewHash(array $campaign, array $recipients, string $previewToken): string
     {
         return hash('sha256', json_encode([
@@ -1862,6 +1863,8 @@ final class TeamSelectionInvitationService
             'recipients' => collect($recipients)->map(fn (array $recipient) => [
                 'id' => $recipient['id'],
                 'email' => mb_strtolower(trim($recipient['email'])),
+                'status' => $recipient['status'],
+                'kind' => $recipient['kind'],
             ])->values()->all(),
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
